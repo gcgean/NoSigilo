@@ -1,0 +1,3 @@
+ALTER TABLE messages ADD COLUMN media_id TEXT;
+ALTER TABLE messages ADD COLUMN is_view_once INTEGER DEFAULT 0;
+ALTER TABLE messages ADD COLUMN is_delivered INTEGER DEFAULT 1;

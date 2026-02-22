@@ -1,4 +1,5 @@
 import apiClient from '@/utils/apiClient';
+import { compressImageFile } from '@/utils/mediaCompression';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -17,6 +18,14 @@ export const authService = {
       return { token: 'mock-token', user: { id: '1', ...data } };
     }
     const response = await apiClient.post('/auth/register', data);
+    return response.data;
+  },
+
+  checkEmail: async (email: string) => {
+    if (USE_MOCKS) {
+      return { available: true };
+    }
+    const response = await apiClient.post('/auth/check-email', { email });
     return response.data;
   },
 
@@ -46,6 +55,11 @@ export const feedService = {
     return response.data;
   },
 
+  deletePost: async (postId: string) => {
+    const response = await apiClient.delete(`/posts/${postId}`);
+    return response.data;
+  },
+
   getRecentPhotos: async () => {
     if (USE_MOCKS) {
       return [];
@@ -72,10 +86,23 @@ export const profileService = {
     return response.data;
   },
 
-  uploadMedia: async (file: File) => {
+  getStats: async () => {
+    const response = await apiClient.get('/profile/stats');
+    return response.data;
+  },
+
+  uploadMedia: async (file: File, options?: { isPrivate?: boolean }) => {
+    let uploadFile = file;
+    if (file.type.startsWith('image/')) {
+      uploadFile = await compressImageFile(file);
+    }
+    if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
+      throw new Error('Arquivo de vídeo muito grande (máximo 50MB)');
+    }
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', uploadFile);
     const response = await apiClient.post('/media/upload', formData, {
+      params: { isPrivate: options?.isPrivate ? 1 : 0 },
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data;
@@ -94,7 +121,7 @@ export const profileService = {
 
 // Match Service
 export const matchService = {
-  getCards: async (params?: { page?: number }) => {
+  getCards: async (params?: { city?: string; ageRange?: string; genders?: string; radar?: string; search?: string }) => {
     if (USE_MOCKS) {
       return [];
     }
@@ -123,6 +150,11 @@ export const chatService = {
     return response.data;
   },
 
+  getUnreadCount: async () => {
+    const response = await apiClient.get('/conversations/unread-count');
+    return response.data;
+  },
+
   createConversation: async (userId: string) => {
     const response = await apiClient.post('/conversations', { userId });
     return response.data;
@@ -133,8 +165,23 @@ export const chatService = {
     return response.data;
   },
 
-  sendMessage: async (conversationId: string, content: string) => {
-    const response = await apiClient.post(`/conversations/${conversationId}/messages`, { content });
+  sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean }) => {
+    const response = await apiClient.post(`/conversations/${conversationId}/messages`, data);
+    return response.data;
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    const response = await apiClient.delete(`/conversations/${conversationId}`);
+    return response.data;
+  },
+
+  markMessageAsViewed: async (messageId: string) => {
+    const response = await apiClient.post(`/messages/${messageId}/view`);
+    return response.data;
+  },
+
+  markAsRead: async (conversationId: string) => {
+    const response = await apiClient.post(`/conversations/${conversationId}/read`);
     return response.data;
   },
 };
@@ -143,6 +190,11 @@ export const chatService = {
 export const interactionsService = {
   like: async (targetType: 'post' | 'photo', targetId: string) => {
     const response = await apiClient.post('/likes', { targetType, targetId });
+    return response.data;
+  },
+
+  unlike: async (targetType: 'post' | 'photo', targetId: string) => {
+    const response = await apiClient.delete('/likes', { data: { targetType, targetId } });
     return response.data;
   },
 
@@ -191,12 +243,72 @@ export const notificationsService = {
     const response = await apiClient.patch(`/notifications/${notificationId}/read`);
     return response.data;
   },
+
+  markAllAsRead: async () => {
+    const response = await apiClient.post('/notifications/read-all');
+    return response.data;
+  },
+};
+
+export const usersService = {
+  getUser: async (userId: string) => {
+    const response = await apiClient.get(`/users/${userId}`);
+    return response.data;
+  },
+
+  getUserPhotos: async (userId: string, visibility: 'public' | 'private') => {
+    const response = await apiClient.get(`/users/${userId}/photos`, { params: { visibility } });
+    return response.data;
+  },
+
+  getPrivatePhotosAccess: async (userId: string) => {
+    const response = await apiClient.get(`/users/${userId}/private-photos/access`);
+    return response.data;
+  },
+
+  getTestimonials: async (userId: string, params?: { status?: 'all' | 'pending' | 'approved' | 'rejected' }) => {
+    const response = await apiClient.get(`/users/${userId}/testimonials`, { params });
+    return response.data;
+  },
+};
+
+export const privatePhotosService = {
+  requestAccess: async (userId: string) => {
+    const response = await apiClient.post('/private-photos/requests', { userId });
+    return response.data;
+  },
+
+  approveRequest: async (requestId: string) => {
+    const response = await apiClient.post(`/private-photos/requests/${requestId}/approve`);
+    return response.data;
+  },
+
+  denyRequest: async (requestId: string) => {
+    const response = await apiClient.post(`/private-photos/requests/${requestId}/deny`);
+    return response.data;
+  },
+};
+
+export const testimonialsService = {
+  create: async (profileUserId: string, content: string) => {
+    const response = await apiClient.post('/testimonials', { profileUserId, content });
+    return response.data;
+  },
+  respond: async (testimonialId: string, accept: boolean) => {
+    const response = await apiClient.post(`/testimonials/${testimonialId}/respond`, { accept });
+    return response.data;
+  },
 };
 
 // Location Service
 export const locationService = {
-  getCities: async (query?: string) => {
-    const response = await apiClient.get('/cities', { params: { q: query } });
+  getCities: async (query?: string, limit: number = 20) => {
+    const response = await apiClient.get('/cities', { params: { q: query, limit } });
+    return response.data;
+  },
+
+  getNearestCity: async (lat: number, lon: number) => {
+    const response = await apiClient.get('/cities/nearest', { params: { lat, lon } });
     return response.data;
   },
 
@@ -207,6 +319,19 @@ export const locationService = {
 
   registerVisit: async (targetUserId: string) => {
     const response = await apiClient.post(`/users/${targetUserId}/visit`);
+    return response.data;
+  },
+};
+
+export const onboardingService = {
+  getSuggestions: async (params: { lookingFor: string[]; city?: string; state?: string }) => {
+    const response = await apiClient.get('/onboarding/suggestions', {
+      params: {
+        lookingFor: params.lookingFor.join(','),
+        city: params.city,
+        state: params.state,
+      },
+    });
     return response.data;
   },
 };
@@ -233,6 +358,11 @@ export const subscriptionsService = {
 export const eventsService = {
   createEvent: async (data: any) => {
     const response = await apiClient.post('/events', data);
+    return response.data;
+  },
+
+  getEvents: async (params?: { myEvents?: boolean; upcoming?: boolean; city?: string }) => {
+    const response = await apiClient.get('/events', { params });
     return response.data;
   },
 };

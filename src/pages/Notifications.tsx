@@ -1,93 +1,127 @@
-import { Heart, MessageCircle, Eye, UserPlus, Bell, Check, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Bell, Check, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { notificationsService, privatePhotosService } from '@/services/api';
+import { useToast } from '@/hooks/use-toast';
+import { getNotificationHref } from '@/utils/notificationNavigation';
 
-const mockNotifications = [
-  {
-    id: '1',
-    type: 'like',
-    user: {
-      name: 'Marina Santos',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-    },
-    message: 'curtiu sua foto',
-    time: '2 min',
-    read: false,
-  },
-  {
-    id: '2',
-    type: 'match',
-    user: {
-      name: 'Carolina Lima',
-      avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
-    },
-    message: 'Vocês deram match! 🎉',
-    time: '1h',
-    read: false,
-  },
-  {
-    id: '3',
-    type: 'visit',
-    user: {
-      name: 'Julia Mendes',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-    },
-    message: 'visitou seu perfil',
-    time: '3h',
-    read: true,
-  },
-  {
-    id: '4',
-    type: 'comment',
-    user: {
-      name: 'Amanda Costa',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100',
-    },
-    message: 'comentou na sua foto',
-    time: '5h',
-    read: true,
-  },
-  {
-    id: '5',
-    type: 'friend',
-    user: {
-      name: 'Beatriz Silva',
-      avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=100',
-    },
-    message: 'enviou uma solicitação de amizade',
-    time: '1d',
-    read: true,
-  },
-];
-
-const getIcon = (type: string) => {
-  switch (type) {
-    case 'like':
-      return <Heart className="w-4 h-4 text-primary" />;
-    case 'match':
-      return <Sparkles className="w-4 h-4 text-gold" />;
-    case 'visit':
-      return <Eye className="w-4 h-4 text-accent" />;
-    case 'comment':
-      return <MessageCircle className="w-4 h-4 text-success" />;
-    case 'friend':
-      return <UserPlus className="w-4 h-4 text-primary" />;
-    default:
-      return <Bell className="w-4 h-4" />;
-  }
+type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  description?: string | null;
+  isRead: boolean;
+  createdAt: string;
+  data?: any;
 };
 
+function timeAgo(iso: string) {
+  const d = new Date(iso);
+  const ms = Date.now() - d.getTime();
+  const min = Math.max(0, Math.floor(ms / 60000));
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h`;
+  const days = Math.floor(h / 24);
+  return `${days} d`;
+}
+
 export default function Notifications() {
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [items, setItems] = useState<NotificationItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+
+  const unreadCount = useMemo(() => items.filter((n) => !n.isRead).length, [items]);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const list = await notificationsService.getNotifications();
+      setItems(Array.isArray(list) ? list : []);
+    } catch {
+      setItems([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useEffect(() => {
+    const focus = searchParams.get('focus');
+    if (!focus) return;
+    if (isLoading) return;
+    setFocusedId(focus);
+    window.setTimeout(() => {
+      const el = document.getElementById(`notification-${focus}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 0);
+  }, [searchParams, isLoading]);
+
+  const markAsRead = async (id: string) => {
+    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    try {
+      await notificationsService.markAsRead(id);
+    } catch {}
+  };
+
+  const handleMarkAll = async () => {
+    setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    try {
+      await notificationsService.markAllAsRead();
+    } catch {}
+  };
+
+  const handleApprove = async (notification: NotificationItem) => {
+    const requestId = notification?.data?.requestId ? String(notification.data.requestId) : '';
+    if (!requestId) return;
+    setBusyId(notification.id);
+    try {
+      await privatePhotosService.approveRequest(requestId);
+      await markAsRead(notification.id);
+      setItems((prev) => prev.filter((n) => n.id !== notification.id));
+      toast({ title: 'Acesso permitido', description: 'Você autorizou o acesso às fotos privadas.' });
+    } catch {
+      toast({ title: 'Falha ao permitir', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeny = async (notification: NotificationItem) => {
+    const requestId = notification?.data?.requestId ? String(notification.data.requestId) : '';
+    if (!requestId) return;
+    setBusyId(notification.id);
+    try {
+      await privatePhotosService.denyRequest(requestId);
+      await markAsRead(notification.id);
+      setItems((prev) => prev.filter((n) => n.id !== notification.id));
+      toast({ title: 'Acesso negado' });
+    } catch {
+      toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
-    <div className="max-w-2xl mx-auto md:ml-64">
+    <div className="max-w-2xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Notificações</h1>
           <p className="text-muted-foreground">Fique por dentro de tudo</p>
         </div>
-        <Button variant="ghost" size="sm" className="gap-2">
+        <Button variant="ghost" size="sm" className="gap-2" onClick={() => void handleMarkAll()} disabled={isLoading || unreadCount === 0}>
           <Check className="w-4 h-4" />
           Marcar todas como lidas
         </Button>
@@ -95,37 +129,65 @@ export default function Notifications() {
 
       {/* Notifications List */}
       <div className="space-y-2">
-        {mockNotifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={cn(
-              "glass rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:bg-secondary/50 transition-colors",
-              !notification.read && "bg-primary/5 border-primary/20"
-            )}
-          >
-            <div className="relative">
-              <Avatar>
-                <AvatarImage src={notification.user.avatar} />
-                <AvatarFallback>{notification.user.name[0]}</AvatarFallback>
-              </Avatar>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-card flex items-center justify-center">
-                {getIcon(notification.type)}
+        {isLoading && <div className="text-sm text-muted-foreground">Carregando...</div>}
+        {!isLoading && items.length === 0 && <div className="text-sm text-muted-foreground">Sem notificações.</div>}
+        {!isLoading &&
+          items.map((notification) => {
+            const isPrivateRequest = notification.type === 'private_photos.request';
+            
+            const Icon = (() => {
+              const type = notification.type;
+              if (type.includes('liked')) return Heart;
+              if (type.includes('commented')) return MessageCircle;
+              if (type.includes('testimonial')) return Star;
+              if (type.includes('private_photos')) return Lock;
+              return Bell;
+            })();
+
+            return (
+              <div
+                key={notification.id}
+                id={`notification-${notification.id}`}
+                className={cn(
+                  'glass rounded-xl p-4 flex items-start gap-4 hover:bg-secondary/50 transition-colors',
+                  !notification.isRead && 'bg-primary/5 border-primary/20',
+                  focusedId === notification.id && 'ring-2 ring-primary/40'
+                )}
+                onClick={() => {
+                  void markAsRead(notification.id);
+                  navigate(getNotificationHref(notification));
+                }}
+                role="button"
+                tabIndex={0}
+              >
+                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Icon className="w-5 h-5 text-primary" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className={cn('mb-1', !notification.isRead && 'font-medium')}>{notification.title}</p>
+                  {notification.description ? <p className="text-sm text-muted-foreground">{notification.description}</p> : null}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-muted-foreground">{timeAgo(notification.createdAt)}</span>
+                    {!notification.isRead ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+                  </div>
+
+                  {isPrivateRequest && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button size="sm" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleApprove(notification); }}>
+                        <UserCheck className="w-4 h-4" />
+                        Permitir
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleDeny(notification); }}>
+                        <UserX className="w-4 h-4" />
+                        Negar
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="flex-1">
-              <p className={cn(!notification.read && "font-medium")}>
-                <span className="font-semibold">{notification.user.name}</span>{' '}
-                {notification.message}
-              </p>
-              <span className="text-sm text-muted-foreground">{notification.time}</span>
-            </div>
-
-            {!notification.read && (
-              <span className="w-2 h-2 rounded-full bg-primary" />
-            )}
-          </div>
-        ))}
+            );
+          })}
       </div>
     </div>
   );

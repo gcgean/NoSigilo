@@ -14,9 +14,11 @@ import Layout from "@/components/Layout";
 // Public Pages
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import ForgotPassword from "./pages/ForgotPassword";
 import Register from "./pages/Register";
 import AuthCallback from "./pages/AuthCallback";
 import Plans from "./pages/Plans";
+import Subscriptions from "./pages/Subscriptions";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import DevTest from "./pages/DevTest";
@@ -26,6 +28,7 @@ import Feed from "./pages/Feed";
 import Match from "./pages/Match";
 import Radar from "./pages/Radar";
 import Profile from "./pages/Profile";
+import ProfileVisitors from "./pages/ProfileVisitors";
 import Chat from "./pages/Chat";
 import Search from "./pages/Search";
 import Notifications from "./pages/Notifications";
@@ -34,6 +37,7 @@ import Favorites from "./pages/Favorites";
 import Events from "./pages/Events";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import UserProfile from "./pages/UserProfile";
 
 import NotFound from "./pages/NotFound";
 
@@ -54,6 +58,7 @@ const App = () => (
                     {/* Public Routes */}
                     <Route path="/" element={<Landing />} />
                     <Route path="/login" element={<Login />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/plans" element={<Plans />} />
@@ -68,11 +73,14 @@ const App = () => (
                       <Route path="/match" element={<Match />} />
                       <Route path="/radar" element={<Radar />} />
                       <Route path="/profile" element={<Profile />} />
+                      <Route path="/profile/visitors" element={<ProfileVisitors />} />
+                      <Route path="/users/:userId" element={<UserProfile />} />
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/search" element={<Search />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/events" element={<Events />} />
+                      <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />
                     </Route>

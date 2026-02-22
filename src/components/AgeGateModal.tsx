@@ -24,7 +24,7 @@ export default function AgeGateModal() {
         
         <div className="flex items-center justify-center gap-2 mb-4">
           <Heart className="w-5 h-5 text-primary" />
-          <span className="text-xl font-semibold text-gradient">QCQ Web Social</span>
+          <span className="text-xl font-semibold text-gradient">NoSigilo</span>
         </div>
 
         <p className="text-muted-foreground mb-6">

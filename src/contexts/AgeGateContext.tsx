@@ -8,7 +8,7 @@ interface AgeGateContextType {
 
 const AgeGateContext = createContext<AgeGateContextType | undefined>(undefined);
 
-const AGE_GATE_KEY = 'qcq_age_confirmed';
+const AGE_GATE_KEY = 'nosigilo_age_confirmed';
 
 export function AgeGateProvider({ children }: { children: ReactNode }) {
   const [hasConfirmedAge, setHasConfirmedAge] = useState(false);

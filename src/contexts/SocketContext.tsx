@@ -12,7 +12,7 @@ interface SocketContextType {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3000';
+const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4001';
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 export function SocketProvider({ children }: { children: ReactNode }) {
@@ -26,7 +26,10 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const token = localStorage.getItem('qcq_user') ? 'demo-token' : localStorage.getItem('token');
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
     
     const newSocket = io(SOCKET_URL, {
       auth: { token },

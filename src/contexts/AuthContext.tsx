@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authService, profileService } from '@/services/api';
 
 export interface User {
   id: string;
@@ -6,14 +7,31 @@ export interface User {
   name: string;
   avatar?: string;
   bio?: string;
+  status?: string;
   city?: string;
   state?: string;
   birthDate?: string;
   gender?: string;
+  maritalStatus?: string;
+  sexualOrientation?: string;
+  ethnicity?: string;
+  hair?: string;
+  eyes?: string;
+  height?: string;
+  bodyType?: string;
+  smokes?: string;
+  drinks?: string;
+  profession?: string;
+  zodiacSign?: string;
   lookingFor?: string[];
   isVerified?: boolean;
   isPremium?: boolean;
   isAdmin?: boolean;
+  trialStartedAt?: string | null;
+  trialEndsAt?: string | null;
+  allowMessages?: 'everyone' | 'matches' | 'friends' | 'nobody';
+  lastSeenAt?: string | null;
+  isOnline?: boolean;
 }
 
 interface AuthContextType {
@@ -30,38 +48,53 @@ interface RegisterData {
   email: string;
   password: string;
   name: string;
-  birthDate: string;
+  birthDate?: string;
   gender: string;
-  city: string;
-  state: string;
+  city?: string;
+  state?: string;
+  lookingFor?: string[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 // Demo users for testing
 const DEMO_USERS: Record<string, { password: string; user: User }> = {
-  'demo@qcq.com': {
+  'demo@nosigilo.com': {
     password: 'demo123',
     user: {
       id: 'user-1',
-      email: 'demo@qcq.com',
+      email: 'demo@nosigilo.com',
       name: 'Marina Santos',
       avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200',
       bio: 'Apaixonada por viagens e novas experiências ✨',
+      status: 'Vamos conversar?',
       city: 'São Paulo',
       state: 'SP',
-      gender: 'female',
+      birthDate: '1996-05-20',
+      gender: 'Mulher',
+      maritalStatus: 'Solteiro(a)',
+      sexualOrientation: 'Heterossexual',
+      ethnicity: 'Branco',
+      hair: 'Castanhos',
+      eyes: 'Castanhos',
+      height: '1.68 m',
+      bodyType: 'Atlético(a)',
+      smokes: 'Não',
+      drinks: 'Socialmente',
+      profession: 'Designer',
+      zodiacSign: 'Gêmeos',
       isVerified: true,
       isPremium: false,
       isAdmin: false,
     },
   },
-  'admin@qcq.com': {
+  'admin@nosigilo.com': {
     password: 'admin123',
     user: {
       id: 'admin-1',
-      email: 'admin@qcq.com',
-      name: 'Admin QCQ',
+      email: 'admin@nosigilo.com',
+      name: 'Admin NoSigilo',
       avatar: undefined,
       city: 'São Paulo',
       state: 'SP',
@@ -77,52 +110,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved session
-    const savedUser = localStorage.getItem('qcq_user');
+    const savedUser = localStorage.getItem('nosigilo_user');
+    const token = localStorage.getItem('token');
     if (savedUser) {
       try {
         setUser(JSON.parse(savedUser));
       } catch {
-        localStorage.removeItem('qcq_user');
+        localStorage.removeItem('nosigilo_user');
       }
     }
-    setIsLoading(false);
-  }, []);
-
-  const login = async (email: string, password: string) => {
-    // Demo mode - check against mock users
-    const demoAccount = DEMO_USERS[email.toLowerCase()];
-    
-    if (demoAccount && demoAccount.password === password) {
-      setUser(demoAccount.user);
-      localStorage.setItem('qcq_user', JSON.stringify(demoAccount.user));
+    if (!USE_MOCKS && token && !savedUser) {
+      authService
+        .getMe()
+        .then((me) => {
+          localStorage.setItem('nosigilo_user', JSON.stringify(me));
+          setUser(me);
+        })
+        .catch(() => {
+          localStorage.removeItem('token');
+        })
+        .finally(() => setIsLoading(false));
       return;
     }
-    
-    throw new Error('Credenciais inválidas');
+    setIsLoading(false);
+  }, [USE_MOCKS]);
+
+  const login = async (email: string, password: string) => {
+    if (USE_MOCKS) {
+      const demoAccount = DEMO_USERS[email.toLowerCase()];
+      if (demoAccount && demoAccount.password === password) {
+        setUser(demoAccount.user);
+        localStorage.setItem('nosigilo_user', JSON.stringify(demoAccount.user));
+        localStorage.setItem('token', 'mock-token');
+        return;
+      }
+      throw new Error('Credenciais inválidas');
+    }
+
+    const result = await authService.login(email, password);
+    localStorage.setItem('token', result.token);
+    localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
+    setUser(result.user);
   };
 
   const register = async (data: RegisterData) => {
-    // Demo mode - create a new user locally
-    const newUser: User = {
-      id: `user-${Date.now()}`,
-      email: data.email,
-      name: data.name,
-      city: data.city,
-      state: data.state,
-      birthDate: data.birthDate,
-      gender: data.gender,
-      isVerified: false,
-      isPremium: false,
-      isAdmin: false,
-    };
-    
-    setUser(newUser);
-    localStorage.setItem('qcq_user', JSON.stringify(newUser));
+    if (USE_MOCKS) {
+      const newUser: User = {
+        id: `user-${Date.now()}`,
+        email: data.email,
+        name: data.name,
+        city: data.city,
+        state: data.state,
+        birthDate: data.birthDate,
+        gender: data.gender,
+        isVerified: false,
+        isPremium: false,
+        isAdmin: false,
+      };
+      setUser(newUser);
+      localStorage.setItem('nosigilo_user', JSON.stringify(newUser));
+      localStorage.setItem('token', 'mock-token');
+      return;
+    }
+
+    const result = await authService.register(data);
+    localStorage.setItem('token', result.token);
+    localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
+    setUser(result.user);
   };
 
   const logout = () => {
-    localStorage.removeItem('qcq_user');
+    localStorage.removeItem('nosigilo_user');
+    localStorage.removeItem('token');
     setUser(null);
     window.location.href = '/login';
   };
@@ -131,7 +190,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(prev => {
       if (!prev) return null;
       const updated = { ...prev, ...data };
-      localStorage.setItem('qcq_user', JSON.stringify(updated));
+      localStorage.setItem('nosigilo_user', JSON.stringify(updated));
+      if (!USE_MOCKS && localStorage.getItem('token')) {
+        const allowedKeys: Array<keyof User> = [
+          'name',
+          'avatar',
+          'bio',
+          'status',
+          'city',
+          'state',
+          'birthDate',
+          'gender',
+          'maritalStatus',
+          'sexualOrientation',
+          'ethnicity',
+          'hair',
+          'eyes',
+          'height',
+          'bodyType',
+          'smokes',
+          'drinks',
+          'profession',
+          'zodiacSign',
+          'lookingFor',
+          'allowMessages',
+        ];
+        const patch: Partial<User> = {};
+        for (const key of allowedKeys) {
+          if (key in data) (patch as any)[key] = (data as any)[key];
+        }
+        if (Object.keys(patch).length > 0) {
+          void profileService.updateProfile(patch);
+        }
+      }
       return updated;
     });
   };

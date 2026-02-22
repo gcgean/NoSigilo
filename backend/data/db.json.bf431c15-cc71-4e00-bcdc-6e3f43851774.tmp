@@ -1,0 +1,81 @@
+{
+  "users": [
+    {
+      "id": "9d0f08cc-d892-4861-933b-50bc1bbecd3f",
+      "email": "demo@nosigilo.com",
+      "passwordHash": "$2a$10$IRwyZAF3IgLHu48EDtYJ2uyuyxCT1t1w3p.pCqjubSjsHuPKWu3WG",
+      "name": "Marina Santos",
+      "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200",
+      "bio": "Apaixonada por viagens e novas experiências ✨",
+      "status": "Vamos conversar?",
+      "city": "São Paulo",
+      "state": "SP",
+      "birthDate": "1996-05-20",
+      "gender": "Mulher",
+      "maritalStatus": "Solteiro(a)",
+      "sexualOrientation": "Heterossexual",
+      "ethnicity": "Branco",
+      "hair": "Castanhos",
+      "eyes": "Castanhos",
+      "height": "1.68 m",
+      "bodyType": "Atlético(a)",
+      "smokes": "Não",
+      "drinks": "Socialmente",
+      "profession": "Designer",
+      "zodiacSign": "Gêmeos",
+      "lookingFor": [
+        "Mulher",
+        "Casal (Ele/Ela)"
+      ],
+      "isVerified": true,
+      "isPremium": false,
+      "isAdmin": false
+    },
+    {
+      "id": "f9f71236-a735-4a98-a0a4-78044b30df3b",
+      "email": "admin@nosigilo.com",
+      "passwordHash": "$2a$10$bE5sqeIWIUgmhBe6IXUKYeeDE7WmxW5boOvEPCbxTuwb7vG3KQ6ie",
+      "name": "Admin NoSigilo",
+      "avatar": null,
+      "bio": null,
+      "status": null,
+      "city": "São Paulo",
+      "state": "SP",
+      "birthDate": null,
+      "gender": null,
+      "maritalStatus": null,
+      "sexualOrientation": null,
+      "ethnicity": null,
+      "hair": null,
+      "eyes": null,
+      "height": null,
+      "bodyType": null,
+      "smokes": null,
+      "drinks": null,
+      "profession": null,
+      "zodiacSign": null,
+      "lookingFor": null,
+      "isVerified": true,
+      "isPremium": true,
+      "isAdmin": true
+    }
+  ],
+  "media": [],
+  "posts": [
+    {
+      "id": "decdf504-5815-480c-a2bf-42f59d3cfe99",
+      "userId": "9d0f08cc-d892-4861-933b-50bc1bbecd3f",
+      "content": "Bem-vindo(a) ao NoSigilo.",
+      "mediaIds": [],
+      "createdAt": "2026-02-01T18:33:34.657Z"
+    }
+  ],
+  "conversations": [],
+  "messages": [],
+  "likes": [],
+  "comments": [],
+  "friendRequests": [],
+  "notifications": [],
+  "profileVisits": [],
+  "events": []
+}

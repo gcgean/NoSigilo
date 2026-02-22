@@ -22,12 +22,15 @@ export default function Landing() {
               <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
                 <Sparkles className="w-6 h-6 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold text-gradient">QCQ Web Social</span>
+              <span className="text-2xl font-bold text-gradient">NoSigilo</span>
             </div>
             
             <div className="flex items-center gap-4">
               <Link to="/login">
-                <Button variant="ghost" className="text-foreground hover:text-primary">
+                <Button
+                  variant="outline"
+                  className="bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
+                >
                   Entrar
                 </Button>
               </Link>
@@ -78,7 +81,7 @@ export default function Landing() {
       <section className="py-24 bg-secondary/30">
         <div className="container mx-auto px-4">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-4">
-            Por que escolher o <span className="text-gradient">QCQ?</span>
+            Por que escolher o <span className="text-gradient">NoSigilo?</span>
           </h2>
           <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-16">
             Uma experiência única pensada para você encontrar conexões verdadeiras.
@@ -130,7 +133,7 @@ export default function Landing() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-primary" />
-              <span className="font-bold text-gradient">QCQ Web Social</span>
+              <span className="font-bold text-gradient">NoSigilo</span>
             </div>
             
             <div className="flex items-center gap-6 text-sm text-muted-foreground">
@@ -146,7 +149,7 @@ export default function Landing() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              © 2025 QCQ Web Social. Todos os direitos reservados.
+              © 2025 NoSigilo. Todos os direitos reservados.
             </p>
           </div>
         </div>

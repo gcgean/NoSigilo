@@ -66,7 +66,7 @@ export default function Privacy() {
           <h2>6. Contato</h2>
           <p>
             Para dúvidas sobre esta política, entre em contato através do nosso
-            suporte ou envie um email para privacidade@qcq.com.br
+            suporte ou envie um email para privacidade@nosigilo.com.br
           </p>
         </div>
       </div>

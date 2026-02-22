@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS allow_messages TEXT NOT NULL DEFAULT 'everyone';
+

@@ -1,73 +1,85 @@
-import { useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { usersService, matchService } from '@/services/api';
+import { resolveServerUrl } from '@/utils/serverUrl';
+import { calculateAge } from '@/utils/age';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { NavLink } from 'react-router-dom';
+import { UserAvatar } from '@/components/UserAvatar';
+import { CitySearch } from '@/components/CitySearch';
 
-const mockResults = [
-  {
-    id: '1',
-    name: 'Marina',
-    age: 28,
-    city: 'São Paulo',
-    image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400',
-    verified: true,
-    online: true,
-  },
-  {
-    id: '2',
-    name: 'Carolina',
-    age: 25,
-    city: 'Rio de Janeiro',
-    image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400',
-    verified: true,
-    online: false,
-  },
-  {
-    id: '3',
-    name: 'Julia',
-    age: 30,
-    city: 'Curitiba',
-    image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
-    verified: false,
-    online: true,
-  },
-  {
-    id: '4',
-    name: 'Amanda',
-    age: 27,
-    city: 'Belo Horizonte',
-    image: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400',
-    verified: true,
-    online: true,
-  },
-  {
-    id: '5',
-    name: 'Beatriz',
-    age: 24,
-    city: 'Porto Alegre',
-    image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400',
-    verified: false,
-    online: false,
-  },
-  {
-    id: '6',
-    name: 'Fernanda',
-    age: 29,
-    city: 'Salvador',
-    image: 'https://images.unsplash.com/photo-1502823403499-6ccfcf4fb453?w=400',
-    verified: true,
-    online: true,
-  },
+const genderOptions = [
+  'Homem',
+  'Mulher',
+  'Casal (Ele/Ela)',
+  'Casal (Ele/Ele)',
+  'Casal (Ela/Ela)',
+  'Transexual',
+  'Crossdresser (CD)',
+  'Travesti',
 ];
 
 export default function SearchPage() {
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [results, setResults] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Filters
+  const [ageRange, setAgeRange] = useState('all');
+  const [city, setCity] = useState('');
+  const [radar, setRadar] = useState('50');
+  const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
+
+  const handleGenderToggle = (gender: string) => {
+    setSelectedGenders(prev => 
+      prev.includes(gender) 
+        ? prev.filter(g => g !== gender)
+        : [...prev, gender]
+    );
+  };
+
+  const loadResults = async () => {
+    setIsLoading(true);
+    try {
+      const params = {
+        city: city.trim() || undefined,
+        search: search.trim() || undefined,
+        ageRange: ageRange !== 'all' ? ageRange : undefined,
+        genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
+        radar: radar !== 'all' ? radar : undefined,
+      };
+      const data = await matchService.getCards(params);
+      setResults(Array.isArray(data) ? data : []);
+    } catch {
+      setResults([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Automatic search for city and name with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadResults();
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [city, search]);
+
+  // Search when other filters change
+  useEffect(() => {
+    void loadResults();
+  }, [ageRange, radar, selectedGenders]);
 
   return (
-    <div className="max-w-4xl mx-auto md:ml-64">
+    <div className="max-w-4xl mx-auto w-full">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Buscar</h1>
@@ -97,15 +109,16 @@ export default function SearchPage() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="glass rounded-xl p-4 mb-6 animate-slide-up">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="glass rounded-xl p-6 mb-6 animate-slide-up space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-              <label className="text-sm text-muted-foreground mb-2 block">Idade</label>
-              <Select>
+              <label className="text-sm font-medium mb-2 block">Idade</label>
+              <Select value={ageRange} onValueChange={setAgeRange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Qualquer" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="all">Qualquer</SelectItem>
                   <SelectItem value="18-25">18-25</SelectItem>
                   <SelectItem value="26-35">26-35</SelectItem>
                   <SelectItem value="36-45">36-45</SelectItem>
@@ -114,89 +127,133 @@ export default function SearchPage() {
               </Select>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-2 block">Cidade</label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sp">São Paulo</SelectItem>
-                  <SelectItem value="rj">Rio de Janeiro</SelectItem>
-                  <SelectItem value="bh">Belo Horizonte</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium mb-2 block text-center md:text-left">Radar (km)</label>
+              <div className="relative">
+                <RadarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Select value={radar} onValueChange={setRadar}>
+                  <SelectTrigger className="pl-9">
+                    <SelectValue placeholder="Raio de busca" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Qualquer</SelectItem>
+                    <SelectItem value="10">Até 10 km</SelectItem>
+                    <SelectItem value="25">Até 25 km</SelectItem>
+                    <SelectItem value="50">Até 50 km</SelectItem>
+                    <SelectItem value="100">Até 100 km</SelectItem>
+                    <SelectItem value="500">Até 500 km</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div>
-              <label className="text-sm text-muted-foreground mb-2 block">Status</label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="online">Online agora</SelectItem>
-                  <SelectItem value="verified">Verificados</SelectItem>
-                </SelectContent>
-              </Select>
+              <label className="text-sm font-medium mb-2 block">Cidade</label>
+              <CitySearch 
+                value={city} 
+                onChange={setCity} 
+                onSelect={(c) => setCity(c)}
+                showLocate={false} 
+              />
             </div>
-            <div className="flex items-end">
-              <Button className="w-full bg-gradient-primary hover:opacity-90">
-                Aplicar
-              </Button>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-3 block">Interesse em</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-4 gap-x-2">
+              {genderOptions.map((opt) => (
+                <div key={opt} className="flex items-center space-x-2 group cursor-pointer" onClick={() => handleGenderToggle(opt)}>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                    selectedGenders.includes(opt) 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-muted-foreground/30 group-hover:border-primary/50'
+                  }`}>
+                    {selectedGenders.includes(opt) && (
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <span className="text-sm cursor-pointer select-none">
+                    {opt}
+                  </span>
+                </div>
+              ))}
             </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={() => void loadResults()} className="bg-gradient-primary hover:opacity-90 px-8">
+              Aplicar Filtros
+            </Button>
           </div>
         </div>
       )}
 
       {/* Results Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        {mockResults.map((profile) => (
-          <div
-            key={profile.id}
-            className="group relative rounded-2xl overflow-hidden cursor-pointer hover:shadow-glow transition-all"
-          >
-            <div className="aspect-[3/4]">
-              <img
-                src={profile.image}
-                alt={profile.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
+      {isLoading ? (
+        <div className="text-center py-12 text-muted-foreground">Buscando perfis...</div>
+      ) : results.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground">Nenhum perfil encontrado com esses filtros.</div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {results.map((profile) => {
+            const age = calculateAge(profile.birthDate);
+            const avatarUrl = profile.avatar ? resolveServerUrl(profile.avatar) : null;
             
-            {/* Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+            return (
+              <NavLink
+                key={profile.id}
+                to={`/users/${profile.id}`}
+                className="group relative rounded-2xl overflow-hidden cursor-pointer hover:shadow-glow transition-all"
+              >
+                <div className="aspect-[3/4] w-full h-full">
+                  <UserAvatar 
+                    user={profile} 
+                    className="w-full h-full rounded-none" 
+                    indicatorClassName="hidden" 
+                  />
+                </div>
+                
+                {/* Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
-            {/* Online Indicator */}
-            {profile.online && (
-              <span className="absolute top-3 right-3 w-3 h-3 bg-success rounded-full ring-2 ring-background" />
-            )}
+                {/* Online Indicator / Last Seen */}
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                  {profile.isOnline ? (
+                    <span className="w-3 h-3 bg-success rounded-full ring-2 ring-background" title="Online agora" />
+                  ) : profile.lastSeenAt ? (
+                    <Badge variant="secondary" className="bg-black/40 text-white border-none text-[10px] backdrop-blur-md">
+                      {format(new Date(profile.lastSeenAt), "HH:mm", { locale: ptBR })}
+                    </Badge>
+                  ) : null}
+                </div>
 
-            {/* Badges */}
-            {profile.verified && (
-              <Badge className="absolute top-3 left-3 bg-success/90 text-white gap-1">
-                <Sparkles className="w-3 h-3" />
-              </Badge>
-            )}
+                {/* Badges */}
+                {profile.isVerified && (
+                  <Badge className="absolute top-3 left-3 bg-success/90 text-white gap-1">
+                    <Sparkles className="w-3 h-3" />
+                  </Badge>
+                )}
 
-            {/* Info */}
-            <div className="absolute bottom-0 left-0 right-0 p-4">
-              <h3 className="text-white font-semibold text-lg">
-                {profile.name}, {profile.age}
-              </h3>
-              <div className="flex items-center gap-1 text-white/70 text-sm">
-                <MapPin className="w-3 h-3" />
-                <span>{profile.city}</span>
-              </div>
-            </div>
+                {/* Info */}
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <h3 className="text-white font-semibold text-lg">
+                    {profile.name}{age ? `, ${age}` : ''}
+                  </h3>
+                  <div className="flex items-center gap-1 text-white/70 text-sm">
+                    <MapPin className="w-3 h-3" />
+                    <span className="truncate">{profile.city || '—'}</span>
+                  </div>
+                </div>
 
-            {/* Hover Actions */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
-                <Heart className="w-6 h-6" />
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
+                {/* Hover Actions */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
+                    <Heart className="w-6 h-6" />
+                  </Button>
+                </div>
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

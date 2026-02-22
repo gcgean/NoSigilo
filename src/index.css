@@ -2,8 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* QCQ Web Social - Adult Social Network Design System */
-
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -36,7 +34,6 @@
 
     --radius: 0.75rem;
 
-    /* Custom QCQ tokens */
     --coral: 350 80% 60%;
     --coral-light: 350 80% 70%;
     --coral-dark: 350 80% 50%;
@@ -89,9 +86,7 @@
     --shadow-card: 0 4px 24px hsl(0 0% 0% / 0.4);
     --shadow-elevated: 0 12px 48px hsl(0 0% 0% / 0.5);
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }

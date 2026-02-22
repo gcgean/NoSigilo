@@ -17,7 +17,7 @@ interface FavoritesContextType {
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'qcq_favorites';
+const STORAGE_KEY = 'nosigilo_favorites';
 
 export function FavoritesProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<FavoriteUser[]>([]);

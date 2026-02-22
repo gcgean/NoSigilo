@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { 
   Calendar, 
   MapPin, 
@@ -13,7 +13,9 @@ import {
   ChevronRight,
   Eye,
   Lock,
-  Globe
+  Globe,
+  Camera,
+  X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,24 +40,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-
-const BRAZILIAN_CITIES = [
-  { city: 'São Paulo', state: 'SP' },
-  { city: 'Rio de Janeiro', state: 'RJ' },
-  { city: 'Fortaleza', state: 'CE' },
-  { city: 'Salvador', state: 'BA' },
-  { city: 'Belo Horizonte', state: 'MG' },
-  { city: 'Recife', state: 'PE' },
-  { city: 'Porto Alegre', state: 'RS' },
-  { city: 'Curitiba', state: 'PR' },
-  { city: 'Brasília', state: 'DF' },
-  { city: 'Manaus', state: 'AM' },
-  { city: 'Florianópolis', state: 'SC' },
-  { city: 'Natal', state: 'RN' },
-  { city: 'João Pessoa', state: 'PB' },
-  { city: 'Maceió', state: 'AL' },
-  { city: 'Vitória', state: 'ES' },
-];
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPremiumAccess } from '@/utils/premium';
+import { useNavigate } from 'react-router-dom';
+import { eventsService, profileService } from '@/services/api';
+import { CitySearch } from '@/components/CitySearch';
+import { resolveServerUrl } from '@/utils/serverUrl';
 
 const EVENT_TYPES = [
   { value: 'party', label: 'Festa', icon: '🎉' },
@@ -84,6 +74,27 @@ interface Event {
   notificationsSent?: number;
   createdBy?: string;
 }
+
+const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600';
+const normalizeEvent = (raw: any): Event => {
+  return {
+    id: String(raw?.id || ''),
+    title: String(raw?.title || ''),
+    description: String(raw?.description || ''),
+    date: String(raw?.date || ''),
+    time: String(raw?.time || ''),
+    location: String(raw?.location || ''),
+    eventType: String(raw?.eventType || ''),
+    image: String(raw?.image || DEFAULT_EVENT_IMAGE),
+    attendees: Number(raw?.attendees ?? 1),
+    maxAttendees: Number(raw?.maxAttendees ?? 50),
+    isGoing: !!raw?.isGoing,
+    isPremium: !!raw?.isPremium,
+    isPrivate: !!raw?.isPrivate,
+    notificationsSent: raw?.notificationsSent ? Number(raw.notificationsSent) : undefined,
+    createdBy: raw?.createdBy ? String(raw.createdBy) : undefined,
+  };
+};
 
 const mockEvents: Event[] = [
   {
@@ -130,9 +141,32 @@ const mockEvents: Event[] = [
 
 export default function Events() {
   const { toast } = useToast();
-  const [events, setEvents] = useState<Event[]>(mockEvents);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const premiumAccess = hasPremiumAccess(user);
+  const [events, setEvents] = useState<Event[]>([]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [step, setStep] = useState(1);
+  const [citySearchInput, setCitySearchInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    eventsService
+      .getEvents()
+      .then((data) => {
+        if (cancelled) return;
+        setEvents(Array.isArray(data) ? data.map(normalizeEvent) : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setEvents(mockEvents);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   
   // Form state
   const [newEvent, setNewEvent] = useState({
@@ -144,7 +178,31 @@ export default function Events() {
     eventType: '',
     maxAttendees: 50,
     isPrivate: false,
+    image: '',
   });
+  
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingImage(true);
+      const result = await profileService.uploadMedia(file, { isPrivate: false });
+      if (result?.url) {
+        setNewEvent(prev => ({ ...prev, image: result.url }));
+        toast({ title: 'Imagem enviada', description: 'Capa do evento atualizada com sucesso.' });
+      }
+    } catch (error) {
+      toast({ 
+        title: 'Erro ao enviar imagem', 
+        description: 'Não foi possível carregar a foto. Tente novamente.',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
   
   // Notification settings
   const [notificationSettings, setNotificationSettings] = useState({
@@ -187,36 +245,50 @@ export default function Events() {
   };
 
   const handleCreateEvent = async () => {
-    // Calculate estimated reach
-    const estimatedReach = notificationSettings.enabled 
-      ? Math.floor(Math.random() * 500) + 100 
-      : 0;
-
-    const event: Event = {
-      id: Date.now().toString(),
-      title: newEvent.title,
-      description: newEvent.description,
-      date: newEvent.date,
-      time: newEvent.time,
-      location: newEvent.location,
-      eventType: newEvent.eventType,
-      image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600',
-      attendees: 1,
-      maxAttendees: newEvent.maxAttendees,
-      isGoing: true,
-      isPrivate: newEvent.isPrivate,
-      notificationsSent: estimatedReach,
-      createdBy: 'user-1',
-    };
-
-    setEvents([event, ...events]);
+    try {
+      const payload = {
+        title: newEvent.title,
+        description: newEvent.description,
+        date: newEvent.date,
+        time: newEvent.time,
+        location: newEvent.location,
+        eventType: newEvent.eventType,
+        maxAttendees: newEvent.maxAttendees,
+        isPrivate: newEvent.isPrivate,
+        image: newEvent.image || undefined,
+        notificationSettings: {
+          enabled: notificationSettings.enabled,
+          targetCities: notificationSettings.targetCities,
+          targetGender: notificationSettings.targetGender,
+          radius: notificationSettings.radius?.[0] ?? 50,
+          ageRange: notificationSettings.ageRange as [number, number],
+          onlyVerified: notificationSettings.onlyVerified,
+          onlyPremium: notificationSettings.onlyPremium,
+          customMessage: notificationSettings.customMessage,
+        },
+      };
+      const created = await eventsService.createEvent(payload);
+      if (created?.event) {
+        setEvents((prev) => [normalizeEvent(created.event), ...prev]);
+      } else {
+        const list = await eventsService.getEvents();
+        setEvents(Array.isArray(list) ? list.map(normalizeEvent) : []);
+      }
     
-    toast({
-      title: '🎉 Evento criado!',
-      description: notificationSettings.enabled 
-        ? `Notificações enviadas para ~${estimatedReach} pessoas` 
-        : 'Seu evento foi criado com sucesso',
-    });
+      toast({
+        title: 'Evento criado',
+        description: 'Seu evento foi criado com sucesso.',
+      });
+    } catch (e: any) {
+      const premiumRequired = String(e?.response?.data?.error || '') === 'premium_required';
+      toast({
+        title: premiumRequired ? 'Criar eventos é Premium' : 'Erro ao criar evento',
+        description: premiumRequired ? 'Assine um plano para criar eventos após o teste grátis.' : 'Tente novamente.',
+        variant: 'destructive',
+      });
+      if (premiumRequired) navigate('/subscriptions');
+      return;
+    }
 
     // Reset form
     setShowCreateDialog(false);
@@ -281,7 +353,7 @@ export default function Events() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto md:ml-64">
+    <div className="max-w-4xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -289,10 +361,22 @@ export default function Events() {
           <p className="text-muted-foreground">Encontros e festas da comunidade</p>
         </div>
 
-        <Dialog open={showCreateDialog} onOpenChange={(open) => {
-          setShowCreateDialog(open);
-          if (!open) setStep(1);
-        }}>
+        <Dialog
+          open={showCreateDialog}
+          onOpenChange={(open) => {
+            if (open && !premiumAccess) {
+              toast({
+                title: 'Criar eventos é Premium',
+                description: 'Assine um plano para criar eventos após o teste grátis.',
+                variant: 'destructive',
+              });
+              navigate('/subscriptions');
+              return;
+            }
+            setShowCreateDialog(open);
+            if (!open) setStep(1);
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="bg-gradient-primary hover:opacity-90 gap-2">
               <Plus className="w-4 h-4" />
@@ -384,24 +468,11 @@ export default function Events() {
 
                 <div className="space-y-2">
                   <Label>Local *</Label>
-                  <Select 
+                  <CitySearch 
                     value={newEvent.location} 
-                    onValueChange={(v) => setNewEvent({ ...newEvent, location: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a cidade" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {BRAZILIAN_CITIES.map((c) => (
-                        <SelectItem key={`${c.city}-${c.state}`} value={`${c.city}, ${c.state}`}>
-                          <span className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4" />
-                            {c.city}, {c.state}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(val) => setNewEvent({ ...newEvent, location: val })}
+                    onSelect={(city, state) => setNewEvent({ ...newEvent, location: state ? `${city}, ${state}` : city })}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -439,10 +510,59 @@ export default function Events() {
 
                 <div className="space-y-2">
                   <Label>Capa do Evento</Label>
-                  <div className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors">
-                    <ImageIcon className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">Clique para adicionar imagem</p>
+                  <div 
+                    onClick={() => !isUploadingImage && fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary transition-all overflow-hidden aspect-video flex flex-col items-center justify-center gap-2 ${
+                      newEvent.image ? "border-solid border-primary/50" : "border-border"
+                    }`}
+                  >
+                    {isUploadingImage ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <Clock className="w-8 h-8 text-muted-foreground animate-spin" />
+                        <p className="text-sm text-muted-foreground">Enviando imagem...</p>
+                      </div>
+                    ) : newEvent.image ? (
+                      <>
+                        <img 
+                          src={resolveServerUrl(newEvent.image)} 
+                          alt="Capa do evento" 
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                          <div className="bg-white/20 backdrop-blur-md rounded-full p-2">
+                            <Camera className="w-6 h-6 text-white" />
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2 h-8 w-8 rounded-full z-10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setNewEvent(prev => ({ ...prev, image: '' }));
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Clique para adicionar imagem</p>
+                          <p className="text-xs text-muted-foreground">JPG, PNG ou GIF até 5MB</p>
+                        </div>
+                      </>
+                    )}
                   </div>
+                  <input 
+                    type="file"
+                    ref={fileInputRef}
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                  />
                 </div>
 
                 <Button onClick={handleNextStep} className="w-full">
@@ -488,30 +608,40 @@ export default function Events() {
                         Cidades para notificar
                       </Label>
                       <p className="text-xs text-muted-foreground mb-2">
-                        Selecione as cidades de onde deseja atrair pessoas
+                        Busque e adicione as cidades de onde deseja atrair pessoas
                       </p>
-                      <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto p-2 bg-secondary/50 rounded-lg">
-                        {BRAZILIAN_CITIES.map((c) => {
-                          const cityState = `${c.city}, ${c.state}`;
-                          const isSelected = notificationSettings.targetCities.includes(cityState);
-                          return (
+                      
+                      <CitySearch 
+                        value={citySearchInput} 
+                        onChange={setCitySearchInput}
+                        onSelect={(city, state) => {
+                          handleCityToggle(state ? `${city}, ${state}` : city);
+                          setCitySearchInput('');
+                        }}
+                        placeholder="Buscar cidade para adicionar..."
+                        showLocate={false}
+                      />
+
+                      <div className="flex flex-wrap gap-2 mt-3 p-2 bg-secondary/50 rounded-lg min-h-[40px]">
+                        {notificationSettings.targetCities.length > 0 ? (
+                          notificationSettings.targetCities.map((cityState) => (
                             <Badge
                               key={cityState}
-                              variant={isSelected ? 'default' : 'outline'}
+                              variant="default"
                               className="cursor-pointer"
                               onClick={() => handleCityToggle(cityState)}
                             >
-                              {isSelected && <Check className="w-3 h-3 mr-1" />}
-                              {c.city}
+                              <Check className="w-3 h-3 mr-1" />
+                              {cityState}
                             </Badge>
-                          );
-                        })}
+                          ))
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Nenhuma cidade adicionada</p>
+                        )}
                       </div>
-                      {notificationSettings.targetCities.length === 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Nenhuma cidade selecionada = apenas cidade do evento
-                        </p>
-                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Nenhuma cidade selecionada = apenas cidade do evento
+                      </p>
                     </div>
 
                     {/* Target Gender */}
@@ -574,34 +704,26 @@ export default function Events() {
                       />
                     </div>
 
-                    {/* Filters */}
-                    <div className="space-y-3">
+                    {/* Verified & Premium Filters */}
+                    <div className="space-y-4 pt-2">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-sm">Apenas verificados</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Somente usuários com perfil verificado
-                          </p>
+                        <div className="space-y-0.5">
+                          <Label>Apenas verificados</Label>
+                          <p className="text-xs text-muted-foreground">Somente usuários com perfil verificado</p>
                         </div>
-                        <Switch 
+                        <Switch
                           checked={notificationSettings.onlyVerified}
-                          onCheckedChange={(checked) => 
-                            setNotificationSettings(prev => ({ ...prev, onlyVerified: checked }))
-                          }
+                          onCheckedChange={(checked) => setNotificationSettings(prev => ({ ...prev, onlyVerified: checked }))}
                         />
                       </div>
                       <div className="flex items-center justify-between">
-                        <div>
-                          <Label className="text-sm">Apenas premium</Label>
-                          <p className="text-xs text-muted-foreground">
-                            Somente assinantes premium
-                          </p>
+                        <div className="space-y-0.5">
+                          <Label>Apenas premium</Label>
+                          <p className="text-xs text-muted-foreground">Somente assinantes premium</p>
                         </div>
-                        <Switch 
+                        <Switch
                           checked={notificationSettings.onlyPremium}
-                          onCheckedChange={(checked) => 
-                            setNotificationSettings(prev => ({ ...prev, onlyPremium: checked }))
-                          }
+                          onCheckedChange={(checked) => setNotificationSettings(prev => ({ ...prev, onlyPremium: checked }))}
                         />
                       </div>
                     </div>
@@ -610,17 +732,11 @@ export default function Events() {
                     <div className="space-y-2">
                       <Label>Mensagem personalizada (opcional)</Label>
                       <Textarea
-                        value={notificationSettings.customMessage}
-                        onChange={(e) => 
-                          setNotificationSettings(prev => ({ ...prev, customMessage: e.target.value }))
-                        }
                         placeholder="Adicione uma mensagem especial para o convite..."
-                        rows={2}
-                        maxLength={150}
+                        value={notificationSettings.customMessage}
+                        onChange={(e) => setNotificationSettings(prev => ({ ...prev, customMessage: e.target.value }))}
+                        className="resize-none"
                       />
-                      <p className="text-xs text-muted-foreground text-right">
-                        {notificationSettings.customMessage.length}/150
-                      </p>
                     </div>
                   </>
                 )}

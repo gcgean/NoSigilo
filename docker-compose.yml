@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nosigilo-postgres
+    environment:
+      POSTGRES_DB: nosigilo
+      POSTGRES_USER: nosigilo
+      POSTGRES_PASSWORD: nosigilo
+    ports:
+      - "5433:5432"
+    volumes:
+      - nosigilo_pg_data:/var/lib/postgresql/data
+      - ./backend/pg-migrations/001_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+
+volumes:
+  nosigilo_pg_data:

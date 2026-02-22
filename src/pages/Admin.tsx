@@ -66,8 +66,8 @@ const mockUsers = [
 
 const mockLogs = [
   { id: '1', action: 'user.login', user: 'marina@email.com', ip: '192.168.1.1', date: '2025-02-01 14:30' },
-  { id: '2', action: 'photo.approved', user: 'admin@qcq.com', details: 'Photo #123', date: '2025-02-01 14:25' },
-  { id: '3', action: 'user.banned', user: 'admin@qcq.com', details: 'User: joao@email.com', date: '2025-02-01 14:20' },
+  { id: '2', action: 'photo.approved', user: 'admin@nosigilo.com', details: 'Photo #123', date: '2025-02-01 14:25' },
+  { id: '3', action: 'user.banned', user: 'admin@nosigilo.com', details: 'User: joao@email.com', date: '2025-02-01 14:20' },
   { id: '4', action: 'report.created', user: 'carolina@email.com', details: 'Report #45', date: '2025-02-01 14:15' },
 ];
 
@@ -115,7 +115,7 @@ export default function Admin() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto md:ml-64">
+    <div className="max-w-6xl mx-auto w-full">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center">

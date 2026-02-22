@@ -22,7 +22,7 @@ export default function Terms() {
 
           <h2>1. Aceitação dos Termos</h2>
           <p>
-            Ao acessar e usar o QCQ Web Social, você concorda em cumprir estes Termos de Uso.
+            Ao acessar e usar o NoSigilo, você concorda em cumprir estes Termos de Uso.
             Se você não concordar com qualquer parte destes termos, não poderá acessar o serviço.
           </p>
 

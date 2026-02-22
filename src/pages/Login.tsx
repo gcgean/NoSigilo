@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sparkles, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { getApiErrorInfo } from '@/utils/apiError';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -16,6 +17,13 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  useEffect(() => {
+    const storedEmail = sessionStorage.getItem('nosigilo_login_email');
+    if (storedEmail && typeof storedEmail === 'string') {
+      setEmail(storedEmail);
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -24,9 +32,10 @@ export default function Login() {
       await login(email, password);
       navigate('/feed');
     } catch (error) {
+      const info = getApiErrorInfo(error, { title: 'Erro ao entrar', description: 'Não foi possível entrar na sua conta.' });
       toast({
-        title: 'Erro ao entrar',
-        description: 'E-mail ou senha incorretos.',
+        title: info.title,
+        description: info.description,
         variant: 'destructive',
       });
     } finally {
@@ -35,7 +44,7 @@ export default function Login() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}/auth/google`;
+    window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:4001/api'}/auth/google`;
   };
 
   return (
@@ -68,7 +77,11 @@ export default function Login() {
                   type="email"
                   placeholder="seu@email.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEmail(v);
+                    sessionStorage.setItem('nosigilo_login_email', v);
+                  }}
                   className="pl-10"
                   required
                 />
@@ -99,7 +112,10 @@ export default function Login() {
             </div>
 
             <div className="flex items-center justify-between text-sm">
-              <Link to="/forgot-password" className="text-primary hover:underline">
+              <Link
+                to={`/forgot-password${email ? `?email=${encodeURIComponent(email)}` : ''}`}
+                className="text-primary hover:underline"
+              >
                 Esqueceu a senha?
               </Link>
             </div>
@@ -158,7 +174,7 @@ export default function Login() {
             <Sparkles className="w-12 h-12 text-primary-foreground" />
           </div>
           <h2 className="text-4xl font-bold mb-4">
-            <span className="text-gradient">QCQ Web Social</span>
+            <span className="text-gradient">NoSigilo</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-md">
             Encontre conexões reais com pessoas que compartilham seus interesses.

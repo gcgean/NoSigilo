@@ -9,7 +9,9 @@ import {
   Navigation,
   Search,
   Check,
-  Radio
+  Radio,
+  Lock,
+  Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +24,8 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { CitySearch } from '@/components/CitySearch';
 
 interface RadarBroadcast {
   id: string;
@@ -37,24 +41,6 @@ interface RadarBroadcast {
   isActive: boolean;
 }
 
-const BRAZILIAN_CITIES = [
-  { city: 'São Paulo', state: 'SP' },
-  { city: 'Rio de Janeiro', state: 'RJ' },
-  { city: 'Fortaleza', state: 'CE' },
-  { city: 'Salvador', state: 'BA' },
-  { city: 'Belo Horizonte', state: 'MG' },
-  { city: 'Recife', state: 'PE' },
-  { city: 'Porto Alegre', state: 'RS' },
-  { city: 'Curitiba', state: 'PR' },
-  { city: 'Brasília', state: 'DF' },
-  { city: 'Manaus', state: 'AM' },
-  { city: 'Florianópolis', state: 'SC' },
-  { city: 'Natal', state: 'RN' },
-  { city: 'João Pessoa', state: 'PB' },
-  { city: 'Maceió', state: 'AL' },
-  { city: 'Vitória', state: 'ES' },
-];
-
 const MESSAGE_TEMPLATES = [
   "Estou de passagem pela cidade e adoraria conhecer pessoas interessantes! 😊",
   "Viajando a trabalho e com tempo livre para drinks e boas conversas 🍷",
@@ -65,6 +51,8 @@ const MESSAGE_TEMPLATES = [
 export default function Radar() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const radarAllowed = !!user?.isPremium;
   
   const [selectedCity, setSelectedCity] = useState('');
   const [message, setMessage] = useState('');
@@ -93,6 +81,15 @@ export default function Radar() {
   ]);
 
   const handleSendBroadcast = async () => {
+    if (!radarAllowed) {
+      toast({
+        title: 'Radar é Premium',
+        description: 'O radar só pode ser usado por usuários Premium.',
+        variant: 'destructive',
+      });
+      navigate('/subscriptions');
+      return;
+    }
     if (!selectedCity || !message.trim()) {
       toast({
         title: 'Campos obrigatórios',
@@ -107,12 +104,12 @@ export default function Radar() {
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1500));
     
-    const cityData = BRAZILIAN_CITIES.find(c => `${c.city}, ${c.state}` === selectedCity);
+    const [city, state] = selectedCity.split(', ');
     
     const newBroadcast: RadarBroadcast = {
       id: Date.now().toString(),
-      city: cityData?.city || '',
-      state: cityData?.state || '',
+      city: city || '',
+      state: state || '',
       message,
       targetGender,
       radius: radius[0],
@@ -127,7 +124,7 @@ export default function Radar() {
     
     toast({
       title: '📡 Radar ativado!',
-      description: `Sua mensagem está sendo enviada para pessoas em ${cityData?.city}`,
+      description: `Sua mensagem está sendo enviada para pessoas em ${city}`,
     });
     
     setMessage('');
@@ -194,31 +191,30 @@ export default function Radar() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send className="w-5 h-5 text-primary" />
-              Enviar Broadcast
+              Notificar: estou aqui
             </CardTitle>
             <CardDescription>
-              Sua mensagem será enviada para pessoas compatíveis na cidade
+              Avise pessoas compatíveis na cidade que você está por lá
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!radarAllowed && (
+              <div className="rounded-lg border bg-secondary/30 p-3 text-sm text-muted-foreground flex items-center justify-between gap-3">
+                <span>Recurso disponível apenas no Premium.</span>
+                <Button type="button" size="sm" className="bg-gradient-primary hover:opacity-90 gap-2" onClick={() => navigate('/subscriptions')}>
+                  <Crown className="w-4 h-4" />
+                  Ver planos
+                </Button>
+              </div>
+            )}
             {/* City Selection */}
             <div className="space-y-2">
               <Label>Cidade destino</Label>
-              <Select value={selectedCity} onValueChange={setSelectedCity}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a cidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BRAZILIAN_CITIES.map((c) => (
-                    <SelectItem key={`${c.city}-${c.state}`} value={`${c.city}, ${c.state}`}>
-                      <span className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4" />
-                        {c.city}, {c.state}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CitySearch 
+                value={selectedCity} 
+                onChange={setSelectedCity}
+                onSelect={(city, state) => setSelectedCity(state ? `${city}, ${state}` : city)}
+              />
             </div>
 
             {/* Message */}
@@ -301,7 +297,7 @@ export default function Radar() {
 
             {/* Duration */}
             <div className="space-y-2">
-              <Label>Duração do broadcast</Label>
+              <Label>Duração da notificação (estou aqui)</Label>
               <Select value={duration} onValueChange={setDuration}>
                 <SelectTrigger>
                   <SelectValue />
@@ -348,7 +344,7 @@ export default function Radar() {
               className="w-full mt-4" 
               size="lg"
               onClick={handleSendBroadcast}
-              disabled={isSending || !selectedCity || !message.trim()}
+              disabled={!radarAllowed || isSending || !selectedCity || !message.trim()}
             >
               {isSending ? (
                 <>
@@ -358,7 +354,7 @@ export default function Radar() {
               ) : (
                 <>
                   <Radio className="w-4 h-4" />
-                  Ativar Radar
+                  Notificar: estou aqui
                 </>
               )}
             </Button>

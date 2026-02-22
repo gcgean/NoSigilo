@@ -10,7 +10,7 @@ import apiClient from '@/utils/apiClient';
 
 export default function DevTest() {
   const { user, isAuthenticated } = useAuth();
-  const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_API_URL || 'http://localhost:3000/api');
+  const [apiUrl, setApiUrl] = useState(import.meta.env.VITE_API_URL || 'http://localhost:4001/api');
   const [testResults, setTestResults] = useState<Array<{ name: string; status: 'success' | 'error' | 'pending'; message?: string }>>([]);
   const [isRunning, setIsRunning] = useState(false);
 
@@ -97,7 +97,7 @@ export default function DevTest() {
               <Input
                 value={apiUrl}
                 onChange={(e) => setApiUrl(e.target.value)}
-                placeholder="http://localhost:3000/api"
+                placeholder="http://localhost:4001/api"
               />
             </div>
             <div className="flex gap-2">
