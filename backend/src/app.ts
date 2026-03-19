@@ -21,7 +21,7 @@ type Env = {
 
 export type PublicUser = {
   id: string;
-  email: string;
+  email?: string; // only included in own-profile responses
   name: string;
   avatar?: string | null;
   bio?: string | null;
@@ -194,11 +194,11 @@ function sendLocalFile(req: express.Request, res: express.Response, options: { f
   createReadStream(options.filePath, { start, end: safeEnd }).pipe(res);
 }
 
-function rowToPublicUser(row: any, isOnline?: boolean): PublicUser {
+function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: boolean }): PublicUser {
   const lookingFor = safeJsonParse(row.looking_for_json);
   return {
     id: String(row.id),
-    email: String(row.email),
+    ...(options?.showEmail ? { email: String(row.email) } : {}),
     name: String(row.name),
     avatar: row.avatar ?? null,
     bio: row.bio ?? null,
@@ -372,6 +372,39 @@ export async function seedDemo(db: DbHandle, env: Env) {
   await db.persist();
 }
 
+// Simple in-memory rate limiter
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of rateLimitStore) {
+    if (now > val.resetAt) rateLimitStore.delete(key);
+  }
+}, 60_000);
+
+function createRateLimiter(maxRequests: number, windowMs: number): express.RequestHandler {
+  return (req, res, next) => {
+    const key = String(req.ip || req.socket?.remoteAddress || 'unknown');
+    const now = Date.now();
+    const state = rateLimitStore.get(key);
+    if (!state || now > state.resetAt) {
+      rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+      next();
+      return;
+    }
+    if (state.count >= maxRequests) {
+      res.status(429).json({ error: 'too_many_requests', retryAfterMs: state.resetAt - now });
+      return;
+    }
+    state.count++;
+    next();
+  };
+}
+
+// Skip rate limiting in test mode to allow test suites to run without hitting limits
+const authRateLimiter = process.env.NODE_ENV === 'test'
+  ? ((_req: express.Request, _res: express.Response, next: express.NextFunction) => next())
+  : createRateLimiter(10, 60_000); // 10 requests per minute per IP
+
 export function createApp(options: { db: DbHandle; env: Env }) {
   const { db, env } = options;
   const persist = () => db.persist();
@@ -472,6 +505,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     sendLocalFile(req, res, { filePath, mimeType: media.mime_type ? String(media.mime_type) : null });
   });
 
+  const ALLOWED_MIME_TYPES = new Set([
+    'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+    'video/mp4', 'video/webm', 'video/quicktime',
+  ]);
+
   const storage = multer.diskStorage({
     destination: (req, _file, cb) => {
       const isPrivate = String(req.query.isPrivate || '') === '1';
@@ -484,13 +522,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       cb(null, `${randomUUID()}${ext}`);
     },
   });
-  const upload = multer({ storage, limits: { fileSize: 60 * 1024 * 1024 } });
+
+  const upload = multer({
+    storage,
+    limits: { fileSize: 60 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+        cb(new Error('INVALID_FILE_TYPE'));
+        return;
+      }
+      cb(null, true);
+    },
+  });
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, name: 'nosigilo-backend', time: nowIso() });
   });
 
-  app.post('/api/auth/check-email', async (req, res) => {
+  app.post('/api/auth/check-email', authRateLimiter, async (req, res) => {
     const schema = z.object({ email: z.string().email() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -502,7 +551,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ available: !existing });
   });
 
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authRateLimiter, async (req, res) => {
     const schema = z.object({
       email: z.string().email(),
       password: z.string().min(6),
@@ -583,11 +632,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [id]);
     const presence = req.app.get('presence');
-    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)));
+    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true });
     res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
   });
 
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', authRateLimiter, async (req, res) => {
     const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -606,14 +655,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
     const presence = req.app.get('presence');
-    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)));
+    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true });
     res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
   });
 
   app.get('/api/auth/me', requireAuth(env, db), async (req, res) => {
     const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
     const presence = req.app.get('presence');
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id))));
+    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
 
   app.post('/api/auth/refresh', requireAuth(env, db), async (req, res) => {
@@ -721,7 +770,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ content: z.string().optional(), mediaIds: z.array(z.string()).optional() });
+    const schema = z.object({ content: z.string().max(5000).optional(), mediaIds: z.array(z.string()).max(10).optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -804,32 +853,32 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {
     const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
     const presence = req.app.get('presence');
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id))));
+    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
 
   app.put('/api/profile', requireAuth(env, db), async (req, res) => {
     const schema = z
       .object({
-        name: z.string().min(1).optional(),
-        avatar: z.string().url().optional().nullable(),
-        bio: z.string().optional().nullable(),
-        status: z.string().optional().nullable(),
-        city: z.string().optional().nullable(),
-        state: z.string().optional().nullable(),
-        birthDate: z.string().optional().nullable(),
-        gender: z.string().optional().nullable(),
-        maritalStatus: z.string().optional().nullable(),
-        sexualOrientation: z.string().optional().nullable(),
-        ethnicity: z.string().optional().nullable(),
-        hair: z.string().optional().nullable(),
-        eyes: z.string().optional().nullable(),
-        height: z.string().optional().nullable(),
-        bodyType: z.string().optional().nullable(),
-        smokes: z.string().optional().nullable(),
-        drinks: z.string().optional().nullable(),
-        profession: z.string().optional().nullable(),
-        zodiacSign: z.string().optional().nullable(),
-        lookingFor: z.array(z.string()).optional().nullable(),
+        name: z.string().min(1).max(60).optional(),
+        avatar: z.string().url().max(500).optional().nullable(),
+        bio: z.string().max(500).optional().nullable(),
+        status: z.string().max(150).optional().nullable(),
+        city: z.string().max(100).optional().nullable(),
+        state: z.string().max(50).optional().nullable(),
+        birthDate: z.string().max(20).optional().nullable(),
+        gender: z.string().max(50).optional().nullable(),
+        maritalStatus: z.string().max(50).optional().nullable(),
+        sexualOrientation: z.string().max(50).optional().nullable(),
+        ethnicity: z.string().max(50).optional().nullable(),
+        hair: z.string().max(50).optional().nullable(),
+        eyes: z.string().max(50).optional().nullable(),
+        height: z.string().max(20).optional().nullable(),
+        bodyType: z.string().max(50).optional().nullable(),
+        smokes: z.string().max(50).optional().nullable(),
+        drinks: z.string().max(50).optional().nullable(),
+        profession: z.string().max(100).optional().nullable(),
+        zodiacSign: z.string().max(50).optional().nullable(),
+        lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
       })
       .strict();
@@ -884,7 +933,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
     const presence = req.app.get('presence');
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id))));
+    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
 
   app.get('/api/profile/visits', requireAuth(env, db), async (req, res) => {
@@ -1274,7 +1323,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       rows = await queryAll(db, 'SELECT * FROM users WHERE is_admin = 0 ORDER BY created_at DESC LIMIT 12');
     }
 
-    res.json(rows.map(rowToPublicUser));
+    res.json(rows.map((row) => rowToPublicUser(row)));
   });
 
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
@@ -1472,16 +1521,21 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         ua.name as user_a_name, ua.avatar as user_a_avatar,
         ub.name as user_b_name, ub.avatar as user_b_avatar,
         (
-          SELECT COUNT(*) FROM messages m 
-          WHERE m.conversation_id = c.id 
-          AND m.sender_id != ? 
+          SELECT COUNT(*) FROM messages m
+          WHERE m.conversation_id = c.id
+          AND m.sender_id != ?
           AND m.is_read = 0
-        ) as unread_count
+        ) as unread_count,
+        (
+          SELECT m2.created_at FROM messages m2
+          WHERE m2.conversation_id = c.id
+          ORDER BY m2.created_at DESC LIMIT 1
+        ) as last_message_at
       FROM conversations c
       JOIN users ua ON ua.id = c.user_a_id
       JOIN users ub ON ub.id = c.user_b_id
       WHERE c.user_a_id = ? OR c.user_b_id = ?
-      ORDER BY c.created_at DESC
+      ORDER BY COALESCE(last_message_at, c.created_at) DESC
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
@@ -1622,9 +1676,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.post('/api/messages/:messageId/view', requireAuth(env, db), async (req, res) => {
     const messageId = req.params.messageId;
     const msg = (await queryOne(db, 'SELECT id, conversation_id, sender_id, is_view_once, is_viewed FROM messages WHERE id = ?', [messageId])) as any;
-    
+
     if (!msg) {
       res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    // Verify the user is a participant in this conversation
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [String(msg.conversation_id)])) as any;
+    if (!conv || (String(conv.user_a_id) !== req.auth!.userId && String(conv.user_b_id) !== req.auth!.userId)) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    // Only the recipient can mark a view-once message as viewed
+    if (String(msg.sender_id) === req.auth!.userId) {
+      res.status(400).json({ error: 'cannot_view_own_message' });
       return;
     }
 
@@ -1648,10 +1715,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ 
-      content: z.string().optional(),
+    const schema = z.object({
+      content: z.string().max(5000).optional(),
       mediaId: z.string().optional(),
-      clientId: z.string().optional(),
+      clientId: z.string().max(100).optional(),
       isViewOnce: z.boolean().optional(),
     });
     const parsed = schema.safeParse(req.body);
@@ -1723,7 +1790,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/likes', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.string().min(1), targetId: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -1770,7 +1837,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.delete('/api/likes', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ targetType: z.string().min(1), targetId: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -1787,7 +1854,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/likes', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.string().min(1),
+      targetType: z.enum(['post', 'user']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });
@@ -1821,7 +1888,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.string().min(1), targetId: z.string().min(1), content: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -1862,7 +1929,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/comments', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.string().min(1),
+      targetType: z.enum(['post', 'user']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });
@@ -2044,11 +2111,43 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
+    const toUserId = parsed.data.userId;
+    const fromUserId = req.auth!.userId;
+
+    if (toUserId === fromUserId) {
+      res.status(400).json({ error: 'invalid_target' });
+      return;
+    }
+
+    const targetUser = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [toUserId]);
+    if (!targetUser) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    // Check for existing request in either direction
+    const existing = (await queryOne(
+      db,
+      `SELECT id, status FROM friend_requests
+       WHERE ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))
+       LIMIT 1`,
+      [fromUserId, toUserId, toUserId, fromUserId]
+    )) as any;
+
+    if (existing) {
+      if (String(existing.status) === 'accepted') {
+        res.status(409).json({ error: 'already_friends' });
+      } else {
+        res.status(409).json({ error: 'request_already_exists', requestId: String(existing.id) });
+      }
+      return;
+    }
+
     const id = randomUUID();
     await run(db, 'INSERT INTO friend_requests (id, from_user_id, to_user_id, status, created_at) VALUES (?, ?, ?, ?, ?)', [
       id,
-      req.auth!.userId,
-      parsed.data.userId,
+      fromUserId,
+      toUserId,
       'pending',
       nowIso(),
     ]);
@@ -2154,10 +2253,21 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/users/:targetUserId/visit', requireAuth(env, db), async (req, res) => {
+    const targetUserId = String(req.params.targetUserId || '');
+    // Don't record self-visits
+    if (targetUserId === req.auth!.userId) {
+      res.json({ ok: true });
+      return;
+    }
+    const targetExists = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [targetUserId]);
+    if (!targetExists) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
     await run(db, 'INSERT INTO profile_visits (id, visitor_user_id, visited_user_id, created_at) VALUES (?, ?, ?, ?)', [
       randomUUID(),
       req.auth!.userId,
-      req.params.targetUserId,
+      targetUserId,
       nowIso(),
     ]);
     await persist();
@@ -2290,29 +2400,28 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
         // 2. Create Chat Message (Mensagem)
         // Check if conversation exists or create one
-        let conv = (await queryOne(db, 
-          'SELECT id FROM conversations WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)', 
-          [req.auth!.userId, targetUser.id, targetUser.id, req.auth!.userId]
+        const pair = [req.auth!.userId, String(targetUser.id)].sort((a, b) => a.localeCompare(b));
+        let conv = (await queryOne(db,
+          'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?',
+          [pair[0], pair[1]]
         )) as any;
 
         if (!conv) {
           const convId = randomUUID();
-          await run(db, 'INSERT INTO conversations (id, user1_id, user2_id, created_at, last_message_at) VALUES (?, ?, ?, ?, ?)', [
-            convId, req.auth!.userId, targetUser.id, nowIso(), nowIso()
+          await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [
+            convId, pair[0], pair[1], nowIso()
           ]);
           conv = { id: convId };
         }
 
         const msgId = randomUUID();
-        const msgContent = ns.customMessage 
+        const msgContent = ns.customMessage
           ? `${ns.customMessage}\n\nConfira o evento: ${payload.title} em ${payload.location}`
           : `Olá! Criei um novo evento: ${payload.title} em ${payload.location}. Gostaria de participar?`;
-        
-        await run(db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [
-          msgId, conv.id, req.auth!.userId, msgContent, nowIso()
+
+        await run(db, 'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+          msgId, conv.id, req.auth!.userId, msgContent, 1, nowIso()
         ]);
-        
-        await run(db, 'UPDATE conversations SET last_message_at = ? WHERE id = ?', [nowIso(), conv.id]);
         
         io?.to(`user:${targetUser.id}`).emit('message.new', {
           id: msgId,
@@ -2385,7 +2494,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
-    res.json(rows.map(rowToPublicUser));
+    res.json(rows.map((row) => rowToPublicUser(row)));
   });
 
   app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), (_req, res) => {
@@ -2415,6 +2524,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     if (err instanceof Error) {
       const msg = String(err.message || '');
+      if (msg === 'INVALID_FILE_TYPE') {
+        res.status(415).json({ error: 'invalid_file_type', allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4', 'video/webm', 'video/quicktime'] });
+        return;
+      }
       if (msg.includes('Unexpected end of form') || msg.includes('Multipart') || msg.includes('multipart')) {
         res.status(400).json({ error: 'invalid_multipart' });
         return;

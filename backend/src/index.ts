@@ -60,9 +60,20 @@ async function main() {
       io.emit('presence.changed', { userId, isOnline: true });
     }
 
-    socket.on('join.conversation', (conversationId: string) => {
-      if (typeof conversationId === 'string' && conversationId.length > 0) {
-        socket.join(conversationId);
+    socket.on('join.conversation', async (conversationId: string) => {
+      if (typeof conversationId !== 'string' || conversationId.length === 0) return;
+      if (!userId) return;
+      // Only allow joining if user is a participant
+      try {
+        const conv = await db.queryOne(
+          'SELECT id FROM conversations WHERE id = ? AND (user_a_id = ? OR user_b_id = ?)',
+          [conversationId, userId, userId]
+        );
+        if (conv) {
+          socket.join(conversationId);
+        }
+      } catch {
+        // ignore db errors in socket handler
       }
     });
 

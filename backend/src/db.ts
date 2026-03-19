@@ -122,31 +122,35 @@ export async function initDb(options: {
 }): Promise<DbHandle> {
   const databaseUrl = options.databaseUrl;
   if (databaseUrl) {
-    const pool = new Pool({ connectionString: databaseUrl });
-    await pool.query('SELECT 1');
-    const migrationsDir = options.pgMigrationsDir ? absolutePath(options.pgMigrationsDir) : absolutePath(options.migrationsDir);
-    await applyPgMigrations({ pool, migrationsDir });
-    return {
-      mode: 'pg',
-      exec: async (sql: string) => {
-        await pool.query(sql);
-      },
-      queryAll: async (sql: string, params: unknown[] = []) => {
-        const r = await pool.query(toPgSql(sql), params as any);
-        return r.rows;
-      },
-      queryOne: async (sql: string, params: unknown[] = []) => {
-        const r = await pool.query(toPgSql(sql), params as any);
-        return r.rows.length > 0 ? r.rows[0] : null;
-      },
-      run: async (sql: string, params: unknown[] = []) => {
-        await pool.query(toPgSql(sql), params as any);
-      },
-      persist: async () => {},
-      close: async () => {
-        await pool.end();
-      },
-    };
+    try {
+      const pool = new Pool({ connectionString: databaseUrl });
+      await pool.query('SELECT 1');
+      const migrationsDir = options.pgMigrationsDir ? absolutePath(options.pgMigrationsDir) : absolutePath(options.migrationsDir);
+      await applyPgMigrations({ pool, migrationsDir });
+      return {
+        mode: 'pg',
+        exec: async (sql: string) => {
+          await pool.query(sql);
+        },
+        queryAll: async (sql: string, params: unknown[] = []) => {
+          const r = await pool.query(toPgSql(sql), params as any);
+          return r.rows;
+        },
+        queryOne: async (sql: string, params: unknown[] = []) => {
+          const r = await pool.query(toPgSql(sql), params as any);
+          return r.rows.length > 0 ? r.rows[0] : null;
+        },
+        run: async (sql: string, params: unknown[] = []) => {
+          await pool.query(toPgSql(sql), params as any);
+        },
+        persist: async () => {},
+        close: async () => {
+          await pool.end();
+        },
+      };
+    } catch (err) {
+      console.error('Failed to initialize PostgreSQL, falling back to SQLite:', err);
+    }
   }
 
   const SQL = await initSqlJs({

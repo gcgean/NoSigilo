@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Frontend (Vite)",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "npm run dev"],
+      "cwd": "C:\\Projetos Web\\NoSigilo",
+      "port": 8080,
+      "autoPort": true
+    },
+    {
+      "name": "Backend (Express + Socket.io)",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "npm run dev"],
+      "cwd": "C:\\Projetos Web\\NoSigilo\\backend",
+      "port": 4001
+    }
+  ]
+}

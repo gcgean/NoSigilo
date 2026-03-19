@@ -118,7 +118,7 @@ describe('nosigilo backend', () => {
 
     const sug = await request(ctx.app).get('/api/onboarding/suggestions').query({ lookingFor: 'Mulher', city: 'São Paulo', state: 'SP' }).expect(200);
     expect(Array.isArray(sug.body)).toBe(true);
-    expect(sug.body.some((u: any) => u.email === 'maria@example.com')).toBe(true);
+    expect(sug.body.some((u: any) => u.name === 'Maria')).toBe(true);
   });
 
   it('non-premium can send but cannot read received messages', async () => {
