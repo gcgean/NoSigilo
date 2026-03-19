@@ -412,7 +412,12 @@ export default function Chat() {
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="font-semibold">{selectedConversation?.user.name}</h2>
-                  {!isConnected && <WifiOff className="w-3 h-3 text-destructive animate-pulse" title="Desconectado" />}
+                  {!isConnected && (
+                    <WifiOff
+                      className="w-3 h-3 text-destructive animate-pulse"
+                      aria-label="Desconectado"
+                    />
+                  )}
                 </div>
                 <span className="text-xs text-muted-foreground">Chat</span>
               </div>

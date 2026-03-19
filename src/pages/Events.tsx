@@ -302,6 +302,7 @@ export default function Events() {
       eventType: '',
       maxAttendees: 50,
       isPrivate: false,
+      image: '',
     });
     setNotificationSettings({
       enabled: true,
