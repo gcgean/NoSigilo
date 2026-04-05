@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Heart, Lock, MessageCircle, Radio, ShieldCheck, Sparkles, User, UserPlus } from 'lucide-react';
+import { Bell, Heart, Lock, MessageCircle, Radio, ShieldCheck, Sparkles, UserPlus } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -14,9 +14,102 @@ type TutorialStep = {
   route?: string;
   cta?: string;
   icon: typeof Sparkles;
+  preview: React.ReactNode;
 };
 
 const TOUR_EVENT = 'nosigilo:start-tour';
+
+function PreviewShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-[24px] border border-white/60 bg-white/85 p-3 shadow-xl backdrop-blur">
+      <div className="mb-3 flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-rose-300" />
+        <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
+        <span className="h-2.5 w-2.5 rounded-full bg-emerald-300" />
+      </div>
+      <div className="overflow-hidden rounded-[18px] border bg-background/95 p-3">{children}</div>
+    </div>
+  );
+}
+
+function MiniCard({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="rounded-2xl border bg-secondary/20 p-3">
+      <div className="text-sm font-medium">{title}</div>
+      <div className="mt-1 text-xs text-muted-foreground">{subtitle}</div>
+    </div>
+  );
+}
+
+function TutorialPreview({ stepId }: { stepId: string }) {
+  switch (stepId) {
+    case 'welcome':
+      return (
+        <PreviewShell>
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-gradient-primary px-4 py-3 text-sm font-semibold text-white">Rede +18 por convite</div>
+            <MiniCard title="Privacidade no seu controle" subtitle="Fotos privadas, aprovação e revogação" />
+            <MiniCard title="Ambiente adulto e discreto" subtitle="Consentimento e segurança em primeiro lugar" />
+          </div>
+        </PreviewShell>
+      );
+    case 'discover':
+      return (
+        <PreviewShell>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <div className="h-20 flex-1 rounded-2xl bg-gradient-to-br from-primary/25 to-rose-400/20" />
+              <div className="h-20 flex-1 rounded-2xl bg-gradient-to-br from-amber-300/20 to-primary/15" />
+            </div>
+            <MiniCard title="Feed" subtitle="Publique fotos e se apresente com contexto" />
+            <MiniCard title="Match" subtitle="Descubra casais e singles compatíveis" />
+          </div>
+        </PreviewShell>
+      );
+    case 'contact':
+      return (
+        <PreviewShell>
+          <div className="space-y-3">
+            <MiniCard title="Radar" subtitle="Avise que você está na cidade" />
+            <div className="rounded-2xl border bg-secondary/20 p-3">
+              <div className="mb-2 flex justify-end">
+                <div className="max-w-[75%] rounded-2xl bg-primary px-3 py-2 text-xs text-white">Oi, vi seu perfil e gostei da proposta.</div>
+              </div>
+              <div className="flex justify-start">
+                <div className="max-w-[75%] rounded-2xl bg-secondary px-3 py-2 text-xs text-foreground">Vamos conversar com calma e alinhar expectativas.</div>
+              </div>
+            </div>
+          </div>
+        </PreviewShell>
+      );
+    case 'privacy':
+      return (
+        <PreviewShell>
+          <div className="space-y-3">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="aspect-square rounded-2xl bg-gradient-to-br from-primary/20 to-rose-300/20" />
+              <div className="aspect-square rounded-2xl bg-secondary/40" />
+              <div className="aspect-square rounded-2xl bg-secondary/40" />
+            </div>
+            <MiniCard title="Fotos privadas" subtitle="Permitir, negar ou revogar acesso" />
+            <MiniCard title="Perfil" subtitle="Complete seus dados para sugestões melhores" />
+          </div>
+        </PreviewShell>
+      );
+    case 'safety':
+      return (
+        <PreviewShell>
+          <div className="space-y-3">
+            <MiniCard title="Gerar/Gerenciar convites" subtitle="Links únicos para novos acessos" />
+            <MiniCard title="Notificações" subtitle="Aprove convites e acompanhe pedidos importantes" />
+            <div className="rounded-2xl bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700">Seu convite está aguardando aprovação</div>
+          </div>
+        </PreviewShell>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function FirstAccessTutorial() {
   const { user } = useAuth();
@@ -31,91 +124,56 @@ export default function FirstAccessTutorial() {
     () => [
       {
         id: 'welcome',
-        title: 'Seu espaço adulto, seguro e discreto',
+        title: 'Bem-vindo ao NoSigilo',
         description:
-          'O NoSigilo foi pensado para casais e singles +18. Aqui você entra com convite, controla sua privacidade e decide com calma como quer se apresentar.',
+          'Aqui a entrada é por convite, o ambiente é adulto e você mantém o controle da sua privacidade desde o começo.',
         accent: 'from-rose-500/20 via-primary/20 to-orange-400/20',
         icon: ShieldCheck,
+        preview: <TutorialPreview stepId="welcome" />,
       },
       {
-        id: 'feed',
-        title: 'Feed para se apresentar com contexto',
+        id: 'discover',
+        title: 'Feed e Match',
         description:
-          'No Feed você publica fotos e atualizações para mostrar seu estilo, energia e intenção. Um perfil com contexto costuma gerar conexões melhores.',
+          'Use o Feed para se apresentar e o Match para descobrir casais e singles que realmente combinam com o seu perfil.',
         accent: 'from-primary/20 via-rose-500/15 to-transparent',
         route: '/feed',
         cta: 'Abrir Feed',
-        icon: Sparkles,
-      },
-      {
-        id: 'match',
-        title: 'Match para descobrir quem combina com você',
-        description:
-          'Use o Match para conhecer casais e singles alinhados ao seu interesse. Quanto mais completo estiver seu perfil, mais úteis ficam as sugestões.',
-        accent: 'from-amber-400/20 via-primary/20 to-transparent',
-        route: '/match',
-        cta: 'Ir para Match',
         icon: Heart,
+        preview: <TutorialPreview stepId="discover" />,
       },
       {
-        id: 'radar',
-        title: 'Radar para avisar que você está na cidade',
+        id: 'contact',
+        title: 'Radar e Chat',
         description:
-          'O Radar serve para momentos específicos, como viagens e encontros planejados. Use com discrição, clareza e sempre com foco em consentimento.',
+          'O Radar ajuda quando você quer sinalizar presença. O Chat é o espaço para conversar com calma antes de qualquer encontro.',
         accent: 'from-cyan-400/20 via-primary/20 to-transparent',
-        route: '/radar',
-        cta: 'Ver Radar',
-        icon: Radio,
-      },
-      {
-        id: 'chat',
-        title: 'Chat para conversar com mais segurança',
-        description:
-          'Depois do interesse inicial, leve a conversa para o Chat. Combine limites, expectativas e detalhes sem pressa antes de qualquer encontro.',
-        accent: 'from-emerald-400/20 via-primary/20 to-transparent',
         route: '/chat',
         cta: 'Abrir Chat',
         icon: MessageCircle,
+        preview: <TutorialPreview stepId="contact" />,
       },
       {
-        id: 'profile',
-        title: 'Perfil e fotos privadas ficam no seu controle',
+        id: 'privacy',
+        title: 'Perfil e fotos privadas',
         description:
-          'No Perfil você escolhe foto principal, organiza fotos públicas e decide quem pode ver suas fotos privadas. Aprovar, negar e revogar acesso fica com você.',
+          'Complete seu perfil, organize suas fotos e decida quem pode ver sua área privada. Aprovar ou revogar acesso fica sempre com você.',
         accent: 'from-violet-400/20 via-primary/20 to-transparent',
         route: '/profile',
         cta: 'Ir para Perfil',
         icon: Lock,
+        preview: <TutorialPreview stepId="privacy" />,
       },
       {
-        id: 'invites',
-        title: 'Convites fortalecem a segurança da rede',
+        id: 'safety',
+        title: 'Convites e segurança',
         description:
-          'Em Gerar/Gerenciar convites você cria links únicos, acompanha quem entrou por sua indicação e aprova apenas quem realmente faz sentido para a comunidade.',
-        accent: 'from-orange-400/20 via-primary/20 to-transparent',
+          'Em Gerar/Gerenciar convites você traz novos membros com mais segurança. Nas notificações, aprova convites e pedidos sem complicação.',
+        accent: 'from-orange-400/20 via-primary/20 to-gold/20',
         route: '/invites',
         cta: 'Abrir Convites',
         icon: UserPlus,
-      },
-      {
-        id: 'notifications',
-        title: 'Notificações mostram o que precisa da sua atenção',
-        description:
-          'Fique de olho nas notificações para aprovar convites, responder pedidos de fotos privadas e acompanhar interações importantes sem perder tempo.',
-        accent: 'from-sky-400/20 via-primary/20 to-transparent',
-        route: '/notifications',
-        cta: 'Ver notificações',
-        icon: Bell,
-      },
-      {
-        id: 'finish',
-        title: 'Pronto para começar',
-        description:
-          'Seu melhor começo é simples: complete o perfil, publique algo no feed, ajuste suas privacidades e convide apenas pessoas confiáveis para a rede.',
-        accent: 'from-primary/20 via-rose-500/20 to-gold/20',
-        route: '/feed',
-        cta: 'Começar agora',
-        icon: User,
+        preview: <TutorialPreview stepId="safety" />,
       },
     ],
     []
@@ -167,72 +225,48 @@ export default function FirstAccessTutorial() {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? finishTutorial() : setOpen(true))}>
-      <DialogContent className="max-w-3xl overflow-hidden border-primary/20 p-0">
+      <DialogContent className="max-h-[92dvh] max-w-lg overflow-hidden border-primary/20 p-0 sm:max-w-2xl">
         <div className="relative">
           <div className={cn('absolute inset-0 bg-gradient-to-br', step.accent)} />
-          <div className="relative p-6 sm:p-8">
-            <div className="flex flex-col gap-6">
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/70 px-3 py-1 text-xs font-medium text-primary backdrop-blur">
-                    Passo {stepIndex + 1} de {steps.length}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary shadow-glow">
-                      <step.icon className="h-6 w-6 text-primary-foreground" />
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold leading-tight">{step.title}</h2>
-                    </div>
-                  </div>
+          <div className="relative flex max-h-[92dvh] flex-col overflow-hidden p-4 sm:p-6">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0 space-y-2">
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/70 px-3 py-1 text-xs font-medium text-primary backdrop-blur">
+                  Passo {stepIndex + 1} de {steps.length}
                 </div>
-                <Button variant="ghost" size="sm" onClick={finishTutorial}>
-                  Pular
+                <h2 className="text-xl font-bold leading-tight sm:text-2xl">{step.title}</h2>
+              </div>
+              <Button variant="ghost" size="sm" onClick={finishTutorial}>
+                Pular
+              </Button>
+            </div>
+
+            <div className="mb-4 h-2 overflow-hidden rounded-full bg-secondary/70">
+              <div className="h-full rounded-full bg-gradient-primary transition-all duration-300" style={{ width: `${progress}%` }} />
+            </div>
+
+            <div className="overflow-y-auto pr-1">
+              <div className="space-y-4">
+                <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                {step.preview}
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 border-t border-white/40 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={goPrev} disabled={stepIndex === 0}>
+                  Voltar
+                </Button>
+                <Button variant="ghost" onClick={goNext}>
+                  {stepIndex === steps.length - 1 ? 'Finalizar' : 'Próximo'}
                 </Button>
               </div>
 
-              <div className="space-y-3">
-                <div className="h-2 overflow-hidden rounded-full bg-secondary/70">
-                  <div className="h-full rounded-full bg-gradient-primary transition-all duration-300" style={{ width: `${progress}%` }} />
-                </div>
-                <p className="max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                {steps.map((item, index) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setStepIndex(index)}
-                    className={cn(
-                      'rounded-2xl border p-3 text-left transition-all',
-                      index === stepIndex
-                        ? 'border-primary bg-background/90 shadow-glow'
-                        : 'border-border/60 bg-background/60 hover:bg-background/80'
-                    )}
-                  >
-                    <div className="text-xs text-muted-foreground">Passo {index + 1}</div>
-                    <div className="mt-1 text-sm font-medium leading-tight">{item.title}</div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={goPrev} disabled={stepIndex === 0}>
-                    Voltar
-                  </Button>
-                  <Button variant="ghost" onClick={goNext}>
-                    {stepIndex === steps.length - 1 ? 'Finalizar' : 'Próximo'}
-                  </Button>
-                </div>
-
-                {step.route ? (
-                  <Button className="bg-gradient-primary hover:opacity-90" onClick={handleVisitRoute}>
-                    {step.cta || 'Abrir área'}
-                  </Button>
-                ) : null}
-              </div>
+              {step.route ? (
+                <Button className="bg-gradient-primary hover:opacity-90" onClick={handleVisitRoute}>
+                  {step.cta || 'Abrir área'}
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
