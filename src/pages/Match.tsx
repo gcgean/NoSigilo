@@ -10,10 +10,12 @@ import { useSocket } from '@/contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type MatchProfile = {
   id: string;
   name: string;
+  gender?: string | null;
   city?: string | null;
   state?: string | null;
   bio?: string | null;
@@ -122,6 +124,7 @@ export default function Match() {
     if (!currentProfile) return '';
     return [currentProfile.city, currentProfile.state].filter(Boolean).join(', ');
   }, [currentProfile]);
+  const identityLine = useMemo(() => formatProfileIdentityLine(currentProfile), [currentProfile]);
 
   const isNewProfile = useMemo(() => {
     if (!currentProfile?.createdAt) return false;
@@ -228,10 +231,14 @@ export default function Match() {
                     {currentProfile.name}
                     {age !== null ? `, ${age}` : ''}
                   </h2>
-                  <div className="flex items-center gap-1 text-white/80 mb-3">
-                    <MapPin className="w-4 h-4" />
-                    <span className="truncate">{cityLine || '—'}</span>
-                  </div>
+                  {identityLine ? (
+                    <div className="mb-3 text-sm text-white/80">{identityLine}</div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-white/80 mb-3">
+                      <MapPin className="w-4 h-4" />
+                      <span className="truncate">{cityLine || '—'}</span>
+                    </div>
+                  )}
                   <p className="text-white/90 text-sm line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
                   
                   <Button 

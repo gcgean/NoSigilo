@@ -13,16 +13,17 @@ import { cn } from '@/lib/utils';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
-type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null } };
+type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PrivatePhotoAccessItem = {
   id: string;
   status: 'pending' | 'approved' | 'denied';
   createdAt?: string;
   updatedAt?: string;
-  requester: { id: string; name: string; avatar?: string | null; city?: string | null; state?: string | null };
+  requester: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
 
 function resolveMediaUrl(url: string) {
@@ -49,11 +50,11 @@ function PhotoItem({
             className="w-full h-full object-cover cursor-zoom-in"
           />
         </DialogTrigger>
-        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-none shadow-none flex items-center justify-center">
+        <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
           <img
             src={resolveMediaUrl(photo.url)}
             alt=""
-            className="w-full h-auto max-h-[90vh] object-contain"
+            className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
           />
         </DialogContent>
       </Dialog>
@@ -601,7 +602,10 @@ export default function Profile() {
               .slice(0, 10)
               .map((t) => (
                 <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
-                  <div className="font-medium mb-2">{t.author.name}</div>
+                  <div className="font-medium mb-1">{t.author.name}</div>
+                  {formatProfileIdentityLine(t.author) ? (
+                    <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}</div>
+                  ) : null}
                   <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
                     <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
@@ -734,7 +738,7 @@ export default function Profile() {
                                 <div className="min-w-0">
                                   <div className="font-medium">{item.requester.name}</div>
                                   <div className="text-sm text-muted-foreground">
-                                    {[item.requester.city, item.requester.state].filter(Boolean).join(', ') || 'Local não informado'}
+                                    {formatProfileIdentityLine(item.requester) || 'Local não informado'}
                                   </div>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-2">
@@ -766,7 +770,7 @@ export default function Profile() {
                                 <div className="min-w-0">
                                   <div className="font-medium">{item.requester.name}</div>
                                   <div className="text-sm text-muted-foreground">
-                                    {[item.requester.city, item.requester.state].filter(Boolean).join(', ') || 'Local não informado'}
+                                    {formatProfileIdentityLine(item.requester) || 'Local não informado'}
                                   </div>
                                   <div className="text-xs text-muted-foreground mt-1">
                                     Acesso ativo desde {new Date(String(item.updatedAt || item.createdAt || '')).toLocaleDateString('pt-BR')}

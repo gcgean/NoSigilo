@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { NavLink } from 'react-router-dom';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CitySearch } from '@/components/CitySearch';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -236,10 +237,14 @@ export default function SearchPage() {
                   <h3 className="text-white font-semibold text-sm sm:text-lg leading-tight">
                     {profile.name}{age ? `, ${age}` : ''}
                   </h3>
-                  <div className="flex items-center gap-1 text-white/70 text-sm">
-                    <MapPin className="w-3 h-3" />
-                    <span className="truncate">{profile.city || '—'}</span>
-                  </div>
+                  {formatProfileIdentityLine(profile) ? (
+                    <div className="text-sm text-white/70">{formatProfileIdentityLine(profile)}</div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-white/70 text-sm">
+                      <MapPin className="w-3 h-3" />
+                      <span className="truncate">{profile.city || '—'}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Hover Actions */}

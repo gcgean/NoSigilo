@@ -16,13 +16,14 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
   id: string;
   content: string;
   createdAt: string;
-  author: { id: string; name: string; avatar?: string | null };
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
   mediaIds: string[];
   media: FeedMedia[];
   likesCount: number;
@@ -34,7 +35,7 @@ type Comment = {
   id: string;
   content: string;
   createdAt: string;
-  user: { id: string; name: string; avatar?: string | null };
+  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
 
 function formatWhen(iso: string) {
@@ -103,6 +104,9 @@ export default function Feed() {
     const favIds = new Set(favorites.map((f) => String(f.id)));
     return allPosts.filter((p) => favIds.has(String(p.author.id)));
   }, [allPosts, feedFilter, favorites]);
+
+  const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
+    formatProfileIdentityLine(profile);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -631,6 +635,9 @@ export default function Feed() {
                     <div className="flex items-center gap-2">
                       <span className="font-semibold hover:underline">{post.author.name}</span>
                     </div>
+                    {getIdentityLine(post.author) ? (
+                      <div className="text-xs text-muted-foreground">{getIdentityLine(post.author)}</div>
+                    ) : null}
                     <span className="text-sm text-muted-foreground">{formatWhen(post.createdAt)}</span>
                   </div>
                 </Link>
@@ -802,6 +809,9 @@ export default function Feed() {
                               </Link>
                               <span className="text-xs text-muted-foreground">{formatWhen(c.createdAt)}</span>
                             </div>
+                            {getIdentityLine(c.user) ? (
+                              <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div>
+                            ) : null}
                             <p className="text-sm text-muted-foreground">{c.content}</p>
                           </div>
                         </div>
@@ -858,8 +868,12 @@ export default function Feed() {
                       <img src={photo.url} alt="" className="w-full h-full object-cover" />
                     </div>
                   </DialogTrigger>
-                  <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-none shadow-none flex items-center justify-center">
-                    <img src={photo.url} alt="" className="w-full h-auto max-h-[90vh] object-contain" />
+                  <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+                    <img
+                      src={photo.url}
+                      alt=""
+                      className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
+                    />
                   </DialogContent>
                 </Dialog>
               ))}

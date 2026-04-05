@@ -158,6 +158,37 @@ export const matchService = {
   },
 };
 
+export const radarService = {
+  getOverview: async () => {
+    const response = await apiClient.get('/radar');
+    return response.data;
+  },
+
+  createBroadcast: async (data: {
+    city: string;
+    state: string;
+    message: string;
+    targetGender: string[];
+    radius: number;
+    durationHours: number;
+    isAnonymous?: boolean;
+    showOnlyOnline?: boolean;
+  }) => {
+    const response = await apiClient.post('/radar', data);
+    return response.data;
+  },
+
+  deactivateBroadcast: async (broadcastId: string) => {
+    const response = await apiClient.post(`/radar/${broadcastId}/deactivate`);
+    return response.data;
+  },
+
+  contactFromRadar: async (broadcastId: string) => {
+    const response = await apiClient.post(`/radar/${broadcastId}/contact`);
+    return response.data;
+  },
+};
+
 // Chat Service
 export const chatService = {
   getConversations: async () => {

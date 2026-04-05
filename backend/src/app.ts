@@ -137,6 +137,74 @@ function hasPremiumAccess(userRow: any) {
   return false;
 }
 
+function normalizeRadarText(value: string | null | undefined) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function mapUserGenderToRadarAudience(gender: string | null | undefined) {
+  const value = String(gender || '').trim();
+  if (!value) return null;
+  if (value.startsWith('Casal')) return 'couple';
+  if (value === 'Mulher') return 'female';
+  if (value === 'Homem') return 'male';
+  return null;
+}
+
+function radarTargetsUser(targetGenders: string[], userGender: string | null | undefined) {
+  if (!Array.isArray(targetGenders) || targetGenders.length === 0 || targetGenders.includes('all')) return true;
+  const mapped = mapUserGenderToRadarAudience(userGender);
+  return !!mapped && targetGenders.includes(mapped);
+}
+
+function matchesLookingFor(lookingFor: string[] | null | undefined, otherGender: string | null | undefined) {
+  if (!Array.isArray(lookingFor) || lookingFor.length === 0) return true;
+  const gender = String(otherGender || '').trim();
+  if (!gender) return true;
+  return lookingFor.some((pref) => {
+    const value = String(pref || '').trim();
+    if (!value) return false;
+    if (value.startsWith('Casal')) return gender.startsWith('Casal');
+    return value === gender;
+  });
+}
+
+function radarProfilesAreCompatible(
+  sender: { gender?: string | null; lookingFor?: string[] | null },
+  recipient: { gender?: string | null; lookingFor?: string[] | null }
+) {
+  return matchesLookingFor(sender.lookingFor ?? null, recipient.gender ?? null) && matchesLookingFor(recipient.lookingFor ?? null, sender.gender ?? null);
+}
+
+function startOfCurrentDayIso() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return now.toISOString();
+}
+
+function startOfCurrentWeekIso() {
+  const now = new Date();
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  now.setDate(now.getDate() + diff);
+  now.setHours(0, 0, 0, 0);
+  return now.toISOString();
+}
+
 function safeJsonParse(value: string | null | undefined) {
   if (!value) return null;
   try {
@@ -1101,7 +1169,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT p.id, p.content, p.created_at, p.media_ids_json,
-        u.id as author_id, u.name as author_name, u.avatar as author_avatar
+        u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+        u.gender as author_gender, u.city as author_city, u.state as author_state
       FROM posts p
       JOIN users u ON u.id = p.user_id
       ORDER BY p.created_at DESC
@@ -1175,7 +1244,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id: r.id,
         content: r.content,
         createdAt: r.created_at,
-        author: { id: r.author_id, name: r.author_name, avatar: r.author_avatar },
+        author: {
+          id: r.author_id,
+          name: r.author_name,
+          avatar: r.author_avatar,
+          gender: r.author_gender ?? null,
+          city: r.author_city ?? null,
+          state: r.author_state ?? null,
+        },
         mediaIds: mediaIdsByPostId.get(String(r.id)) ?? [],
         media: (mediaIdsByPostId.get(String(r.id)) ?? []).map((mid) => mediaById.get(mid)).filter(Boolean),
         likesCount: likesCountByPostId.get(String(r.id)) ?? 0,
@@ -1431,7 +1507,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT t.id, t.content, t.status, t.created_at, t.updated_at,
-        u.id as author_id, u.name as author_name, u.avatar as author_avatar
+        u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+        u.gender as author_gender, u.city as author_city, u.state as author_state
       FROM testimonials t
       JOIN users u ON u.id = t.author_user_id
       WHERE t.profile_user_id = ?
@@ -1448,7 +1525,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         status: r.status,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
-        author: { id: r.author_id, name: r.author_name, avatar: r.author_avatar },
+        author: {
+          id: r.author_id,
+          name: r.author_name,
+          avatar: r.author_avatar,
+          gender: r.author_gender ?? null,
+          city: r.author_city ?? null,
+          state: r.author_state ?? null,
+        },
       }))
     );
   });
@@ -1598,6 +1682,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         u.id as requester_id,
         u.name as requester_name,
         u.avatar as requester_avatar,
+        u.gender as requester_gender,
         u.city as requester_city,
         u.state as requester_state
       FROM private_photo_access_requests r
@@ -1627,6 +1712,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           id: String(r.requester_id),
           name: String(r.requester_name),
           avatar: r.requester_avatar ?? null,
+          gender: r.requester_gender ?? null,
           city: r.requester_city ?? null,
           state: r.requester_state ?? null,
         },
@@ -1983,6 +2069,380 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json([]);
   });
 
+  app.post('/api/radar', requireAuth(env, db), async (req, res) => {
+    const me = (await queryOne(db, 'SELECT id, name, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    if (!hasPremiumAccess(me)) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
+    const dailyUsedRow = (await queryOne(
+      db,
+      'SELECT COUNT(*) as c FROM radar_broadcasts WHERE user_id = ? AND created_at >= ?',
+      [req.auth!.userId, startOfCurrentDayIso()]
+    )) as any;
+    const weeklyUsedRow = (await queryOne(
+      db,
+      'SELECT COUNT(*) as c FROM radar_broadcasts WHERE user_id = ? AND created_at >= ?',
+      [req.auth!.userId, startOfCurrentWeekIso()]
+    )) as any;
+    const dailyUsed = Number(dailyUsedRow?.c || 0);
+    const weeklyUsed = Number(weeklyUsedRow?.c || 0);
+    if (dailyUsed >= 1) {
+      res.status(403).json({ error: 'radar_daily_limit', dailyLimit: 1, dailyUsed });
+      return;
+    }
+    if (weeklyUsed >= 3) {
+      res.status(403).json({ error: 'radar_weekly_limit', weeklyLimit: 3, weeklyUsed });
+      return;
+    }
+
+    const schema = z.object({
+      city: z.string().min(1).max(120),
+      state: z.string().min(2).max(2),
+      message: z.string().min(1).max(200),
+      targetGender: z.array(z.enum(['all', 'female', 'male', 'couple'])).min(1).max(4),
+      radius: z.coerce.number().int().min(5).max(500),
+      durationHours: z.coerce.number().int().min(1).max(72),
+      isAnonymous: z.boolean().optional(),
+      showOnlyOnline: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const city = String(parsed.data.city).trim();
+    const state = String(parsed.data.state).trim().toUpperCase();
+    const cityRow = (await queryOne(
+      db,
+      'SELECT name, state, lat, lon FROM cities WHERE LOWER(name) = LOWER(?) AND UPPER(state) = UPPER(?) LIMIT 1',
+      [city, state]
+    )) as any;
+
+    const createdAt = nowIso();
+    const expiresDate = new Date(createdAt);
+    expiresDate.setHours(expiresDate.getHours() + parsed.data.durationHours);
+    const id = randomUUID();
+
+    await run(
+      db,
+      `INSERT INTO radar_broadcasts (
+        id, user_id, city, state, city_lat, city_lon, message, target_genders_json,
+        radius_km, duration_hours, is_anonymous, only_online, created_at, expires_at, deactivated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        req.auth!.userId,
+        cityRow?.name ? String(cityRow.name) : city,
+        cityRow?.state ? String(cityRow.state).toUpperCase() : state,
+        cityRow?.lat != null ? Number(cityRow.lat) : null,
+        cityRow?.lon != null ? Number(cityRow.lon) : null,
+        parsed.data.message.trim(),
+        JSON.stringify(Array.from(new Set(parsed.data.targetGender))),
+        parsed.data.radius,
+        parsed.data.durationHours,
+        parsed.data.isAnonymous ? 1 : 0,
+        parsed.data.showOnlyOnline ? 1 : 0,
+        createdAt,
+        expiresDate.toISOString(),
+        null,
+      ]
+    );
+    await persist();
+
+    res.json({
+      ok: true,
+      id,
+      createdAt,
+      expiresAt: expiresDate.toISOString(),
+      usage: {
+        dailyLimit: 1,
+        dailyUsed: dailyUsed + 1,
+        dailyRemaining: Math.max(0, 1 - (dailyUsed + 1)),
+        weeklyLimit: 3,
+        weeklyUsed: weeklyUsed + 1,
+        weeklyRemaining: Math.max(0, 3 - (weeklyUsed + 1)),
+      },
+    });
+  });
+
+  app.post('/api/radar/:broadcastId/deactivate', requireAuth(env, db), async (req, res) => {
+    const broadcastId = String(req.params.broadcastId || '');
+    const row = (await queryOne(db, 'SELECT id, user_id, deactivated_at FROM radar_broadcasts WHERE id = ? LIMIT 1', [broadcastId])) as any;
+    if (!row || String(row.user_id) !== req.auth!.userId) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    await run(db, 'UPDATE radar_broadcasts SET deactivated_at = ? WHERE id = ?', [nowIso(), broadcastId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/radar', requireAuth(env, db), async (req, res) => {
+    const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const me = (await queryOne(
+      db,
+      'SELECT id, name, avatar, gender, city, state, lat, lon, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    if (!me) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    const dailyUsedRow = (await queryOne(
+      db,
+      'SELECT COUNT(*) as c FROM radar_broadcasts WHERE user_id = ? AND created_at >= ?',
+      [req.auth!.userId, startOfCurrentDayIso()]
+    )) as any;
+    const weeklyUsedRow = (await queryOne(
+      db,
+      'SELECT COUNT(*) as c FROM radar_broadcasts WHERE user_id = ? AND created_at >= ?',
+      [req.auth!.userId, startOfCurrentWeekIso()]
+    )) as any;
+    const myLookingFor = Array.isArray(safeJsonParse(me.looking_for_json)) ? (safeJsonParse(me.looking_for_json) as string[]) : [];
+
+    const myRows = await queryAll(
+      db,
+      `SELECT * FROM radar_broadcasts WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
+      [req.auth!.userId]
+    );
+    const myIds = myRows.map((r: any) => String(r.id));
+    const analyticsRows =
+      myIds.length > 0
+        ? await queryAll(
+            db,
+            `SELECT
+              rv.broadcast_id, rv.delivered_at, rv.viewed_at, rv.contacted_at,
+              u.id as viewer_id, u.name as viewer_name, u.avatar as viewer_avatar, u.gender as viewer_gender, u.city as viewer_city, u.state as viewer_state
+             FROM radar_broadcast_views rv
+             JOIN users u ON u.id = rv.viewer_user_id
+             WHERE rv.broadcast_id IN (${myIds.map(() => '?').join(', ')})
+             ORDER BY COALESCE(rv.viewed_at, rv.delivered_at) DESC`,
+            myIds
+          )
+        : [];
+
+    const analyticsByBroadcast = new Map<string, any[]>();
+    for (const row of analyticsRows as any[]) {
+      const list = analyticsByBroadcast.get(String(row.broadcast_id)) ?? [];
+      list.push(row);
+      analyticsByBroadcast.set(String(row.broadcast_id), list);
+    }
+
+    const activeRows = await queryAll(
+      db,
+      `SELECT
+        rb.*,
+        u.id as sender_id, u.name as sender_name, u.avatar as sender_avatar, u.gender as sender_gender, u.city as sender_city, u.state as sender_state, u.looking_for_json as sender_looking_for_json
+       FROM radar_broadcasts rb
+       JOIN users u ON u.id = rb.user_id
+       WHERE rb.user_id != ?
+         AND rb.deactivated_at IS NULL
+         AND rb.expires_at > ?
+       ORDER BY rb.created_at DESC
+       LIMIT 100`,
+      [req.auth!.userId, nowIso()]
+    );
+
+    const incoming: any[] = [];
+    for (const row of activeRows as any[]) {
+      const targetGenders = Array.isArray(safeJsonParse(row.target_genders_json)) ? (safeJsonParse(row.target_genders_json) as string[]) : ['all'];
+      if (!radarTargetsUser(targetGenders, me.gender)) continue;
+      if (row.only_online && presence?.isOnline && !presence.isOnline(String(req.auth!.userId))) continue;
+      const senderLookingFor = Array.isArray(safeJsonParse(row.sender_looking_for_json)) ? (safeJsonParse(row.sender_looking_for_json) as string[]) : [];
+      if (!radarProfilesAreCompatible(
+        { gender: row.sender_gender ?? null, lookingFor: senderLookingFor },
+        { gender: me.gender ?? null, lookingFor: myLookingFor }
+      )) continue;
+
+      let matchesLocation = false;
+      const radarLat = row.city_lat != null ? Number(row.city_lat) : null;
+      const radarLon = row.city_lon != null ? Number(row.city_lon) : null;
+      const myLat = me.lat != null ? Number(me.lat) : null;
+      const myLon = me.lon != null ? Number(me.lon) : null;
+      if (radarLat !== null && radarLon !== null && myLat !== null && myLon !== null) {
+        matchesLocation = haversineKm({ lat: radarLat, lon: radarLon }, { lat: myLat, lon: myLon }) <= Number(row.radius_km || 25);
+      } else {
+        matchesLocation =
+          normalizeRadarText(row.city) === normalizeRadarText(me.city) &&
+          normalizeRadarText(row.state) === normalizeRadarText(me.state);
+      }
+      if (!matchesLocation) continue;
+
+      const existingView = (await queryOne(
+        db,
+        'SELECT id, delivered_at, viewed_at, contacted_at FROM radar_broadcast_views WHERE broadcast_id = ? AND viewer_user_id = ? LIMIT 1',
+        [String(row.id), req.auth!.userId]
+      )) as any;
+      if (existingView?.id) {
+        if (!existingView.viewed_at) {
+          await run(db, 'UPDATE radar_broadcast_views SET viewed_at = ? WHERE id = ?', [nowIso(), String(existingView.id)]);
+          await createNotification(
+            { db, io },
+            {
+              userId: String(row.user_id),
+              type: 'radar.viewed',
+              title: 'Seu radar foi visualizado',
+              description: `${String(me.name || 'Alguém')} abriu seu radar em ${String(row.city)}, ${String(row.state)}.`,
+              dataJson: { broadcastId: String(row.id), viewerId: req.auth!.userId, viewerName: String(me.name || 'Alguém') },
+            }
+          );
+        }
+      } else {
+        await run(
+          db,
+          'INSERT INTO radar_broadcast_views (id, broadcast_id, viewer_user_id, delivered_at, viewed_at, contacted_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [randomUUID(), String(row.id), req.auth!.userId, nowIso(), nowIso(), null]
+        );
+        await createNotification(
+          { db, io },
+          {
+            userId: String(row.user_id),
+            type: 'radar.viewed',
+            title: 'Seu radar foi visualizado',
+            description: `${String(me.name || 'Alguém')} abriu seu radar em ${String(row.city)}, ${String(row.state)}.`,
+            dataJson: { broadcastId: String(row.id), viewerId: req.auth!.userId, viewerName: String(me.name || 'Alguém') },
+          }
+        );
+      }
+
+      incoming.push({
+        id: String(row.id),
+        city: String(row.city),
+        state: String(row.state),
+        message: String(row.message),
+        targetGender: targetGenders,
+        radius: Number(row.radius_km || 25),
+        durationHours: Number(row.duration_hours || 24),
+        createdAt: String(row.created_at),
+        expiresAt: String(row.expires_at),
+        isAnonymous: !!row.is_anonymous,
+        showOnlyOnline: !!row.only_online,
+        sender: {
+          id: String(row.sender_id),
+          name: !!row.is_anonymous ? 'Perfil discreto' : String(row.sender_name),
+          avatar: !!row.is_anonymous ? null : row.sender_avatar ?? null,
+          gender: !!row.is_anonymous ? null : row.sender_gender ?? null,
+          city: row.sender_city ?? null,
+          state: row.sender_state ?? null,
+        },
+      });
+    }
+    await persist();
+
+    res.json({
+      canCreate: hasPremiumAccess(me),
+      usage: {
+        dailyLimit: 1,
+        dailyUsed: Number(dailyUsedRow?.c || 0),
+        dailyRemaining: Math.max(0, 1 - Number(dailyUsedRow?.c || 0)),
+        weeklyLimit: 3,
+        weeklyUsed: Number(weeklyUsedRow?.c || 0),
+        weeklyRemaining: Math.max(0, 3 - Number(weeklyUsedRow?.c || 0)),
+      },
+      myBroadcasts: myRows.map((row: any) => {
+        const analytics = analyticsByBroadcast.get(String(row.id)) ?? [];
+        return {
+          id: String(row.id),
+          city: String(row.city),
+          state: String(row.state),
+          message: String(row.message),
+          targetGender: Array.isArray(safeJsonParse(row.target_genders_json)) ? safeJsonParse(row.target_genders_json) : ['all'],
+          radius: Number(row.radius_km || 25),
+          durationHours: Number(row.duration_hours || 24),
+          createdAt: String(row.created_at),
+          expiresAt: String(row.expires_at),
+          isActive: !row.deactivated_at && new Date(String(row.expires_at)).getTime() > Date.now(),
+          isAnonymous: !!row.is_anonymous,
+          showOnlyOnline: !!row.only_online,
+          deliveriesCount: analytics.length,
+          viewsCount: analytics.filter((item) => !!item.viewed_at).length,
+          responsesCount: analytics.filter((item) => !!item.contacted_at).length,
+          deliveries: analytics.map((item) => ({
+            deliveredAt: item.delivered_at,
+            viewedAt: item.viewed_at,
+            contactedAt: item.contacted_at,
+            viewer: {
+              id: String(item.viewer_id),
+              name: String(item.viewer_name),
+              avatar: item.viewer_avatar ?? null,
+              gender: item.viewer_gender ?? null,
+              city: item.viewer_city ?? null,
+              state: item.viewer_state ?? null,
+            },
+          })),
+        };
+      }),
+      incoming,
+    });
+  });
+
+  app.post('/api/radar/:broadcastId/contact', requireAuth(env, db), async (req, res) => {
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const broadcastId = String(req.params.broadcastId || '');
+    const radar = (await queryOne(
+      db,
+      'SELECT id, user_id, message, deactivated_at, expires_at FROM radar_broadcasts WHERE id = ? LIMIT 1',
+      [broadcastId]
+    )) as any;
+    if (!radar || String(radar.user_id) === req.auth!.userId) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (radar.deactivated_at || new Date(String(radar.expires_at)).getTime() <= Date.now()) {
+      res.status(410).json({ error: 'expired' });
+      return;
+    }
+
+    const existingView = (await queryOne(
+      db,
+      'SELECT id FROM radar_broadcast_views WHERE broadcast_id = ? AND viewer_user_id = ? LIMIT 1',
+      [broadcastId, req.auth!.userId]
+    )) as any;
+    const firstContact = !existingView?.contacted_at;
+    if (existingView?.id) {
+      await run(db, 'UPDATE radar_broadcast_views SET contacted_at = ?, viewed_at = COALESCE(viewed_at, ?) WHERE id = ?', [
+        nowIso(),
+        nowIso(),
+        String(existingView.id),
+      ]);
+    } else {
+      await run(
+        db,
+        'INSERT INTO radar_broadcast_views (id, broadcast_id, viewer_user_id, delivered_at, viewed_at, contacted_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), broadcastId, req.auth!.userId, nowIso(), nowIso(), nowIso()]
+      );
+    }
+
+    const pair = [req.auth!.userId, String(radar.user_id)].sort();
+    let conv = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
+    if (!conv?.id) {
+      const convId = randomUUID();
+      await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [convId, pair[0], pair[1], nowIso()]);
+      conv = { id: convId };
+    }
+    await persist();
+
+    if (firstContact) {
+      const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+      await createNotification(
+        { db, io },
+        {
+          userId: String(radar.user_id),
+          type: 'radar.contacted',
+          title: 'Seu radar gerou conversa',
+          description: `${String(actor?.name || 'Alguém')} abriu conversa a partir do seu radar.`,
+          dataJson: { broadcastId, actorId: req.auth!.userId, actorName: String(actor?.name || 'Alguém'), conversationId: String(conv.id) },
+        }
+      );
+    }
+
+    res.json({ ok: true, conversationId: String(conv.id) });
+  });
+
   app.get('/api/conversations/unread-count', requireAuth(env, db), async (req, res) => {
     const totalMessages = await queryOne(
       db,
@@ -2018,8 +2478,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       `
       SELECT * FROM (
         SELECT c.id, c.user_a_id, c.user_b_id, c.created_at,
-          ua.name as user_a_name, ua.avatar as user_a_avatar,
-          ub.name as user_b_name, ub.avatar as user_b_avatar,
+          ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state,
+          ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state,
           (
             SELECT COUNT(*) FROM messages m
             WHERE m.conversation_id = c.id
@@ -2049,12 +2509,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
                 id: r.user_b_id, 
                 name: r.user_b_name, 
                 avatar: r.user_b_avatar,
+                gender: r.user_b_gender ?? null,
+                city: r.user_b_city ?? null,
+                state: r.user_b_state ?? null,
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_b_id)) : false
               }
             : { 
                 id: r.user_a_id, 
                 name: r.user_a_name, 
                 avatar: r.user_a_avatar,
+                gender: r.user_a_gender ?? null,
+                city: r.user_a_city ?? null,
+                state: r.user_a_state ?? null,
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false
               };
         return { 
@@ -2444,7 +2910,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT c.id, c.content, c.created_at,
-        u.id as user_id, u.name as user_name, u.avatar as user_avatar
+        u.id as user_id, u.name as user_name, u.avatar as user_avatar,
+        u.gender as user_gender, u.city as user_city, u.state as user_state
       FROM comments c
       JOIN users u ON u.id = c.user_id
       WHERE c.target_type = ? AND c.target_id = ?
@@ -2458,7 +2925,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id: r.id,
         content: r.content,
         createdAt: r.created_at,
-        user: { id: r.user_id, name: r.user_name, avatar: r.user_avatar },
+        user: {
+          id: r.user_id,
+          name: r.user_name,
+          avatar: r.user_avatar,
+          gender: r.user_gender ?? null,
+          city: r.user_city ?? null,
+          state: r.user_state ?? null,
+        },
       }))
     );
   });
@@ -2544,7 +3018,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT fr.id, fr.created_at, fr.status,
-        u.id as from_id, u.name as from_name, u.avatar as from_avatar
+        u.id as from_id, u.name as from_name, u.avatar as from_avatar,
+        u.gender as from_gender, u.city as from_city, u.state as from_state
       FROM friend_requests fr
       JOIN users u ON u.id = fr.from_user_id
       WHERE fr.to_user_id = ? AND fr.status = 'pending'
@@ -2558,7 +3033,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT fr.id, fr.created_at, fr.status,
-        u.id as to_id, u.name as to_name, u.avatar as to_avatar
+        u.id as to_id, u.name as to_name, u.avatar as to_avatar,
+        u.gender as to_gender, u.city as to_city, u.state as to_state
       FROM friend_requests fr
       JOIN users u ON u.id = fr.to_user_id
       WHERE fr.from_user_id = ? AND fr.status = 'pending'
@@ -2573,7 +3049,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       `
       SELECT fr.id, fr.created_at,
         CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END as friend_id,
-        u.name as friend_name, u.avatar as friend_avatar
+        u.name as friend_name, u.avatar as friend_avatar, u.gender as friend_gender, u.city as friend_city, u.state as friend_state
       FROM friend_requests fr
       JOIN users u ON u.id = (CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END)
       WHERE (fr.from_user_id = ? OR fr.to_user_id = ?) AND fr.status = 'accepted'
@@ -2588,18 +3064,35 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id: r.id,
         status: r.status,
         createdAt: r.created_at,
-        fromUser: { id: r.from_id, name: r.from_name, avatar: r.from_avatar },
+        fromUser: {
+          id: r.from_id,
+          name: r.from_name,
+          avatar: r.from_avatar,
+          gender: r.from_gender ?? null,
+          city: r.from_city ?? null,
+          state: r.from_state ?? null,
+        },
       })),
       outgoing: outgoing.map((r: any) => ({
         id: r.id,
         status: r.status,
         createdAt: r.created_at,
-        toUser: { id: r.to_id, name: r.to_name, avatar: r.to_avatar },
+        toUser: {
+          id: r.to_id,
+          name: r.to_name,
+          avatar: r.to_avatar,
+          gender: r.to_gender ?? null,
+          city: r.to_city ?? null,
+          state: r.to_state ?? null,
+        },
       })),
       friends: friends.map((r: any) => ({
         id: r.friend_id,
         name: r.friend_name,
         avatar: r.friend_avatar,
+        gender: r.friend_gender ?? null,
+        city: r.friend_city ?? null,
+        state: r.friend_state ?? null,
         createdAt: r.created_at,
       })),
     });

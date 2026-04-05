@@ -637,4 +637,64 @@ describe('nosigilo backend', () => {
 
     expect(guestId).toBeTypeOf('string');
   });
+
+  it('radar delivers, marks view and opens conversation from the received alert', async () => {
+    await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
+      'Fortaleza',
+      'fortaleza',
+      'CE',
+      -3.7319,
+      -38.5267,
+    ]);
+
+    const sender = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Casal Radar',
+      email: 'radar-casal@example.com',
+      password: 'senha123',
+      gender: 'Casal (Ele/Ela)',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const viewer = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Viewer Radar',
+      email: 'radar-viewer@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    await request(ctx.app)
+      .post('/api/radar')
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({
+        city: 'Fortaleza',
+        state: 'CE',
+        message: 'Casal na cidade hoje querendo conversar com calma.',
+        targetGender: ['male'],
+        radius: 25,
+        durationHours: 1,
+        isAnonymous: false,
+        showOnlyOnline: false,
+      })
+      .expect(200);
+
+    const incoming = await request(ctx.app).get('/api/radar').set('Authorization', `Bearer ${viewer.token}`).expect(200);
+    expect(Array.isArray(incoming.body.incoming)).toBe(true);
+    expect(incoming.body.incoming.length).toBeGreaterThan(0);
+    expect(incoming.body.incoming[0].message).toContain('Casal na cidade');
+
+    const contact = await request(ctx.app)
+      .post(`/api/radar/${incoming.body.incoming[0].id}/contact`)
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(contact.body.conversationId).toBeTypeOf('string');
+
+    const mine = await request(ctx.app).get('/api/radar').set('Authorization', `Bearer ${sender.token}`).expect(200);
+    expect(mine.body.myBroadcasts[0].deliveriesCount).toBe(1);
+    expect(mine.body.myBroadcasts[0].viewsCount).toBe(1);
+    expect(mine.body.myBroadcasts[0].responsesCount).toBe(1);
+    expect(mine.body.myBroadcasts[0].deliveries[0].viewer.name).toBe('Viewer Radar');
+  });
 });

@@ -227,15 +227,15 @@ export default function Layout() {
       <FirstAccessTutorial />
       {/* Header */}
       <header className="sticky top-0 z-40 glass-strong border-b">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <NavLink to="/feed" className="flex items-center gap-2">
+        <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-3 sm:px-4">
+          <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
             <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
               <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-gradient hidden sm:block">NoSigilo</span>
+            <span className="truncate text-xl font-bold text-gradient hidden sm:block">NoSigilo</span>
           </NavLink>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-2">
             <NavLink to="/notifications">
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="w-5 h-5" />
@@ -250,15 +250,21 @@ export default function Layout() {
             <HelpButton />
 
             {user?.trialEndsAt && !user?.isPremium && trialDaysLeft !== null && (
-              <NavLink to="/subscriptions" className="hidden sm:block">
-                <Badge className={cn('rounded-full px-3 py-1', trialDaysLeft <= 0 ? 'bg-destructive text-destructive-foreground' : 'bg-secondary')}>
-                  {trialDaysLeft <= 0 ? 'Teste grátis expirado' : `Teste grátis: ${trialDaysLeft} dia(s)`}
+              <NavLink to="/subscriptions" className="hidden min-w-0 shrink sm:block">
+                <Badge
+                  className={cn(
+                    'max-w-[112px] truncate rounded-full px-2 py-1 text-[11px] md:max-w-[152px] lg:max-w-[180px] lg:px-3 xl:max-w-none',
+                    trialDaysLeft <= 0 ? 'bg-destructive text-destructive-foreground' : 'bg-secondary'
+                  )}
+                  title={trialDaysLeft <= 0 ? 'Teste grátis expirado' : `Teste grátis: ${trialDaysLeft} dia(s)`}
+                >
+                  {trialDaysLeft <= 0 ? 'Teste expirado' : `Teste grátis: ${trialDaysLeft} dia(s)`}
                 </Badge>
               </NavLink>
             )}
 
-            <NavLink to="/profile" className="flex items-center gap-2">
-              <div className={cn("w-9 h-9 rounded-full bg-secondary overflow-hidden", user?.isPremium ? "ring-2 ring-gold/60" : "")}>
+            <NavLink to="/profile" className="shrink-0 flex items-center gap-2">
+              <div className={cn("h-9 w-9 shrink-0 rounded-full bg-secondary overflow-hidden", user?.isPremium ? "ring-2 ring-gold/60" : "")}>
                 {user?.avatar ? (
                   <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
                 ) : (

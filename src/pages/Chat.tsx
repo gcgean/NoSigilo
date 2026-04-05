@@ -16,12 +16,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 type Conversation = {
   id: string;
-  user: { id: string; name: string; avatar?: string | null };
+  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
   createdAt?: string;
   unreadCount?: number;
 };
@@ -86,6 +87,8 @@ export default function Chat() {
     if (!q) return conversations;
     return conversations.filter((c) => c.user?.name?.toLowerCase().includes(q));
   }, [search, conversations]);
+  const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
+    formatProfileIdentityLine(profile);
 
   useEffect(() => {
     if (USE_MOCKS) return;
@@ -384,6 +387,9 @@ export default function Chat() {
                     </Badge>
                   )}
                 </div>
+                {getIdentityLine(conversation.user) ? (
+                  <p className="text-xs truncate text-muted-foreground">{getIdentityLine(conversation.user)}</p>
+                ) : null}
                 <p className={cn(
                   "text-sm truncate",
                   conversation.unreadCount && conversation.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
@@ -421,7 +427,9 @@ export default function Chat() {
                     />
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground">Chat</span>
+                <span className="text-xs text-muted-foreground">
+                  {getIdentityLine(selectedConversation?.user) || 'Chat'}
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2">

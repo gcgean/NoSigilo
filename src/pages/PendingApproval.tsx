@@ -21,6 +21,14 @@ function formatCountdown(seconds: number) {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function maskEmail(email: string) {
+  const normalized = String(email || '').trim();
+  const [local = '', domain = ''] = normalized.split('@');
+  if (!local || !domain) return normalized;
+  const visibleLocal = local.length <= 2 ? `${local.charAt(0)}*` : `${local.slice(0, 2)}${'*'.repeat(Math.max(2, local.length - 2))}`;
+  return `${visibleLocal}@${domain}`;
+}
+
 export default function PendingApproval() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -49,6 +57,7 @@ export default function PendingApproval() {
   }, [email]);
 
   const inviterName = pendingData?.inviter?.name || inviterNameParam || 'seu padrinho';
+  const maskedEmail = useMemo(() => maskEmail(pendingData?.email || email), [pendingData?.email, email]);
 
   const headline = useMemo(
     () => `Aguardando ${inviterName} aprovar sua solicitação para iniciar a diversão`,
@@ -128,9 +137,11 @@ export default function PendingApproval() {
             </div>
 
             <div className="space-y-4">
-              <h1 className="max-w-2xl text-3xl font-bold leading-tight sm:text-4xl">{headline}</h1>
+              <h1 className="max-w-xl text-3xl font-bold leading-[1.05] tracking-tight text-balance sm:text-4xl">
+                Aguardando <span className="break-words">{inviterName}</span> aprovar sua solicitacao para iniciar a diversao
+              </h1>
               <p className="max-w-xl text-base leading-7 text-white/75">
-                Seu acesso já está reservado. Falta apenas o sinal verde de <span className="font-semibold text-white">{inviterName}</span> para liberar a sua entrada na rede.
+                Seu acesso ja esta reservado. Falta apenas o sinal verde de <span className="font-semibold text-white break-words">{inviterName}</span> para liberar a sua entrada na rede.
               </p>
             </div>
 
@@ -142,13 +153,13 @@ export default function PendingApproval() {
               </div>
               <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
                 <div className="text-xs uppercase tracking-[0.22em] text-white/45">Padrinho</div>
-                <div className="mt-2 text-2xl font-bold">{inviterName}</div>
+                <div className="mt-2 break-words text-2xl font-bold leading-tight">{inviterName}</div>
                 <div className="mt-2 text-sm text-white/60">A aprovação dele libera o seu acesso.</div>
               </div>
               <div className="rounded-3xl border border-white/10 bg-black/20 p-5">
                 <div className="text-xs uppercase tracking-[0.22em] text-white/45">Conta em análise</div>
-                <div className="mt-2 text-xl font-bold">{pendingData?.email || email}</div>
-                <div className="mt-2 text-sm text-white/60">Seu cadastro está guardado com segurança.</div>
+                <div className="mt-2 break-all text-lg font-bold sm:text-xl">{maskedEmail}</div>
+                <div className="mt-2 text-sm text-white/60">Seu cadastro esta guardado com seguranca.</div>
               </div>
             </div>
 
@@ -177,7 +188,7 @@ export default function PendingApproval() {
                 <p className="text-sm uppercase tracking-[0.3em] text-primary/80">NoSigilo</p>
                 <h2 className="text-3xl font-bold">Sua entrada está quase liberada</h2>
                 <p className="mx-auto max-w-md text-base leading-7 text-white/70">
-                  O clima ja esta montado. Assim que <span className="font-semibold text-white">{inviterName}</span> aprovar, voce entra direto para explorar conexoes, convites e desejos com mais privacidade.
+                  O clima ja esta montado. Assim que <span className="font-semibold text-white break-words">{inviterName}</span> aprovar, voce entra direto para explorar conexoes, convites e desejos com mais privacidade.
                 </p>
               </div>
 
@@ -193,7 +204,7 @@ export default function PendingApproval() {
                 </div>
                 <div className="min-w-0 text-left">
                   <div className="text-xs uppercase tracking-[0.22em] text-white/45">Padrinho responsavel</div>
-                  <div className="truncate text-xl font-bold">{inviterName}</div>
+                  <div className="break-words text-xl font-bold leading-tight">{inviterName}</div>
                   <div className="mt-1 text-sm text-white/60">Seu acesso entra na fila de aprovacao dele.</div>
                 </div>
               </div>

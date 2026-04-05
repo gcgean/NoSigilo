@@ -17,9 +17,10 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
-type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null } };
+type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
@@ -38,11 +39,11 @@ function PhotoItem({ url }: { url: string }) {
           />
         </div>
       </DialogTrigger>
-      <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-none shadow-none flex items-center justify-center">
+      <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
         <img
           src={resolveMediaUrl(url)}
           alt=""
-          className="w-full h-auto max-h-[90vh] object-contain"
+          className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
         />
       </DialogContent>
     </Dialog>
@@ -387,7 +388,12 @@ export default function UserProfile() {
                         <AvatarImage src={t.author.avatar ? resolveServerUrl(t.author.avatar) : undefined} />
                         <AvatarFallback>{String(t.author.name || 'U')[0]}</AvatarFallback>
                       </Avatar>
-                      <div className="font-medium">{t.author.name}</div>
+                      <div>
+                        <div className="font-medium">{t.author.name}</div>
+                        {formatProfileIdentityLine(t.author) ? (
+                          <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</div>
+                        ) : null}
+                      </div>
                       <div className="text-xs text-muted-foreground ml-auto">{new Date(t.createdAt).toLocaleDateString()}</div>
                     </div>
                     <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
