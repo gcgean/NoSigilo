@@ -328,7 +328,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex">
+    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[28rem]">
       {/* Conversations List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",

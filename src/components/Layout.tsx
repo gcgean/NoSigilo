@@ -172,8 +172,8 @@ export default function Layout() {
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <aside className="hidden md:flex w-64 border-r glass flex-col p-4 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto">
+      <div className="flex flex-1 min-h-0">
+        <aside className="hidden md:flex w-64 border-r glass flex-col p-4 sticky top-16 h-[calc(100dvh-4rem)] overflow-y-auto">
           <nav className="flex-1 space-y-1">
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -264,15 +264,15 @@ export default function Layout() {
           </div>
         </aside>
 
-        <main className="flex-1 px-4 py-6">
+        <main className="flex-1 min-w-0 px-3 py-4 pb-24 sm:px-4 sm:py-6 md:pb-6">
           <div className="mx-auto w-full max-w-6xl">
             <Outlet />
           </div>
         </main>
       </div>
 
-      <nav className="sticky bottom-0 z-40 glass-strong border-t md:hidden">
-        <div className="flex items-center justify-around h-16">
+      <nav className="sticky bottom-0 z-40 glass-strong border-t md:hidden pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-center justify-around h-16 px-1">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -280,12 +280,12 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex flex-col items-center gap-1 px-3 py-2 rounded-lg transition-colors relative",
+                  "flex min-w-0 flex-1 flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors relative",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 <item.icon className={cn("w-5 h-5", isActive && "animate-scale-in")} />
-                <span className="text-xs">{item.label}</span>
+                <span className="max-w-full truncate text-[11px]">{item.label}</span>
                 {item.path === '/match' && hasUnreadMatch && (
                   <span className="absolute top-2 right-4 w-2 h-2 rounded-full bg-destructive animate-pulse" />
                 )}

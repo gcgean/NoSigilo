@@ -17,25 +17,25 @@ export default function Landing() {
 
         {/* Navigation */}
         <nav className="absolute top-0 left-0 right-0 z-10 p-4">
-          <div className="container mx-auto flex items-center justify-between">
+          <div className="container mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
                 <Sparkles className="w-6 h-6 text-primary-foreground" />
               </div>
-              <span className="text-2xl font-bold text-gradient">NoSigilo</span>
+              <span className="text-xl sm:text-2xl font-bold text-gradient">NoSigilo</span>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <Link to="/login">
                 <Button
                   variant="outline"
-                  className="bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
+                  className="h-10 px-3 sm:px-4 bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
                 >
                   Entrar
                 </Button>
               </Link>
               <Link to="/register">
-                <Button className="bg-gradient-primary hover:opacity-90 shadow-glow">
+                <Button className="h-10 px-3 sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
                   Criar Conta
                 </Button>
               </Link>
@@ -50,13 +50,13 @@ export default function Landing() {
             <span className="text-sm text-primary">+18 • Rede Social Adulta</span>
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-slide-up">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6 animate-slide-up">
             Conecte-se com
             <br />
             <span className="text-gradient">quem você deseja</span>
           </h1>
 
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
             Uma plataforma segura e discreta para encontrar pessoas especiais.
             Matches autênticos, conversas reais.
           </p>

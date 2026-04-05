@@ -356,7 +356,7 @@ export default function Events() {
   return (
     <div className="max-w-4xl mx-auto w-full">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Eventos</h1>
           <p className="text-muted-foreground">Encontros e festas da comunidade</p>
@@ -379,12 +379,12 @@ export default function Events() {
           }}
         >
           <DialogTrigger asChild>
-            <Button className="bg-gradient-primary hover:opacity-90 gap-2">
+            <Button className="w-full sm:w-auto bg-gradient-primary hover:opacity-90 gap-2">
               <Plus className="w-4 h-4" />
               Criar Evento
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
             <DialogHeader>
               <DialogTitle>
                 {step === 1 && 'Criar Novo Evento'}
@@ -410,7 +410,7 @@ export default function Events() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Tipo de Evento</Label>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {EVENT_TYPES.map((type) => (
                       <button
                         key={type.value}
@@ -448,7 +448,7 @@ export default function Events() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Data *</Label>
                     <Input
@@ -476,7 +476,7 @@ export default function Events() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Máximo de participantes</Label>
                     <Input
@@ -578,12 +578,12 @@ export default function Events() {
               <div className="space-y-4">
                 <Card className="border-primary/30">
                   <CardContent className="pt-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                      <div className="flex items-start gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
                           <Bell className="w-5 h-5 text-primary" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p className="font-medium">Notificar pessoas</p>
                           <p className="text-sm text-muted-foreground">
                             Envie convites para pessoas compatíveis
@@ -742,7 +742,7 @@ export default function Events() {
                   </>
                 )}
 
-                <div className="flex gap-2">
+                <div className="flex flex-col-reverse sm:flex-row gap-2">
                   <Button variant="outline" onClick={handlePrevStep} className="flex-1">
                     Voltar
                   </Button>

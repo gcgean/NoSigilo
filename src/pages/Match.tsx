@@ -159,7 +159,7 @@ export default function Match() {
 
   return (
     <div className="max-w-lg mx-auto w-full">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
         <div>
           <h1 className="text-2xl font-bold">Match</h1>
           <p className="text-muted-foreground">Encontre sua conexão</p>
@@ -169,7 +169,7 @@ export default function Match() {
         </Button>
       </div>
 
-      <div className="relative aspect-[3/4] max-h-[600px]">
+      <div className="relative aspect-[3/4] max-h-[70dvh] sm:max-h-[600px]">
         {isLoading && (
           <div className="absolute inset-0 rounded-3xl glass flex items-center justify-center text-muted-foreground">Carregando...</div>
         )}
@@ -221,16 +221,16 @@ export default function Match() {
               </div>
             )}
 
-            <div className="absolute bottom-0 left-0 right-0 p-6">
-              <div className="flex items-end justify-between">
-                <div>
-                  <h2 className="text-3xl font-bold text-white mb-1">
+            <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
+              <div className="flex items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1 break-words">
                     {currentProfile.name}
                     {age !== null ? `, ${age}` : ''}
                   </h2>
                   <div className="flex items-center gap-1 text-white/80 mb-3">
                     <MapPin className="w-4 h-4" />
-                    <span>{cityLine || '—'}</span>
+                    <span className="truncate">{cityLine || '—'}</span>
                   </div>
                   <p className="text-white/90 text-sm line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
                   
@@ -246,7 +246,7 @@ export default function Match() {
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                    <Button variant="ghost" size="icon" className="shrink-0 text-white hover:bg-white/10">
                       <MoreHorizontal className="w-5 h-5" />
                     </Button>
                   </PopoverTrigger>
@@ -285,11 +285,11 @@ export default function Match() {
         )}
       </div>
 
-      <div className="flex items-center justify-center gap-6 mt-6">
+      <div className="mt-6 grid grid-cols-4 gap-3 sm:flex sm:items-center sm:justify-center sm:gap-6">
         <Button
           size="lg"
           variant="outline"
-          className="w-16 h-16 rounded-full border-2 border-destructive text-destructive hover:bg-destructive hover:text-white transition-all"
+          className="h-14 w-full rounded-full border-2 border-destructive text-destructive hover:bg-destructive hover:text-white transition-all sm:h-16 sm:w-16"
           onClick={handlePass}
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
@@ -300,17 +300,17 @@ export default function Match() {
 
         <Button
           size="lg"
-          className="w-20 h-20 rounded-full bg-gradient-primary shadow-glow hover:opacity-90 transition-all"
+          className="h-16 w-full rounded-full bg-gradient-primary shadow-glow hover:opacity-90 transition-all sm:h-20 sm:w-20"
           onClick={() => void handleLike()}
           disabled={!currentProfile}
         >
-          <Heart className="w-10 h-10" fill="white" />
+          <Heart className="w-8 h-8 sm:w-10 sm:h-10" fill="white" />
         </Button>
 
         <Button
           size="lg"
           variant="outline"
-          className="w-16 h-16 rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all"
+          className="h-14 w-full rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16"
           onClick={() => currentProfile && navigate(`/users/${currentProfile.id}`)}
           disabled={!currentProfile}
         >
@@ -321,7 +321,7 @@ export default function Match() {
           size="lg"
           variant="outline"
           className={cn(
-            "w-16 h-16 rounded-full border-2 transition-all",
+            "h-14 w-full rounded-full border-2 transition-all sm:h-16 sm:w-16",
             currentProfile && isFavorite(currentProfile.id)
               ? "border-gold bg-gold text-black hover:bg-gold/90"
               : "border-gold text-gold hover:bg-gold hover:text-black"
@@ -341,7 +341,7 @@ export default function Match() {
         </Button>
       </div>
 
-      <p className="text-center text-sm text-muted-foreground mt-4">Arraste para os lados ou use os botões</p>
+      <p className="text-center text-sm text-muted-foreground mt-4 px-4">Arraste para os lados ou use os botões</p>
     </div>
   );
 }

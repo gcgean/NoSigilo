@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
-import { resolveServerUrl } from '@/utils/serverUrl';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -336,8 +335,8 @@ export default function Profile() {
   return (
     <div className="max-w-2xl mx-auto w-full">
       {/* Profile Header */}
-      <div className="glass rounded-2xl p-6 mb-6">
-        <div className="flex flex-col sm:flex-row items-center gap-6">
+      <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
+        <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6">
           {/* Avatar */}
           <div className="relative">
             <Dialog>
@@ -366,9 +365,9 @@ export default function Profile() {
           </div>
 
           {/* Info */}
-          <div className="flex-1 text-center sm:text-left">
-            <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-              <h1 className="text-2xl font-bold">{profileData.name}, {profileData.age}</h1>
+          <div className="flex-1 min-w-0 text-center sm:text-left">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+              <h1 className="text-xl sm:text-2xl font-bold break-words">{profileData.name}, {profileData.age}</h1>
               {profileData.verified && (
                 <Badge className="bg-success text-white gap-1">
                   <Sparkles className="w-3 h-3" /> Verificado
@@ -383,20 +382,20 @@ export default function Profile() {
             
             <div className="flex items-center justify-center sm:justify-start gap-1 text-muted-foreground mb-3">
               <MapPin className="w-4 h-4" />
-              <span>{profileData.city}</span>
+              <span className="break-words">{profileData.city}</span>
             </div>
 
             <p className="text-muted-foreground text-sm mb-4">{profileData.bio}</p>
 
-            <div className="flex items-center justify-center sm:justify-start gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center sm:justify-start gap-3">
               <NavLink to="/settings">
-                <Button variant="outline" size="sm" className="gap-2">
+                <Button variant="outline" size="sm" className="w-full gap-2">
                   <Edit2 className="w-4 h-4" />
                   Editar Perfil
                 </Button>
               </NavLink>
               <NavLink to="/settings">
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="w-full gap-2">
                   <Settings className="w-4 h-4" />
                   Configurações
                 </Button>
@@ -406,39 +405,39 @@ export default function Profile() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mt-6 pt-6 border-t">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 pt-6 border-t">
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-primary mb-1">
               <Heart className="w-4 h-4" />
-              <span className="text-2xl font-bold">{profileData.stats.likes}</span>
+              <span className="text-xl sm:text-2xl font-bold">{profileData.stats.likes}</span>
             </div>
-            <p className="text-sm text-muted-foreground">Curtidas</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Curtidas</p>
           </div>
           <div className="text-center">
             <Link to="/profile/visitors">
               <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity relative">
                 <Eye className="w-4 h-4" />
-                <span className="text-2xl font-bold">{profileData.stats.visits}</span>
+                <span className="text-xl sm:text-2xl font-bold">{profileData.stats.visits}</span>
                 {!hasPremiumAccess(user) && (
                   <Crown className="w-3 h-3 text-gold absolute -top-1 -right-2" />
                 )}
               </div>
-              <p className="text-sm text-muted-foreground hover:underline">Visitas</p>
+              <p className="text-xs sm:text-sm text-muted-foreground hover:underline">Visitas</p>
             </Link>
           </div>
           <div className="text-center">
             <div className="flex items-center justify-center gap-1 text-primary mb-1">
               <Sparkles className="w-4 h-4" />
-              <span className="text-2xl font-bold">{profileData.stats.matches}</span>
+              <span className="text-xl sm:text-2xl font-bold">{profileData.stats.matches}</span>
             </div>
-            <p className="text-sm text-muted-foreground">Matches</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">Matches</p>
           </div>
         </div>
       </div>
 
       {notifications.some((n) => !n.isRead) ? (
-        <div className="glass rounded-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
+        <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-lg font-semibold">Notificações</h2>
             <NavLink to="/notifications" className="text-sm text-primary hover:underline">
               Ver todas
@@ -452,17 +451,17 @@ export default function Profile() {
                 const isPrivateReq = n.type === 'private_photos.request';
                 return (
                   <div key={n.id} className="rounded-xl border p-4 bg-secondary/10">
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-medium">{n.title}</div>
                         {n.description ? <div className="text-sm text-muted-foreground">{n.description}</div> : null}
                       </div>
-                      <Button size="sm" variant="ghost" onClick={() => void markNotificationAsRead(n.id)}>
+                      <Button size="sm" variant="ghost" className="self-stretch sm:self-auto" onClick={() => void markNotificationAsRead(n.id)}>
                         Marcar lida
                       </Button>
                     </div>
                     {isPrivateReq ? (
-                      <div className="flex items-center gap-2 mt-3">
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
                         <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyNotifId === n.id} onClick={() => void handleApprovePrivatePhotos(n)}>
                           Permitir
                         </Button>
@@ -479,7 +478,7 @@ export default function Profile() {
       ) : null}
 
       {testimonials.some((t) => String(t.status) === 'pending') ? (
-        <div id="testimonials" className="glass rounded-2xl p-6 mb-6">
+        <div id="testimonials" className="glass rounded-2xl p-4 sm:p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Depoimentos pendentes</h2>
           <div className="space-y-3">
             {testimonials
@@ -489,7 +488,7 @@ export default function Profile() {
                 <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
                   <div className="font-medium mb-2">{t.author.name}</div>
                   <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
-                  <div className="flex items-center gap-2 mt-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
                     <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
                       Aceitar
                     </Button>
@@ -503,11 +502,11 @@ export default function Profile() {
         </div>
       ) : null}
 
-      <div className="glass rounded-2xl p-6 mb-6">
-        <div className="flex items-center justify-between gap-4 mb-4">
+      <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <h2 className="text-lg font-semibold">Informações Pessoais</h2>
           {profileData.status ? (
-            <Badge variant="secondary" className="max-w-[60%] truncate">
+            <Badge variant="secondary" className="max-w-full sm:max-w-[60%] truncate">
               {profileData.status}
             </Badge>
           ) : null}

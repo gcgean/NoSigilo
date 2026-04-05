@@ -87,7 +87,7 @@ export default function SearchPage() {
       </div>
 
       {/* Search & Filters */}
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
@@ -100,7 +100,7 @@ export default function SearchPage() {
         <Button
           variant={showFilters ? 'default' : 'outline'}
           onClick={() => setShowFilters(!showFilters)}
-          className="gap-2"
+          className="gap-2 sm:self-auto"
         >
           <Filter className="w-4 h-4" />
           Filtros
@@ -109,7 +109,7 @@ export default function SearchPage() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="glass rounded-xl p-6 mb-6 animate-slide-up space-y-6">
+        <div className="glass rounded-xl p-4 sm:p-6 mb-6 animate-slide-up space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="text-sm font-medium mb-2 block">Idade</label>
@@ -178,8 +178,8 @@ export default function SearchPage() {
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={() => void loadResults()} className="bg-gradient-primary hover:opacity-90 px-8">
+          <div className="flex justify-stretch sm:justify-end">
+            <Button onClick={() => void loadResults()} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90 px-8">
               Aplicar Filtros
             </Button>
           </div>
@@ -195,8 +195,6 @@ export default function SearchPage() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {results.map((profile) => {
             const age = calculateAge(profile.birthDate);
-            const avatarUrl = profile.avatar ? resolveServerUrl(profile.avatar) : null;
-            
             return (
               <NavLink
                 key={profile.id}
@@ -234,7 +232,7 @@ export default function SearchPage() {
 
                 {/* Info */}
                 <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <h3 className="text-white font-semibold text-lg">
+                  <h3 className="text-white font-semibold text-sm sm:text-lg leading-tight">
                     {profile.name}{age ? `, ${age}` : ''}
                   </h3>
                   <div className="flex items-center gap-1 text-white/70 text-sm">
