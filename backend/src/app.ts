@@ -2070,7 +2070,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/radar', requireAuth(env, db), async (req, res) => {
-    const me = (await queryOne(db, 'SELECT id, name, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    const me = (await queryOne(
+      db,
+      'SELECT id, name, gender, city, state, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
     if (!hasPremiumAccess(me)) {
       res.status(403).json({ error: 'premium_required' });
       return;
@@ -2125,6 +2131,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const expiresDate = new Date(createdAt);
     expiresDate.setHours(expiresDate.getHours() + parsed.data.durationHours);
     const id = randomUUID();
+    const normalizedTargetGender = Array.from(new Set(parsed.data.targetGender));
+    const senderLookingFor = Array.isArray(safeJsonParse(me.looking_for_json)) ? (safeJsonParse(me.looking_for_json) as string[]) : [];
+    const radarCity = cityRow?.name ? String(cityRow.name) : city;
+    const radarState = cityRow?.state ? String(cityRow.state).toUpperCase() : state;
+    const radarLat = cityRow?.lat != null ? Number(cityRow.lat) : null;
+    const radarLon = cityRow?.lon != null ? Number(cityRow.lon) : null;
 
     await run(
       db,
@@ -2135,12 +2147,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       [
         id,
         req.auth!.userId,
-        cityRow?.name ? String(cityRow.name) : city,
-        cityRow?.state ? String(cityRow.state).toUpperCase() : state,
-        cityRow?.lat != null ? Number(cityRow.lat) : null,
-        cityRow?.lon != null ? Number(cityRow.lon) : null,
+        radarCity,
+        radarState,
+        radarLat,
+        radarLon,
         parsed.data.message.trim(),
-        JSON.stringify(Array.from(new Set(parsed.data.targetGender))),
+        JSON.stringify(normalizedTargetGender),
         parsed.data.radius,
         parsed.data.durationHours,
         parsed.data.isAnonymous ? 1 : 0,
@@ -2150,6 +2162,72 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         null,
       ]
     );
+
+    const possibleRecipients = (await queryAll(
+      db,
+      `SELECT id, name, gender, city, state, lat, lon, looking_for_json
+       FROM users
+       WHERE id != ?`,
+      [req.auth!.userId]
+    )) as any[];
+
+    let deliveredCount = 0;
+    for (const candidate of possibleRecipients) {
+      if (!radarTargetsUser(normalizedTargetGender, candidate.gender ?? null)) continue;
+      if (parsed.data.showOnlyOnline && presence?.isOnline && !presence.isOnline(String(candidate.id))) continue;
+
+      const candidateLookingFor = Array.isArray(safeJsonParse(candidate.looking_for_json)) ? (safeJsonParse(candidate.looking_for_json) as string[]) : [];
+      if (!radarProfilesAreCompatible(
+        { gender: me.gender ?? null, lookingFor: senderLookingFor },
+        { gender: candidate.gender ?? null, lookingFor: candidateLookingFor }
+      )) {
+        continue;
+      }
+
+      let matchesLocation = false;
+      const candidateLat = candidate.lat != null ? Number(candidate.lat) : null;
+      const candidateLon = candidate.lon != null ? Number(candidate.lon) : null;
+      if (radarLat !== null && radarLon !== null && candidateLat !== null && candidateLon !== null) {
+        matchesLocation = haversineKm({ lat: radarLat, lon: radarLon }, { lat: candidateLat, lon: candidateLon }) <= parsed.data.radius;
+      } else {
+        matchesLocation =
+          normalizeRadarText(radarCity) === normalizeRadarText(candidate.city) &&
+          normalizeRadarText(radarState) === normalizeRadarText(candidate.state);
+      }
+      if (!matchesLocation) continue;
+
+      const existingDelivery = await queryOne(
+        db,
+        'SELECT id FROM radar_broadcast_views WHERE broadcast_id = ? AND viewer_user_id = ? LIMIT 1',
+        [id, String(candidate.id)]
+      );
+      if (existingDelivery) continue;
+
+      const viewId = randomUUID();
+      await run(
+        db,
+        'INSERT INTO radar_broadcast_views (id, broadcast_id, viewer_user_id, delivered_at, viewed_at, contacted_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [viewId, id, String(candidate.id), createdAt, null, null]
+      );
+
+      deliveredCount += 1;
+      await createNotification(
+        { db, io },
+        {
+          userId: String(candidate.id),
+          type: 'radar.received',
+          title: 'Novo radar compativel na sua cidade',
+          description: `${String(parsed.data.isAnonymous ? 'Um perfil discreto' : me.name || 'Alguem')} acabou de ativar um radar em ${radarCity}, ${radarState}.`,
+          dataJson: {
+            broadcastId: id,
+            senderId: req.auth!.userId,
+            senderName: parsed.data.isAnonymous ? 'Perfil discreto' : String(me.name || 'Alguem'),
+            city: radarCity,
+            state: radarState,
+          },
+        }
+      );
+    }
     await persist();
 
     res.json({
@@ -2157,6 +2235,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       id,
       createdAt,
       expiresAt: expiresDate.toISOString(),
+      deliveredCount,
       usage: {
         dailyLimit: 1,
         dailyUsed: dailyUsed + 1,

@@ -692,9 +692,11 @@ describe('nosigilo backend', () => {
     expect(contact.body.conversationId).toBeTypeOf('string');
 
     const mine = await request(ctx.app).get('/api/radar').set('Authorization', `Bearer ${sender.token}`).expect(200);
-    expect(mine.body.myBroadcasts[0].deliveriesCount).toBe(1);
-    expect(mine.body.myBroadcasts[0].viewsCount).toBe(1);
-    expect(mine.body.myBroadcasts[0].responsesCount).toBe(1);
-    expect(mine.body.myBroadcasts[0].deliveries[0].viewer.name).toBe('Viewer Radar');
+    expect(mine.body.myBroadcasts[0].deliveriesCount).toBeGreaterThanOrEqual(1);
+    expect(mine.body.myBroadcasts[0].viewsCount).toBeGreaterThanOrEqual(1);
+    expect(mine.body.myBroadcasts[0].responsesCount).toBeGreaterThanOrEqual(1);
+    expect(
+      mine.body.myBroadcasts[0].deliveries.some((entry: any) => entry.viewer.name === 'Viewer Radar' && !!entry.viewedAt && !!entry.contactedAt)
+    ).toBe(true);
   });
 });
