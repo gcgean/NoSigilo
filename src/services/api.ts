@@ -1,5 +1,6 @@
 import apiClient from '@/utils/apiClient';
 import { compressImageFile } from '@/utils/mediaCompression';
+import axios from 'axios';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -94,18 +95,28 @@ export const profileService = {
   uploadMedia: async (file: File, options?: { isPrivate?: boolean }) => {
     let uploadFile = file;
     if (file.type.startsWith('image/')) {
-      uploadFile = await compressImageFile(file);
+      uploadFile = await compressImageFile(file, { maxDimension: 1280, quality: 0.8, maxBytes: 900 * 1024 });
     }
     if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
       throw new Error('Arquivo de vídeo muito grande (máximo 50MB)');
     }
+    if (file.type.startsWith('image/') && uploadFile.size > 2 * 1024 * 1024) {
+      throw new Error('A foto ainda ficou grande demais para envio pelo celular. Tente uma imagem menor.');
+    }
     const formData = new FormData();
     formData.append('file', uploadFile);
-    const response = await apiClient.post('/media/upload', formData, {
-      params: { isPrivate: options?.isPrivate ? 1 : 0 },
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return response.data;
+    try {
+      const response = await apiClient.post('/media/upload', formData, {
+        params: { isPrivate: options?.isPrivate ? 1 : 0 },
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 413) {
+        throw new Error('A foto ficou maior do que o limite aceito pelo servidor. Tente uma imagem menor.');
+      }
+      throw error;
+    }
   },
 
   setMainPhoto: async (mediaId: string) => {

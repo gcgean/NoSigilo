@@ -47,6 +47,10 @@ export function getApiErrorInfo(error: unknown, fallback: ApiErrorInfo): ApiErro
       return { title: 'Não encontrado', description: 'Recurso não encontrado.' };
     }
 
+    if (status === 413) {
+      return { title: 'Arquivo muito grande', description: 'A mídia ultrapassou o limite aceito pelo servidor.' };
+    }
+
     return fallback;
   }
 
@@ -56,4 +60,3 @@ export function getApiErrorInfo(error: unknown, fallback: ApiErrorInfo): ApiErro
 
   return fallback;
 }
-

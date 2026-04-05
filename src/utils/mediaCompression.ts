@@ -1,6 +1,7 @@
 type CompressOptions = {
   maxDimension?: number;
   quality?: number;
+  maxBytes?: number;
 };
 
 function clampNumber(value: number, min: number, max: number) {
@@ -16,7 +17,44 @@ function getImageType(originalType: string) {
 }
 
 async function fileToImageBitmap(file: File) {
-  return await createImageBitmap(file);
+  if (typeof createImageBitmap === 'function') {
+    return await createImageBitmap(file);
+  }
+  throw new Error('createImageBitmap is not available');
+}
+
+async function fileToHtmlImage(file: File): Promise<HTMLImageElement> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Failed to load image'));
+      image.src = objectUrl;
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function loadImageSource(file: File): Promise<{ width: number; height: number; draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void; close?: () => void }> {
+  try {
+    const bitmap = await fileToImageBitmap(file);
+    return {
+      width: bitmap.width,
+      height: bitmap.height,
+      draw: (ctx, w, h) => ctx.drawImage(bitmap, 0, 0, w, h),
+      close: () => bitmap.close?.(),
+    };
+  } catch {
+    const image = await fileToHtmlImage(file);
+    return {
+      width: image.naturalWidth || image.width,
+      height: image.naturalHeight || image.height,
+      draw: (ctx, w, h) => ctx.drawImage(image, 0, 0, w, h),
+    };
+  }
 }
 
 async function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
@@ -36,15 +74,16 @@ async function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: nu
 }
 
 export async function compressImageFile(file: File, options?: CompressOptions): Promise<File> {
-  const maxDimension = clampNumber(options?.maxDimension ?? 1600, 320, 4096);
-  const quality = clampNumber(options?.quality ?? 0.82, 0.4, 0.95);
+  const maxDimension = clampNumber(options?.maxDimension ?? 1280, 320, 4096);
+  const quality = clampNumber(options?.quality ?? 0.8, 0.35, 0.95);
+  const maxBytes = clampNumber(options?.maxBytes ?? 900 * 1024, 120 * 1024, 10 * 1024 * 1024);
 
   if (!file.type.startsWith('image/')) return file;
   if (file.size < 150 * 1024) return file;
 
-  const bitmap = await fileToImageBitmap(file);
-  const srcW = bitmap.width;
-  const srcH = bitmap.height;
+  const imageSource = await loadImageSource(file);
+  const srcW = imageSource.width;
+  const srcH = imageSource.height;
 
   const scale = Math.min(1, maxDimension / Math.max(srcW, srcH));
   const targetW = Math.max(1, Math.round(srcW * scale));
@@ -57,15 +96,22 @@ export async function compressImageFile(file: File, options?: CompressOptions): 
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) return file;
 
-  ctx.drawImage(bitmap, 0, 0, targetW, targetH);
-  bitmap.close?.();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetW, targetH);
+  imageSource.draw(ctx, targetW, targetH);
+  imageSource.close?.();
 
   const outputType = getImageType(file.type);
-  const blob = await canvasToBlob(canvas, outputType, quality);
+  let nextQuality = quality;
+  let blob = await canvasToBlob(canvas, outputType, nextQuality);
 
-  if (blob.size >= file.size) return file;
+  while (blob.size > maxBytes && nextQuality > 0.4) {
+    nextQuality = clampNumber(nextQuality - 0.08, 0.35, 0.95);
+    blob = await canvasToBlob(canvas, outputType, nextQuality);
+  }
+
+  if (blob.size >= file.size && file.size <= maxBytes) return file;
 
   const name = file.name.replace(/\.(png|jpg|jpeg|webp)$/i, '.webp');
   return new File([blob], name, { type: blob.type, lastModified: Date.now() });
 }
-
