@@ -38,7 +38,7 @@ const navItems = [
 ];
 
 const extraNavItems = [
-  { path: '/settings#security', icon: UserPlus, label: 'Convites', highlight: true },
+  { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
   { path: '/favorites', icon: Star, label: 'Favoritos' },
@@ -207,10 +207,7 @@ export default function Layout() {
             <div className="border-t my-3" />
 
             {extraNavItems.map((item) => {
-              const isSettingsSecurity = item.path === '/settings#security';
-              const isActive = isSettingsSecurity
-                ? location.pathname === '/settings' && location.hash === '#security'
-                : location.pathname === item.path;
+              const isActive = location.pathname === item.path;
               return (
                 <NavLink
                   key={item.path}

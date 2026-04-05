@@ -36,6 +36,7 @@ import Notifications from "./pages/Notifications";
 import FriendRequests from "./pages/FriendRequests";
 import Favorites from "./pages/Favorites";
 import Events from "./pages/Events";
+import Invites from "./pages/Invites";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import UserProfile from "./pages/UserProfile";
@@ -82,6 +83,7 @@ const App = () => (
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/events" element={<Events />} />
+                      <Route path="/invites" element={<Invites />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />
