@@ -15,7 +15,8 @@ import {
   Shield,
   Star,
   Crown,
-  Radio
+  Radio,
+  UserPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -37,6 +38,7 @@ const navItems = [
 ];
 
 const extraNavItems = [
+  { path: '/settings#security', icon: UserPlus, label: 'Convites', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
   { path: '/favorites', icon: Star, label: 'Favoritos' },
@@ -205,20 +207,31 @@ export default function Layout() {
             <div className="border-t my-3" />
 
             {extraNavItems.map((item) => {
-              const isActive = location.pathname === item.path;
+              const isSettingsSecurity = item.path === '/settings#security';
+              const isActive = isSettingsSecurity
+                ? location.pathname === '/settings' && location.hash === '#security'
+                : location.pathname === item.path;
               return (
                 <NavLink
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all",
-                    isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    "flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative",
+                    item.highlight && !isActive && "bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90",
+                    item.highlight && isActive && "bg-primary text-primary-foreground shadow-glow",
+                    !item.highlight &&
+                      (isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary")
                   )}
                 >
                   <item.icon className="w-5 h-5" />
                   <span className="font-medium">{item.label}</span>
+                  {item.highlight ? (
+                    <Badge className={cn("ml-auto text-[10px]", isActive ? "bg-white/15 text-white" : "bg-white/20 text-white")}>
+                      Novo
+                    </Badge>
+                  ) : null}
                 </NavLink>
               );
             })}
