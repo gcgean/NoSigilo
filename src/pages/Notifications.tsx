@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Bell, Check, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { notificationsService, privatePhotosService } from '@/services/api';
+import { invitesService, notificationsService, privatePhotosService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 
@@ -113,6 +113,38 @@ export default function Notifications() {
     }
   };
 
+  const handleApproveInvite = async (notification: NotificationItem) => {
+    const inviteId = notification?.data?.inviteId ? String(notification.data.inviteId) : '';
+    if (!inviteId) return;
+    setBusyId(notification.id);
+    try {
+      await invitesService.approve(inviteId);
+      await markAsRead(notification.id);
+      setItems((prev) => prev.filter((n) => n.id !== notification.id));
+      toast({ title: 'Convite aprovado', description: 'O novo perfil já pode entrar na rede.' });
+    } catch {
+      toast({ title: 'Falha ao aprovar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDenyInvite = async (notification: NotificationItem) => {
+    const inviteId = notification?.data?.inviteId ? String(notification.data.inviteId) : '';
+    if (!inviteId) return;
+    setBusyId(notification.id);
+    try {
+      await invitesService.deny(inviteId);
+      await markAsRead(notification.id);
+      setItems((prev) => prev.filter((n) => n.id !== notification.id));
+      toast({ title: 'Convite negado', description: 'Esse cadastro não foi aprovado por você.' });
+    } catch {
+      toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto w-full">
       {/* Header */}
@@ -134,12 +166,15 @@ export default function Notifications() {
         {!isLoading &&
           items.map((notification) => {
             const isPrivateRequest = notification.type === 'private_photos.request';
+            const isInvitePending = notification.type === 'invite.pending';
+            const hasInlineActions = isPrivateRequest || isInvitePending;
             
             const Icon = (() => {
               const type = notification.type;
               if (type.includes('liked')) return Heart;
               if (type.includes('commented')) return MessageCircle;
               if (type.includes('testimonial')) return Star;
+              if (type.includes('invite')) return UserCheck;
               if (type.includes('private_photos')) return Lock;
               return Bell;
             })();
@@ -154,6 +189,7 @@ export default function Notifications() {
                   focusedId === notification.id && 'ring-2 ring-primary/40'
                 )}
                 onClick={() => {
+                  if (hasInlineActions) return;
                   void markAsRead(notification.id);
                   navigate(getNotificationHref(notification));
                 }}
@@ -179,6 +215,19 @@ export default function Notifications() {
                         Permitir
                       </Button>
                       <Button size="sm" variant="outline" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleDeny(notification); }}>
+                        <UserX className="w-4 h-4" />
+                        Negar
+                      </Button>
+                    </div>
+                  )}
+
+                  {isInvitePending && (
+                    <div className="flex items-center gap-2 mt-3">
+                      <Button size="sm" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleApproveInvite(notification); }}>
+                        <UserCheck className="w-4 h-4" />
+                        Aprovar entrada
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleDenyInvite(notification); }}>
                         <UserX className="w-4 h-4" />
                         Negar
                       </Button>

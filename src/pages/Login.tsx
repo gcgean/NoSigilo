@@ -158,9 +158,9 @@ export default function Login() {
           </form>
 
           <p className="mt-8 text-center text-muted-foreground">
-            Não tem uma conta?{' '}
+            Cadastro somente por convite.{' '}
             <Link to="/register" className="text-primary hover:underline font-medium">
-              Criar conta
+              Abrir tela de convite
             </Link>
           </p>
         </div>

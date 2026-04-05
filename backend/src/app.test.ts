@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import path from 'node:path';
 import { unlinkSync, existsSync, rmSync } from 'node:fs';
+import bcrypt from 'bcryptjs';
 import { initDb, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
@@ -37,11 +38,55 @@ async function createTestCtx(): Promise<Ctx> {
   return { app, db, dbFile, cleanup };
 }
 
+async function createBootstrapSponsor(ctx: Ctx, options?: { email?: string; name?: string; password?: string }) {
+  const id = `sponsor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const email = options?.email || `${id}@example.com`;
+  const password = options?.password || 'senha123';
+  const createdAt = new Date().toISOString();
+  await run(
+    ctx.db,
+    `INSERT INTO users (
+      id, email, password_hash, name, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at, invite_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, email, bcrypt.hashSync(password, 10), options?.name || 'Sponsor', 1, 1, 0, createdAt, createdAt, '2099-01-01T00:00:00.000Z', 'approved']
+  );
+  await ctx.db.persist();
+  const login = await request(ctx.app).post('/api/auth/login').send({ email, password }).expect(200);
+  return { id, email, password, token: login.body.token as string };
+}
+
+async function createInviteFor(ctx: Ctx, inviterToken: string) {
+  const response = await request(ctx.app).post('/api/invites').set('Authorization', `Bearer ${inviterToken}`).expect(200);
+  return response.body as { id: string; token: string; url: string };
+}
+
+async function registerApprovedUser(
+  ctx: Ctx,
+  inviterToken: string,
+  data: { name: string; email: string; password: string; gender: string; birthDate?: string; city?: string; state?: string; lookingFor?: string[] }
+) {
+  const invite = await createInviteFor(ctx, inviterToken);
+  const registerResponse = await request(ctx.app)
+    .post('/api/auth/register')
+    .send({ ...data, inviteToken: invite.token })
+    .expect(202);
+  expect(registerResponse.body.status).toBe('pending_approval');
+  await request(ctx.app).post(`/api/invites/${invite.id}/approve`).set('Authorization', `Bearer ${inviterToken}`).expect(200);
+  const login = await request(ctx.app)
+    .post('/api/auth/login')
+    .send({ email: data.email, password: data.password })
+    .expect(200);
+  return { invite, registerResponse, token: login.body.token as string, user: login.body.user as any };
+}
+
 describe('nosigilo backend', () => {
   let ctx: Ctx;
+  let sponsorToken: string;
 
   beforeAll(async () => {
     ctx = await createTestCtx();
+    const sponsor = await createBootstrapSponsor(ctx, { email: 'sponsor@example.com', name: 'Sponsor Principal' });
+    sponsorToken = sponsor.token;
   });
 
   afterAll(async () => {
@@ -49,31 +94,60 @@ describe('nosigilo backend', () => {
   });
 
   it('register/login/me flow works', async () => {
-    const reg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Teste',
-        email: 'teste@example.com',
-        password: 'senha123',
-        birthDate: '1999-01-01',
-        gender: 'Homem',
-        lookingFor: ['Mulher'],
-      })
-      .expect(200);
+    const reg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Teste',
+      email: 'teste@example.com',
+      password: 'senha123',
+      birthDate: '1999-01-01',
+      gender: 'Homem',
+      lookingFor: ['Mulher'],
+    });
 
-    expect(reg.body.token).toBeTypeOf('string');
-    expect(reg.body.user.email).toBe('teste@example.com');
+    expect(reg.token).toBeTypeOf('string');
+    expect(reg.user.email).toBe('teste@example.com');
 
-    const login = await request(ctx.app)
-      .post('/api/auth/login')
-      .send({ email: 'teste@example.com', password: 'senha123' })
-      .expect(200);
-
-    const token = login.body.token;
+    const token = reg.token;
     expect(token).toBeTypeOf('string');
 
     const me = await request(ctx.app).get('/api/auth/me').set('Authorization', `Bearer ${token}`).expect(200);
     expect(me.body.email).toBe('teste@example.com');
+    expect(me.body.invitedBy?.name).toBe('Sponsor Principal');
+  });
+
+  it('invite-only registration requires approval from the sponsor', async () => {
+    const invite = await createInviteFor(ctx, sponsorToken);
+
+    const publicInfo = await request(ctx.app).get(`/api/invites/public/${invite.token}`).expect(200);
+    expect(publicInfo.body.canRegister).toBe(true);
+    expect(publicInfo.body.inviter.name).toBe('Sponsor Principal');
+
+    const pendingRegister = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Convidado Pendente',
+        email: 'pendente@example.com',
+        password: 'senha123',
+        gender: 'Homem',
+        inviteToken: invite.token,
+      })
+      .expect(202);
+    expect(pendingRegister.body.status).toBe('pending_approval');
+
+    await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: 'pendente@example.com', password: 'senha123' })
+      .expect(403);
+
+    const inviteList = await request(ctx.app).get('/api/invites').set('Authorization', `Bearer ${sponsorToken}`).expect(200);
+    expect(inviteList.body.some((item: any) => item.id === invite.id && item.status === 'pending_approval')).toBe(true);
+
+    await request(ctx.app).post(`/api/invites/${invite.id}/approve`).set('Authorization', `Bearer ${sponsorToken}`).expect(200);
+
+    const login = await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: 'pendente@example.com', password: 'senha123' })
+      .expect(200);
+    expect(login.body.user.invitedBy?.name).toBe('Sponsor Principal');
   });
 
   it('cities search and nearest work', async () => {
@@ -102,40 +176,60 @@ describe('nosigilo backend', () => {
   });
 
   it('onboarding suggestions returns matching users', async () => {
-    await request(ctx.app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Maria',
-        email: 'maria@example.com',
-        password: 'senha123',
-        birthDate: '1998-01-01',
-        gender: 'Mulher',
-        city: 'São Paulo',
-        state: 'SP',
-        lookingFor: ['Homem'],
-      })
-      .expect(200);
+    await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Casal Alpha',
+      email: 'casal-alpha@example.com',
+      password: 'senha123',
+      birthDate: '1994-01-01',
+      gender: 'Casal (Ele/Ela)',
+      city: 'São Paulo',
+      state: 'SP',
+    });
+
+    await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Maria',
+      email: 'maria@example.com',
+      password: 'senha123',
+      birthDate: '1998-01-01',
+      gender: 'Mulher',
+      city: 'São Paulo',
+      state: 'SP',
+      lookingFor: ['Homem'],
+    });
 
     const sug = await request(ctx.app).get('/api/onboarding/suggestions').query({ lookingFor: 'Mulher', city: 'São Paulo', state: 'SP' }).expect(200);
     expect(Array.isArray(sug.body)).toBe(true);
     expect(sug.body.some((u: any) => u.name === 'Maria')).toBe(true);
+
+    const sugAudiencePriority = await request(ctx.app)
+      .get('/api/onboarding/suggestions')
+      .query({ lookingFor: 'Casal (Ele/Ela),Mulher,Homem', city: 'São Paulo', state: 'SP' })
+      .expect(200);
+    expect(Array.isArray(sugAudiencePriority.body)).toBe(true);
+    expect(sugAudiencePriority.body[0]?.gender).toContain('Casal');
   });
 
   it('non-premium can send but cannot read received messages', async () => {
-    const regA = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'A', email: 'a@example.com', password: 'senha123', birthDate: '1990-01-01', gender: 'Homem' })
-      .expect(200);
-    const tokenA = regA.body.token;
-    const idA = regA.body.user.id;
+    const regA = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'A',
+      email: 'a@example.com',
+      password: 'senha123',
+      birthDate: '1990-01-01',
+      gender: 'Homem',
+    });
+    const tokenA = regA.token;
+    const idA = regA.user.id;
     await run(ctx.db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', ['2000-01-01T00:00:00.000Z', idA]);
 
-    const regB = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'B', email: 'b@example.com', password: 'senha123', birthDate: '1990-01-01', gender: 'Mulher' })
-      .expect(200);
-    const tokenB = regB.body.token;
-    const idB = regB.body.user.id;
+    const regB = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'B',
+      email: 'b@example.com',
+      password: 'senha123',
+      birthDate: '1990-01-01',
+      gender: 'Mulher',
+    });
+    const tokenB = regB.token;
+    const idB = regB.user.id;
 
     const conv = await request(ctx.app)
       .post('/api/conversations')
@@ -173,12 +267,15 @@ describe('nosigilo backend', () => {
   });
 
   it('posts, uploads, likes and comments persist and can be read', async () => {
-    const reg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'Autor', email: 'autor@example.com', password: 'senha123', gender: 'Homem', lookingFor: ['Mulher'] })
-      .expect(200);
-    const token = reg.body.token as string;
-    const userId = reg.body.user.id as string;
+    const reg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Autor',
+      email: 'autor@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      lookingFor: ['Mulher'],
+    });
+    const token = reg.token;
+    const userId = reg.user.id as string;
 
     const imageUpload = await request(ctx.app)
       .post('/api/media/upload')
@@ -250,19 +347,23 @@ describe('nosigilo backend', () => {
   });
 
   it('likes and comments generate notifications for post owner', async () => {
-    const ownerReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'Owner', email: 'owner-post@example.com', password: 'senha123', gender: 'Homem' })
-      .expect(200);
-    const ownerToken = ownerReg.body.token as string;
-    const ownerId = ownerReg.body.user.id as string;
+    const ownerReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Owner',
+      email: 'owner-post@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const ownerToken = ownerReg.token;
+    const ownerId = ownerReg.user.id as string;
 
-    const actorReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'Actor', email: 'actor-post@example.com', password: 'senha123', gender: 'Mulher' })
-      .expect(200);
-    const actorToken = actorReg.body.token as string;
-    const actorId = actorReg.body.user.id as string;
+    const actorReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Actor',
+      email: 'actor-post@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const actorToken = actorReg.token;
+    const actorId = actorReg.user.id as string;
 
     const post = await request(ctx.app)
       .post('/api/posts')
@@ -295,19 +396,23 @@ describe('nosigilo backend', () => {
   });
 
   it('private photos require approval and generate notifications', async () => {
-    const ownerReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'Dono', email: 'dono@example.com', password: 'senha123', gender: 'Homem' })
-      .expect(200);
-    const ownerToken = ownerReg.body.token as string;
-    const ownerId = ownerReg.body.user.id as string;
+    const ownerReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Dono',
+      email: 'dono@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const ownerToken = ownerReg.token;
+    const ownerId = ownerReg.user.id as string;
 
-    const viewerReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'Visitante', email: 'visitante@example.com', password: 'senha123', gender: 'Mulher' })
-      .expect(200);
-    const viewerToken = viewerReg.body.token as string;
-    const viewerId = viewerReg.body.user.id as string;
+    const viewerReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Visitante',
+      email: 'visitante@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const viewerToken = viewerReg.token;
+    const viewerId = viewerReg.user.id as string;
 
     const privUpload = await request(ctx.app)
       .post('/api/media/upload')
@@ -336,10 +441,24 @@ describe('nosigilo backend', () => {
     expect(notif).toBeTruthy();
     expect(notif.data.requesterId).toBe(viewerId);
 
+    const pendingList = await request(ctx.app)
+      .get('/api/private-photos/requests')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(Array.isArray(pendingList.body)).toBe(true);
+    expect(pendingList.body.some((item: any) => item.id === String(notif.data.requestId) && item.status === 'pending')).toBe(true);
+
     await request(ctx.app)
       .post(`/api/private-photos/requests/${notif.data.requestId}/approve`)
       .set('Authorization', `Bearer ${ownerToken}`)
       .expect(200);
+
+    const approvedList = await request(ctx.app)
+      .get('/api/private-photos/requests')
+      .query({ status: 'approved' })
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(approvedList.body.some((item: any) => item.id === String(notif.data.requestId) && item.status === 'approved')).toBe(true);
 
     const viewerNotifs = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${viewerToken}`).expect(200);
     expect(viewerNotifs.body.some((n: any) => n.type === 'private_photos.approved')).toBe(true);
@@ -355,16 +474,30 @@ describe('nosigilo backend', () => {
     const url = privPhotos.body.find((p: any) => p.id === privateMediaId).url as string;
     const fileRes = await request(ctx.app).get(url).expect(200);
     expect(String(fileRes.headers['content-type'] || '')).toContain('image/');
+
+    await request(ctx.app)
+      .post(`/api/private-photos/requests/${notif.data.requestId}/revoke`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    await request(ctx.app)
+      .get(`/api/users/${ownerId}/photos`)
+      .query({ visibility: 'private' })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(403);
+
+    const viewerNotifsAfterRevoke = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${viewerToken}`).expect(200);
+    expect(viewerNotifsAfterRevoke.body.some((n: any) => n.type === 'private_photos.revoked')).toBe(true);
   });
 
   it('friends requests persist and can be read', async () => {
-    const regA = await request(ctx.app).post('/api/auth/register').send({ name: 'A2', email: 'a2@example.com', password: 'senha123', gender: 'Homem' }).expect(200);
-    const tokenA = regA.body.token as string;
-    const idA = regA.body.user.id as string;
+    const regA = await registerApprovedUser(ctx, sponsorToken, { name: 'A2', email: 'a2@example.com', password: 'senha123', gender: 'Homem' });
+    const tokenA = regA.token;
+    const idA = regA.user.id as string;
 
-    const regB = await request(ctx.app).post('/api/auth/register').send({ name: 'B2', email: 'b2@example.com', password: 'senha123', gender: 'Mulher' }).expect(200);
-    const tokenB = regB.body.token as string;
-    const idB = regB.body.user.id as string;
+    const regB = await registerApprovedUser(ctx, sponsorToken, { name: 'B2', email: 'b2@example.com', password: 'senha123', gender: 'Mulher' });
+    const tokenB = regB.token;
+    const idB = regB.user.id as string;
 
     const reqRes = await request(ctx.app).post('/api/friends').set('Authorization', `Bearer ${tokenA}`).send({ userId: idB }).expect(200);
     const requestId = reqRes.body.id as string;
@@ -383,19 +516,23 @@ describe('nosigilo backend', () => {
   });
 
   it('lists conversations after sending a message', async () => {
-    const regA = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'ConvA', email: 'conva@example.com', password: 'senha123', gender: 'Homem' })
-      .expect(200);
-    const tokenA = regA.body.token as string;
-    const idA = regA.body.user.id as string;
+    const regA = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'ConvA',
+      email: 'conva@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const tokenA = regA.token;
+    const idA = regA.user.id as string;
 
-    const regB = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'ConvB', email: 'convb@example.com', password: 'senha123', gender: 'Mulher' })
-      .expect(200);
-    const tokenB = regB.body.token as string;
-    const idB = regB.body.user.id as string;
+    const regB = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'ConvB',
+      email: 'convb@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const tokenB = regB.token;
+    const idB = regB.user.id as string;
 
     const conv = await request(ctx.app)
       .post('/api/conversations')
@@ -420,19 +557,27 @@ describe('nosigilo backend', () => {
   });
 
   it('premium users can create events with notifications enabled', async () => {
-    const hostReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'EventoA', email: 'eventoa@example.com', password: 'senha123', gender: 'Homem', city: 'Fortaleza', state: 'CE' })
-      .expect(200);
-    const hostToken = hostReg.body.token as string;
-    const hostId = hostReg.body.user.id as string;
+    const hostReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'EventoA',
+      email: 'eventoa@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+    const hostToken = hostReg.token;
+    const hostId = hostReg.user.id as string;
 
-    const guestReg = await request(ctx.app)
-      .post('/api/auth/register')
-      .send({ name: 'EventoB', email: 'eventob@example.com', password: 'senha123', gender: 'Mulher', city: 'Fortaleza', state: 'CE' })
-      .expect(200);
-    const guestToken = guestReg.body.token as string;
-    const guestId = guestReg.body.user.id as string;
+    const guestReg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'EventoB',
+      email: 'eventob@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+    const guestToken = guestReg.token;
+    const guestId = guestReg.user.id as string;
 
     await request(ctx.app)
       .put('/api/location')

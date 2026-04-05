@@ -21,6 +21,7 @@ import Plans from "./pages/Plans";
 import Subscriptions from "./pages/Subscriptions";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
+import Guidelines from "./pages/Guidelines";
 import DevTest from "./pages/DevTest";
 
 // Protected Pages
@@ -64,6 +65,7 @@ const App = () => (
                     <Route path="/plans" element={<Plans />} />
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/privacy" element={<Privacy />} />
+                    <Route path="/guidelines" element={<Guidelines />} />
                     <Route path="/dev-test" element={<DevTest />} />
                     <Route path="/favorites" element={<Favorites />} />
 

@@ -1,10 +1,45 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Heart, Users, Shield, Sparkles, ArrowRight, MessageCircle, Star } from 'lucide-react';
+import { Heart, Users, Shield, Sparkles, ArrowRight, MessageCircle, Star, BadgeAlert, EyeOff, HeartHandshake } from 'lucide-react';
+import { useAgeGate } from '@/contexts/AgeGateContext';
 
 export default function Landing() {
+  const { hasConfirmedAge, confirmAge } = useAgeGate();
+
   return (
     <div className="min-h-screen bg-background">
+      {!hasConfirmedAge && (
+        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md p-4 flex items-center justify-center">
+          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[hsl(0_0%_8%)] p-6 sm:p-8 shadow-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm text-primary mb-4">
+              <BadgeAlert className="w-4 h-4" />
+              Acesso restrito para maiores de 18 anos
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Ambiente adulto, discreto e consensual</h2>
+            <p className="text-muted-foreground mb-6">
+              O NoSigilo é uma rede social adulta voltada principalmente para casais e singles femininos e masculinos.
+              Ao entrar, você confirma que tem 18 anos ou mais e concorda com nossas regras de consentimento, privacidade e conduta.
+            </p>
+            <div className="grid gap-3 text-sm text-muted-foreground mb-6">
+              <div>Conteúdo e interações apenas entre adultos.</div>
+              <div>Privacidade, discrição e respeito são obrigatórios.</div>
+              <div>Perfis falsos, assédio, exposição indevida e conteúdo ilegal resultam em bloqueio.</div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button className="bg-gradient-primary hover:opacity-90" onClick={confirmAge}>
+                Tenho 18 anos ou mais
+              </Button>
+              <Link to="/terms">
+                <Button variant="outline" className="w-full">Ler termos</Button>
+              </Link>
+              <Link to="/guidelines">
+                <Button variant="ghost" className="w-full">Diretrizes</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 bg-gradient-hero" />
@@ -36,7 +71,7 @@ export default function Landing() {
               </Link>
               <Link to="/register">
                 <Button className="h-10 px-3 sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
-                  Criar Conta
+                  Entrar com convite
                 </Button>
               </Link>
             </div>
@@ -47,24 +82,30 @@ export default function Landing() {
         <div className="relative z-10 container mx-auto px-4 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6 animate-fade-in">
             <Star className="w-4 h-4 text-gold" />
-            <span className="text-sm text-primary">+18 • Rede Social Adulta</span>
+            <span className="text-sm text-primary">+18 • Rede adulta com foco em casais e singles</span>
           </div>
 
           <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6 animate-slide-up">
-            Conecte-se com
+            Encontros adultos com
             <br />
-            <span className="text-gradient">quem você deseja</span>
+            <span className="text-gradient">discrição, consentimento e segurança</span>
           </h1>
 
           <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            Uma plataforma segura e discreta para encontrar pessoas especiais.
-            Matches autênticos, conversas reais.
+            Um ambiente +18 pensado principalmente para casais e singles femininos e masculinos que buscam conexões reais,
+            privacidade, controle de acesso e convivência respeitosa.
           </p>
+
+          <div className="mb-8 flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '0.15s' }}>
+            <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Confirmação +18</span>
+            <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Fotos privadas com controle</span>
+            <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Consentimento e moderação</span>
+          </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
             <Link to="/register">
               <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-glow text-lg px-8 py-6 gap-2">
-                Começar Agora
+                Usar meu convite
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
@@ -84,25 +125,35 @@ export default function Landing() {
             Por que escolher o <span className="text-gradient">NoSigilo?</span>
           </h2>
           <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-16">
-            Uma experiência única pensada para você encontrar conexões verdadeiras.
+            Uma experiência adulta e responsável, com foco em confiança, discrição e afinidade real.
           </p>
 
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard
-              icon={Heart}
-              title="Matches Inteligentes"
-              description="Algoritmo que entende suas preferências e encontra pessoas compatíveis."
+              icon={Users}
+              title="Foco em Casais e Singles"
+              description="Estrutura pensada para casais e perfis femininos e masculinos solteiros encontrarem conexões compatíveis."
             />
             <FeatureCard
               icon={Shield}
-              title="Privacidade Garantida"
-              description="Controle total sobre quem vê seu perfil e suas fotos privadas."
+              title="Privacidade com Controle"
+              description="Escolha quem pode acessar suas fotos privadas e revogue acessos sempre que quiser."
             />
             <FeatureCard
-              icon={MessageCircle}
-              title="Chat em Tempo Real"
-              description="Converse instantaneamente com seus matches de forma segura."
+              icon={HeartHandshake}
+              title="Consentimento e Respeito"
+              description="O ambiente prioriza consentimento claro, discrição e convivência sem assédio."
             />
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-3 gap-6">
+            <TrustCard icon={BadgeAlert} title="Uso apenas +18" description="Cadastro e uso destinados exclusivamente a adultos." />
+            <TrustCard icon={EyeOff} title="Discrição real" description="Fotos privadas, controle de acesso e foco em privacidade." />
+            <TrustCard icon={MessageCircle} title="Conduta monitorada" description="Assédio, exposição indevida e conteúdo ilegal não são tolerados." />
           </div>
         </div>
       </section>
@@ -113,16 +164,23 @@ export default function Landing() {
           <div className="glass-strong rounded-3xl p-12 max-w-3xl mx-auto shadow-glow">
             <Users className="w-16 h-16 text-primary mx-auto mb-6" />
             <h2 className="text-3xl font-bold mb-4">
-              Junte-se a milhares de pessoas
+              Entre em uma rede adulta mais segura e madura
             </h2>
             <p className="text-muted-foreground mb-8">
-              Comece gratuitamente e descubra um novo mundo de possibilidades.
+              Leia as diretrizes, confirme sua idade e entre apenas por convite de alguém já aprovado na rede.
             </p>
-            <Link to="/register">
-              <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-glow text-lg px-8">
-                Criar Minha Conta Grátis
-              </Button>
-            </Link>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link to="/register">
+                <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-glow text-lg px-8">
+                  Usar meu convite
+                </Button>
+              </Link>
+              <Link to="/guidelines">
+                <Button size="lg" variant="outline" className="text-lg px-8">
+                  Ver Diretrizes
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -143,6 +201,9 @@ export default function Landing() {
               <Link to="/privacy" className="hover:text-primary transition-colors">
                 Privacidade
               </Link>
+              <Link to="/guidelines" className="hover:text-primary transition-colors">
+                Diretrizes
+              </Link>
               <Link to="/plans" className="hover:text-primary transition-colors">
                 Planos
               </Link>
@@ -154,6 +215,18 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function TrustCard({ icon: Icon, title, description }: { icon: any; title: string; description: string }) {
+  return (
+    <div className="glass rounded-2xl p-6">
+      <div className="w-12 h-12 rounded-xl bg-primary/12 flex items-center justify-center mb-4">
+        <Icon className="w-5 h-5 text-primary" />
+      </div>
+      <h3 className="text-lg font-semibold mb-2">{title}</h3>
+      <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );
 }

@@ -18,7 +18,7 @@ export default function Terms() {
         </div>
 
         <div className="prose prose-invert max-w-none glass rounded-2xl p-8">
-          <p className="text-muted-foreground">Última atualização: Janeiro de 2025</p>
+          <p className="text-muted-foreground">Última atualização: Abril de 2026</p>
 
           <h2>1. Aceitação dos Termos</h2>
           <p>
@@ -31,11 +31,18 @@ export default function Terms() {
             Você deve ter pelo menos 18 anos de idade para usar este serviço.
             Ao criar uma conta, você confirma que tem 18 anos ou mais.
           </p>
+          <p>
+            O NoSigilo é uma plataforma adulta voltada principalmente para casais e singles femininos e masculinos.
+            É proibido usar o serviço em nome de menores, intermediar conteúdo envolvendo menores ou simular idade falsa.
+          </p>
 
           <h2>3. Conta do Usuário</h2>
           <p>
             Você é responsável por manter a confidencialidade de sua conta e senha.
             Você concorda em aceitar responsabilidade por todas as atividades que ocorram em sua conta.
+          </p>
+          <p>
+            Você deve fornecer informações verdadeiras, manter seu perfil atualizado e responder por todo conteúdo, mídia e interação realizada a partir da sua conta.
           </p>
 
           <h2>4. Conteúdo do Usuário</h2>
@@ -47,15 +54,33 @@ export default function Terms() {
             <li>Assediar, ameaçar ou intimidar outros usuários</li>
             <li>Criar perfis falsos ou enganosos</li>
             <li>Compartilhar conteúdo de menores de idade</li>
+            <li>Divulgar imagens, vídeos, prints ou dados privados de terceiros sem autorização expressa</li>
+            <li>Utilizar a plataforma para fraude, golpe, extorsão, chantagem ou exploração sexual</li>
           </ul>
 
-          <h2>5. Privacidade</h2>
+          <h2>5. Consentimento e Conduta</h2>
+          <p>
+            Toda interação deve ser consensual. Recusas, limites pessoais, bloqueios e silencios devem ser respeitados imediatamente.
+            O uso da plataforma pressupõe abordagem respeitosa, sem pressão, coação ou perseguição.
+          </p>
+
+          <h2>6. Privacidade</h2>
           <p>
             Sua privacidade é importante para nós. Consulte nossa Política de Privacidade
             para informações sobre como coletamos e usamos seus dados.
           </p>
+          <p>
+            Recursos como fotos privadas, permissões de acesso e controles de visibilidade existem para reforçar a discrição,
+            mas o usuário continua sendo responsável por agir com cautela ao compartilhar conteúdo e dados pessoais.
+          </p>
 
-          <h2>6. Modificações</h2>
+          <h2>7. Moderação e Medidas</h2>
+          <p>
+            Podemos remover conteúdo, limitar funcionalidades, suspender ou encerrar contas que violem estes Termos,
+            as Diretrizes da Comunidade ou a legislação aplicável. Em casos graves, poderemos preservar registros para cooperação com autoridades.
+          </p>
+
+          <h2>8. Modificações</h2>
           <p>
             Reservamos o direito de modificar estes termos a qualquer momento.
             Notificaremos os usuários sobre alterações significativas.

@@ -15,14 +15,14 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { CitySearch } from '@/components/CitySearch';
 
 const genderOptions = [
-  'Homem',
-  'Mulher',
-  'Casal (Ele/Ela)',
-  'Casal (Ele/Ele)',
-  'Casal (Ela/Ela)',
-  'Transexual',
-  'Crossdresser (CD)',
-  'Travesti',
+  { value: 'Mulher', label: 'Mulher solteira' },
+  { value: 'Homem', label: 'Homem solteiro' },
+  { value: 'Casal (Ele/Ela)', label: 'Casal (Ele/Ela)' },
+  { value: 'Casal (Ele/Ele)', label: 'Casal (Ele/Ele)' },
+  { value: 'Casal (Ela/Ela)', label: 'Casal (Ela/Ela)' },
+  { value: 'Transexual', label: 'Pessoa trans' },
+  { value: 'Crossdresser (CD)', label: 'Crossdresser (CD)' },
+  { value: 'Travesti', label: 'Travesti' },
 ];
 
 export default function SearchPage() {
@@ -83,7 +83,7 @@ export default function SearchPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Buscar</h1>
-        <p className="text-muted-foreground">Encontre pessoas interessantes</p>
+        <p className="text-muted-foreground">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
 
       {/* Search & Filters */}
@@ -157,25 +157,26 @@ export default function SearchPage() {
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-3 block">Interesse em</label>
+            <label className="text-sm font-medium mb-3 block">Perfis que você quer encontrar</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-4 gap-x-2">
               {genderOptions.map((opt) => (
-                <div key={opt} className="flex items-center space-x-2 group cursor-pointer" onClick={() => handleGenderToggle(opt)}>
+                <div key={opt.value} className="flex items-center space-x-2 group cursor-pointer" onClick={() => handleGenderToggle(opt.value)}>
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                    selectedGenders.includes(opt) 
+                    selectedGenders.includes(opt.value) 
                       ? 'border-primary bg-primary/10' 
                       : 'border-muted-foreground/30 group-hover:border-primary/50'
                   }`}>
-                    {selectedGenders.includes(opt) && (
+                    {selectedGenders.includes(opt.value) && (
                       <div className="w-2.5 h-2.5 rounded-full bg-primary" />
                     )}
                   </div>
                   <span className="text-sm cursor-pointer select-none">
-                    {opt}
+                    {opt.label}
                   </span>
                 </div>
               ))}
             </div>
+            <p className="text-xs text-muted-foreground mt-3">Priorização sugerida do NoSigilo: casais, mulheres solteiras e homens solteiros, conforme o filtro escolhido.</p>
           </div>
 
           <div className="flex justify-stretch sm:justify-end">

@@ -16,6 +16,14 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'Nome de usuário já em uso', description: 'Escolha outro nome para continuar.' };
     case 'invalid_input':
       return { title: 'Dados inválidos', description: 'Verifique os campos e tente novamente.' };
+    case 'invalid_invite':
+      return { title: 'Convite inválido', description: 'Esse link de convite não é válido ou já expirou.' };
+    case 'invite_unavailable':
+      return { title: 'Convite indisponível', description: 'Esse convite não está mais disponível para novo cadastro.' };
+    case 'pending_invite_approval':
+      return { title: 'Aguardando aprovação', description: 'Seu padrinho ainda não aprovou sua entrada na rede.' };
+    case 'invite_access_denied':
+      return { title: 'Acesso não aprovado', description: 'Seu padrinho não aprovou esse cadastro.' };
     case 'unauthorized':
       return { title: 'Não autorizado', description: 'Faça login novamente.' };
     default:

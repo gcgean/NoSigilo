@@ -51,10 +51,76 @@ export type PublicUser = {
   createdAt?: string | null;
   lastSeenAt?: string | null;
   isOnline?: boolean;
+  invitationStatus?: string | null;
+  invitedBy?: { id: string; name: string; avatar?: string | null } | null;
+};
+
+type InviteRow = {
+  id: string;
+  inviter_user_id: string;
+  invite_token: string;
+  invitee_user_id?: string | null;
+  invitee_email?: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  approved_at?: string | null;
+  used_at?: string | null;
+  revoked_at?: string | null;
+  inviter_name?: string | null;
+  inviter_avatar?: string | null;
+  invitee_name?: string | null;
+  invitee_avatar?: string | null;
 };
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function parseAudiencePreferences(value: string | null | undefined) {
+  return String(value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function buildAudiencePriorityOrder(column: string, preferences: string[]) {
+  const orderParts: string[] = [];
+  const params: any[] = [];
+  let rank = 0;
+  const prefs = Array.from(new Set(preferences));
+
+  const hasCouplePreference = prefs.some((pref) => pref.startsWith('Casal'));
+  if (hasCouplePreference) {
+    orderParts.push(`CASE WHEN ${column} LIKE ? THEN ${rank++} ELSE ${rank} END`);
+    params.push('Casal%');
+  }
+  if (prefs.includes('Mulher')) {
+    orderParts.push(`CASE WHEN ${column} = ? THEN ${rank++} ELSE ${rank} END`);
+    params.push('Mulher');
+  }
+  if (prefs.includes('Homem')) {
+    orderParts.push(`CASE WHEN ${column} = ? THEN ${rank++} ELSE ${rank} END`);
+    params.push('Homem');
+  }
+
+  for (const pref of prefs) {
+    if (pref === 'Mulher' || pref === 'Homem' || pref.startsWith('Casal')) continue;
+    orderParts.push(`CASE WHEN ${column} = ? THEN ${rank++} ELSE ${rank} END`);
+    params.push(pref);
+  }
+
+  return { orderParts, params };
+}
+
+function baseAudienceRankingSql(column: string) {
+  return `CASE
+    WHEN ${column} LIKE 'Casal%' THEN 0
+    WHEN ${column} = 'Mulher' THEN 1
+    WHEN ${column} = 'Homem' THEN 2
+    ELSE 3
+  END`;
 }
 
 function addDaysIso(iso: string, days: number) {
@@ -228,6 +294,59 @@ function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: b
     createdAt: row.created_at ?? null,
     lastSeenAt: row.last_seen_at ?? null,
     isOnline: isOnline ?? false,
+    invitationStatus: row.invite_status ?? null,
+    invitedBy:
+      row.invited_by_user_id && row.inviter_name
+        ? {
+            id: String(row.invited_by_user_id),
+            name: String(row.inviter_name),
+            avatar: row.inviter_avatar ?? null,
+          }
+        : null,
+  };
+}
+
+async function getUserWithSponsorById(db: DbHandle, userId: string) {
+  return queryOne(
+    db,
+    `SELECT u.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+     FROM users u
+     LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
+     WHERE u.id = ?
+     LIMIT 1`,
+    [userId]
+  );
+}
+
+function inviteStatusError(status: string) {
+  if (status === 'pending') return 'pending_invite_approval';
+  if (status === 'denied') return 'invite_access_denied';
+  return 'unauthorized';
+}
+
+function rowToInvite(invite: InviteRow) {
+  return {
+    id: String(invite.id),
+    token: String(invite.invite_token),
+    status: String(invite.status),
+    createdAt: String(invite.created_at),
+    updatedAt: String(invite.updated_at),
+    approvedAt: invite.approved_at ?? null,
+    usedAt: invite.used_at ?? null,
+    revokedAt: invite.revoked_at ?? null,
+    inviteeEmail: invite.invitee_email ?? null,
+    inviter: {
+      id: String(invite.inviter_user_id),
+      name: String(invite.inviter_name || ''),
+      avatar: invite.inviter_avatar ?? null,
+    },
+    invitee: invite.invitee_user_id
+      ? {
+          id: String(invite.invitee_user_id),
+          name: invite.invitee_name ? String(invite.invitee_name) : null,
+          avatar: invite.invitee_avatar ?? null,
+        }
+      : null,
   };
 }
 
@@ -550,11 +669,43 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ available: !existing });
   });
 
+  app.get('/api/invites/public/:token', async (req, res) => {
+    const token = String(req.params.token || '').trim();
+    if (!token) {
+      res.status(400).json({ error: 'invalid_invite' });
+      return;
+    }
+    const invite = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       WHERE i.invite_token = ?
+       LIMIT 1`,
+      [token]
+    )) as InviteRow | null;
+    if (!invite) {
+      res.status(404).json({ error: 'invalid_invite' });
+      return;
+    }
+    res.json({
+      id: String(invite.id),
+      status: String(invite.status),
+      canRegister: String(invite.status) === 'created',
+      inviter: {
+        id: String(invite.inviter_user_id),
+        name: String(invite.inviter_name || ''),
+        avatar: invite.inviter_avatar ?? null,
+      },
+    });
+  });
+
   app.post('/api/auth/register', authRateLimiter, async (req, res) => {
     const schema = z.object({
       email: z.string().email(),
       password: z.string().min(6),
       name: z.string().min(1),
+      inviteToken: z.string().min(12),
       birthDate: z.string().optional(),
       gender: z.string().optional(),
       city: z.string().optional(),
@@ -569,6 +720,25 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const email = parsed.data.email.toLowerCase();
     const name = parsed.data.name.trim();
+    const inviteToken = parsed.data.inviteToken.trim();
+
+    const invite = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       WHERE i.invite_token = ?
+       LIMIT 1`,
+      [inviteToken]
+    )) as InviteRow | null;
+    if (!invite) {
+      res.status(404).json({ error: 'invalid_invite' });
+      return;
+    }
+    if (String(invite.status) !== 'created') {
+      res.status(409).json({ error: 'invite_unavailable', status: invite.status });
+      return;
+    }
 
     const existingEmail = await queryOne(db, 'SELECT id FROM users WHERE email = ?', [email]);
     if (existingEmail) {
@@ -592,8 +762,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       INSERT INTO users (
         id, email, password_hash, name, avatar, bio, status, city, state, birth_date, gender, marital_status,
         sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes, drinks, profession, zodiac_sign,
-        looking_for_json, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        looking_for_json, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at,
+        invited_by_user_id, invite_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         id,
@@ -625,14 +796,33 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         createdAt,
         createdAt,
         trialEndsAt,
+        String(invite.inviter_user_id),
+        'pending',
       ]
+    );
+    await run(
+      db,
+      'UPDATE invite_links SET invitee_user_id = ?, invitee_email = ?, status = ?, used_at = ?, updated_at = ? WHERE id = ?',
+      [id, email, 'pending_approval', createdAt, createdAt, String(invite.id)]
     );
     await persist();
 
-    const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [id]);
-    const presence = req.app.get('presence');
-    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true });
-    res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
+    await createNotification(
+      { db, io: req.app.get('io') },
+      {
+        userId: String(invite.inviter_user_id),
+        type: 'invite.pending',
+        title: 'Novo convidado aguardando sua aprovação',
+        description: `${name} concluiu o cadastro por convite e está aguardando sua aprovação.`,
+        dataJson: { inviteId: String(invite.id), inviteeUserId: id, inviteeName: name, inviteeEmail: email },
+      }
+    );
+
+    res.status(202).json({
+      status: 'pending_approval',
+      inviteId: String(invite.id),
+      inviter: { id: String(invite.inviter_user_id), name: String(invite.inviter_name || ''), avatar: invite.inviter_avatar ?? null },
+    });
   });
 
   app.post('/api/auth/login', authRateLimiter, async (req, res) => {
@@ -648,18 +838,193 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
+    if (row.invite_status && String(row.invite_status) !== 'approved') {
+      res.status(403).json({ error: inviteStatusError(String(row.invite_status)) });
+      return;
+    }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
     if (!ok) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
+    const hydratedRow = await getUserWithSponsorById(db, String(row.id));
     const presence = req.app.get('presence');
-    const user = rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true });
+    const user = rowToPublicUser(hydratedRow || row, presence?.isOnline(String(row.id)), { showEmail: true });
     res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
   });
 
+  app.get('/api/invites', requireAuth(env, db), async (req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.inviter_user_id = ?
+       ORDER BY i.created_at DESC`,
+      [req.auth!.userId]
+    )) as InviteRow[];
+    res.json(rows.map(rowToInvite));
+  });
+
+  app.post('/api/invites', requireAuth(env, db), async (req, res) => {
+    const now = nowIso();
+    const id = randomUUID();
+    const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+    await run(
+      db,
+      'INSERT INTO invite_links (id, inviter_user_id, invite_token, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [id, req.auth!.userId, token, 'created', now, now]
+    );
+    await persist();
+    res.json({
+      id,
+      token,
+      status: 'created',
+      createdAt: now,
+      url: `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/register?invite=${encodeURIComponent(token)}`,
+    });
+  });
+
+  app.post('/api/invites/:inviteId/approve', requireAuth(env, db), async (req, res) => {
+    const inviteId = String(req.params.inviteId || '');
+    const invite = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow | null;
+    if (!invite || String(invite.inviter_user_id) !== req.auth!.userId) {
+      res.status(404).json({ error: 'invite_not_found' });
+      return;
+    }
+    if (String(invite.status) !== 'pending_approval' || !invite.invitee_user_id) {
+      res.status(409).json({ error: 'invite_not_pending' });
+      return;
+    }
+    const now = nowIso();
+    await run(db, 'UPDATE invite_links SET status = ?, approved_at = ?, updated_at = ? WHERE id = ?', ['approved', now, now, inviteId]);
+    await run(db, 'UPDATE users SET invite_status = ? WHERE id = ?', ['approved', String(invite.invitee_user_id)]);
+    await persist();
+    await createNotification(
+      { db, io: req.app.get('io') },
+      {
+        userId: String(invite.invitee_user_id),
+        type: 'invite.approved',
+        title: 'Seu acesso foi aprovado',
+        description: `${String(invite.inviter_name || 'Seu padrinho')} aprovou sua entrada na rede.`,
+        dataJson: { inviteId: String(invite.id), inviterUserId: String(invite.inviter_user_id) },
+      }
+    );
+    const refreshed = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow;
+    res.json(rowToInvite(refreshed));
+  });
+
+  app.post('/api/invites/:inviteId/deny', requireAuth(env, db), async (req, res) => {
+    const inviteId = String(req.params.inviteId || '');
+    const invite = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow | null;
+    if (!invite || String(invite.inviter_user_id) !== req.auth!.userId) {
+      res.status(404).json({ error: 'invite_not_found' });
+      return;
+    }
+    if (String(invite.status) !== 'pending_approval' || !invite.invitee_user_id) {
+      res.status(409).json({ error: 'invite_not_pending' });
+      return;
+    }
+    const now = nowIso();
+    await run(db, 'UPDATE invite_links SET status = ?, updated_at = ? WHERE id = ?', ['denied', now, inviteId]);
+    await run(db, 'UPDATE users SET invite_status = ? WHERE id = ?', ['denied', String(invite.invitee_user_id)]);
+    await persist();
+    await createNotification(
+      { db, io: req.app.get('io') },
+      {
+        userId: String(invite.invitee_user_id),
+        type: 'invite.denied',
+        title: 'Seu convite não foi aprovado',
+        description: `${String(invite.inviter_name || 'Seu padrinho')} não aprovou este cadastro.`,
+        dataJson: { inviteId: String(invite.id), inviterUserId: String(invite.inviter_user_id) },
+      }
+    );
+    const refreshed = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow;
+    res.json(rowToInvite(refreshed));
+  });
+
+  app.post('/api/invites/:inviteId/revoke', requireAuth(env, db), async (req, res) => {
+    const inviteId = String(req.params.inviteId || '');
+    const invite = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow | null;
+    if (!invite || String(invite.inviter_user_id) !== req.auth!.userId) {
+      res.status(404).json({ error: 'invite_not_found' });
+      return;
+    }
+    if (String(invite.status) !== 'created') {
+      res.status(409).json({ error: 'invite_not_revocable' });
+      return;
+    }
+    const now = nowIso();
+    await run(db, 'UPDATE invite_links SET status = ?, revoked_at = ?, updated_at = ? WHERE id = ?', ['revoked', now, now, inviteId]);
+    await persist();
+    const refreshed = (await queryOne(
+      db,
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+       FROM invite_links i
+       JOIN users inviter ON inviter.id = i.inviter_user_id
+       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
+       WHERE i.id = ?
+       LIMIT 1`,
+      [inviteId]
+    )) as InviteRow;
+    res.json(rowToInvite(refreshed));
+  });
+
   app.get('/api/auth/me', requireAuth(env, db), async (req, res) => {
-    const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
+    const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
@@ -850,7 +1215,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {
-    const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
+    const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
@@ -930,7 +1295,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       await persist();
     }
 
-    const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.auth!.userId]);
+    const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
   });
@@ -1157,6 +1522,65 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ id, status: 'pending' });
   });
 
+  app.get('/api/private-photos/requests', requireAuth(env, db), async (req, res) => {
+    const status = String(req.query.status || 'all');
+    const allowedStatuses = new Set(['all', 'pending', 'approved', 'denied']);
+    if (!allowedStatuses.has(status)) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const params: any[] = [req.auth!.userId];
+    const whereStatus = status === 'all' ? '' : 'AND r.status = ?';
+    if (status !== 'all') params.push(status);
+
+    const rows = await queryAll(
+      db,
+      `
+      SELECT
+        r.id,
+        r.status,
+        r.created_at,
+        r.updated_at,
+        u.id as requester_id,
+        u.name as requester_name,
+        u.avatar as requester_avatar,
+        u.city as requester_city,
+        u.state as requester_state
+      FROM private_photo_access_requests r
+      JOIN users u ON u.id = r.requester_user_id
+      WHERE r.owner_user_id = ?
+      ${whereStatus}
+      ORDER BY
+        CASE r.status
+          WHEN 'pending' THEN 0
+          WHEN 'approved' THEN 1
+          WHEN 'denied' THEN 2
+          ELSE 3
+        END,
+        COALESCE(r.updated_at, r.created_at) DESC
+      LIMIT 200
+    `,
+      params
+    );
+
+    res.json(
+      rows.map((r: any) => ({
+        id: String(r.id),
+        status: String(r.status),
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        requester: {
+          id: String(r.requester_id),
+          name: String(r.requester_name),
+          avatar: r.requester_avatar ?? null,
+          city: r.requester_city ?? null,
+          state: r.requester_state ?? null,
+        },
+      }))
+    );
+  });
+
   app.post('/api/private-photos/requests/:requestId/approve', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const requestId = String(req.params.requestId || '');
@@ -1179,6 +1603,34 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         type: 'private_photos.approved',
         title: 'Acesso às fotos privadas',
         description: `${owner?.name ? String(owner.name) : 'O usuário'} autorizou você a ver as fotos privadas.`,
+        dataJson: { ownerId: req.auth!.userId, ownerName: owner?.name ? String(owner.name) : null },
+      }
+    );
+    res.json({ ok: true });
+  });
+
+  app.post('/api/private-photos/requests/:requestId/revoke', requireAuth(env, db), async (req, res) => {
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const requestId = String(req.params.requestId || '');
+    const row = (await queryOne(
+      db,
+      'SELECT id, owner_user_id, requester_user_id, status FROM private_photo_access_requests WHERE id = ? LIMIT 1',
+      [requestId]
+    )) as any;
+    if (!row || String(row.owner_user_id) !== req.auth!.userId) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    await run(db, 'UPDATE private_photo_access_requests SET status = ?, updated_at = ? WHERE id = ?', ['denied', nowIso(), requestId]);
+    await persist();
+    const owner = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    await createNotification(
+      { db, io },
+      {
+        userId: String(row.requester_user_id),
+        type: 'private_photos.revoked',
+        title: 'Acesso às fotos privadas revogado',
+        description: `${owner?.name ? String(owner.name) : 'O usuário'} revogou o acesso às fotos privadas.`,
         dataJson: { ownerId: req.auth!.userId, ownerName: owner?.name ? String(owner.name) : null },
       }
     );
@@ -1283,20 +1735,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/onboarding/suggestions', async (req, res) => {
-    const rawLookingFor = String(req.query.lookingFor || '');
     const city = req.query.city ? String(req.query.city) : null;
     const state = req.query.state ? String(req.query.state) : null;
-    const lookingFor = rawLookingFor
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 20);
+    const lookingFor = parseAudiencePreferences(req.query.lookingFor ? String(req.query.lookingFor) : '');
 
     let rows: any[] = [];
     if (lookingFor.length > 0) {
       const placeholders = lookingFor.map(() => '?').join(', ');
       const params: any[] = [...lookingFor];
       const orderParts: string[] = [];
+      const audiencePriority = buildAudiencePriorityOrder('gender', lookingFor);
+      orderParts.push(...audiencePriority.orderParts);
+      params.push(...audiencePriority.params);
       if (state) {
         orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
         params.push(state);
@@ -1314,20 +1764,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     if (rows.length === 0) {
-      rows = await queryAll(db, 'SELECT * FROM users WHERE is_admin = 0 ORDER BY created_at DESC LIMIT 12');
+      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 ORDER BY ${baseAudienceRankingSql('gender')}, created_at DESC LIMIT 12`);
     }
 
     res.json(rows.map((row) => rowToPublicUser(row)));
   });
 
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
-    const me = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const me = (await queryOne(db, 'SELECT lat, lon, looking_for_json FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
+    const myLookingFor = Array.isArray(safeJsonParse(me?.looking_for_json)) ? safeJsonParse(me?.looking_for_json) as string[] : [];
 
     const { city, ageRange, genders, radar, search } = req.query;
     const params: any[] = [req.auth!.userId];
     let whereClause = 'u.id != ?';
+    const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {
       whereClause += ' AND (u.city LIKE ? OR u.state LIKE ?)';
@@ -1352,12 +1804,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       }
     }
 
-    if (genders) {
-      const genderList = String(genders).split(',');
-      if (genderList.length > 0) {
-        whereClause += ` AND u.gender IN (${genderList.map(() => '?').join(',')})`;
-        params.push(...genderList);
-      }
+    if (effectiveGenders.length > 0) {
+      whereClause += ` AND u.gender IN (${effectiveGenders.map(() => '?').join(',')})`;
+      params.push(...effectiveGenders);
     }
 
     // Distance filter (radar)
@@ -1372,6 +1821,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     params.push(nowIso());
+    const audiencePriority = buildAudiencePriorityOrder('u.gender', effectiveGenders);
+    params.push(...audiencePriority.params);
 
     const rows = await queryAll(
       db,
@@ -1398,6 +1849,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       WHERE ${whereClause}
       ORDER BY 
         CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
+        ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
         ${myLat !== null && myLon !== null 
           ? `ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) ASC,` 
           : ''}

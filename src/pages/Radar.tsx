@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
 import { 
-  Radar as RadarIcon, 
   MapPin, 
   Send, 
   Users, 
-  Clock, 
   Sparkles,
   Navigation,
-  Search,
   Check,
   Radio,
-  Lock,
   Crown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -42,10 +38,10 @@ interface RadarBroadcast {
 }
 
 const MESSAGE_TEMPLATES = [
-  "Estou de passagem pela cidade e adoraria conhecer pessoas interessantes! 😊",
-  "Viajando a trabalho e com tempo livre para drinks e boas conversas 🍷",
-  "Chegando na cidade esse fim de semana! Quem topa um rolê? 🎉",
-  "Explorando a cidade e procurando companhia para descobrir lugares novos 🗺️",
+  "Casal discreto na cidade hoje, aberto a conhecer pessoas alinhadas com respeito e química.",
+  "Mulher solteira de passagem, procurando conexões adultas seguras e boa conversa.",
+  "Homem solteiro chegando neste fim de semana, aberto a conhecer casais e singles com discrição.",
+  "Na cidade por poucos dias e buscando companhia adulta, consensual e sem pressão.",
 ];
 
 export default function Radar() {
@@ -177,10 +173,10 @@ export default function Radar() {
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-primary/20 mb-4 shadow-glow">
             <Radio className="w-10 h-10 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold mb-2">Radar de Viagem</h1>
+          <h1 className="text-3xl font-bold mb-2">Radar Adulto Discreto</h1>
           <p className="text-muted-foreground max-w-lg mx-auto">
-            Viajando para uma nova cidade? Ative o radar e notifique automaticamente 
-            pessoas compatíveis que você está por lá e quer conhecer gente nova!
+            Ative o radar para avisar casais e singles compatíveis que você está na cidade.
+            A proposta aqui é adulta, consensual e discreta, com prioridade para conexões seguras.
           </p>
         </div>
       </div>
@@ -191,10 +187,10 @@ export default function Radar() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send className="w-5 h-5 text-primary" />
-              Notificar: estou aqui
+              Avisar que você está na cidade
             </CardTitle>
             <CardDescription>
-              Avise pessoas compatíveis na cidade que você está por lá
+              Compartilhe sua presença com casais e singles alinhados ao que você procura
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -223,7 +219,7 @@ export default function Radar() {
               <Textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Escreva uma mensagem atraente..."
+                placeholder="Escreva uma mensagem adulta, respeitosa e discreta..."
                 className="min-h-[100px]"
                 maxLength={200}
               />
@@ -238,6 +234,9 @@ export default function Radar() {
                   Usar sugestão
                 </button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Evite linguagem agressiva ou pressão. O radar funciona melhor com clareza, consentimento e discrição.
+              </p>
             </div>
 
             {/* Quick Templates */}
@@ -259,12 +258,12 @@ export default function Radar() {
 
             {/* Target Gender */}
             <div className="space-y-2">
-              <Label>Quem você quer alcançar</Label>
+              <Label>Perfis que você quer alcançar</Label>
               <div className="flex flex-wrap gap-2">
                 {[
                   { value: 'all', label: 'Todos' },
-                  { value: 'female', label: 'Mulheres' },
-                  { value: 'male', label: 'Homens' },
+                  { value: 'female', label: 'Mulheres solteiras' },
+                  { value: 'male', label: 'Homens solteiros' },
                   { value: 'couple', label: 'Casais' },
                 ].map((option) => (
                   <Badge
@@ -278,6 +277,9 @@ export default function Radar() {
                   </Badge>
                 ))}
               </div>
+              <p className="text-xs text-muted-foreground">
+                Use esse filtro para priorizar quem verá seu aviso primeiro dentro do público adulto da plataforma.
+              </p>
             </div>
 
             {/* Radius */}
@@ -318,7 +320,7 @@ export default function Radar() {
                 <div className="space-y-0.5">
                   <Label className="text-sm">Modo anônimo</Label>
                   <p className="text-xs text-muted-foreground">
-                    Seu nome será revelado apenas se você responder
+                    Seu nome aparece apenas quando você decidir avançar na conversa
                   </p>
                 </div>
                 <Switch 
@@ -330,7 +332,7 @@ export default function Radar() {
                 <div className="space-y-0.5">
                   <Label className="text-sm">Apenas online</Label>
                   <p className="text-xs text-muted-foreground">
-                    Enviar apenas para quem está online agora
+                    Mostra seu aviso só para quem está disponível no momento
                   </p>
                 </div>
                 <Switch 
@@ -354,7 +356,7 @@ export default function Radar() {
               ) : (
                 <>
                   <Radio className="w-4 h-4" />
-                  Notificar: estou aqui
+                  Publicar no radar
                 </>
               )}
             </Button>
@@ -375,7 +377,7 @@ export default function Radar() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Radio className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p>Nenhum radar ativo</p>
-                  <p className="text-sm">Ative um radar para começar a conhecer pessoas!</p>
+                  <p className="text-sm">Ative um radar para começar a conhecer casais e singles com mais contexto.</p>
                 </div>
               ) : (
                 broadcasts.filter(b => b.isActive).map((broadcast) => (
@@ -433,19 +435,19 @@ export default function Radar() {
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-                  <span>Seja específico sobre o que você procura</span>
+                  <span>Deixe claro se você é casal, mulher solteira ou homem solteiro e com quem quer falar</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-                  <span>Mencione quanto tempo ficará na cidade</span>
+                  <span>Mencione por quanto tempo ficará na cidade e o tipo de encontro que procura</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-                  <span>Use fotos verificadas para mais credibilidade</span>
+                  <span>Use fotos verificadas e preserve a discrição nas mensagens iniciais</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
-                  <span>Ative o radar nos horários de pico (19h-23h)</span>
+                  <span>Respeite consentimento, limites e só avance quando houver interesse claro do outro lado</span>
                 </li>
               </ul>
             </CardContent>

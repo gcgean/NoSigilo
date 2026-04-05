@@ -32,6 +32,8 @@ export interface User {
   allowMessages?: 'everyone' | 'matches' | 'friends' | 'nobody';
   lastSeenAt?: string | null;
   isOnline?: boolean;
+  invitationStatus?: string | null;
+  invitedBy?: { id: string; name: string; avatar?: string | null } | null;
 }
 
 interface AuthContextType {
@@ -39,7 +41,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
+  register: (data: RegisterData) => Promise<any>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
 }
@@ -50,6 +52,7 @@ interface RegisterData {
   name: string;
   birthDate?: string;
   gender: string;
+  inviteToken: string;
   city?: string;
   state?: string;
   lookingFor?: string[];
@@ -170,13 +173,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(newUser);
       localStorage.setItem('nosigilo_user', JSON.stringify(newUser));
       localStorage.setItem('token', 'mock-token');
-      return;
+      return { token: 'mock-token', user: newUser, httpStatus: 200 };
     }
 
     const result = await authService.register(data);
-    localStorage.setItem('token', result.token);
-    localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
-    setUser(result.user);
+    if (result?.token && result?.user) {
+      localStorage.setItem('token', result.token);
+      localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
+      setUser(result.user);
+    }
+    return result;
   };
 
   const logout = () => {

@@ -17,6 +17,13 @@ import { useSocket } from '@/contexts/SocketContext';
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null } };
+type PrivatePhotoAccessItem = {
+  id: string;
+  status: 'pending' | 'approved' | 'denied';
+  createdAt?: string;
+  updatedAt?: string;
+  requester: { id: string; name: string; avatar?: string | null; city?: string | null; state?: string | null };
+};
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
@@ -90,6 +97,9 @@ export default function Profile() {
   const [busyNotifId, setBusyNotifId] = useState<string | null>(null);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [busyTestimonialId, setBusyTestimonialId] = useState<string | null>(null);
+  const [privatePhotoRequests, setPrivatePhotoRequests] = useState<PrivatePhotoAccessItem[]>([]);
+  const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
+  const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -195,6 +205,26 @@ export default function Profile() {
     void loadTestimonials();
   }, [user?.id]);
 
+  const loadPrivatePhotoRequests = async () => {
+    setIsLoadingPrivatePhotoRequests(true);
+    try {
+      const list = await privatePhotosService.getRequests({ status: 'all' });
+      setPrivatePhotoRequests(Array.isArray(list) ? list : []);
+    } catch {
+      setPrivatePhotoRequests([]);
+    } finally {
+      setIsLoadingPrivatePhotoRequests(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== 'private') return;
+    void loadPrivatePhotoRequests();
+  }, [activeTab]);
+
+  const approvedPrivatePhotoAccessCount = privatePhotoRequests.filter((item) => item.status === 'approved').length;
+  const pendingPrivatePhotoAccessCount = privatePhotoRequests.filter((item) => item.status === 'pending').length;
+
   useEffect(() => {
     if (!socket) return;
     const handler = (n: any) => {
@@ -298,6 +328,7 @@ export default function Profile() {
     } finally {
       setBusyNotifId(null);
     }
+    await loadPrivatePhotoRequests();
   };
 
   const handleDenyPrivatePhotos = async (n: NotificationItem) => {
@@ -313,6 +344,48 @@ export default function Profile() {
       toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setBusyNotifId(null);
+    }
+    await loadPrivatePhotoRequests();
+  };
+
+  const handleApprovePrivatePhotoRequest = async (requestId: string) => {
+    setBusyPrivatePhotoRequestId(requestId);
+    try {
+      await privatePhotosService.approveRequest(requestId);
+      toast({ title: 'Acesso permitido', description: 'O usuário agora pode ver suas fotos privadas.' });
+      await loadPrivatePhotoRequests();
+      await loadNotifications();
+    } catch {
+      toast({ title: 'Falha ao permitir', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyPrivatePhotoRequestId(null);
+    }
+  };
+
+  const handleDenyPrivatePhotoRequest = async (requestId: string) => {
+    setBusyPrivatePhotoRequestId(requestId);
+    try {
+      await privatePhotosService.denyRequest(requestId);
+      toast({ title: 'Acesso negado' });
+      await loadPrivatePhotoRequests();
+      await loadNotifications();
+    } catch {
+      toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyPrivatePhotoRequestId(null);
+    }
+  };
+
+  const handleRevokePrivatePhotoRequest = async (requestId: string) => {
+    setBusyPrivatePhotoRequestId(requestId);
+    try {
+      await privatePhotosService.revokeRequest(requestId);
+      toast({ title: 'Acesso revogado', description: 'O usuário não poderá mais ver suas fotos privadas.' });
+      await loadPrivatePhotoRequests();
+    } catch {
+      toast({ title: 'Falha ao revogar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyPrivatePhotoRequestId(null);
     }
   };
 
@@ -435,6 +508,20 @@ export default function Profile() {
         </div>
       </div>
 
+      {user?.invitedBy ? (
+        <div className="glass rounded-2xl p-4 sm:p-5 mb-6">
+          <div className="flex items-start gap-3">
+            <Sparkles className="w-5 h-5 text-primary mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold">Padrinho na rede</p>
+              <p className="text-sm text-muted-foreground">
+                Seu acesso ao NoSigilo foi convidado por <span className="font-medium text-foreground">{user.invitedBy.name}</span>.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {notifications.some((n) => !n.isRead) ? (
         <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
@@ -537,7 +624,19 @@ export default function Profile() {
           </TabsTrigger>
           <TabsTrigger value="private" className="flex-1 gap-2">
             <Lock className="w-4 h-4" />
-            Privadas
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate">Privadas</span>
+              {(approvedPrivatePhotoAccessCount > 0 || pendingPrivatePhotoAccessCount > 0) && (
+                <span className="hidden sm:inline-flex items-center gap-1">
+                  <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 px-2 py-0 text-[10px]">
+                    {approvedPrivatePhotoAccessCount} com acesso
+                  </Badge>
+                  <Badge variant="secondary" className="bg-amber-500/15 text-amber-600 border border-amber-500/30 px-2 py-0 text-[10px]">
+                    {pendingPrivatePhotoAccessCount} pendentes
+                  </Badge>
+                </span>
+              )}
+            </span>
           </TabsTrigger>
         </TabsList>
 
@@ -580,6 +679,90 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="private">
+          <div className="mb-4 space-y-4">
+            <div className="glass rounded-2xl p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                <div>
+                  <h3 className="font-semibold">Controle de acesso</h3>
+                  <p className="text-sm text-muted-foreground">Veja quem pediu acesso e quem já pode ver suas fotos privadas.</p>
+                </div>
+              </div>
+
+              {isLoadingPrivatePhotoRequests ? (
+                <div className="text-sm text-muted-foreground">Carregando acessos...</div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Solicitações pendentes</h4>
+                    {privatePhotoRequests.filter((item) => item.status === 'pending').length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Nenhuma solicitação pendente.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {privatePhotoRequests
+                          .filter((item) => item.status === 'pending')
+                          .map((item) => (
+                            <div key={item.id} className="rounded-xl border p-3 bg-secondary/10">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-medium">{item.requester.name}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {[item.requester.city, item.requester.state].filter(Boolean).join(', ') || 'Local não informado'}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyPrivatePhotoRequestId === item.id} onClick={() => void handleApprovePrivatePhotoRequest(item.id)}>
+                                    Permitir acesso
+                                  </Button>
+                                  <Button size="sm" variant="outline" disabled={busyPrivatePhotoRequestId === item.id} onClick={() => void handleDenyPrivatePhotoRequest(item.id)}>
+                                    Negar
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Usuários com acesso</h4>
+                    {privatePhotoRequests.filter((item) => item.status === 'approved').length === 0 ? (
+                      <div className="text-sm text-muted-foreground">Você ainda não concedeu acesso a ninguém.</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {privatePhotoRequests
+                          .filter((item) => item.status === 'approved')
+                          .map((item) => (
+                            <div key={item.id} className="rounded-xl border p-3 bg-secondary/10">
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-medium">{item.requester.name}</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {[item.requester.city, item.requester.state].filter(Boolean).join(', ') || 'Local não informado'}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-1">
+                                    Acesso ativo desde {new Date(String(item.updatedAt || item.createdAt || '')).toLocaleDateString('pt-BR')}
+                                  </div>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <Button size="sm" variant="outline" disabled={busyPrivatePhotoRequestId === item.id} onClick={() => void handleApprovePrivatePhotoRequest(item.id)}>
+                                    Manter acesso
+                                  </Button>
+                                  <Button size="sm" variant="destructive" disabled={busyPrivatePhotoRequestId === item.id} onClick={() => void handleRevokePrivatePhotoRequest(item.id)}>
+                                    Revogar acesso
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-3">
             {isLoadingPhotos && (
               <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>

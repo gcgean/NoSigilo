@@ -18,7 +18,7 @@ export default function Privacy() {
         </div>
 
         <div className="prose prose-invert max-w-none glass rounded-2xl p-8">
-          <p className="text-muted-foreground">Última atualização: Janeiro de 2025</p>
+          <p className="text-muted-foreground">Última atualização: Abril de 2026</p>
 
           <h2>1. Informações que Coletamos</h2>
           <p>Coletamos informações que você nos fornece diretamente, incluindo:</p>
@@ -27,6 +27,7 @@ export default function Privacy() {
             <li>Informações de perfil (fotos, biografia, preferências)</li>
             <li>Comunicações e interações com outros usuários</li>
             <li>Informações de localização (quando autorizado)</li>
+            <li>Registros técnicos e de segurança para prevenção de abuso, fraude e violação das regras</li>
           </ul>
 
           <h2>2. Como Usamos suas Informações</h2>
@@ -36,6 +37,7 @@ export default function Privacy() {
             <li>Conectá-lo com outros usuários compatíveis</li>
             <li>Enviar notificações e atualizações importantes</li>
             <li>Garantir a segurança da plataforma</li>
+            <li>Analisar denúncias, acessos indevidos, comportamentos abusivos e violações legais</li>
           </ul>
 
           <h2>3. Compartilhamento de Informações</h2>
@@ -46,12 +48,17 @@ export default function Privacy() {
             <li>Com seu consentimento explícito</li>
             <li>Para cumprimento de obrigações legais</li>
             <li>Com prestadores de serviços que nos auxiliam</li>
+            <li>Para proteção da plataforma, de terceiros e para investigação de incidentes graves</li>
           </ul>
 
           <h2>4. Segurança</h2>
           <p>
             Implementamos medidas de segurança técnicas e organizacionais para
             proteger suas informações contra acesso não autorizado.
+          </p>
+          <p>
+            Apesar disso, nenhum sistema é absolutamente imune a riscos. Recomendamos que você compartilhe conteúdo íntimo apenas quando houver confiança,
+            consentimento e real intenção de exposição controlada.
           </p>
 
           <h2>5. Seus Direitos</h2>
@@ -61,6 +68,7 @@ export default function Privacy() {
             <li>Solicitar a exclusão de sua conta</li>
             <li>Exportar seus dados</li>
             <li>Retirar seu consentimento a qualquer momento</li>
+            <li>Gerenciar permissões de acesso às suas fotos privadas diretamente na plataforma</li>
           </ul>
 
           <h2>6. Contato</h2>

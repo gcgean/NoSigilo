@@ -19,7 +19,7 @@ export const authService = {
       return { token: 'mock-token', user: { id: '1', ...data } };
     }
     const response = await apiClient.post('/auth/register', data);
-    return response.data;
+    return { ...response.data, httpStatus: response.status };
   },
 
   checkEmail: async (email: string) => {
@@ -27,6 +27,11 @@ export const authService = {
       return { available: true };
     }
     const response = await apiClient.post('/auth/check-email', { email });
+    return response.data;
+  },
+
+  getInviteInfo: async (token: string) => {
+    const response = await apiClient.get(`/invites/public/${encodeURIComponent(token)}`);
     return response.data;
   },
 
@@ -286,6 +291,11 @@ export const privatePhotosService = {
     return response.data;
   },
 
+  getRequests: async (params?: { status?: 'all' | 'pending' | 'approved' | 'denied' }) => {
+    const response = await apiClient.get('/private-photos/requests', { params });
+    return response.data;
+  },
+
   approveRequest: async (requestId: string) => {
     const response = await apiClient.post(`/private-photos/requests/${requestId}/approve`);
     return response.data;
@@ -293,6 +303,38 @@ export const privatePhotosService = {
 
   denyRequest: async (requestId: string) => {
     const response = await apiClient.post(`/private-photos/requests/${requestId}/deny`);
+    return response.data;
+  },
+
+  revokeRequest: async (requestId: string) => {
+    const response = await apiClient.post(`/private-photos/requests/${requestId}/revoke`);
+    return response.data;
+  },
+};
+
+export const invitesService = {
+  listMine: async () => {
+    const response = await apiClient.get('/invites');
+    return response.data;
+  },
+
+  create: async () => {
+    const response = await apiClient.post('/invites');
+    return response.data;
+  },
+
+  approve: async (inviteId: string) => {
+    const response = await apiClient.post(`/invites/${inviteId}/approve`);
+    return response.data;
+  },
+
+  deny: async (inviteId: string) => {
+    const response = await apiClient.post(`/invites/${inviteId}/deny`);
+    return response.data;
+  },
+
+  revoke: async (inviteId: string) => {
+    const response = await apiClient.post(`/invites/${inviteId}/revoke`);
     return response.data;
   },
 };

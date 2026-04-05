@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { 
   User, Lock, Bell, Eye, Shield, Globe, Moon, LogOut, 
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, Copy, UserPlus, CheckCircle2, XCircle, Link2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,11 +14,20 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { feedService, profileService } from '@/services/api';
+import { feedService, invitesService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
 import { resolveServerUrl } from '@/utils/serverUrl';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean };
+type InviteItem = {
+  id: string;
+  token: string;
+  status: 'created' | 'pending_approval' | 'approved' | 'denied' | 'revoked';
+  createdAt: string;
+  updatedAt?: string;
+  inviteeEmail?: string | null;
+  invitee?: { id: string; name?: string | null; avatar?: string | null } | null;
+};
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
@@ -31,6 +40,9 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [inviteItems, setInviteItems] = useState<InviteItem[]>([]);
+  const [isLoadingInvites, setIsLoadingInvites] = useState(false);
+  const [busyInviteId, setBusyInviteId] = useState<string | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -56,16 +68,16 @@ export default function Settings() {
     lookingFor: (user?.lookingFor || []) as string[],
   });
 
-  const interestOptions = useMemo(
+  const audienceOptions = useMemo(
     () => [
-      'Homem',
-      'Mulher',
-      'Casal (Ele/Ela)',
-      'Casal (Ele/Ele)',
-      'Casal (Ela/Ela)',
-      'Transexual',
-      'Crossdresser (CD)',
-      'Travesti',
+      { value: 'Mulher', label: 'Mulher solteira', hint: 'single feminino' },
+      { value: 'Homem', label: 'Homem solteiro', hint: 'single masculino' },
+      { value: 'Casal (Ele/Ela)', label: 'Casal (Ele/Ela)', hint: 'casal hetero' },
+      { value: 'Casal (Ele/Ele)', label: 'Casal (Ele/Ele)', hint: 'casal masculino' },
+      { value: 'Casal (Ela/Ela)', label: 'Casal (Ela/Ela)', hint: 'casal feminino' },
+      { value: 'Transexual', label: 'Pessoa trans', hint: 'perfil individual' },
+      { value: 'Crossdresser (CD)', label: 'Crossdresser (CD)', hint: 'perfil individual' },
+      { value: 'Travesti', label: 'Travesti', hint: 'perfil individual' },
     ],
     []
   );
@@ -121,6 +133,22 @@ export default function Settings() {
     void loadPhotos();
   }, []);
 
+  const loadInvites = async () => {
+    setIsLoadingInvites(true);
+    try {
+      const list = await invitesService.listMine();
+      setInviteItems(Array.isArray(list) ? list : []);
+    } catch {
+      setInviteItems([]);
+    } finally {
+      setIsLoadingInvites(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadInvites();
+  }, []);
+
   const handleChangeAvatar = async (file: File) => {
     try {
       setIsUploading(true);
@@ -155,6 +183,71 @@ export default function Settings() {
     if (confirm('Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.')) {
       toast({ title: 'Conta excluída', description: 'Sua conta foi removida.' });
       logout();
+    }
+  };
+
+  const handleCreateInvite = async () => {
+    try {
+      const created = await invitesService.create();
+      if (created?.url && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(String(created.url));
+      }
+      toast({
+        title: 'Convite criado',
+        description: created?.url ? 'O link foi criado e copiado para a área de transferência.' : 'Seu link de convite está pronto.',
+      });
+      await loadInvites();
+    } catch {
+      toast({ title: 'Falha ao criar convite', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const handleCopyInvite = async (invite: InviteItem) => {
+    try {
+      const url = `${window.location.origin}/register?invite=${encodeURIComponent(invite.token)}`;
+      await navigator.clipboard.writeText(url);
+      toast({ title: 'Link copiado', description: 'Envie este link apenas para quem você realmente deseja indicar.' });
+    } catch {
+      toast({ title: 'Falha ao copiar', description: 'Copie o link manualmente mais tarde.', variant: 'destructive' });
+    }
+  };
+
+  const handleApproveInvite = async (inviteId: string) => {
+    setBusyInviteId(inviteId);
+    try {
+      await invitesService.approve(inviteId);
+      toast({ title: 'Convite aprovado', description: 'O novo perfil já pode entrar na rede.' });
+      await loadInvites();
+    } catch {
+      toast({ title: 'Falha ao aprovar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyInviteId(null);
+    }
+  };
+
+  const handleDenyInvite = async (inviteId: string) => {
+    setBusyInviteId(inviteId);
+    try {
+      await invitesService.deny(inviteId);
+      toast({ title: 'Convite negado', description: 'Esse cadastro não foi aprovado por você.' });
+      await loadInvites();
+    } catch {
+      toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyInviteId(null);
+    }
+  };
+
+  const handleRevokeInvite = async (inviteId: string) => {
+    setBusyInviteId(inviteId);
+    try {
+      await invitesService.revoke(inviteId);
+      toast({ title: 'Link revogado', description: 'Esse convite não poderá mais ser usado.' });
+      await loadInvites();
+    } catch {
+      toast({ title: 'Falha ao revogar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setBusyInviteId(null);
     }
   };
 
@@ -254,22 +347,22 @@ export default function Settings() {
               </div>
 
               <div className="space-y-2">
-                <Label>Gênero</Label>
+                <Label>Perfil principal</Label>
                 <Select value={profile.gender} onValueChange={(v) => setProfile({ ...profile, gender: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione" />
+                    <SelectValue placeholder="Selecione como seu perfil será exibido" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Homem">Homem</SelectItem>
-                    <SelectItem value="Mulher">Mulher</SelectItem>
-                    <SelectItem value="Casal (Ele/Ela)">Casal (Ele/Ela)</SelectItem>
-                    <SelectItem value="Casal (Ele/Ele)">Casal (Ele/Ele)</SelectItem>
-                    <SelectItem value="Casal (Ela/Ela)">Casal (Ela/Ela)</SelectItem>
-                    <SelectItem value="Transexual">Transexual</SelectItem>
-                    <SelectItem value="Crossdresser (CD)">Crossdresser (CD)</SelectItem>
-                    <SelectItem value="Travesti">Travesti</SelectItem>
+                    {audienceOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  Seu perfil pode representar casal, mulher solteira, homem solteiro ou outros perfis adultos aceitos na plataforma.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -482,25 +575,33 @@ export default function Settings() {
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Você tem interesse em</Label>
+                <Label>Perfis que você quer priorizar</Label>
                 <span className="text-xs text-muted-foreground">{profile.lookingFor.length} selecionado(s)</span>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Essas preferências ajudam o NoSigilo a priorizar casais, mulheres solteiras, homens solteiros e outros perfis adultos compatíveis com o que você procura.
+              </p>
               <div className="grid sm:grid-cols-2 gap-3">
-                {interestOptions.map((opt) => {
-                  const checked = profile.lookingFor.includes(opt);
+                {audienceOptions.map((option) => {
+                  const checked = profile.lookingFor.includes(option.value);
                   return (
-                    <label key={opt} className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer">
+                    <label key={option.value} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
                       <Checkbox
                         checked={checked}
                         onCheckedChange={(v) => {
                           const next = !!v;
                           setProfile((prev) => ({
                             ...prev,
-                            lookingFor: next ? Array.from(new Set([...prev.lookingFor, opt])) : prev.lookingFor.filter((x) => x !== opt),
+                            lookingFor: next
+                              ? Array.from(new Set([...prev.lookingFor, option.value]))
+                              : prev.lookingFor.filter((x) => x !== option.value),
                           }));
                         }}
                       />
-                      <span className="text-sm">{opt}</span>
+                      <div className="space-y-1">
+                        <span className="text-sm font-medium">{option.label}</span>
+                        <p className="text-xs text-muted-foreground">{option.hint}</p>
+                      </div>
                     </label>
                   );
                 })}
@@ -704,6 +805,116 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
+          <div className="glass rounded-xl p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Convites e padrinhos</h3>
+                <p className="text-sm text-muted-foreground">
+                  O acesso ao NoSigilo acontece por indicação. Gere links únicos e aprove apenas quem você realmente quer trazer para a rede.
+                </p>
+              </div>
+              <Button type="button" className="bg-gradient-primary hover:opacity-90 gap-2" onClick={handleCreateInvite}>
+                <UserPlus className="w-4 h-4" />
+                Gerar link de convite
+              </Button>
+            </div>
+
+            {user?.invitedBy ? (
+              <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
+                Você entrou por convite de <span className="font-semibold">{user.invitedBy.name}</span>.
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              {isLoadingInvites ? (
+                <p className="text-sm text-muted-foreground">Carregando convites...</p>
+              ) : inviteItems.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                  Você ainda não gerou nenhum convite.
+                </div>
+              ) : (
+                inviteItems.map((invite) => {
+                  const shareUrl = `${window.location.origin}/register?invite=${encodeURIComponent(invite.token)}`;
+                  const isBusy = busyInviteId === invite.id;
+                  return (
+                    <div key={invite.id} className="rounded-xl border p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-medium">Convite de acesso</span>
+                            <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+                              {invite.status === 'created'
+                                ? 'Aguardando uso'
+                                : invite.status === 'pending_approval'
+                                  ? 'Aguardando sua aprovação'
+                                  : invite.status === 'approved'
+                                    ? 'Aprovado'
+                                    : invite.status === 'denied'
+                                      ? 'Negado'
+                                      : 'Revogado'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground break-all">{shareUrl}</p>
+                          {invite.invitee?.name || invite.inviteeEmail ? (
+                            <p className="text-sm text-muted-foreground">
+                              Cadastro vinculado a <span className="font-medium text-foreground">{invite.invitee?.name || invite.inviteeEmail}</span>
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Nenhum cadastro iniciado com este link ainda.</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {invite.status === 'created' ? (
+                            <>
+                              <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void handleCopyInvite(invite)}>
+                                <Copy className="w-4 h-4" />
+                                Copiar link
+                              </Button>
+                              <Button type="button" variant="ghost" size="sm" className="gap-2" disabled={isBusy} onClick={() => void handleRevokeInvite(invite.id)}>
+                                <XCircle className="w-4 h-4" />
+                                Revogar
+                              </Button>
+                            </>
+                          ) : null}
+                          {invite.status === 'pending_approval' ? (
+                            <>
+                              <Button type="button" size="sm" className="gap-2 bg-gradient-primary hover:opacity-90" disabled={isBusy} onClick={() => void handleApproveInvite(invite.id)}>
+                                <CheckCircle2 className="w-4 h-4" />
+                                Aprovar
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="gap-2" disabled={isBusy} onClick={() => void handleDenyInvite(invite.id)}>
+                                <XCircle className="w-4 h-4" />
+                                Negar
+                              </Button>
+                            </>
+                          ) : null}
+                          {invite.status === 'approved' ? (
+                            <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                              <CheckCircle2 className="w-4 h-4" />
+                              Membro liberado por você
+                            </div>
+                          ) : null}
+                          {invite.status === 'denied' ? (
+                            <div className="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">
+                              <XCircle className="w-4 h-4" />
+                              Cadastro recusado
+                            </div>
+                          ) : null}
+                          {invite.status === 'revoked' ? (
+                            <div className="inline-flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">
+                              <Link2 className="w-4 h-4" />
+                              Link encerrado
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <div className="glass rounded-xl p-6 space-y-4">
             <h3 className="font-semibold">Alterar Senha</h3>
             
