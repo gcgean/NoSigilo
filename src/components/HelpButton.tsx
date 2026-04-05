@@ -1,6 +1,7 @@
 import { HelpCircle, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { startFirstAccessTutorial } from '@/components/FirstAccessTutorial';
 
 const HELP_VIDEO_URL = import.meta.env.VITE_HELP_VIDEO_URL || 'https://www.youtube.com';
 
@@ -35,6 +36,9 @@ export default function HelpButton() {
                   <QrCode className="w-4 h-4" /> Abrir vídeo
                 </a>
               </Button>
+              <Button type="button" variant="outline" className="w-full" onClick={startFirstAccessTutorial}>
+                Iniciar tutorial guiado
+              </Button>
               <p className="text-xs text-muted-foreground break-all">{HELP_VIDEO_URL}</p>
             </div>
           </div>
@@ -43,4 +47,3 @@ export default function HelpButton() {
     </Dialog>
   );
 }
-

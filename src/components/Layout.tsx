@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import HelpButton from '@/components/HelpButton';
+import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import { notificationsService, chatService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
@@ -127,6 +128,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <FirstAccessTutorial />
       {/* Header */}
       <header className="sticky top-0 z-40 glass-strong border-b">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
