@@ -140,6 +140,7 @@ export default function Radar() {
 
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
+  const [cityInput, setCityInput] = useState('');
   const [message, setMessage] = useState('');
   const [targetGender, setTargetGender] = useState<string[]>(['all']);
   const [radius, setRadius] = useState([25]);
@@ -265,6 +266,7 @@ export default function Radar() {
       setMessage('');
       setCity('');
       setState('');
+      setCityInput('');
       setTargetGender(['all']);
       setRadius([25]);
       setDuration('1');
@@ -403,14 +405,22 @@ export default function Radar() {
             <div className="space-y-2">
               <Label>Cidade destino</Label>
               <CitySearch
-                value={city ? `${city}, ${state}` : ''}
+                value={cityInput}
                 onChange={(value) => {
-                  setCity(value);
-                  if (!value.includes(',')) setState('');
+                  setCityInput(value);
+                  if (value.includes(',')) {
+                    const [nextCity, nextState] = value.split(',').map((item) => item.trim());
+                    setCity(nextCity || '');
+                    setState((nextState || '').slice(0, 2).toUpperCase());
+                  } else {
+                    setCity(value);
+                    setState('');
+                  }
                 }}
                 onSelect={(nextCity, nextState) => {
                   setCity(nextCity);
                   setState(nextState);
+                  setCityInput(`${nextCity}, ${nextState}`);
                 }}
               />
             </div>
