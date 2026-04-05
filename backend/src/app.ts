@@ -525,7 +525,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   const upload = multer({
     storage,
-    limits: { fileSize: 60 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
       if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
         cb(new Error('INVALID_FILE_TYPE'));
@@ -1224,7 +1223,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const mime = req.file.mimetype || '';
     const size = Number(req.file.size || 0);
     const maxVideoBytes = 50 * 1024 * 1024;
-    const maxImageBytes = 10 * 1024 * 1024;
     const maxOtherBytes = 5 * 1024 * 1024;
     if (isPrivate && !mime.startsWith('image/')) {
       res.status(400).json({ error: 'private_photos_images_only' });
@@ -1232,10 +1230,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     if (mime.startsWith('video/') && size > maxVideoBytes) {
       res.status(413).json({ error: 'file_too_large', maxBytes: maxVideoBytes });
-      return;
-    }
-    if (mime.startsWith('image/') && size > maxImageBytes) {
-      res.status(413).json({ error: 'file_too_large', maxBytes: maxImageBytes });
       return;
     }
     if (!mime.startsWith('video/') && !mime.startsWith('image/') && size > maxOtherBytes) {

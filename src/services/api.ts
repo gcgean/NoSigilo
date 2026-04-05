@@ -95,13 +95,10 @@ export const profileService = {
   uploadMedia: async (file: File, options?: { isPrivate?: boolean }) => {
     let uploadFile = file;
     if (file.type.startsWith('image/')) {
-      uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82, maxBytes: 1800 * 1024 });
+      uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82 });
     }
     if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
       throw new Error('Arquivo de vídeo muito grande (máximo 50MB)');
-    }
-    if (file.type.startsWith('image/') && uploadFile.size > 4 * 1024 * 1024) {
-      throw new Error('A foto ainda ficou grande demais para envio pelo celular. Tente uma imagem menor.');
     }
     const formData = new FormData();
     formData.append('file', uploadFile);
