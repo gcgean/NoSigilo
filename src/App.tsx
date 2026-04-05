@@ -16,6 +16,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
 import Register from "./pages/Register";
+import PendingApproval from "./pages/PendingApproval";
 import AuthCallback from "./pages/AuthCallback";
 import Plans from "./pages/Plans";
 import Subscriptions from "./pages/Subscriptions";
@@ -62,6 +63,7 @@ const App = () => (
                     <Route path="/login" element={<Login />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/register" element={<Register />} />
+                    <Route path="/pending-approval" element={<PendingApproval />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/plans" element={<Plans />} />
                     <Route path="/terms" element={<Terms />} />

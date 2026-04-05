@@ -50,7 +50,6 @@ export default function Register() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([]);
-  const [authMethod, setAuthMethod] = useState<'email' | 'google'>('email');
   const [inviteInfo, setInviteInfo] = useState<any | null>(null);
   const [isLoadingInvite, setIsLoadingInvite] = useState(true);
 
@@ -237,7 +236,14 @@ export default function Register() {
           ? `Agora falta ${inviteInfo.inviter.name} aprovar sua entrada na rede.`
           : 'Agora falta a aprovação do seu padrinho para liberar o acesso.',
       });
-      navigate('/login');
+      const pendingPayload = {
+        email: formData.email,
+        name: formData.name,
+        invitationStatus: 'pending',
+        inviter: inviteInfo?.inviter || null,
+      };
+      sessionStorage.setItem('nosigilo_pending_access', JSON.stringify(pendingPayload));
+      navigate(`/pending-approval?email=${encodeURIComponent(formData.email)}${inviteInfo?.inviter?.name ? `&inviter=${encodeURIComponent(inviteInfo.inviter.name)}` : ''}`);
     } catch (error) {
       const info = getApiErrorInfo(error, { title: 'Erro ao criar conta', description: 'Tente novamente mais tarde.' });
       toast({
@@ -527,80 +533,56 @@ export default function Register() {
                     <p>O NoSigilo é uma plataforma +18 para interações adultas consensuais, com foco principal em casais e singles femininos e masculinos.</p>
                     <p>Ao criar a conta, você confirma que é maior de idade e concorda em respeitar privacidade, consentimento, discrição e as regras da comunidade.</p>
                   </div>
-                  <div className="space-y-3">
-                    <Button
-                      type="button"
-                      variant={authMethod === 'google' ? 'default' : 'outline'}
-                      className={cn('w-full justify-start', authMethod === 'google' && 'bg-gradient-primary')}
-                      onClick={() => {
-                        setAuthMethod('google');
-                        toast({ title: 'Google em breve', description: 'Login com Google ainda não está ativo no backend.' });
-                      }}
-                    >
-                      Continuar com o Google
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={authMethod === 'email' ? 'default' : 'outline'}
-                      className={cn('w-full justify-start', authMethod === 'email' && 'bg-gradient-primary')}
-                      onClick={() => setAuthMethod('email')}
-                    >
-                      Continuar com e-mail e senha
+                  <div className="pt-4 border-t space-y-4">
+                    <div className="p-4 rounded-xl bg-background/40 border space-y-2">
+                      <h4 className="font-semibold">Resumo do Cadastro</h4>
+                      <div className="space-y-1 text-sm">
+                        <p>
+                          <span className="text-muted-foreground">Nome:</span> {formData.name}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">E-mail:</span> {formData.email}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">Local:</span> {formData.city}
+                          {formData.state ? `, ${formData.state}` : ''}
+                        </p>
+                        <p>
+                          <span className="text-muted-foreground">Perfis priorizados:</span> {formData.lookingFor.join(', ')}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start space-x-3">
+                      <input
+                        id="terms"
+                        type="checkbox"
+                        checked={formData.acceptTerms}
+                        onChange={(e) => updateField('acceptTerms', e.target.checked)}
+                        className="mt-1 h-4 w-4 accent-primary"
+                      />
+                      <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed">
+                        Declaro que tenho 18 anos ou mais e aceito os{' '}
+                        <Link to="/terms" className="text-primary hover:underline">
+                          Termos de Uso
+                        </Link>{' '}
+                        e a{' '}
+                        <Link to="/privacy" className="text-primary hover:underline">
+                          Política de Privacidade
+                        </Link>
+                        , li as{' '}
+                        <Link to="/guidelines" className="text-primary hover:underline">
+                          Diretrizes da Comunidade
+                        </Link>{' '}
+                        e concordo em usar a plataforma apenas para interações adultas legais, consensuais e respeitosas.
+                        .
+                      </label>
+                    </div>
+
+                    <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow" disabled={isLoading || !formData.acceptTerms}>
+                      {isLoading ? 'Criando...' : 'Concluir cadastro'}
                     </Button>
                   </div>
-
-                  {authMethod === 'email' ? (
-                    <div className="pt-4 border-t space-y-4">
-                      <div className="p-4 rounded-xl bg-background/40 border space-y-2">
-                        <h4 className="font-semibold">Resumo do Cadastro</h4>
-                        <div className="space-y-1 text-sm">
-                          <p>
-                            <span className="text-muted-foreground">Nome:</span> {formData.name}
-                          </p>
-                          <p>
-                            <span className="text-muted-foreground">E-mail:</span> {formData.email}
-                          </p>
-                          <p>
-                            <span className="text-muted-foreground">Local:</span> {formData.city}
-                            {formData.state ? `, ${formData.state}` : ''}
-                          </p>
-                          <p>
-                            <span className="text-muted-foreground">Perfis priorizados:</span> {formData.lookingFor.join(', ')}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start space-x-3">
-                        <input
-                          id="terms"
-                          type="checkbox"
-                          checked={formData.acceptTerms}
-                          onChange={(e) => updateField('acceptTerms', e.target.checked)}
-                          className="mt-1 h-4 w-4 accent-primary"
-                        />
-                        <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed">
-                          Declaro que tenho 18 anos ou mais e aceito os{' '}
-                          <Link to="/terms" className="text-primary hover:underline">
-                            Termos de Uso
-                          </Link>{' '}
-                          e a{' '}
-                          <Link to="/privacy" className="text-primary hover:underline">
-                            Política de Privacidade
-                          </Link>
-                          , li as{' '}
-                          <Link to="/guidelines" className="text-primary hover:underline">
-                            Diretrizes da Comunidade
-                          </Link>{' '}
-                          e concordo em usar a plataforma apenas para interações adultas legais, consensuais e respeitosas.
-                          .
-                        </label>
-                      </div>
-
-                      <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow" disabled={isLoading || !formData.acceptTerms}>
-                        {isLoading ? 'Criando...' : 'Concluir cadastro'}
-                      </Button>
-                    </div>
-                  ) : null}
                 </div>
 
                 <div className="p-6 rounded-xl bg-secondary/30 border space-y-4">

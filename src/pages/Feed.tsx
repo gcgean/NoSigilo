@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Image, Video, Send, Heart, MessageCircle, Share2, MoreHorizontal, X, Lock, Crown, Trash2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -58,6 +58,7 @@ function resolveMediaUrl(url: string | null) {
 export default function Feed() {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const premiumAccess = hasPremiumAccess(user);
@@ -86,6 +87,8 @@ export default function Feed() {
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [hasNewPosts, setHasNewPosts] = useState(false);
   const currentTopPostIdRef = useRef<string | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
 
   const [feedFilter, setFeedFilter] = useState<'all' | 'favorites'>(() => {
     const v = localStorage.getItem('nosigilo_feed_filter');
@@ -144,6 +147,14 @@ export default function Feed() {
   useEffect(() => {
     void reload();
   }, []);
+
+  useEffect(() => {
+    if (!firstAccessPostMode) return;
+    window.setTimeout(() => {
+      composerRef.current?.focus();
+      composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+  }, [firstAccessPostMode]);
 
   const loadMore = async () => {
     if (isLoading || isLoadingMoreRef.current || !hasMoreRef.current) return;
@@ -322,6 +333,12 @@ export default function Feed() {
       setAttachments([]);
       setActivePicker(null);
       toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
+      if (user?.id) {
+        localStorage.removeItem(`nosigilo:first-access-flow:${user.id}`);
+      }
+      if (firstAccessPostMode) {
+        navigate('/feed', { replace: true });
+      }
       await reload();
     } catch (e: any) {
       toast({ title: 'Erro ao publicar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
@@ -424,6 +441,25 @@ export default function Feed() {
           </Card>
         </div>
       ) : null}
+
+      {firstAccessPostMode ? (
+        <div className="mb-4">
+          <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/12 via-rose-500/10 to-orange-400/10 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-primary">Segundo passo do seu primeiro acesso</p>
+                <h2 className="text-xl font-bold">Faça sua primeira publicação</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Compartilhe uma foto, um clima, uma intenção ou uma apresentação rápida. Um perfil que publica cedo desperta mais curiosidade e recebe mais atenção.
+                </p>
+              </div>
+              <Button className="bg-gradient-primary hover:opacity-90" onClick={() => composerRef.current?.focus()}>
+                Escrever agora
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
       {/* Composer */}
       <Card className="p-4 mb-6 glass">
         <div className="flex gap-4">
@@ -433,6 +469,7 @@ export default function Feed() {
           </Avatar>
           <div className="flex-1">
             <Textarea
+              ref={composerRef}
               placeholder="O que está pensando?"
               value={postContent}
               onChange={(e) => setPostContent(e.target.value)}

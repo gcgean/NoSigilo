@@ -133,10 +133,19 @@ describe('nosigilo backend', () => {
       .expect(202);
     expect(pendingRegister.body.status).toBe('pending_approval');
 
-    await request(ctx.app)
+    const pendingLogin = await request(ctx.app)
       .post('/api/auth/login')
       .send({ email: 'pendente@example.com', password: 'senha123' })
       .expect(403);
+    expect(pendingLogin.body.error).toBe('pending_invite_approval');
+    expect(pendingLogin.body.inviter?.name).toBe('Sponsor Principal');
+
+    const pendingAccess = await request(ctx.app)
+      .get('/api/auth/pending-access')
+      .query({ email: 'pendente@example.com' })
+      .expect(200);
+    expect(pendingAccess.body.invitationStatus).toBe('pending');
+    expect(pendingAccess.body.inviter?.name).toBe('Sponsor Principal');
 
     const inviteList = await request(ctx.app).get('/api/invites').set('Authorization', `Bearer ${sponsorToken}`).expect(200);
     expect(inviteList.body.some((item: any) => item.id === invite.id && item.status === 'pending_approval')).toBe(true);

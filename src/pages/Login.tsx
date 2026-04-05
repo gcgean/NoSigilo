@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Sparkles, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
+import axios from 'axios';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,9 +30,34 @@ export default function Login() {
     setIsLoading(true);
     
     try {
-      await login(email, password);
+      const loggedUser = await login(email, password);
+      const pendingReadyEmail = sessionStorage.getItem('nosigilo_first_access_ready');
+      if (pendingReadyEmail && pendingReadyEmail === email) {
+        localStorage.setItem(
+          `nosigilo:first-access-flow:${loggedUser.id}`,
+          JSON.stringify({
+            needsPhoto: !loggedUser?.avatar,
+            needsPost: true,
+            startedAt: new Date().toISOString(),
+          })
+        );
+        sessionStorage.removeItem('nosigilo_first_access_ready');
+      }
       navigate('/feed');
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 403 && error.response?.data?.error === 'pending_invite_approval') {
+        const inviterName = typeof error.response?.data?.inviter?.name === 'string' ? error.response.data.inviter.name : '';
+        sessionStorage.setItem(
+          'nosigilo_pending_access',
+          JSON.stringify({
+            email,
+            invitationStatus: 'pending',
+            inviter: inviterName ? { id: String(error.response?.data?.inviter?.id || ''), name: inviterName } : null,
+          })
+        );
+        navigate(`/pending-approval?email=${encodeURIComponent(email)}${inviterName ? `&inviter=${encodeURIComponent(inviterName)}` : ''}`);
+        return;
+      }
       const info = getApiErrorInfo(error, { title: 'Erro ao entrar', description: 'Não foi possível entrar na sua conta.' });
       toast({
         title: info.title,

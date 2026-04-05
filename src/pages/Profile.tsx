@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { NavLink, Link, useLocation } from 'react-router-dom';
+import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateAge } from '@/utils/age';
 import { hasPremiumAccess } from '@/utils/premium';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -85,6 +85,8 @@ function PhotoItem({
 export default function Profile() {
   const { user, updateUser } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { socket } = useSocket();
   const [activeTab, setActiveTab] = useState('photos');
@@ -102,6 +104,7 @@ export default function Profile() {
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
+  const firstAccessPhotoMode = searchParams.get('firstAccess') === 'photo';
 
   useEffect(() => {
     if (!location.hash) return;
@@ -277,6 +280,15 @@ export default function Profile() {
       }
       toast({ title: 'Foto de perfil atualizada' });
       await loadPhotos();
+      if (firstAccessPhotoMode && user?.id) {
+        const key = `nosigilo:first-access-flow:${user.id}`;
+        try {
+          const raw = localStorage.getItem(key);
+          const flow = raw ? JSON.parse(raw) : {};
+          localStorage.setItem(key, JSON.stringify({ ...flow, needsPhoto: false, needsPost: true }));
+        } catch {}
+        navigate('/feed?firstAccess=post', { replace: true });
+      }
     } catch (e: any) {
       toast({ title: 'Falha ao atualizar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -409,9 +421,25 @@ export default function Profile() {
     <div className="max-w-2xl mx-auto w-full">
       {/* Profile Header */}
       <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
+        {firstAccessPhotoMode ? (
+          <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/10 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold text-primary">Primeiro passo para entrar com força no NoSigilo</p>
+                <p className="text-sm text-muted-foreground">
+                  Escolha agora sua foto principal. Assim que ela subir, vamos te levar para fazer sua primeira publicação.
+                </p>
+              </div>
+              <Button type="button" className="bg-gradient-primary hover:opacity-90" disabled={isUploading} onClick={() => avatarFileInputRef.current?.click()}>
+                {isUploading ? 'Enviando...' : 'Enviar foto de perfil'}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6">
           {/* Avatar */}
-          <div className="relative">
+          <div id="profile-photo" className="relative">
             <Dialog>
               <DialogTrigger asChild>
                 <button

@@ -40,7 +40,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
   register: (data: RegisterData) => Promise<any>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -145,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(demoAccount.user);
         localStorage.setItem('nosigilo_user', JSON.stringify(demoAccount.user));
         localStorage.setItem('token', 'mock-token');
-        return;
+        return demoAccount.user;
       }
       throw new Error('Credenciais inválidas');
     }
@@ -154,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', result.token);
     localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
     setUser(result.user);
+    return result.user;
   };
 
   const register = async (data: RegisterData) => {

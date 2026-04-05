@@ -833,13 +833,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
     const email = parsed.data.email.toLowerCase();
-    const row = (await queryOne(db, 'SELECT * FROM users WHERE email = ?', [email])) as any;
+    const row = (await queryOne(
+      db,
+      `SELECT u.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+       FROM users u
+       LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
+       WHERE u.email = ?
+       LIMIT 1`,
+      [email]
+    )) as any;
     if (!row) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
     if (row.invite_status && String(row.invite_status) !== 'approved') {
-      res.status(403).json({ error: inviteStatusError(String(row.invite_status)) });
+      res.status(403).json({
+        error: inviteStatusError(String(row.invite_status)),
+        invitationStatus: String(row.invite_status),
+        inviter: row.invited_by_user_id
+          ? {
+              id: String(row.invited_by_user_id),
+              name: row.inviter_name ? String(row.inviter_name) : null,
+              avatar: row.inviter_avatar ?? null,
+            }
+          : null,
+      });
       return;
     }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
@@ -851,6 +869,41 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const presence = req.app.get('presence');
     const user = rowToPublicUser(hydratedRow || row, presence?.isOnline(String(row.id)), { showEmail: true });
     res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
+  });
+
+  app.get('/api/auth/pending-access', async (req, res) => {
+    const email = String(req.query.email || '').trim().toLowerCase();
+    if (!email) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const row = (await queryOne(
+      db,
+      `SELECT u.id, u.email, u.name, u.invite_status, u.created_at, u.trial_started_at,
+              inviter.id AS inviter_id, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+       FROM users u
+       LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
+       WHERE u.email = ?
+       LIMIT 1`,
+      [email]
+    )) as any;
+    if (!row) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    res.json({
+      email: String(row.email),
+      name: String(row.name),
+      invitationStatus: row.invite_status ? String(row.invite_status) : 'approved',
+      createdAt: row.created_at ?? row.trial_started_at ?? null,
+      inviter: row.inviter_id
+        ? {
+            id: String(row.inviter_id),
+            name: row.inviter_name ? String(row.inviter_name) : null,
+            avatar: row.inviter_avatar ?? null,
+          }
+        : null,
+    });
   });
 
   app.get('/api/invites', requireAuth(env, db), async (req, res) => {

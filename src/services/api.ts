@@ -35,6 +35,11 @@ export const authService = {
     return response.data;
   },
 
+  getPendingAccess: async (email: string) => {
+    const response = await apiClient.get('/auth/pending-access', { params: { email } });
+    return response.data;
+  },
+
   getMe: async () => {
     const response = await apiClient.get('/auth/me');
     return response.data;
