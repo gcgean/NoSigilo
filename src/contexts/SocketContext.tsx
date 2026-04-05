@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { SOCKET_URL } from '@/utils/serverUrl';
 
 interface SocketContextType {
   socket: Socket | null;
@@ -12,7 +13,6 @@ interface SocketContextType {
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
 
-const SOCKET_URL = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4001';
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 export function SocketProvider({ children }: { children: ReactNode }) {

@@ -21,12 +21,9 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null } };
 
-const SERVER_ORIGIN = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4001';
 function resolveMediaUrl(url: string) {
   if (!url) return url;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('/')) return `${SERVER_ORIGIN}${url}`;
-  return `${SERVER_ORIGIN}/${url}`;
+  return resolveServerUrl(url);
 }
 
 function PhotoItem({ url }: { url: string }) {

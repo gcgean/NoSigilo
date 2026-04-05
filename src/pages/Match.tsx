@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useSocket } from '@/contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { useFavorites } from '@/contexts/FavoritesContext';
+import { resolveServerUrl } from '@/utils/serverUrl';
 
 type MatchProfile = {
   id: string;
@@ -26,12 +27,9 @@ type MatchProfile = {
   createdAt?: string | null;
 };
 
-const SERVER_ORIGIN = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:4001';
 function resolveMediaUrl(url?: string | null) {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  if (url.startsWith('/')) return `${SERVER_ORIGIN}${url}`;
-  return `${SERVER_ORIGIN}/${url}`;
+  return resolveServerUrl(url);
 }
 
 const CACHE_KEY_PROFILES = 'nosigilo_match_profiles';

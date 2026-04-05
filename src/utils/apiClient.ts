@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { toast } from '@/hooks/use-toast';
+import { API_URL as RESOLVED_API_URL } from '@/utils/serverUrl';
 
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001/api';
+export const API_URL = RESOLVED_API_URL;
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 const NETWORK_TOAST_COOLDOWN_MS = 8000;
 let lastNetworkToastAt = 0;
