@@ -26,6 +26,12 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'Acesso não aprovado', description: 'Seu padrinho não aprovou esse cadastro.' };
     case 'unauthorized':
       return { title: 'Não autorizado', description: 'Faça login novamente.' };
+    case 'invalid_reset_code':
+      return { title: 'Codigo invalido', description: 'Confira o codigo enviado por e-mail e tente de novo.' };
+    case 'reset_code_expired':
+      return { title: 'Codigo expirado', description: 'Peça um novo codigo para continuar.' };
+    case 'email_send_failed':
+      return { title: 'Nao foi possivel enviar o e-mail', description: 'Tente novamente em instantes.' };
     default:
       return null;
   }

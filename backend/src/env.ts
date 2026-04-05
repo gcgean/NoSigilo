@@ -18,4 +18,7 @@ export const env = {
   JWT_SECRET: jwtSecret,
   SEED_DEMO: (process.env.SEED_DEMO || 'true') === 'true',
   TRIAL_DAYS: Number(process.env.TRIAL_DAYS || 30),
+  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || '',
+  APP_NAME: process.env.APP_NAME || 'NoSigilo',
 };

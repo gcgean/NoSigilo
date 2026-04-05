@@ -21,7 +21,17 @@ async function createTestCtx(): Promise<Ctx> {
     migrationsDir: path.join(process.cwd(), 'migrations'),
     pgMigrationsDir: path.join(process.cwd(), 'pg-migrations'),
   });
-  const app = createApp({ db, env: { FRONTEND_ORIGIN: 'http://localhost:3000', JWT_SECRET: 'test-secret', TRIAL_DAYS: 30 } });
+  const app = createApp({
+    db,
+    env: {
+      FRONTEND_ORIGIN: 'http://localhost:3000',
+      JWT_SECRET: 'test-secret',
+      TRIAL_DAYS: 30,
+      RESEND_API_KEY: '',
+      RESEND_FROM_EMAIL: '',
+      APP_NAME: 'NoSigilo Test',
+    },
+  });
   const cleanup = async () => {
     try {
       await db.persist();
@@ -157,6 +167,38 @@ describe('nosigilo backend', () => {
       .send({ email: 'pendente@example.com', password: 'senha123' })
       .expect(200);
     expect(login.body.user.invitedBy?.name).toBe('Sponsor Principal');
+  });
+
+  it('sends a recovery code and allows changing the password', async () => {
+    await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Reset User',
+      email: 'reset-user@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const requestCode = await request(ctx.app)
+      .post('/api/auth/forgot-password/request')
+      .send({ email: 'reset-user@example.com' })
+      .expect(200);
+
+    expect(requestCode.body.previewCode).toMatch(/^\d{6}$/);
+
+    await request(ctx.app)
+      .post('/api/auth/forgot-password/confirm')
+      .send({
+        email: 'reset-user@example.com',
+        code: requestCode.body.previewCode,
+        newPassword: 'novaSenha456',
+      })
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: 'reset-user@example.com', password: 'novaSenha456' })
+      .expect(200);
   });
 
   it('cities search and nearest work', async () => {

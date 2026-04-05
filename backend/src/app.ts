@@ -12,11 +12,15 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
+import { sendPasswordResetCodeEmail } from './email.js';
 
 type Env = {
   FRONTEND_ORIGIN: string;
   JWT_SECRET: string;
   TRIAL_DAYS: number;
+  RESEND_API_KEY?: string;
+  RESEND_FROM_EMAIL?: string;
+  APP_NAME?: string;
 };
 
 export type PublicUser = {
@@ -75,6 +79,16 @@ type InviteRow = {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function addMinutesIso(iso: string, minutes: number) {
+  const d = new Date(iso);
+  d.setMinutes(d.getMinutes() + minutes);
+  return d.toISOString();
+}
+
+function generateVerificationCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function parseAudiencePreferences(value: string | null | undefined) {
@@ -735,6 +749,113 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const email = parsed.data.email.toLowerCase();
     const existing = await queryOne(db, 'SELECT id FROM users WHERE email = ?', [email]);
     res.json({ available: !existing });
+  });
+
+  app.post('/api/auth/forgot-password/request', authRateLimiter, async (req, res) => {
+    const schema = z.object({ email: z.string().email() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const user = (await queryOne(db, 'SELECT id, name, email FROM users WHERE email = ? LIMIT 1', [email])) as any;
+    if (!user) {
+      res.json({ ok: true });
+      return;
+    }
+
+    const code = generateVerificationCode();
+    const createdAt = nowIso();
+    const expiresAt = addMinutesIso(createdAt, 15);
+    const codeHash = bcrypt.hashSync(code, 10);
+
+    await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [createdAt, String(user.id)]);
+    await run(
+      db,
+      'INSERT INTO password_reset_codes (id, user_id, email, code_hash, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), String(user.id), email, codeHash, createdAt, expiresAt, null]
+    );
+    await persist();
+
+    if (process.env.NODE_ENV === 'production' && (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL)) {
+      res.status(500).json({ error: 'email_send_failed' });
+      return;
+    }
+
+    try {
+      await sendPasswordResetCodeEmail(
+        {
+          apiKey: env.RESEND_API_KEY,
+          fromEmail: env.RESEND_FROM_EMAIL,
+          appName: env.APP_NAME,
+        },
+        { to: email, code, userName: user.name ? String(user.name) : null }
+      );
+    } catch (error) {
+      console.error('Failed to send password reset email:', error);
+      res.status(500).json({ error: 'email_send_failed' });
+      return;
+    }
+
+    const response: any = { ok: true };
+    if (process.env.NODE_ENV !== 'production' && !env.RESEND_API_KEY) {
+      response.previewCode = code;
+    }
+    res.json(response);
+  });
+
+  app.post('/api/auth/forgot-password/confirm', authRateLimiter, async (req, res) => {
+    const schema = z.object({
+      email: z.string().email(),
+      code: z.string().trim().length(6),
+      newPassword: z.string().min(6),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const email = parsed.data.email.toLowerCase();
+    const code = parsed.data.code.trim();
+    const resetRow = (await queryOne(
+      db,
+      `SELECT prc.*, u.id as user_id
+       FROM password_reset_codes prc
+       JOIN users u ON u.id = prc.user_id
+       WHERE prc.email = ?
+         AND prc.consumed_at IS NULL
+       ORDER BY prc.created_at DESC
+       LIMIT 1`,
+      [email]
+    )) as any;
+
+    if (!resetRow) {
+      res.status(400).json({ error: 'invalid_reset_code' });
+      return;
+    }
+
+    if (new Date(String(resetRow.expires_at)).getTime() <= Date.now()) {
+      await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE id = ?', [nowIso(), String(resetRow.id)]);
+      await persist();
+      res.status(400).json({ error: 'reset_code_expired' });
+      return;
+    }
+
+    const codeMatches = bcrypt.compareSync(code, String(resetRow.code_hash));
+    if (!codeMatches) {
+      res.status(400).json({ error: 'invalid_reset_code' });
+      return;
+    }
+
+    const passwordHash = bcrypt.hashSync(parsed.data.newPassword, 10);
+    const consumedAt = nowIso();
+    await run(db, 'UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, String(resetRow.user_id)]);
+    await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [consumedAt, String(resetRow.user_id)]);
+    await persist();
+    res.json({ ok: true });
   });
 
   app.get('/api/invites/public/:token', async (req, res) => {
@@ -2216,8 +2337,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         {
           userId: String(candidate.id),
           type: 'radar.received',
-          title: 'Novo radar compativel na sua cidade',
-          description: `${String(parsed.data.isAnonymous ? 'Um perfil discreto' : me.name || 'Alguem')} acabou de ativar um radar em ${radarCity}, ${radarState}.`,
+          title: 'Esse perfil ativou o radar para voce',
+          description: `${String(parsed.data.isAnonymous ? 'Um perfil discreto' : me.name || 'Alguem')} ativou o radar e esta buscando alguem com o seu perfil para uma brincadeira na sua regiao.`,
           dataJson: {
             broadcastId: id,
             senderId: req.auth!.userId,

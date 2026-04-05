@@ -49,6 +49,16 @@ export const authService = {
     const response = await apiClient.post('/auth/refresh');
     return response.data;
   },
+
+  requestPasswordResetCode: async (email: string) => {
+    const response = await apiClient.post('/auth/forgot-password/request', { email });
+    return response.data;
+  },
+
+  confirmPasswordReset: async (data: { email: string; code: string; newPassword: string }) => {
+    const response = await apiClient.post('/auth/forgot-password/confirm', data);
+    return response.data;
+  },
 };
 
 // Feed Service

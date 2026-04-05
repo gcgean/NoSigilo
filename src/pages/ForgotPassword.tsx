@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Sparkles } from 'lucide-react';
+import { ArrowLeft, Mail, Sparkles, ShieldCheck, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { authService } from '@/services/api';
+import { getApiErrorInfo } from '@/utils/apiError';
 
 function useQueryEmail() {
   const location = useLocation();
@@ -18,6 +20,10 @@ export default function ForgotPassword() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [step, setStep] = useState<'request' | 'confirm'>('request');
   const queryEmail = useQueryEmail();
 
   useEffect(() => {
@@ -26,16 +32,70 @@ export default function ForgotPassword() {
     if (initial) setEmail(initial);
   }, [queryEmail]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitRequestCode = async () => {
     setIsLoading(true);
     try {
       sessionStorage.setItem('nosigilo_login_email', email);
+      const response = await authService.requestPasswordResetCode(email);
+      setStep('confirm');
       toast({
-        title: 'Verifique seu e-mail',
-        description: 'Se existir uma conta para esse e-mail, enviaremos instruções de recuperação.',
+        title: 'Codigo enviado',
+        description: response?.previewCode
+          ? `Codigo de desenvolvimento: ${response.previewCode}`
+          : 'Enviamos um codigo para o seu e-mail. Digite-o abaixo para trocar a senha.',
       });
-      navigate('/login');
+    } catch (error) {
+      const info = getApiErrorInfo(error, {
+        title: 'Nao foi possivel enviar o codigo',
+        description: 'Tente novamente em instantes.',
+      });
+      toast({
+        title: info.title,
+        description: info.description,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRequestCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitRequestCode();
+  };
+
+  const handleResendCode = async () => {
+    await submitRequestCode();
+  };
+
+  const handleConfirmReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: 'As senhas nao conferem',
+        description: 'Digite a mesma senha nos dois campos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await authService.confirmPasswordReset({ email, code, newPassword });
+      toast({
+        title: 'Senha atualizada',
+        description: 'Agora voce ja pode entrar com a nova senha.',
+      });
+      navigate(`/login?email=${encodeURIComponent(email)}`);
+    } catch (error) {
+      const info = getApiErrorInfo(error, {
+        title: 'Nao foi possivel trocar a senha',
+        description: 'Confira o codigo e tente novamente.',
+      });
+      toast({
+        title: info.title,
+        description: info.description,
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -56,38 +116,116 @@ export default function ForgotPassword() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">Recuperar senha</h1>
-              <p className="text-muted-foreground">Informe seu e-mail para receber instruções</p>
+              <p className="text-muted-foreground">
+                {step === 'request' ? 'Receba um codigo por e-mail para trocar sua senha' : 'Digite o codigo e escolha sua nova senha'}
+              </p>
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="email">E-mail</Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={email}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEmail(v);
-                    sessionStorage.setItem('nosigilo_login_email', v);
-                  }}
-                  className="pl-10"
-                  required
-                />
+          {step === 'request' ? (
+            <form onSubmit={handleRequestCode} className="space-y-6">
+              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 text-sm text-muted-foreground">
+                O sistema envia um codigo de 6 digitos para o seu e-mail. Depois voce digita esse codigo aqui e define a nova senha.
               </div>
-            </div>
 
-            <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow py-6" disabled={isLoading}>
-              {isLoading ? 'Enviando...' : 'Enviar instruções'}
-            </Button>
-          </form>
+              <div className="space-y-2">
+                <Label htmlFor="email">E-mail</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={email}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setEmail(v);
+                      sessionStorage.setItem('nosigilo_login_email', v);
+                    }}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow py-6" disabled={isLoading}>
+                {isLoading ? 'Enviando codigo...' : 'Enviar codigo'}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleConfirmReset} className="space-y-6">
+              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 text-sm text-muted-foreground space-y-2">
+                <div className="flex items-center gap-2 text-foreground font-medium">
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  Codigo enviado para {email}
+                </div>
+                <p>Digite o codigo recebido e escolha a nova senha da conta.</p>
+                <button type="button" className="text-primary hover:underline" onClick={() => setStep('request')}>
+                  Alterar e-mail
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="code">Codigo</Label>
+                <div className="relative">
+                  <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="code"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="123456"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="pl-10 tracking-[0.35em]"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">Nova senha</Label>
+                <div className="relative">
+                  <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="newPassword"
+                    type="password"
+                    placeholder="Nova senha"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirmar nova senha</Label>
+                <div className="relative">
+                  <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="Repita a nova senha"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button type="button" variant="outline" className="py-6" onClick={handleResendCode} disabled={isLoading}>
+                  Reenviar codigo
+                </Button>
+                <Button type="submit" className="bg-gradient-primary hover:opacity-90 shadow-glow py-6" disabled={isLoading}>
+                  {isLoading ? 'Salvando...' : 'Trocar senha'}
+                </Button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
