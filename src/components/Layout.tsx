@@ -106,17 +106,20 @@ export default function Layout() {
       setUnreadCount((c) => c + 1);
       if (n.type === 'profile.liked') setHasUnreadMatch(true);
     };
-    socket.on('notification.created', handler);
-    socket.on('message.created', (msg: any) => {
+    const messageHandler = (msg: any) => {
       if (msg && msg.senderId !== user?.id) {
         setUnreadMessagesCount((c) => c + 1);
         // We don't easily know if it's a new conversation without state,
         // so we rely on the next refreshUnread poll (20s) for the conversation count.
       }
-    });
+    };
+    socket.on('notification.created', handler);
+    socket.on('message.created', messageHandler);
+    socket.on('message.new', messageHandler);
     return () => {
       socket.off('notification.created', handler);
-      socket.off('message.created');
+      socket.off('message.created', messageHandler);
+      socket.off('message.new', messageHandler);
     };
   }, [socket, toast, user?.id, navigate]);
 

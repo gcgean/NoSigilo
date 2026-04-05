@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { 
-  Users, Image, DollarSign, FileText, Shield, Ban, Check, X, 
-  Eye, Trash2, Search, Filter, AlertTriangle, TrendingUp
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
+  Eye, Search, Filter, TrendingUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,123 +11,228 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
+import { adminService } from '@/services/api';
+import { useToast } from '@/hooks/use-toast';
+import { resolveServerUrl } from '@/utils/serverUrl';
 
-const mockPendingPhotos = [
-  {
-    id: '1',
-    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300',
-    userId: 'user-1',
-    userName: 'Marina Santos',
-    uploadedAt: '2025-02-01',
-    status: 'pending',
-  },
-  {
-    id: '2',
-    url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300',
-    userId: 'user-2',
-    userName: 'Carolina Lima',
-    uploadedAt: '2025-02-01',
-    status: 'pending',
-  },
-];
+type AdminPhoto = {
+  id: string;
+  url: string;
+  userId: string;
+  userName: string;
+  uploadedAt?: string;
+  status?: string;
+};
 
-const mockUsers = [
-  {
-    id: 'user-1',
-    name: 'Marina Santos',
-    email: 'marina@email.com',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100',
-    status: 'active',
-    isPremium: true,
-    createdAt: '2025-01-15',
-    reports: 0,
-  },
-  {
-    id: 'user-2',
-    name: 'Carolina Lima',
-    email: 'carolina@email.com',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
-    status: 'active',
-    isPremium: false,
-    createdAt: '2025-01-20',
-    reports: 2,
-  },
-  {
-    id: 'user-3',
-    name: 'João Silva',
-    email: 'joao@email.com',
-    avatar: undefined,
-    status: 'banned',
-    isPremium: false,
-    createdAt: '2025-01-10',
-    reports: 5,
-  },
-];
+type AdminUser = {
+  id: string;
+  name: string;
+  email?: string;
+  avatar?: string | null;
+  isPremium?: boolean;
+  isAdmin?: boolean;
+  createdAt?: string;
+  status: 'active' | 'banned';
+  reports: number;
+};
 
-const mockLogs = [
-  { id: '1', action: 'user.login', user: 'marina@email.com', ip: '192.168.1.1', date: '2025-02-01 14:30' },
-  { id: '2', action: 'photo.approved', user: 'admin@nosigilo.com', details: 'Photo #123', date: '2025-02-01 14:25' },
-  { id: '3', action: 'user.banned', user: 'admin@nosigilo.com', details: 'User: joao@email.com', date: '2025-02-01 14:20' },
-  { id: '4', action: 'report.created', user: 'carolina@email.com', details: 'Report #45', date: '2025-02-01 14:15' },
-];
+type FinanceSummary = {
+  revenue: number;
+  subscribers: number;
+  newToday: number;
+  churnRate: number;
+};
 
-const mockFinance = {
-  revenue: 15890.50,
-  subscribers: 234,
-  newToday: 12,
-  churnRate: 2.3,
+type LogItem = {
+  id?: string;
+  action?: string;
+  user?: string;
+  details?: string;
+  date?: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+const DEFAULT_FINANCE: FinanceSummary = {
+  revenue: 0,
+  subscribers: 0,
+  newToday: 0,
+  churnRate: 0,
 };
 
 export default function Admin() {
   const { user } = useAuth();
-  const [photos, setPhotos] = useState(mockPendingPhotos);
-  const [users, setUsers] = useState(mockUsers);
+  const { toast } = useToast();
+  const [photos, setPhotos] = useState<AdminPhoto[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [logs, setLogs] = useState<LogItem[]>([]);
+  const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
 
-  // Redirect if not admin
+  useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const [rawPhotos, rawUsers, rawLogs, rawFinance] = await Promise.all([
+          adminService.getPendingPhotos(),
+          adminService.getUsers(),
+          adminService.getLogs(),
+          adminService.getFinanceSummary(),
+        ]);
+
+        if (cancelled) return;
+
+        setPhotos(
+          Array.isArray(rawPhotos)
+            ? rawPhotos.map((photo) => {
+                const item = isRecord(photo) ? photo : {};
+                return {
+                  id: String(item.id || ''),
+                  url: resolveServerUrl(String(item.url || '')),
+                  userId: String(item.userId || ''),
+                  userName: String(item.userName || 'Usuário'),
+                  uploadedAt: item.uploadedAt ? String(item.uploadedAt) : undefined,
+                  status: item.status ? String(item.status) : 'pending',
+                };
+              })
+            : []
+        );
+
+        setUsers(
+          Array.isArray(rawUsers)
+            ? rawUsers.map((entry) => {
+                const item = isRecord(entry) ? entry : {};
+                return {
+                  id: String(item.id || ''),
+                  name: String(item.name || 'Usuário'),
+                  email: item.email ? String(item.email) : undefined,
+                  avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
+                  isPremium: !!item.isPremium,
+                  isAdmin: !!item.isAdmin,
+                  createdAt: item.createdAt ? String(item.createdAt) : undefined,
+                  status: 'active' as const,
+                  reports: 0,
+                };
+              })
+            : []
+        );
+
+        setLogs(
+          Array.isArray(rawLogs)
+            ? rawLogs.map((entry) => {
+                const item = isRecord(entry) ? entry : {};
+                return {
+                  id: item.id ? String(item.id) : undefined,
+                  action: item.action ? String(item.action) : undefined,
+                  user: item.user ? String(item.user) : undefined,
+                  details: item.details ? String(item.details) : undefined,
+                  date: item.date ? String(item.date) : undefined,
+                };
+              })
+            : []
+        );
+        setFinance(isRecord(rawFinance) ? { ...DEFAULT_FINANCE, ...rawFinance } as FinanceSummary : DEFAULT_FINANCE);
+      } catch {
+        if (cancelled) return;
+        toast({
+          title: 'Falha ao carregar o painel',
+          description: 'Não foi possível buscar os dados administrativos.',
+          variant: 'destructive',
+        });
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [toast]);
+
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((u) =>
+        [u.name, u.email || ''].some((value) => value.toLowerCase().includes(searchQuery.toLowerCase()))
+      ),
+    [users, searchQuery]
+  );
+
   if (!user?.isAdmin) {
     return <Navigate to="/feed" replace />;
   }
 
-  const handleApprovePhoto = (photoId: string) => {
-    setPhotos(photos.filter(p => p.id !== photoId));
+  const handleApprovePhoto = async (photoId: string) => {
+    setBusyPhotoId(photoId);
+    try {
+      await adminService.approvePhoto(photoId);
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      toast({ title: 'Foto aprovada' });
+    } catch {
+      toast({ title: 'Erro ao aprovar foto', variant: 'destructive' });
+    } finally {
+      setBusyPhotoId(null);
+    }
   };
 
-  const handleRejectPhoto = (photoId: string) => {
-    setPhotos(photos.filter(p => p.id !== photoId));
+  const handleRejectPhoto = async (photoId: string) => {
+    setBusyPhotoId(photoId);
+    try {
+      await adminService.rejectPhoto(photoId);
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      toast({ title: 'Foto rejeitada' });
+    } catch {
+      toast({ title: 'Erro ao rejeitar foto', variant: 'destructive' });
+    } finally {
+      setBusyPhotoId(null);
+    }
   };
 
-  const handleBanUser = (userId: string) => {
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, status: 'banned' } : u
-    ));
+  const handleBanUser = async (userId: string) => {
+    setBusyUserId(userId);
+    try {
+      await adminService.banUser(userId);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: 'banned' } : u)));
+      toast({ title: 'Usuário marcado como banido' });
+    } catch {
+      toast({ title: 'Erro ao banir usuário', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
-  const handleUnbanUser = (userId: string) => {
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, status: 'active' } : u
-    ));
+  const handleUnbanUser = async (userId: string) => {
+    setBusyUserId(userId);
+    try {
+      await adminService.unbanUser(userId);
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: 'active' } : u)));
+      toast({ title: 'Usuário desbanido' });
+    } catch {
+      toast({ title: 'Erro ao desbanir usuário', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
   };
-
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="max-w-6xl mx-auto w-full">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center">
           <Shield className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
           <h1 className="text-2xl font-bold">Painel Admin</h1>
-          <p className="text-muted-foreground">Gerencie usuários, fotos e mais</p>
+          <p className="text-muted-foreground">Gerencie usuários, fotos e dados do sistema</p>
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <Card className="p-4 glass">
           <div className="flex items-center gap-3">
@@ -147,7 +252,7 @@ export default function Admin() {
             </div>
             <div>
               <p className="text-2xl font-bold">{photos.length}</p>
-              <p className="text-xs text-muted-foreground">Fotos Pendentes</p>
+              <p className="text-xs text-muted-foreground">Fotos</p>
             </div>
           </div>
         </Card>
@@ -157,8 +262,8 @@ export default function Admin() {
               <DollarSign className="w-5 h-5 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold">R$ {mockFinance.revenue.toLocaleString()}</p>
-              <p className="text-xs text-muted-foreground">Receita Mensal</p>
+              <p className="text-2xl font-bold">R$ {Number(finance.revenue || 0).toLocaleString('pt-BR')}</p>
+              <p className="text-xs text-muted-foreground">Receita</p>
             </div>
           </div>
         </Card>
@@ -168,14 +273,13 @@ export default function Admin() {
               <TrendingUp className="w-5 h-5 text-gold" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{mockFinance.subscribers}</p>
+              <p className="text-2xl font-bold">{Number(finance.subscribers || 0)}</p>
               <p className="text-xs text-muted-foreground">Assinantes</p>
             </div>
           </div>
         </Card>
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="photos" className="space-y-6">
         <TabsList>
           <TabsTrigger value="photos" className="gap-2">
@@ -196,39 +300,38 @@ export default function Admin() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Photos Tab */}
         <TabsContent value="photos">
           <div className="glass rounded-xl p-6">
-            <h3 className="font-semibold mb-4">Fotos Aguardando Aprovação</h3>
-            
-            {photos.length === 0 ? (
+            <h3 className="font-semibold mb-4">Fotos enviadas</h3>
+
+            {isLoading ? (
+              <div className="py-12 text-center text-muted-foreground">Carregando...</div>
+            ) : photos.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <Check className="w-12 h-12 mx-auto mb-4" />
-                <p>Nenhuma foto pendente de aprovação!</p>
+                <p>Nenhuma foto disponível no momento.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {photos.map((photo) => (
                   <div key={photo.id} className="relative group">
-                    <img 
-                      src={photo.url} 
-                      alt="" 
-                      className="w-full aspect-square object-cover rounded-lg"
-                    />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-2">
-                      <p className="text-white text-sm font-medium">{photo.userName}</p>
+                    <img src={photo.url} alt={photo.userName} className="w-full aspect-square object-cover rounded-lg" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-2 p-3">
+                      <p className="text-white text-sm font-medium text-center">{photo.userName}</p>
                       <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           className="bg-success hover:bg-success/90"
-                          onClick={() => handleApprovePhoto(photo.id)}
+                          disabled={busyPhotoId === photo.id}
+                          onClick={() => void handleApprovePhoto(photo.id)}
                         >
                           <Check className="w-4 h-4" />
                         </Button>
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="destructive"
-                          onClick={() => handleRejectPhoto(photo.id)}
+                          disabled={busyPhotoId === photo.id}
+                          onClick={() => void handleRejectPhoto(photo.id)}
                         >
                           <X className="w-4 h-4" />
                         </Button>
@@ -241,7 +344,6 @@ export default function Admin() {
           </div>
         </TabsContent>
 
-        {/* Users Tab */}
         <TabsContent value="users">
           <div className="glass rounded-xl p-6">
             <div className="flex items-center gap-4 mb-4">
@@ -254,60 +356,54 @@ export default function Admin() {
                   className="pl-9"
                 />
               </div>
-              <Button variant="outline" className="gap-2">
+              <Button variant="outline" className="gap-2" disabled>
                 <Filter className="w-4 h-4" />
                 Filtros
               </Button>
             </div>
 
             <div className="space-y-3">
-              {filteredUsers.map((u) => (
-                <div 
-                  key={u.id} 
+              {filteredUsers.map((entry) => (
+                <div
+                  key={entry.id}
                   className="flex items-center justify-between p-4 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <Avatar>
-                      <AvatarImage src={u.avatar} />
-                      <AvatarFallback>{u.name[0]}</AvatarFallback>
+                      <AvatarImage src={entry.avatar || undefined} />
+                      <AvatarFallback>{entry.name[0]}</AvatarFallback>
                     </Avatar>
                     <div>
                       <div className="flex items-center gap-2">
-                        <p className="font-medium">{u.name}</p>
-                        {u.isPremium && (
-                          <Badge className="bg-gold text-black text-xs">Premium</Badge>
-                        )}
-                        {u.status === 'banned' && (
-                          <Badge variant="destructive" className="text-xs">Banido</Badge>
-                        )}
+                        <p className="font-medium">{entry.name}</p>
+                        {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
+                        {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
+                        {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
                       </div>
-                      <p className="text-sm text-muted-foreground">{u.email}</p>
+                      <p className="text-sm text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {u.reports > 0 && (
-                      <Badge variant="outline" className="gap-1 text-warning border-warning">
-                        <AlertTriangle className="w-3 h-3" />
-                        {u.reports} denúncias
-                      </Badge>
-                    )}
-                    <Button variant="ghost" size="icon">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                    {u.status === 'banned' ? (
-                      <Button 
-                        variant="outline" 
+                    <Badge variant="outline" className="gap-1">
+                      <Eye className="w-3 h-3" />
+                      {entry.reports} denúncias
+                    </Badge>
+                    {entry.status === 'banned' ? (
+                      <Button
+                        variant="outline"
                         size="sm"
-                        onClick={() => handleUnbanUser(u.id)}
+                        disabled={busyUserId === entry.id}
+                        onClick={() => void handleUnbanUser(entry.id)}
                       >
                         Desbanir
                       </Button>
                     ) : (
-                      <Button 
-                        variant="destructive" 
+                      <Button
+                        variant="destructive"
                         size="sm"
-                        onClick={() => handleBanUser(u.id)}
+                        disabled={busyUserId === entry.id}
+                        onClick={() => void handleBanUser(entry.id)}
                       >
                         <Ban className="w-4 h-4 mr-1" />
                         Banir
@@ -316,72 +412,76 @@ export default function Admin() {
                   </div>
                 </div>
               ))}
+              {!isLoading && filteredUsers.length === 0 ? (
+                <div className="text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
+              ) : null}
             </div>
           </div>
         </TabsContent>
 
-        {/* Finance Tab */}
         <TabsContent value="finance">
           <div className="grid gap-6 md:grid-cols-2">
             <Card className="p-6 glass">
               <h3 className="font-semibold mb-4">Resumo Financeiro</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Receita Total (mês)</span>
+                  <span className="text-muted-foreground">Receita Total</span>
                   <span className="text-2xl font-bold text-success">
-                    R$ {mockFinance.revenue.toLocaleString()}
+                    R$ {Number(finance.revenue || 0).toLocaleString('pt-BR')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Assinantes Ativos</span>
-                  <span className="font-semibold">{mockFinance.subscribers}</span>
+                  <span className="font-semibold">{Number(finance.subscribers || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Novos Hoje</span>
-                  <span className="font-semibold text-primary">+{mockFinance.newToday}</span>
+                  <span className="font-semibold text-primary">+{Number(finance.newToday || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Taxa de Churn</span>
-                  <span className="font-semibold">{mockFinance.churnRate}%</span>
+                  <span className="font-semibold">{Number(finance.churnRate || 0)}%</span>
                 </div>
               </div>
             </Card>
 
             <Card className="p-6 glass">
-              <h3 className="font-semibold mb-4">Planos Populares</h3>
-              <div className="space-y-3">
+              <h3 className="font-semibold mb-4">Leitura atual da API</h3>
+              <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                  <span>Premium Mensal</span>
-                  <span className="font-semibold">156 assinantes</span>
+                  <span>Usuários retornados</span>
+                  <span className="font-semibold text-foreground">{users.length}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                  <span>VIP Mensal</span>
-                  <span className="font-semibold">78 assinantes</span>
+                  <span>Fotos retornadas</span>
+                  <span className="font-semibold text-foreground">{photos.length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
+                  <span>Logs retornados</span>
+                  <span className="font-semibold text-foreground">{logs.length}</span>
                 </div>
               </div>
             </Card>
           </div>
         </TabsContent>
 
-        {/* Logs Tab */}
         <TabsContent value="logs">
           <div className="glass rounded-xl p-6">
             <h3 className="font-semibold mb-4">Logs do Sistema</h3>
-            <div className="space-y-2">
-              {mockLogs.map((log) => (
-                <div 
-                  key={log.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-secondary/30 text-sm"
-                >
-                  <span className="text-muted-foreground w-36">{log.date}</span>
-                  <Badge variant="outline" className="font-mono">{log.action}</Badge>
-                  <span>{log.user}</span>
-                  {log.details && (
-                    <span className="text-muted-foreground">{log.details}</span>
-                  )}
-                </div>
-              ))}
-            </div>
+            {logs.length === 0 ? (
+              <div className="text-sm text-muted-foreground">A API atual não retornou logs.</div>
+            ) : (
+              <div className="space-y-2">
+                {logs.map((log, index) => (
+                  <div key={log.id || `${log.action || 'log'}-${index}`} className="flex items-center gap-4 p-3 rounded-lg bg-secondary/30 text-sm">
+                    <span className="text-muted-foreground w-36">{log.date || '—'}</span>
+                    <Badge variant="outline" className="font-mono">{log.action || 'log'}</Badge>
+                    <span>{log.user || 'sistema'}</span>
+                    {log.details ? <span className="text-muted-foreground">{log.details}</span> : null}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

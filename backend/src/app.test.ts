@@ -381,4 +381,106 @@ describe('nosigilo backend', () => {
     const bFriends2 = await request(ctx.app).get('/api/friends').set('Authorization', `Bearer ${tokenB}`).expect(200);
     expect(bFriends2.body.friends.some((f: any) => f.id === idA)).toBe(true);
   });
+
+  it('lists conversations after sending a message', async () => {
+    const regA = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ name: 'ConvA', email: 'conva@example.com', password: 'senha123', gender: 'Homem' })
+      .expect(200);
+    const tokenA = regA.body.token as string;
+    const idA = regA.body.user.id as string;
+
+    const regB = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ name: 'ConvB', email: 'convb@example.com', password: 'senha123', gender: 'Mulher' })
+      .expect(200);
+    const tokenB = regB.body.token as string;
+    const idB = regB.body.user.id as string;
+
+    const conv = await request(ctx.app)
+      .post('/api/conversations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ userId: idB })
+      .expect(200);
+    const conversationId = conv.body.id as string;
+
+    await request(ctx.app)
+      .post(`/api/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ content: 'Oi, tudo bem?' })
+      .expect(200);
+
+    const list = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+
+    expect(Array.isArray(list.body)).toBe(true);
+    expect(list.body.some((c: any) => c.id === conversationId && c.user?.id === idA)).toBe(true);
+  });
+
+  it('premium users can create events with notifications enabled', async () => {
+    const hostReg = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ name: 'EventoA', email: 'eventoa@example.com', password: 'senha123', gender: 'Homem', city: 'Fortaleza', state: 'CE' })
+      .expect(200);
+    const hostToken = hostReg.body.token as string;
+    const hostId = hostReg.body.user.id as string;
+
+    const guestReg = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ name: 'EventoB', email: 'eventob@example.com', password: 'senha123', gender: 'Mulher', city: 'Fortaleza', state: 'CE' })
+      .expect(200);
+    const guestToken = guestReg.body.token as string;
+    const guestId = guestReg.body.user.id as string;
+
+    await request(ctx.app)
+      .put('/api/location')
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({ lat: -3.7319, lng: -38.5267 })
+      .expect(200);
+
+    await request(ctx.app)
+      .put('/api/location')
+      .set('Authorization', `Bearer ${guestToken}`)
+      .send({ lat: -3.7325, lng: -38.527 })
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/subscriptions/checkout')
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({ planId: 'premium_monthly' })
+      .expect(200);
+
+    const created = await request(ctx.app)
+      .post('/api/events')
+      .set('Authorization', `Bearer ${hostToken}`)
+      .send({
+        title: 'Encontro teste',
+        location: 'Fortaleza',
+        notificationSettings: {
+          enabled: true,
+          targetCities: ['Fortaleza, CE'],
+          radius: 10,
+        },
+      })
+      .expect(200);
+
+    expect(created.body.id).toBeTypeOf('string');
+    expect(created.body.notificationsSent).toBeGreaterThanOrEqual(1);
+
+    const guestNotifs = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${guestToken}`)
+      .expect(200);
+    expect(guestNotifs.body.some((n: any) => n.type === 'event_invitation')).toBe(true);
+
+    const guestConversations = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${guestToken}`)
+      .expect(200);
+    expect(guestConversations.body.some((c: any) => c.user?.id === hostId)).toBe(true);
+
+    expect(guestId).toBeTypeOf('string');
+  });
 });

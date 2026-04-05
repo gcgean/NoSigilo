@@ -1517,25 +1517,27 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await queryAll(
       db,
       `
-      SELECT c.id, c.user_a_id, c.user_b_id, c.created_at,
-        ua.name as user_a_name, ua.avatar as user_a_avatar,
-        ub.name as user_b_name, ub.avatar as user_b_avatar,
-        (
-          SELECT COUNT(*) FROM messages m
-          WHERE m.conversation_id = c.id
-          AND m.sender_id != ?
-          AND m.is_read = 0
-        ) as unread_count,
-        (
-          SELECT m2.created_at FROM messages m2
-          WHERE m2.conversation_id = c.id
-          ORDER BY m2.created_at DESC LIMIT 1
-        ) as last_message_at
-      FROM conversations c
-      JOIN users ua ON ua.id = c.user_a_id
-      JOIN users ub ON ub.id = c.user_b_id
-      WHERE c.user_a_id = ? OR c.user_b_id = ?
-      ORDER BY COALESCE(last_message_at, c.created_at) DESC
+      SELECT * FROM (
+        SELECT c.id, c.user_a_id, c.user_b_id, c.created_at,
+          ua.name as user_a_name, ua.avatar as user_a_avatar,
+          ub.name as user_b_name, ub.avatar as user_b_avatar,
+          (
+            SELECT COUNT(*) FROM messages m
+            WHERE m.conversation_id = c.id
+            AND m.sender_id != ?
+            AND m.is_read = 0
+          ) as unread_count,
+          (
+            SELECT m2.created_at FROM messages m2
+            WHERE m2.conversation_id = c.id
+            ORDER BY m2.created_at DESC LIMIT 1
+          ) as last_message_at
+        FROM conversations c
+        JOIN users ua ON ua.id = c.user_a_id
+        JOIN users ub ON ub.id = c.user_b_id
+        WHERE c.user_a_id = ? OR c.user_b_id = ?
+      ) conversations_with_meta
+      ORDER BY COALESCE(last_message_at, created_at) DESC
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
@@ -2345,7 +2347,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const myLon = userRow.lon ? Number(userRow.lon) : null;
 
       const params: any[] = [req.auth!.userId];
-      let where = 'id != ? AND (is_banned = 0 OR is_banned IS NULL)';
+      let where = 'id != ?';
 
       if (ns.onlyVerified) where += ' AND is_verified = 1';
       if (ns.onlyPremium) where += ' AND is_premium = 1';

@@ -230,10 +230,12 @@ export default function Chat() {
     };
 
     on('message.created', handler);
+    on('message.new', handler);
     on('message.read', readHandler);
     on('message.viewed', viewedHandler);
     return () => {
       off('message.created', handler);
+      off('message.new', handler);
       off('message.read', readHandler);
       off('message.viewed', viewedHandler);
     };
