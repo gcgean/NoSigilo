@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User } from 'lucide-react';
+import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useSocket } from '@/contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { useFavorites } from '@/contexts/FavoritesContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { hasPremiumAccess } from '@/utils/premium';
 
 type MatchProfile = {
   id: string;
@@ -41,6 +44,8 @@ export default function Match() {
   const { on, off } = useSocket();
   const navigate = useNavigate();
   const { toggleFavorite, isFavorite } = useFavorites();
+  const { user } = useAuth();
+  const { toast } = useToast();
   
   const [profiles, setProfiles] = useState<MatchProfile[]>(() => {
     try {
@@ -59,8 +64,23 @@ export default function Match() {
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHoveringPass, setIsHoveringPass] = useState(false);
   const [isLoading, setIsLoading] = useState(profiles.length === 0);
+  const premiumAccess = hasPremiumAccess(user);
+
+  const redirectToPlans = () => {
+    toast({
+      title: 'Plano necessário',
+      description: 'Renove seu plano para usar Match e navegar pelos perfis.',
+      variant: 'destructive',
+    });
+    navigate('/subscriptions');
+  };
 
   useEffect(() => {
+    if (!premiumAccess) {
+      setProfiles([]);
+      setIsLoading(false);
+      return;
+    }
     let cancelled = false;
     if (profiles.length === 0) setIsLoading(true);
 
@@ -91,7 +111,7 @@ export default function Match() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [premiumAccess]);
 
   useEffect(() => {
     const handler = (payload: any) => {
@@ -151,6 +171,10 @@ export default function Match() {
   };
 
   const handleLike = async () => {
+    if (!premiumAccess) {
+      redirectToPlans();
+      return;
+    }
     if (!currentProfile) return;
     try {
       await matchService.like(currentProfile.id);
@@ -158,7 +182,13 @@ export default function Match() {
     handleSwipe('right');
   };
 
-  const handlePass = () => handleSwipe('left');
+  const handlePass = () => {
+    if (!premiumAccess) {
+      redirectToPlans();
+      return;
+    }
+    handleSwipe('left');
+  };
 
   return (
     <div className="max-w-lg mx-auto w-full">
@@ -167,21 +197,48 @@ export default function Match() {
           <h1 className="text-2xl font-bold">Match</h1>
           <p className="text-muted-foreground">Encontre sua conexão</p>
         </div>
-        <Button variant="outline" size="icon">
+        <Button variant="outline" size="icon" onClick={() => !premiumAccess && redirectToPlans()}>
           <Filter className="w-5 h-5" />
         </Button>
       </div>
 
+      {!premiumAccess && (
+        <button
+          type="button"
+          onClick={redirectToPlans}
+          className="mb-6 flex w-full items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4 text-left transition-colors hover:bg-destructive/10"
+        >
+          <div>
+            <p className="font-semibold text-destructive">Match bloqueado</p>
+            <p className="text-sm text-muted-foreground">Renove seu plano para ver perfis, navegar e curtir no Match.</p>
+          </div>
+          <Lock className="h-5 w-5 text-destructive" />
+        </button>
+      )}
+
       <div className="relative aspect-[3/4] max-h-[70dvh] sm:max-h-[600px]">
-        {isLoading && (
+        {isLoading && premiumAccess && (
           <div className="absolute inset-0 rounded-3xl glass flex items-center justify-center text-muted-foreground">Carregando...</div>
         )}
-        {!isLoading && !currentProfile && (
+        {!premiumAccess && (
+          <button
+            type="button"
+            onClick={redirectToPlans}
+            className="absolute inset-0 rounded-3xl glass flex flex-col items-center justify-center gap-3 text-center text-muted-foreground"
+          >
+            <Lock className="h-10 w-10 text-destructive" />
+            <div>
+              <p className="font-medium text-foreground">Navegação bloqueada</p>
+              <p className="text-sm">Toque para renovar seu plano.</p>
+            </div>
+          </button>
+        )}
+        {!isLoading && premiumAccess && !currentProfile && (
           <div className="absolute inset-0 rounded-3xl glass flex items-center justify-center text-muted-foreground">
             Nenhum perfil disponível
           </div>
         )}
-        {!isLoading && currentProfile && (
+        {!isLoading && premiumAccess && currentProfile && (
           <div
             className={cn(
               'absolute inset-0 rounded-3xl overflow-hidden shadow-elevated transition-all duration-300',
@@ -300,7 +357,7 @@ export default function Match() {
           onClick={handlePass}
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
-          disabled={!currentProfile}
+          disabled={!currentProfile && premiumAccess}
         >
           <X className="w-8 h-8" />
         </Button>
@@ -309,7 +366,7 @@ export default function Match() {
           size="lg"
           className="h-16 w-full rounded-full bg-gradient-primary shadow-glow hover:opacity-90 transition-all sm:h-20 sm:w-20"
           onClick={() => void handleLike()}
-          disabled={!currentProfile}
+          disabled={!currentProfile && premiumAccess}
         >
           <Heart className="w-8 h-8 sm:w-10 sm:h-10" fill="white" />
         </Button>
@@ -318,8 +375,15 @@ export default function Match() {
           size="lg"
           variant="outline"
           className="h-14 w-full rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16"
-          onClick={() => currentProfile && navigate(`/users/${currentProfile.id}`)}
-          disabled={!currentProfile}
+          onClick={() => {
+            if (!currentProfile) return;
+            if (!premiumAccess) {
+              redirectToPlans();
+              return;
+            }
+            navigate(`/users/${currentProfile.id}`);
+          }}
+          disabled={!currentProfile && premiumAccess}
         >
           <User className="w-8 h-8" />
         </Button>
@@ -333,9 +397,13 @@ export default function Match() {
               ? "border-gold bg-gold text-black hover:bg-gold/90"
               : "border-gold text-gold hover:bg-gold hover:text-black"
           )}
-          disabled={!currentProfile}
+          disabled={!currentProfile && premiumAccess}
           onClick={() => {
             if (!currentProfile) return;
+            if (!premiumAccess) {
+              redirectToPlans();
+              return;
+            }
             toggleFavorite({
               id: currentProfile.id,
               name: currentProfile.name,

@@ -109,6 +109,8 @@ type InviteRow = {
   invitee_avatar?: string | null;
 };
 
+const ADMIN_EMAILS = new Set(['admin@nosigilo.com', 'gcgean@hotmail.com']);
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -175,12 +177,33 @@ function addDaysIso(iso: string, days: number) {
   return d.toISOString();
 }
 
+function isAdministrativeEmail(email?: string | null) {
+  return ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
+}
+
 function hasPremiumAccess(userRow: any) {
   if (!userRow) return false;
   if (userRow.is_premium) return true;
   const ends = userRow.trial_ends_at ? new Date(String(userRow.trial_ends_at)) : null;
   if (ends && !Number.isNaN(ends.getTime()) && ends.getTime() > Date.now()) return true;
   return false;
+}
+
+async function userHasPremiumAccess(db: DbHandle, userId: string) {
+  const row = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  return hasPremiumAccess(row);
+}
+
+export async function ensureAdministrativeAccess(db: DbHandle) {
+  if (ADMIN_EMAILS.size === 0) return;
+  const emails = Array.from(ADMIN_EMAILS);
+  const placeholders = emails.map(() => '?').join(', ');
+  await run(
+    db,
+    `UPDATE users SET is_admin = 1 WHERE LOWER(email) IN (${placeholders})`,
+    emails.map((email) => email.toLowerCase())
+  );
+  await db.persist();
 }
 
 function getHubConfig(env: Env) {
@@ -1114,7 +1137,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         parsed.data.lookingFor ? JSON.stringify(parsed.data.lookingFor) : null,
         0,
         0,
-        0,
+        isAdministrativeEmail(email) ? 1 : 0,
         createdAt,
         createdAt,
         trialEndsAt,
@@ -1753,13 +1776,41 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
-    const row = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [userId]);
+    const row = await queryOne(
+      db,
+      `
+      SELECT u.*,
+        (
+          SELECT COUNT(*)
+          FROM media m
+          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%'
+        ) as public_photos_count,
+        (
+          SELECT COUNT(*)
+          FROM media m
+          WHERE m.user_id = u.id AND m.is_private = 1 AND m.mime_type LIKE 'image/%'
+        ) as private_photos_count,
+        (
+          SELECT COUNT(*)
+          FROM testimonials t
+          WHERE t.profile_user_id = u.id AND t.status = 'approved'
+        ) as approved_testimonials_count
+      FROM users u
+      WHERE u.id = ?
+    `,
+      [userId]
+    );
     if (!row) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
     const presence = req.app.get('presence');
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id))));
+    res.json({
+      ...rowToPublicUser(row, presence?.isOnline(String(row.id))),
+      publicPhotosCount: Number((row as any).public_photos_count || 0),
+      privatePhotosCount: Number((row as any).private_photos_count || 0),
+      testimonialsCount: Number((row as any).approved_testimonials_count || 0),
+    });
   });
 
   app.get('/api/users/:userId/private-photos/access', requireAuth(env, db), async (req, res) => {
@@ -2200,6 +2251,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
     const me = (await queryOne(db, 'SELECT lat, lon, looking_for_json FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
@@ -2304,6 +2360,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/match/like', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
     const io = req.app.get('io') as SocketIOServer | undefined;
     const schema = z.object({ userId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
@@ -2903,6 +2964,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/conversations', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
     const schema = z.object({ userId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -3031,6 +3097,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
     if (!msg.is_view_once) {
       res.status(400).json({ error: 'not_view_once' });
       return;
@@ -3051,6 +3122,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
     const schema = z.object({
       content: z.string().max(5000).optional(),
       mediaId: z.string().optional(),
@@ -4050,9 +4126,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
-  app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+  app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
-    res.json(rows.map((row) => rowToPublicUser(row)));
+    const presence = req.app.get('presence');
+    res.json(rows.map((row) => rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true })));
   });
 
   app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), (_req, res) => {
@@ -4067,8 +4144,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json([]);
   });
 
-  app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), (_req, res) => {
-    res.json({ revenue: 0, subscribers: 0, newToday: 0, churnRate: 0 });
+  app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const subscribersRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE is_premium = 1')) as any;
+    const newTodayRow = (await queryOne(db, "SELECT COUNT(*) as c FROM users WHERE created_at >= datetime('now', '-1 day')")) as any;
+    res.json({
+      revenue: 0,
+      subscribers: Number(subscribersRow?.c || 0),
+      newToday: Number(newTodayRow?.c || 0),
+      churnRate: 0,
+    });
   });
 
   app.use((req, res) => {

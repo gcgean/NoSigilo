@@ -18,6 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { hasPremiumAccess } from '@/utils/premium';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -72,6 +73,7 @@ export default function UserProfile() {
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
+  const premiumAccess = hasPremiumAccess(me);
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
@@ -194,6 +196,11 @@ export default function UserProfile() {
   };
   
   const startChat = async () => {
+    if (!premiumAccess) {
+      toast({ title: 'Plano necessário', description: 'Renove seu plano para conversar e navegar pelos perfis.', variant: 'destructive' });
+      navigate('/subscriptions');
+      return;
+    }
     if (!userId) return;
     setIsStartingChat(true);
     try {
@@ -233,6 +240,34 @@ export default function UserProfile() {
 
   if (!profile) {
     return <div className="max-w-2xl mx-auto w-full text-sm text-muted-foreground">Perfil não encontrado.</div>;
+  }
+
+  const publicPhotosCount = Number(profile?.publicPhotosCount ?? publicPhotos.length ?? 0);
+  const privatePhotosCount = Number(
+    profile?.privatePhotosCount ?? (access?.status === 'approved' ? privatePhotos.length : 0)
+  );
+  const testimonialsCount = Number(
+    profile?.testimonialsCount ??
+      testimonials.filter((t) => String(t.status) === 'approved').length ??
+      0
+  );
+
+  if (!isSelf && !premiumAccess) {
+    return (
+      <div className="max-w-2xl mx-auto w-full">
+        <button
+          type="button"
+          onClick={() => navigate('/subscriptions')}
+          className="glass w-full rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-left transition-colors hover:bg-destructive/10"
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <Lock className="h-5 w-5 text-destructive" />
+            <h1 className="text-2xl font-bold">Perfil bloqueado</h1>
+          </div>
+          <p className="text-muted-foreground">Renove seu plano para navegar pelos perfis, ver o Match e responder no chat.</p>
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -308,15 +343,15 @@ export default function UserProfile() {
         <TabsList className="w-full mb-4">
           <TabsTrigger value="public" className="flex-1 gap-2">
             <ImageIcon className="w-4 h-4" />
-            Públicas
+            Públicas ({publicPhotosCount})
           </TabsTrigger>
           <TabsTrigger value="private" className="flex-1 gap-2">
             <Lock className="w-4 h-4" />
-            Privadas
+            Privadas ({privatePhotosCount})
           </TabsTrigger>
           <TabsTrigger value="testimonials" className="flex-1 gap-2">
             <Star className="w-4 h-4" />
-            Depoimentos
+            Depoimentos ({testimonialsCount})
           </TabsTrigger>
         </TabsList>
 

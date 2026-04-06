@@ -260,7 +260,7 @@ describe('nosigilo backend', () => {
     expect(sugAudiencePriority.body[0]?.gender).toContain('Casal');
   });
 
-  it('non-premium can send but cannot read received messages', async () => {
+  it('expired users can view chat with locked incoming messages but cannot start or reply', async () => {
     const regA = await registerApprovedUser(ctx, sponsorToken, {
       name: 'A',
       email: 'a@example.com',
@@ -284,17 +284,31 @@ describe('nosigilo backend', () => {
 
     const conv = await request(ctx.app)
       .post('/api/conversations')
-      .set('Authorization', `Bearer ${tokenA}`)
-      .send({ userId: idB })
+      .set('Authorization', `Bearer ${tokenB}`)
+      .send({ userId: idA })
       .expect(200);
     const conversationId = conv.body.id;
     expect(conversationId).toBeTypeOf('string');
+
+    await run(ctx.db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', ['2000-01-01T00:00:00.000Z', idA]);
+
+    await request(ctx.app)
+      .post('/api/conversations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ userId: idB })
+      .expect(403);
 
     await request(ctx.app)
       .post(`/api/conversations/${conversationId}/messages`)
       .set('Authorization', `Bearer ${tokenB}`)
       .send({ content: 'mensagem privada' })
       .expect(200);
+
+    await request(ctx.app)
+      .post(`/api/conversations/${conversationId}/messages`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ content: 'resposta bloqueada' })
+      .expect(403);
 
     const msgsLocked = await request(ctx.app)
       .get(`/api/conversations/${conversationId}/messages`)

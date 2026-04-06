@@ -10,3 +10,6 @@ export function hasPremiumAccess(user?: { isPremium?: boolean; trialEndsAt?: str
   return !isTrialExpired(user?.trialEndsAt ?? null);
 }
 
+export function isPremiumBlocked(user?: { isPremium?: boolean; trialEndsAt?: string | null } | null) {
+  return !hasPremiumAccess(user);
+}

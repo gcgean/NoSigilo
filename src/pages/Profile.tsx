@@ -857,7 +857,7 @@ export default function Profile() {
                 Desbloqueie recursos exclusivos e destaque seu perfil
               </p>
             </div>
-            <Button className="bg-gold text-black hover:bg-gold/90">
+            <Button className="bg-gold text-black hover:bg-gold/90" onClick={() => navigate('/subscriptions')}>
               Ver Planos
             </Button>
           </div>

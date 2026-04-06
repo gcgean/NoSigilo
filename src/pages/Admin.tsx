@@ -32,6 +32,11 @@ type AdminUser = {
   isPremium?: boolean;
   isAdmin?: boolean;
   createdAt?: string;
+  lastSeenAt?: string | null;
+  trialEndsAt?: string | null;
+  hubLicenseEndAt?: string | null;
+  hubAccessStatus?: string | null;
+  isOnline?: boolean;
   status: 'active' | 'banned';
   reports: number;
 };
@@ -61,6 +66,33 @@ const DEFAULT_FINANCE: FinanceSummary = {
   newToday: 0,
   churnRate: 0,
 };
+
+function parseDate(value?: string | null) {
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(time) ? null : time;
+}
+
+function formatDateTime(value?: string | null) {
+  const time = parseDate(value);
+  if (time === null) return 'Nunca';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(time);
+}
+
+function formatAccessRemaining(entry: AdminUser) {
+  const now = Date.now();
+  const target = entry.isPremium ? parseDate(entry.hubLicenseEndAt) : parseDate(entry.trialEndsAt);
+  if (target === null) return entry.isPremium ? 'Sem data da licença' : 'Sem trial ativo';
+  const diff = target - now;
+  if (diff <= 0) return entry.isPremium ? 'Licença expirada' : 'Trial expirado';
+
+  const hours = Math.ceil(diff / (1000 * 60 * 60));
+  if (hours <= 24) return `${hours}h restantes`;
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return `${days} dia(s) restantes`;
+}
 
 export default function Admin() {
   const { user } = useAuth();
@@ -117,6 +149,11 @@ export default function Admin() {
                   isPremium: !!item.isPremium,
                   isAdmin: !!item.isAdmin,
                   createdAt: item.createdAt ? String(item.createdAt) : undefined,
+                  lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
+                  trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
+                  hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
+                  hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
+                  isOnline: !!item.isOnline,
                   status: 'active' as const,
                   reports: 0,
                 };
@@ -381,6 +418,13 @@ export default function Admin() {
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>Último acesso: {entry.isOnline ? 'Online agora' : formatDateTime(entry.lastSeenAt)}</span>
+                        <span>
+                          {entry.isPremium ? 'Assinatura' : 'Trial'}: <strong className="text-foreground">{formatAccessRemaining(entry)}</strong>
+                        </span>
+                        {entry.hubAccessStatus ? <span>Status Hub: {entry.hubAccessStatus}</span> : null}
+                      </div>
                     </div>
                   </div>
 

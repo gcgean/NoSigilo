@@ -52,6 +52,22 @@ const extraNavItems = [
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
 ];
 
+function parseValidDate(value?: string | null) {
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(time) ? null : time;
+}
+
+function formatRemainingTime(targetMs: number, nowMs: number) {
+  const diff = targetMs - nowMs;
+  if (diff <= 0) return 'expirado';
+
+  const hours = Math.ceil(diff / (1000 * 60 * 60));
+  if (hours <= 24) return `${hours}h restantes`;
+
+  const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+  return `${days} dia(s) restantes`;
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -62,13 +78,40 @@ export default function Layout() {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [unreadConversationsCount, setUnreadConversationsCount] = useState(0);
   const [hasUnreadMatch, setHasUnreadMatch] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
   const [firstAccessFlow, setFirstAccessFlow] = useState<{ needsPhoto?: boolean; needsPost?: boolean } | null>(null);
   const [showFirstAccessReward, setShowFirstAccessReward] = useState(false);
   const hadFirstAccessFlowRef = useRef(false);
-  const trialEnds = user?.trialEndsAt ? new Date(user.trialEndsAt).getTime() : null;
+  const trialEnds = parseValidDate(user?.trialEndsAt);
+  const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
   const trialDaysLeft =
-    trialEnds !== null && !Number.isNaN(trialEnds) ? Math.ceil((trialEnds - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+    trialEnds !== null ? Math.ceil((trialEnds - clockNow) / (1000 * 60 * 60 * 24)) : null;
   const firstAccessRewardKey = user?.id ? `nosigilo:first-access-reward:${user.id}` : null;
+  const accessCountdown = useMemo(() => {
+    if (!user) return null;
+
+    if (!user.isPremium) {
+      if (trialEnds === null) return null;
+      const expiresSoon = trialEnds - clockNow <= 24 * 60 * 60 * 1000;
+      return {
+        href: '/subscriptions',
+        tone: expiresSoon ? 'danger' : 'muted',
+        title: trialEnds <= clockNow ? 'Seu acesso grátis expirou' : `Acesso grátis: ${formatRemainingTime(trialEnds, clockNow)}`,
+        label: trialEnds <= clockNow ? 'Acesso expirado' : formatRemainingTime(trialEnds, clockNow),
+      };
+    }
+
+    if (licenseEnds === null) return null;
+    const diff = licenseEnds - clockNow;
+    if (diff > 24 * 60 * 60 * 1000) return null;
+
+    return {
+      href: '/subscriptions',
+      tone: 'danger',
+      title: diff <= 0 ? 'Sua licença premium expirou' : `Licença premium vence em ${formatRemainingTime(licenseEnds, clockNow)}`,
+      label: diff <= 0 ? 'Licença expirada' : `Premium: ${formatRemainingTime(licenseEnds, clockNow)}`,
+    };
+  }, [clockNow, licenseEnds, trialEnds, user]);
 
   const firstAccessChecklist = useMemo(() => {
     const steps = [
@@ -222,6 +265,11 @@ export default function Layout() {
     };
   }, [socket, toast, user?.id, navigate]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setClockNow(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <FirstAccessTutorial />
@@ -249,19 +297,30 @@ export default function Layout() {
 
             <HelpButton />
 
-            {user?.trialEndsAt && !user?.isPremium && trialDaysLeft !== null && (
-              <NavLink to="/subscriptions" className="hidden min-w-0 shrink sm:block">
+            {accessCountdown && (
+              <NavLink to={accessCountdown.href} className="hidden min-w-0 shrink sm:block">
                 <Badge
                   className={cn(
                     'max-w-[112px] truncate rounded-full px-2 py-1 text-[11px] md:max-w-[152px] lg:max-w-[180px] lg:px-3 xl:max-w-none',
-                    trialDaysLeft <= 0 ? 'bg-destructive text-destructive-foreground' : 'bg-secondary'
+                    accessCountdown.tone === 'danger'
+                      ? 'bg-destructive text-destructive-foreground'
+                      : 'bg-secondary text-secondary-foreground'
                   )}
-                  title={trialDaysLeft <= 0 ? 'Teste grátis expirado' : `Teste grátis: ${trialDaysLeft} dia(s)`}
+                  title={accessCountdown.title}
                 >
-                  {trialDaysLeft <= 0 ? 'Teste expirado' : `Teste grátis: ${trialDaysLeft} dia(s)`}
+                  {accessCountdown.label}
                 </Badge>
               </NavLink>
             )}
+
+            <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
+              <Button variant="ghost" size="icon" className="relative" aria-label="Ver planos">
+                <Crown className="w-5 h-5 text-gold" />
+                {!user?.isPremium ? (
+                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive" />
+                ) : null}
+              </Button>
+            </NavLink>
 
             <NavLink to="/profile" className="shrink-0 flex items-center gap-2">
               <div className={cn("h-9 w-9 shrink-0 rounded-full bg-secondary overflow-hidden", user?.isPremium ? "ring-2 ring-gold/60" : "")}>
@@ -380,6 +439,29 @@ export default function Layout() {
 
         <main className="flex-1 min-w-0 px-3 py-4 pb-24 sm:px-4 sm:py-6 md:pb-6">
           <div className="mx-auto w-full max-w-6xl">
+            {(!user?.isPremium || accessCountdown) && (
+              <div className="mb-4 sm:hidden">
+                <NavLink
+                  to="/subscriptions"
+                  className={cn(
+                    'flex items-center justify-between rounded-2xl border px-4 py-3',
+                    accessCountdown?.tone === 'danger'
+                      ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-gold/30 bg-gradient-to-r from-gold/15 to-primary/10'
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">
+                      {accessCountdown?.tone === 'danger' ? 'Regularize sua assinatura' : 'Assine um plano'}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {accessCountdown?.label || 'Desbloqueie recursos premium e mantenha seu acesso ativo.'}
+                    </p>
+                  </div>
+                  <Crown className="h-5 w-5 shrink-0 text-gold" />
+                </NavLink>
+              </div>
+            )}
             {showFirstAccessReward ? (
               <div className="mb-4">
                 <div className="relative overflow-hidden rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/12 via-lime-400/10 to-amber-400/12 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.12)]">

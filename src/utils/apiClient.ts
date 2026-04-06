@@ -6,6 +6,7 @@ export const API_URL = RESOLVED_API_URL;
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 const NETWORK_TOAST_COOLDOWN_MS = 8000;
 let lastNetworkToastAt = 0;
+let lastPremiumToastAt = 0;
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -45,6 +46,21 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/login';
+    }
+    const apiErrorCode = String(error.response?.data?.error || '');
+    if (error.response?.status === 403 && apiErrorCode === 'premium_required') {
+      const now = Date.now();
+      if (now - lastPremiumToastAt > NETWORK_TOAST_COOLDOWN_MS) {
+        lastPremiumToastAt = now;
+        toast({
+          title: 'Plano necessário',
+          description: 'Renove seu plano para continuar usando este recurso.',
+          variant: 'destructive',
+        });
+      }
+      if (!window.location.pathname.startsWith('/subscriptions')) {
+        window.location.href = '/subscriptions';
+      }
     }
     return Promise.reject(error);
   }

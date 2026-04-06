@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb } from './db.js';
-import { createApp, seedDemo } from './app.js';
+import { createApp, ensureAdministrativeAccess, seedDemo } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -20,6 +20,7 @@ async function main() {
   if (env.SEED_DEMO) {
     await seedDemo(db, { FRONTEND_ORIGIN: env.FRONTEND_ORIGIN, JWT_SECRET: env.JWT_SECRET, TRIAL_DAYS: env.TRIAL_DAYS });
   }
+  await ensureAdministrativeAccess(db);
 
   const app = createApp({ db, env });
   const httpServer = createServer(app);

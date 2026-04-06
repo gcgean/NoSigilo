@@ -17,6 +17,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { hasPremiumAccess } from '@/utils/premium';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -71,6 +72,16 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
+  const premiumAccess = hasPremiumAccess(user);
+
+  const redirectToPlans = () => {
+    toast({
+      title: 'Plano necessário',
+      description: 'Renove seu plano para responder e desbloquear o conteúdo do chat.',
+      variant: 'destructive',
+    });
+    navigate('/subscriptions');
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -245,6 +256,10 @@ export default function Chat() {
   }, [on, off, selectedChat, user?.id]);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
+    if (!premiumAccess) {
+      redirectToPlans();
+      return;
+    }
     if (!content?.trim() && !mediaId) return;
     if (!selectedChat) return;
     if (USE_MOCKS) {
@@ -295,6 +310,10 @@ export default function Chat() {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!premiumAccess) {
+      redirectToPlans();
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -483,10 +502,14 @@ export default function Chat() {
                     )}
                   >
                     {msg.isLocked ? (
-                      <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 text-left"
+                        onClick={redirectToPlans}
+                      >
                         <Lock className="w-4 h-4" />
                         <p>Assine para ver esta mensagem</p>
-                      </div>
+                      </button>
                     ) : (
                       <div className="flex flex-col gap-2">
                         {msg.mediaId && (
@@ -582,6 +605,19 @@ export default function Chat() {
 
           {/* Message Input */}
           <div className="p-4 border-t glass">
+            {!premiumAccess && (
+              <button
+                type="button"
+                onClick={redirectToPlans}
+                className="mb-3 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
+              >
+                <div>
+                  <p className="font-medium text-destructive">Respostas bloqueadas</p>
+                  <p className="text-sm text-muted-foreground">Renove seu plano para responder e liberar todas as mensagens.</p>
+                </div>
+                <Lock className="h-4 w-4 text-destructive" />
+              </button>
+            )}
             <div className="flex items-center gap-2">
               <input
                 type="file"
@@ -593,7 +629,7 @@ export default function Chat() {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                 disabled={isUploading}
               >
                 {isUploading ? (
@@ -605,7 +641,7 @@ export default function Chat() {
 
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" disabled={!premiumAccess}>
                     <Smile className="w-5 h-5" />
                   </Button>
                 </PopoverTrigger>
@@ -620,9 +656,10 @@ export default function Chat() {
               <Button 
                 variant={isViewOnceEnabled ? "secondary" : "ghost"} 
                 size="icon"
-                onClick={() => setIsViewOnceEnabled(!isViewOnceEnabled)}
+                onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
                 className={cn(isViewOnceEnabled && "text-yellow-500")}
                 title="Visualização única"
+                disabled={!premiumAccess}
               >
                 <Zap className="w-5 h-5" />
               </Button>
@@ -633,12 +670,16 @@ export default function Chat() {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(message)}
                 className="flex-1"
+                disabled={!premiumAccess}
+                onClick={() => {
+                  if (!premiumAccess) redirectToPlans();
+                }}
               />
               <Button
                 size="icon"
                 className="bg-gradient-primary hover:opacity-90"
                 onClick={() => handleSendMessage(message)}
-                disabled={!message.trim() || isUploading}
+                disabled={!premiumAccess || !message.trim() || isUploading}
               >
                 <Send className="w-5 h-5" />
               </Button>
