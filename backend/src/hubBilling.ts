@@ -63,7 +63,9 @@ function trimTrailingSlash(value: string) {
 
 function normalizeBaseUrl(baseUrl: string) {
   const trimmed = trimTrailingSlash(baseUrl.trim());
-  return /\/api\/v1$/i.test(trimmed) ? trimmed : `${trimmed}/api/v1`;
+  if (/\/api\/v1$/i.test(trimmed)) return trimmed;
+  if (/\/api$/i.test(trimmed)) return `${trimmed}/v1`;
+  return `${trimmed}/api/v1`;
 }
 
 function buildUrl(config: HubConfig, pathname: string, params?: Record<string, string | number | boolean | undefined | null>) {
