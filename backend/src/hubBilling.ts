@@ -236,13 +236,20 @@ export async function createHubOrder(
 
 export async function createHubCheckout(
   config: HubConfig,
-  data: { orderId: string; billingType?: 'PIX' | 'BOLETO' | 'CREDIT_CARD' }
+  data: {
+    orderId: string;
+    billingType?: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
+    payerName?: string | null;
+    payerDocument?: string | null;
+  }
 ) {
   return requestJson<HubCheckoutResult>(buildUrl(config, `/orders/${data.orderId}/checkout`), {
     method: 'POST',
     headers: await adminHeaders(config),
     body: JSON.stringify({
       billingType: data.billingType || 'PIX',
+      payerName: data.payerName || undefined,
+      payerDocument: sanitizeDocument(data.payerDocument),
     }),
   });
 }

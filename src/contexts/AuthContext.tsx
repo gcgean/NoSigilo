@@ -40,6 +40,7 @@ export interface User {
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
   billingDocument?: string | null;
+  billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
   billingPhone?: string | null;
   billingAddressZip?: string | null;
@@ -237,6 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'lookingFor',
           'allowMessages',
           'billingDocument',
+          'billingLegalName',
           'billingPersonType',
           'billingPhone',
           'billingAddressZip',

@@ -39,6 +39,7 @@ type CheckoutPayload = {
 };
 
 type BillingForm = {
+  billingLegalName: string;
   billingDocument: string;
   billingPersonType: 'PF' | 'PJ';
   billingPhone: string;
@@ -52,14 +53,8 @@ type BillingForm = {
 };
 
 const BILLING_REQUIRED_FIELDS: Array<{ key: keyof BillingForm; label: string }> = [
+  { key: 'billingLegalName', label: 'Nome do titular' },
   { key: 'billingDocument', label: 'CPF/CNPJ' },
-  { key: 'billingPhone', label: 'Telefone' },
-  { key: 'billingAddressZip', label: 'CEP' },
-  { key: 'billingAddressStreet', label: 'Rua' },
-  { key: 'billingAddressNumber', label: 'Numero' },
-  { key: 'billingAddressDistrict', label: 'Bairro' },
-  { key: 'billingAddressCity', label: 'Cidade' },
-  { key: 'billingAddressState', label: 'Estado' },
 ];
 
 function daysLeft(trialEndsAt?: string | null) {
@@ -72,6 +67,7 @@ function daysLeft(trialEndsAt?: string | null) {
 
 function buildBillingForm(user: ReturnType<typeof useAuth>['user']): BillingForm {
   return {
+    billingLegalName: user?.billingLegalName || user?.name || '',
     billingDocument: user?.billingDocument || '',
     billingPersonType: user?.billingPersonType || 'PF',
     billingPhone: user?.billingPhone || '',
@@ -242,50 +238,17 @@ export default function Subscriptions() {
           <DialogHeader>
             <DialogTitle>Complete seus dados de cobranca</DialogTitle>
             <DialogDescription>
-              O Hub de pagamentos precisa destes dados antes de gerar o PIX da sua assinatura.
+              Para gerar o PIX, informe o nome do titular e o CPF/CNPJ que serao usados no pagamento.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="billingDocument">CPF/CNPJ</Label>
+              <Label htmlFor="billingLegalName">Nome do titular</Label>
+              <Input id="billingLegalName" value={billingForm.billingLegalName} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingLegalName: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingDocument">CPF/CNPJ do titular</Label>
               <Input id="billingDocument" value={billingForm.billingDocument} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingDocument: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingPhone">Telefone</Label>
-              <Input id="billingPhone" value={billingForm.billingPhone} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingPhone: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressZip">CEP</Label>
-              <Input id="billingAddressZip" value={billingForm.billingAddressZip} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressZip: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressState">Estado</Label>
-              <Input
-                id="billingAddressState"
-                maxLength={2}
-                value={billingForm.billingAddressState}
-                onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressState: e.target.value.toUpperCase() }))}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="billingAddressStreet">Rua</Label>
-              <Input id="billingAddressStreet" value={billingForm.billingAddressStreet} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressStreet: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressNumber">Numero</Label>
-              <Input id="billingAddressNumber" value={billingForm.billingAddressNumber} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressNumber: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressDistrict">Bairro</Label>
-              <Input id="billingAddressDistrict" value={billingForm.billingAddressDistrict} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressDistrict: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressCity">Cidade</Label>
-              <Input id="billingAddressCity" value={billingForm.billingAddressCity} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressCity: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingAddressComplement">Complemento</Label>
-              <Input id="billingAddressComplement" value={billingForm.billingAddressComplement} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressComplement: e.target.value }))} />
             </div>
           </div>
           <DialogFooter>

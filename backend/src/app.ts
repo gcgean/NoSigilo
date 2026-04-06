@@ -79,6 +79,7 @@ export type PublicUser = {
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
   billingDocument?: string | null;
+  billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
   billingPhone?: string | null;
   billingAddressZip?: string | null;
@@ -496,6 +497,7 @@ function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: b
     ...(options?.showEmail
       ? {
           billingDocument: row.billing_document ?? null,
+          billingLegalName: row.billing_legal_name ?? null,
           billingPersonType: row.billing_person_type ?? null,
           billingPhone: row.billing_phone ?? null,
           billingAddressZip: row.billing_address_zip ?? null,
@@ -1640,6 +1642,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
+        billingLegalName: z.string().max(120).optional().nullable(),
         billingPersonType: z.enum(['PF', 'PJ']).optional().nullable(),
         billingPhone: z.string().max(30).optional().nullable(),
         billingAddressZip: z.string().max(20).optional().nullable(),
@@ -1682,6 +1685,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       zodiacSign: 'zodiac_sign',
       allowMessages: 'allow_messages',
       billingDocument: 'billing_document',
+      billingLegalName: 'billing_legal_name',
       billingPersonType: 'billing_person_type',
       billingPhone: 'billing_phone',
       billingAddressZip: 'billing_address_zip',
@@ -3719,7 +3723,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     try {
       const user = (await queryOne(
         db,
-        `SELECT id, email, name, city, state, billing_document, billing_person_type, billing_phone,
+        `SELECT id, email, name, city, state, billing_document, billing_legal_name, billing_person_type, billing_phone,
                 billing_address_zip, billing_address_street, billing_address_number, billing_address_district,
                 billing_address_complement, billing_address_city, billing_address_state, hub_customer_id
          FROM users WHERE id = ? LIMIT 1`,
@@ -3738,14 +3742,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       }
 
       const requiredBillingFields = [
+        ['billing_legal_name', 'Nome do titular'],
         ['billing_document', 'CPF/CNPJ'],
-        ['billing_phone', 'Telefone'],
-        ['billing_address_zip', 'CEP'],
-        ['billing_address_street', 'Rua'],
-        ['billing_address_number', 'Numero'],
-        ['billing_address_district', 'Bairro'],
-        ['billing_address_city', 'Cidade'],
-        ['billing_address_state', 'Estado'],
       ] as const;
       const missingBillingFields = requiredBillingFields
         .filter(([key]) => !String(user[key] ?? '').trim())
@@ -3761,17 +3759,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
       const upsertedCustomer = await upsertHubCustomer(getHubConfig(env), {
         email: String(user.email),
-        legalName: String(user.name),
+        legalName: String(user.billing_legal_name || user.name),
         document: user.billing_document ?? null,
         personType: user.billing_person_type ?? 'PF',
-        phone: user.billing_phone ?? null,
-        addressZip: user.billing_address_zip ?? null,
-        addressStreet: user.billing_address_street ?? null,
-        addressNumber: user.billing_address_number ?? null,
-        addressDistrict: user.billing_address_district ?? null,
-        addressComplement: user.billing_address_complement ?? null,
-        addressCity: user.billing_address_city ?? user.city ?? null,
-        addressState: user.billing_address_state ?? user.state ?? null,
       });
 
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
@@ -3792,6 +3782,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const checkout = await createHubCheckout(getHubConfig(env), {
         orderId,
         billingType: parsed.data.billingType || 'PIX',
+        payerName: String(user.billing_legal_name || user.name || ''),
+        payerDocument: user.billing_document ?? null,
       });
       await persist();
 
