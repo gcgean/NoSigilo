@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Crown, QrCode, Star, Zap, Radar, Video, Calendar, Lock, ExternalLink } from 'lucide-react';
+import { Copy, Crown, QrCode, Star, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,18 @@ type CheckoutPayload = {
   amount?: number | null;
   currency?: string | null;
   dueDate?: string | null;
+};
+
+type SubscriptionStatus = {
+  customerId?: string | null;
+  productId?: string | null;
+  accessStatus?: string | null;
+  reason?: string | null;
+  banner?: string | null;
+  licenseEndAt?: string | null;
+  trialStartedAt?: string | null;
+  trialEndAt?: string | null;
+  canAccess?: boolean;
 };
 
 type BillingForm = {
@@ -121,6 +133,7 @@ export default function Subscriptions() {
   const [billingForm, setBillingForm] = useState<BillingForm>(() => buildBillingForm(user));
   const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
   const [isSavingBilling, setIsSavingBilling] = useState(false);
+  const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
 
   useEffect(() => {
     setBillingForm(buildBillingForm(user));
@@ -157,6 +170,18 @@ export default function Subscriptions() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!checkoutResult || String(checkoutResult.status || '').toLowerCase() !== 'pending') {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshPaymentStatus(true);
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [checkoutResult]);
+
   const left = daysLeft(user?.trialEndsAt ?? null);
   const trialExpired = left !== null && left <= 0 && !user?.isPremium;
   const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
@@ -167,6 +192,59 @@ export default function Subscriptions() {
     { icon: Calendar, title: 'Eventos', desc: 'Criar eventos e alcançar mais pessoas' },
     { icon: Lock, title: 'Recursos Premium', desc: 'Mais privacidade, mais alcance e recursos exclusivos' },
   ] as const;
+
+  const refreshPaymentStatus = async (silent = false) => {
+    try {
+      setIsRefreshingStatus(true);
+      const status: SubscriptionStatus = await subscriptionsService.getStatus();
+      setHubBanner(status?.banner ?? null);
+
+      const me = await authService.getMe();
+      updateUser(me);
+
+      const normalizedAccessStatus = String(status?.accessStatus || me?.hubAccessStatus || '').toLowerCase();
+      const hasActiveAccess =
+        normalizedAccessStatus === 'licensed' ||
+        status?.canAccess === true ||
+        !!me?.isPremium;
+
+      if (hasActiveAccess) {
+        setCheckoutResult((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: 'paid',
+              }
+            : prev
+        );
+
+        if (!silent) {
+          toast({
+            title: 'Pagamento confirmado',
+            description: 'Sua assinatura foi ativada com sucesso.',
+          });
+        }
+        return;
+      }
+
+      if (!silent) {
+        toast({
+          title: 'Pagamento ainda pendente',
+          description: status?.banner || 'Ainda não recebemos a confirmação do pagamento. Tente novamente em instantes.',
+        });
+      }
+    } catch (error: any) {
+      if (!silent) {
+        toast({
+          title: 'Falha ao atualizar status',
+          description: error?.response?.data?.message || 'Não foi possível consultar o pagamento agora.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsRefreshingStatus(false);
+    }
+  };
 
   const performCheckout = async (planId: string) => {
     try {
@@ -333,6 +411,10 @@ export default function Subscriptions() {
                         <Copy className="w-4 h-4" /> Copiar PIX
                       </Button>
                     )}
+                    <Button variant="outline" onClick={() => void refreshPaymentStatus()} disabled={isRefreshingStatus} className="gap-2">
+                      <RefreshCw className={cn('w-4 h-4', isRefreshingStatus && 'animate-spin')} />{' '}
+                      {isRefreshingStatus ? 'Atualizando...' : 'Atualizar status do pagamento'}
+                    </Button>
                     {checkoutResult.checkoutUrl && (
                       <Button variant="outline" asChild>
                         <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="gap-2">
