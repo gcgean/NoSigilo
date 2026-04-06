@@ -3835,18 +3835,60 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         return;
       }
 
-      const customerId =
-        String(user.hub_customer_id || '').trim() ||
-        String(
-          (
-            await upsertHubCustomer(getHubConfig(env), {
-              email: String(user.email),
-              legalName: String(user.billing_legal_name || user.name),
-              document: user.billing_document ?? null,
-              personType: user.billing_person_type ?? 'PF',
-            })
-          ).customerId || ''
-        ).trim();
+      const hubConfig = getHubConfig(env);
+      let customerId = String(user.hub_customer_id || '').trim();
+
+      if (customerId) {
+        try {
+          const existingStatus = await getHubAccessStatus(hubConfig, customerId);
+          customerId = String(existingStatus.customerId || customerId).trim();
+        } catch (error) {
+          console.warn('Hub Billing customer lookup failed before checkout, trying upsert:', error);
+          customerId = '';
+        }
+      }
+
+      if (!customerId) {
+        const requiredHubCustomerFields = [
+          ['billing_legal_name', 'Nome do titular'],
+          ['billing_document', 'CPF/CNPJ'],
+          ['billing_phone', 'Telefone'],
+          ['billing_address_zip', 'CEP'],
+          ['billing_address_street', 'Rua'],
+          ['billing_address_number', 'Número'],
+          ['billing_address_district', 'Bairro'],
+          ['billing_address_city', 'Cidade'],
+          ['billing_address_state', 'Estado'],
+        ] as const;
+
+        const missingHubCustomerFields = requiredHubCustomerFields
+          .filter(([key]) => !String(user[key] ?? '').trim())
+          .map(([, label]) => label);
+
+        if (missingHubCustomerFields.length > 0) {
+          res.status(400).json({
+            error: 'billing_data_required',
+            message: 'Complete seus dados de cobranca para cadastrar seu cliente no Hub antes de gerar o PIX.',
+            missingFields: missingHubCustomerFields,
+          });
+          return;
+        }
+
+        const upsertResult = await upsertHubCustomer(hubConfig, {
+          email: String(user.email),
+          legalName: String(user.billing_legal_name || user.name),
+          document: user.billing_document ?? null,
+          personType: user.billing_person_type ?? 'PF',
+          phone: user.billing_phone ?? null,
+          addressZip: user.billing_address_zip ?? null,
+          addressStreet: user.billing_address_street ?? null,
+          addressNumber: user.billing_address_number ?? null,
+          addressDistrict: user.billing_address_district ?? null,
+          addressCity: user.billing_address_city ?? user.city ?? null,
+          addressState: user.billing_address_state ?? user.state ?? null,
+        });
+        customerId = String(upsertResult.customerId || '').trim();
+      }
 
       if (!customerId) {
         throw new Error('Hub Billing nao retornou customerId');
@@ -3854,11 +3896,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
         customerId,
-        String(getHubConfig(env).productId),
+        String(hubConfig.productId),
         req.auth!.userId,
       ]);
 
-      const order = await createHubOrder(getHubConfig(env), {
+      const order = await createHubOrder(hubConfig, {
         customerId,
         planId: planId,
         contractedAmount: Number(selectedPlan.amount || 0),
@@ -3867,7 +3909,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (!orderId) {
         throw new Error('Hub Billing nao retornou orderId');
       }
-      const checkout = await createHubCheckout(getHubConfig(env), {
+      const checkout = await createHubCheckout(hubConfig, {
         orderId,
         billingType: parsed.data.billingType || 'PIX',
         payerName: String(user.billing_legal_name || user.name || ''),
