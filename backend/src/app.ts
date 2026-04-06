@@ -1212,12 +1212,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     if (shouldUseHubBilling(env)) {
       try {
-        const hubResult = await resolveHubAccess(getHubConfig(env), {
-          email: String(row.email),
-          name: String(row.name),
-          document: row.billing_document ?? null,
-          personType: row.billing_person_type ?? null,
-        });
+        const hubResult = String(row.hub_customer_id || '').trim()
+          ? await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id))
+          : await resolveHubAccess(getHubConfig(env), {
+              email: String(row.email),
+              name: String(row.name),
+              document: row.billing_document ?? null,
+              personType: row.billing_person_type ?? null,
+            });
         await syncHubAccessForUser(db, String(row.id), hubResult);
         await persist();
       } catch (error) {
