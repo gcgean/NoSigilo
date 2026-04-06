@@ -91,7 +91,14 @@ export default function Layout() {
     if (!user) return null;
 
     if (!user.isPremium) {
-      if (trialEnds === null) return null;
+      if (trialEnds === null) {
+        return {
+          href: '/subscriptions',
+          tone: 'danger',
+          title: 'Seu acesso nao esta ativo',
+          label: 'Acesso inativo',
+        };
+      }
       const expiresSoon = trialEnds - clockNow <= 24 * 60 * 60 * 1000;
       return {
         href: '/subscriptions',
@@ -101,7 +108,14 @@ export default function Layout() {
       };
     }
 
-    if (licenseEnds === null) return null;
+    if (licenseEnds === null) {
+      return {
+        href: '/subscriptions',
+        tone: 'danger',
+        title: 'Assinatura sem data de vencimento disponível',
+        label: 'Assinante sem prazo',
+      };
+    }
     const diff = licenseEnds - clockNow;
 
     return {
