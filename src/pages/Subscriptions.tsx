@@ -123,7 +123,19 @@ function normalizePixQrCode(value?: string | null) {
 
 function getCheckoutErrorMessage(error: any) {
   const data = error?.response?.data;
-  if (typeof data === 'string' && data.trim()) return data;
+  if (typeof data === 'string' && data.trim()) {
+    const raw = data.trim();
+    if (/<!DOCTYPE html/i.test(raw) || /<html[\s>]/i.test(raw)) {
+      if (/502/i.test(raw) || /bad gateway/i.test(raw)) {
+        return 'O servidor retornou 502 Bad Gateway ao iniciar a assinatura.';
+      }
+      if (/cloudflare/i.test(raw)) {
+        return 'O servidor retornou uma página de erro intermediária ao iniciar a assinatura.';
+      }
+      return 'O servidor retornou uma resposta HTML inesperada ao iniciar a assinatura.';
+    }
+    return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
   if (typeof data?.message === 'string' && data.message.trim()) return data.message;
   if (typeof data?.error === 'string' && data.error.trim()) return data.error;
   if (Array.isArray(data?.details) && data.details.length > 0) {
