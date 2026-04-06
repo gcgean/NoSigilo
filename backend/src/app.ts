@@ -3757,21 +3757,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         return;
       }
 
-      const upsertedCustomer = await upsertHubCustomer(getHubConfig(env), {
-        email: String(user.email),
-        legalName: String(user.billing_legal_name || user.name),
-        document: user.billing_document ?? null,
-        personType: user.billing_person_type ?? 'PF',
-      });
+      const customerId =
+        String(user.hub_customer_id || '').trim() ||
+        String(
+          (
+            await upsertHubCustomer(getHubConfig(env), {
+              email: String(user.email),
+              legalName: String(user.billing_legal_name || user.name),
+              document: user.billing_document ?? null,
+              personType: user.billing_person_type ?? 'PF',
+            })
+          ).customerId || ''
+        ).trim();
+
+      if (!customerId) {
+        throw new Error('Hub Billing nao retornou customerId');
+      }
 
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
-        String(upsertedCustomer.customerId),
+        customerId,
         String(getHubConfig(env).productId),
         req.auth!.userId,
       ]);
 
       const order = await createHubOrder(getHubConfig(env), {
-        customerId: String(upsertedCustomer.customerId),
+        customerId,
         planId: planId,
         contractedAmount: Number(selectedPlan.amount || 0),
       });
@@ -3792,7 +3802,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         mode: 'hub',
         orderId,
         planId,
-        customerId: upsertedCustomer.customerId,
+        customerId,
         checkout,
       });
     } catch (error) {
