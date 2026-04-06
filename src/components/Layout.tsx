@@ -103,13 +103,12 @@ export default function Layout() {
 
     if (licenseEnds === null) return null;
     const diff = licenseEnds - clockNow;
-    if (diff > 24 * 60 * 60 * 1000) return null;
 
     return {
       href: '/subscriptions',
-      tone: 'danger',
-      title: diff <= 0 ? 'Sua licença premium expirou' : `Licença premium vence em ${formatRemainingTime(licenseEnds, clockNow)}`,
-      label: diff <= 0 ? 'Licença expirada' : `Premium: ${formatRemainingTime(licenseEnds, clockNow)}`,
+      tone: diff <= 24 * 60 * 60 * 1000 ? 'danger' : 'premium',
+      title: diff <= 0 ? 'Sua licença premium expirou' : `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
+      label: diff <= 0 ? 'Licença expirada' : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
     };
   }, [clockNow, licenseEnds, trialEnds, user]);
 
@@ -304,7 +303,9 @@ export default function Layout() {
                     'max-w-[112px] truncate rounded-full px-2 py-1 text-[11px] md:max-w-[152px] lg:max-w-[180px] lg:px-3 xl:max-w-none',
                     accessCountdown.tone === 'danger'
                       ? 'bg-destructive text-destructive-foreground'
-                      : 'bg-secondary text-secondary-foreground'
+                      : accessCountdown.tone === 'premium'
+                        ? 'border border-gold/30 bg-gold/15 text-gold'
+                        : 'bg-secondary text-secondary-foreground'
                   )}
                   title={accessCountdown.title}
                 >
@@ -439,27 +440,38 @@ export default function Layout() {
 
         <main className="flex-1 min-w-0 px-3 py-4 pb-24 sm:px-4 sm:py-6 md:pb-6">
           <div className="mx-auto w-full max-w-6xl">
-            {(!user?.isPremium || accessCountdown) && (
+            {accessCountdown && (
               <div className="mb-4 sm:hidden">
-                <NavLink
-                  to="/subscriptions"
-                  className={cn(
-                    'flex items-center justify-between rounded-2xl border px-4 py-3',
-                    accessCountdown?.tone === 'danger'
-                      ? 'border-destructive/30 bg-destructive/5'
-                      : 'border-gold/30 bg-gradient-to-r from-gold/15 to-primary/10'
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold">
-                      {accessCountdown?.tone === 'danger' ? 'Regularize sua assinatura' : 'Assine um plano'}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {accessCountdown?.label || 'Desbloqueie recursos premium e mantenha seu acesso ativo.'}
-                    </p>
-                  </div>
-                  <Crown className="h-5 w-5 shrink-0 text-gold" />
-                </NavLink>
+                {accessCountdown.tone === 'premium' ? (
+                  <NavLink to="/subscriptions" className="inline-flex max-w-full">
+                    <Badge
+                      className="max-w-full truncate rounded-full border border-gold/30 bg-gold/15 px-3 py-1.5 text-xs text-gold"
+                      title={accessCountdown.title}
+                    >
+                      {accessCountdown.label}
+                    </Badge>
+                  </NavLink>
+                ) : (
+                  <NavLink
+                    to="/subscriptions"
+                    className={cn(
+                      'flex items-center justify-between rounded-2xl border px-4 py-3',
+                      accessCountdown.tone === 'danger'
+                        ? 'border-destructive/30 bg-destructive/5'
+                        : 'border-gold/30 bg-gradient-to-r from-gold/15 to-primary/10'
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold">
+                        {accessCountdown.tone === 'danger' ? 'Regularize sua assinatura' : 'Assine um plano'}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {accessCountdown.label}
+                      </p>
+                    </div>
+                    <Crown className="h-5 w-5 shrink-0 text-gold" />
+                  </NavLink>
+                )}
               </div>
             )}
             {showFirstAccessReward ? (
