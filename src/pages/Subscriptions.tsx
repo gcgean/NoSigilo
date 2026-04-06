@@ -85,6 +85,30 @@ function getMissingBillingFields(form: BillingForm) {
   return BILLING_REQUIRED_FIELDS.filter(({ key }) => !String(form[key] || '').trim());
 }
 
+function normalizePixQrCode(value?: string | null) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  if (/^data:image\//i.test(raw)) {
+    return raw.replace(/\s+/g, '');
+  }
+
+  if (/^https?:\/\//i.test(raw)) {
+    return raw;
+  }
+
+  if (/^<svg[\s\S]*<\/svg>$/i.test(raw)) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(raw)}`;
+  }
+
+  const compact = raw.replace(/\s+/g, '');
+  if (/^[A-Za-z0-9+/=]+$/.test(compact)) {
+    return `data:image/png;base64,${compact}`;
+  }
+
+  return raw;
+}
+
 export default function Subscriptions() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
@@ -135,6 +159,7 @@ export default function Subscriptions() {
 
   const left = daysLeft(user?.trialEndsAt ?? null);
   const trialExpired = left !== null && left <= 0 && !user?.isPremium;
+  const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
 
   const premiumBenefits = [
     { icon: Radar, title: 'Radar Premium', desc: 'Radar completo e prioridade para conexões compatíveis' },
@@ -317,10 +342,10 @@ export default function Subscriptions() {
                     )}
                   </div>
                 </div>
-                <div className="rounded-2xl border bg-background/70 p-4 flex items-center justify-center min-h-52">
-                  {checkoutResult.pixQrCode ? (
-                    <img src={checkoutResult.pixQrCode} alt="QR Code PIX" className="max-h-48 w-auto object-contain" />
-                  ) : (
+                  <div className="rounded-2xl border bg-background/70 p-4 flex items-center justify-center min-h-52">
+                    {qrImageSrc ? (
+                      <img src={qrImageSrc} alt="QR Code PIX" className="max-h-48 w-auto object-contain" />
+                    ) : (
                     <div className="text-center text-muted-foreground">
                       <QrCode className="w-10 h-10 mx-auto mb-2" />
                       QR Code indisponível neste checkout
