@@ -1,0 +1,9 @@
+ALTER TABLE users ADD COLUMN billing_document TEXT;
+ALTER TABLE users ADD COLUMN billing_person_type TEXT;
+ALTER TABLE users ADD COLUMN hub_customer_id TEXT;
+ALTER TABLE users ADD COLUMN hub_product_id TEXT;
+ALTER TABLE users ADD COLUMN hub_license_id TEXT;
+ALTER TABLE users ADD COLUMN hub_access_status TEXT;
+ALTER TABLE users ADD COLUMN hub_access_reason TEXT;
+ALTER TABLE users ADD COLUMN hub_license_end_at TEXT;
+ALTER TABLE users ADD COLUMN hub_banner TEXT;

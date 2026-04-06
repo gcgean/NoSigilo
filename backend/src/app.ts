@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'node:path';
 import { mkdirSync, existsSync, createReadStream, statSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
@@ -13,6 +13,16 @@ import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
 import { sendPasswordResetCodeEmail } from './email.js';
+import {
+  createHubCheckout,
+  createHubOrder,
+  getHubAccessStatus,
+  isHubBillingEnabled,
+  listHubPlans,
+  resolveHubAccess,
+  upsertHubCustomer,
+  type HubResolveAccessResult,
+} from './hubBilling.js';
 
 type Env = {
   FRONTEND_ORIGIN: string;
@@ -21,6 +31,12 @@ type Env = {
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
   APP_NAME?: string;
+  HUB_BILLING_BASE_URL?: string;
+  HUB_BILLING_API_KEY?: string;
+  HUB_BILLING_ADMIN_EMAIL?: string;
+  HUB_BILLING_ADMIN_PASSWORD?: string;
+  HUB_BILLING_PRODUCT_ID?: string;
+  HUB_BILLING_WEBHOOK_SECRET?: string;
 };
 
 export type PublicUser = {
@@ -57,6 +73,11 @@ export type PublicUser = {
   isOnline?: boolean;
   invitationStatus?: string | null;
   invitedBy?: { id: string; name: string; avatar?: string | null } | null;
+  hubCustomerId?: string | null;
+  hubAccessStatus?: string | null;
+  hubAccessReason?: string | null;
+  hubLicenseEndAt?: string | null;
+  hubBanner?: string | null;
 };
 
 type InviteRow = {
@@ -149,6 +170,86 @@ function hasPremiumAccess(userRow: any) {
   const ends = userRow.trial_ends_at ? new Date(String(userRow.trial_ends_at)) : null;
   if (ends && !Number.isNaN(ends.getTime()) && ends.getTime() > Date.now()) return true;
   return false;
+}
+
+function getHubConfig(env: Env) {
+  return {
+    baseUrl: String(env.HUB_BILLING_BASE_URL || ''),
+    apiKey: String(env.HUB_BILLING_API_KEY || ''),
+    adminEmail: String(env.HUB_BILLING_ADMIN_EMAIL || ''),
+    adminPassword: String(env.HUB_BILLING_ADMIN_PASSWORD || ''),
+    productId: String(env.HUB_BILLING_PRODUCT_ID || ''),
+  };
+}
+
+function shouldUseHubBilling(env: Env) {
+  return isHubBillingEnabled(getHubConfig(env));
+}
+
+async function syncHubAccessForUser(
+  db: DbHandle,
+  userId: string,
+  result: HubResolveAccessResult & { customerId: string; productId: string }
+) {
+  await run(
+    db,
+    `UPDATE users
+     SET hub_customer_id = ?,
+         hub_product_id = ?,
+         hub_license_id = ?,
+         hub_access_status = ?,
+         hub_access_reason = ?,
+         hub_license_end_at = ?,
+         hub_banner = ?,
+         trial_started_at = ?,
+         trial_ends_at = ?,
+         is_premium = ?
+     WHERE id = ?`,
+    [
+      result.customerId,
+      result.productId,
+      result.licenseId ?? null,
+      result.accessStatus,
+      result.reason ?? null,
+      result.licenseEndAt ?? null,
+      result.banner ?? null,
+      result.trialStartedAt ?? null,
+      result.trialEndAt ?? null,
+      result.accessStatus === 'licensed' ? 1 : 0,
+      userId,
+    ]
+  );
+}
+
+function fallbackSubscriptionPlans() {
+  return [
+    { id: 'basic', code: 'basic', name: 'Básico', description: 'Plano básico', amount: 0, currency: 'BRL', intervalUnit: 'month', intervalCount: 1, status: 'active', isActive: true },
+    { id: 'premium_monthly', code: 'premium_monthly', name: 'Premium Mensal', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 2990, currency: 'BRL', intervalUnit: 'month', intervalCount: 1, status: 'active', isActive: true },
+    { id: 'premium_semiannual', code: 'premium_semiannual', name: 'Premium Semestral', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 2490, currency: 'BRL', intervalUnit: 'month', intervalCount: 6, status: 'active', isActive: true },
+    { id: 'premium_annual', code: 'premium_annual', name: 'Premium Anual', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 1299, currency: 'BRL', intervalUnit: 'month', intervalCount: 12, status: 'active', isActive: true },
+  ];
+}
+
+function formatPlanInterval(intervalUnit: string, intervalCount: number) {
+  if (intervalUnit === 'month') {
+    if (intervalCount === 12) return 'ano';
+    if (intervalCount === 6) return '6 meses';
+    return 'mês';
+  }
+  if (intervalUnit === 'year') return 'ano';
+  if (intervalUnit === 'week') return 'semana';
+  if (intervalUnit === 'day') return 'dia';
+  return intervalUnit;
+}
+
+function isValidHubSignature(rawBody: Buffer, signature: string, secret: string) {
+  if (!signature || !secret) return false;
+  const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+  const received = signature.replace(/^sha256=/, '');
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const receivedBuf = Buffer.from(received, 'utf8');
+  if (expectedBuf.length !== receivedBuf.length) return false;
+  return timingSafeEqual(expectedBuf, receivedBuf);
 }
 
 function normalizeRadarText(value: string | null | undefined) {
@@ -377,6 +478,11 @@ function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: b
     lastSeenAt: row.last_seen_at ?? null,
     isOnline: isOnline ?? false,
     invitationStatus: row.invite_status ?? null,
+    hubCustomerId: row.hub_customer_id ?? null,
+    hubAccessStatus: row.hub_access_status ?? null,
+    hubAccessReason: row.hub_access_reason ?? null,
+    hubLicenseEndAt: row.hub_license_end_at ?? null,
+    hubBanner: row.hub_banner ?? null,
     invitedBy:
       row.invited_by_user_id && row.inviter_name
         ? {
@@ -619,6 +725,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       allowedHeaders: ['Content-Type', 'Authorization'],
     })
   );
+  app.post('/api/webhooks/hub-billing', express.raw({ type: 'application/json', limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
 
   const __filename = fileURLToPath(import.meta.url);
@@ -1053,6 +1160,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (!ok) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
+    }
+    if (shouldUseHubBilling(env)) {
+      try {
+        const hubResult = await resolveHubAccess(getHubConfig(env), {
+          email: String(row.email),
+          name: String(row.name),
+          document: row.billing_document ?? null,
+          personType: row.billing_person_type ?? null,
+        });
+        await syncHubAccessForUser(db, String(row.id), hubResult);
+        await persist();
+      } catch (error) {
+        console.error('Hub Billing resolveAccess failed on login:', error);
+      }
     }
     const hydratedRow = await getUserWithSponsorById(db, String(row.id));
     const presence = req.app.get('presence');
@@ -3468,49 +3589,215 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
-  app.get('/api/subscriptions/plans', requireAuth(env, db), (_req, res) => {
-    res.json([
-      { id: 'basic', name: 'Básico', price: 0, interval: 'month', perks: [] },
-      {
-        id: 'premium_monthly',
-        name: 'Premium Mensal',
-        price: 29.9,
-        interval: 'mês',
-        perks: ['Radar Premium', 'Assistir e postar vídeos', 'Criar eventos', 'Mensagens e recursos premium'],
-      },
-      {
-        id: 'premium_semiannual',
-        name: 'Premium Semestral',
-        price: 24.9,
-        interval: 'mês',
-        perks: ['Radar Premium', 'Assistir e postar vídeos', 'Criar eventos', 'Mensagens e recursos premium'],
-      },
-      {
-        id: 'premium_annual',
-        name: 'Premium Anual',
-        price: 12.99,
-        interval: 'mês',
-        perks: ['Radar Premium', 'Assistir e postar vídeos', 'Criar eventos', 'Mensagens e recursos premium'],
-      },
-    ]);
+  app.get('/api/subscriptions/plans', requireAuth(env, db), async (_req, res) => {
+    try {
+      const rawPlans = shouldUseHubBilling(env) ? await listHubPlans(getHubConfig(env)) : fallbackSubscriptionPlans();
+      const plans = rawPlans
+        .filter((plan: any) => plan.isActive !== false && String(plan.status || 'active') === 'active')
+        .map((plan: any) => ({
+          id: String(plan.id),
+          code: String(plan.code || plan.id),
+          name: String(plan.name),
+          description: plan.description ? String(plan.description) : null,
+          price: Number(plan.amount || 0) / 100,
+          amount: Number(plan.amount || 0),
+          currency: String(plan.currency || 'BRL'),
+          interval: formatPlanInterval(String(plan.intervalUnit || 'month'), Number(plan.intervalCount || 1)),
+          intervalUnit: String(plan.intervalUnit || 'month'),
+          intervalCount: Number(plan.intervalCount || 1),
+          isActive: !!plan.isActive,
+          perks: plan.description ? String(plan.description).split(/\s*[•|]\s*/).filter(Boolean) : [],
+        }));
+      res.json(plans);
+    } catch (error) {
+      console.error('Failed to load subscription plans:', error);
+      res.status(502).json({ error: 'hub_billing_unavailable' });
+    }
   });
 
   app.get('/api/subscriptions/discount', requireAuth(env, db), (_req, res) => {
     res.json({ percent: 0 });
   });
 
+  app.get('/api/subscriptions/status', requireAuth(env, db), async (req, res) => {
+    const row = (await queryOne(
+      db,
+      'SELECT id, hub_customer_id, hub_product_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    if (!row) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    if (!shouldUseHubBilling(env) || !row.hub_customer_id) {
+      res.json({
+        customerId: row.hub_customer_id ?? null,
+        productId: row.hub_product_id ?? null,
+        accessStatus: row.hub_access_status ?? null,
+        reason: row.hub_access_reason ?? null,
+        banner: row.hub_banner ?? null,
+        licenseEndAt: row.hub_license_end_at ?? null,
+        trialStartedAt: row.trial_started_at ?? null,
+        trialEndAt: row.trial_ends_at ?? null,
+        canAccess: hasPremiumAccess(row),
+      });
+      return;
+    }
+
+    try {
+      const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
+      await syncHubAccessForUser(db, req.auth!.userId, status);
+      await persist();
+      res.json(status);
+    } catch (error) {
+      console.error('Failed to fetch Hub Billing access status:', error);
+      res.status(502).json({ error: 'hub_billing_unavailable' });
+    }
+  });
+
   app.post('/api/subscriptions/checkout', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ planId: z.string().min(1) });
+    const schema = z.object({ planId: z.string().min(1), billingType: z.enum(['PIX', 'BOLETO', 'CREDIT_CARD']).optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
     const planId = parsed.data.planId;
-    const isPremium = planId !== 'basic' ? 1 : 0;
-    await run(db, 'UPDATE users SET is_premium = ? WHERE id = ?', [isPremium, req.auth!.userId]);
-    await persist();
-    res.json({ ok: true, planId });
+    if (!shouldUseHubBilling(env)) {
+      const isPremium = planId !== 'basic' ? 1 : 0;
+      await run(db, 'UPDATE users SET is_premium = ? WHERE id = ?', [isPremium, req.auth!.userId]);
+      await persist();
+      res.json({ ok: true, planId, mode: 'fallback' });
+      return;
+    }
+
+    try {
+      const user = (await queryOne(
+        db,
+        'SELECT id, email, name, city, state, billing_document, billing_person_type, hub_customer_id FROM users WHERE id = ? LIMIT 1',
+        [req.auth!.userId]
+      )) as any;
+      if (!user) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+
+      const plans = await listHubPlans(getHubConfig(env));
+      const selectedPlan = plans.find((plan) => String(plan.id) === planId && plan.isActive !== false && String(plan.status) === 'active');
+      if (!selectedPlan) {
+        res.status(404).json({ error: 'plan_not_found' });
+        return;
+      }
+
+      const upsertedCustomer = await upsertHubCustomer(getHubConfig(env), {
+        email: String(user.email),
+        legalName: String(user.name),
+        document: user.billing_document ?? null,
+        personType: user.billing_person_type ?? 'PF',
+        addressCity: user.city ?? null,
+        addressState: user.state ?? null,
+      });
+
+      await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
+        String(upsertedCustomer.customerId),
+        String(getHubConfig(env).productId),
+        req.auth!.userId,
+      ]);
+
+      const order = await createHubOrder(getHubConfig(env), {
+        customerId: String(upsertedCustomer.customerId),
+        planId: planId,
+        contractedAmount: Number(selectedPlan.amount || 0),
+      });
+      const orderId = String(order.id || order.orderId || '');
+      if (!orderId) {
+        throw new Error('Hub Billing nao retornou orderId');
+      }
+      const checkout = await createHubCheckout(getHubConfig(env), {
+        orderId,
+        billingType: parsed.data.billingType || 'PIX',
+      });
+      await persist();
+
+      res.json({
+        ok: true,
+        mode: 'hub',
+        orderId,
+        planId,
+        customerId: upsertedCustomer.customerId,
+        checkout,
+      });
+    } catch (error) {
+      console.error('Hub Billing checkout failed:', error);
+      res.status(502).json({ error: 'hub_checkout_failed', message: error instanceof Error ? error.message : 'Falha no checkout' });
+    }
+  });
+
+  app.post('/api/webhooks/hub-billing', async (req, res) => {
+    if (!env.HUB_BILLING_WEBHOOK_SECRET) {
+      res.status(503).json({ error: 'webhook_not_configured' });
+      return;
+    }
+
+    const signature = String(req.headers['x-hub-signature'] || '');
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {}));
+    if (!isValidHubSignature(rawBody, signature, String(env.HUB_BILLING_WEBHOOK_SECRET))) {
+      res.status(401).json({ error: 'invalid_signature' });
+      return;
+    }
+
+    const eventType = String(req.headers['x-hub-event'] || '');
+    let payload: any = null;
+    try {
+      payload = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      res.status(400).json({ error: 'invalid_json' });
+      return;
+    }
+
+    const customerId = String(payload?.customerId || '');
+    if (!customerId) {
+      res.status(400).json({ error: 'invalid_payload' });
+      return;
+    }
+
+    const user = (await queryOne(db, 'SELECT id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
+    if (!user) {
+      res.json({ ok: true, ignored: true });
+      return;
+    }
+
+    const nextStatus =
+      eventType === 'payment.approved' || eventType === 'license.activated'
+        ? 'licensed'
+        : eventType === 'license.suspended'
+          ? 'blocked'
+          : eventType === 'license.revoked' || eventType === 'subscription.canceled' || eventType === 'payment.chargeback'
+            ? 'blocked'
+            : null;
+
+    if (nextStatus) {
+      await run(
+        db,
+        `UPDATE users
+         SET is_premium = ?,
+             hub_access_status = ?,
+             hub_access_reason = ?,
+             hub_license_end_at = COALESCE(?, hub_license_end_at)
+         WHERE id = ?`,
+        [
+          nextStatus === 'licensed' ? 1 : 0,
+          nextStatus,
+          eventType || null,
+          payload?.payload?.licenseEndAt ?? null,
+          String(user.id),
+        ]
+      );
+      await persist();
+    }
+
+    res.json({ ok: true });
   });
 
   app.post('/api/events', requireAuth(env, db), async (req, res) => {

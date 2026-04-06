@@ -34,6 +34,11 @@ export interface User {
   isOnline?: boolean;
   invitationStatus?: string | null;
   invitedBy?: { id: string; name: string; avatar?: string | null } | null;
+  hubCustomerId?: string | null;
+  hubAccessStatus?: string | null;
+  hubAccessReason?: string | null;
+  hubLicenseEndAt?: string | null;
+  hubBanner?: string | null;
 }
 
 interface AuthContextType {

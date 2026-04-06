@@ -21,4 +21,10 @@ export const env = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
   RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || '',
   APP_NAME: process.env.APP_NAME || 'NoSigilo',
+  HUB_BILLING_BASE_URL: process.env.HUB_BILLING_BASE_URL || '',
+  HUB_BILLING_API_KEY: process.env.HUB_BILLING_API_KEY || '',
+  HUB_BILLING_ADMIN_EMAIL: process.env.HUB_BILLING_ADMIN_EMAIL || '',
+  HUB_BILLING_ADMIN_PASSWORD: process.env.HUB_BILLING_ADMIN_PASSWORD || '',
+  HUB_BILLING_PRODUCT_ID: process.env.HUB_BILLING_PRODUCT_ID || '',
+  HUB_BILLING_WEBHOOK_SECRET: process.env.HUB_BILLING_WEBHOOK_SECRET || '',
 };

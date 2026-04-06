@@ -444,8 +444,13 @@ export const subscriptionsService = {
     return response.data;
   },
 
-  checkout: async (planId: string) => {
-    const response = await apiClient.post('/subscriptions/checkout', { planId });
+  getStatus: async () => {
+    const response = await apiClient.get('/subscriptions/status');
+    return response.data;
+  },
+
+  checkout: async (planId: string, billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD' = 'PIX') => {
+    const response = await apiClient.post('/subscriptions/checkout', { planId, billingType });
     return response.data;
   },
 };
