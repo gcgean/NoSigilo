@@ -187,7 +187,6 @@ export async function upsertHubCustomer(
     addressStreet?: string | null;
     addressNumber?: string | null;
     addressDistrict?: string | null;
-    addressComplement?: string | null;
     addressCity?: string | null;
     addressState?: string | null;
   }
@@ -210,7 +209,6 @@ export async function upsertHubCustomer(
         addressStreet: data.addressStreet || undefined,
         addressNumber: data.addressNumber || undefined,
         addressDistrict: data.addressDistrict || undefined,
-        addressComplement: data.addressComplement || undefined,
         addressCity: data.addressCity || undefined,
         addressState: data.addressState || undefined,
       }),
