@@ -243,35 +243,13 @@ export async function createHubCheckout(
     payerDocument?: string | null;
   }
 ) {
-  const payload = {
-    billingType: data.billingType || 'PIX',
-    payerName: data.payerName || undefined,
-    payerDocument: sanitizeDocument(data.payerDocument),
-  };
-
-  try {
-    return await requestJson<HubCheckoutResult>(buildUrl(config, `/orders/${data.orderId}/checkout`), {
-      method: 'POST',
-      headers: await adminHeaders(config),
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    const rejectsPayerFields =
-      message.includes('property payerName should not exist') ||
-      message.includes('property payerDocument should not exist');
-
-    if (!rejectsPayerFields) {
-      throw error;
-    }
-
-    // Some deployed Hub versions still reject payerName/payerDocument on checkout.
-    return requestJson<HubCheckoutResult>(buildUrl(config, `/orders/${data.orderId}/checkout`), {
-      method: 'POST',
-      headers: await adminHeaders(config),
-      body: JSON.stringify({
-        billingType: data.billingType || 'PIX',
-      }),
-    });
-  }
+  // The deployed Hub checkout currently rejects payerName/payerDocument.
+  // Send only the billing type and let the Hub resolve payer data server-side.
+  return requestJson<HubCheckoutResult>(buildUrl(config, `/orders/${data.orderId}/checkout`), {
+    method: 'POST',
+    headers: await adminHeaders(config),
+    body: JSON.stringify({
+      billingType: data.billingType || 'PIX',
+    }),
+  });
 }
