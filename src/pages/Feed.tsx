@@ -404,29 +404,6 @@ export default function Feed() {
 
   return (
     <div className="w-full">
-      {!user?.isPremium && user?.trialEndsAt ? (
-        <div className="mb-4">
-          <div className="w-full rounded-xl px-4 py-3 bg-[hsl(270_50%_40%)] text-white flex items-center justify-between">
-            <span className="text-sm">
-              {(() => {
-                const ends = new Date(String(user.trialEndsAt)).getTime();
-                const ms = ends - Date.now();
-                if (!Number.isFinite(ends)) return 'Seu teste grátis está ativo.';
-                if (ms <= 0) return 'Seu teste grátis terminou. Assine para continuar com acesso total.';
-                const totalMin = Math.floor(ms / 60000);
-                const days = Math.floor(totalMin / (60 * 24));
-                const hours = Math.floor((totalMin - days * 24 * 60) / 60);
-                const minutes = totalMin - days * 24 * 60 - hours * 60;
-                return `Seu teste grátis acaba em ${days} dia(s), ${hours} hora(s) e ${minutes} minuto(s)`;
-              })()}
-            </span>
-            <a href="/subscriptions" className="text-sm font-semibold underline underline-offset-4">
-              ASSINE AGORA
-            </a>
-          </div>
-        </div>
-      ) : null}
-
       {hasNewPosts ? (
         <div className="mb-4">
           <Card className="p-3 glass flex items-center justify-between">
@@ -887,8 +864,8 @@ export default function Feed() {
             <p className="text-sm text-muted-foreground mb-4">
               Apareça mais e tenha acesso a recursos exclusivos.
             </p>
-            <Button className="w-full bg-gold text-black hover:bg-gold/90">
-              Ver Planos
+            <Button asChild className="w-full bg-gold text-black hover:bg-gold/90">
+              <Link to="/subscriptions">Ver Planos</Link>
             </Button>
           </Card>
         </div>

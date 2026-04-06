@@ -68,6 +68,17 @@ function formatRemainingTime(targetMs: number, nowMs: number) {
   return `${days} dia(s) restantes`;
 }
 
+function formatDetailedRemainingTime(targetMs: number, nowMs: number) {
+  const diff = targetMs - nowMs;
+  if (diff <= 0) return null;
+
+  const totalMinutes = Math.floor(diff / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+  const minutes = totalMinutes - days * 24 * 60 - hours * 60;
+  return `${days} dia(s), ${hours} hora(s) e ${minutes} minuto(s)`;
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -125,6 +136,29 @@ export default function Layout() {
       label: diff <= 0 ? 'Licença expirada' : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
     };
   }, [clockNow, licenseEnds, trialEnds, user]);
+
+  const accessBanner = useMemo(() => {
+    if (!user || user.isPremium) return null;
+
+    if (trialEnds !== null && trialEnds > clockNow) {
+      const detailed = formatDetailedRemainingTime(trialEnds, clockNow);
+      return {
+        href: '/subscriptions',
+        tone: 'trial' as const,
+        message: detailed
+          ? `Seu teste grátis acaba em ${detailed}`
+          : 'Seu teste grátis está ativo.',
+        cta: 'ASSINE AGORA',
+      };
+    }
+
+    return {
+      href: '/subscriptions',
+      tone: 'inactive' as const,
+      message: 'Seu acesso está inativo ou sua licença venceu. Assine para continuar com todos os recursos.',
+      cta: 'VER PLANOS',
+    };
+  }, [clockNow, trialEnds, user]);
 
   const firstAccessChecklist = useMemo(() => {
     const steps = [
@@ -338,14 +372,23 @@ export default function Layout() {
             </NavLink>
 
             <NavLink to="/profile" className="shrink-0 flex items-center gap-2">
-              <div className={cn("h-9 w-9 shrink-0 rounded-full bg-secondary overflow-hidden", user?.isPremium ? "ring-2 ring-gold/60" : "")}>
-                {user?.avatar ? (
-                  <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                    <User className="w-5 h-5" />
-                  </div>
+              <div
+                className={cn(
+                  'rounded-full transition-all',
+                  user?.isPremium
+                    ? 'bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 p-[3px] shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_10px_24px_rgba(245,158,11,0.28)]'
+                    : ''
                 )}
+              >
+                <div className="h-9 w-9 shrink-0 rounded-full bg-secondary overflow-hidden">
+                  {user?.avatar ? (
+                    <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <User className="w-5 h-5" />
+                    </div>
+                  )}
+                </div>
               </div>
             </NavLink>
           </div>
@@ -454,6 +497,24 @@ export default function Layout() {
 
         <main className="flex-1 min-w-0 px-3 py-4 pb-24 sm:px-4 sm:py-6 md:pb-6">
           <div className="mx-auto w-full max-w-6xl">
+            {accessBanner ? (
+              <div className="mb-4">
+                <NavLink
+                  to={accessBanner.href}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-white shadow-[0_14px_40px_rgba(91,33,182,0.18)] transition hover:opacity-95',
+                    accessBanner.tone === 'trial'
+                      ? 'bg-[linear-gradient(90deg,hsl(273_51%_43%),hsl(267_48%_41%))]'
+                      : 'bg-[linear-gradient(90deg,hsl(355_78%_56%),hsl(8_84%_58%))]'
+                  )}
+                >
+                  <span className="min-w-0 text-sm sm:text-base">{accessBanner.message}</span>
+                  <span className="shrink-0 text-sm font-semibold uppercase tracking-[0.08em] underline underline-offset-4">
+                    {accessBanner.cta}
+                  </span>
+                </NavLink>
+              </div>
+            ) : null}
             {accessCountdown && (
               <div className="mb-4 sm:hidden">
                 {accessCountdown.tone === 'premium' ? (

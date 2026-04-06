@@ -121,6 +121,18 @@ function normalizePixQrCode(value?: string | null) {
   return raw;
 }
 
+function getCheckoutErrorMessage(error: any) {
+  const data = error?.response?.data;
+  if (typeof data === 'string' && data.trim()) return data;
+  if (typeof data?.message === 'string' && data.message.trim()) return data.message;
+  if (typeof data?.error === 'string' && data.error.trim()) return data.error;
+  if (Array.isArray(data?.details) && data.details.length > 0) {
+    return data.details.join(' | ');
+  }
+  if (typeof error?.message === 'string' && error.message.trim()) return error.message;
+  return 'Tente novamente em instantes.';
+}
+
 export default function Subscriptions() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
@@ -275,7 +287,7 @@ export default function Subscriptions() {
       }
       toast({
         title: 'Falha ao iniciar assinatura',
-        description: error?.response?.data?.message || 'Tente novamente em instantes.',
+        description: getCheckoutErrorMessage(error),
         variant: 'destructive',
       });
     } finally {
