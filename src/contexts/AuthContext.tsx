@@ -39,6 +39,16 @@ export interface User {
   hubAccessReason?: string | null;
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
+  billingDocument?: string | null;
+  billingPersonType?: 'PF' | 'PJ' | null;
+  billingPhone?: string | null;
+  billingAddressZip?: string | null;
+  billingAddressStreet?: string | null;
+  billingAddressNumber?: string | null;
+  billingAddressDistrict?: string | null;
+  billingAddressComplement?: string | null;
+  billingAddressCity?: string | null;
+  billingAddressState?: string | null;
 }
 
 interface AuthContextType {
@@ -226,6 +236,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'zodiacSign',
           'lookingFor',
           'allowMessages',
+          'billingDocument',
+          'billingPersonType',
+          'billingPhone',
+          'billingAddressZip',
+          'billingAddressStreet',
+          'billingAddressNumber',
+          'billingAddressDistrict',
+          'billingAddressComplement',
+          'billingAddressCity',
+          'billingAddressState',
         ];
         const patch: Partial<User> = {};
         for (const key of allowedKeys) {

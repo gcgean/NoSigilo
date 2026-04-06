@@ -3,7 +3,10 @@ import { Copy, Crown, QrCode, Star, Zap, Radar, Video, Calendar, Lock, ExternalL
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { subscriptionsService, authService } from '@/services/api';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { subscriptionsService, authService, profileService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -35,12 +38,55 @@ type CheckoutPayload = {
   dueDate?: string | null;
 };
 
+type BillingForm = {
+  billingDocument: string;
+  billingPersonType: 'PF' | 'PJ';
+  billingPhone: string;
+  billingAddressZip: string;
+  billingAddressStreet: string;
+  billingAddressNumber: string;
+  billingAddressDistrict: string;
+  billingAddressComplement: string;
+  billingAddressCity: string;
+  billingAddressState: string;
+};
+
+const BILLING_REQUIRED_FIELDS: Array<{ key: keyof BillingForm; label: string }> = [
+  { key: 'billingDocument', label: 'CPF/CNPJ' },
+  { key: 'billingPhone', label: 'Telefone' },
+  { key: 'billingAddressZip', label: 'CEP' },
+  { key: 'billingAddressStreet', label: 'Rua' },
+  { key: 'billingAddressNumber', label: 'Numero' },
+  { key: 'billingAddressDistrict', label: 'Bairro' },
+  { key: 'billingAddressCity', label: 'Cidade' },
+  { key: 'billingAddressState', label: 'Estado' },
+];
+
 function daysLeft(trialEndsAt?: string | null) {
   if (!trialEndsAt) return null;
   const end = new Date(trialEndsAt).getTime();
   if (Number.isNaN(end)) return null;
   const diff = end - Date.now();
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
+}
+
+function buildBillingForm(user: ReturnType<typeof useAuth>['user']): BillingForm {
+  return {
+    billingDocument: user?.billingDocument || '',
+    billingPersonType: user?.billingPersonType || 'PF',
+    billingPhone: user?.billingPhone || '',
+    billingAddressZip: user?.billingAddressZip || '',
+    billingAddressStreet: user?.billingAddressStreet || '',
+    billingAddressNumber: user?.billingAddressNumber || '',
+    billingAddressDistrict: user?.billingAddressDistrict || '',
+    billingAddressComplement: user?.billingAddressComplement || '',
+    billingAddressCity: user?.billingAddressCity || user?.city || '',
+    billingAddressState: user?.billingAddressState || user?.state || '',
+  };
+}
+
+function getMissingBillingFields(form: BillingForm) {
+  return BILLING_REQUIRED_FIELDS.filter(({ key }) => !String(form[key] || '').trim());
 }
 
 export default function Subscriptions() {
@@ -51,6 +97,14 @@ export default function Subscriptions() {
   const [isCheckingOut, setIsCheckingOut] = useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutPayload | null>(null);
   const [hubBanner, setHubBanner] = useState<string | null>(user?.hubBanner ?? null);
+  const [billingDialogOpen, setBillingDialogOpen] = useState(false);
+  const [billingForm, setBillingForm] = useState<BillingForm>(() => buildBillingForm(user));
+  const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
+  const [isSavingBilling, setIsSavingBilling] = useState(false);
+
+  useEffect(() => {
+    setBillingForm(buildBillingForm(user));
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +147,7 @@ export default function Subscriptions() {
     { icon: Lock, title: 'Recursos Premium', desc: 'Mais privacidade, mais alcance e recursos exclusivos' },
   ] as const;
 
-  const handleCheckout = async (planId: string) => {
+  const performCheckout = async (planId: string) => {
     try {
       setIsCheckingOut(planId);
       setCheckoutResult(null);
@@ -108,6 +162,18 @@ export default function Subscriptions() {
         description: result?.checkout?.pixCode ? 'Seu PIX já está pronto para pagamento.' : 'Seu checkout foi gerado com sucesso.',
       });
     } catch (error: any) {
+      if (error?.response?.data?.error === 'billing_data_required') {
+        setBillingPlanId(planId);
+        setBillingDialogOpen(true);
+        toast({
+          title: 'Complete seus dados de cobranca',
+          description: Array.isArray(error?.response?.data?.missingFields)
+            ? `Faltam: ${error.response.data.missingFields.join(', ')}.`
+            : 'Preencha seus dados de cobranca para gerar o PIX.',
+          variant: 'destructive',
+        });
+        return;
+      }
       toast({
         title: 'Falha ao iniciar assinatura',
         description: error?.response?.data?.message || 'Tente novamente em instantes.',
@@ -115,6 +181,50 @@ export default function Subscriptions() {
       });
     } finally {
       setIsCheckingOut(null);
+    }
+  };
+
+  const handleCheckout = async (planId: string) => {
+    const missing = getMissingBillingFields(billingForm);
+    if (missing.length > 0) {
+      setBillingPlanId(planId);
+      setBillingDialogOpen(true);
+      return;
+    }
+    await performCheckout(planId);
+  };
+
+  const handleSaveBillingAndCheckout = async () => {
+    const missing = getMissingBillingFields(billingForm);
+    if (missing.length > 0) {
+      toast({
+        title: 'Dados incompletos',
+        description: `Preencha: ${missing.map((item) => item.label).join(', ')}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsSavingBilling(true);
+      await profileService.updateProfile({
+        ...billingForm,
+        billingAddressState: billingForm.billingAddressState.toUpperCase().slice(0, 2),
+      });
+      const me = await authService.getMe();
+      updateUser(me);
+      setBillingDialogOpen(false);
+      if (billingPlanId) {
+        await performCheckout(billingPlanId);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Falha ao salvar dados',
+        description: error?.response?.data?.message || 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingBilling(false);
     }
   };
 
@@ -127,6 +237,68 @@ export default function Subscriptions() {
 
   return (
     <div className="max-w-5xl mx-auto w-full">
+      <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Complete seus dados de cobranca</DialogTitle>
+            <DialogDescription>
+              O Hub de pagamentos precisa destes dados antes de gerar o PIX da sua assinatura.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="billingDocument">CPF/CNPJ</Label>
+              <Input id="billingDocument" value={billingForm.billingDocument} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingDocument: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingPhone">Telefone</Label>
+              <Input id="billingPhone" value={billingForm.billingPhone} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingPhone: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressZip">CEP</Label>
+              <Input id="billingAddressZip" value={billingForm.billingAddressZip} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressZip: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressState">Estado</Label>
+              <Input
+                id="billingAddressState"
+                maxLength={2}
+                value={billingForm.billingAddressState}
+                onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressState: e.target.value.toUpperCase() }))}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="billingAddressStreet">Rua</Label>
+              <Input id="billingAddressStreet" value={billingForm.billingAddressStreet} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressStreet: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressNumber">Numero</Label>
+              <Input id="billingAddressNumber" value={billingForm.billingAddressNumber} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressDistrict">Bairro</Label>
+              <Input id="billingAddressDistrict" value={billingForm.billingAddressDistrict} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressDistrict: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressCity">Cidade</Label>
+              <Input id="billingAddressCity" value={billingForm.billingAddressCity} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressCity: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="billingAddressComplement">Complemento</Label>
+              <Input id="billingAddressComplement" value={billingForm.billingAddressComplement} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingAddressComplement: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBillingDialogOpen(false)} disabled={isSavingBilling}>
+              Agora nao
+            </Button>
+            <Button onClick={handleSaveBillingAndCheckout} disabled={isSavingBilling}>
+              {isSavingBilling ? 'Salvando...' : 'Salvar e gerar PIX'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="mb-8">
         <Badge className="bg-gradient-primary mb-4">
           <Crown className="w-3 h-3 mr-1" /> Assinatura

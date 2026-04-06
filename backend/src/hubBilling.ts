@@ -182,6 +182,12 @@ export async function upsertHubCustomer(
     legalName: string;
     document?: string | null;
     personType?: 'PF' | 'PJ' | null;
+    phone?: string | null;
+    addressZip?: string | null;
+    addressStreet?: string | null;
+    addressNumber?: string | null;
+    addressDistrict?: string | null;
+    addressComplement?: string | null;
     addressCity?: string | null;
     addressState?: string | null;
   }
@@ -199,6 +205,12 @@ export async function upsertHubCustomer(
         document: sanitizeDocument(data.document),
         legalName: data.legalName,
         email: data.email,
+        phone: data.phone || undefined,
+        addressZip: data.addressZip || undefined,
+        addressStreet: data.addressStreet || undefined,
+        addressNumber: data.addressNumber || undefined,
+        addressDistrict: data.addressDistrict || undefined,
+        addressComplement: data.addressComplement || undefined,
         addressCity: data.addressCity || undefined,
         addressState: data.addressState || undefined,
       }),

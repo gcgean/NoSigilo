@@ -78,6 +78,16 @@ export type PublicUser = {
   hubAccessReason?: string | null;
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
+  billingDocument?: string | null;
+  billingPersonType?: 'PF' | 'PJ' | null;
+  billingPhone?: string | null;
+  billingAddressZip?: string | null;
+  billingAddressStreet?: string | null;
+  billingAddressNumber?: string | null;
+  billingAddressDistrict?: string | null;
+  billingAddressComplement?: string | null;
+  billingAddressCity?: string | null;
+  billingAddressState?: string | null;
 };
 
 type InviteRow = {
@@ -483,6 +493,20 @@ function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: b
     hubAccessReason: row.hub_access_reason ?? null,
     hubLicenseEndAt: row.hub_license_end_at ?? null,
     hubBanner: row.hub_banner ?? null,
+    ...(options?.showEmail
+      ? {
+          billingDocument: row.billing_document ?? null,
+          billingPersonType: row.billing_person_type ?? null,
+          billingPhone: row.billing_phone ?? null,
+          billingAddressZip: row.billing_address_zip ?? null,
+          billingAddressStreet: row.billing_address_street ?? null,
+          billingAddressNumber: row.billing_address_number ?? null,
+          billingAddressDistrict: row.billing_address_district ?? null,
+          billingAddressComplement: row.billing_address_complement ?? null,
+          billingAddressCity: row.billing_address_city ?? null,
+          billingAddressState: row.billing_address_state ?? null,
+        }
+      : {}),
     invitedBy:
       row.invited_by_user_id && row.inviter_name
         ? {
@@ -1615,6 +1639,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         zodiacSign: z.string().max(50).optional().nullable(),
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
+        billingDocument: z.string().max(30).optional().nullable(),
+        billingPersonType: z.enum(['PF', 'PJ']).optional().nullable(),
+        billingPhone: z.string().max(30).optional().nullable(),
+        billingAddressZip: z.string().max(20).optional().nullable(),
+        billingAddressStreet: z.string().max(150).optional().nullable(),
+        billingAddressNumber: z.string().max(30).optional().nullable(),
+        billingAddressDistrict: z.string().max(120).optional().nullable(),
+        billingAddressComplement: z.string().max(150).optional().nullable(),
+        billingAddressCity: z.string().max(100).optional().nullable(),
+        billingAddressState: z.string().max(10).optional().nullable(),
       })
       .strict();
     const parsed = schema.safeParse(req.body);
@@ -1647,6 +1681,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       profession: 'profession',
       zodiacSign: 'zodiac_sign',
       allowMessages: 'allow_messages',
+      billingDocument: 'billing_document',
+      billingPersonType: 'billing_person_type',
+      billingPhone: 'billing_phone',
+      billingAddressZip: 'billing_address_zip',
+      billingAddressStreet: 'billing_address_street',
+      billingAddressNumber: 'billing_address_number',
+      billingAddressDistrict: 'billing_address_district',
+      billingAddressComplement: 'billing_address_complement',
+      billingAddressCity: 'billing_address_city',
+      billingAddressState: 'billing_address_state',
     };
 
     for (const [key, col] of Object.entries(map)) {
@@ -3675,7 +3719,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     try {
       const user = (await queryOne(
         db,
-        'SELECT id, email, name, city, state, billing_document, billing_person_type, hub_customer_id FROM users WHERE id = ? LIMIT 1',
+        `SELECT id, email, name, city, state, billing_document, billing_person_type, billing_phone,
+                billing_address_zip, billing_address_street, billing_address_number, billing_address_district,
+                billing_address_complement, billing_address_city, billing_address_state, hub_customer_id
+         FROM users WHERE id = ? LIMIT 1`,
         [req.auth!.userId]
       )) as any;
       if (!user) {
@@ -3690,13 +3737,41 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         return;
       }
 
+      const requiredBillingFields = [
+        ['billing_document', 'CPF/CNPJ'],
+        ['billing_phone', 'Telefone'],
+        ['billing_address_zip', 'CEP'],
+        ['billing_address_street', 'Rua'],
+        ['billing_address_number', 'Numero'],
+        ['billing_address_district', 'Bairro'],
+        ['billing_address_city', 'Cidade'],
+        ['billing_address_state', 'Estado'],
+      ] as const;
+      const missingBillingFields = requiredBillingFields
+        .filter(([key]) => !String(user[key] ?? '').trim())
+        .map(([, label]) => label);
+      if (missingBillingFields.length > 0) {
+        res.status(400).json({
+          error: 'billing_data_required',
+          message: 'Complete seus dados de cobranca antes de gerar o PIX.',
+          missingFields: missingBillingFields,
+        });
+        return;
+      }
+
       const upsertedCustomer = await upsertHubCustomer(getHubConfig(env), {
         email: String(user.email),
         legalName: String(user.name),
         document: user.billing_document ?? null,
         personType: user.billing_person_type ?? 'PF',
-        addressCity: user.city ?? null,
-        addressState: user.state ?? null,
+        phone: user.billing_phone ?? null,
+        addressZip: user.billing_address_zip ?? null,
+        addressStreet: user.billing_address_street ?? null,
+        addressNumber: user.billing_address_number ?? null,
+        addressDistrict: user.billing_address_district ?? null,
+        addressComplement: user.billing_address_complement ?? null,
+        addressCity: user.billing_address_city ?? user.city ?? null,
+        addressState: user.billing_address_state ?? user.state ?? null,
       });
 
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
