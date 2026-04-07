@@ -3881,6 +3881,21 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         throw new Error('Hub Billing nao retornou customerId');
       }
 
+      const existingCustomerOwner = (await queryOne(
+        db,
+        'SELECT id, email FROM users WHERE hub_customer_id = ? AND id <> ? LIMIT 1',
+        [customerId, req.auth!.userId]
+      )) as any;
+
+      if (existingCustomerOwner) {
+        res.status(409).json({
+          error: 'hub_customer_already_linked',
+          message:
+            'Este CPF/CNPJ ja esta vinculado a outro cadastro no NoSigilo. Use os dados do titular correto para gerar o PIX.',
+        });
+        return;
+      }
+
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
         customerId,
         String(hubConfig.productId),
