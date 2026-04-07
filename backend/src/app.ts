@@ -927,14 +927,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const expiresAt = addMinutesIso(createdAt, 15);
     const codeHash = bcrypt.hashSync(code, 10);
 
-    await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [createdAt, String(user.id)]);
-    await run(
-      db,
-      'INSERT INTO password_reset_codes (id, user_id, email, code_hash, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [randomUUID(), String(user.id), email, codeHash, createdAt, expiresAt, null]
-    );
-    await persist();
-
     if (process.env.NODE_ENV === 'production' && (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL)) {
       res.status(500).json({ error: 'email_send_failed' });
       return;
@@ -954,6 +946,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(500).json({ error: 'email_send_failed' });
       return;
     }
+
+    await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [createdAt, String(user.id)]);
+    await run(
+      db,
+      'INSERT INTO password_reset_codes (id, user_id, email, code_hash, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), String(user.id), email, codeHash, createdAt, expiresAt, null]
+    );
+    await persist();
 
     const response: any = { ok: true };
     if (process.env.NODE_ENV !== 'production' && !env.RESEND_API_KEY) {

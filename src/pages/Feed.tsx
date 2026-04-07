@@ -857,17 +857,18 @@ export default function Feed() {
             </div>
           </Card>
 
-          {/* Premium Banner */}
-          <Card className="p-4 bg-gradient-to-br from-gold/20 to-primary/20 border-gold/30">
-            <Badge className="bg-gold text-black mb-3">Premium</Badge>
-            <h3 className="font-semibold mb-2">Destaque seu perfil</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              Apareça mais e tenha acesso a recursos exclusivos.
-            </p>
-            <Button asChild className="w-full bg-gold text-black hover:bg-gold/90">
-              <Link to="/subscriptions">Ver Planos</Link>
-            </Button>
-          </Card>
+          {!premiumAccess && (
+            <Card className="p-4 bg-gradient-to-br from-gold/20 to-primary/20 border-gold/30">
+              <Badge className="bg-gold text-black mb-3">Premium</Badge>
+              <h3 className="font-semibold mb-2">Destaque seu perfil</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Apareça mais e tenha acesso a recursos exclusivos.
+              </p>
+              <Button asChild className="w-full bg-gold text-black hover:bg-gold/90">
+                <Link to="/subscriptions">Ver Planos</Link>
+              </Button>
+            </Card>
+          )}
         </div>
       </div>
     </div>
