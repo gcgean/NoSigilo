@@ -178,7 +178,26 @@ export default function Subscriptions() {
         }
 
         if (statusData.status === 'fulfilled') {
-          setHubBanner(statusData.value?.banner ?? null);
+          const status = statusData.value;
+          setHubBanner(status?.banner ?? null);
+
+          const normalizedAccessStatus = String(status?.accessStatus || '').toLowerCase();
+          const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true;
+
+          if (hasActiveAccess) {
+            const me = await authService.getMe();
+            if (!cancelled) {
+              updateUser(me);
+              setCheckoutResult((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      status: 'paid',
+                    }
+                  : prev
+              );
+            }
+          }
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -197,9 +216,29 @@ export default function Subscriptions() {
 
     const intervalId = window.setInterval(() => {
       void refreshPaymentStatus(true);
-    }, 15000);
+    }, 5000);
 
     return () => window.clearInterval(intervalId);
+  }, [checkoutResult]);
+
+  useEffect(() => {
+    if (!checkoutResult || String(checkoutResult.status || '').toLowerCase() !== 'pending') {
+      return;
+    }
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshPaymentStatus(true);
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
   }, [checkoutResult]);
 
   const left = daysLeft(user?.trialEndsAt ?? null);
