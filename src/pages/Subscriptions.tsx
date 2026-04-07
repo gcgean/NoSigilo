@@ -145,6 +145,47 @@ function getCheckoutErrorMessage(error: any) {
   return 'Tente novamente em instantes.';
 }
 
+function normalizeCheckoutStatus(status?: string | null) {
+  const value = String(status || 'pending').toLowerCase();
+
+  if (value === 'paid') {
+    return {
+      key: value,
+      label: 'Pago',
+      badgeLabel: 'Pagamento confirmado',
+      badgeClassName: 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)]',
+      textClassName: 'text-emerald-700',
+      cardClassName: 'border-emerald-300/70 bg-emerald-50/60 shadow-[0_20px_60px_rgba(16,185,129,0.12)]',
+      title: 'Pagamento aprovado',
+      description: 'Seu pagamento foi reconhecido com sucesso. Sua assinatura está sendo liberada.',
+    };
+  }
+
+  if (value === 'pending') {
+    return {
+      key: value,
+      label: 'Aguardando pagamento',
+      badgeLabel: 'Checkout gerado',
+      badgeClassName: 'bg-gradient-primary',
+      textClassName: 'text-muted-foreground',
+      cardClassName: 'border-primary/30 bg-primary/5',
+      title: 'Pague com PIX',
+      description: 'Use o QR Code ou copie o código PIX para concluir sua assinatura.',
+    };
+  }
+
+  return {
+    key: value,
+    label: value,
+    badgeLabel: 'Checkout gerado',
+    badgeClassName: 'bg-secondary text-secondary-foreground',
+    textClassName: 'text-foreground',
+    cardClassName: 'border-primary/30 bg-primary/5',
+    title: 'Checkout gerado',
+    description: 'Acompanhe o status da sua cobrança abaixo.',
+  };
+}
+
 export default function Subscriptions() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
@@ -244,6 +285,7 @@ export default function Subscriptions() {
   const left = daysLeft(user?.trialEndsAt ?? null);
   const trialExpired = left !== null && left <= 0 && !user?.isPremium;
   const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
+  const checkoutStatusUi = normalizeCheckoutStatus(checkoutResult?.status);
 
   const premiumBenefits = [
     { icon: Radar, title: 'Radar Premium', desc: 'Radar completo e prioridade para conexões compatíveis' },
@@ -434,18 +476,20 @@ export default function Subscriptions() {
       {!isLoading && (
         <div className="space-y-8">
           {checkoutResult && (
-            <Card className="p-5 border-primary/30 bg-primary/5">
+            <Card className={cn('p-5', checkoutStatusUi.cardClassName)}>
               <div className="flex flex-wrap items-center gap-3 mb-4">
-                <Badge className="bg-gradient-primary">Checkout gerado</Badge>
-                <span className="text-sm text-muted-foreground">
-                  Status: <strong>{checkoutResult.status || 'pending'}</strong>
+                <Badge className={checkoutStatusUi.badgeClassName}>{checkoutStatusUi.badgeLabel}</Badge>
+                <span className={cn('text-sm font-medium', checkoutStatusUi.textClassName)}>
+                  Status: <strong>{checkoutStatusUi.label}</strong>
                 </span>
               </div>
               <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
                 <div className="space-y-3">
-                  <h3 className="text-lg font-semibold">Pague com PIX</h3>
+                  <h3 className={cn('text-lg font-semibold', checkoutStatusUi.key === 'paid' && 'text-emerald-700')}>
+                    {checkoutStatusUi.title}
+                  </h3>
                   <p className="text-sm text-muted-foreground">
-                    Use o QR Code ou copie o código PIX para concluir sua assinatura.
+                    {checkoutStatusUi.description}
                   </p>
                   {(checkoutResult.pixCode || checkoutResult.pixPayload) && (
                     <div className="rounded-xl border bg-background p-3 text-sm break-all">
