@@ -602,13 +602,12 @@ function requireAuth(env: Env, db: DbHandle): express.RequestHandler {
     try {
       const decoded = jwt.verify(token, env.JWT_SECRET) as any;
       const userId = String(decoded.sub || '');
-      const isAdmin = !!decoded.admin;
       const userRow = (await queryOne(db, 'SELECT id, is_admin FROM users WHERE id = ?', [userId])) as any;
       if (!userRow) {
         res.status(401).json({ error: 'unauthorized' });
         return;
       }
-      req.auth = { userId, isAdmin: isAdmin && !!userRow.is_admin };
+      req.auth = { userId, isAdmin: !!userRow.is_admin };
       next();
     } catch {
       res.status(401).json({ error: 'unauthorized' });

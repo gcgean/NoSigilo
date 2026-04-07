@@ -201,6 +201,39 @@ describe('nosigilo backend', () => {
       .expect(200);
   });
 
+  it('admin endpoints use current database admin status even with an older token', async () => {
+    const reg = await registerApprovedUser(ctx, sponsorToken, {
+      name: 'Admin Promovido',
+      email: 'admin-promovido@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [reg.user.id]);
+
+    const adminUsers = await request(ctx.app)
+      .get('/api/admin/users')
+      .set('Authorization', `Bearer ${reg.token}`)
+      .expect(200);
+
+    expect(Array.isArray(adminUsers.body)).toBe(true);
+    expect(adminUsers.body.some((entry: any) => entry.email === 'admin-promovido@example.com' && entry.isAdmin === true)).toBe(
+      true
+    );
+
+    const finance = await request(ctx.app)
+      .get('/api/admin/finance/summary')
+      .set('Authorization', `Bearer ${reg.token}`)
+      .expect(200);
+
+    expect(finance.body).toMatchObject({
+      revenue: expect.any(Number),
+      subscribers: expect.any(Number),
+      newToday: expect.any(Number),
+      churnRate: expect.any(Number),
+    });
+  });
+
   it('cities search and nearest work', async () => {
     await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
       'São Paulo',
