@@ -3849,31 +3849,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       }
 
       if (!customerId) {
-        const requiredHubCustomerFields = [
-          ['billing_legal_name', 'Nome do titular'],
-          ['billing_document', 'CPF/CNPJ'],
-          ['billing_phone', 'Telefone'],
-          ['billing_address_zip', 'CEP'],
-          ['billing_address_street', 'Rua'],
-          ['billing_address_number', 'Número'],
-          ['billing_address_district', 'Bairro'],
-          ['billing_address_city', 'Cidade'],
-          ['billing_address_state', 'Estado'],
-        ] as const;
-
-        const missingHubCustomerFields = requiredHubCustomerFields
-          .filter(([key]) => !String(user[key] ?? '').trim())
-          .map(([, label]) => label);
-
-        if (missingHubCustomerFields.length > 0) {
-          res.status(400).json({
-            error: 'billing_data_required',
-            message: 'Complete seus dados de cobranca para cadastrar seu cliente no Hub antes de gerar o PIX.',
-            missingFields: missingHubCustomerFields,
-          });
-          return;
-        }
-
         const upsertResult = await upsertHubCustomer(hubConfig, {
           email: String(user.email),
           legalName: String(user.billing_legal_name || user.name),
