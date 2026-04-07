@@ -288,7 +288,6 @@ export default function Profile() {
           const flow = raw ? JSON.parse(raw) : {};
           localStorage.setItem(key, JSON.stringify({ ...flow, needsPhoto: false, needsPost: true }));
         } catch {}
-        navigate('/feed?firstAccess=post', { replace: true });
       }
     } catch (e: any) {
       toast({ title: 'Falha ao atualizar', description: e?.message || 'Tente novamente.', variant: 'destructive' });

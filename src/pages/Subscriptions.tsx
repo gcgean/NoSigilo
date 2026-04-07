@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { subscriptionsService, authService, profileService } from '@/services/api';
+import { subscriptionsService, authService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -79,8 +79,8 @@ function daysLeft(trialEndsAt?: string | null) {
 
 function buildBillingForm(user: ReturnType<typeof useAuth>['user']): BillingForm {
   return {
-    billingLegalName: user?.billingLegalName || user?.name || '',
-    billingDocument: user?.billingDocument || '',
+    billingLegalName: '',
+    billingDocument: '',
     billingPersonType: user?.billingPersonType || 'PF',
     billingPhone: user?.billingPhone || '',
     billingAddressZip: user?.billingAddressZip || '',
@@ -158,10 +158,6 @@ export default function Subscriptions() {
   const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
   const [isSavingBilling, setIsSavingBilling] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
-
-  useEffect(() => {
-    setBillingForm(buildBillingForm(user));
-  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,11 +266,11 @@ export default function Subscriptions() {
     }
   };
 
-  const performCheckout = async (planId: string) => {
+  const performCheckout = async (planId: string, billingData?: Pick<BillingForm, 'billingLegalName' | 'billingDocument' | 'billingPersonType'>) => {
     try {
       setIsCheckingOut(planId);
       setCheckoutResult(null);
-      const result = await subscriptionsService.checkout(planId, 'PIX');
+      const result = await subscriptionsService.checkout(planId, 'PIX', billingData);
       if (result?.checkout) {
         setCheckoutResult(result.checkout);
       }
@@ -308,13 +304,9 @@ export default function Subscriptions() {
   };
 
   const handleCheckout = async (planId: string) => {
-    const missing = getMissingBillingFields(billingForm);
-    if (missing.length > 0) {
-      setBillingPlanId(planId);
-      setBillingDialogOpen(true);
-      return;
-    }
-    await performCheckout(planId);
+    setBillingPlanId(planId);
+    setBillingForm(buildBillingForm(user));
+    setBillingDialogOpen(true);
   };
 
   const handleSaveBillingAndCheckout = async () => {
@@ -330,22 +322,14 @@ export default function Subscriptions() {
 
     try {
       setIsSavingBilling(true);
-      await profileService.updateProfile({
-        ...billingForm,
-        billingAddressState: billingForm.billingAddressState.toUpperCase().slice(0, 2),
-      });
-      const me = await authService.getMe();
-      updateUser(me);
       setBillingDialogOpen(false);
       if (billingPlanId) {
-        await performCheckout(billingPlanId);
+        await performCheckout(billingPlanId, {
+          billingLegalName: billingForm.billingLegalName.trim(),
+          billingDocument: billingForm.billingDocument.trim(),
+          billingPersonType: billingForm.billingPersonType,
+        });
       }
-    } catch (error: any) {
-      toast({
-        title: 'Falha ao salvar dados',
-        description: error?.response?.data?.message || 'Tente novamente em instantes.',
-        variant: 'destructive',
-      });
     } finally {
       setIsSavingBilling(false);
     }
@@ -383,7 +367,7 @@ export default function Subscriptions() {
               Agora nao
             </Button>
             <Button onClick={handleSaveBillingAndCheckout} disabled={isSavingBilling}>
-              {isSavingBilling ? 'Salvando...' : 'Salvar e gerar PIX'}
+              {isSavingBilling ? 'Gerando...' : 'Gerar PIX'}
             </Button>
           </DialogFooter>
         </DialogContent>

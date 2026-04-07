@@ -449,8 +449,20 @@ export const subscriptionsService = {
     return response.data;
   },
 
-  checkout: async (planId: string, billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD' = 'PIX') => {
-    const response = await apiClient.post('/subscriptions/checkout', { planId, billingType });
+  checkout: async (
+    planId: string,
+    billingType: 'PIX' | 'BOLETO' | 'CREDIT_CARD' = 'PIX',
+    billingData?: {
+      billingLegalName?: string;
+      billingDocument?: string;
+      billingPersonType?: 'PF' | 'PJ';
+    }
+  ) => {
+    const response = await apiClient.post('/subscriptions/checkout', {
+      planId,
+      billingType,
+      ...billingData,
+    });
     return response.data;
   },
 };

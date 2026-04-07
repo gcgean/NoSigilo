@@ -3783,7 +3783,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/subscriptions/checkout', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ planId: z.string().min(1), billingType: z.enum(['PIX', 'BOLETO', 'CREDIT_CARD']).optional() });
+    const schema = z.object({
+      planId: z.string().min(1),
+      billingType: z.enum(['PIX', 'BOLETO', 'CREDIT_CARD']).optional(),
+      billingLegalName: z.string().min(1).optional(),
+      billingDocument: z.string().min(1).optional(),
+      billingPersonType: z.enum(['PF', 'PJ']).optional(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -3819,12 +3825,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         return;
       }
 
+      const checkoutBilling = {
+        legalName: String(parsed.data.billingLegalName || '').trim() || String(user.billing_legal_name || user.name || '').trim(),
+        document: String(parsed.data.billingDocument || '').trim() || String(user.billing_document || '').trim(),
+        personType: parsed.data.billingPersonType || user.billing_person_type || 'PF',
+      };
+
       const requiredBillingFields = [
-        ['billing_legal_name', 'Nome do titular'],
-        ['billing_document', 'CPF/CNPJ'],
+        ['legalName', 'Nome do titular'],
+        ['document', 'CPF/CNPJ'],
       ] as const;
       const missingBillingFields = requiredBillingFields
-        .filter(([key]) => !String(user[key] ?? '').trim())
+        .filter(([key]) => !String(checkoutBilling[key] ?? '').trim())
         .map(([, label]) => label);
       if (missingBillingFields.length > 0) {
         res.status(400).json({
@@ -3851,9 +3863,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (!customerId) {
         const upsertResult = await upsertHubCustomer(hubConfig, {
           email: String(user.email),
-          legalName: String(user.billing_legal_name || user.name),
-          document: user.billing_document ?? null,
-          personType: user.billing_person_type ?? 'PF',
+          legalName: checkoutBilling.legalName,
+          document: checkoutBilling.document || null,
+          personType: checkoutBilling.personType,
           phone: user.billing_phone ?? null,
           addressZip: user.billing_address_zip ?? null,
           addressStreet: user.billing_address_street ?? null,
@@ -3887,8 +3899,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const checkout = await createHubCheckout(hubConfig, {
         orderId,
         billingType: parsed.data.billingType || 'PIX',
-        payerName: String(user.billing_legal_name || user.name || ''),
-        payerDocument: user.billing_document ?? null,
+        payerName: checkoutBilling.legalName,
+        payerDocument: checkoutBilling.document || null,
       });
       await persist();
 

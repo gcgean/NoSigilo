@@ -199,23 +199,12 @@ export default function Layout() {
 
     try {
       const flow = JSON.parse(raw) as { needsPhoto?: boolean; needsPost?: boolean };
-      setFirstAccessFlow(flow);
-      if (flow.needsPhoto && !user.avatar) {
-        if (location.pathname !== '/profile') {
-          navigate('/profile?firstAccess=photo#profile-photo', { replace: true });
-        }
-        return;
-      }
-
       const nextFlow = { ...flow };
       if (nextFlow.needsPhoto && user.avatar) nextFlow.needsPhoto = false;
       setFirstAccessFlow(nextFlow);
 
-      if (nextFlow.needsPost) {
+      if (nextFlow.needsPhoto || nextFlow.needsPost) {
         localStorage.setItem(key, JSON.stringify(nextFlow));
-        if (location.pathname !== '/feed') {
-          navigate('/feed?firstAccess=post', { replace: true });
-        }
         return;
       }
 
@@ -229,7 +218,7 @@ export default function Layout() {
       localStorage.removeItem(key);
       setFirstAccessFlow(null);
     }
-  }, [firstAccessRewardKey, location.pathname, navigate, user?.avatar, user?.id]);
+  }, [firstAccessRewardKey, user?.avatar, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
