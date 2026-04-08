@@ -103,6 +103,7 @@ export default function Profile() {
   const [privatePhotoRequests, setPrivatePhotoRequests] = useState<PrivatePhotoAccessItem[]>([]);
   const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
+  const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
   const firstAccessPhotoMode = searchParams.get('firstAccess') === 'photo';
@@ -287,6 +288,7 @@ export default function Profile() {
           const raw = localStorage.getItem(key);
           const flow = raw ? JSON.parse(raw) : {};
           localStorage.setItem(key, JSON.stringify({ ...flow, needsPhoto: false, needsPost: true }));
+          window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
         } catch {}
       }
     } catch (e: any) {
@@ -844,7 +846,7 @@ export default function Profile() {
       />
 
       {/* Premium Upsell */}
-      {!profileData.premium && (
+      {!profileData.premium && subscriptionsEnabled && (
         <div className="mt-6 p-6 rounded-2xl bg-gradient-to-r from-gold/20 to-primary/20 border border-gold/30">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 rounded-xl bg-gold flex items-center justify-center">

@@ -199,6 +199,7 @@ export default function Subscriptions() {
   const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
   const [isSavingBilling, setIsSavingBilling] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+  const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
 
   useEffect(() => {
     let cancelled = false;
@@ -221,6 +222,9 @@ export default function Subscriptions() {
         if (statusData.status === 'fulfilled') {
           const status = statusData.value;
           setHubBanner(status?.banner ?? null);
+          if (typeof status?.subscriptionsEnabled === 'boolean') {
+            updateUser({ subscriptionsEnabled: status.subscriptionsEnabled });
+          }
 
           const normalizedAccessStatus = String(status?.accessStatus || '').toLowerCase();
           const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true;
@@ -374,6 +378,9 @@ export default function Subscriptions() {
         });
         return;
       }
+      if (error?.response?.data?.error === 'subscriptions_disabled') {
+        updateUser({ subscriptionsEnabled: false });
+      }
       toast({
         title: 'Falha ao iniciar assinatura',
         description: getCheckoutErrorMessage(error),
@@ -459,7 +466,11 @@ export default function Subscriptions() {
           <Crown className="w-3 h-3 mr-1" /> Assinatura
         </Badge>
         <h1 className="text-3xl font-bold">Planos</h1>
-        {left !== null && !user?.isPremium && (
+        {!subscriptionsEnabled ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            As assinaturas estão desativadas no momento. O acesso premium está liberado globalmente até essa função ser ativada.
+          </p>
+        ) : left !== null && !user?.isPremium && (
           <p className={cn('mt-2 text-sm', trialExpired ? 'text-destructive' : 'text-muted-foreground')}>
             {trialExpired ? 'Seu teste grátis expirou. Assine para continuar.' : `Teste grátis: ${left} dia(s) restantes`}
           </p>
@@ -475,7 +486,18 @@ export default function Subscriptions() {
 
       {!isLoading && (
         <div className="space-y-8">
-          {checkoutResult && (
+          {!subscriptionsEnabled && (
+            <Card className="border-emerald-300/60 bg-emerald-50/80 p-6">
+              <Badge className="mb-3 bg-emerald-600 text-white">Assinaturas desativadas</Badge>
+              <h2 className="text-2xl font-semibold text-emerald-800">Acesso livre no momento</h2>
+              <p className="mt-2 text-sm text-emerald-700">
+                O painel administrativo deixou a função de assinatura desligada. Quando ela for ativada novamente,
+                esta área voltará a exibir os planos e o checkout PIX.
+              </p>
+            </Card>
+          )}
+
+          {subscriptionsEnabled && checkoutResult && (
             <Card className={cn('p-5', checkoutStatusUi.cardClassName)}>
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <Badge className={checkoutStatusUi.badgeClassName}>{checkoutStatusUi.badgeLabel}</Badge>
@@ -545,6 +567,7 @@ export default function Subscriptions() {
             ))}
           </div>
 
+          {subscriptionsEnabled && (
           <div className="grid md:grid-cols-2 gap-6">
             {plans.map((plan) => {
               const highlighted = plan.price > 0;
@@ -595,6 +618,7 @@ export default function Subscriptions() {
               );
             })}
           </div>
+          )}
         </div>
       )}
     </div>

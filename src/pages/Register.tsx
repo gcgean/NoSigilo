@@ -203,7 +203,7 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      await register({
+      const createdUser = await register({
         name: formData.name,
         email: formData.email,
         password: formData.password,
@@ -230,20 +230,24 @@ export default function Register() {
       }
 
       sessionStorage.setItem('nosigilo_login_email', formData.email);
+      if (createdUser?.user?.id) {
+        localStorage.setItem(
+          `nosigilo:first-access-flow:${createdUser.user.id}`,
+          JSON.stringify({
+            needsPhoto: !createdUser.user.avatar,
+            needsPost: true,
+            startedAt: new Date().toISOString(),
+          })
+        );
+        window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
+      }
       toast({
-        title: 'Cadastro enviado',
+        title: 'Conta criada',
         description: inviteInfo?.inviter?.name
-          ? `Agora falta ${inviteInfo.inviter.name} aprovar sua entrada na rede.`
-          : 'Agora falta a aprovação do seu padrinho para liberar o acesso.',
+          ? `Seu acesso foi liberado pelo convite de ${inviteInfo.inviter.name}.`
+          : 'Seu acesso foi liberado com sucesso.',
       });
-      const pendingPayload = {
-        email: formData.email,
-        name: formData.name,
-        invitationStatus: 'pending',
-        inviter: inviteInfo?.inviter || null,
-      };
-      sessionStorage.setItem('nosigilo_pending_access', JSON.stringify(pendingPayload));
-      navigate(`/pending-approval?email=${encodeURIComponent(formData.email)}${inviteInfo?.inviter?.name ? `&inviter=${encodeURIComponent(inviteInfo.inviter.name)}` : ''}`);
+      navigate('/feed');
     } catch (error) {
       const info = getApiErrorInfo(error, { title: 'Erro ao criar conta', description: 'Tente novamente mais tarde.' });
       toast({

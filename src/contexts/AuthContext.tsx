@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authService, profileService } from '@/services/api';
+import { appService, authService, profileService } from '@/services/api';
 
 export interface User {
   id: string;
@@ -50,6 +50,7 @@ export interface User {
   billingAddressComplement?: string | null;
   billingAddressCity?: string | null;
   billingAddressState?: string | null;
+  subscriptionsEnabled?: boolean;
 }
 
 interface AuthContextType {
@@ -129,21 +130,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const applySettings = async (currentUser: User | null) => {
+      const settings = await appService.getSettings().catch(() => ({ subscriptionsEnabled: true }));
+      if (!currentUser) return null;
+      const mergedUser = { ...currentUser, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
+      localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+      return mergedUser;
+    };
+
     const savedUser = localStorage.getItem('nosigilo_user');
     const token = localStorage.getItem('token');
     if (savedUser) {
       try {
-        setUser(JSON.parse(savedUser));
+        const parsedUser = JSON.parse(savedUser);
+        void applySettings(parsedUser).then((nextUser) => {
+          if (nextUser) setUser(nextUser);
+        });
+        setUser(parsedUser);
       } catch {
         localStorage.removeItem('nosigilo_user');
       }
     }
     if (!USE_MOCKS && token && !savedUser) {
-      authService
-        .getMe()
-        .then((me) => {
-          localStorage.setItem('nosigilo_user', JSON.stringify(me));
-          setUser(me);
+      Promise.all([authService.getMe(), appService.getSettings().catch(() => ({ subscriptionsEnabled: true }))])
+        .then(([me, settings]) => {
+          const mergedUser = { ...me, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
+          localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+          setUser(mergedUser);
         })
         .catch(() => {
           localStorage.removeItem('token');
@@ -166,11 +179,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Credenciais inválidas');
     }
 
-    const result = await authService.login(email, password);
+    const [result, settings] = await Promise.all([
+      authService.login(email, password),
+      appService.getSettings().catch(() => ({ subscriptionsEnabled: true })),
+    ]);
+    const mergedUser = { ...result.user, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
     localStorage.setItem('token', result.token);
-    localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
-    setUser(result.user);
-    return result.user;
+    localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+    setUser(mergedUser);
+    return mergedUser;
   };
 
   const register = async (data: RegisterData) => {
@@ -195,9 +212,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const result = await authService.register(data);
     if (result?.token && result?.user) {
+      const settings = await appService.getSettings().catch(() => ({ subscriptionsEnabled: true }));
+      const mergedUser = { ...result.user, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
       localStorage.setItem('token', result.token);
-      localStorage.setItem('nosigilo_user', JSON.stringify(result.user));
-      setUser(result.user);
+      localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+      setUser(mergedUser);
+      return { ...result, user: mergedUser };
     }
     return result;
   };

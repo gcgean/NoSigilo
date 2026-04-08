@@ -92,7 +92,9 @@ export default function Layout() {
   const [clockNow, setClockNow] = useState(Date.now());
   const [firstAccessFlow, setFirstAccessFlow] = useState<{ needsPhoto?: boolean; needsPost?: boolean } | null>(null);
   const [showFirstAccessReward, setShowFirstAccessReward] = useState(false);
+  const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
   const hadFirstAccessFlowRef = useRef(false);
+  const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
   const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
   const trialDaysLeft =
@@ -100,6 +102,7 @@ export default function Layout() {
   const firstAccessRewardKey = user?.id ? `nosigilo:first-access-reward:${user.id}` : null;
   const accessCountdown = useMemo(() => {
     if (!user) return null;
+    if (!subscriptionsEnabled) return null;
 
     if (!user.isPremium) {
       if (trialEnds === null) {
@@ -135,9 +138,10 @@ export default function Layout() {
       title: diff <= 0 ? 'Sua licença premium expirou' : `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
       label: diff <= 0 ? 'Licença expirada' : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
     };
-  }, [clockNow, licenseEnds, trialEnds, user]);
+  }, [clockNow, licenseEnds, subscriptionsEnabled, trialEnds, user]);
 
   const accessBanner = useMemo(() => {
+    if (!subscriptionsEnabled) return null;
     if (!user || user.isPremium) return null;
 
     if (trialEnds !== null && trialEnds > clockNow) {
@@ -158,7 +162,12 @@ export default function Layout() {
       message: 'Seu acesso está inativo ou sua licença venceu. Assine para continuar com todos os recursos.',
       cta: 'VER PLANOS',
     };
-  }, [clockNow, trialEnds, user]);
+  }, [clockNow, subscriptionsEnabled, trialEnds, user]);
+
+  const visibleExtraNavItems = useMemo(
+    () => extraNavItems.filter((item) => subscriptionsEnabled || item.path !== '/subscriptions'),
+    [subscriptionsEnabled]
+  );
 
   const firstAccessChecklist = useMemo(() => {
     const steps = [
@@ -183,6 +192,14 @@ export default function Layout() {
     const progress = Math.round((completed / steps.length) * 100);
     return { steps, completed, progress, remaining: steps.length - completed };
   }, [firstAccessFlow?.needsPhoto, firstAccessFlow?.needsPost, navigate, user?.avatar]);
+
+  useEffect(() => {
+    const handleFlowChange = () => setFirstAccessFlowVersion((value) => value + 1);
+    window.addEventListener('nosigilo:first-access-flow-changed', handleFlowChange as EventListener);
+    return () => {
+      window.removeEventListener('nosigilo:first-access-flow-changed', handleFlowChange as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -218,7 +235,7 @@ export default function Layout() {
       localStorage.removeItem(key);
       setFirstAccessFlow(null);
     }
-  }, [firstAccessRewardKey, user?.avatar, user?.id]);
+  }, [firstAccessFlowVersion, firstAccessRewardKey, user?.avatar, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -351,14 +368,16 @@ export default function Layout() {
               </NavLink>
             )}
 
-            <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
-              <Button variant="ghost" size="icon" className="relative" aria-label="Ver planos">
-                <Crown className="w-5 h-5 text-gold" />
-                {!user?.isPremium ? (
-                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive" />
-                ) : null}
-              </Button>
-            </NavLink>
+            {subscriptionsEnabled ? (
+              <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
+                <Button variant="ghost" size="icon" className="relative" aria-label="Ver planos">
+                  <Crown className="w-5 h-5 text-gold" />
+                  {!user?.isPremium ? (
+                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive" />
+                  ) : null}
+                </Button>
+              </NavLink>
+            ) : null}
 
             <NavLink to="/profile" className="shrink-0 flex items-center gap-2">
               <div
@@ -416,7 +435,7 @@ export default function Layout() {
 
             <div className="border-t my-3" />
 
-            {extraNavItems.map((item) => {
+            {visibleExtraNavItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <NavLink
@@ -551,7 +570,7 @@ export default function Layout() {
                     <p className="truncate text-sm font-semibold">Gerar/Gerenciar convites</p>
                     <Badge className="shrink-0 bg-white/20 text-[10px] text-white">Novo</Badge>
                   </div>
-                  <p className="truncate text-xs text-white/85">Crie links, aprove cadastros e acompanhe seus convites.</p>
+                  <p className="truncate text-xs text-white/85">Crie links exclusivos e acompanhe quem entrou pela sua indicação.</p>
                 </div>
               </NavLink>
             </div>

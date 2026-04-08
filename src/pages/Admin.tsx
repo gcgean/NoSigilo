@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { adminService } from '@/services/api';
@@ -56,6 +57,10 @@ type LogItem = {
   date?: string;
 };
 
+type AdminSettings = {
+  subscriptionsEnabled: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -95,7 +100,7 @@ function formatAccessRemaining(entry: AdminUser) {
 }
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const [photos, setPhotos] = useState<AdminPhoto[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -105,6 +110,8 @@ export default function Admin() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<AdminSettings>({ subscriptionsEnabled: true });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,11 +119,12 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsers, rawLogs, rawFinance] = await Promise.all([
+        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings] = await Promise.all([
           adminService.getPendingPhotos(),
           adminService.getUsers(),
           adminService.getLogs(),
           adminService.getFinanceSummary(),
+          adminService.getSettings(),
         ]);
 
         if (cancelled) return;
@@ -176,6 +184,9 @@ export default function Admin() {
             : []
         );
         setFinance(isRecord(rawFinance) ? { ...DEFAULT_FINANCE, ...rawFinance } as FinanceSummary : DEFAULT_FINANCE);
+        setSettings({
+          subscriptionsEnabled: rawSettings?.subscriptionsEnabled !== false,
+        });
       } catch {
         if (cancelled) return;
         toast({
@@ -205,6 +216,30 @@ export default function Admin() {
   if (!user?.isAdmin) {
     return <Navigate to="/feed" replace />;
   }
+
+  const handleToggleSubscriptions = async (enabled: boolean) => {
+    setIsSavingSettings(true);
+    try {
+      const result = await adminService.setSubscriptionsEnabled(enabled);
+      const nextEnabled = result?.subscriptionsEnabled !== false;
+      setSettings({ subscriptionsEnabled: nextEnabled });
+      updateUser({ subscriptionsEnabled: nextEnabled });
+      toast({
+        title: nextEnabled ? 'Assinaturas ativadas' : 'Assinaturas desativadas',
+        description: nextEnabled
+          ? 'A cobrança premium voltou a ficar disponível na rede.'
+          : 'Os bloqueios de assinatura foram desativados para toda a rede.',
+      });
+    } catch {
+      toast({
+        title: 'Falha ao salvar configuração',
+        description: 'Não foi possível atualizar o estado das assinaturas.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const handleApprovePhoto = async (photoId: string) => {
     setBusyPhotoId(photoId);
@@ -316,6 +351,30 @@ export default function Admin() {
           </div>
         </Card>
       </div>
+
+      <Card className="mb-6 border-primary/20 bg-primary/5 p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-primary">Assinaturas da rede</p>
+            <h3 className="text-xl font-semibold">
+              {settings.subscriptionsEnabled ? 'Cobrança premium ativa' : 'Cobrança premium desligada'}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Desligando esta opção, os bloqueios premium deixam de valer e a área de planos para de oferecer checkout.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 self-start rounded-2xl border bg-background px-4 py-3">
+            <span className={settings.subscriptionsEnabled ? 'text-sm font-medium text-emerald-600' : 'text-sm font-medium text-muted-foreground'}>
+              {settings.subscriptionsEnabled ? 'Ativadas' : 'Desativadas'}
+            </span>
+            <Switch
+              checked={settings.subscriptionsEnabled}
+              disabled={isSavingSettings}
+              onCheckedChange={(checked) => void handleToggleSubscriptions(Boolean(checked))}
+            />
+          </div>
+        </div>
+      </Card>
 
       <Tabs defaultValue="photos" className="space-y-6">
         <TabsList>

@@ -4,6 +4,13 @@ import axios from 'axios';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
+export const appService = {
+  getSettings: async () => {
+    const response = await apiClient.get('/app/settings');
+    return response.data;
+  },
+};
+
 // Auth Service
 export const authService = {
   login: async (email: string, password: string) => {
@@ -519,6 +526,16 @@ export const adminService = {
 
   getFinanceSummary: async () => {
     const response = await apiClient.get('/admin/finance/summary');
+    return response.data;
+  },
+
+  getSettings: async () => {
+    const response = await apiClient.get('/admin/settings');
+    return response.data;
+  },
+
+  setSubscriptionsEnabled: async (enabled: boolean) => {
+    const response = await apiClient.put('/admin/settings/subscriptions', { enabled });
     return response.data;
   },
 };

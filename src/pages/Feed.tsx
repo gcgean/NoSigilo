@@ -338,7 +338,28 @@ export default function Feed() {
       setActivePicker(null);
       toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
       if (user?.id) {
-        localStorage.removeItem(`nosigilo:first-access-flow:${user.id}`);
+        const key = `nosigilo:first-access-flow:${user.id}`;
+        try {
+          const raw = localStorage.getItem(key);
+          const flow = raw ? JSON.parse(raw) : {};
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              ...flow,
+              needsPhoto: user?.avatar ? false : flow?.needsPhoto,
+              needsPost: false,
+            })
+          );
+        } catch {
+          localStorage.setItem(
+            key,
+            JSON.stringify({
+              needsPhoto: !user?.avatar,
+              needsPost: false,
+            })
+          );
+        }
+        window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
       }
       if (firstAccessPostMode) {
         navigate('/feed', { replace: true });

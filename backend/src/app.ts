@@ -89,6 +89,7 @@ export type PublicUser = {
   billingAddressComplement?: string | null;
   billingAddressCity?: string | null;
   billingAddressState?: string | null;
+  subscriptionsEnabled?: boolean;
 };
 
 type InviteRow = {
@@ -181,7 +182,29 @@ function isAdministrativeEmail(email?: string | null) {
   return ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
 }
 
-function hasPremiumAccess(userRow: any) {
+async function getSystemSetting(db: DbHandle, key: string) {
+  const row = (await queryOne(db, 'SELECT value FROM system_settings WHERE key = ? LIMIT 1', [key])) as any;
+  return row?.value ?? null;
+}
+
+async function setSystemSetting(db: DbHandle, key: string, value: string) {
+  const timestamp = nowIso();
+  await run(
+    db,
+    `INSERT INTO system_settings (key, value, updated_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    [key, value, timestamp]
+  );
+}
+
+async function getSubscriptionsEnabled(db: DbHandle) {
+  const raw = await getSystemSetting(db, 'subscriptions_enabled');
+  return raw === null ? true : raw !== '0';
+}
+
+function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true) {
+  if (!subscriptionsEnabled) return true;
   if (!userRow) return false;
   if (userRow.is_premium) return true;
   const ends = userRow.trial_ends_at ? new Date(String(userRow.trial_ends_at)) : null;
@@ -190,8 +213,10 @@ function hasPremiumAccess(userRow: any) {
 }
 
 async function userHasPremiumAccess(db: DbHandle, userId: string) {
+  const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+  if (!subscriptionsEnabled) return true;
   const row = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-  return hasPremiumAccess(row);
+  return hasPremiumAccess(row, subscriptionsEnabled);
 }
 
 export async function ensureAdministrativeAccess(db: DbHandle) {
@@ -477,7 +502,11 @@ function sendLocalFile(req: express.Request, res: express.Response, options: { f
   createReadStream(options.filePath, { start, end: safeEnd }).pipe(res);
 }
 
-function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: boolean }): PublicUser {
+function rowToPublicUser(
+  row: any,
+  isOnline?: boolean,
+  options?: { showEmail?: boolean; subscriptionsEnabled?: boolean }
+): PublicUser {
   const lookingFor = safeJsonParse(row.looking_for_json);
   return {
     id: String(row.id),
@@ -517,6 +546,7 @@ function rowToPublicUser(row: any, isOnline?: boolean, options?: { showEmail?: b
     hubAccessReason: row.hub_access_reason ?? null,
     hubLicenseEndAt: row.hub_license_end_at ?? null,
     hubBanner: row.hub_banner ?? null,
+    subscriptionsEnabled: options?.subscriptionsEnabled ?? true,
     ...(options?.showEmail
       ? {
           billingDocument: row.billing_document ?? null,
@@ -1141,13 +1171,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         createdAt,
         trialEndsAt,
         String(invite.inviter_user_id),
-        'pending',
+        'approved',
       ]
     );
     await run(
       db,
-      'UPDATE invite_links SET invitee_user_id = ?, invitee_email = ?, status = ?, used_at = ?, updated_at = ? WHERE id = ?',
-      [id, email, 'pending_approval', createdAt, createdAt, String(invite.id)]
+      'UPDATE invite_links SET invitee_user_id = ?, invitee_email = ?, status = ?, used_at = ?, approved_at = ?, updated_at = ? WHERE id = ?',
+      [id, email, 'approved', createdAt, createdAt, createdAt, String(invite.id)]
     );
     await persist();
 
@@ -1155,15 +1185,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       { db, io: req.app.get('io') },
       {
         userId: String(invite.inviter_user_id),
-        type: 'invite.pending',
-        title: 'Novo convidado aguardando sua aprovação',
-        description: `${name} concluiu o cadastro por convite e está aguardando sua aprovação.`,
+        type: 'invite.approved',
+        title: 'Novo convidado entrou na rede',
+        description: `${name} entrou na rede usando o seu convite.`,
         dataJson: { inviteId: String(invite.id), inviteeUserId: id, inviteeName: name, inviteeEmail: email },
       }
     );
 
-    res.status(202).json({
-      status: 'pending_approval',
+    const userRow = await getUserWithSponsorById(db, id);
+    const presence = req.app.get('presence');
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const user = rowToPublicUser(userRow, presence?.isOnline(id), {
+      showEmail: true,
+      subscriptionsEnabled,
+    });
+
+    res.status(201).json({
+      token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }),
+      user,
       inviteId: String(invite.id),
       inviter: { id: String(invite.inviter_user_id), name: String(invite.inviter_name || ''), avatar: invite.inviter_avatar ?? null },
     });
@@ -1227,7 +1266,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     const hydratedRow = await getUserWithSponsorById(db, String(row.id));
     const presence = req.app.get('presence');
-    const user = rowToPublicUser(hydratedRow || row, presence?.isOnline(String(row.id)), { showEmail: true });
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const user = rowToPublicUser(hydratedRow || row, presence?.isOnline(String(row.id)), {
+      showEmail: true,
+      subscriptionsEnabled,
+    });
     res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
   });
 
@@ -1439,7 +1482,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/auth/me', requireAuth(env, db), async (req, res) => {
     const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), {
+      showEmail: true,
+      subscriptionsEnabled,
+    }));
   });
 
   app.post('/api/auth/refresh', requireAuth(env, db), async (req, res) => {
@@ -1451,9 +1498,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.status(501).json({ error: 'not_implemented' });
   });
 
+  app.get('/api/app/settings', async (_req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    res.json({ subscriptionsEnabled });
+  });
+
   app.get('/api/feed', requireAuth(env, db), async (req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId]);
-    const viewerHasPremium = hasPremiumAccess(viewerRow);
+    const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
     const page = Number(req.query.page || 1);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
@@ -2424,12 +2477,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.post('/api/radar', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(
       db,
       'SELECT id, name, gender, city, state, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
-    if (!hasPremiumAccess(me)) {
+    if (!hasPremiumAccess(me, subscriptionsEnabled)) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -2614,6 +2668,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/radar', requireAuth(env, db), async (req, res) => {
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
     const io = req.app.get('io') as SocketIOServer | undefined;
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(
       db,
       'SELECT id, name, avatar, gender, city, state, lat, lon, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
@@ -2765,7 +2820,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
 
     res.json({
-      canCreate: hasPremiumAccess(me),
+      canCreate: hasPremiumAccess(me, subscriptionsEnabled),
       usage: {
         dailyLimit: 1,
         dailyUsed: Number(dailyUsedRow?.c || 0),
@@ -3034,8 +3089,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewer = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const canViewReceived = hasPremiumAccess(viewer);
+    const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled);
 
     // Mark messages as read
     await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [conversationId, req.auth!.userId]);
@@ -3614,8 +3670,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/notifications', requireAuth(env, db), async (req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const isPremium = hasPremiumAccess(me);
+    const isPremium = hasPremiumAccess(me, subscriptionsEnabled);
 
     const rows = await queryAll(db, 'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.auth!.userId]);
     res.json(
@@ -3716,6 +3773,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/subscriptions/plans', requireAuth(env, db), async (_req, res) => {
     try {
+      const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+      if (!subscriptionsEnabled) {
+        res.json([]);
+        return;
+      }
       const rawPlans = shouldUseHubBilling(env) ? await listHubPlans(getHubConfig(env)) : fallbackSubscriptionPlans();
       const plans = rawPlans
         .filter((plan: any) => plan.isActive !== false && String(plan.status || 'active') === 'active')
@@ -3745,6 +3807,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/subscriptions/status', requireAuth(env, db), async (req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const row = (await queryOne(
       db,
       'SELECT id, hub_customer_id, hub_product_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
@@ -3765,7 +3828,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         licenseEndAt: row.hub_license_end_at ?? null,
         trialStartedAt: row.trial_started_at ?? null,
         trialEndAt: row.trial_ends_at ?? null,
-        canAccess: hasPremiumAccess(row),
+        canAccess: hasPremiumAccess(row, subscriptionsEnabled),
+        subscriptionsEnabled,
       });
       return;
     }
@@ -3774,7 +3838,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
       await syncHubAccessForUser(db, req.auth!.userId, status);
       await persist();
-      res.json(status);
+      res.json({ ...status, subscriptionsEnabled });
     } catch (error) {
       console.error('Failed to fetch Hub Billing access status:', error);
       res.status(502).json({ error: 'hub_billing_unavailable' });
@@ -3795,6 +3859,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
     const planId = parsed.data.planId;
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    if (!subscriptionsEnabled) {
+      res.status(409).json({
+        error: 'subscriptions_disabled',
+        message: 'As assinaturas estão desativadas no momento.',
+      });
+      return;
+    }
     if (!shouldUseHubBilling(env)) {
       const isPremium = planId !== 'basic' ? 1 : 0;
       await run(db, 'UPDATE users SET is_premium = ? WHERE id = ?', [isPremium, req.auth!.userId]);
@@ -4000,8 +4072,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/events', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const userRow = (await queryOne(db, 'SELECT name, is_premium, trial_ends_at, lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    if (!hasPremiumAccess(userRow)) {
+    if (!hasPremiumAccess(userRow, subscriptionsEnabled)) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -4172,9 +4245,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
     const presence = req.app.get('presence');
-    res.json(rows.map((row) => rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true })));
+    res.json(
+      rows.map((row) =>
+        rowToPublicUser(row, presence?.isOnline(String(row.id)), {
+          showEmail: true,
+          subscriptionsEnabled,
+        })
+      )
+    );
   });
 
   app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), (_req, res) => {
@@ -4187,6 +4268,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/admin/logs', requireAuth(env, db), requireAdmin(), (_req, res) => {
     res.json([]);
+  });
+
+  app.get('/api/admin/settings', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    res.json({ subscriptionsEnabled });
+  });
+
+  app.put('/api/admin/settings/subscriptions', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ enabled: z.boolean() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    await setSystemSetting(db, 'subscriptions_enabled', parsed.data.enabled ? '1' : '0');
+    await persist();
+    res.json({ subscriptionsEnabled: parsed.data.enabled });
   });
 
   app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {
