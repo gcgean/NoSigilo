@@ -4190,8 +4190,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const subscribersRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE is_premium = 1')) as any;
-    const newTodayRow = (await queryOne(db, "SELECT COUNT(*) as c FROM users WHERE created_at >= datetime('now', '-1 day')")) as any;
+    const newTodayRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE created_at >= ?', [oneDayAgoIso])) as any;
     res.json({
       revenue: 0,
       subscribers: Number(subscribersRow?.c || 0),
