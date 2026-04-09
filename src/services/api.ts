@@ -376,16 +376,6 @@ export const invitesService = {
     return response.data;
   },
 
-  approve: async (inviteId: string) => {
-    const response = await apiClient.post(`/invites/${inviteId}/approve`);
-    return response.data;
-  },
-
-  deny: async (inviteId: string) => {
-    const response = await apiClient.post(`/invites/${inviteId}/deny`);
-    return response.data;
-  },
-
   revoke: async (inviteId: string) => {
     const response = await apiClient.post(`/invites/${inviteId}/revoke`);
     return response.data;

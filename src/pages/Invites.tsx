@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Copy, Link2, ShieldCheck, Sparkles, UserPlus, XCircle } from 'lucide-react';
+import { CheckCircle2, Copy, Link2, ShieldCheck, Sparkles, UserPlus, Users, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,11 +8,16 @@ import { invitesService } from '@/services/api';
 type InviteItem = {
   id: string;
   token: string;
-  status: 'created' | 'pending_approval' | 'approved' | 'denied' | 'revoked';
+  status: 'created' | 'revoked' | 'approved' | 'denied' | 'pending_approval';
   createdAt: string;
   updatedAt?: string;
-  inviteeEmail?: string | null;
-  invitee?: { id: string; name?: string | null; avatar?: string | null } | null;
+  entrantsCount?: number;
+  entries?: Array<{
+    id: string;
+    createdAt: string;
+    inviteeEmail?: string | null;
+    invitee?: { id: string; name?: string | null; avatar?: string | null } | null;
+  }>;
 };
 
 export default function Invites() {
@@ -64,32 +69,6 @@ export default function Invites() {
     }
   };
 
-  const handleApproveInvite = async (inviteId: string) => {
-    setBusyInviteId(inviteId);
-    try {
-      await invitesService.approve(inviteId);
-      toast({ title: 'Convite aprovado', description: 'O novo perfil já pode entrar na rede.' });
-      await loadInvites();
-    } catch {
-      toast({ title: 'Falha ao aprovar', description: 'Tente novamente.', variant: 'destructive' });
-    } finally {
-      setBusyInviteId(null);
-    }
-  };
-
-  const handleDenyInvite = async (inviteId: string) => {
-    setBusyInviteId(inviteId);
-    try {
-      await invitesService.deny(inviteId);
-      toast({ title: 'Convite negado', description: 'Esse cadastro não foi aprovado por você.' });
-      await loadInvites();
-    } catch {
-      toast({ title: 'Falha ao negar', description: 'Tente novamente.', variant: 'destructive' });
-    } finally {
-      setBusyInviteId(null);
-    }
-  };
-
   const handleRevokeInvite = async (inviteId: string) => {
     setBusyInviteId(inviteId);
     try {
@@ -114,7 +93,7 @@ export default function Invites() {
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold">Gerar/Gerenciar convites</h1>
             <p className="text-muted-foreground max-w-2xl">
-              Gere links únicos, acompanhe quem iniciou cadastro por você e aprove apenas pessoas que realmente pertencem ao meio liberal da rede.
+              Gere links reutilizáveis, acompanhe quem entrou por cada convite e mantenha documentada a origem de cada novo membro indicado por você.
             </p>
           </div>
           <Button type="button" className="bg-gradient-primary hover:opacity-90 gap-2 w-full sm:w-auto" onClick={handleCreateInvite}>
@@ -142,7 +121,7 @@ export default function Invites() {
         <div>
           <h2 className="text-lg font-semibold">Seus convites</h2>
           <p className="text-sm text-muted-foreground">
-            Aqui você acompanha convites livres, cadastros aguardando sua aprovação e acessos já autorizados por você.
+            Cada link pode ser usado por mais de uma pessoa. Aqui você vê quantas entradas cada convite gerou e exatamente quem entrou por ele.
           </p>
         </div>
 
@@ -165,23 +144,31 @@ export default function Invites() {
                         <span className="font-medium">Convite de acesso</span>
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                           {invite.status === 'created'
-                            ? 'Aguardando uso'
-                            : invite.status === 'pending_approval'
-                              ? 'Aguardando sua aprovação'
-                              : invite.status === 'approved'
-                                ? 'Aprovado'
-                                : invite.status === 'denied'
-                                  ? 'Negado'
-                                  : 'Revogado'}
+                            ? 'Ativo'
+                            : invite.status === 'revoked'
+                              ? 'Revogado'
+                              : String(invite.status)}
+                        </span>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                          <Users className="w-3 h-3" />
+                          {invite.entrantsCount || 0} entraram
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground break-all">{shareUrl}</p>
-                      {invite.invitee?.name || invite.inviteeEmail ? (
-                        <p className="text-sm text-muted-foreground">
-                          Cadastro vinculado a <span className="font-medium text-foreground">{invite.invitee?.name || invite.inviteeEmail}</span>
-                        </p>
+                      {invite.entries && invite.entries.length > 0 ? (
+                        <div className="space-y-2">
+                          <p className="text-sm text-muted-foreground">Entradas registradas por este convite:</p>
+                          <div className="space-y-1">
+                            {invite.entries.map((entry) => (
+                              <div key={entry.id} className="rounded-lg bg-secondary/40 px-3 py-2 text-sm">
+                                <span className="font-medium text-foreground">{entry.invitee?.name || entry.inviteeEmail || 'Novo membro'}</span>
+                                <span className="text-muted-foreground"> entrou em {new Date(entry.createdAt).toLocaleString('pt-BR')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground">Nenhum cadastro iniciado com este link ainda.</p>
+                        <p className="text-sm text-muted-foreground">Nenhum cadastro entrou por este link ainda.</p>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -197,34 +184,16 @@ export default function Invites() {
                           </Button>
                         </>
                       ) : null}
-                      {invite.status === 'pending_approval' ? (
-                        <>
-                          <Button type="button" size="sm" className="gap-2 bg-gradient-primary hover:opacity-90" disabled={isBusy} onClick={() => void handleApproveInvite(invite.id)}>
-                            <CheckCircle2 className="w-4 h-4" />
-                            Aprovar
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" className="gap-2" disabled={isBusy} onClick={() => void handleDenyInvite(invite.id)}>
-                            <XCircle className="w-4 h-4" />
-                            Negar
-                          </Button>
-                        </>
-                      ) : null}
-                      {invite.status === 'approved' ? (
-                        <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Membro liberado por você
-                        </div>
-                      ) : null}
-                      {invite.status === 'denied' ? (
-                        <div className="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-600">
-                          <XCircle className="w-4 h-4" />
-                          Cadastro recusado
-                        </div>
-                      ) : null}
                       {invite.status === 'revoked' ? (
                         <div className="inline-flex items-center gap-2 rounded-lg bg-secondary px-3 py-2 text-sm text-muted-foreground">
                           <Link2 className="w-4 h-4" />
                           Link encerrado
+                        </div>
+                      ) : null}
+                      {invite.status === 'created' && (invite.entrantsCount || 0) > 0 ? (
+                        <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Convite em uso
                         </div>
                       ) : null}
                     </div>

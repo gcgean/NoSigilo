@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateAge } from '@/utils/age';
+import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { hasPremiumAccess } from '@/utils/premium';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -136,12 +137,12 @@ export default function Profile() {
   }, []);
 
   const profileData = useMemo(() => {
-    const age = calculateAge(user?.birthDate) ?? 28;
+    const ageLabel = buildProfileAgeLabel(user);
     const city = [user?.city, user?.state].filter(Boolean).join(', ') || '—';
 
     return {
       name: user?.name || 'Usuário',
-      age,
+      ageLabel,
       city,
       status: user?.status || '',
       bio: user?.bio || '',
@@ -470,7 +471,10 @@ export default function Profile() {
           {/* Info */}
           <div className="flex-1 min-w-0 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-              <h1 className="text-xl sm:text-2xl font-bold break-words">{profileData.name}, {profileData.age}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold break-words">
+                {profileData.name}
+                {profileData.ageLabel ? `, ${profileData.ageLabel}` : ''}
+              </h1>
               {profileData.verified && (
                 <Badge className="bg-success text-white gap-1">
                   <Sparkles className="w-3 h-3" /> Verificado
@@ -633,8 +637,9 @@ export default function Profile() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <InfoRow label="Gênero" value={user?.gender} />
-          <InfoRow label="Estado civil" value={user?.maritalStatus} />
+              <InfoRow label="Gênero" value={user?.gender} />
+              <InfoRow label={String(user?.gender || '').startsWith('Casal') ? 'Idades' : 'Idade'} value={profileData.ageLabel} />
+              <InfoRow label="Estado civil" value={user?.maritalStatus} />
           <InfoRow label="Orientação Sexual" value={user?.sexualOrientation} />
           <InfoRow label="Profissão" value={user?.profession} />
           <InfoRow label="Signo" value={user?.zodiacSign} />

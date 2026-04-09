@@ -1,6 +1,7 @@
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, Heart } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function AgeGateModal() {
   const { confirmAge } = useAgeGate();
@@ -22,9 +23,9 @@ export default function AgeGateModal() {
           Verificação de Idade
         </h1>
         
-        <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="mb-4 flex items-center justify-center gap-2">
           <Heart className="w-5 h-5 text-primary" />
-          <span className="text-xl font-semibold text-gradient">NoSigilo</span>
+          <BrandLogo size="sm" className="gap-2" textClassName="text-xl font-semibold" />
         </div>
 
         <p className="text-muted-foreground mb-6">

@@ -8,7 +8,6 @@ import {
   User, 
   Bell, 
   Search,
-  Sparkles,
   LogOut,
   Settings,
   Calendar,
@@ -35,6 +34,7 @@ import { useSocket } from '@/contexts/SocketContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
+import BrandLogo from '@/components/BrandLogo';
 
 const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
@@ -330,10 +330,12 @@ export default function Layout() {
       <header className="sticky top-0 z-40 glass-strong border-b">
         <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-3 sm:px-4">
           <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <span className="truncate text-xl font-bold text-gradient hidden sm:block">NoSigilo</span>
+            <BrandLogo
+              size="sm"
+              className="gap-2"
+              markClassName="shadow-[0_12px_28px_rgba(169,59,255,0.34)]"
+              textClassName="hidden sm:block truncate text-xl"
+            />
           </NavLink>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-2">

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, ArrowLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function Terms() {
   return (
@@ -11,9 +12,7 @@ export default function Terms() {
         </Link>
 
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-            <Sparkles className="w-6 h-6 text-primary-foreground" />
-          </div>
+          <BrandLogo size="md" showText={false} />
           <h1 className="text-3xl font-bold">Termos de Uso</h1>
         </div>
 

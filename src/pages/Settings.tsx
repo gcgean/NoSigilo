@@ -38,6 +38,8 @@ export default function Settings() {
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
+    birthDate: user?.birthDate || '',
+    partnerBirthDate: user?.partnerBirthDate || '',
     gender: user?.gender || '',
     maritalStatus: user?.maritalStatus || '',
     sexualOrientation: user?.sexualOrientation || '',
@@ -70,6 +72,8 @@ export default function Settings() {
     ],
     []
   );
+
+  const isCoupleProfile = profile.gender.startsWith('Casal');
 
   const [privacy, setPrivacy] = useState({
     profilePublic: true,
@@ -272,6 +276,36 @@ export default function Settings() {
                   Seu perfil pode representar casal, mulher solteira, homem solteiro ou outros perfis adultos aceitos na plataforma.
                 </p>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="birthDate">{isCoupleProfile ? 'Nascimento da pessoa 1' : 'Data de nascimento'}</Label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="birthDate"
+                    type="date"
+                    value={profile.birthDate}
+                    onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              {isCoupleProfile ? (
+                <div className="space-y-2">
+                  <Label htmlFor="partnerBirthDate">Nascimento da pessoa 2</Label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="partnerBirthDate"
+                      type="date"
+                      value={profile.partnerBirthDate}
+                      onChange={(e) => setProfile({ ...profile, partnerBirthDate: e.target.value })}
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label>Estado civil</Label>

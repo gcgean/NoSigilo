@@ -49,6 +49,7 @@ export type PublicUser = {
   city?: string | null;
   state?: string | null;
   birthDate?: string | null;
+  partnerBirthDate?: string | null;
   gender?: string | null;
   maritalStatus?: string | null;
   sexualOrientation?: string | null;
@@ -96,8 +97,6 @@ type InviteRow = {
   id: string;
   inviter_user_id: string;
   invite_token: string;
-  invitee_user_id?: string | null;
-  invitee_email?: string | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -106,6 +105,15 @@ type InviteRow = {
   revoked_at?: string | null;
   inviter_name?: string | null;
   inviter_avatar?: string | null;
+  entries?: InviteEntryRow[];
+};
+
+type InviteEntryRow = {
+  id: string;
+  invite_link_id: string;
+  invitee_user_id: string;
+  invitee_email?: string | null;
+  created_at: string;
   invitee_name?: string | null;
   invitee_avatar?: string | null;
 };
@@ -518,6 +526,7 @@ function rowToPublicUser(
     city: row.city ?? null,
     state: row.state ?? null,
     birthDate: row.birth_date ?? null,
+    partnerBirthDate: row.partner_birth_date ?? null,
     gender: row.gender ?? null,
     maritalStatus: row.marital_status ?? null,
     sexualOrientation: row.sexual_orientation ?? null,
@@ -591,7 +600,22 @@ function inviteStatusError(status: string) {
   return 'unauthorized';
 }
 
+function rowToInviteEntry(entry: InviteEntryRow) {
+  return {
+    id: String(entry.id),
+    inviteLinkId: String(entry.invite_link_id),
+    createdAt: String(entry.created_at),
+    inviteeEmail: entry.invitee_email ?? null,
+    invitee: {
+      id: String(entry.invitee_user_id),
+      name: entry.invitee_name ? String(entry.invitee_name) : null,
+      avatar: entry.invitee_avatar ?? null,
+    },
+  };
+}
+
 function rowToInvite(invite: InviteRow) {
+  const entries = Array.isArray(invite.entries) ? invite.entries.map(rowToInviteEntry) : [];
   return {
     id: String(invite.id),
     token: String(invite.invite_token),
@@ -601,20 +625,53 @@ function rowToInvite(invite: InviteRow) {
     approvedAt: invite.approved_at ?? null,
     usedAt: invite.used_at ?? null,
     revokedAt: invite.revoked_at ?? null,
-    inviteeEmail: invite.invitee_email ?? null,
+    entrantsCount: entries.length,
+    entries,
     inviter: {
       id: String(invite.inviter_user_id),
       name: String(invite.inviter_name || ''),
       avatar: invite.inviter_avatar ?? null,
     },
-    invitee: invite.invitee_user_id
-      ? {
-          id: String(invite.invitee_user_id),
-          name: invite.invitee_name ? String(invite.invitee_name) : null,
-          avatar: invite.invitee_avatar ?? null,
-        }
-      : null,
   };
+}
+
+async function getInvitesWithEntriesByInviter(db: DbHandle, inviterUserId: string) {
+  const invites = (await queryAll(
+    db,
+    `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+     FROM invite_links i
+     JOIN users inviter ON inviter.id = i.inviter_user_id
+     WHERE i.inviter_user_id = ?
+     ORDER BY i.created_at DESC`,
+    [inviterUserId]
+  )) as InviteRow[];
+
+  if (invites.length === 0) return [];
+
+  const inviteIds = invites.map((invite) => String(invite.id));
+  const placeholders = inviteIds.map(() => '?').join(', ');
+  const entries = (await queryAll(
+    db,
+    `SELECT e.*, invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+     FROM invite_link_entries e
+     JOIN users invitee ON invitee.id = e.invitee_user_id
+     WHERE e.invite_link_id IN (${placeholders})
+     ORDER BY e.created_at DESC`,
+    inviteIds
+  )) as InviteEntryRow[];
+
+  const entriesByInviteId = new Map<string, InviteEntryRow[]>();
+  for (const entry of entries) {
+    const key = String(entry.invite_link_id);
+    const current = entriesByInviteId.get(key) || [];
+    current.push(entry);
+    entriesByInviteId.set(key, current);
+  }
+
+  return invites.map((invite) => ({
+    ...invite,
+    entries: entriesByInviteId.get(String(invite.id)) || [],
+  }));
 }
 
 function issueToken(env: Env, user: { id: string; isAdmin: boolean }) {
@@ -1176,8 +1233,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
     await run(
       db,
-      'UPDATE invite_links SET invitee_user_id = ?, invitee_email = ?, status = ?, used_at = ?, approved_at = ?, updated_at = ? WHERE id = ?',
-      [id, email, 'approved', createdAt, createdAt, createdAt, String(invite.id)]
+      'INSERT INTO invite_link_entries (id, invite_link_id, invitee_user_id, invitee_email, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), String(invite.id), id, email, createdAt]
+    );
+    await run(
+      db,
+      'UPDATE invite_links SET used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
+      [createdAt, createdAt, String(invite.id)]
     );
     await persist();
 
@@ -1310,17 +1372,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/invites', requireAuth(env, db), async (req, res) => {
-    const rows = (await queryAll(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.inviter_user_id = ?
-       ORDER BY i.created_at DESC`,
-      [req.auth!.userId]
-    )) as InviteRow[];
+    const rows = await getInvitesWithEntriesByInviter(db, req.auth!.userId);
     res.json(rows.map(rowToInvite));
   });
 
@@ -1343,113 +1395,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     });
   });
 
-  app.post('/api/invites/:inviteId/approve', requireAuth(env, db), async (req, res) => {
-    const inviteId = String(req.params.inviteId || '');
-    const invite = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.id = ?
-       LIMIT 1`,
-      [inviteId]
-    )) as InviteRow | null;
-    if (!invite || String(invite.inviter_user_id) !== req.auth!.userId) {
-      res.status(404).json({ error: 'invite_not_found' });
-      return;
-    }
-    if (String(invite.status) !== 'pending_approval' || !invite.invitee_user_id) {
-      res.status(409).json({ error: 'invite_not_pending' });
-      return;
-    }
-    const now = nowIso();
-    await run(db, 'UPDATE invite_links SET status = ?, approved_at = ?, updated_at = ? WHERE id = ?', ['approved', now, now, inviteId]);
-    await run(db, 'UPDATE users SET invite_status = ? WHERE id = ?', ['approved', String(invite.invitee_user_id)]);
-    await persist();
-    await createNotification(
-      { db, io: req.app.get('io') },
-      {
-        userId: String(invite.invitee_user_id),
-        type: 'invite.approved',
-        title: 'Seu acesso foi aprovado',
-        description: `${String(invite.inviter_name || 'Seu padrinho')} aprovou sua entrada na rede.`,
-        dataJson: { inviteId: String(invite.id), inviterUserId: String(invite.inviter_user_id) },
-      }
-    );
-    const refreshed = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.id = ?
-       LIMIT 1`,
-      [inviteId]
-    )) as InviteRow;
-    res.json(rowToInvite(refreshed));
-  });
-
-  app.post('/api/invites/:inviteId/deny', requireAuth(env, db), async (req, res) => {
-    const inviteId = String(req.params.inviteId || '');
-    const invite = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.id = ?
-       LIMIT 1`,
-      [inviteId]
-    )) as InviteRow | null;
-    if (!invite || String(invite.inviter_user_id) !== req.auth!.userId) {
-      res.status(404).json({ error: 'invite_not_found' });
-      return;
-    }
-    if (String(invite.status) !== 'pending_approval' || !invite.invitee_user_id) {
-      res.status(409).json({ error: 'invite_not_pending' });
-      return;
-    }
-    const now = nowIso();
-    await run(db, 'UPDATE invite_links SET status = ?, updated_at = ? WHERE id = ?', ['denied', now, inviteId]);
-    await run(db, 'UPDATE users SET invite_status = ? WHERE id = ?', ['denied', String(invite.invitee_user_id)]);
-    await persist();
-    await createNotification(
-      { db, io: req.app.get('io') },
-      {
-        userId: String(invite.invitee_user_id),
-        type: 'invite.denied',
-        title: 'Seu convite não foi aprovado',
-        description: `${String(invite.inviter_name || 'Seu padrinho')} não aprovou este cadastro.`,
-        dataJson: { inviteId: String(invite.id), inviterUserId: String(invite.inviter_user_id) },
-      }
-    );
-    const refreshed = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.id = ?
-       LIMIT 1`,
-      [inviteId]
-    )) as InviteRow;
-    res.json(rowToInvite(refreshed));
-  });
-
   app.post('/api/invites/:inviteId/revoke', requireAuth(env, db), async (req, res) => {
     const inviteId = String(req.params.inviteId || '');
     const invite = (await queryOne(
       db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
+      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
        FROM invite_links i
        JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
        WHERE i.id = ?
        LIMIT 1`,
       [inviteId]
@@ -1465,17 +1417,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const now = nowIso();
     await run(db, 'UPDATE invite_links SET status = ?, revoked_at = ?, updated_at = ? WHERE id = ?', ['revoked', now, now, inviteId]);
     await persist();
-    const refreshed = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
-              invitee.name AS invitee_name, invitee.avatar AS invitee_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       LEFT JOIN users invitee ON invitee.id = i.invitee_user_id
-       WHERE i.id = ?
-       LIMIT 1`,
-      [inviteId]
-    )) as InviteRow;
+    const refreshed = (await getInvitesWithEntriesByInviter(db, req.auth!.userId)).find((item) => String(item.id) === inviteId);
+    if (!refreshed) {
+      res.status(404).json({ error: 'invite_not_found' });
+      return;
+    }
     res.json(rowToInvite(refreshed));
   });
 
@@ -1704,6 +1650,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         city: z.string().max(100).optional().nullable(),
         state: z.string().max(50).optional().nullable(),
         birthDate: z.string().max(20).optional().nullable(),
+        partnerBirthDate: z.string().max(20).optional().nullable(),
         gender: z.string().max(50).optional().nullable(),
         maritalStatus: z.string().max(50).optional().nullable(),
         sexualOrientation: z.string().max(50).optional().nullable(),
@@ -1748,6 +1695,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       city: 'city',
       state: 'state',
       birthDate: 'birth_date',
+      partnerBirthDate: 'partner_birth_date',
       gender: 'gender',
       maritalStatus: 'marital_status',
       sexualOrientation: 'sexual_orientation',

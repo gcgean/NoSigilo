@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sparkles, User, Mail, Lock, ArrowLeft, ArrowRight, Users, ShieldCheck, UserPlus } from 'lucide-react';
+import { User, Mail, Lock, ArrowLeft, ArrowRight, Users, ShieldCheck, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
 import { locationService, onboardingService, authService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { CitySearch } from '@/components/CitySearch';
+import BrandLogo from '@/components/BrandLogo';
 
 const audienceOptions = [
   { value: 'Mulher', label: 'Mulher solteira', hint: 'single feminino' },
@@ -265,7 +266,7 @@ export default function Register() {
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-gradient-hero" />
         <div className="relative z-10 w-full max-w-lg glass-strong rounded-2xl p-8 shadow-glow text-center space-y-4">
-          <Sparkles className="w-10 h-10 text-primary mx-auto" />
+          <BrandLogo size="md" showText={false} className="justify-center" />
           <h1 className="text-2xl font-bold">Validando convite</h1>
           <p className="text-muted-foreground">Estamos verificando se esse acesso foi gerado por um membro da rede.</p>
         </div>
@@ -279,13 +280,9 @@ export default function Register() {
     const message =
       !inviteToken
         ? 'O NoSigilo funciona apenas por convite de quem já faz parte da rede. Peça seu link a um casal ou single já aprovado.'
-        : status === 'pending_approval'
-          ? `Esse convite já foi usado e o cadastro está aguardando aprovação${sponsorName ? ` de ${sponsorName}` : ''}.`
-          : status === 'approved'
-            ? 'Esse convite já foi utilizado e aprovado. Use a conta criada para entrar.'
-            : status === 'denied'
-              ? 'Esse convite já foi recusado e não pode ser reutilizado.'
-              : 'Esse link não está mais disponível para novo cadastro.';
+        : status === 'revoked'
+          ? `Esse convite foi encerrado${sponsorName ? ` por ${sponsorName}` : ''} e não pode mais ser usado.`
+          : 'Esse link não está mais disponível para novo cadastro.';
 
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -332,9 +329,7 @@ export default function Register() {
 
         <div className="glass-strong rounded-2xl p-8 shadow-glow">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
-            </div>
+            <BrandLogo size="md" showText={false} />
             <div>
               <h1 className="text-2xl font-bold">Criar Conta</h1>
               <p className="text-muted-foreground text-sm">Passo {currentStep} de 4</p>
@@ -367,7 +362,7 @@ export default function Register() {
                   Seu acesso está sendo patrocinado por {inviteInfo?.inviter?.name || 'um membro da rede'}
                 </p>
                 <p className="text-muted-foreground">
-                  O cadastro é fechado por convite. Depois de concluir seus dados, o padrinho ainda precisa aprovar sua entrada.
+                  O cadastro é fechado por convite. Com um link ativo, sua entrada é liberada automaticamente assim que você concluir os dados.
                 </p>
               </div>
             </div>

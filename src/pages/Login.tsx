@@ -4,10 +4,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Sparkles, Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import axios from 'axios';
+import BrandLogo from '@/components/BrandLogo';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -88,9 +89,7 @@ export default function Login() {
           </Link>
 
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
-            </div>
+            <BrandLogo size="md" showText={false} />
             <div>
               <h1 className="text-2xl font-bold">Bem-vindo de volta</h1>
               <p className="text-muted-foreground">Entre na sua conta</p>
@@ -200,12 +199,7 @@ export default function Login() {
         </div>
         
         <div className="relative z-10 flex flex-col items-center justify-center p-12 text-center">
-          <div className="w-24 h-24 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow mb-8">
-            <Sparkles className="w-12 h-12 text-primary-foreground" />
-          </div>
-          <h2 className="text-4xl font-bold mb-4">
-            <span className="text-gradient">NoSigilo</span>
-          </h2>
+          <BrandLogo size="xl" className="mb-8 flex-col gap-5" textClassName="text-4xl" />
           <p className="text-xl text-muted-foreground max-w-md">
             Encontre conexões reais com pessoas que compartilham seus interesses.
           </p>

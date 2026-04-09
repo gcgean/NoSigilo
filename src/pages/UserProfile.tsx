@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { usersService, privatePhotosService, chatService, testimonialsService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
+import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { useAuth } from '@/contexts/AuthContext';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -170,7 +171,7 @@ export default function UserProfile() {
     };
   }, [activeTab, userId]);
 
-  const age = useMemo(() => calculateAge(profile?.birthDate) ?? null, [profile?.birthDate]);
+  const ageLabel = useMemo(() => buildProfileAgeLabel(profile), [profile]);
   const cityLine = useMemo(() => [profile?.city, profile?.state].filter(Boolean).join(', ') || '—', [profile?.city, profile?.state]);
   const avatarUrl = useMemo(() => resolveMediaUrl(profile?.avatar || ''), [profile?.avatar]);
 
@@ -286,7 +287,7 @@ export default function UserProfile() {
             <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
               <h1 className="text-3xl font-bold">
                 {profile?.name}
-                {age !== null ? `, ${age}` : ''}
+                {ageLabel ? `, ${ageLabel}` : ''}
               </h1>
               {profile?.isVerified && (
                 <Badge className="bg-success text-white gap-1">

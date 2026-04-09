@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Sparkles, ShieldCheck, LockKeyhole } from 'lucide-react';
+import { ArrowLeft, Mail, ShieldCheck, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { authService } from '@/services/api';
 import { getApiErrorInfo } from '@/utils/apiError';
+import BrandLogo from '@/components/BrandLogo';
 
 function useQueryEmail() {
   const location = useLocation();
@@ -111,9 +112,7 @@ export default function ForgotPassword() {
           </Link>
 
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-6 h-6 text-primary-foreground" />
-            </div>
+            <BrandLogo size="md" showText={false} />
             <div>
               <h1 className="text-2xl font-bold">Recuperar senha</h1>
               <p className="text-muted-foreground">

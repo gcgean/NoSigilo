@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { authService } from '@/services/api';
 import { ArrowLeft, Clock3, LockKeyhole, Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import BrandLogo from '@/components/BrandLogo';
 
 type PendingData = {
   email: string;
@@ -180,12 +181,14 @@ export default function PendingApproval() {
           <div className="relative w-full max-w-xl overflow-hidden rounded-[32px] border border-primary/20 bg-white/5 p-6 shadow-[0_0_60px_rgba(236,72,153,0.16)]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(236,72,153,0.18),transparent_60%)]" />
             <div className="relative space-y-6">
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-gradient-primary shadow-glow">
-                <Sparkles className="h-10 w-10 text-primary-foreground" />
+              <div className="flex justify-center">
+                <BrandLogo size="lg" showText={false} />
               </div>
 
               <div className="space-y-3 text-center">
-                <p className="text-sm uppercase tracking-[0.3em] text-primary/80">NoSigilo</p>
+                <div className="flex justify-center">
+                  <BrandLogo size="sm" className="gap-2" textClassName="text-sm uppercase tracking-[0.24em] text-primary/80" />
+                </div>
                 <h2 className="text-3xl font-bold">Sua entrada está quase liberada</h2>
                 <p className="mx-auto max-w-md text-base leading-7 text-white/70">
                   O clima ja esta montado. Assim que <span className="font-semibold text-white break-words">{inviterName}</span> aprovar, voce entra direto para explorar conexoes, convites e desejos com mais privacidade.

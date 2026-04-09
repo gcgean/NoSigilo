@@ -1,13 +1,30 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="g" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#f25b87" />
-      <stop offset="100%" stop-color="#df3f72" />
+    <linearGradient id="nosigilo512Stroke" x1="74" y1="42" x2="438" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4A8FF" />
+      <stop offset="0.52" stop-color="#D76BFF" />
+      <stop offset="1" stop-color="#A93BFF" />
     </linearGradient>
+    <radialGradient id="nosigilo512Glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(150 108) rotate(48.5) scale(424.991)">
+      <stop stop-color="#173B75" stop-opacity="0.9" />
+      <stop offset="0.38" stop-color="#0E172B" stop-opacity="0.62" />
+      <stop offset="1" stop-color="#050816" />
+    </radialGradient>
+    <filter id="nosigilo512Bloom" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.64 0 1 0 0 0.23 0 0 1 0 1 0 0 0 0.95 0" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="128" fill="#120d13" />
-  <rect x="64" y="64" width="384" height="384" rx="96" fill="url(#g)" />
-  <path d="M256 128c14 49 22 58 70 70-48 12-56 21-70 70-14-49-22-58-70-70 48-12 56-21 70-70Z" fill="#fff7fb"/>
-  <path d="M341 245c9 31 14 36 45 45-31 9-36 14-45 45-9-31-14-36-45-45 31-9 36-14 45-45Z" fill="#fff7fb" opacity=".92"/>
-  <path d="M182 277c8 28 12 33 40 40-28 7-32 12-40 40-8-28-12-33-40-40 28-7 32-12 40-40Z" fill="#fff7fb" opacity=".92"/>
+  <rect width="512" height="512" rx="128" fill="url(#nosigilo512Glow)" />
+  <g filter="url(#nosigilo512Bloom)" stroke="url(#nosigilo512Stroke)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M160 195V134C160 81 203 38 256 38C309 38 352 81 352 134V195" stroke-width="26" />
+    <path d="M120 195H336C370.242 195 398 222.758 398 257V337C398 371.242 370.242 399 336 399H120C85.7583 399 58 371.242 58 337V257C58 222.758 85.7583 195 120 195Z" stroke-width="26" />
+    <path d="M228 292.5C228 277.312 240.312 265 255.5 265C270.688 265 283 277.312 283 292.5C283 302.365 277.811 311.013 270 315.84V347H241V315.84C233.189 311.013 228 302.365 228 292.5Z" stroke-width="21" />
+    <path d="M350 253L440 283V337C440 388.582 403.401 427.867 350 444C296.599 427.867 260 388.582 260 337V283L350 253Z" stroke-width="21" />
+    <path d="M350 304L389.5 316.5V337C389.5 363.729 373.067 384.507 350 395.5C326.933 384.507 310.5 363.729 310.5 337V316.5L350 304Z" stroke-width="17" />
+  </g>
 </svg>

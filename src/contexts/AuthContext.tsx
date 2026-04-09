@@ -11,6 +11,7 @@ export interface User {
   city?: string;
   state?: string;
   birthDate?: string;
+  partnerBirthDate?: string;
   gender?: string;
   maritalStatus?: string;
   sexualOrientation?: string;
@@ -68,6 +69,7 @@ interface RegisterData {
   password: string;
   name: string;
   birthDate?: string;
+  partnerBirthDate?: string;
   gender: string;
   inviteToken: string;
   city?: string;
@@ -92,6 +94,7 @@ const DEMO_USERS: Record<string, { password: string; user: User }> = {
       city: 'São Paulo',
       state: 'SP',
       birthDate: '1996-05-20',
+      partnerBirthDate: undefined,
       gender: 'Mulher',
       maritalStatus: 'Solteiro(a)',
       sexualOrientation: 'Heterossexual',
@@ -192,17 +195,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (data: RegisterData) => {
     if (USE_MOCKS) {
-      const newUser: User = {
-        id: `user-${Date.now()}`,
-        email: data.email,
-        name: data.name,
-        city: data.city,
-        state: data.state,
-        birthDate: data.birthDate,
-        gender: data.gender,
-        isVerified: false,
-        isPremium: false,
-        isAdmin: false,
+        const newUser: User = {
+          id: `user-${Date.now()}`,
+          email: data.email,
+          name: data.name,
+          city: data.city,
+          state: data.state,
+          birthDate: data.birthDate,
+          partnerBirthDate: data.partnerBirthDate,
+          gender: data.gender,
+          isVerified: false,
+          isPremium: false,
+          isAdmin: false,
       };
       setUser(newUser);
       localStorage.setItem('nosigilo_user', JSON.stringify(newUser));
@@ -243,6 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'city',
           'state',
           'birthDate',
+          'partnerBirthDate',
           'gender',
           'maritalStatus',
           'sexualOrientation',
