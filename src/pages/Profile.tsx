@@ -471,10 +471,7 @@ export default function Profile() {
           {/* Info */}
           <div className="flex-1 min-w-0 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
-              <h1 className="text-xl sm:text-2xl font-bold break-words">
-                {profileData.name}
-                {profileData.ageLabel ? `, ${profileData.ageLabel}` : ''}
-              </h1>
+              <h1 className="text-xl sm:text-2xl font-bold break-words">{profileData.name}</h1>
               {profileData.verified && (
                 <Badge className="bg-success text-white gap-1">
                   <Sparkles className="w-3 h-3" /> Verificado
@@ -491,6 +488,14 @@ export default function Profile() {
               <MapPin className="w-4 h-4" />
               <span className="break-words">{profileData.city}</span>
             </div>
+
+            {(user?.gender || profileData.ageLabel) && (
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-sm text-muted-foreground mb-3">
+                {user?.gender ? <span>{user.gender}</span> : null}
+                {user?.gender && profileData.ageLabel ? <span className="w-1 h-1 rounded-full bg-muted-foreground/30" /> : null}
+                {profileData.ageLabel ? <span>{profileData.ageLabel}</span> : null}
+              </div>
+            )}
 
             <p className="text-muted-foreground text-sm mb-4">{profileData.bio}</p>
 

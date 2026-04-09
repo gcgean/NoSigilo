@@ -285,10 +285,7 @@ export default function UserProfile() {
 
           <div className="flex-1 text-center sm:text-left">
             <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-              <h1 className="text-3xl font-bold">
-                {profile?.name}
-                {ageLabel ? `, ${ageLabel}` : ''}
-              </h1>
+              <h1 className="text-3xl font-bold">{profile?.name}</h1>
               {profile?.isVerified && (
                 <Badge className="bg-success text-white gap-1">
                   <Sparkles className="w-3 h-3" /> Verificado
@@ -309,8 +306,18 @@ export default function UserProfile() {
               </div>
               <div className="flex items-center justify-center sm:justify-start gap-3 text-sm">
                 <span>{profile?.gender || '—'}</span>
-                <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                <span>{profile?.sexualOrientation || '—'}</span>
+                {ageLabel ? (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                    <span>{ageLabel}</span>
+                  </>
+                ) : null}
+                {profile?.sexualOrientation ? (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                    <span>{profile.sexualOrientation}</span>
+                  </>
+                ) : null}
               </div>
               {!profile?.isOnline && profile?.lastSeenAt && (
                 <div className="text-xs">
