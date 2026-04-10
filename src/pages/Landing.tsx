@@ -110,14 +110,14 @@ export default function Landing() {
           </div>
 
           <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold mb-6 animate-slide-up leading-tight">
-            Um convite para viver
+            Entre em um ambiente onde
             <br />
-            <span className="text-gradient">desejo, sigilo e conexões intensas</span>
+            <span className="text-gradient">o desejo encontra sigilo e sintonia</span>
           </h1>
 
           <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal que querem explorar novas possibilidades com mais liberdade,
-            mais sigilo e muito mais sintonia do que nos apps comuns.
+            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal que querem provocar novas conexões, explorar possibilidades
+            e viver encontros com mais sigilo, liberdade e intensidade do que nos apps comuns.
           </p>
 
           <div className="mb-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '0.15s' }}>
@@ -153,14 +153,14 @@ export default function Landing() {
             O que faz o <span className="text-gradient">NoSigilo</span> ser diferente
           </h2>
           <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-16">
-            Aqui a experiência foi pensada para despertar curiosidade, criar química e deixar cada conexão mais envolvente.
+            Aqui cada detalhe foi pensado para despertar curiosidade, aumentar a química e transformar interesse em conexão real.
           </p>
 
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <FeatureCard
               icon={Users}
               title="Matchs com química de verdade"
-              description="Perfis voltados para casais, mulheres e homens solteiros do meio liberal, com mais desejo, afinidade e intenção real."
+              description="Perfis voltados para casais, mulheres e homens solteiros do meio liberal, com mais atração, afinidade e intenção real."
             />
             <FeatureCard
               icon={Radio}
@@ -170,17 +170,17 @@ export default function Landing() {
             <FeatureCard
               icon={Heart}
               title="Favoritos e interesse seletivo"
-              description="Salve os perfis que mexeram com você, organize seus interesses e volte neles no momento certo."
+              description="Salve os perfis que chamaram sua atenção, organize seus interesses e volte neles no momento certo."
             />
             <FeatureCard
               icon={Images}
               title="Fotos públicas e privadas"
-              description="Mostre o suficiente para provocar curiosidade e proteja o que é mais íntimo com controle sobre as fotos privadas."
+              description="Mostre o suficiente para acender a curiosidade e proteja o que é mais íntimo com controle total sobre as fotos privadas."
             />
             <FeatureCard
               icon={MessageCircle}
               title="Mensagens privadas e visualização única"
-              description="Converse com mais liberdade e envie conteúdos que desaparecem depois de vistos, preservando o clima e o sigilo."
+              description="Converse com mais liberdade e envie conteúdos que desaparecem depois de vistos, preservando o clima, o mistério e o sigilo."
             />
             <FeatureCard
               icon={Shield}
@@ -201,7 +201,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-3 gap-6">
             <TrustCard icon={BadgeAlert} title="Só entra quem recebe convite" description="A rede não é aberta para qualquer um, o que torna o ambiente mais seleto, desejado e interessante." />
             <TrustCard icon={EyeOff} title="Privacidade de verdade" description="Fotos privadas, conteúdos de visualização única e controle total sobre o que cada pessoa pode ver." />
-            <TrustCard icon={LockKeyhole} title="Mais sigilo, menos exposição" description="Uma rede pensada para viver curiosidade, provocação e liberdade sem abrir mão da discrição." />
+            <TrustCard icon={LockKeyhole} title="Mais sigilo, menos exposição" description="Uma rede pensada para viver curiosidade, provocação e liberdade sem abrir mão da discrição e do controle." />
           </div>
         </div>
       </section>
@@ -212,10 +212,10 @@ export default function Landing() {
           <div className="glass-strong rounded-3xl p-12 max-w-3xl mx-auto shadow-glow">
             <Users className="w-16 h-16 text-primary mx-auto mb-6" />
             <h2 className="text-3xl font-bold mb-4">
-              Entre cedo em uma rede nova, reservada e feita para provocar conexões
+              Entre cedo em uma rede nova, reservada e feita para despertar conexões
             </h2>
             <p className="text-muted-foreground mb-8">
-              Se você busca matchs mais quentes, favoritos, radar “Estou Aqui”, fotos privadas, mensagens reservadas e um ambiente feito para o meio liberal,
+              Se você busca matchs mais envolventes, favoritos, radar “Estou Aqui”, fotos privadas, mensagens reservadas e um ambiente feito para o meio liberal,
               esse é o melhor momento para entrar e sentir o clima desde o começo.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
