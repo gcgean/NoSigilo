@@ -42,7 +42,7 @@ export default function Landing() {
       )}
 
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+      <section className="relative min-h-screen overflow-hidden">
         <div className="absolute inset-0 bg-gradient-hero" />
         
         {/* Animated background elements */}
@@ -52,21 +52,23 @@ export default function Landing() {
         </div>
 
         {/* Navigation */}
-        <nav className="absolute top-0 left-0 right-0 z-10 p-4">
-          <div className="container mx-auto flex items-center justify-between gap-3">
-            <BrandLogo size="md" className="gap-2" textClassName="text-xl sm:text-2xl" />
+        <nav className="absolute top-0 left-0 right-0 z-10 p-3 sm:p-4">
+          <div className="container mx-auto flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex justify-center sm:justify-start">
+              <BrandLogo size="md" className="gap-2" textClassName="hidden min-[430px]:block text-xl sm:text-2xl" />
+            </div>
             
-            <div className="flex items-center gap-2 sm:gap-4">
-              <Link to="/login">
+            <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end sm:gap-4">
+              <Link to="/login" className="flex-1 sm:flex-none">
                 <Button
                   variant="outline"
-                  className="h-10 px-3 sm:px-4 bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
+                  className="h-10 w-full px-3 text-sm sm:w-auto sm:px-4 bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
                 >
                   Entrar
                 </Button>
               </Link>
-              <Link to="/register">
-                <Button className="h-10 px-3 sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
+              <Link to="/register" className="flex-[1.35] sm:flex-none">
+                <Button className="h-10 w-full px-3 text-sm sm:w-auto sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
                   Entrar com convite
                 </Button>
               </Link>
@@ -75,41 +77,43 @@ export default function Landing() {
         </nav>
 
         {/* Hero Content */}
-        <div className="relative z-10 container mx-auto px-4 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-6 animate-fade-in">
+        <div className="relative z-10 container mx-auto flex min-h-screen items-center px-4 pb-14 pt-32 text-center sm:justify-center sm:pt-24">
+          <div className="mx-auto w-full max-w-4xl">
+          <div className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-center border border-primary/20 mb-6 animate-fade-in">
             <Star className="w-4 h-4 text-gold" />
             <span className="text-sm text-primary">+18 • Rede adulta com foco em casais e singles</span>
           </div>
 
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold mb-6 animate-slide-up">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold mb-6 animate-slide-up leading-tight">
             Encontros adultos com
             <br />
             <span className="text-gradient">discrição, consentimento e segurança</span>
           </h1>
 
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+          <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
             Um ambiente +18 pensado principalmente para casais e singles femininos e masculinos que buscam conexões reais,
             privacidade, controle de acesso e convivência respeitosa.
           </p>
 
-          <div className="mb-8 flex flex-wrap items-center justify-center gap-3 text-xs sm:text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '0.15s' }}>
+          <div className="mb-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '0.15s' }}>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Confirmação +18</span>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Fotos privadas com controle</span>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Consentimento e moderação</span>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <Link to="/register">
-              <Button size="lg" className="bg-gradient-primary hover:opacity-90 shadow-glow text-lg px-8 py-6 gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+            <Link to="/register" className="w-full sm:w-auto">
+              <Button size="lg" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow text-base sm:text-lg px-6 sm:px-8 py-6 gap-2">
                 Usar meu convite
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
-            <Link to="/plans">
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-primary/30 hover:border-primary hover:bg-primary/10">
+            <Link to="/plans" className="w-full sm:w-auto">
+              <Button size="lg" variant="outline" className="w-full text-base sm:text-lg px-6 sm:px-8 py-6 border-primary/30 hover:border-primary hover:bg-primary/10">
                 Ver Planos
               </Button>
             </Link>
+          </div>
           </div>
         </div>
       </section>
