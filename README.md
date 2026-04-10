@@ -2,6 +2,19 @@
 
 Aplicação web NoSigilo (frontend React/Vite + backend Node/Express).
 
+## Instruções para agentes
+
+Este repositório possui um arquivo [AGENTS.md](C:\Projetos Web\NoSigilo\AGENTS.md) na raiz com as regras permanentes para atuação de agentes no projeto.
+
+Essas instruções foram adaptadas ao contexto atual do NoSigilo e cobrem principalmente:
+
+- comunicação em pt-BR;
+- preservação de encoding;
+- segurança ao editar arquivos;
+- prioridade para mudanças pequenas e estáveis;
+- continuidade dos padrões já usados no frontend React/Vite e no backend Node/Express;
+- atenção especial para produção, integrações, convites, pagamentos e área administrativa.
+
 ## Tecnologias
 
 - Vite
