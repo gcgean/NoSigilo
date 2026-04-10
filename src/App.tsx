@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { AgeGateProvider } from "@/contexts/AgeGateContext";
 import { SocketProvider } from "@/contexts/SocketContext";
@@ -18,7 +18,6 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Register from "./pages/Register";
 import PendingApproval from "./pages/PendingApproval";
 import AuthCallback from "./pages/AuthCallback";
-import Plans from "./pages/Plans";
 import Subscriptions from "./pages/Subscriptions";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
@@ -65,7 +64,7 @@ const App = () => (
                     <Route path="/register" element={<Register />} />
                     <Route path="/pending-approval" element={<PendingApproval />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
-                    <Route path="/plans" element={<Plans />} />
+                    <Route path="/plans" element={<Navigate to="/subscriptions" replace />} />
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/guidelines" element={<Guidelines />} />
