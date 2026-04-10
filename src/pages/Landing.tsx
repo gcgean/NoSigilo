@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Heart, Users, Shield, ArrowRight, MessageCircle, Star, BadgeAlert, EyeOff, HeartHandshake, Radio, Images, LockKeyhole } from 'lucide-react';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import BrandLogo from '@/components/BrandLogo';
 import { appService } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { getLastAuthRoute } from '@/utils/sessionNavigation';
 
 export default function Landing() {
   const { hasConfirmedAge, confirmAge } = useAgeGate();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
 
   useEffect(() => {
@@ -30,6 +34,19 @@ export default function Landing() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!hasConfirmedAge || !isAuthenticated) return;
+    navigate(getLastAuthRoute('/feed'), { replace: true });
+  }, [hasConfirmedAge, isAuthenticated, navigate]);
+
+  const handleEnter = () => {
+    if (isAuthenticated) {
+      navigate(getLastAuthRoute('/feed'));
+      return;
+    }
+    navigate('/login');
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -67,16 +84,16 @@ export default function Landing() {
 
       {/* Hero Section */}
       <section className="relative min-h-screen overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-hero" />
+        <div className="absolute inset-0 pointer-events-none bg-gradient-hero" />
         
         {/* Animated background elements */}
-        <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-float" />
           <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-rose/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '-2s' }} />
         </div>
 
         {/* Navigation */}
-        <nav className="absolute top-0 left-0 right-0 z-10 p-3 sm:p-4">
+        <nav className="absolute top-0 left-0 right-0 z-30 p-3 sm:p-4">
           <div className="container mx-auto flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
             <div className="flex justify-center sm:justify-start">
               <BrandLogo size="md" className="gap-2" textClassName="hidden min-[430px]:block text-xl sm:text-2xl" />
@@ -84,13 +101,12 @@ export default function Landing() {
             
             <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end sm:gap-4">
               <Button
-                asChild
+                type="button"
                 variant="outline"
                 className="h-10 flex-1 px-3 text-sm sm:h-10 sm:w-auto sm:flex-none sm:px-4 bg-white text-black border-primary/60 hover:bg-white/90 hover:border-primary shadow-glow"
+                onClick={handleEnter}
               >
-                <Link to="/login">
-                  Entrar
-                </Link>
+                Entrar
               </Button>
               <Button asChild className="h-10 flex-[1.35] px-3 text-sm sm:h-10 sm:w-auto sm:flex-none sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
                 <Link to="/register">

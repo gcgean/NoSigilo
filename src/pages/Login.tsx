@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,14 +9,16 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import axios from 'axios';
 import BrandLogo from '@/components/BrandLogo';
+import { getLastAuthRoute } from '@/utils/sessionNavigation';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -25,6 +27,15 @@ export default function Login() {
       setEmail(storedEmail);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
+    const target = from?.pathname
+      ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+      : getLastAuthRoute('/feed');
+    navigate(target, { replace: true });
+  }, [isAuthenticated, location.state, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +55,11 @@ export default function Login() {
         );
         sessionStorage.removeItem('nosigilo_first_access_ready');
       }
-      navigate('/feed');
+      const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
+      const target = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : getLastAuthRoute('/feed');
+      navigate(target, { replace: true });
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 403 && error.response?.data?.error === 'pending_invite_approval') {
         const inviterName = typeof error.response?.data?.inviter?.name === 'string' ? error.response.data.inviter.name : '';

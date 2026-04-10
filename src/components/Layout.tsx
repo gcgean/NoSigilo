@@ -35,6 +35,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
+import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 
 const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
@@ -192,6 +193,10 @@ export default function Layout() {
     const progress = Math.round((completed / steps.length) * 100);
     return { steps, completed, progress, remaining: steps.length - completed };
   }, [firstAccessFlow?.needsPhoto, firstAccessFlow?.needsPost, navigate, user?.avatar]);
+
+  useEffect(() => {
+    saveLastAuthRoute(`${location.pathname}${location.search}${location.hash}`);
+  }, [location.hash, location.pathname, location.search]);
 
   useEffect(() => {
     const handleFlowChange = () => setFirstAccessFlowVersion((value) => value + 1);
