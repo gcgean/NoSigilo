@@ -27,4 +27,4 @@ Disallow: /invites
 Disallow: /events
 Disallow: /radar
 
-Sitemap: https://nosigilo.com.br/sitemap.xml
+Sitemap: https://nosigilo.baselider.com.br/sitemap.xml
