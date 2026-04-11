@@ -4182,38 +4182,53 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
-    const presence = req.app.get('presence');
-    res.json(
-      rows.map((row) => ({
-        ...rowToPublicUser(row, presence?.isOnline(String(row.id)), {
-          showEmail: true,
-          subscriptionsEnabled,
-        }),
-        isBanned: Number(row.is_banned || 0) === 1,
-        bannedAt: row.banned_at ?? null,
-      }))
-    );
+    try {
+      const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+      const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
+      const presence = req.app.get('presence');
+      res.json(
+        rows.map((row) => ({
+          ...rowToPublicUser(row, presence?.isOnline(String(row.id)), {
+            showEmail: true,
+            subscriptionsEnabled,
+          }),
+          isBanned: Number(row.is_banned || 0) === 1,
+          bannedAt: row.banned_at ?? null,
+        }))
+      );
+    } catch (err) {
+      console.error('[admin/users]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const { userId } = req.params;
-    const adminId = (req as any).userId as string;
-    const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
-    if (!target) { res.status(404).json({ error: 'not_found' }); return; }
-    await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, userId]);
-    await persist();
-    res.json({ ok: true, userId, banned: true });
+    try {
+      const { userId } = req.params;
+      const adminId = (req as any).userId as string;
+      const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
+      if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+      await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, userId]);
+      await persist();
+      res.json({ ok: true, userId, banned: true });
+    } catch (err) {
+      console.error('[admin/users/ban]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.put('/api/admin/users/:userId/unban', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const { userId } = req.params;
-    const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
-    if (!target) { res.status(404).json({ error: 'not_found' }); return; }
-    await run(db, 'UPDATE users SET is_banned = 0, banned_at = NULL, banned_by = NULL WHERE id = ?', [userId]);
-    await persist();
-    res.json({ ok: true, userId, banned: false });
+    try {
+      const { userId } = req.params;
+      const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
+      if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+      await run(db, 'UPDATE users SET is_banned = 0, banned_at = NULL, banned_by = NULL WHERE id = ?', [userId]);
+      await persist();
+      res.json({ ok: true, userId, banned: false });
+    } catch (err) {
+      console.error('[admin/users/unban]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.get('/api/admin/logs', requireAuth(env, db), requireAdmin(), (_req, res) => {
@@ -4252,85 +4267,100 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // Reports
   app.post('/api/reports', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({
-      targetType: z.enum(['user', 'post', 'photo', 'message']),
-      targetId: z.string().min(1),
-      targetName: z.string().optional(),
-      reason: z.string().min(1),
-      details: z.string().optional(),
-    });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'invalid_input' });
-      return;
+    try {
+      const schema = z.object({
+        targetType: z.enum(['user', 'post', 'photo', 'message']),
+        targetId: z.string().min(1),
+        targetName: z.string().optional(),
+        reason: z.string().min(1),
+        details: z.string().optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'invalid_input' });
+        return;
+      }
+      const reporterId = (req as any).userId as string;
+      const id = randomUUID();
+      const createdAt = nowIso();
+      await run(
+        db,
+        `INSERT INTO reports (id, reporter_user_id, target_type, target_id, target_name, reason, details, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        [
+          id,
+          reporterId,
+          parsed.data.targetType,
+          parsed.data.targetId,
+          parsed.data.targetName ?? null,
+          parsed.data.reason,
+          parsed.data.details ?? null,
+          createdAt,
+        ]
+      );
+      await persist();
+      res.status(201).json({ id });
+    } catch (err) {
+      console.error('[reports/post]', err);
+      res.status(500).json({ error: 'internal' });
     }
-    const reporterId = (req as any).userId as string;
-    const id = randomUUID();
-    const createdAt = nowIso();
-    await run(
-      db,
-      `INSERT INTO reports (id, reporter_user_id, target_type, target_id, target_name, reason, details, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [
-        id,
-        reporterId,
-        parsed.data.targetType,
-        parsed.data.targetId,
-        parsed.data.targetName ?? null,
-        parsed.data.reason,
-        parsed.data.details ?? null,
-        createdAt,
-      ]
-    );
-    await persist();
-    res.status(201).json({ id });
   });
 
   app.get('/api/admin/reports', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const status = String(req.query.status || '').trim() || 'pending';
-    const rows = await queryAll(
-      db,
-      `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email
-       FROM reports r
-       LEFT JOIN users u ON u.id = r.reporter_user_id
-       WHERE r.status = ?
-       ORDER BY r.created_at DESC
-       LIMIT 100`,
-      [status]
-    );
-    res.json(
-      rows.map((r: any) => ({
-        id: String(r.id),
-        reporterName: r.reporter_name ? String(r.reporter_name) : 'Usuário',
-        reporterEmail: r.reporter_email ? String(r.reporter_email) : null,
-        targetType: String(r.target_type),
-        targetId: String(r.target_id),
-        targetName: r.target_name ? String(r.target_name) : null,
-        reason: String(r.reason),
-        details: r.details ? String(r.details) : null,
-        status: String(r.status),
-        createdAt: String(r.created_at),
-        resolvedAt: r.resolved_at ? String(r.resolved_at) : null,
-      }))
-    );
+    try {
+      const status = String(req.query.status || '').trim() || 'pending';
+      const rows = await queryAll(
+        db,
+        `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email
+         FROM reports r
+         LEFT JOIN users u ON u.id = r.reporter_user_id
+         WHERE r.status = ?
+         ORDER BY r.created_at DESC
+         LIMIT 100`,
+        [status]
+      );
+      res.json(
+        rows.map((r: any) => ({
+          id: String(r.id),
+          reporterName: r.reporter_name ? String(r.reporter_name) : 'Usuário',
+          reporterEmail: r.reporter_email ? String(r.reporter_email) : null,
+          targetType: String(r.target_type),
+          targetId: String(r.target_id),
+          targetName: r.target_name ? String(r.target_name) : null,
+          reason: String(r.reason),
+          details: r.details ? String(r.details) : null,
+          status: String(r.status),
+          createdAt: String(r.created_at),
+          resolvedAt: r.resolved_at ? String(r.resolved_at) : null,
+        }))
+      );
+    } catch (err) {
+      console.error('[admin/reports]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const { reportId } = req.params;
-    const adminId = (req as any).userId as string;
-    const report = await queryOne(db, 'SELECT id FROM reports WHERE id = ?', [reportId]);
-    if (!report) {
-      res.status(404).json({ error: 'not_found' });
-      return;
+    try {
+      const { reportId } = req.params;
+      const adminId = (req as any).userId as string;
+      const report = await queryOne(db, 'SELECT id FROM reports WHERE id = ?', [reportId]);
+      if (!report) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+      const resolvedAt = nowIso();
+      await run(
+        db,
+        'UPDATE reports SET status = ?, resolved_by = ?, resolved_at = ? WHERE id = ?',
+        ['resolved', adminId, resolvedAt, reportId]
+      );
+      await persist();
+      res.json({ id: reportId, status: 'resolved' });
+    } catch (err) {
+      console.error('[admin/reports/resolve]', err);
+      res.status(500).json({ error: 'internal' });
     }
-    const resolvedAt = nowIso();
-    await run(
-      db,
-      'UPDATE reports SET status = ?, resolved_by = ?, resolved_at = ? WHERE id = ?',
-      ['resolved', adminId, resolvedAt, reportId]
-    );
-    await persist();
-    res.json({ id: reportId, status: 'resolved' });
   });
 
   app.use((req, res) => {

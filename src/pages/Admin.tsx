@@ -135,11 +135,11 @@ export default function Admin() {
       setIsLoading(true);
       try {
         const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings, rawReportsResult] = await Promise.all([
-          adminService.getPendingPhotos(),
-          adminService.getUsers(),
-          adminService.getLogs(),
-          adminService.getFinanceSummary(),
-          adminService.getSettings(),
+          adminService.getPendingPhotos().catch(() => []),
+          adminService.getUsers().catch(() => []),
+          adminService.getLogs().catch(() => []),
+          adminService.getFinanceSummary().catch(() => null),
+          adminService.getSettings().catch(() => null),
           adminService.getReports('pending').catch(() => []),
         ]);
         const rawReports = rawReportsResult;
