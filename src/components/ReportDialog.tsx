@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Flag, Ban, AlertTriangle, X } from 'lucide-react';
+import { Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -12,6 +12,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { reportsService } from '@/services/api';
 
 interface ReportDialogProps {
   isOpen: boolean;
@@ -52,19 +53,30 @@ export default function ReportDialog({
     }
 
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    toast({
-      title: 'Denúncia enviada',
-      description: 'Nossa equipe irá analisar o conteúdo reportado.',
-    });
-
-    setIsSubmitting(false);
-    setReason('');
-    setDetails('');
-    onClose();
+    try {
+      await reportsService.submit({
+        targetType,
+        targetId,
+        targetName,
+        reason,
+        details: details.trim() || undefined,
+      });
+      toast({
+        title: 'Denúncia enviada',
+        description: 'Nossa equipe irá analisar o conteúdo reportado.',
+      });
+      setReason('');
+      setDetails('');
+      onClose();
+    } catch {
+      toast({
+        title: 'Erro ao enviar denúncia',
+        description: 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getTitle = () => {

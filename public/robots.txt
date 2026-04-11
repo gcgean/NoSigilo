@@ -1,8 +1,10 @@
 User-agent: Googlebot
 Allow: /
+Crawl-delay: 1
 
 User-agent: Bingbot
 Allow: /
+Crawl-delay: 2
 
 User-agent: Twitterbot
 Allow: /
@@ -12,3 +14,17 @@ Allow: /
 
 User-agent: *
 Allow: /
+
+# Bloquear rotas autenticadas do crawl
+Disallow: /feed
+Disallow: /chat
+Disallow: /profile
+Disallow: /settings
+Disallow: /notifications
+Disallow: /favorites
+Disallow: /admin
+Disallow: /invites
+Disallow: /events
+Disallow: /radar
+
+Sitemap: https://nosigilo.com.br/sitemap.xml

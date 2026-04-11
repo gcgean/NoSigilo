@@ -1136,7 +1136,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       email: z.string().email(),
       password: z.string().min(6),
       name: z.string().min(1),
-      inviteToken: z.string().min(12),
+      inviteToken: z.string().optional(),
       birthDate: z.string().optional(),
       gender: z.string().optional(),
       city: z.string().optional(),
@@ -1151,24 +1151,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const email = parsed.data.email.toLowerCase();
     const name = parsed.data.name.trim();
-    const inviteToken = parsed.data.inviteToken.trim();
+    const inviteToken = parsed.data.inviteToken?.trim() || '';
 
-    const invite = (await queryOne(
-      db,
-      `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
-       FROM invite_links i
-       JOIN users inviter ON inviter.id = i.inviter_user_id
-       WHERE i.invite_token = ?
-       LIMIT 1`,
-      [inviteToken]
-    )) as InviteRow | null;
-    if (!invite) {
-      res.status(404).json({ error: 'invalid_invite' });
-      return;
-    }
-    if (String(invite.status) !== 'created') {
-      res.status(409).json({ error: 'invite_unavailable', status: invite.status });
-      return;
+    let invite: InviteRow | null = null;
+    if (inviteToken) {
+      invite = (await queryOne(
+        db,
+        `SELECT i.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+         FROM invite_links i
+         JOIN users inviter ON inviter.id = i.inviter_user_id
+         WHERE i.invite_token = ?
+         LIMIT 1`,
+        [inviteToken]
+      )) as InviteRow | null;
     }
 
     const existingEmail = await queryOne(db, 'SELECT id FROM users WHERE email = ?', [email]);
@@ -1227,32 +1222,36 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         createdAt,
         createdAt,
         trialEndsAt,
-        String(invite.inviter_user_id),
+        invite ? String(invite.inviter_user_id) : null,
         'approved',
       ]
     );
-    await run(
-      db,
-      'INSERT INTO invite_link_entries (id, invite_link_id, invitee_user_id, invitee_email, created_at) VALUES (?, ?, ?, ?, ?)',
-      [randomUUID(), String(invite.id), id, email, createdAt]
-    );
-    await run(
-      db,
-      'UPDATE invite_links SET used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
-      [createdAt, createdAt, String(invite.id)]
-    );
+    if (invite) {
+      await run(
+        db,
+        'INSERT INTO invite_link_entries (id, invite_link_id, invitee_user_id, invitee_email, created_at) VALUES (?, ?, ?, ?, ?)',
+        [randomUUID(), String(invite.id), id, email, createdAt]
+      );
+      await run(
+        db,
+        'UPDATE invite_links SET used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
+        [createdAt, createdAt, String(invite.id)]
+      );
+    }
     await persist();
 
-    await createNotification(
-      { db, io: req.app.get('io') },
-      {
-        userId: String(invite.inviter_user_id),
-        type: 'invite.approved',
-        title: 'Novo convidado entrou na rede',
-        description: `${name} entrou na rede usando o seu convite.`,
-        dataJson: { inviteId: String(invite.id), inviteeUserId: id, inviteeName: name, inviteeEmail: email },
-      }
-    );
+    if (invite) {
+      await createNotification(
+        { db, io: req.app.get('io') },
+        {
+          userId: String(invite.inviter_user_id),
+          type: 'invite.approved',
+          title: 'Novo convidado entrou na rede',
+          description: `${name} entrou na rede usando o seu convite.`,
+          dataJson: { inviteId: String(invite.id), inviteeUserId: id, inviteeName: name, inviteeEmail: email },
+        }
+      );
+    }
 
     const userRow = await getUserWithSponsorById(db, id);
     const presence = req.app.get('presence');
@@ -1265,8 +1264,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.status(201).json({
       token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }),
       user,
-      inviteId: String(invite.id),
-      inviter: { id: String(invite.inviter_user_id), name: String(invite.inviter_name || ''), avatar: invite.inviter_avatar ?? null },
+      inviteId: invite ? String(invite.id) : null,
+      inviter: invite ? { id: String(invite.inviter_user_id), name: String(invite.inviter_name || ''), avatar: invite.inviter_avatar ?? null } : null,
     });
   });
 
@@ -1289,20 +1288,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     )) as any;
     if (!row) {
       res.status(401).json({ error: 'invalid_credentials' });
-      return;
-    }
-    if (row.invite_status && String(row.invite_status) !== 'approved') {
-      res.status(403).json({
-        error: inviteStatusError(String(row.invite_status)),
-        invitationStatus: String(row.invite_status),
-        inviter: row.invited_by_user_id
-          ? {
-              id: String(row.invited_by_user_id),
-              name: row.inviter_name ? String(row.inviter_name) : null,
-              avatar: row.inviter_avatar ?? null,
-            }
-          : null,
-      });
       return;
     }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
@@ -4246,6 +4231,89 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       newToday: Number(newTodayRow?.c || 0),
       churnRate: 0,
     });
+  });
+
+  // Reports
+  app.post('/api/reports', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      targetType: z.enum(['user', 'post', 'photo', 'message']),
+      targetId: z.string().min(1),
+      targetName: z.string().optional(),
+      reason: z.string().min(1),
+      details: z.string().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const reporterId = (req as any).userId as string;
+    const id = randomUUID();
+    const createdAt = nowIso();
+    await run(
+      db,
+      `INSERT INTO reports (id, reporter_user_id, target_type, target_id, target_name, reason, details, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [
+        id,
+        reporterId,
+        parsed.data.targetType,
+        parsed.data.targetId,
+        parsed.data.targetName ?? null,
+        parsed.data.reason,
+        parsed.data.details ?? null,
+        createdAt,
+      ]
+    );
+    await persist();
+    res.status(201).json({ id });
+  });
+
+  app.get('/api/admin/reports', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const status = String(req.query.status || '').trim() || 'pending';
+    const rows = await queryAll(
+      db,
+      `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email
+       FROM reports r
+       LEFT JOIN users u ON u.id = r.reporter_user_id
+       WHERE r.status = ?
+       ORDER BY r.created_at DESC
+       LIMIT 100`,
+      [status]
+    );
+    res.json(
+      rows.map((r: any) => ({
+        id: String(r.id),
+        reporterName: r.reporter_name ? String(r.reporter_name) : 'Usuário',
+        reporterEmail: r.reporter_email ? String(r.reporter_email) : null,
+        targetType: String(r.target_type),
+        targetId: String(r.target_id),
+        targetName: r.target_name ? String(r.target_name) : null,
+        reason: String(r.reason),
+        details: r.details ? String(r.details) : null,
+        status: String(r.status),
+        createdAt: String(r.created_at),
+        resolvedAt: r.resolved_at ? String(r.resolved_at) : null,
+      }))
+    );
+  });
+
+  app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const { reportId } = req.params;
+    const adminId = (req as any).userId as string;
+    const report = await queryOne(db, 'SELECT id FROM reports WHERE id = ?', [reportId]);
+    if (!report) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    const resolvedAt = nowIso();
+    await run(
+      db,
+      'UPDATE reports SET status = ?, resolved_by = ?, resolved_at = ? WHERE id = ?',
+      ['resolved', adminId, resolvedAt, reportId]
+    );
+    await persist();
+    res.json({ id: reportId, status: 'resolved' });
   });
 
   app.use((req, res) => {

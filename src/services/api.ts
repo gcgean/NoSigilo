@@ -478,6 +478,19 @@ export const eventsService = {
 };
 
 // Admin Service
+export const reportsService = {
+  submit: async (data: {
+    targetType: 'user' | 'post' | 'photo' | 'message';
+    targetId: string;
+    targetName?: string;
+    reason: string;
+    details?: string;
+  }) => {
+    const response = await apiClient.post('/reports', data);
+    return response.data;
+  },
+};
+
 export const adminService = {
   getPendingPhotos: async () => {
     const response = await apiClient.get('/admin/photos');
@@ -526,6 +539,16 @@ export const adminService = {
 
   setSubscriptionsEnabled: async (enabled: boolean) => {
     const response = await apiClient.put('/admin/settings/subscriptions', { enabled });
+    return response.data;
+  },
+
+  getReports: async (status: 'pending' | 'resolved' = 'pending') => {
+    const response = await apiClient.get('/admin/reports', { params: { status } });
+    return response.data;
+  },
+
+  resolveReport: async (reportId: string) => {
+    const response = await apiClient.put(`/admin/reports/${reportId}/resolve`);
     return response.data;
   },
 };

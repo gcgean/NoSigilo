@@ -110,7 +110,7 @@ export default function Landing() {
               </Button>
               <Button asChild className="h-10 flex-[1.35] px-3 text-sm sm:h-10 sm:w-auto sm:flex-none sm:px-4 bg-gradient-primary hover:opacity-90 shadow-glow">
                 <Link to="/register">
-                  Entrar com convite
+                  Cadastrar
                 </Link>
               </Button>
             </div>
@@ -132,12 +132,12 @@ export default function Landing() {
           </h1>
 
           <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal que querem provocar novas conexões, explorar possibilidades
+            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal em <strong className="text-foreground/80">Fortaleza e região</strong> que querem provocar novas conexões, explorar possibilidades
             e viver encontros com mais sigilo, liberdade e intensidade do que nos apps comuns.
           </p>
 
           <div className="mb-8 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground animate-slide-up" style={{ animationDelay: '0.15s' }}>
-            <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Acesso por convite</span>
+            <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Cadastro gratuito</span>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Fotos públicas e privadas</span>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Mensagens com visualização única</span>
             <span className="rounded-full border border-border/70 bg-black/15 px-3 py-1">Função Estou Aqui</span>
@@ -146,7 +146,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4 animate-slide-up" style={{ animationDelay: '0.2s' }}>
             <Button asChild size="lg" className="w-full sm:w-auto bg-gradient-primary hover:opacity-90 shadow-glow text-base sm:text-lg px-6 sm:px-8 py-6 gap-2">
               <Link to="/register">
-                Usar meu convite
+                Criar conta
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>
@@ -200,8 +200,8 @@ export default function Landing() {
             />
             <FeatureCard
               icon={Shield}
-              title="Acesso reservado por convite"
-              description="A entrada por convite deixa a rede mais selecionada, mais discreta e muito mais interessante para quem realmente é do meio."
+              title="Ambiente selecionado e discreto"
+              description="A rede é voltada para quem realmente é do meio liberal, tornando o ambiente mais seleto, desejado e interessante."
             />
             <FeatureCard
               icon={HeartHandshake}
@@ -215,7 +215,7 @@ export default function Landing() {
       <section className="py-20">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6">
-            <TrustCard icon={BadgeAlert} title="Só entra quem recebe convite" description="A rede não é aberta para qualquer um, o que torna o ambiente mais seleto, desejado e interessante." />
+            <TrustCard icon={BadgeAlert} title="Ambiente adulto e selecionado" description="A rede é focada em casais e singles do meio liberal, tornando o ambiente mais seleto, desejado e interessante." />
             <TrustCard icon={EyeOff} title="Privacidade de verdade" description="Fotos privadas, conteúdos de visualização única e controle total sobre o que cada pessoa pode ver." />
             <TrustCard icon={LockKeyhole} title="Mais sigilo, menos exposição" description="Uma rede pensada para viver curiosidade, provocação e liberdade sem abrir mão da discrição e do controle." />
           </div>
@@ -237,7 +237,7 @@ export default function Landing() {
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
               <Button asChild size="lg" className="bg-gradient-primary hover:opacity-90 shadow-glow text-lg px-8">
                 <Link to="/register">
-                  Usar meu convite
+                  Criar conta
                 </Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="text-lg px-8">
@@ -246,6 +246,46 @@ export default function Landing() {
                 </Link>
               </Button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SEO Section — swing Fortaleza, troca de casais, ménage */}
+      <section className="py-16 bg-secondary/20 border-t border-border/40">
+        <div className="container mx-auto px-4 max-w-4xl">
+          <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center">
+            A rede de <span className="text-gradient">swing em Fortaleza</span> feita para o meio liberal
+          </h2>
+          <p className="text-muted-foreground text-center mb-10 max-w-2xl mx-auto">
+            O NoSigilo é o ambiente online mais discreto para quem vive ou quer viver o swing, a troca de casais e o ménage em Fortaleza, Grande Fortaleza e Ceará.
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-8 text-sm text-muted-foreground leading-relaxed">
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold text-foreground">Swing e troca de casais em Fortaleza</h3>
+              <p>
+                Fortaleza tem uma das comunidades de <strong className="text-foreground/80">swing</strong> mais ativas do Nordeste. Casais liberais e singles do meio buscam espaços discretos para conexões reais, longe da exposição das redes sociais comuns. O NoSigilo foi construído exatamente para isso: um lugar onde a <strong className="text-foreground/80">troca de casais em Fortaleza</strong> acontece com privacidade, respeito e intensidade.
+              </p>
+              <p>
+                Se você é um casal ou single que busca <strong className="text-foreground/80">swing em Fortaleza</strong>, na Grande Fortaleza ou no interior do Ceará, aqui você encontra pessoas com os mesmos interesses, sem julgamentos e com total discrição.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold text-foreground">Ménage, encontros liberais e mais no Ceará</h3>
+              <p>
+                Além do swing e da troca de casais, o NoSigilo acolhe quem busca <strong className="text-foreground/80">ménage em Fortaleza</strong>, relacionamentos abertos, encontros esporádicos liberais e conexões entre adultos consentidos. A plataforma é voltada para o <strong className="text-foreground/80">meio liberal do Ceará</strong> — casais, mulheres solteiras e homens solteiros.
+              </p>
+              <p>
+                Diferente dos aplicativos genéricos, o NoSigilo foi pensado para o perfil de quem vive o <strong className="text-foreground/80">swing no Nordeste</strong>: com mais sigilo, fotos privadas, mensagens que somem e a função "Estou Aqui" para encontros rápidos e discretos em Fortaleza e região.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-10 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground/60">
+            {['Swing Fortaleza', 'Troca de casais Fortaleza', 'Ménage Fortaleza', 'Swing Ceará', 'Casais liberais Fortaleza', 'Swing Grande Fortaleza', 'Encontros liberais Ceará', 'Swing Nordeste', 'Rede swing adulta', 'Casais swing Fortaleza'].map((tag) => (
+              <span key={tag} className="rounded-full border border-border/40 bg-secondary/30 px-3 py-1">{tag}</span>
+            ))}
           </div>
         </div>
       </section>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
-  Eye, Search, Filter, TrendingUp
+  Eye, Search, Filter, TrendingUp, Flag, ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { adminService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -59,6 +59,19 @@ type LogItem = {
 
 type AdminSettings = {
   subscriptionsEnabled: boolean;
+};
+
+type AdminReport = {
+  id: string;
+  reporterName: string;
+  reporterEmail: string | null;
+  targetType: string;
+  targetId: string;
+  targetName: string | null;
+  reason: string;
+  details: string | null;
+  status: string;
+  createdAt: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -112,6 +125,8 @@ export default function Admin() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [settings, setSettings] = useState<AdminSettings>({ subscriptionsEnabled: true });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [reports, setReports] = useState<AdminReport[]>([]);
+  const [busyReportId, setBusyReportId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,12 +134,13 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings] = await Promise.all([
+        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings, rawReports] = await Promise.all([
           adminService.getPendingPhotos(),
           adminService.getUsers(),
           adminService.getLogs(),
           adminService.getFinanceSummary(),
           adminService.getSettings(),
+          adminService.getReports('pending'),
         ]);
 
         if (cancelled) return;
@@ -187,6 +203,25 @@ export default function Admin() {
         setSettings({
           subscriptionsEnabled: rawSettings?.subscriptionsEnabled !== false,
         });
+        setReports(
+          Array.isArray(rawReports)
+            ? rawReports.map((entry) => {
+                const item = isRecord(entry) ? entry : {};
+                return {
+                  id: String(item.id || ''),
+                  reporterName: String(item.reporterName || 'Usuário'),
+                  reporterEmail: item.reporterEmail ? String(item.reporterEmail) : null,
+                  targetType: String(item.targetType || 'user'),
+                  targetId: String(item.targetId || ''),
+                  targetName: item.targetName ? String(item.targetName) : null,
+                  reason: String(item.reason || ''),
+                  details: item.details ? String(item.details) : null,
+                  status: String(item.status || 'pending'),
+                  createdAt: String(item.createdAt || ''),
+                };
+              })
+            : []
+        );
       } catch {
         if (cancelled) return;
         toast({
@@ -293,6 +328,19 @@ export default function Admin() {
     }
   };
 
+  const handleResolveReport = async (reportId: string) => {
+    setBusyReportId(reportId);
+    try {
+      await adminService.resolveReport(reportId);
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      toast({ title: 'Denúncia arquivada' });
+    } catch {
+      toast({ title: 'Erro ao arquivar denúncia', variant: 'destructive' });
+    } finally {
+      setBusyReportId(null);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto w-full">
       <div className="flex items-center gap-3 mb-6">
@@ -385,6 +433,15 @@ export default function Admin() {
           <TabsTrigger value="users" className="gap-2">
             <Users className="w-4 h-4" />
             Usuários
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2 relative">
+            <Flag className="w-4 h-4" />
+            Denúncias
+            {reports.length > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
+                {reports.length > 9 ? '9+' : reports.length}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="finance" className="gap-2">
             <DollarSign className="w-4 h-4" />
@@ -519,6 +576,94 @@ export default function Admin() {
                 <div className="text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
               ) : null}
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <div className="glass rounded-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Denúncias pendentes</h3>
+              <Badge variant="outline" className="gap-1">
+                <Flag className="w-3 h-3" />
+                {reports.length} pendente(s)
+              </Badge>
+            </div>
+
+            {isLoading ? (
+              <div className="py-12 text-center text-muted-foreground">Carregando...</div>
+            ) : reports.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Check className="w-12 h-12 mx-auto mb-4" />
+                <p>Nenhuma denúncia pendente.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {reports.map((report) => (
+                  <div key={report.id} className="rounded-lg border bg-secondary/20 p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="destructive" className="text-xs capitalize">
+                            {report.targetType === 'user' ? 'Perfil' : report.targetType}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {report.reason === 'fake' ? 'Perfil falso' :
+                             report.reason === 'spam' ? 'Spam' :
+                             report.reason === 'harassment' ? 'Assédio' :
+                             report.reason === 'inappropriate' ? 'Conteúdo inapropriado' :
+                             report.reason === 'underage' ? 'Menor de idade' : 'Outro motivo'}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{formatDateTime(report.createdAt)}</span>
+                        </div>
+                        <p className="font-medium">
+                          Denunciado:{' '}
+                          {report.targetType === 'user' && report.targetId ? (
+                            <Link
+                              to={`/profile/${report.targetId}`}
+                              className="text-primary hover:underline inline-flex items-center gap-1"
+                            >
+                              {report.targetName || report.targetId}
+                              <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          ) : (
+                            <span>{report.targetName || report.targetId}</span>
+                          )}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Por: {report.reporterName}
+                          {report.reporterEmail ? ` (${report.reporterEmail})` : ''}
+                        </p>
+                        {report.details && (
+                          <p className="text-sm text-muted-foreground italic">"{report.details}"</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {report.targetType === 'user' && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            disabled={busyUserId === report.targetId}
+                            onClick={() => void handleBanUser(report.targetId)}
+                          >
+                            <Ban className="w-4 h-4 mr-1" />
+                            Banir
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busyReportId === report.id}
+                          onClick={() => void handleResolveReport(report.id)}
+                        >
+                          <Check className="w-4 h-4 mr-1" />
+                          Arquivar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </TabsContent>
 

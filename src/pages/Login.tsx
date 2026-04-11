@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
-import axios from 'axios';
 import BrandLogo from '@/components/BrandLogo';
 import { getLastAuthRoute } from '@/utils/sessionNavigation';
 
@@ -61,19 +60,6 @@ export default function Login() {
         : getLastAuthRoute('/feed');
       navigate(target, { replace: true });
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 403 && error.response?.data?.error === 'pending_invite_approval') {
-        const inviterName = typeof error.response?.data?.inviter?.name === 'string' ? error.response.data.inviter.name : '';
-        sessionStorage.setItem(
-          'nosigilo_pending_access',
-          JSON.stringify({
-            email,
-            invitationStatus: 'pending',
-            inviter: inviterName ? { id: String(error.response?.data?.inviter?.id || ''), name: inviterName } : null,
-          })
-        );
-        navigate(`/pending-approval?email=${encodeURIComponent(email)}${inviterName ? `&inviter=${encodeURIComponent(inviterName)}` : ''}`);
-        return;
-      }
       const info = getApiErrorInfo(error, { title: 'Erro ao entrar', description: 'Não foi possível entrar na sua conta.' });
       toast({
         title: info.title,
@@ -198,9 +184,9 @@ export default function Login() {
           </form>
 
           <p className="mt-8 text-center text-muted-foreground">
-            Cadastro somente por convite.{' '}
+            Não tem uma conta?{' '}
             <Link to="/register" className="text-primary hover:underline font-medium">
-              Abrir tela de convite
+              Criar conta
             </Link>
           </p>
         </div>

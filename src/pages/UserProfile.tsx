@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { usersService, privatePhotosService, chatService, testimonialsService } from '@/services/api';
+import ReportDialog from '@/components/ReportDialog';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
@@ -72,6 +73,7 @@ export default function UserProfile() {
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
   const premiumAccess = hasPremiumAccess(me);
@@ -334,7 +336,7 @@ export default function UserProfile() {
 
             {profile?.bio ? <p className="text-muted-foreground text-sm mb-4">{profile.bio}</p> : null}
             
-            <div className="flex items-center justify-center sm:justify-start gap-2">
+            <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
               <Button
                 className="bg-gradient-primary hover:opacity-90"
                 onClick={() => void startChat()}
@@ -342,10 +344,27 @@ export default function UserProfile() {
               >
                 {String(profile?.allowMessages || 'everyone') === 'nobody' ? 'Mensagens desativadas' : isStartingChat ? 'Abrindo...' : 'Mandar mensagem'}
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive gap-1"
+                onClick={() => setShowReportDialog(true)}
+              >
+                <Flag className="w-3.5 h-3.5" />
+                Denunciar
+              </Button>
             </div>
           </div>
         </div>
       </div>
+
+      <ReportDialog
+        isOpen={showReportDialog}
+        onClose={() => setShowReportDialog(false)}
+        targetType="user"
+        targetId={String(userId)}
+        targetName={String(profile?.name || '')}
+      />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="w-full mb-4">

@@ -71,7 +71,7 @@ interface RegisterData {
   birthDate?: string;
   partnerBirthDate?: string;
   gender: string;
-  inviteToken: string;
+  inviteToken?: string;
   city?: string;
   state?: string;
   lookingFor?: string[];

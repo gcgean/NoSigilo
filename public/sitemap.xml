@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+
+  <!-- Página inicial — prioridade máxima -->
+  <url>
+    <loc>https://nosigilo.com.br/</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="pt-BR" href="https://nosigilo.com.br/" />
+  </url>
+
+  <!-- Cadastro -->
+  <url>
+    <loc>https://nosigilo.com.br/register</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <!-- Login -->
+  <url>
+    <loc>https://nosigilo.com.br/login</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Planos -->
+  <url>
+    <loc>https://nosigilo.com.br/subscriptions</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Termos de Uso -->
+  <url>
+    <loc>https://nosigilo.com.br/terms</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+  <!-- Política de Privacidade -->
+  <url>
+    <loc>https://nosigilo.com.br/privacy</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+  <!-- Diretrizes da Comunidade -->
+  <url>
+    <loc>https://nosigilo.com.br/guidelines</loc>
+    <lastmod>2026-04-11</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+</urlset>

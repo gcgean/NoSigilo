@@ -6,11 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { User, Mail, Lock, ArrowLeft, ArrowRight, Users, ShieldCheck, UserPlus } from 'lucide-react';
+import { User, Mail, Lock, ArrowLeft, ArrowRight, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
-import { locationService, onboardingService, authService } from '@/services/api';
+import { onboardingService, authService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { CitySearch } from '@/components/CitySearch';
 import BrandLogo from '@/components/BrandLogo';
@@ -51,8 +51,6 @@ export default function Register() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([]);
-  const [inviteInfo, setInviteInfo] = useState<any | null>(null);
-  const [isLoadingInvite, setIsLoadingInvite] = useState(true);
 
   const { register } = useAuth();
   const { addFavorite } = useFavorites();
@@ -67,30 +65,6 @@ export default function Register() {
   const updateField = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
-
-  useEffect(() => {
-    if (!inviteToken) {
-      setInviteInfo(null);
-      setIsLoadingInvite(false);
-      return;
-    }
-    let cancelled = false;
-    setIsLoadingInvite(true);
-    authService
-      .getInviteInfo(inviteToken)
-      .then((data) => {
-        if (!cancelled) setInviteInfo(data);
-      })
-      .catch(() => {
-        if (!cancelled) setInviteInfo({ status: 'invalid', canRegister: false });
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingInvite(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [inviteToken]);
 
   useEffect(() => {
     if (currentStep !== 4) return;
@@ -244,9 +218,7 @@ export default function Register() {
       }
       toast({
         title: 'Conta criada',
-        description: inviteInfo?.inviter?.name
-          ? `Seu acesso foi liberado pelo convite de ${inviteInfo.inviter.name}.`
-          : 'Seu acesso foi liberado com sucesso.',
+        description: 'Seu acesso foi liberado com sucesso.',
       });
       navigate('/feed');
     } catch (error) {
@@ -260,62 +232,6 @@ export default function Register() {
       setIsLoading(false);
     }
   };
-
-  if (isLoadingInvite) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-gradient-hero" />
-        <div className="relative z-10 w-full max-w-lg glass-strong rounded-2xl p-8 shadow-glow text-center space-y-4">
-          <BrandLogo size="md" showText={false} className="justify-center" />
-          <h1 className="text-2xl font-bold">Validando convite</h1>
-          <p className="text-muted-foreground">Estamos verificando se esse acesso foi gerado por um membro da rede.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!inviteToken || !inviteInfo?.canRegister) {
-    const sponsorName = inviteInfo?.inviter?.name ? String(inviteInfo.inviter.name) : '';
-    const status = String(inviteInfo?.status || '');
-    const message =
-      !inviteToken
-        ? 'O NoSigilo funciona apenas por convite de quem já faz parte da rede. Peça seu link a um casal ou single já aprovado.'
-        : status === 'revoked'
-          ? `Esse convite foi encerrado${sponsorName ? ` por ${sponsorName}` : ''} e não pode mais ser usado.`
-          : 'Esse link não está mais disponível para novo cadastro.';
-
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-gradient-hero" />
-        <div className="relative z-10 w-full max-w-xl glass-strong rounded-2xl p-8 shadow-glow">
-          <Link to="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            Voltar
-          </Link>
-          <div className="space-y-5 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow mx-auto">
-              <ShieldCheck className="w-7 h-7 text-primary-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold">Cadastro somente por convite</h1>
-            <p className="text-muted-foreground">{message}</p>
-            {sponsorName ? (
-              <div className="rounded-xl border bg-secondary/40 p-4 text-sm">
-                Convite vinculado a <span className="font-semibold">{sponsorName}</span>
-              </div>
-            ) : null}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Link to="/login">
-                <Button className="w-full sm:w-auto bg-gradient-primary hover:opacity-90">Entrar</Button>
-              </Link>
-              <Link to="/">
-                <Button variant="outline" className="w-full sm:w-auto">Voltar para o início</Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -352,20 +268,6 @@ export default function Register() {
                 )}
               </div>
             ))}
-          </div>
-
-          <div className="mb-6 rounded-xl border border-primary/20 bg-primary/10 p-4">
-            <div className="flex items-start gap-3">
-              <UserPlus className="w-5 h-5 text-primary mt-0.5" />
-              <div className="space-y-1 text-sm">
-                <p className="font-medium text-foreground">
-                  Seu acesso está sendo patrocinado por {inviteInfo?.inviter?.name || 'um membro da rede'}
-                </p>
-                <p className="text-muted-foreground">
-                  O cadastro é fechado por convite. Com um link ativo, sua entrada é liberada automaticamente assim que você concluir os dados.
-                </p>
-              </div>
-            </div>
           </div>
 
           <form onSubmit={handleSubmit}>
