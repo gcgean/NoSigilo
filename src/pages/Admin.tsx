@@ -179,7 +179,7 @@ export default function Admin() {
                   hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
                   hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
                   isOnline: !!item.isOnline,
-                  status: 'active' as const,
+                  status: item.isBanned ? 'banned' as const : 'active' as const,
                   reports: 0,
                 };
               })

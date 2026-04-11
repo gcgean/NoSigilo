@@ -8,6 +8,8 @@ export type ApiErrorInfo = {
 
 function mapBackendErrorCode(code: string): ApiErrorInfo | null {
   switch (code) {
+    case 'account_banned':
+      return { title: 'Conta suspensa', description: 'Esta conta foi suspensa por violar as diretrizes da comunidade.' };
     case 'invalid_credentials':
       return { title: 'Erro ao entrar', description: 'E-mail ou senha incorretos.' };
     case 'email_in_use':

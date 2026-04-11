@@ -1290,6 +1290,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
+    if (Number(row.is_banned || 0) === 1) {
+      res.status(403).json({ error: 'account_banned' });
+      return;
+    }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
     if (!ok) {
       res.status(401).json({ error: 'invalid_credentials' });
@@ -4182,21 +4186,34 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
     const presence = req.app.get('presence');
     res.json(
-      rows.map((row) =>
-        rowToPublicUser(row, presence?.isOnline(String(row.id)), {
+      rows.map((row) => ({
+        ...rowToPublicUser(row, presence?.isOnline(String(row.id)), {
           showEmail: true,
           subscriptionsEnabled,
-        })
-      )
+        }),
+        isBanned: Number(row.is_banned || 0) === 1,
+        bannedAt: row.banned_at ?? null,
+      }))
     );
   });
 
-  app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), (_req, res) => {
-    res.json({ ok: true });
+  app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const { userId } = req.params;
+    const adminId = (req as any).userId as string;
+    const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
+    if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, userId]);
+    await persist();
+    res.json({ ok: true, userId, banned: true });
   });
 
-  app.put('/api/admin/users/:userId/unban', requireAuth(env, db), requireAdmin(), (_req, res) => {
-    res.json({ ok: true });
+  app.put('/api/admin/users/:userId/unban', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const { userId } = req.params;
+    const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
+    if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'UPDATE users SET is_banned = 0, banned_at = NULL, banned_by = NULL WHERE id = ?', [userId]);
+    await persist();
+    res.json({ ok: true, userId, banned: false });
   });
 
   app.get('/api/admin/logs', requireAuth(env, db), requireAdmin(), (_req, res) => {
