@@ -49,7 +49,7 @@ const mockBroadcasts: RadarBroadcast[] = [
   {
     id: '1',
     userId: 'user-1',
-    city: 'Fortaleza',
+    city: 'São Paulo',
     state: 'CE',
     message: 'Estou de passagem pela cidade e adoraria conhecer pessoas interessantes! 😊',
     targetGender: ['female'],
@@ -175,7 +175,7 @@ export const radarService = {
       return [
         { city: 'São Paulo', state: 'SP', count: 24 },
         { city: 'Rio de Janeiro', state: 'RJ', count: 18 },
-        { city: 'Fortaleza', state: 'CE', count: 12 },
+        { city: 'Belo Horizonte', state: 'MG', count: 12 },
         { city: 'Salvador', state: 'BA', count: 9 },
         { city: 'Florianópolis', state: 'SC', count: 7 },
       ];

@@ -132,7 +132,7 @@ export default function Landing() {
           </h1>
 
           <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal em <strong className="text-foreground/80">Fortaleza e região</strong> que querem provocar novas conexões, explorar possibilidades
+            O NoSigilo foi criado para casais, mulheres e homens solteiros do meio liberal em <strong className="text-foreground/80">todo o Brasil</strong> que querem provocar novas conexões, explorar possibilidades
             e viver encontros com mais sigilo, liberdade e intensidade do que nos apps comuns.
           </p>
 
@@ -250,40 +250,40 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* SEO Section — swing Fortaleza, troca de casais, ménage */}
+      {/* SEO Section — swing no Brasil, troca de casais, ménage */}
       <section className="py-16 bg-secondary/20 border-t border-border/40">
         <div className="container mx-auto px-4 max-w-4xl">
           <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center">
-            A rede de <span className="text-gradient">swing em Fortaleza</span> feita para o meio liberal
+            A rede de <span className="text-gradient">swing no Brasil</span> feita para o meio liberal
           </h2>
           <p className="text-muted-foreground text-center mb-10 max-w-2xl mx-auto">
-            O NoSigilo é o ambiente online mais discreto para quem vive ou quer viver o swing, a troca de casais e o ménage em Fortaleza, Grande Fortaleza e Ceará.
+            O NoSigilo é o ambiente online mais discreto para quem vive ou quer viver o swing, a troca de casais e o ménage em todo o Brasil.
           </p>
 
           <div className="grid md:grid-cols-2 gap-8 text-sm text-muted-foreground leading-relaxed">
             <div className="space-y-4">
-              <h3 className="text-base font-semibold text-foreground">Swing e troca de casais em Fortaleza</h3>
+              <h3 className="text-base font-semibold text-foreground">Swing e troca de casais em todo o Brasil</h3>
               <p>
-                Fortaleza tem uma das comunidades de <strong className="text-foreground/80">swing</strong> mais ativas do Nordeste. Casais liberais e singles do meio buscam espaços discretos para conexões reais, longe da exposição das redes sociais comuns. O NoSigilo foi construído exatamente para isso: um lugar onde a <strong className="text-foreground/80">troca de casais em Fortaleza</strong> acontece com privacidade, respeito e intensidade.
+                O Brasil tem comunidades de <strong className="text-foreground/80">swing</strong> ativas em várias regiões. Casais liberais e singles do meio buscam espaços discretos para conexões reais, longe da exposição das redes sociais comuns. O NoSigilo foi construído exatamente para isso: um lugar onde a <strong className="text-foreground/80">troca de casais no Brasil</strong> acontece com privacidade, respeito e intensidade.
               </p>
               <p>
-                Se você é um casal ou single que busca <strong className="text-foreground/80">swing em Fortaleza</strong>, na Grande Fortaleza ou no interior do Ceará, aqui você encontra pessoas com os mesmos interesses, sem julgamentos e com total discrição.
+                Se você é um casal ou single que busca <strong className="text-foreground/80">swing no Brasil</strong>, aqui encontra pessoas com os mesmos interesses, sem julgamentos e com total discrição, em uma proposta voltada para conexões reais de alcance nacional.
               </p>
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-base font-semibold text-foreground">Ménage, encontros liberais e mais no Ceará</h3>
+              <h3 className="text-base font-semibold text-foreground">Ménage, encontros liberais e mais em todo o Brasil</h3>
               <p>
-                Além do swing e da troca de casais, o NoSigilo acolhe quem busca <strong className="text-foreground/80">ménage em Fortaleza</strong>, relacionamentos abertos, encontros esporádicos liberais e conexões entre adultos consentidos. A plataforma é voltada para o <strong className="text-foreground/80">meio liberal do Ceará</strong> — casais, mulheres solteiras e homens solteiros.
+                Além do swing e da troca de casais, o NoSigilo acolhe quem busca <strong className="text-foreground/80">ménage no Brasil</strong>, relacionamentos abertos, encontros esporádicos liberais e conexões entre adultos consentidos. A plataforma é voltada para o <strong className="text-foreground/80">meio liberal brasileiro</strong> — casais, mulheres solteiras e homens solteiros.
               </p>
               <p>
-                Diferente dos aplicativos genéricos, o NoSigilo foi pensado para o perfil de quem vive o <strong className="text-foreground/80">swing no Nordeste</strong>: com mais sigilo, fotos privadas, mensagens que somem e a função "Estou Aqui" para encontros rápidos e discretos em Fortaleza e região.
+                Diferente dos aplicativos genéricos, o NoSigilo foi pensado para o perfil de quem vive o <strong className="text-foreground/80">swing no Brasil</strong>: com mais sigilo, fotos privadas, mensagens que somem e a função "Estou Aqui" para encontros rápidos e discretos em qualquer região do país.
               </p>
             </div>
           </div>
 
           <div className="mt-10 flex flex-wrap justify-center gap-2 text-xs text-muted-foreground/60">
-            {['Swing Fortaleza', 'Troca de casais Fortaleza', 'Ménage Fortaleza', 'Swing Ceará', 'Casais liberais Fortaleza', 'Swing Grande Fortaleza', 'Encontros liberais Ceará', 'Swing Nordeste', 'Rede swing adulta', 'Casais swing Fortaleza'].map((tag) => (
+            {['Swing Brasil', 'Troca de casais Brasil', 'Ménage Brasil', 'Swing São Paulo', 'Swing Rio de Janeiro', 'Casais liberais Brasil', 'Encontros liberais Brasil', 'Swing Nordeste', 'Rede swing adulta', 'Casais swing Brasil'].map((tag) => (
               <span key={tag} className="rounded-full border border-border/40 bg-secondary/30 px-3 py-1">{tag}</span>
             ))}
           </div>
