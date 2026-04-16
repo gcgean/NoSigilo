@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'node:path';
-import { mkdirSync, existsSync, createReadStream, statSync } from 'node:fs';
+import { mkdirSync, existsSync, createReadStream, statSync, renameSync, unlinkSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -470,6 +471,125 @@ function safeJsonParse(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function replaceFileExtension(filename: string, nextExtension: string) {
+  const ext = path.extname(filename);
+  if (!ext) return `${filename}${nextExtension}`;
+  return `${filename.slice(0, -ext.length)}${nextExtension}`;
+}
+
+async function compressUploadedVideo(file: Express.Multer.File) {
+  const currentPath = file.path;
+  const tempOutputPath = `${currentPath}.compressed.mp4`;
+  const nextFilename = replaceFileExtension(file.filename, '.mp4');
+  const nextPath = path.join(path.dirname(currentPath), nextFilename);
+
+  const args = [
+    '-y',
+    '-i', currentPath,
+    '-vf', "scale='min(1280,iw)':-2",
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '30',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    tempOutputPath,
+  ];
+
+  const compressionResult = await new Promise<'ok' | 'skip'>((resolve) => {
+    const ffmpeg = spawn('ffmpeg', args, { stdio: 'ignore' });
+
+    ffmpeg.on('error', () => resolve('skip'));
+    ffmpeg.on('close', (code) => resolve(code === 0 ? 'ok' : 'skip'));
+  });
+
+  if (compressionResult !== 'ok' || !existsSync(tempOutputPath)) {
+    if (existsSync(tempOutputPath)) unlinkSync(tempOutputPath);
+    return {
+      filename: file.filename,
+      mimetype: file.mimetype,
+      size: Number(file.size || 0),
+    };
+  }
+
+  const compressedStats = statSync(tempOutputPath);
+  if (!compressedStats.isFile() || compressedStats.size <= 0) {
+    unlinkSync(tempOutputPath);
+    return {
+      filename: file.filename,
+      mimetype: file.mimetype,
+      size: Number(file.size || 0),
+    };
+  }
+
+  unlinkSync(currentPath);
+  if (nextPath !== tempOutputPath) {
+    if (existsSync(nextPath)) unlinkSync(nextPath);
+    renameSync(tempOutputPath, nextPath);
+  }
+
+  return {
+    filename: nextFilename,
+    mimetype: 'video/mp4',
+    size: compressedStats.size,
+  };
+}
+
+async function compressUploadedImage(file: Express.Multer.File) {
+  const currentPath = file.path;
+  const tempOutputPath = `${currentPath}.compressed.webp`;
+  const nextFilename = replaceFileExtension(file.filename, '.webp');
+  const nextPath = path.join(path.dirname(currentPath), nextFilename);
+
+  const args = [
+    '-y',
+    '-i', currentPath,
+    '-vf', "scale='min(1600,iw)':-2",
+    '-compression_level', '6',
+    '-quality', '82',
+    tempOutputPath,
+  ];
+
+  const compressionResult = await new Promise<'ok' | 'skip'>((resolve) => {
+    const ffmpeg = spawn('ffmpeg', args, { stdio: 'ignore' });
+
+    ffmpeg.on('error', () => resolve('skip'));
+    ffmpeg.on('close', (code) => resolve(code === 0 ? 'ok' : 'skip'));
+  });
+
+  if (compressionResult !== 'ok' || !existsSync(tempOutputPath)) {
+    if (existsSync(tempOutputPath)) unlinkSync(tempOutputPath);
+    return {
+      filename: file.filename,
+      mimetype: file.mimetype,
+      size: Number(file.size || 0),
+    };
+  }
+
+  const compressedStats = statSync(tempOutputPath);
+  if (!compressedStats.isFile() || compressedStats.size <= 0) {
+    unlinkSync(tempOutputPath);
+    return {
+      filename: file.filename,
+      mimetype: file.mimetype,
+      size: Number(file.size || 0),
+    };
+  }
+
+  unlinkSync(currentPath);
+  if (nextPath !== tempOutputPath) {
+    if (existsSync(nextPath)) unlinkSync(nextPath);
+    renameSync(tempOutputPath, nextPath);
+  }
+
+  return {
+    filename: nextFilename,
+    mimetype: 'image/webp',
+    size: compressedStats.size,
+  };
 }
 
 async function createNotification(
@@ -2294,27 +2414,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const isPrivate = String(req.query.isPrivate || '') === '1';
     const mime = req.file.mimetype || '';
-    const size = Number(req.file.size || 0);
-    const maxVideoBytes = 50 * 1024 * 1024;
     const maxOtherBytes = 5 * 1024 * 1024;
     if (isPrivate && !mime.startsWith('image/')) {
       res.status(400).json({ error: 'private_photos_images_only' });
       return;
     }
-    if (mime.startsWith('video/') && size > maxVideoBytes) {
-      res.status(413).json({ error: 'file_too_large', maxBytes: maxVideoBytes });
-      return;
-    }
-    if (!mime.startsWith('video/') && !mime.startsWith('image/') && size > maxOtherBytes) {
+    if (!mime.startsWith('video/') && !mime.startsWith('image/') && Number(req.file.size || 0) > maxOtherBytes) {
       res.status(413).json({ error: 'file_too_large', maxBytes: maxOtherBytes });
       return;
     }
+
+    const storedFile = mime.startsWith('video/')
+      ? await compressUploadedVideo(req.file)
+      : mime.startsWith('image/') && mime !== 'image/gif'
+      ? await compressUploadedImage(req.file)
+      : {
+          filename: req.file.filename,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        };
 
     const id = randomUUID();
     await run(
       db,
       'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
-      [id, req.auth!.userId, req.file.filename, req.file.originalname, req.file.mimetype, req.file.size, isPrivate ? 1 : 0, nowIso()]
+      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, nowIso()]
     );
     await persist();
     if (isPrivate) {
@@ -2322,7 +2446,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.json({ id, url: `/private-uploads/${id}?token=${encodeURIComponent(token)}` });
       return;
     }
-    res.json({ id, url: `/uploads/${req.file.filename}` });
+    res.json({ id, url: `/uploads/${storedFile.filename}` });
   });
 
   app.patch('/api/media/:mediaId/main', requireAuth(env, db), async (req, res) => {
