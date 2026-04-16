@@ -186,6 +186,82 @@ function addDaysIso(iso: string, days: number) {
   return d.toISOString();
 }
 
+function limitText(value: string | null | undefined, max = 255) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  return text.slice(0, max);
+}
+
+function getHeaderValue(req: express.Request, headerName: string) {
+  const raw = req.headers[headerName.toLowerCase()];
+  if (Array.isArray(raw)) return raw[0] || null;
+  return raw ? String(raw) : null;
+}
+
+function getRequestIp(req: express.Request) {
+  const cfIp = limitText(getHeaderValue(req, 'cf-connecting-ip'), 120);
+  if (cfIp) return cfIp;
+
+  const forwardedFor = limitText(getHeaderValue(req, 'x-forwarded-for'), 255);
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(',')[0]?.trim();
+    if (firstIp) return firstIp.slice(0, 120);
+  }
+
+  return limitText(req.ip, 120);
+}
+
+function hashRequestIp(env: Env, ip: string | null) {
+  if (!ip) return null;
+  return createHmac('sha256', env.JWT_SECRET)
+    .update(ip)
+    .digest('hex')
+    .slice(0, 24);
+}
+
+function getReferrerDomain(referrer: string | null) {
+  if (!referrer) return null;
+  try {
+    return limitText(new URL(referrer).hostname.replace(/^www\./, ''), 120);
+  } catch {
+    return null;
+  }
+}
+
+function inferOriginType(referrerDomain: string | null, utmSource: string | null) {
+  const source = String(utmSource || referrerDomain || '').toLowerCase();
+  if (!source) return 'direct';
+  if (source.includes('nosigilo.baselider.com.br')) return 'internal';
+  if (/(google|bing|yahoo|duckduckgo|search)/.test(source)) return 'search';
+  if (/(instagram|facebook|fb|tiktok|x\.com|twitter|telegram|whatsapp|youtube|linkedin|kwai)/.test(source)) return 'social';
+  if (/(email|mail|newsletter)/.test(source)) return 'email';
+  return 'referral';
+}
+
+function getDeviceType(userAgent: string | null, screenWidth?: number | null) {
+  const ua = String(userAgent || '').toLowerCase();
+  if (/tablet|ipad/.test(ua)) return 'tablet';
+  if (/mobi|android|iphone/.test(ua)) return 'mobile';
+  if (typeof screenWidth === 'number' && Number.isFinite(screenWidth)) {
+    if (screenWidth < 768) return 'mobile';
+    if (screenWidth < 1024) return 'tablet';
+  }
+  return 'desktop';
+}
+
+function decodeOptionalUserId(env: Env, req: express.Request) {
+  const authHeader = getHeaderValue(req, 'authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.slice(7).trim();
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, env.JWT_SECRET) as jwt.JwtPayload;
+    return typeof payload?.sub === 'string' ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 function isAdministrativeEmail(email?: string | null) {
   return ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
 }
@@ -1436,6 +1512,80 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/app/settings', async (_req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     res.json({ subscriptionsEnabled });
+  });
+
+  app.post('/api/analytics/visit', async (req, res) => {
+    try {
+      const schema = z.object({
+        path: z.string().trim().max(255).optional(),
+        title: z.string().trim().max(255).optional(),
+        referrer: z.string().trim().max(500).optional(),
+        utmSource: z.string().trim().max(120).optional(),
+        utmMedium: z.string().trim().max(120).optional(),
+        utmCampaign: z.string().trim().max(120).optional(),
+        utmTerm: z.string().trim().max(120).optional(),
+        utmContent: z.string().trim().max(120).optional(),
+        timezone: z.string().trim().max(120).optional(),
+        language: z.string().trim().max(80).optional(),
+        deviceType: z.enum(['mobile', 'tablet', 'desktop']).optional(),
+        screenWidth: z.number().int().min(0).max(10000).optional(),
+        screenHeight: z.number().int().min(0).max(10000).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: 'invalid_input' });
+        return;
+      }
+
+      const payload = parsed.data;
+      const referrer = limitText(payload.referrer, 500);
+      const referrerDomain = getReferrerDomain(referrer);
+      const utmSource = limitText(payload.utmSource, 120);
+      const userAgent = limitText(getHeaderValue(req, 'user-agent'), 500);
+      const userId = decodeOptionalUserId(env, req);
+      const ipHash = hashRequestIp(env, getRequestIp(req));
+      const country = limitText(getHeaderValue(req, 'cf-ipcountry'), 32);
+      const deviceType = payload.deviceType || getDeviceType(userAgent, payload.screenWidth ?? null);
+
+      await run(
+        db,
+        `INSERT INTO site_visits (
+          id, user_id, page_path, page_title, referrer, referrer_domain, origin_type,
+          utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+          country, timezone, language, device_type, screen_width, screen_height,
+          user_agent, ip_hash, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          userId,
+          limitText(payload.path, 255),
+          limitText(payload.title, 255),
+          referrer,
+          referrerDomain,
+          inferOriginType(referrerDomain, utmSource),
+          utmSource,
+          limitText(payload.utmMedium, 120),
+          limitText(payload.utmCampaign, 120),
+          limitText(payload.utmTerm, 120),
+          limitText(payload.utmContent, 120),
+          country,
+          limitText(payload.timezone, 120),
+          limitText(payload.language, 80),
+          deviceType,
+          typeof payload.screenWidth === 'number' ? payload.screenWidth : null,
+          typeof payload.screenHeight === 'number' ? payload.screenHeight : null,
+          userAgent,
+          ipHash,
+          nowIso(),
+        ]
+      );
+      await persist();
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[analytics/visit]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.get('/api/feed', requireAuth(env, db), async (req, res) => {
@@ -4263,6 +4413,76 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       newToday: Number(newTodayRow?.c || 0),
       churnRate: 0,
     });
+  });
+
+  app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const requestedLimit = Number(req.query.limit || 120);
+      const limit = Number.isFinite(requestedLimit)
+        ? Math.min(Math.max(Math.trunc(requestedLimit), 20), 500)
+        : 120;
+      const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      const [totalRow, todayRow, last7DaysRow, rows] = await Promise.all([
+        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
+        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
+        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
+        queryAll(
+          db,
+          `SELECT sv.*, u.name AS user_name, u.email AS user_email
+           FROM site_visits sv
+           LEFT JOIN users u ON u.id = sv.user_id
+           ORDER BY sv.created_at DESC
+           LIMIT ?`,
+          [limit]
+        ),
+      ]);
+
+      const history = rows.map((row: any) => ({
+        id: String(row.id),
+        createdAt: String(row.created_at),
+        pagePath: row.page_path ? String(row.page_path) : '/',
+        pageTitle: row.page_title ? String(row.page_title) : null,
+        originType: row.origin_type ? String(row.origin_type) : 'direct',
+        referrer: row.referrer ? String(row.referrer) : null,
+        referrerDomain: row.referrer_domain ? String(row.referrer_domain) : null,
+        utmSource: row.utm_source ? String(row.utm_source) : null,
+        utmMedium: row.utm_medium ? String(row.utm_medium) : null,
+        utmCampaign: row.utm_campaign ? String(row.utm_campaign) : null,
+        country: row.country ? String(row.country) : null,
+        timezone: row.timezone ? String(row.timezone) : null,
+        language: row.language ? String(row.language) : null,
+        deviceType: row.device_type ? String(row.device_type) : 'desktop',
+        userName: row.user_name ? String(row.user_name) : null,
+        userEmail: row.user_email ? String(row.user_email) : null,
+      }));
+
+      const groupCounts = (items: Array<string | null | undefined>, fallback: string) => {
+        const counters = new Map<string, number>();
+        for (const item of items) {
+          const label = String(item || fallback).trim() || fallback;
+          counters.set(label, (counters.get(label) || 0) + 1);
+        }
+        return Array.from(counters.entries())
+          .map(([label, count]) => ({ label, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8);
+      };
+
+      res.json({
+        total: Number((totalRow as any)?.c || 0),
+        today: Number((todayRow as any)?.c || 0),
+        last7Days: Number((last7DaysRow as any)?.c || 0),
+        byOrigin: groupCounts(history.map((item) => item.originType), 'direct'),
+        byCountry: groupCounts(history.map((item) => item.country), 'Desconhecido'),
+        byPage: groupCounts(history.map((item) => item.pagePath), '/'),
+        history,
+      });
+    } catch (err) {
+      console.error('[admin/analytics/visits]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   // Reports

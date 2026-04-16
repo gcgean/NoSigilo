@@ -10,6 +10,7 @@ import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { FriendsProvider } from "@/contexts/FriendsContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
+import SiteVisitTracker from "@/components/SiteVisitTracker";
 
 // Public Pages
 import Landing from "./pages/Landing";
@@ -56,6 +57,7 @@ const App = () => (
                 <Toaster />
                 <Sonner />
                 <BrowserRouter>
+                  <SiteVisitTracker />
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Landing />} />

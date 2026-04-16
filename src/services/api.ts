@@ -9,6 +9,25 @@ export const appService = {
     const response = await apiClient.get('/app/settings');
     return response.data;
   },
+
+  trackVisit: async (payload: {
+    path?: string;
+    title?: string;
+    referrer?: string;
+    utmSource?: string;
+    utmMedium?: string;
+    utmCampaign?: string;
+    utmTerm?: string;
+    utmContent?: string;
+    timezone?: string;
+    language?: string;
+    deviceType?: 'mobile' | 'tablet' | 'desktop';
+    screenWidth?: number;
+    screenHeight?: number;
+  }) => {
+    const response = await apiClient.post('/analytics/visit', payload);
+    return response.data;
+  },
 };
 
 // Auth Service
@@ -529,6 +548,11 @@ export const adminService = {
 
   getFinanceSummary: async () => {
     const response = await apiClient.get('/admin/finance/summary');
+    return response.data;
+  },
+
+  getVisitAnalytics: async (limit = 120) => {
+    const response = await apiClient.get('/admin/analytics/visits', { params: { limit } });
     return response.data;
   },
 

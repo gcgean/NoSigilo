@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
-  Eye, Search, Filter, TrendingUp, Flag, ExternalLink
+  Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +74,40 @@ type AdminReport = {
   createdAt: string;
 };
 
+type VisitBreakdown = {
+  label: string;
+  count: number;
+};
+
+type VisitHistoryItem = {
+  id: string;
+  createdAt: string;
+  pagePath: string;
+  pageTitle: string | null;
+  originType: string;
+  referrer: string | null;
+  referrerDomain: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  country: string | null;
+  timezone: string | null;
+  language: string | null;
+  deviceType: string;
+  userName: string | null;
+  userEmail: string | null;
+};
+
+type VisitAnalytics = {
+  total: number;
+  today: number;
+  last7Days: number;
+  byOrigin: VisitBreakdown[];
+  byCountry: VisitBreakdown[];
+  byPage: VisitBreakdown[];
+  history: VisitHistoryItem[];
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -83,6 +117,16 @@ const DEFAULT_FINANCE: FinanceSummary = {
   subscribers: 0,
   newToday: 0,
   churnRate: 0,
+};
+
+const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
+  total: 0,
+  today: 0,
+  last7Days: 0,
+  byOrigin: [],
+  byCountry: [],
+  byPage: [],
+  history: [],
 };
 
 function parseDate(value?: string | null) {
@@ -127,6 +171,7 @@ export default function Admin() {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
+  const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,13 +179,14 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings, rawReportsResult] = await Promise.all([
+        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings, rawReportsResult, rawVisitAnalytics] = await Promise.all([
           adminService.getPendingPhotos().catch(() => []),
           adminService.getUsers().catch(() => []),
           adminService.getLogs().catch(() => []),
           adminService.getFinanceSummary().catch(() => null),
           adminService.getSettings().catch(() => null),
           adminService.getReports('pending').catch(() => []),
+          adminService.getVisitAnalytics().catch(() => null),
         ]);
         const rawReports = rawReportsResult;
 
@@ -223,6 +269,7 @@ export default function Admin() {
               })
             : []
         );
+        setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
       } catch {
         if (cancelled) return;
         toast({
@@ -354,7 +401,7 @@ export default function Admin() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
         <Card className="p-4 glass">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
@@ -396,6 +443,17 @@ export default function Admin() {
             <div>
               <p className="text-2xl font-bold">{Number(finance.subscribers || 0)}</p>
               <p className="text-xs text-muted-foreground">Assinantes</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4 glass col-span-2 xl:col-span-1">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Globe2 className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{Number(visitAnalytics.total || 0)}</p>
+              <p className="text-xs text-muted-foreground">Visitas registradas</p>
             </div>
           </div>
         </Card>
@@ -447,6 +505,10 @@ export default function Admin() {
           <TabsTrigger value="finance" className="gap-2">
             <DollarSign className="w-4 h-4" />
             Finanças
+          </TabsTrigger>
+          <TabsTrigger value="visits" className="gap-2">
+            <Globe2 className="w-4 h-4" />
+            Visitas
           </TabsTrigger>
           <TabsTrigger value="logs" className="gap-2">
             <FileText className="w-4 h-4" />
@@ -731,6 +793,143 @@ export default function Admin() {
                 ))}
               </div>
             )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="visits">
+          <div className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Globe2 className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.total}</p>
+                    <p className="text-xs text-muted-foreground">Total de visitas</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-warning/20 flex items-center justify-center">
+                    <MousePointerClick className="w-5 h-5 text-warning" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.today}</p>
+                    <p className="text-xs text-muted-foreground">Últimas 24 horas</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-success" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.last7Days}</p>
+                    <p className="text-xs text-muted-foreground">Últimos 7 dias</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-3">
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Origem das visitas</h3>
+                <div className="space-y-3">
+                  {visitAnalytics.byOrigin.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ainda sem visitas registradas.</p>
+                  ) : (
+                    visitAnalytics.byOrigin.map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="capitalize">{entry.label}</span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Local das visitas</h3>
+                <div className="space-y-3">
+                  {visitAnalytics.byCountry.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ainda sem local identificado.</p>
+                  ) : (
+                    visitAnalytics.byCountry.map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-primary" />
+                          {entry.label}
+                        </span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Páginas mais vistas</h3>
+                <div className="space-y-3">
+                  {visitAnalytics.byPage.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ainda sem páginas registradas.</p>
+                  ) : (
+                    visitAnalytics.byPage.map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="truncate">{entry.label}</span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <div className="glass rounded-xl p-6">
+              <div className="mb-4">
+                <h3 className="font-semibold">Histórico detalhado</h3>
+                <p className="text-sm text-muted-foreground">
+                  Registro cronológico com origem, local e rota acessada.
+                </p>
+              </div>
+
+              {visitAnalytics.history.length === 0 ? (
+                <div className="py-10 text-sm text-muted-foreground">Nenhuma visita registrada até agora.</div>
+              ) : (
+                <div className="space-y-3">
+                  {visitAnalytics.history.map((item) => (
+                    <div key={item.id} className="rounded-xl border bg-secondary/20 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline" className="capitalize">{item.originType}</Badge>
+                            <Badge variant="secondary">{item.deviceType}</Badge>
+                            <span className="text-sm text-muted-foreground">{formatDateTime(item.createdAt)}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium">{item.pageTitle || item.pagePath}</p>
+                            <p className="text-sm text-muted-foreground">{item.pagePath}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                            <span>Referrer: {item.referrerDomain || item.referrer || 'Direto'}</span>
+                            <span>UTM: {item.utmSource || '—'}</span>
+                            <span>Local: {item.country || 'Desconhecido'}</span>
+                            <span>Fuso: {item.timezone || '—'}</span>
+                            <span>Idioma: {item.language || '—'}</span>
+                          </div>
+                        </div>
+                        <div className="text-sm text-muted-foreground lg:text-right">
+                          <p className="font-medium text-foreground">{item.userName || 'Visitante anônimo'}</p>
+                          <p>{item.userEmail || 'Sem login identificado'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
       </Tabs>
