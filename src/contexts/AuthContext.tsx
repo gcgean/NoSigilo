@@ -129,8 +129,24 @@ const DEMO_USERS: Record<string, { password: string; user: User }> = {
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const getStoredUser = (): User | null => {
+    const savedUser = localStorage.getItem('nosigilo_user');
+    if (!savedUser) return null;
+    try {
+      return JSON.parse(savedUser) as User;
+    } catch {
+      localStorage.removeItem('nosigilo_user');
+      return null;
+    }
+  };
+
+  const [user, setUser] = useState<User | null>(() => getStoredUser());
+  const [isLoading, setIsLoading] = useState(() => {
+    if (USE_MOCKS) return false;
+    const token = localStorage.getItem('token');
+    const storedUser = getStoredUser();
+    return Boolean(token && !storedUser);
+  });
 
   useEffect(() => {
     const applySettings = async (currentUser: User | null) => {
@@ -149,7 +165,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void applySettings(parsedUser).then((nextUser) => {
           if (nextUser) setUser(nextUser);
         });
-        setUser(parsedUser);
       } catch {
         localStorage.removeItem('nosigilo_user');
       }

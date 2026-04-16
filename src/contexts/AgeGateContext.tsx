@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
 interface AgeGateContextType {
   hasConfirmedAge: boolean;
@@ -11,12 +11,7 @@ const AgeGateContext = createContext<AgeGateContextType | undefined>(undefined);
 const AGE_GATE_KEY = 'nosigilo_age_confirmed';
 
 export function AgeGateProvider({ children }: { children: ReactNode }) {
-  const [hasConfirmedAge, setHasConfirmedAge] = useState(false);
-
-  useEffect(() => {
-    const confirmed = localStorage.getItem(AGE_GATE_KEY) === 'true';
-    setHasConfirmedAge(confirmed);
-  }, []);
+  const [hasConfirmedAge, setHasConfirmedAge] = useState(() => localStorage.getItem(AGE_GATE_KEY) === 'true');
 
   const confirmAge = () => {
     localStorage.setItem(AGE_GATE_KEY, 'true');

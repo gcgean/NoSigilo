@@ -249,8 +249,21 @@ export default function Profile() {
   const handleUpload = async (file: File) => {
     try {
       setIsUploading(true);
-      await profileService.uploadMedia(file, { isPrivate: false });
-      toast({ title: 'Foto enviada', description: 'Sua foto foi enviada com sucesso.' });
+      const uploaded = await profileService.uploadMedia(file, { isPrivate: false });
+      if (uploaded?.id) {
+        try {
+          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
+          toast({ title: 'Foto enviada', description: 'Sua foto foi enviada e publicada no feed.' });
+        } catch {
+          toast({
+            title: 'Foto enviada',
+            description: 'A foto entrou na galeria, mas não foi possível publicar no feed agora.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        toast({ title: 'Foto enviada', description: 'Sua foto foi enviada com sucesso.' });
+      }
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
