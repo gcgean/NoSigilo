@@ -151,6 +151,7 @@ export const profileService = {
         headers: { 'Content-Type': 'multipart/form-data' },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
+        timeout: 10 * 60 * 1000,
       });
       return response.data;
     } catch (error) {
