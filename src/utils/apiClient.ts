@@ -7,6 +7,7 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 const NETWORK_TOAST_COOLDOWN_MS = 8000;
 let lastNetworkToastAt = 0;
 let lastPremiumToastAt = 0;
+let isHandlingUnauthorized = false;
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -44,8 +45,21 @@ apiClient.interceptors.response.use(
       }
     }
     if (error.response?.status === 401) {
+      localStorage.removeItem('nosigilo_user');
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      if (!isHandlingUnauthorized) {
+        isHandlingUnauthorized = true;
+        const isAuthScreen =
+          window.location.pathname.startsWith('/login') ||
+          window.location.pathname.startsWith('/forgot-password') ||
+          window.location.pathname.startsWith('/register');
+        if (!isAuthScreen) {
+          window.location.replace('/login');
+        }
+        window.setTimeout(() => {
+          isHandlingUnauthorized = false;
+        }, 1000);
+      }
     }
     const apiErrorCode = String(error.response?.data?.error || '');
     if (error.response?.status === 403 && apiErrorCode === 'premium_required') {

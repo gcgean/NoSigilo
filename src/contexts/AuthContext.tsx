@@ -130,6 +130,10 @@ const DEMO_USERS: Record<string, { password: string; user: User }> = {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const getStoredUser = (): User | null => {
+    if (!USE_MOCKS && !localStorage.getItem('token')) {
+      localStorage.removeItem('nosigilo_user');
+      return null;
+    }
     const savedUser = localStorage.getItem('nosigilo_user');
     if (!savedUser) return null;
     try {
@@ -159,6 +163,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const savedUser = localStorage.getItem('nosigilo_user');
     const token = localStorage.getItem('token');
+    if (!USE_MOCKS && savedUser && !token) {
+      localStorage.removeItem('nosigilo_user');
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
@@ -306,7 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: USE_MOCKS ? !!user : !!user && !!localStorage.getItem('token'),
         login,
         register,
         logout,
