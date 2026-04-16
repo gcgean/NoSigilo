@@ -64,7 +64,7 @@ export function getApiErrorInfo(error: unknown, fallback: ApiErrorInfo): ApiErro
     }
 
     if (status === 413) {
-      return { title: 'Arquivo muito grande', description: 'A mídia ultrapassou o limite aceito pelo servidor.' };
+      return { title: 'Upload bloqueado', description: 'A mídia excedeu o limite atual do servidor ou da borda de rede.' };
     }
 
     return fallback;

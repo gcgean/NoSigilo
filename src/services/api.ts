@@ -143,20 +143,19 @@ export const profileService = {
     if (file.type.startsWith('image/')) {
       uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82 });
     }
-    if (file.type.startsWith('video/') && file.size > 50 * 1024 * 1024) {
-      throw new Error('Arquivo de vídeo muito grande (máximo 50MB)');
-    }
     const formData = new FormData();
     formData.append('file', uploadFile);
     try {
       const response = await apiClient.post('/media/upload', formData, {
         params: { isPrivate: options?.isPrivate ? 1 : 0 },
         headers: { 'Content-Type': 'multipart/form-data' },
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 413) {
-        throw new Error('A foto ficou maior do que o limite aceito pelo servidor. Tente uma imagem menor.');
+        throw new Error('A mídia excedeu o limite atual do servidor. Se o backend já foi atualizado, refaça o envio em instantes.');
       }
       throw error;
     }
