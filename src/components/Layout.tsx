@@ -698,6 +698,14 @@ export default function Layout() {
               </NavLink>
             );
           })}
+          <button
+            type="button"
+            onClick={logout}
+            className="flex min-w-0 flex-1 flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors relative text-muted-foreground hover:text-destructive"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="max-w-full truncate text-[11px]">Sair</span>
+          </button>
         </div>
       </nav>
     </div>

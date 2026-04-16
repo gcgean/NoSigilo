@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,14 +27,13 @@ export default function Login() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!isAuthenticated) return;
+  if (isAuthenticated) {
     const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
     const target = from?.pathname
       ? `${from.pathname}${from.search || ''}${from.hash || ''}`
       : getLastAuthRoute('/feed');
-    navigate(target, { replace: true });
-  }, [isAuthenticated, location.state, navigate]);
+    return <Navigate to={target} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

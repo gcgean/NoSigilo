@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Heart, Users, Shield, ArrowRight, MessageCircle, Star, BadgeAlert, EyeOff, HeartHandshake, Radio, Images, LockKeyhole } from 'lucide-react';
 import { useAgeGate } from '@/contexts/AgeGateContext';
@@ -35,10 +35,9 @@ export default function Landing() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!hasConfirmedAge || !isAuthenticated) return;
-    navigate(getLastAuthRoute('/feed'), { replace: true });
-  }, [hasConfirmedAge, isAuthenticated, navigate]);
+  if (hasConfirmedAge && isAuthenticated) {
+    return <Navigate to={getLastAuthRoute('/feed')} replace />;
+  }
 
   const handleEnter = () => {
     if (isAuthenticated) {
