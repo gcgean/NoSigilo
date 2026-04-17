@@ -17,7 +17,6 @@ async function buildPosterFromFirstFrame(src: string): Promise<string | null> {
     video.muted = true;
     video.preload = 'metadata';
     video.playsInline = true;
-    video.crossOrigin = 'anonymous';
 
     let done = false;
     const finish = (value: string | null) => {
@@ -29,6 +28,7 @@ async function buildPosterFromFirstFrame(src: string): Promise<string | null> {
     };
 
     const cleanup = () => {
+      video.removeEventListener('loadedmetadata', onLoadedData);
       video.removeEventListener('loadeddata', onLoadedData);
       video.removeEventListener('seeked', captureFrame);
       video.removeEventListener('error', onError);
@@ -74,6 +74,7 @@ async function buildPosterFromFirstFrame(src: string): Promise<string | null> {
     };
 
     const timeoutId = window.setTimeout(() => finish(null), 7000);
+    video.addEventListener('loadedmetadata', onLoadedData);
     video.addEventListener('loadeddata', onLoadedData);
     video.addEventListener('seeked', captureFrame);
     video.addEventListener('error', onError);
@@ -113,8 +114,8 @@ export default function VideoWithPreview({ className, src, poster, ...props }: V
     <video
       {...props}
       src={normalizedSrc}
-      poster={poster || generatedPoster || undefined}
-      className={cn('bg-muted/40', className)}
+      poster={poster || generatedPoster || '/placeholder.svg'}
+      className={cn('bg-black/70', className)}
     />
   );
 }

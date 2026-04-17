@@ -535,7 +535,7 @@ export default function Feed() {
                             className="w-full h-full object-cover"
                             controls
                             muted
-                            preload="metadata"
+                            preload="auto"
                             playsInline
                             onLoadedMetadata={(e) => setAspectForKey(p.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
                             onError={() => {
@@ -757,7 +757,7 @@ export default function Feed() {
                               controls
                               muted
                               playsInline
-                              preload="metadata"
+                              preload="auto"
                               onLoadedMetadata={(e) => setAspectForKey(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
                               onMouseEnter={(e) => {
                                 const v = e.currentTarget;

@@ -18,6 +18,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
+type ProfileVisitItem = { id: string; createdAt: string; visitor: { id: string; name: string; avatar?: string | null } };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PrivatePhotoAccessItem = {
   id: string;
@@ -116,6 +117,7 @@ export default function Profile() {
   const [stats, setStats] = useState({ likes: 0, visits: 0, matches: 0 });
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [profileVisits, setProfileVisits] = useState<ProfileVisitItem[]>([]);
   const [notificationsVisibleCount, setNotificationsVisibleCount] = useState(PROFILE_NOTIFICATIONS_PAGE_SIZE);
   const [busyNotifId, setBusyNotifId] = useState<string | null>(null);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
@@ -235,6 +237,19 @@ export default function Profile() {
 
   useEffect(() => {
     void loadNotifications();
+  }, []);
+
+  const loadProfileVisits = async () => {
+    try {
+      const visits = await profileService.getVisits();
+      setProfileVisits(Array.isArray(visits) ? visits : []);
+    } catch {
+      setProfileVisits([]);
+    }
+  };
+
+  useEffect(() => {
+    void loadProfileVisits();
   }, []);
 
   const loadTestimonials = async () => {
@@ -647,7 +662,7 @@ export default function Profile() {
         </div>
       ) : null}
 
-      {unreadNotifications.length > 0 ? (
+      {unreadNotifications.length > 0 || profileVisits.length > 0 ? (
         <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-lg font-semibold">Notificações</h2>
@@ -655,6 +670,35 @@ export default function Profile() {
               Ver todas
             </NavLink>
           </div>
+          {profileVisits.length > 0 ? (
+            <div className="mb-4 space-y-3">
+              {profileVisits.slice(0, 3).map((visit) => (
+                <div key={visit.id} className="rounded-xl border p-4 bg-secondary/10">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="font-medium">Novo visitante no perfil</div>
+                      <div className="text-sm text-muted-foreground">
+                        {visit.visitor?.name || 'Alguém'} visitou seu perfil.
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="self-stretch sm:self-auto"
+                      onClick={() => navigate(`/users/${visit.visitor.id}`)}
+                    >
+                      Ver visitante
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-end">
+                <Button size="sm" variant="ghost" onClick={() => navigate('/profile/visitors')}>
+                  Ver histórico de visitas
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <div className="space-y-3">
             {visibleUnreadNotifications.map((n) => {
                 const isPrivateReq = n.type === 'private_photos.request';
