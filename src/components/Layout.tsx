@@ -36,6 +36,12 @@ import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
@@ -52,6 +58,9 @@ const extraNavItems = [
   { path: '/favorites', icon: Star, label: 'Favoritos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
 ];
+
+const PWA_INSTALL_DISMISS_KEY = 'nosigilo:pwa-install-dismissed-at';
+const PWA_INSTALL_DISMISS_DAYS = 7;
 
 function parseValidDate(value?: string | null) {
   const time = value ? new Date(value).getTime() : NaN;
@@ -94,6 +103,9 @@ export default function Layout() {
   const [firstAccessFlow, setFirstAccessFlow] = useState<{ needsPhoto?: boolean; needsPost?: boolean } | null>(null);
   const [showFirstAccessReward, setShowFirstAccessReward] = useState(false);
   const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
+  const isMobile = useIsMobile();
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const hadFirstAccessFlowRef = useRef(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
@@ -328,6 +340,73 @@ export default function Layout() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  useEffect(() => {
+    const installedHandler = () => {
+      setShowPwaInstallPrompt(false);
+      setDeferredInstallPrompt(null);
+    };
+    window.addEventListener('appinstalled', installedHandler);
+    return () => window.removeEventListener('appinstalled', installedHandler);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setShowPwaInstallPrompt(false);
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || (window.navigator as any)?.standalone === true;
+    if (standalone) {
+      setShowPwaInstallPrompt(false);
+      return;
+    }
+    const lastDismissRaw = localStorage.getItem(PWA_INSTALL_DISMISS_KEY);
+    const lastDismiss = lastDismissRaw ? Number(lastDismissRaw) : 0;
+    const dismissWindowMs = PWA_INSTALL_DISMISS_DAYS * 24 * 60 * 60 * 1000;
+    if (lastDismiss && Date.now() - lastDismiss < dismissWindowMs) {
+      setShowPwaInstallPrompt(false);
+      return;
+    }
+    setShowPwaInstallPrompt(true);
+  }, [isMobile, location.pathname]);
+
+  const dismissPwaInstallPrompt = () => {
+    localStorage.setItem(PWA_INSTALL_DISMISS_KEY, String(Date.now()));
+    setShowPwaInstallPrompt(false);
+  };
+
+  const handlePwaInstall = async () => {
+    if (deferredInstallPrompt) {
+      try {
+        await deferredInstallPrompt.prompt();
+        const choice = await deferredInstallPrompt.userChoice;
+        if (choice?.outcome === 'accepted') {
+          setShowPwaInstallPrompt(false);
+          setDeferredInstallPrompt(null);
+          return;
+        }
+      } catch {}
+      dismissPwaInstallPrompt();
+      return;
+    }
+
+    toast({
+      title: 'Instalar NoSigilo',
+      description:
+        'No iPhone: toque no botão Compartilhar do Safari e depois em "Adicionar à Tela de Início".',
+    });
+    dismissPwaInstallPrompt();
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <FirstAccessTutorial />
@@ -528,6 +607,28 @@ export default function Layout() {
                     {accessBanner.cta}
                   </span>
                 </NavLink>
+              </div>
+            ) : null}
+            {showPwaInstallPrompt ? (
+              <div className="mb-4">
+                <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-semibold text-primary">Deseja instalar o app?</p>
+                      <p className="text-sm text-muted-foreground">
+                        Instale o NoSigilo no celular para abrir como aplicativo e acessar mais rápido.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={dismissPwaInstallPrompt}>
+                        Agora não
+                      </Button>
+                      <Button type="button" size="sm" className="bg-gradient-primary hover:opacity-90" onClick={() => void handlePwaInstall()}>
+                        Instalar app
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : null}
             {accessCountdown && (
