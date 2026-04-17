@@ -2468,6 +2468,37 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true, avatar });
   });
 
+  app.patch('/api/media/:mediaId/visibility', requireAuth(env, db), async (req, res) => {
+    const mediaId = req.params.mediaId;
+    const media = (await queryOne(
+      db,
+      'SELECT id, filename, is_private, is_main FROM media WHERE id = ? AND user_id = ?',
+      [mediaId, req.auth!.userId]
+    )) as any;
+    if (!media) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    const isPrivate = !!req.body?.isPrivate;
+    if (isPrivate && !!media.is_main) {
+      res.status(400).json({ error: 'cannot_make_main_photo_private' });
+      return;
+    }
+
+    await run(db, 'UPDATE media SET is_private = ? WHERE id = ?', [isPrivate ? 1 : 0, mediaId]);
+    await persist();
+
+    if (isPrivate) {
+      const token = jwt.sign({ mediaId }, env.JWT_SECRET, { expiresIn: '30m' });
+      res.json({ ok: true, id: mediaId, isPrivate: true, url: `/private-uploads/${mediaId}?token=${encodeURIComponent(token)}` });
+      return;
+    }
+
+    const filename = media?.filename ? String(media.filename) : '';
+    res.json({ ok: true, id: mediaId, isPrivate: false, url: filename ? `/uploads/${filename}` : null });
+  });
+
   app.delete('/api/media/:mediaId', requireAuth(env, db), async (req, res) => {
     const mediaId = req.params.mediaId;
     const media = (await queryOne(db, 'SELECT id, is_main, is_private FROM media WHERE id = ? AND user_id = ?', [mediaId, req.auth!.userId])) as any;
@@ -3470,7 +3501,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/likes', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -3517,7 +3548,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.delete('/api/likes', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -3534,7 +3565,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/likes', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.enum(['post', 'user']),
+      targetType: z.enum(['post', 'user', 'photo']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });
@@ -3568,7 +3599,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.enum(['post', 'user']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
+    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -3609,7 +3640,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/comments', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.enum(['post', 'user']),
+      targetType: z.enum(['post', 'user', 'photo']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });

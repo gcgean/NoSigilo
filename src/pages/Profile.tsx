@@ -26,6 +26,7 @@ type PrivatePhotoAccessItem = {
   updatedAt?: string;
   requester: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
+const PROFILE_NOTIFICATIONS_PAGE_SIZE = 3;
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
@@ -36,10 +37,14 @@ function PhotoItem({
   photo,
   onSetMain,
   onDelete,
+  onToggleVisibility,
+  isTogglingVisibility,
 }: {
   photo: Photo;
   onSetMain: (id: string) => void;
   onDelete: (id: string) => void;
+  onToggleVisibility: (id: string, currentIsPrivate: boolean) => void;
+  isTogglingVisibility: boolean;
 }) {
   return (
     <div className="relative aspect-square rounded-xl overflow-hidden group">
@@ -60,7 +65,7 @@ function PhotoItem({
         </DialogContent>
       </Dialog>
       {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary">Principal</Badge>}
-      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+      <div className="absolute inset-0 bg-black/50 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
         <Button
           type="button"
           size="icon"
@@ -79,6 +84,19 @@ function PhotoItem({
         >
           <Trash2 className="w-4 h-4" />
         </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="text-white"
+          disabled={isTogglingVisibility}
+          onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}
+        >
+          {photo.isPrivate ? <Image className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+        </Button>
+      </div>
+      <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] text-white/90 sm:hidden">
+        {photo.isPrivate ? 'Foto privada • toque no cadeado para tornar pública' : 'Foto pública • toque na fechadura para tornar privada'}
       </div>
     </div>
   );
@@ -98,12 +116,14 @@ export default function Profile() {
   const [stats, setStats] = useState({ likes: 0, visits: 0, matches: 0 });
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsVisibleCount, setNotificationsVisibleCount] = useState(PROFILE_NOTIFICATIONS_PAGE_SIZE);
   const [busyNotifId, setBusyNotifId] = useState<string | null>(null);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [busyTestimonialId, setBusyTestimonialId] = useState<string | null>(null);
   const [privatePhotoRequests, setPrivatePhotoRequests] = useState<PrivatePhotoAccessItem[]>([]);
   const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
+  const [busyMediaVisibilityId, setBusyMediaVisibilityId] = useState<string | null>(null);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -157,6 +177,26 @@ export default function Profile() {
     const any = photos[0];
     return resolveMediaUrl(main?.url || any?.url || user?.avatar || '');
   }, [photos, user?.avatar]);
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter((n) => !n.isRead),
+    [notifications]
+  );
+
+  const visibleUnreadNotifications = useMemo(
+    () => unreadNotifications.slice(0, notificationsVisibleCount),
+    [notificationsVisibleCount, unreadNotifications]
+  );
+
+  const unreadNotificationsRemaining = Math.max(0, unreadNotifications.length - visibleUnreadNotifications.length);
+
+  useEffect(() => {
+    if (unreadNotifications.length === 0) {
+      setNotificationsVisibleCount(PROFILE_NOTIFICATIONS_PAGE_SIZE);
+      return;
+    }
+    setNotificationsVisibleCount((prev) => Math.min(Math.max(prev, PROFILE_NOTIFICATIONS_PAGE_SIZE), unreadNotifications.length));
+  }, [unreadNotifications.length]);
 
   const loadPhotos = async () => {
     setIsLoadingPhotos(true);
@@ -290,6 +330,9 @@ export default function Profile() {
       setIsUploading(true);
       const uploaded = await profileService.uploadMedia(file, { isPrivate: false });
       if (uploaded?.id) {
+        try {
+          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
+        } catch {}
         const resp = await profileService.setMainPhoto(String(uploaded.id));
         const nextAvatar = uploaded?.url ? resolveMediaUrl(String(uploaded.url)) : resp?.avatar ? resolveMediaUrl(String(resp.avatar)) : '';
         if (nextAvatar) updateUser({ avatar: nextAvatar });
@@ -332,6 +375,34 @@ export default function Profile() {
       toast({ title: 'Foto removida' });
     } catch {
       toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const handleToggleMediaVisibility = async (mediaId: string, currentIsPrivate: boolean) => {
+    setBusyMediaVisibilityId(mediaId);
+    try {
+      await profileService.updateMediaVisibility(mediaId, !currentIsPrivate);
+      await loadPhotos();
+      toast({
+        title: !currentIsPrivate ? 'Foto movida para privadas' : 'Foto movida para públicas',
+      });
+    } catch (e: any) {
+      const code = String(e?.response?.data?.error || '');
+      if (code === 'cannot_make_main_photo_private') {
+        toast({
+          title: 'Não foi possível mover',
+          description: 'A foto principal precisa ser pública. Troque a foto principal antes de mover para privadas.',
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: 'Falha ao atualizar foto',
+          description: e?.message || 'Tente novamente.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setBusyMediaVisibilityId(null);
     }
   };
 
@@ -551,11 +622,13 @@ export default function Profile() {
             </Link>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-primary mb-1">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-xl sm:text-2xl font-bold">{profileData.stats.matches}</span>
-            </div>
-            <p className="text-xs sm:text-sm text-muted-foreground">Matches</p>
+            <Link to="/notifications">
+              <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity">
+                <Sparkles className="w-4 h-4" />
+                <span className="text-xl sm:text-2xl font-bold">{profileData.stats.matches}</span>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground hover:underline">Matches</p>
+            </Link>
           </div>
         </div>
       </div>
@@ -574,7 +647,7 @@ export default function Profile() {
         </div>
       ) : null}
 
-      {notifications.some((n) => !n.isRead) ? (
+      {unreadNotifications.length > 0 ? (
         <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-lg font-semibold">Notificações</h2>
@@ -583,10 +656,7 @@ export default function Profile() {
             </NavLink>
           </div>
           <div className="space-y-3">
-            {notifications
-              .filter((n) => !n.isRead)
-              .slice(0, 5)
-              .map((n) => {
+            {visibleUnreadNotifications.map((n) => {
                 const isPrivateReq = n.type === 'private_photos.request';
                 return (
                   <div key={n.id} className="rounded-xl border p-4 bg-secondary/10">
@@ -613,6 +683,28 @@ export default function Profile() {
                 );
               })}
           </div>
+          {(unreadNotificationsRemaining > 0 || notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE) ? (
+            <div className="mt-3 flex items-center gap-2">
+              {unreadNotificationsRemaining > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setNotificationsVisibleCount((prev) => prev + PROFILE_NOTIFICATIONS_PAGE_SIZE)}
+                >
+                  Ver mais ({unreadNotificationsRemaining})
+                </Button>
+              ) : null}
+              {notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setNotificationsVisibleCount(PROFILE_NOTIFICATIONS_PAGE_SIZE)}
+                >
+                  Mostrar menos
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -713,6 +805,8 @@ export default function Profile() {
                 photo={photo}
                 onSetMain={handleSetMain}
                 onDelete={handleDelete}
+                onToggleVisibility={handleToggleMediaVisibility}
+                isTogglingVisibility={busyMediaVisibilityId === photo.id}
               />
             ))}
             
@@ -847,6 +941,8 @@ export default function Profile() {
                 photo={photo}
                 onSetMain={handleSetMain}
                 onDelete={handleDelete}
+                onToggleVisibility={handleToggleMediaVisibility}
+                isTogglingVisibility={busyMediaVisibilityId === photo.id}
               />
             ))}
 

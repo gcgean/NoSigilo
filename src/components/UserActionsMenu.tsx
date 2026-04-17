@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MoreHorizontal, Flag, Ban, UserX, Share2, Heart, Eye } from 'lucide-react';
+import { MoreHorizontal, Flag, Ban, UserX, Heart, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -52,11 +52,6 @@ export default function UserActionsMenu({
               Visitar Perfil
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem>
-            <Share2 className="w-4 h-4 mr-2" />
-            Compartilhar
-          </DropdownMenuItem>
-          
           <DropdownMenuSeparator />
           
           <DropdownMenuItem 

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService } from '@/services/api';
+import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
@@ -24,15 +25,81 @@ import { hasPremiumAccess } from '@/utils/premium';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
+type PhotoComment = { id: string; content: string; createdAt: string; user?: { id?: string; name?: string; avatar?: string | null } };
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
 }
 
-function PhotoItem({ url }: { url: string }) {
+function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: string; currentUserId?: string | null }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [likedByMe, setLikedByMe] = useState(false);
+  const [comments, setComments] = useState<PhotoComment[]>([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [isLoadingInteractions, setIsLoadingInteractions] = useState(false);
+  const [isSendingComment, setIsSendingComment] = useState(false);
+
+  const loadInteractions = async () => {
+    setIsLoadingInteractions(true);
+    try {
+      const [likes, commentsList] = await Promise.all([
+        interactionsService.getLikes('photo', photoId),
+        interactionsService.getComments('photo', photoId),
+      ]);
+      const likesArray = Array.isArray(likes) ? likes : [];
+      const commentsArray = Array.isArray(commentsList) ? commentsList : [];
+      setLikesCount(likesArray.length);
+      setLikedByMe(likesArray.some((l: any) => String(l?.user?.id || '') === String(currentUserId || '')));
+      setComments(commentsArray);
+    } catch {
+      toast({ title: 'Falha ao carregar interações da foto', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsLoadingInteractions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    void loadInteractions();
+  }, [open, photoId, currentUserId]);
+
+  const toggleLike = async () => {
+    const nextLiked = !likedByMe;
+    setLikedByMe(nextLiked);
+    setLikesCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
+    try {
+      if (nextLiked) {
+        await interactionsService.like('photo', photoId);
+      } else {
+        await interactionsService.unlike('photo', photoId);
+      }
+    } catch {
+      setLikedByMe(!nextLiked);
+      setLikesCount((prev) => Math.max(0, prev + (nextLiked ? -1 : 1)));
+      toast({ title: 'Falha ao curtir foto', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const sendComment = async () => {
+    const content = commentDraft.trim();
+    if (!content) return;
+    setIsSendingComment(true);
+    try {
+      await interactionsService.comment('photo', photoId, content);
+      setCommentDraft('');
+      await loadInteractions();
+    } catch {
+      toast({ title: 'Falha ao comentar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsSendingComment(false);
+    }
+  };
+
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <div className="relative aspect-square rounded-xl overflow-hidden cursor-zoom-in">
           <img
@@ -42,12 +109,62 @@ function PhotoItem({ url }: { url: string }) {
           />
         </div>
       </DialogTrigger>
-      <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
-        <img
-          src={resolveMediaUrl(url)}
-          alt=""
-          className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
-        />
+      <DialogContent className="max-h-[96dvh] max-w-[96vw] overflow-y-auto border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+        <div className="mx-auto w-full max-w-3xl">
+          <img
+            src={resolveMediaUrl(url)}
+            alt=""
+            className="block max-h-[70dvh] w-full rounded-xl object-contain"
+          />
+          <div className="mt-3 rounded-xl border border-white/10 bg-black/50 p-3 text-white">
+            <div className="mb-3 flex items-center gap-4">
+              <button
+                type="button"
+                className={cn('flex items-center gap-2 text-sm transition-colors', likedByMe ? 'text-primary' : 'text-white/85')}
+                onClick={() => void toggleLike()}
+              >
+                <Heart className={cn('h-4 w-4', likedByMe && 'fill-current')} />
+                {likesCount}
+              </button>
+              <div className="flex items-center gap-2 text-sm text-white/85">
+                <MessageCircle className="h-4 w-4" />
+                {comments.length}
+              </div>
+              {isLoadingInteractions ? <span className="text-xs text-white/60">Atualizando...</span> : null}
+            </div>
+
+            <div className="mb-3 max-h-40 space-y-2 overflow-y-auto pr-1">
+              {comments.length === 0 ? <p className="text-sm text-white/70">Sem comentários ainda.</p> : null}
+              {comments.map((c) => (
+                <div key={c.id} className="rounded-lg bg-white/5 p-2">
+                  <p className="text-xs font-semibold text-white">{String(c.user?.name || 'Usuário')}</p>
+                  <p className="text-sm text-white/85">{c.content}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={commentDraft}
+                onChange={(e) => setCommentDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void sendComment();
+                }}
+                placeholder="Comentar foto..."
+                className="border-white/15 bg-white/5 text-white placeholder:text-white/50"
+              />
+              <Button
+                type="button"
+                size="icon"
+                className="bg-gradient-primary hover:opacity-90"
+                disabled={isSendingComment || !commentDraft.trim()}
+                onClick={() => void sendComment()}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -174,6 +291,10 @@ export default function UserProfile() {
   }, [activeTab, userId]);
 
   const ageLabel = useMemo(() => buildProfileAgeLabel(profile), [profile]);
+  const sexualOptionsLabel = useMemo(() => {
+    if (!Array.isArray(profile?.lookingFor)) return '';
+    return profile.lookingFor.filter((x: unknown) => typeof x === 'string' && x.trim()).join(' • ');
+  }, [profile?.lookingFor]);
   const cityLine = useMemo(() => [profile?.city, profile?.state].filter(Boolean).join(', ') || '—', [profile?.city, profile?.state]);
   const avatarUrl = useMemo(() => resolveMediaUrl(profile?.avatar || ''), [profile?.avatar]);
 
@@ -285,9 +406,9 @@ export default function UserProfile() {
             />
           </div>
 
-          <div className="flex-1 text-center sm:text-left">
-            <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-              <h1 className="text-3xl font-bold">{profile?.name}</h1>
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <div className="mb-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <h1 className="max-w-full break-words text-2xl font-bold leading-tight sm:text-3xl">{profile?.name}</h1>
               {profile?.isVerified && (
                 <Badge className="bg-success text-white gap-1">
                   <Sparkles className="w-3 h-3" /> Verificado
@@ -314,13 +435,18 @@ export default function UserProfile() {
                     <span>{ageLabel}</span>
                   </>
                 ) : null}
-                {profile?.sexualOrientation ? (
-                  <>
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
-                    <span>{profile.sexualOrientation}</span>
-                  </>
-                ) : null}
-              </div>
+              {profile?.sexualOrientation ? (
+                <>
+                  <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                  <span>{profile.sexualOrientation}</span>
+                </>
+              ) : null}
+            </div>
+              {sexualOptionsLabel ? (
+                <div className="text-xs">
+                  <span className="font-medium">Opções sexuais:</span> {sexualOptionsLabel}
+                </div>
+              ) : null}
               {!profile?.isOnline && profile?.lastSeenAt && (
                 <div className="text-xs">
                   Visto por último em {format(new Date(profile.lastSeenAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
@@ -385,7 +511,7 @@ export default function UserProfile() {
         <TabsContent value="public">
           <div className="grid grid-cols-3 gap-3">
             {publicPhotos.map((photo) => (
-              <PhotoItem key={photo.id} url={photo.url} />
+              <PhotoItem key={photo.id} photoId={photo.id} url={photo.url} currentUserId={me?.id} />
             ))}
             {publicPhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos públicas.</div>}
           </div>
@@ -397,7 +523,7 @@ export default function UserProfile() {
               {isLoadingPrivate && <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingPrivate &&
                 privatePhotos.map((photo) => (
-                  <PhotoItem key={photo.id} url={photo.url} />
+                  <PhotoItem key={photo.id} photoId={photo.id} url={photo.url} currentUserId={me?.id} />
                 ))}
               {!isLoadingPrivate && privatePhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos privadas.</div>}
             </div>

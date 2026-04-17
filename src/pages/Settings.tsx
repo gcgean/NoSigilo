@@ -132,6 +132,11 @@ export default function Settings() {
       const uploaded = await profileService.uploadMedia(file, { isPrivate: false });
       const mediaId = uploaded?.id ? String(uploaded.id) : '';
       const url = uploaded?.url ? String(uploaded.url) : '';
+      if (mediaId) {
+        try {
+          await feedService.createPost({ content: '', mediaIds: [mediaId] });
+        } catch {}
+      }
       if (mediaId) await profileService.setMainPhoto(mediaId);
       if (url) updateUser({ avatar: resolveMediaUrl(url) });
       toast({ title: 'Foto de perfil atualizada' });

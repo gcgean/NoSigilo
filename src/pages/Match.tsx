@@ -159,13 +159,19 @@ export default function Match() {
   }, [currentProfile]);
 
   const handleSwipe = (direction: 'left' | 'right') => {
+    const swipedProfileId = currentProfile?.id ? String(currentProfile.id) : null;
     setSwipeDirection(direction);
     window.setTimeout(() => {
       setSwipeDirection(null);
-      setCurrentIndex((prev) => {
-        const next = profiles.length ? (prev + 1) % profiles.length : 0;
-        sessionStorage.setItem(CACHE_KEY_INDEX, String(next));
-        return next;
+      setProfiles((prev) => {
+        const nextProfiles = swipedProfileId ? prev.filter((p) => String(p.id) !== swipedProfileId) : prev;
+        sessionStorage.setItem(CACHE_KEY_PROFILES, JSON.stringify(nextProfiles));
+        setCurrentIndex((prevIndex) => {
+          const nextIndex = nextProfiles.length === 0 ? 0 : Math.min(prevIndex, nextProfiles.length - 1);
+          sessionStorage.setItem(CACHE_KEY_INDEX, String(nextIndex));
+          return nextIndex;
+        });
+        return nextProfiles;
       });
     }, 300);
   };
@@ -216,7 +222,17 @@ export default function Match() {
           <h1 className="text-2xl font-bold">Match</h1>
           <p className="text-muted-foreground">Encontre sua conexão</p>
         </div>
-        <Button variant="outline" size="icon" onClick={() => !premiumAccess && redirectToPlans()}>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => {
+            if (!premiumAccess) {
+              redirectToPlans();
+              return;
+            }
+            navigate('/search');
+          }}
+        >
           <Filter className="w-5 h-5" />
         </Button>
       </div>

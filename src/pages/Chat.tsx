@@ -18,6 +18,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
+import VideoWithPreview from '@/components/VideoWithPreview';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -570,7 +571,7 @@ export default function Chat() {
                               )
                             ) : (
                               msg.mediaMimeType?.startsWith('video/') ? (
-                                <video 
+                                <VideoWithPreview
                                   src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')} 
                                   controls
                                   className="max-h-60 w-auto rounded-lg"

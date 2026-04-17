@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, Share2, MoreHorizontal, X, Lock, Crown, Trash2, Star } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import VideoWithPreview from '@/components/VideoWithPreview';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
@@ -90,6 +91,8 @@ export default function Feed() {
   const currentTopPostIdRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
+  const [showFirstAccessPostHint, setShowFirstAccessPostHint] = useState(false);
+  const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
 
   const [feedFilter, setFeedFilter] = useState<'all' | 'favorites'>(() => {
     const v = localStorage.getItem('nosigilo_feed_filter');
@@ -159,6 +162,40 @@ export default function Feed() {
       composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 120);
   }, [firstAccessPostMode]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setShowFirstAccessPostHint(false);
+      setCheckedFirstAccessPostHint(true);
+      return;
+    }
+    if (!firstAccessPostMode) {
+      setShowFirstAccessPostHint(false);
+      setCheckedFirstAccessPostHint(true);
+      return;
+    }
+    const key = `nosigilo:first-access-flow:${user.id}`;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        setShowFirstAccessPostHint(false);
+      } else {
+        const flow = JSON.parse(raw) as { needsPost?: boolean };
+        setShowFirstAccessPostHint(Boolean(flow?.needsPost));
+      }
+    } catch {
+      setShowFirstAccessPostHint(false);
+    } finally {
+      setCheckedFirstAccessPostHint(true);
+    }
+  }, [firstAccessPostMode, user?.id, allPosts.length]);
+
+  useEffect(() => {
+    if (!firstAccessPostMode) return;
+    if (!checkedFirstAccessPostHint) return;
+    if (showFirstAccessPostHint) return;
+    navigate('/feed', { replace: true });
+  }, [checkedFirstAccessPostHint, firstAccessPostMode, navigate, showFirstAccessPostHint]);
 
   const loadMore = async () => {
     if (isLoading || isLoadingMoreRef.current || !hasMoreRef.current) return;
@@ -323,6 +360,7 @@ export default function Feed() {
     if (!content && attachments.length === 0) return;
     setIsPublishing(true);
     try {
+      let completedFirstPostStep = false;
       const mediaIds: string[] = [];
       for (const a of attachments) {
         if (a.file.type.startsWith('video/') && !premiumAccess) {
@@ -336,12 +374,12 @@ export default function Feed() {
       for (const a of attachmentsRef.current) URL.revokeObjectURL(a.url);
       setAttachments([]);
       setActivePicker(null);
-      toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
       if (user?.id) {
         const key = `nosigilo:first-access-flow:${user.id}`;
         try {
           const raw = localStorage.getItem(key);
           const flow = raw ? JSON.parse(raw) : {};
+          completedFirstPostStep = Boolean(flow?.needsPost);
           localStorage.setItem(
             key,
             JSON.stringify({
@@ -351,6 +389,7 @@ export default function Feed() {
             })
           );
         } catch {
+          completedFirstPostStep = false;
           localStorage.setItem(
             key,
             JSON.stringify({
@@ -360,6 +399,11 @@ export default function Feed() {
           );
         }
         window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
+      }
+      if (completedFirstPostStep) {
+        toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
+      } else {
+        toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
       }
       if (firstAccessPostMode) {
         navigate('/feed', { replace: true });
@@ -444,7 +488,7 @@ export default function Feed() {
         </div>
       ) : null}
 
-      {firstAccessPostMode ? (
+      {firstAccessPostMode && showFirstAccessPostHint ? (
         <div className="mb-4">
           <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/12 via-rose-500/10 to-orange-400/10 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -485,7 +529,7 @@ export default function Feed() {
                     {p.file.type.startsWith('video/') ? (
                       premiumAccess ? (
                         <div className="w-full" style={aspectStyleForKey(p.id)}>
-                          <video
+                          <VideoWithPreview
                             key={p.url}
                             src={p.url}
                             className="w-full h-full object-cover"
@@ -707,7 +751,7 @@ export default function Feed() {
                       {String(m.mimeType || '').startsWith('video/') ? (
                         premiumAccess ? (
                           <div className="w-full" style={aspectStyleForKey(m.id)}>
-                            <video
+                            <VideoWithPreview
                               src={resolveMediaUrl(m.url)}
                               className="w-full h-full object-cover"
                               controls
@@ -776,9 +820,6 @@ export default function Feed() {
                     <span className="text-sm font-medium">{post.commentsCount}</span>
                   </button>
                 </div>
-                <button className="text-muted-foreground hover:text-foreground transition-colors">
-                  <Share2 className="w-5 h-5" />
-                </button>
               </div>
 
               {openCommentsPostId === post.id && (

@@ -167,6 +167,11 @@ export const profileService = {
     return response.data;
   },
 
+  updateMediaVisibility: async (mediaId: string, isPrivate: boolean) => {
+    const response = await apiClient.patch(`/media/${mediaId}/visibility`, { isPrivate });
+    return response.data;
+  },
+
   deleteMedia: async (mediaId: string) => {
     const response = await apiClient.delete(`/media/${mediaId}`);
     return response.data;
