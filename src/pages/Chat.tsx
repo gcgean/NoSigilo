@@ -83,6 +83,11 @@ export default function Chat() {
     navigate('/subscriptions');
   };
 
+  const goToUserProfile = (userId?: string) => {
+    if (!userId) return;
+    navigate(`/users/${userId}`);
+  };
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -399,7 +404,16 @@ export default function Chat() {
               </div>
               <div className="flex-1 text-left">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium">{conversation.user.name}</span>
+                  <button
+                    type="button"
+                    className="font-medium hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      goToUserProfile(conversation.user.id);
+                    }}
+                  >
+                    {conversation.user.name}
+                  </button>
                   {conversation.unreadCount && conversation.unreadCount > 0 && (
                     <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 flex items-center justify-center rounded-full text-[10px] font-bold">
                       {conversation.unreadCount}
@@ -438,7 +452,13 @@ export default function Chat() {
               <UserAvatar user={selectedConversation?.user} />
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">{selectedConversation?.user.name}</h2>
+                  <button
+                    type="button"
+                    className="font-semibold hover:underline"
+                    onClick={() => goToUserProfile(selectedConversation?.user.id)}
+                  >
+                    {selectedConversation?.user.name}
+                  </button>
                   {!isConnected && (
                     <WifiOff
                       className="w-3 h-3 text-destructive animate-pulse"

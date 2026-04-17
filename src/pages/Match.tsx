@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock } from 'lucide-react';
+import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { matchService, notificationsService } from '@/services/api';
+import { chatService, matchService, notificationsService } from '@/services/api';
 import { calculateAge } from '@/utils/age';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSocket } from '@/contexts/SocketContext';
@@ -190,6 +190,25 @@ export default function Match() {
     handleSwipe('left');
   };
 
+  const handleOpenChat = async () => {
+    if (!currentProfile) return;
+    if (!premiumAccess) {
+      redirectToPlans();
+      return;
+    }
+
+    try {
+      const conversation = await chatService.createConversation(currentProfile.id);
+      navigate('/chat', { state: { conversationId: String(conversation?.id || '') } });
+    } catch {
+      toast({
+        title: 'Não foi possível abrir o chat',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="max-w-lg mx-auto w-full">
       <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
@@ -284,10 +303,14 @@ export default function Match() {
             <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
               <div className="flex items-end justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white mb-1 break-words">
+                  <button
+                    type="button"
+                    className="text-left text-2xl sm:text-3xl font-bold text-white mb-1 break-words hover:underline"
+                    onClick={() => navigate(`/users/${currentProfile.id}`)}
+                  >
                     {currentProfile.name}
                     {age !== null ? `, ${age}` : ''}
-                  </h2>
+                  </button>
                   {identityLine ? (
                     <div className="mb-3 text-sm text-white/80">{identityLine}</div>
                   ) : (
@@ -298,14 +321,24 @@ export default function Match() {
                   )}
                   <p className="text-white/90 text-sm line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
                   
-                  <Button 
-                    variant="secondary" 
-                    size="sm" 
-                    className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-md gap-2"
-                    onClick={() => navigate(`/users/${currentProfile.id}`)}
-                  >
-                    <User className="w-4 h-4" /> Ver Perfil
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-md gap-2"
+                      onClick={() => navigate(`/users/${currentProfile.id}`)}
+                    >
+                      <User className="w-4 h-4" /> Ver Perfil
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="bg-primary/80 hover:bg-primary text-white border-none backdrop-blur-md gap-2"
+                      onClick={() => void handleOpenChat()}
+                    >
+                      <MessageCircle className="w-4 h-4" /> Mandar msg
+                    </Button>
+                  </div>
                 </div>
 
                 <Popover>
@@ -349,7 +382,7 @@ export default function Match() {
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-4 gap-3 sm:flex sm:items-center sm:justify-center sm:gap-6">
+      <div className="mt-6 grid grid-cols-5 gap-3 sm:flex sm:items-center sm:justify-center sm:gap-6">
         <Button
           size="lg"
           variant="outline"
@@ -386,6 +419,16 @@ export default function Match() {
           disabled={!currentProfile && premiumAccess}
         >
           <User className="w-8 h-8" />
+        </Button>
+
+        <Button
+          size="lg"
+          variant="outline"
+          className="h-14 w-full rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16"
+          onClick={() => void handleOpenChat()}
+          disabled={!currentProfile && premiumAccess}
+        >
+          <MessageCircle className="w-8 h-8" />
         </Button>
 
         <Button

@@ -625,7 +625,13 @@ export default function Profile() {
               .slice(0, 10)
               .map((t) => (
                 <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
-                  <div className="font-medium mb-1">{t.author.name}</div>
+                  <button
+                    type="button"
+                    className="font-medium mb-1 hover:underline"
+                    onClick={() => navigate(`/users/${t.author.id}`)}
+                  >
+                    {t.author.name}
+                  </button>
                   {formatProfileIdentityLine(t.author) ? (
                     <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}</div>
                   ) : null}
@@ -760,7 +766,13 @@ export default function Profile() {
                             <div key={item.id} className="rounded-xl border p-3 bg-secondary/10">
                               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="font-medium">{item.requester.name}</div>
+                                  <button
+                                    type="button"
+                                    className="font-medium hover:underline"
+                                    onClick={() => navigate(`/users/${item.requester.id}`)}
+                                  >
+                                    {item.requester.name}
+                                  </button>
                                   <div className="text-sm text-muted-foreground">
                                     {formatProfileIdentityLine(item.requester) || 'Local não informado'}
                                   </div>
@@ -792,7 +804,13 @@ export default function Profile() {
                             <div key={item.id} className="rounded-xl border p-3 bg-secondary/10">
                               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                 <div className="min-w-0">
-                                  <div className="font-medium">{item.requester.name}</div>
+                                  <button
+                                    type="button"
+                                    className="font-medium hover:underline"
+                                    onClick={() => navigate(`/users/${item.requester.id}`)}
+                                  >
+                                    {item.requester.name}
+                                  </button>
                                   <div className="text-sm text-muted-foreground">
                                     {formatProfileIdentityLine(item.requester) || 'Local não informado'}
                                   </div>

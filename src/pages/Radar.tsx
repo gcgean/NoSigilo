@@ -600,7 +600,13 @@ export default function Radar() {
                                 )}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-medium">{delivery.viewer.name}</div>
+                                <button
+                                  type="button"
+                                  className="truncate text-left text-sm font-medium hover:underline"
+                                  onClick={() => navigate(`/users/${delivery.viewer.id}`)}
+                                >
+                                  {delivery.viewer.name}
+                                </button>
                                 <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(delivery.viewer) || 'Perfil da rede'}</div>
                               </div>
                               <div className="flex flex-wrap gap-1">
@@ -660,7 +666,13 @@ export default function Radar() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="font-medium">{item.sender.name}</div>
+                        <button
+                          type="button"
+                          className="text-left font-medium hover:underline"
+                          onClick={() => navigate(`/users/${item.sender.id}`)}
+                        >
+                          {item.sender.name}
+                        </button>
                         <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(item.sender) || `${item.city}, ${item.state}`}</div>
                         <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                           <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> ativo ha {formatElapsed(item.createdAt)}</span>

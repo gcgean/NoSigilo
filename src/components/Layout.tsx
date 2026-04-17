@@ -564,23 +564,6 @@ export default function Layout() {
                 )}
               </div>
             )}
-            <div className="mb-4 md:hidden">
-              <NavLink
-                to="/invites"
-                className="flex items-center gap-3 rounded-2xl bg-gradient-primary px-4 py-4 text-primary-foreground shadow-glow transition hover:opacity-95"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/16">
-                  <UserPlus className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="truncate text-sm font-semibold">Gerar/Gerenciar convites</p>
-                    <Badge className="shrink-0 bg-white/20 text-[10px] text-white">Novo</Badge>
-                  </div>
-                  <p className="truncate text-xs text-white/85">Crie links exclusivos e acompanhe quem entrou pela sua indicação.</p>
-                </div>
-              </NavLink>
-            </div>
             {showFirstAccessReward ? (
               <div className="mb-4">
                 <div className="relative overflow-hidden rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/12 via-lime-400/10 to-amber-400/12 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.12)]">
