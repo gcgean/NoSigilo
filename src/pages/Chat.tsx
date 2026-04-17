@@ -70,6 +70,7 @@ export default function Chat() {
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
@@ -94,6 +95,21 @@ export default function Chat() {
       scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
+  const adjustMessageInputHeight = () => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const lineHeight = 24;
+    const minHeight = lineHeight;
+    const maxHeight = lineHeight * 3;
+    const next = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
+    el.style.height = `${next}px`;
+  };
+
+  useEffect(() => {
+    adjustMessageInputHeight();
+  }, [message]);
 
   const unreadConversationsCount = useMemo(() => {
     return conversations.filter(c => (c.unreadCount || 0) > 0).length;
@@ -625,7 +641,7 @@ export default function Chat() {
           </ScrollArea>
 
           {/* Message Input */}
-          <div className="p-4 border-t glass">
+          <div className="sticky bottom-0 z-10 border-t bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:p-4">
             {!premiumAccess && (
               <button
                 type="button"
@@ -639,58 +655,72 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
-            <div className="flex items-center gap-2">
-              <input
+            <div className="rounded-2xl border border-border/70 bg-background p-2 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+              <div className="flex items-center gap-2">
+                <input
                 type="file"
                 ref={fileInputRef}
                 className="hidden"
                 accept="image/*"
                 onChange={handleImageUpload}
-              />
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
-                disabled={isUploading}
-              >
-                {isUploading ? (
-                  <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                ) : (
-                  <Image className="w-5 h-5" />
-                )}
-              </Button>
-
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="ghost" size="icon" disabled={!premiumAccess}>
-                    <Smile className="w-5 h-5" />
+                />
+                <div className="flex shrink-0 items-center gap-1 rounded-xl bg-muted/40 px-1 py-1 md:gap-0 md:bg-transparent md:px-0 md:py-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
+                    disabled={isUploading}
+                    className="h-10 w-10 rounded-xl md:h-9 md:w-9"
+                  >
+                    {isUploading ? (
+                      <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                    ) : (
+                      <Image className="w-5 h-5" />
+                    )}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent side="top" align="start" className="p-0 border-none w-auto">
-                  <EmojiPicker
-                    onEmojiClick={(emojiData) => setMessage(prev => prev + emojiData.emoji)}
-                    theme={Theme.LIGHT}
-                  />
-                </PopoverContent>
-              </Popover>
 
-              <Button 
-                variant={isViewOnceEnabled ? "secondary" : "ghost"} 
-                size="icon"
-                onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
-                className={cn(isViewOnceEnabled && "text-yellow-500")}
-                title="Visualização única"
-                disabled={!premiumAccess}
-              >
-                <Zap className="w-5 h-5" />
-              </Button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-10 w-10 rounded-xl md:h-9 md:w-9">
+                        <Smile className="w-5 h-5" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="start" className="p-0 border-none w-auto">
+                      <EmojiPicker
+                        onEmojiClick={(emojiData) => setMessage(prev => prev + emojiData.emoji)}
+                        theme={Theme.LIGHT}
+                      />
+                    </PopoverContent>
+                  </Popover>
 
-              <Input
+                  <Button
+                    variant={isViewOnceEnabled ? "secondary" : "ghost"}
+                    size="icon"
+                    onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
+                    className={cn("h-10 w-10 rounded-xl md:h-9 md:w-9", isViewOnceEnabled && "text-yellow-500")}
+                    title="Visualização única"
+                    disabled={!premiumAccess}
+                  >
+                    <Zap className="w-5 h-5" />
+                  </Button>
+                </div>
+
+              <textarea
+                ref={messageInputRef}
                 placeholder="Digite sua mensagem..."
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(message)}
-                className="flex-1"
+                onChange={(e) => {
+                  setMessage(e.target.value);
+                  adjustMessageInputHeight();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 768) {
+                    e.preventDefault();
+                    void handleSendMessage(message);
+                  }
+                }}
+                rows={1}
+                className="min-h-[48px] flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
                 disabled={!premiumAccess}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
@@ -698,13 +728,15 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="bg-gradient-primary hover:opacity-90"
+                className="h-12 w-12 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
                 <Send className="w-5 h-5" />
               </Button>
+              </div>
             </div>
+            <div className="h-[max(env(safe-area-inset-bottom),0px)] md:hidden" />
           </div>
         </div>
       ) : (
