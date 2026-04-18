@@ -396,27 +396,45 @@ export default function UserProfile() {
     }
     let cancelled = false;
     setIsLoading(true);
-    Promise.all([usersService.getUser(userId), usersService.getUserPhotos(userId, 'public'), usersService.getPrivatePhotosAccess(userId)])
-      .then(([u, photos, acc]) => {
+    void (async () => {
+      try {
+        const user = await usersService.getUser(userId);
         if (cancelled) return;
-        setProfile(u);
-        setPublicPhotos(Array.isArray(photos) ? photos : []);
-        setAccess(acc || { status: 'none' });
+
+        setProfile(user);
+
+        const [photosResult, accessResult] = await Promise.allSettled([
+          usersService.getUserPhotos(userId, 'public'),
+          usersService.getPrivatePhotosAccess(userId),
+        ]);
+
+        if (cancelled) return;
+
+        setPublicPhotos(
+          photosResult.status === 'fulfilled' && Array.isArray(photosResult.value)
+            ? photosResult.value
+            : []
+        );
+        setAccess(
+          accessResult.status === 'fulfilled' && accessResult.value
+            ? accessResult.value
+            : { status: 'none' }
+        );
+
         if (lastRegisteredVisitRef.current !== userId) {
           lastRegisteredVisitRef.current = userId;
           void usersService.registerVisit(userId).catch(() => {});
         }
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setProfile(null);
         setPublicPhotos([]);
         setAccess({ status: 'none' });
-      })
-      .finally(() => {
+      } finally {
         if (cancelled) return;
         setIsLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
