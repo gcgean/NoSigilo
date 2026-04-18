@@ -2092,12 +2092,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         (
           SELECT COUNT(*)
           FROM media m
-          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%'
+          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')
         ) as public_photos_count,
         (
           SELECT COUNT(*)
           FROM media m
-          WHERE m.user_id = u.id AND m.is_private = 1 AND m.mime_type LIKE 'image/%'
+          WHERE m.user_id = u.id AND m.is_private = 1 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')
         ) as private_photos_count,
         (
           SELECT COUNT(*)
@@ -2209,7 +2209,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       }
       const rows = await queryAll(
         db,
-        "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND is_private = 1 AND mime_type LIKE 'image/%' ORDER BY created_at DESC LIMIT 50",
+        "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND is_private = 1 AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 50",
         [ownerId]
       );
       res.json(
@@ -2227,7 +2227,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const rows = await queryAll(
       db,
-      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND is_private = 0 AND mime_type LIKE 'image/%' ORDER BY created_at DESC LIMIT 50",
+      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND is_private = 0 AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 50",
       [ownerId]
     );
     res.json(
@@ -2683,12 +2683,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         (
           SELECT COUNT(*)
           FROM media m
-          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%'
+          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')
         ) as photos_count,
         (
           SELECT COUNT(*)
           FROM media m
-          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'video/%'
+          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'video/%' AND (m.source IS NULL OR m.source != 'chat')
         ) as videos_count
       FROM users u
       WHERE ${whereClause}

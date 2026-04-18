@@ -88,7 +88,6 @@ export default function Feed() {
   const [postContent, setPostContent] = useState('');
   const [reelsOnly, setReelsOnly] = useState(false);
   const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
-  const [recentPhotos, setRecentPhotos] = useState<Array<{ id: string; url: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -166,12 +165,9 @@ export default function Feed() {
       setAllPosts(Array.isArray(feed?.posts) ? feed.posts : []);
       setPage(1);
       setHasMore(!!feed?.hasMore);
-      const photos = await feedService.getRecentPhotos();
-      setRecentPhotos(Array.isArray(photos) ? photos.map((p: any) => ({ id: p.id, url: resolveMediaUrl(String(p.url || '')) })) : []);
     } catch {
       toast({ title: 'Erro ao carregar feed', description: 'Tente novamente.', variant: 'destructive' });
       setAllPosts([]);
-      setRecentPhotos([]);
       setPage(1);
       setHasMore(false);
     } finally {
@@ -1135,65 +1131,6 @@ export default function Feed() {
 
         {/* Sidebar */}
         <div className="hidden md:block space-y-6">
-          {/* Recent Photos */}
-          <Card className="p-4 glass">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <Image className="w-4 h-4 text-primary" />
-              Fotos Recentes
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {recentPhotos.map((photo) => (
-                <div key={photo.id} className="group relative aspect-square rounded-lg overflow-hidden">
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <div className="h-full w-full cursor-zoom-in hover:opacity-80 transition-opacity">
-                        <img src={photo.url} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    </DialogTrigger>
-                    <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
-                      <DialogClose asChild>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="secondary"
-                          className="absolute right-3 top-3 z-[60] h-9 w-9 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
-                          aria-label="Fechar foto"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </DialogClose>
-                      <img
-                        src={photo.url}
-                        alt=""
-                        className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
-                      />
-                    </DialogContent>
-                  </Dialog>
-
-                  {/* Delete button — visible on hover */}
-                  <button
-                    type="button"
-                    aria-label="Apagar foto"
-                    className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100 hover:bg-destructive/90"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (!window.confirm('Apagar esta foto permanentemente?')) return;
-                      try {
-                        await profileService.deleteMedia(photo.id);
-                        setRecentPhotos((prev) => prev.filter((p) => p.id !== photo.id));
-                        toast({ title: 'Foto apagada' });
-                      } catch {
-                        toast({ title: 'Erro ao apagar foto', variant: 'destructive' });
-                      }
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </Card>
-
           {!premiumAccess && (
             <Card className="p-4 bg-gradient-to-br from-gold/20 to-primary/20 border-gold/30">
               <Badge className="bg-gold text-black mb-3">Premium</Badge>
