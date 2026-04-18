@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -354,7 +354,7 @@ export default function UserProfile() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'testimonials'>('public');
+  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'testimonials' | 'videos'>('public');
   const [profile, setProfile] = useState<any | null>(null);
   const [publicPhotos, setPublicPhotos] = useState<Photo[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<Photo[]>([]);
@@ -365,6 +365,9 @@ export default function UserProfile() {
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
+  const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
@@ -376,7 +379,7 @@ export default function UserProfile() {
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
     const tab = sp.get('tab');
-    if (tab === 'public' || tab === 'private' || tab === 'testimonials') setActiveTab(tab);
+    if (tab === 'public' || tab === 'private' || tab === 'testimonials' || tab === 'videos') setActiveTab(tab);
   }, [location.search]);
 
   useEffect(() => {
@@ -490,6 +493,40 @@ export default function UserProfile() {
     };
   }, [activeTab, userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    if (activeTab !== 'videos') return;
+    let cancelled = false;
+    setIsLoadingVideos(true);
+    usersService
+      .getUserPosts(userId, { videosOnly: true, limit: 30 })
+      .then((data) => {
+        if (cancelled) return;
+        const posts = Array.isArray(data?.posts) ? data.posts : [];
+        const videos = posts.flatMap((post) =>
+          (post.media || [])
+            .filter((m) => String(m.mimeType || '').startsWith('video/') && m.url)
+            .map((m) => ({
+              id: String(m.id),
+              postId: String(post.id),
+              url: resolveMediaUrl(m.url || ''),
+              content: String(post.content || ''),
+              createdAt: String(post.createdAt || ''),
+            }))
+        );
+        setUserVideos(videos);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUserVideos([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoadingVideos(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, userId]);
+
   const ageLabel = useMemo(() => buildProfileAgeLabel(profile), [profile]);
   const sexualOptionsLabel = useMemo(() => {
     if (!Array.isArray(profile?.lookingFor)) return '';
@@ -575,6 +612,7 @@ export default function UserProfile() {
       testimonials.filter((t) => String(t.status) === 'approved').length ??
       0
   );
+  const videosCount = Number(profile?.videosCount ?? userVideos.length ?? 0);
 
   if (!isSelf && !premiumAccess) {
     return (
@@ -693,18 +731,22 @@ export default function UserProfile() {
       />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
-        <TabsList className="w-full mb-4">
-          <TabsTrigger value="public" className="flex-1 gap-2">
-            <ImageIcon className="w-4 h-4" />
-            Públicas ({publicPhotosCount})
+        <TabsList className="w-full mb-4 flex flex-wrap gap-1 h-auto p-1">
+          <TabsTrigger value="public" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Públicas ({publicPhotosCount})</span>
           </TabsTrigger>
-          <TabsTrigger value="private" className="flex-1 gap-2">
-            <Lock className="w-4 h-4" />
-            Privadas ({privatePhotosCount})
+          <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Lock className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Privadas ({privatePhotosCount})</span>
           </TabsTrigger>
-          <TabsTrigger value="testimonials" className="flex-1 gap-2">
-            <Star className="w-4 h-4" />
-            Depoimentos ({testimonialsCount})
+          <TabsTrigger value="videos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Video className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Vídeos ({activeTab === 'videos' ? userVideos.length : videosCount})</span>
+          </TabsTrigger>
+          <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Star className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Depoimentos ({testimonialsCount})</span>
           </TabsTrigger>
         </TabsList>
 
@@ -740,6 +782,61 @@ export default function UserProfile() {
                 <Plus className="w-4 h-4" />
                 {access?.status === 'pending' ? 'Solicitação enviada' : 'Solicitar acesso'}
               </Button>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="videos">
+          {isLoadingVideos ? (
+            <div className="text-sm text-muted-foreground py-4">Carregando vídeos...</div>
+          ) : userVideos.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center">
+              <Video className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground text-sm">Nenhum vídeo publicado ainda.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {userVideos.map((video) => (
+                <div
+                  key={video.id}
+                  className="relative aspect-[9/16] rounded-xl overflow-hidden bg-black cursor-pointer group"
+                  onClick={() => setPlayingVideoId(playingVideoId === video.id ? null : video.id)}
+                >
+                  <video
+                    src={video.url}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    muted
+                    loop
+                    preload="metadata"
+                    ref={(el) => {
+                      if (!el) return;
+                      if (playingVideoId === video.id) {
+                        void el.play().catch(() => {});
+                      } else {
+                        el.pause();
+                        el.currentTime = 0;
+                      }
+                    }}
+                  />
+                  {/* Overlay gradient */}
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                  {/* Play icon when paused */}
+                  {playingVideoId !== video.id && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm group-hover:bg-black/70 transition">
+                        <Play className="h-6 w-6 translate-x-0.5 text-white" />
+                      </div>
+                    </div>
+                  )}
+                  {/* Caption */}
+                  {video.content ? (
+                    <p className="absolute bottom-2 left-2 right-2 line-clamp-2 text-xs text-white/90 leading-4">
+                      {video.content}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
             </div>
           )}
         </TabsContent>

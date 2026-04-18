@@ -2274,6 +2274,73 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
   });
 
+  app.get('/api/users/:userId/posts', requireAuth(env, db), async (req, res) => {
+    const ownerId = String(req.params.userId || '');
+    if (!ownerId) { res.status(400).json({ error: 'invalid_input' }); return; }
+
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const offset = (page - 1) * limit;
+    const videosOnly = req.query.videosOnly === 'true';
+
+    const rows = await queryAll(
+      db,
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json
+       FROM posts p
+       WHERE p.user_id = ?
+       ORDER BY p.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [ownerId, limit + 1, offset]
+    ) as any[];
+
+    const slice = rows.slice(0, limit);
+    const hasMore = rows.length > limit;
+
+    const mediaIdSet = new Set<string>();
+    const mediaIdsByPostId = new Map<string, string[]>();
+    for (const r of slice) {
+      const ids = Array.isArray(safeJsonParse(r.media_ids_json)) ? safeJsonParse(r.media_ids_json) : [];
+      const list = (ids as any[]).filter((x: any) => typeof x === 'string') as string[];
+      mediaIdsByPostId.set(String(r.id), list);
+      for (const mid of list) mediaIdSet.add(mid);
+    }
+
+    const mediaById = new Map<string, { id: string; url: string | null; mimeType: string | null }>();
+    if (mediaIdSet.size > 0) {
+      const mediaIds = Array.from(mediaIdSet);
+      const placeholders = mediaIds.map(() => '?').join(', ');
+      const mediaRows = await queryAll(
+        db,
+        `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${placeholders})`,
+        mediaIds
+      ) as any[];
+      for (const mr of mediaRows) {
+        mediaById.set(String(mr.id), {
+          id: String(mr.id),
+          url: `/uploads/${mr.filename}`,
+          mimeType: mr.mime_type ? String(mr.mime_type) : null,
+        });
+      }
+    }
+
+    const posts = slice
+      .map((r: any) => {
+        const media = (mediaIdsByPostId.get(String(r.id)) ?? [])
+          .map((mid) => mediaById.get(mid))
+          .filter(Boolean) as { id: string; url: string | null; mimeType: string | null }[];
+        if (videosOnly && !media.some((m) => String(m.mimeType || '').startsWith('video/'))) return null;
+        return {
+          id: r.id,
+          content: r.content,
+          createdAt: r.created_at,
+          media,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ posts, hasMore });
+  });
+
   app.post('/api/private-photos/requests', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const schema = z.object({ userId: z.string().min(1) });

@@ -389,6 +389,11 @@ export const usersService = {
     const response = await apiClient.get(`/users/${userId}/testimonials`, { params });
     return response.data;
   },
+
+  getUserPosts: async (userId: string, params?: { page?: number; limit?: number; videosOnly?: boolean }) => {
+    const response = await apiClient.get(`/users/${userId}/posts`, { params });
+    return response.data as { posts: Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>; hasMore: boolean };
+  },
 };
 
 export const privatePhotosService = {
