@@ -4,7 +4,11 @@
       "Bash(npm run:*)",
       "Bash(npm test:*)",
       "mcp__Claude_Preview__preview_start",
-      "Bash(find \"C:\\\\Projetos Web\\\\NoSigilo\\\\src\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"script\\\\|json-ld\\\\|@context\" {} \\\\;)"
+      "Bash(find \"C:\\\\Projetos Web\\\\NoSigilo\\\\src\" -type f \\\\\\( -name \"*.tsx\" -o -name \"*.ts\" \\\\\\) -exec grep -l \"script\\\\|json-ld\\\\|@context\" {} \\\\;)",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__computer",
+      "mcp__Claude_in_Chrome__read_console_messages"
     ]
   }
 }
