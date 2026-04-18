@@ -98,10 +98,17 @@ export default function Settings() {
     likes: true,
     matches: true,
     messages: true,
-    visits: true,
+    visits: user?.notificationVisits !== false,
     email: false,
     push: true,
   });
+
+  useEffect(() => {
+    setNotifications((prev) => ({
+      ...prev,
+      visits: user?.notificationVisits !== false,
+    }));
+  }, [user?.notificationVisits]);
 
   const handleSaveProfile = async () => {
     setIsLoading(true);
@@ -110,6 +117,19 @@ export default function Settings() {
       toast({ title: 'Perfil atualizado com sucesso!' });
     } catch {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    setIsLoading(true);
+    try {
+      await profileService.updateProfile({ notificationVisits: notifications.visits });
+      updateUser({ notificationVisits: notifications.visits });
+      toast({ title: 'Preferências de notificação atualizadas!' });
+    } catch {
+      toast({ title: 'Erro ao salvar notificações', variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -776,6 +796,16 @@ export default function Settings() {
                 onCheckedChange={(v) => setNotifications({ ...notifications, push: v })}
               />
             </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleSaveNotifications}
+              className="w-full sm:w-auto bg-gradient-primary hover:opacity-90"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Salvando...' : 'Salvar preferências'}
+            </Button>
           </div>
         </TabsContent>
 

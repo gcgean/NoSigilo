@@ -368,6 +368,7 @@ export default function UserProfile() {
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const lastRegisteredVisitRef = useRef<string | null>(null);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
   const premiumAccess = hasPremiumAccess(me);
@@ -401,6 +402,10 @@ export default function UserProfile() {
         setProfile(u);
         setPublicPhotos(Array.isArray(photos) ? photos : []);
         setAccess(acc || { status: 'none' });
+        if (lastRegisteredVisitRef.current !== userId) {
+          lastRegisteredVisitRef.current = userId;
+          void usersService.registerVisit(userId).catch(() => {});
+        }
       })
       .catch(() => {
         if (cancelled) return;

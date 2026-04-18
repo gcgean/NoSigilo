@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, Eye, User } from 'lucide-react';
+import { ArrowLeft, Clock3, Crown, Eye, User, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { profileService } from '@/services/api';
@@ -14,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 type Visitor = {
   id: string;
   createdAt: string;
+  visitsCount?: number;
   visitor: {
     id: string;
     name: string;
@@ -27,6 +29,11 @@ export default function ProfileVisitors() {
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const isPremium = hasPremiumAccess(user);
+  const totalVisits = useMemo(
+    () => visitors.reduce((acc, item) => acc + Number(item.visitsCount || 1), 0),
+    [visitors]
+  );
+  const latestVisit = visitors[0] || null;
 
   useEffect(() => {
     if (!isPremium) {
@@ -85,6 +92,40 @@ export default function ProfileVisitors() {
         <h1 className="text-2xl font-bold">Quem visitou seu perfil</h1>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2 mb-6">
+        <Card className="glass border-primary/15 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Visitantes recentes</p>
+              <p className="mt-1 text-3xl font-bold text-primary">{visitors.length}</p>
+              <p className="mt-2 text-sm text-muted-foreground">Pessoas diferentes que passaram pelo seu perfil.</p>
+            </div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+        </Card>
+
+        <Card className="glass border-border/70 p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Última atividade</p>
+              <p className="mt-1 text-base font-semibold">
+                {latestVisit ? latestVisit.visitor.name : 'Sem visitas recentes'}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {latestVisit
+                  ? `Última visita em ${format(new Date(latestVisit.createdAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}`
+                  : 'Quando alguém visitar seu perfil, o resumo aparece aqui.'}
+              </p>
+            </div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-secondary text-muted-foreground">
+              <Clock3 className="w-5 h-5" />
+            </div>
+          </div>
+        </Card>
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Carregando visitantes...</div>
       ) : visitors.length === 0 ? (
@@ -104,8 +145,13 @@ export default function ProfileVisitors() {
                 <div>
                   <h3 className="font-semibold">{v.visitor.name}</h3>
                   <p className="text-xs text-muted-foreground">
-                    Visitou em {format(new Date(v.createdAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                    Última visita em {format(new Date(v.createdAt), "dd 'de' MMMM 'às' HH:mm", { locale: ptBR })}
                   </p>
+                  {Number(v.visitsCount || 1) > 1 ? (
+                    <Badge variant="secondary" className="mt-2">
+                      {Number(v.visitsCount)} visitas
+                    </Badge>
+                  ) : null}
                 </div>
               </NavLink>
               <NavLink to={`/users/${v.visitor.id}`}>
@@ -118,6 +164,12 @@ export default function ProfileVisitors() {
           ))}
         </div>
       )}
+
+      {!isLoading && visitors.length > 0 ? (
+        <p className="mt-4 text-center text-xs text-muted-foreground">
+          Total de visitas registradas no período exibido: {totalVisits}
+        </p>
+      ) : null}
     </div>
   );
 }

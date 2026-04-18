@@ -633,6 +633,124 @@ describe('nosigilo backend', () => {
     expect(viewerNotifsAfterRevoke.body.some((n: any) => n.type === 'private_photos.revoked')).toBe(true);
   });
 
+  it('profile visits generate notification for visited user', async () => {
+    const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Visitado',
+      email: 'perfil-visitado@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const ownerToken = ownerReg.token;
+    const ownerId = ownerReg.user.id as string;
+
+    const visitorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Visitante Perfil',
+      email: 'visitante-perfil@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const visitorToken = visitorReg.token;
+    const visitorId = visitorReg.user.id as string;
+
+    await request(ctx.app)
+      .post(`/api/users/${ownerId}/visit`)
+      .set('Authorization', `Bearer ${visitorToken}`)
+      .expect(200);
+
+    const ownerNotifs = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    const visitNotif = ownerNotifs.body.find((n: any) => n.type === 'profile.visited');
+    expect(visitNotif).toBeTruthy();
+    expect(visitNotif.data?.actorId).toBe(visitorId);
+    expect(visitNotif.data?.actorName).toBe('Visitante Perfil');
+    expect(String(visitNotif.description || '')).toContain('Visitante Perfil');
+
+    const visitorNotifs = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${visitorToken}`)
+      .expect(200);
+    expect(visitorNotifs.body.some((n: any) => n.type === 'profile.visited')).toBe(false);
+  });
+
+  it('profile visit notifications respect cooldown and user settings', async () => {
+    const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dono Visitas',
+      email: 'dono-visitas@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const ownerToken = ownerReg.token;
+    const ownerId = ownerReg.user.id as string;
+
+    const visitorOneReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Visitante Um',
+      email: 'visitante-um@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const visitorOneToken = visitorOneReg.token;
+    const visitorOneId = visitorOneReg.user.id as string;
+
+    await request(ctx.app)
+      .post(`/api/users/${ownerId}/visit`)
+      .set('Authorization', `Bearer ${visitorOneToken}`)
+      .expect(200);
+
+    await request(ctx.app)
+      .post(`/api/users/${ownerId}/visit`)
+      .set('Authorization', `Bearer ${visitorOneToken}`)
+      .expect(200);
+
+    const ownerNotifsAfterCooldownCheck = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+
+    const visitNotifsFromVisitorOne = ownerNotifsAfterCooldownCheck.body.filter(
+      (n: any) => n.type === 'profile.visited' && n.data?.actorId === visitorOneId
+    );
+    expect(visitNotifsFromVisitorOne).toHaveLength(1);
+
+    const visits = await request(ctx.app)
+      .get('/api/profile/visits')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const groupedVisit = visits.body.find((item: any) => item.visitor?.id === visitorOneId);
+    expect(groupedVisit).toBeTruthy();
+    expect(groupedVisit.visitsCount).toBe(2);
+
+    await request(ctx.app)
+      .put('/api/profile')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({ notificationVisits: false })
+      .expect(200);
+
+    const visitorTwoReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Visitante Dois',
+      email: 'visitante-dois@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const visitorTwoToken = visitorTwoReg.token;
+    const visitorTwoId = visitorTwoReg.user.id as string;
+
+    await request(ctx.app)
+      .post(`/api/users/${ownerId}/visit`)
+      .set('Authorization', `Bearer ${visitorTwoToken}`)
+      .expect(200);
+
+    const ownerNotifsWithDisabledSetting = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    expect(
+      ownerNotifsWithDisabledSetting.body.some((n: any) => n.type === 'profile.visited' && n.data?.actorId === visitorTwoId)
+    ).toBe(false);
+  });
+
   it('friends requests persist and can be read', async () => {
     const regA = await registerInvitedUser(ctx, sponsorToken, { name: 'A2', email: 'a2@example.com', password: 'senha123', gender: 'Homem' });
     const tokenA = regA.token;

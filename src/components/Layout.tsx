@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
@@ -134,6 +134,20 @@ export default function Layout() {
   const trialDaysLeft =
     trialEnds !== null ? Math.ceil((trialEnds - clockNow) / (1000 * 60 * 60 * 24)) : null;
   const firstAccessRewardKey = user?.id ? `nosigilo:first-access-reward:${user.id}` : null;
+  const refreshUnread = useCallback(async () => {
+    try {
+      const [notifs, chatUnread] = await Promise.all([
+        notificationsService.getNotifications(),
+        chatService.getUnreadCount()
+      ]);
+      const unread = Array.isArray(notifs) ? notifs.filter((n: any) => !n?.isRead) : [];
+      setUnreadCount(unread.length);
+      setUnreadMessagesCount(chatUnread.messagesCount || 0);
+      setUnreadConversationsCount(chatUnread.conversationsCount || 0);
+      setHasUnreadMatch(unread.some((n: any) => n.type === 'profile.liked'));
+    } catch {}
+  }, []);
+
   const accessCountdown = useMemo(() => {
     if (!user) return null;
     if (!subscriptionsEnabled) return null;
@@ -293,7 +307,7 @@ export default function Layout() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    const refreshUnread = async () => {
+    const refreshUnreadSafe = async () => {
       try {
         const [notifs, chatUnread] = await Promise.all([
           notificationsService.getNotifications(),
@@ -308,13 +322,22 @@ export default function Layout() {
         }
       } catch {}
     };
-    void refreshUnread();
-    const intervalId = window.setInterval(() => void refreshUnread(), 20000);
+    void refreshUnreadSafe();
+    const intervalId = window.setInterval(() => void refreshUnreadSafe(), 20000);
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
   }, [user?.id]);
+
+  const handleNotificationsBellClick = useCallback(() => {
+    if (unreadCount <= 0) return;
+    setUnreadCount(0);
+    setHasUnreadMatch(false);
+    void notificationsService.markAllAsRead().catch(() => {
+      void refreshUnread();
+    });
+  }, [refreshUnread, unreadCount]);
 
   useEffect(() => {
     if (!socket || !user) return;
@@ -444,7 +467,7 @@ export default function Layout() {
           </NavLink>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
-            <NavLink to="/notifications">
+            <NavLink to="/notifications" onClick={handleNotificationsBellClick}>
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full sm:h-10 sm:w-10">
                 <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                 {unreadCount > 0 ? (

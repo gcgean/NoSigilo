@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN notification_visits INTEGER NOT NULL DEFAULT 1;

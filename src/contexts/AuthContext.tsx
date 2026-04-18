@@ -40,6 +40,7 @@ export interface User {
   hubAccessReason?: string | null;
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
+  notificationVisits?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -312,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'zodiacSign',
           'lookingFor',
           'allowMessages',
+          'notificationVisits',
           'billingDocument',
           'billingLegalName',
           'billingPersonType',

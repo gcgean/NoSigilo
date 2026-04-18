@@ -80,6 +80,7 @@ export type PublicUser = {
   hubAccessReason?: string | null;
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
+  notificationVisits?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -133,6 +134,8 @@ const ADMIN_EMAILS = getAdminEmails();
 function nowIso() {
   return new Date().toISOString();
 }
+
+const PROFILE_VISIT_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
 function addMinutesIso(iso: string, minutes: number) {
   const d = new Date(iso);
@@ -760,6 +763,7 @@ function rowToPublicUser(
     hubAccessReason: row.hub_access_reason ?? null,
     hubLicenseEndAt: row.hub_license_end_at ?? null,
     hubBanner: row.hub_banner ?? null,
+    notificationVisits: row.notification_visits == null ? true : !!row.notification_visits,
     subscriptionsEnabled: options?.subscriptionsEnabled ?? true,
     ...(options?.showEmail
       ? {
@@ -1961,6 +1965,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         zodiacSign: z.string().max(50).optional().nullable(),
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
+        notificationVisits: z.boolean().optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
         billingLegalName: z.string().max(120).optional().nullable(),
         billingPersonType: z.enum(['PF', 'PJ']).optional().nullable(),
@@ -2005,6 +2010,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       profession: 'profession',
       zodiacSign: 'zodiac_sign',
       allowMessages: 'allow_messages',
+      notificationVisits: 'notification_visits',
       billingDocument: 'billing_document',
       billingLegalName: 'billing_legal_name',
       billingPersonType: 'billing_person_type',
@@ -2080,11 +2086,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await queryAll(
       db,
       `
-      SELECT v.id, v.created_at, u.id as visitor_id, u.name as visitor_name, u.avatar as visitor_avatar
+      SELECT
+        MIN(v.id) as id,
+        MAX(v.created_at) as created_at,
+        COUNT(*) as visits_count,
+        u.id as visitor_id,
+        u.name as visitor_name,
+        u.avatar as visitor_avatar
       FROM profile_visits v
       JOIN users u ON u.id = v.visitor_user_id
       WHERE v.visited_user_id = ?
-      ORDER BY v.created_at DESC
+      GROUP BY u.id, u.name, u.avatar
+      ORDER BY MAX(v.created_at) DESC
       LIMIT 50
     `,
       [req.auth!.userId]
@@ -2093,6 +2106,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       rows.map((r: any) => ({
         id: r.id,
         createdAt: r.created_at,
+        visitsCount: Number(r.visits_count || 1),
         visitor: { id: r.visitor_id, name: r.visitor_name, avatar: r.visitor_avatar },
       }))
     );
@@ -4262,23 +4276,57 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/users/:targetUserId/visit', requireAuth(env, db), async (req, res) => {
+    const io = req.app.get('io') as SocketIOServer | undefined;
     const targetUserId = String(req.params.targetUserId || '');
     // Don't record self-visits
     if (targetUserId === req.auth!.userId) {
       res.json({ ok: true });
       return;
     }
-    const targetExists = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [targetUserId]);
+    const [targetExists, visitor, lastVisit] = await Promise.all([
+      queryOne(db, 'SELECT id, notification_visits FROM users WHERE id = ?', [targetUserId]),
+      queryOne(db, 'SELECT id, name, avatar FROM users WHERE id = ? LIMIT 1', [req.auth!.userId]),
+      queryOne(
+        db,
+        'SELECT created_at FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id = ? ORDER BY created_at DESC LIMIT 1',
+        [req.auth!.userId, targetUserId]
+      ),
+    ]);
     if (!targetExists) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    const createdAt = nowIso();
     await run(db, 'INSERT INTO profile_visits (id, visitor_user_id, visited_user_id, created_at) VALUES (?, ?, ?, ?)', [
       randomUUID(),
       req.auth!.userId,
       targetUserId,
-      nowIso(),
+      createdAt,
     ]);
+
+    const targetAllowsVisitNotifications =
+      (targetExists as any)?.notification_visits == null ? true : !!(targetExists as any).notification_visits;
+    const lastVisitAtMs = (lastVisit as any)?.created_at ? new Date(String((lastVisit as any).created_at)).getTime() : NaN;
+    const cooldownActive =
+      Number.isFinite(lastVisitAtMs) && Date.now() - lastVisitAtMs < PROFILE_VISIT_NOTIFICATION_COOLDOWN_MS;
+
+    if (targetAllowsVisitNotifications && !cooldownActive) {
+      await createNotification(
+        { db, io },
+        {
+          userId: targetUserId,
+          type: 'profile.visited',
+          title: 'Visitaram seu perfil',
+          description: `${String((visitor as any)?.name || 'Alguém')} visitou seu perfil.`,
+          dataJson: {
+            actorId: req.auth!.userId,
+            actorName: String((visitor as any)?.name || 'Alguém'),
+            actorAvatar: (visitor as any)?.avatar ? String((visitor as any).avatar) : null,
+            visitedAt: createdAt,
+          },
+        }
+      );
+    }
     await persist();
     res.json({ ok: true });
   });

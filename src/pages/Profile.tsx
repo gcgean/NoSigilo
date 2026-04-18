@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,7 +19,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
-type ProfileVisitItem = { id: string; createdAt: string; visitor: { id: string; name: string; avatar?: string | null } };
+type ProfileVisitItem = { id: string; createdAt: string; visitsCount?: number; visitor: { id: string; name: string; avatar?: string | null } };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PrivatePhotoAccessItem = {
   id: string;
@@ -32,6 +33,18 @@ const PROFILE_NOTIFICATIONS_PAGE_SIZE = 3;
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
+}
+
+function visitTimeAgo(iso: string) {
+  const time = new Date(iso).getTime();
+  if (Number.isNaN(time)) return 'Agora há pouco';
+  const diffMinutes = Math.max(0, Math.floor((Date.now() - time) / 60000));
+  if (diffMinutes < 1) return 'Agora há pouco';
+  if (diffMinutes < 60) return `Há ${diffMinutes} min`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `Há ${diffHours} h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Há ${diffDays} d`;
 }
 
 function PhotoItem({
@@ -686,30 +699,73 @@ export default function Profile() {
           </div>
           {profileVisits.length > 0 ? (
             <div className="mb-4 space-y-3">
-              {profileVisits.slice(0, 3).map((visit) => (
-                <div key={visit.id} className="rounded-xl border p-4 bg-secondary/10">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="font-medium">Novo visitante no perfil</div>
-                      <div className="text-sm text-muted-foreground">
-                        {visit.visitor?.name || 'Alguém'} visitou seu perfil.
+              <div className="rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 via-rose-500/6 to-orange-400/8 p-4 sm:p-5">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+                  <div>
+                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Últimos visitantes</div>
+                    <div className="text-sm text-muted-foreground">As 3 pessoas mais recentes que passaram pelo seu perfil.</div>
+                  </div>
+                  <Badge className="w-fit bg-primary/12 text-primary border border-primary/20">
+                    {profileVisits.length} visitante{profileVisits.length > 1 ? 's' : ''}
+                  </Badge>
+                </div>
+
+                <div className="space-y-3">
+                  {profileVisits.slice(0, 3).map((visit, index) => (
+                    <div
+                      key={visit.id}
+                      className="rounded-2xl border border-white/60 bg-background/90 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative shrink-0">
+                            <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
+                              <AvatarImage src={visit.visitor?.avatar ? resolveServerUrl(visit.visitor.avatar) : undefined} />
+                              <AvatarFallback>{String(visit.visitor?.name || 'U')[0].toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gradient-primary px-1 text-[10px] font-bold text-white shadow-glow">
+                              {index + 1}
+                            </span>
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-semibold">{visit.visitor?.name || 'Alguém'}</p>
+                              <Badge variant="secondary" className="bg-secondary/80 text-[10px]">
+                                {visitTimeAgo(visit.createdAt)}
+                              </Badge>
+                              {Number(visit.visitsCount || 1) > 1 ? (
+                                <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
+                                  {Number(visit.visitsCount)} visitas
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Visitou seu perfil recentemente. Toque para ver o perfil e continuar a conversa.
+                            </p>
+                          </div>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          className="self-stretch sm:self-auto bg-gradient-primary hover:opacity-90"
+                          onClick={() => navigate(`/users/${visit.visitor.id}`)}
+                        >
+                          Ver visitante
+                        </Button>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="self-stretch sm:self-auto"
-                      onClick={() => navigate(`/users/${visit.visitor.id}`)}
-                    >
-                      Ver visitante
-                    </Button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+
+                <div className="mt-4 flex justify-end">
+                  <Button size="sm" variant="ghost" onClick={() => navigate('/profile/visitors')}>
+                    Ver histórico completo
+                  </Button>
+                </div>
+              </div>
               <div className="flex justify-end">
-                <Button size="sm" variant="ghost" onClick={() => navigate('/profile/visitors')}>
-                  Ver histórico de visitas
-                </Button>
+                <span className="text-xs text-muted-foreground">Atualizado com os visitantes mais recentes.</span>
               </div>
             </div>
           ) : null}
