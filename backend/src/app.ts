@@ -1495,6 +1495,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
+    // Auto-reactivate deactivated profile on successful login
+    if (Number(row.is_deactivated || 0) === 1) {
+      await run(db, 'UPDATE users SET is_deactivated = 0, deactivated_at = NULL WHERE id = ?', [String(row.id)]);
+      await persist();
+    }
     if (shouldUseHubBilling(env)) {
       try {
         const hubResult = String(row.hub_customer_id || '').trim()
@@ -1715,14 +1720,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const page = Number(req.query.page || 1);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
+    const includeReelsOnly = req.query.includeReelsOnly === 'true';
+    const reelsOnlyFilter = includeReelsOnly ? '' : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
     const rows = await queryAll(
       db,
       `
-      SELECT p.id, p.content, p.created_at, p.media_ids_json,
+      SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
         u.id as author_id, u.name as author_name, u.avatar as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state
       FROM posts p
       JOIN users u ON u.id = p.user_id
+      WHERE 1=1 ${reelsOnlyFilter}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `,
@@ -1813,7 +1821,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ content: z.string().max(5000).optional(), mediaIds: z.array(z.string()).max(10).optional() });
+    const schema = z.object({
+      content: z.string().max(5000).optional(),
+      mediaIds: z.array(z.string()).max(10).optional(),
+      reelsOnly: z.boolean().optional(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -1821,16 +1833,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     const content = String(parsed.data.content || '').trim();
     const mediaIds = Array.isArray(parsed.data.mediaIds) ? parsed.data.mediaIds.filter((v) => typeof v === 'string') : [];
+    const isReelsOnly = parsed.data.reelsOnly === true ? 1 : 0;
     if (content.length === 0 && mediaIds.length === 0) {
       res.status(400).json({ error: 'empty_post' });
       return;
     }
     const id = randomUUID();
-    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)', [
+    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       content,
       mediaIds.length > 0 ? JSON.stringify(mediaIds) : null,
+      isReelsOnly,
       nowIso(),
     ]);
     await persist();
@@ -2001,6 +2015,32 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
+  });
+
+  // Deactivate profile
+  app.put('/api/profile/deactivate', requireAuth(env, db), async (req, res) => {
+    try {
+      const userId = req.auth!.userId;
+      await run(db, 'UPDATE users SET is_deactivated = 1, deactivated_at = ? WHERE id = ?', [nowIso(), userId]);
+      await persist();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[profile/deactivate]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Reactivate profile
+  app.put('/api/profile/reactivate', requireAuth(env, db), async (req, res) => {
+    try {
+      const userId = req.auth!.userId;
+      await run(db, 'UPDATE users SET is_deactivated = 0, deactivated_at = NULL WHERE id = ?', [userId]);
+      await persist();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[profile/reactivate]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.get('/api/profile/visits', requireAuth(env, db), async (req, res) => {
@@ -2534,13 +2574,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const orderBy = orderParts.length > 0 ? `${orderParts.join(', ')}, created_at DESC` : 'created_at DESC';
       rows = await queryAll(
         db,
-        `SELECT * FROM users WHERE is_admin = 0 AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 12`,
+        `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 12`,
         params
       );
     }
 
     if (rows.length === 0) {
-      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 ORDER BY ${baseAudienceRankingSql('gender')}, created_at DESC LIMIT 12`);
+      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) ORDER BY ${baseAudienceRankingSql('gender')}, created_at DESC LIMIT 12`);
     }
 
     res.json(rows.map((row) => rowToPublicUser(row)));

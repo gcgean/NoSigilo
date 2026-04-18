@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { 
-  User, Lock, Bell, Eye, Shield, Globe, Moon, LogOut, 
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus
+import {
+  User, Lock, Bell, Eye, Shield, Globe, Moon, LogOut,
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { feedService, profileService } from '@/services/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { CitySearch } from '@/components/CitySearch';
 import { resolveServerUrl } from '@/utils/serverUrl';
 
@@ -158,6 +169,24 @@ export default function Settings() {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const [isDeactivating, setIsDeactivating] = useState(false);
+
+  const handleDeactivateProfile = async () => {
+    setIsDeactivating(true);
+    try {
+      await profileService.deactivateProfile();
+      toast({
+        title: 'Perfil desativado',
+        description: 'Seu perfil foi ocultado. Para reativar, basta fazer login novamente.',
+      });
+      logout();
+    } catch {
+      toast({ title: 'Erro ao desativar perfil', variant: 'destructive' });
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
@@ -810,19 +839,71 @@ export default function Settings() {
             </Button>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-4 border-destructive/30">
+          <div className="glass rounded-xl p-6 space-y-6 border border-destructive/20">
             <h3 className="font-semibold text-destructive">Zona de Perigo</h3>
-            <p className="text-sm text-muted-foreground">
-              Ao excluir sua conta, todos os seus dados serão permanentemente removidos.
-            </p>
-            <Button 
-              variant="destructive" 
-              onClick={handleDeleteAccount}
-              className="gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Excluir Minha Conta
-            </Button>
+
+            {/* Deactivate profile */}
+            <div className="space-y-3 pb-5 border-b border-border/50">
+              <div>
+                <p className="font-medium">Desativar perfil</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Seu perfil ficará oculto para outros usuários enquanto estiver desativado. Suas conversas, fotos e dados são preservados. Para reativar, basta fazer login novamente.
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-orange-400/40 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
+                    disabled={isDeactivating}
+                  >
+                    <EyeOff className="w-4 h-4" />
+                    {isDeactivating ? 'Desativando...' : 'Desativar Perfil'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Desativar seu perfil?</AlertDialogTitle>
+                    <AlertDialogDescription className="space-y-2">
+                      <span className="block">Enquanto desativado, seu perfil:</span>
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        <li>Não aparece nas buscas e no feed de outros usuários</li>
+                        <li>Não recebe novas mensagens</li>
+                        <li>Tem fotos e dados preservados</li>
+                      </ul>
+                      <span className="block mt-2 font-medium text-foreground">Para reativar, basta fazer login novamente.</span>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeactivateProfile}
+                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                    >
+                      Sim, desativar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+
+            {/* Delete account */}
+            <div className="space-y-3">
+              <div>
+                <p className="font-medium">Excluir conta</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Ao excluir sua conta, todos os seus dados serão permanentemente removidos e não poderão ser recuperados.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteAccount}
+                className="gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Excluir Minha Conta
+              </Button>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

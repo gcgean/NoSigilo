@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -85,6 +86,7 @@ export default function Feed() {
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const premiumAccess = hasPremiumAccess(user);
   const [postContent, setPostContent] = useState('');
+  const [reelsOnly, setReelsOnly] = useState(false);
   const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
   const [recentPhotos, setRecentPhotos] = useState<Array<{ id: string; url: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -377,7 +379,12 @@ export default function Feed() {
     setAttachments((prev) => {
       const removed = prev[idx];
       if (removed) URL.revokeObjectURL(removed.url);
-      return prev.filter((_, i) => i !== idx);
+      const next = prev.filter((_, i) => i !== idx);
+      // Reset reels toggle if no more videos
+      if (!next.some((a) => a.file.type.startsWith('video/'))) {
+        setReelsOnly(false);
+      }
+      return next;
     });
   };
 
@@ -395,8 +402,11 @@ export default function Feed() {
         const uploaded = await profileService.uploadMedia(a.file);
         if (uploaded?.id) mediaIds.push(String(uploaded.id));
       }
-      await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined });
+      const hasVideo = attachments.some((a) => a.file.type.startsWith('video/'));
+      const wasReelsOnly = hasVideo && reelsOnly;
+      await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
       setPostContent('');
+      setReelsOnly(false);
       for (const a of attachmentsRef.current) URL.revokeObjectURL(a.url);
       setAttachments([]);
       setActivePicker(null);
@@ -428,6 +438,8 @@ export default function Feed() {
       }
       if (completedFirstPostStep) {
         toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
+      } else if (wasReelsOnly) {
+        toast({ title: 'Vídeo publicado', description: 'Seu vídeo aparecerá somente em Vídeos Curtos, não no feed.' });
       } else {
         toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
       }
@@ -707,6 +719,33 @@ export default function Feed() {
                 ))}
               </div>
             )}
+            {/* Reels-only toggle — appears when a video is attached */}
+            {attachments.some((a) => a.file.type.startsWith('video/')) && (
+              <div className={cn(
+                'mt-3 flex items-center justify-between rounded-xl border px-4 py-3 transition-colors',
+                reelsOnly
+                  ? 'border-primary/30 bg-primary/5'
+                  : 'border-border/50 bg-secondary/20'
+              )}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Clapperboard className={cn('w-4 h-4 shrink-0', reelsOnly ? 'text-primary' : 'text-muted-foreground')} />
+                  <div className="min-w-0">
+                    <p className={cn('text-sm font-medium', reelsOnly ? 'text-primary' : 'text-foreground')}>
+                      Somente em Vídeos Curtos
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {reelsOnly ? 'Não aparecerá no feed principal' : 'Aparecerá no feed e em Vídeos Curtos'}
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  checked={reelsOnly}
+                  onCheckedChange={setReelsOnly}
+                  className="shrink-0"
+                />
+              </div>
+            )}
+
             <div className="mt-3 flex items-center justify-between border-t pt-3 sm:mt-4 sm:pt-4">
               <div className="flex gap-2">
                 <Button
@@ -736,8 +775,8 @@ export default function Feed() {
                   Vídeo
                 </Button>
               </div>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
                 disabled={(!postContent.trim() && attachments.length === 0) || isPublishing}
                 onClick={handlePublish}
@@ -778,7 +817,7 @@ export default function Feed() {
                 onClick={() => navigate('/reels')}
               >
                 <Clapperboard className="h-4 w-4" />
-                Reels
+                Vídeos Curtos
               </Button>
               <Button
                 type="button"

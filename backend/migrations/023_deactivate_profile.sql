@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN is_deactivated INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN deactivated_at TEXT;

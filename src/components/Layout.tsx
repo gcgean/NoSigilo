@@ -63,7 +63,7 @@ const mobileNavItems = [
 const extraNavItems = [
   { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
-  { path: '/reels', icon: Clapperboard, label: 'Reels' },
+  { path: '/reels', icon: Clapperboard, label: 'Vídeos Curtos' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
   { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
@@ -496,6 +496,16 @@ export default function Layout() {
                 </div>
               </div>
             </NavLink>
+
+            {/* Logout — mobile only */}
+            <button
+              type="button"
+              onClick={logout}
+              className="md:hidden shrink-0 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              aria-label="Sair"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+            </button>
           </div>
         </div>
       </header>
@@ -798,14 +808,16 @@ export default function Layout() {
               </NavLink>
             );
           })}
-          <button
-            type="button"
-            onClick={logout}
-            className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:text-destructive"
+          <NavLink
+            to="/reels"
+            className={({ isActive }) => cn(
+              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+              isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <LogOut className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-[10px] leading-4">Sair</span>
-          </button>
+            <Clapperboard className="h-4.5 w-4.5" />
+            <span className="max-w-full truncate text-[10px] leading-4">Vídeos</span>
+          </NavLink>
         </div>
       </nav>
     </div>

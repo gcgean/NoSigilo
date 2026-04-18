@@ -89,7 +89,7 @@ export const authService = {
 
 // Feed Service
 export const feedService = {
-  getFeed: async (params?: { page?: number; limit?: number }) => {
+  getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean }) => {
     if (USE_MOCKS) {
       return { posts: [], hasMore: false };
     }
@@ -97,7 +97,7 @@ export const feedService = {
     return response.data;
   },
 
-  createPost: async (data: { content: string; mediaIds?: string[] }) => {
+  createPost: async (data: { content: string; mediaIds?: string[]; reelsOnly?: boolean }) => {
     const response = await apiClient.post('/posts', data);
     return response.data;
   },
@@ -174,6 +174,16 @@ export const profileService = {
 
   deleteMedia: async (mediaId: string) => {
     const response = await apiClient.delete(`/media/${mediaId}`);
+    return response.data;
+  },
+
+  deactivateProfile: async () => {
+    const response = await apiClient.put('/profile/deactivate');
+    return response.data;
+  },
+
+  reactivateProfile: async () => {
+    const response = await apiClient.put('/profile/reactivate');
     return response.data;
   },
 };
