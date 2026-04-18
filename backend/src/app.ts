@@ -119,7 +119,16 @@ type InviteEntryRow = {
   invitee_avatar?: string | null;
 };
 
-const ADMIN_EMAILS = new Set(['admin@nosigilo.com', 'gcgean@hotmail.com']);
+// Admin emails: can be overridden via ADMIN_EMAILS env var (comma-separated)
+function getAdminEmails(): Set<string> {
+  const envList = process.env.ADMIN_EMAILS;
+  if (envList) {
+    return new Set(envList.split(',').map(e => e.trim().toLowerCase()).filter(Boolean));
+  }
+  // Fallback defaults (override with ADMIN_EMAILS env var in production)
+  return new Set(['admin@nosigilo.com']);
+}
+const ADMIN_EMAILS = getAdminEmails();
 
 function nowIso() {
   return new Date().toISOString();
@@ -1021,7 +1030,8 @@ setInterval(() => {
 
 function createRateLimiter(maxRequests: number, windowMs: number): express.RequestHandler {
   return (req, res, next) => {
-    const key = String(req.ip || req.socket?.remoteAddress || 'unknown');
+    // Use real client IP (accounts for Cloudflare/nginx proxy headers)
+    const key = String(getRequestIp(req) || req.socket?.remoteAddress || 'unknown');
     const now = Date.now();
     const state = rateLimitStore.get(key);
     if (!state || now > state.resetAt) {
@@ -1039,9 +1049,10 @@ function createRateLimiter(maxRequests: number, windowMs: number): express.Reque
 }
 
 // Skip rate limiting in test mode to allow test suites to run without hitting limits
-const authRateLimiter = process.env.NODE_ENV === 'test'
-  ? ((_req: express.Request, _res: express.Response, next: express.NextFunction) => next())
-  : createRateLimiter(10, 60_000); // 10 requests per minute per IP
+const isTest = process.env.NODE_ENV === 'test';
+const noop: express.RequestHandler = (_req, _res, next) => next();
+const authRateLimiter = isTest ? noop : createRateLimiter(10, 60_000);   // 10 req/min
+const uploadRateLimiter = isTest ? noop : createRateLimiter(30, 60_000); // 30 uploads/min
 
 export function createApp(options: { db: DbHandle; env: Env }) {
   const { db, env } = options;
@@ -1170,8 +1181,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     },
   });
 
+  const IMAGE_MAX_BYTES = 20 * 1024 * 1024;  // 20 MB for images
+  const VIDEO_MAX_BYTES = 200 * 1024 * 1024; // 200 MB for videos
+
   const upload = multer({
     storage,
+    limits: { fileSize: VIDEO_MAX_BYTES }, // upper bound — validated per type below
     fileFilter: (_req, file, cb) => {
       if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
         cb(new Error('INVALID_FILE_TYPE'));
@@ -2454,7 +2469,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
-  app.post('/api/media/upload', requireAuth(env, db), upload.single('file'), async (req, res) => {
+  app.post('/api/media/upload', requireAuth(env, db), uploadRateLimiter, upload.single('file'), async (req, res) => {
     if (!req.file) {
       res.status(400).json({ error: 'missing_file' });
       return;
@@ -2463,13 +2478,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const isPrivate = String(req.query.isPrivate || '') === '1';
     const mediaSource = ['chat', 'post', 'profile'].includes(String(req.query.source || '')) ? String(req.query.source) : 'post';
     const mime = req.file.mimetype || '';
-    const maxOtherBytes = 5 * 1024 * 1024;
-    if (isPrivate && !mime.startsWith('image/')) {
-      res.status(400).json({ error: 'private_photos_images_only' });
+    const fileSize = Number(req.file.size || 0);
+
+    // Enforce per-type size limits
+    if (mime.startsWith('image/') && fileSize > IMAGE_MAX_BYTES) {
+      res.status(413).json({ error: 'file_too_large', maxBytes: IMAGE_MAX_BYTES });
       return;
     }
-    if (!mime.startsWith('video/') && !mime.startsWith('image/') && Number(req.file.size || 0) > maxOtherBytes) {
-      res.status(413).json({ error: 'file_too_large', maxBytes: maxOtherBytes });
+    if (mime.startsWith('video/') && fileSize > VIDEO_MAX_BYTES) {
+      res.status(413).json({ error: 'file_too_large', maxBytes: VIDEO_MAX_BYTES });
+      return;
+    }
+    if (isPrivate && !mime.startsWith('image/')) {
+      res.status(400).json({ error: 'private_photos_images_only' });
       return;
     }
 

@@ -80,6 +80,31 @@ interface RegisterData {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
+// Billing PII fields — kept in memory but NOT persisted to localStorage
+const BILLING_PII_FIELDS: Array<keyof User> = [
+  'billingDocument',
+  'billingLegalName',
+  'billingPersonType',
+  'billingPhone',
+  'billingAddressZip',
+  'billingAddressStreet',
+  'billingAddressNumber',
+  'billingAddressDistrict',
+  'billingAddressComplement',
+  'billingAddressCity',
+  'billingAddressState',
+];
+
+function stripPIIForStorage(user: User): Omit<User, typeof BILLING_PII_FIELDS[number]> {
+  const copy = { ...user } as any;
+  for (const key of BILLING_PII_FIELDS) delete copy[key];
+  return copy;
+}
+
+function saveUserToStorage(user: User) {
+  localStorage.setItem('nosigilo_user', JSON.stringify(stripPIIForStorage(user)));
+}
+
 // Demo users for testing
 const DEMO_USERS: Record<string, { password: string; user: User }> = {
   'demo@nosigilo.com': {
@@ -157,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const settings = await appService.getSettings().catch(() => ({ subscriptionsEnabled: true }));
       if (!currentUser) return null;
       const mergedUser = { ...currentUser, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
-      localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+      saveUserToStorage(mergedUser);
       return mergedUser;
     };
 
@@ -183,7 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       Promise.all([authService.getMe(), appService.getSettings().catch(() => ({ subscriptionsEnabled: true }))])
         .then(([me, settings]) => {
           const mergedUser = { ...me, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
-          localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+          saveUserToStorage(mergedUser);
           setUser(mergedUser);
         })
         .catch(() => {
@@ -200,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const demoAccount = DEMO_USERS[email.toLowerCase()];
       if (demoAccount && demoAccount.password === password) {
         setUser(demoAccount.user);
-        localStorage.setItem('nosigilo_user', JSON.stringify(demoAccount.user));
+        saveUserToStorage(demoAccount.user);
         localStorage.setItem('token', 'mock-token');
         return demoAccount.user;
       }
@@ -213,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ]);
     const mergedUser = { ...result.user, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
     localStorage.setItem('token', result.token);
-    localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+    saveUserToStorage(mergedUser);
     setUser(mergedUser);
     return mergedUser;
   };
@@ -234,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isAdmin: false,
       };
       setUser(newUser);
-      localStorage.setItem('nosigilo_user', JSON.stringify(newUser));
+      saveUserToStorage(newUser);
       localStorage.setItem('token', 'mock-token');
       return { token: 'mock-token', user: newUser, httpStatus: 200 };
     }
@@ -244,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const settings = await appService.getSettings().catch(() => ({ subscriptionsEnabled: true }));
       const mergedUser = { ...result.user, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
       localStorage.setItem('token', result.token);
-      localStorage.setItem('nosigilo_user', JSON.stringify(mergedUser));
+      saveUserToStorage(mergedUser);
       setUser(mergedUser);
       return { ...result, user: mergedUser };
     }
@@ -262,7 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(prev => {
       if (!prev) return null;
       const updated = { ...prev, ...data };
-      localStorage.setItem('nosigilo_user', JSON.stringify(updated));
+      saveUserToStorage(updated);
       if (!USE_MOCKS && localStorage.getItem('token')) {
         const allowedKeys: Array<keyof User> = [
           'name',

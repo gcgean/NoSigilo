@@ -7,7 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { chatService, profileService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
@@ -73,6 +73,7 @@ export default function Chat() {
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
+  const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -431,10 +432,12 @@ export default function Chat() {
       const { id } = await profileService.uploadMedia(file, { source: 'chat' });
       await handleSendMessage(undefined, id, localUrl);
     } catch (err) {
-      toast({ 
-        title: 'Erro no upload', 
-        description: err instanceof Error ? err.message : 'Tente novamente.', 
-        variant: 'destructive' 
+      // Revoke the blob URL if we never managed to send it
+      URL.revokeObjectURL(localUrl);
+      toast({
+        title: 'Erro no upload',
+        description: err instanceof Error ? err.message : 'Tente novamente.',
+        variant: 'destructive'
       });
     } finally {
       setIsUploading(false);
@@ -444,15 +447,15 @@ export default function Chat() {
 
   const handleDeleteConversation = async () => {
     if (!selectedChat) return;
-    if (!window.confirm('Tem certeza que deseja apagar esta conversa?')) return;
-
     try {
       await chatService.deleteConversation(selectedChat);
       setConversations(prev => prev.filter(c => c.id !== selectedChat));
       setSelectedChat(null);
       setMessages([]);
+      setConfirmDeleteConv(false);
       toast({ title: 'Conversa apagada' });
     } catch {
+      setConfirmDeleteConv(false);
       toast({ title: 'Erro ao apagar conversa', variant: 'destructive' });
     }
   };
@@ -616,9 +619,9 @@ export default function Chat() {
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
+                  <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
-                    onClick={handleDeleteConversation}
+                    onClick={() => setConfirmDeleteConv(true)}
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
                     Apagar Conversa
@@ -906,6 +909,20 @@ export default function Chat() {
           </>
         );
       })()}
+
+      {/* Delete conversation confirmation */}
+      <Dialog open={confirmDeleteConv} onOpenChange={setConfirmDeleteConv}>
+        <DialogContent>
+          <DialogTitle>Apagar conversa?</DialogTitle>
+          <DialogDescription>
+            Esta ação não pode ser desfeita. Todas as mensagens desta conversa serão removidas para você.
+          </DialogDescription>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setConfirmDeleteConv(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => void handleDeleteConversation()}>Apagar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!viewingPhoto} onOpenChange={(open) => !open && setViewingPhoto(null)}>
         <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none flex items-center justify-center">

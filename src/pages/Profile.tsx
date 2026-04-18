@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,8 +47,13 @@ function PhotoItem({
   onToggleVisibility: (id: string, currentIsPrivate: boolean) => void;
   isTogglingVisibility: boolean;
 }) {
+  const [showActions, setShowActions] = React.useState(false);
   return (
-    <div className="relative aspect-square rounded-xl overflow-hidden group">
+    <div
+      className="relative aspect-square rounded-xl overflow-hidden group"
+      onTouchStart={() => setShowActions(v => !v)}
+      onMouseLeave={() => setShowActions(false)}
+    >
       <Dialog>
         <DialogTrigger asChild>
           <img
@@ -77,7 +82,7 @@ function PhotoItem({
         </DialogContent>
       </Dialog>
       {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary">Principal</Badge>}
-      <div className="absolute inset-0 bg-black/50 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+      <div className={`absolute inset-0 bg-black/50 transition-opacity flex items-center justify-center gap-2 ${showActions ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
         <Button
           type="button"
           size="icon"
@@ -315,21 +320,8 @@ export default function Profile() {
   const handleUpload = async (file: File) => {
     try {
       setIsUploading(true);
-      const uploaded = await profileService.uploadMedia(file, { isPrivate: false });
-      if (uploaded?.id) {
-        try {
-          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
-          toast({ title: 'Foto enviada', description: 'Sua foto foi enviada e publicada no feed.' });
-        } catch {
-          toast({
-            title: 'Foto enviada',
-            description: 'A foto entrou na galeria, mas não foi possível publicar no feed agora.',
-            variant: 'destructive',
-          });
-        }
-      } else {
-        toast({ title: 'Foto enviada', description: 'Sua foto foi enviada com sucesso.' });
-      }
+      await profileService.uploadMedia(file, { isPrivate: false });
+      toast({ title: 'Foto enviada', description: 'Sua foto foi adicionada à galeria.' });
       await loadPhotos();
     } catch (e: any) {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });

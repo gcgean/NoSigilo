@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { SOCKET_URL } from '@/utils/serverUrl';
@@ -16,13 +16,15 @@ const SocketContext = createContext<SocketContextType | undefined>(undefined);
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 export function SocketProvider({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    // Don't connect in mock mode or if not authenticated
-    if (USE_MOCKS || !isAuthenticated || !user) {
+    // Only depend on isAuthenticated (a boolean), NOT on the user object.
+    // The user object reference changes on every updateUser() call which would
+    // cause a full socket reconnect on every profile update.
+    if (USE_MOCKS || !isAuthenticated) {
       return;
     }
 
@@ -30,7 +32,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     if (!token) {
       return;
     }
-    
+
     const newSocket = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket', 'polling'],
@@ -40,17 +42,14 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
       setIsConnected(true);
     });
 
     newSocket.on('disconnect', () => {
-      console.log('Socket disconnected');
       setIsConnected(false);
     });
 
-    newSocket.on('connect_error', (error) => {
-      console.log('Socket connection error:', error.message);
+    newSocket.on('connect_error', () => {
       setIsConnected(false);
     });
 
@@ -58,26 +57,30 @@ export function SocketProvider({ children }: { children: ReactNode }) {
 
     return () => {
       newSocket.disconnect();
+      setSocket(null);
+      setIsConnected(false);
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated]);
 
-  const emit = (event: string, data?: any) => {
+  // Memoize emit/on/off so components that list them as useEffect deps don't
+  // re-fire handlers on every parent re-render (only re-fire on socket change).
+  const emit = useCallback((event: string, data?: any) => {
     if (socket && isConnected) {
       socket.emit(event, data);
     }
-  };
+  }, [socket, isConnected]);
 
-  const on = (event: string, callback: (data: any) => void) => {
+  const on = useCallback((event: string, callback: (data: any) => void) => {
     if (socket) {
       socket.on(event, callback);
     }
-  };
+  }, [socket]);
 
-  const off = (event: string, callback?: (data: any) => void) => {
+  const off = useCallback((event: string, callback?: (data: any) => void) => {
     if (socket) {
       socket.off(event, callback);
     }
-  };
+  }, [socket]);
 
   return (
     <SocketContext.Provider value={{ socket, isConnected, emit, on, off }}>

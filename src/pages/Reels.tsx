@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { feedService } from '@/services/api';
+import { feedService, likesService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null };
 type FeedPost = {
@@ -40,11 +41,13 @@ function formatWhen(iso: string) {
 
 export default function Reels() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [likedByPostId, setLikedByPostId] = useState<Record<string, boolean>>({});
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -206,10 +209,9 @@ export default function Reels() {
         scrollSnapType: 'y mandatory',
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
-      }}
+        WebkitOverflowScrolling: 'touch',
+      } as React.CSSProperties}
     >
-      <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-
       {/* Navigation arrows (desktop) */}
       {currentIndex > 0 && (
         <button
@@ -278,21 +280,35 @@ export default function Reels() {
                 : <Volume2 className="h-5 w-5" />}
             </button>
 
-            {/* Like (decorative, navigate to post) */}
+            {/* Like */}
             <button
               type="button"
-              onClick={() => navigate(`/users/${reel.author.id}`)}
+              onClick={async () => {
+                if (!user) return;
+                const already = likedByPostId[reel.postId];
+                setLikedByPostId(prev => ({ ...prev, [reel.postId]: !already }));
+                try {
+                  if (already) {
+                    await likesService.unlike('post', reel.postId);
+                  } else {
+                    await likesService.like('post', reel.postId);
+                  }
+                } catch {
+                  // Revert optimistic update
+                  setLikedByPostId(prev => ({ ...prev, [reel.postId]: already }));
+                }
+              }}
               className="flex flex-col items-center gap-1 text-white"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm transition hover:bg-black/60">
-                <Heart className="h-5 w-5" />
+              <div className={`flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 ${likedByPostId[reel.postId] ? 'bg-rose-500/70' : 'bg-black/40'}`}>
+                <Heart className={`h-5 w-5 ${likedByPostId[reel.postId] ? 'fill-white' : ''}`} />
               </div>
             </button>
 
-            {/* Message */}
+            {/* Open in feed */}
             <button
               type="button"
-              onClick={() => navigate('/chat')}
+              onClick={() => navigate(`/users/${reel.author.id}`)}
               className="flex flex-col items-center gap-1 text-white"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm transition hover:bg-black/60">
