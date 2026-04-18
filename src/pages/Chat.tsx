@@ -561,7 +561,13 @@ export default function Chat() {
 
   return (
     <div
-      className="flex w-full min-h-0 max-w-full overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]"
+      className={cn(
+        "flex w-full min-h-0 max-w-full md:overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
+        // On mobile with a conversation open the container is position:fixed
+        // – no overflow-hidden needed (the fixed bounds contain children) and
+        // it would clip the input bar's box-shadow at the bottom edge.
+        !isMobileViewport && "overflow-hidden"
+      )}
       style={isMobileViewport ? mobileStyle : undefined}
     >
       {/* Conversations List */}
@@ -860,12 +866,22 @@ export default function Chat() {
               <div aria-hidden />
           </div>
 
-          {/* Message Input */}
+          {/* Message Input
+              NOTE: no "sticky" here – the chat panel is position:fixed and this
+              element sits naturally at the bottom of the flex-col container.
+              Using sticky inside a fixed overflow:hidden parent causes the bar
+              to anchor to the viewport bottom (behind the home indicator) instead
+              of the container bottom, which clips the icons on the left. */}
           <div
-            className="sticky bottom-0 z-10 w-full min-w-0 max-w-full border-t bg-background/96 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
+            className="w-full min-w-0 max-w-full border-t bg-background/96 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
             style={{
               paddingLeft: 'max(0.625rem, env(safe-area-inset-left))',
               paddingRight: 'max(0.625rem, env(safe-area-inset-right))',
+              // On mobile, add safe-area-inset-bottom here so the input clears
+              // the iPhone home indicator – replaces the separate spacer div.
+              ...(isMobileViewport
+                ? { paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom, 0px))' }
+                : {}),
             }}
           >
             {!premiumAccess && (
@@ -881,7 +897,7 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
-            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[1.15rem] border border-border/70 bg-background p-1.5 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            <div className="w-full min-w-0 max-w-full rounded-[1.15rem] border border-border/70 bg-background p-1.5 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
               <div className="flex w-full min-w-0 max-w-full items-end gap-2">
                 <input
                 type="file"
@@ -962,7 +978,6 @@ export default function Chat() {
               </Button>
               </div>
             </div>
-            <div className="h-[max(env(safe-area-inset-bottom),0px)] md:hidden" />
           </div>
         </div>
       ) : (
