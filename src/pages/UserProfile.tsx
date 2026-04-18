@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService } from '@/services/api';
+import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
@@ -423,7 +423,7 @@ export default function UserProfile() {
 
         if (lastRegisteredVisitRef.current !== userId) {
           lastRegisteredVisitRef.current = userId;
-          void usersService.registerVisit(userId).catch(() => {});
+          void locationService.registerVisit(userId).catch(() => {});
         }
       } catch {
         if (cancelled) return;
