@@ -489,6 +489,61 @@ describe('nosigilo backend', () => {
     expect(recent.body.some((m: any) => m.id === videoId)).toBe(false);
   });
 
+  it('feed hides posts from deactivated or banned profiles', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Feed',
+      email: 'viewer-feed@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const viewerToken = viewerReg.token;
+
+    const activeAuthorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Ativo',
+      email: 'autor-ativo@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const deactivatedAuthorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Desativado',
+      email: 'autor-desativado@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const bannedAuthorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Banido',
+      email: 'autor-banido@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+
+    const createPostAs = async (token: string, content: string) => {
+      const response = await request(ctx.app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content })
+        .expect(200);
+      return String(response.body.id);
+    };
+
+    const activePostId = await createPostAs(activeAuthorReg.token, 'Post ativo');
+    const deactivatedPostId = await createPostAs(deactivatedAuthorReg.token, 'Post desativado');
+    const bannedPostId = await createPostAs(bannedAuthorReg.token, 'Post banido');
+
+    await run(ctx.db, 'UPDATE users SET is_deactivated = 1, deactivated_at = ? WHERE id = ?', [new Date().toISOString(), deactivatedAuthorReg.user.id]);
+    await run(ctx.db, 'UPDATE users SET is_banned = 1, banned_at = ? WHERE id = ?', [new Date().toISOString(), bannedAuthorReg.user.id]);
+
+    const feed = await request(ctx.app)
+      .get('/api/feed')
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+
+    expect(Array.isArray(feed.body.posts)).toBe(true);
+    expect(feed.body.posts.some((post: any) => String(post.id) === activePostId)).toBe(true);
+    expect(feed.body.posts.some((post: any) => String(post.id) === deactivatedPostId)).toBe(false);
+    expect(feed.body.posts.some((post: any) => String(post.id) === bannedPostId)).toBe(false);
+  });
+
   it('likes and comments generate notifications for post owner', async () => {
     const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Owner',
