@@ -26,6 +26,10 @@ type ReelItem = {
   createdAt: string;
 };
 
+function getSeenRapStorageKey(userId?: string | null) {
+  return `nosigilo:rap:seen:${userId || 'anon'}`;
+}
+
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -43,6 +47,8 @@ export default function Reels() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [reels, setReels] = useState<ReelItem[]>([]);
+  const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
+  const [, setSeenReelIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -51,6 +57,19 @@ export default function Reels() {
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(getSeenRapStorageKey(user?.id));
+      const parsed = raw ? JSON.parse(raw) : [];
+      const nextSeenIds = Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
+      setInitialSeenReelIds(nextSeenIds);
+      setSeenReelIds(nextSeenIds);
+    } catch {
+      setInitialSeenReelIds([]);
+      setSeenReelIds([]);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +100,6 @@ export default function Reels() {
             return acc;
           }, {})
         );
-        if (nextReels.length > 0) setPlayingId(nextReels[0].id);
       })
       .catch(() => {
         if (cancelled) return;
@@ -95,9 +113,44 @@ export default function Reels() {
     return () => { cancelled = true; };
   }, []);
 
+  const orderedReels = useMemo(() => {
+    const seenIds = new Set(initialSeenReelIds);
+    const unseen = reels.filter((item) => !seenIds.has(item.id));
+    const seen = reels.filter((item) => seenIds.has(item.id));
+    return [...unseen, ...seen];
+  }, [initialSeenReelIds, reels]);
+
+  const markReelAsSeen = useCallback((reelId: string) => {
+    if (!reelId) return;
+
+    setSeenReelIds((prev) => {
+      if (prev.includes(reelId)) return prev;
+      const next = [...prev, reelId];
+      try {
+        localStorage.setItem(getSeenRapStorageKey(user?.id), JSON.stringify(next));
+      } catch {
+        // Ignora falha de persistência local sem quebrar a navegação
+      }
+      return next;
+    });
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (orderedReels.length === 0) {
+      setPlayingId(null);
+      setCurrentIndex(0);
+      return;
+    }
+
+    if (!playingId || !orderedReels.some((item) => item.id === playingId)) {
+      setPlayingId(orderedReels[0].id);
+      setCurrentIndex(0);
+    }
+  }, [orderedReels, playingId]);
+
   // IntersectionObserver: play/pause on visibility + track current index
   useEffect(() => {
-    if (reels.length === 0) return;
+    if (orderedReels.length === 0) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -111,7 +164,8 @@ export default function Reels() {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
             void video.play().catch(() => {});
             setPlayingId(id);
-            const idx = reels.findIndex((r) => r.id === id);
+            markReelAsSeen(id);
+            const idx = orderedReels.findIndex((r) => r.id === id);
             if (idx !== -1) setCurrentIndex(idx);
           } else {
             video.pause();
@@ -126,24 +180,23 @@ export default function Reels() {
     });
 
     return () => observer.disconnect();
-  }, [reels]);
+  }, [markReelAsSeen, orderedReels]);
 
   const scrollTo = useCallback((idx: number) => {
-    const reel = reels[idx];
+    const reel = orderedReels[idx];
     if (!reel) return;
     const el = itemRefs.current[reel.id];
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [reels]);
+  }, [orderedReels]);
 
   const handleVideoEnded = useCallback((idx: number) => {
     const next = idx + 1;
-    if (next < reels.length) {
+    if (next < orderedReels.length) {
       scrollTo(next);
     } else {
-      // Loop back to first
       scrollTo(0);
     }
-  }, [reels, scrollTo]);
+  }, [orderedReels.length, scrollTo]);
 
   const toggleMute = useCallback((id: string) => {
     setMutedById((prev) => {
@@ -168,12 +221,12 @@ export default function Reels() {
 
   const reelsWithMeta = useMemo(
     () =>
-      reels.map((item) => ({
+      orderedReels.map((item) => ({
         ...item,
         identityLine: formatProfileIdentityLine(item.author),
         when: item.createdAt ? formatWhen(item.createdAt) : '',
       })),
-    [reels]
+    [orderedReels]
   );
 
   if (isLoading) {
@@ -222,7 +275,7 @@ export default function Reels() {
           <ChevronUp className="h-5 w-5" />
         </button>
       )}
-      {currentIndex < reels.length - 1 && (
+      {currentIndex < orderedReels.length - 1 && (
         <button
           type="button"
           onClick={() => scrollTo(currentIndex + 1)}
@@ -263,7 +316,7 @@ export default function Reels() {
           {/* Top — counter */}
           <div className="absolute left-0 right-0 top-4 flex justify-center">
             <span className="rounded-full bg-black/40 px-3 py-1 text-xs font-medium text-white/80 backdrop-blur-sm">
-              {idx + 1} / {reels.length}
+              {idx + 1} / {orderedReels.length}
             </span>
           </div>
 
