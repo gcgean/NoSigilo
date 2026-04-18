@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
@@ -127,7 +127,6 @@ export default function Layout() {
   }, []);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
-  const hadFirstAccessFlowRef = useRef(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
   const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
@@ -256,7 +255,6 @@ export default function Layout() {
   useEffect(() => {
     if (!user?.id) return;
     const key = `nosigilo:first-access-flow:${user.id}`;
-    hadFirstAccessFlowRef.current = hadFirstAccessFlowRef.current || Boolean(localStorage.getItem(key));
     if (firstAccessRewardSeenKey && localStorage.getItem(firstAccessRewardSeenKey) === '1') {
       setShowFirstAccessReward(false);
     }
