@@ -462,7 +462,7 @@ export default function Chat() {
 
   return (
     <div className={cn(
-      "flex min-h-0 md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
+      "flex w-full min-h-0 max-w-full overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
       // When a conversation is open the bottom nav is hidden → only subtract header height.
       // When showing the conversation list the nav is visible → subtract header + nav.
       selectedChat && isMobileViewport
@@ -565,9 +565,9 @@ export default function Chat() {
 
       {/* Chat Area */}
       {selectedChat ? (
-        <div className="flex min-h-0 flex-1 flex-col bg-background">
+        <div className="flex w-full min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden bg-background">
           {/* Chat Header */}
-          <div className="sticky top-0 z-20 flex items-center justify-between border-b bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
+          <div className="sticky top-0 z-20 flex w-full min-w-0 max-w-full items-center justify-between border-b bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
             <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
@@ -632,8 +632,8 @@ export default function Chat() {
           </div>
 
           {/* Messages */}
-          <ScrollArea className="flex-1">
-            <div className="space-y-3 px-3 py-3 md:space-y-4 md:p-4">
+          <ScrollArea className="flex-1 w-full min-w-0">
+            <div className="w-full min-w-0 max-w-full space-y-3 overflow-x-hidden px-3 py-3 md:space-y-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
@@ -641,7 +641,7 @@ export default function Chat() {
                 return (
                   <div
                     key={msg.id}
-                    className={cn("flex items-end gap-2", isMine ? "justify-end" : "justify-start")}
+                    className={cn("flex w-full min-w-0 items-end gap-2", isMine ? "justify-end" : "justify-start")}
                   >
                     {/* Small avatar beside received messages */}
                     {!isMine && (
@@ -651,7 +651,7 @@ export default function Chat() {
                     )}
                     <div
                       className={cn(
-                        "group relative max-w-[78%] rounded-2xl px-3 py-2.5 md:max-w-[65%] md:px-4 md:py-2",
+                        "group relative min-w-0 max-w-[85%] rounded-2xl px-3 py-2.5 sm:max-w-[78%] md:max-w-[65%] md:px-4 md:py-2",
                         isMine
                           ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                           : "bg-secondary rounded-bl-sm"
@@ -711,13 +711,13 @@ export default function Chat() {
                                   <VideoWithPreview
                                     src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')}
                                     controls
-                                    className="max-h-60 w-auto rounded-lg"
+                                    className="max-h-60 max-w-full w-auto rounded-lg"
                                   />
                                 ) : (
                                   <img
                                     src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')}
                                     alt="Mídia"
-                                    className="max-h-72 w-auto object-contain rounded-lg"
+                                    className="max-h-72 max-w-full w-auto object-contain rounded-lg"
                                     onClick={() => {
                                       if (!msg.mediaUrl) return;
                                       const finalUrl = msg.mediaUrl.startsWith('blob:') ? msg.mediaUrl : resolveServerUrl(msg.mediaUrl);
@@ -759,7 +759,13 @@ export default function Chat() {
           </ScrollArea>
 
           {/* Message Input */}
-          <div className="sticky bottom-0 z-10 border-t bg-background/96 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4">
+          <div
+            className="sticky bottom-0 z-10 w-full min-w-0 max-w-full border-t bg-background/96 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
+            style={{
+              paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
+              paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+            }}
+          >
             {!premiumAccess && (
               <button
                 type="button"
@@ -773,8 +779,8 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
-            <div className="rounded-2xl border border-border/70 bg-background p-2 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
-              <div className="flex items-center gap-2">
+            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background p-2 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+              <div className="flex w-full min-w-0 max-w-full items-end gap-2">
                 <input
                 type="file"
                 ref={fileInputRef}
@@ -838,7 +844,7 @@ export default function Chat() {
                   }
                 }}
                 rows={1}
-                className="min-h-[46px] flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
+                className="min-h-[46px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
                 disabled={!premiumAccess}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
