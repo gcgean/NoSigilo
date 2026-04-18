@@ -61,7 +61,16 @@
       "Bash(curl -s -o /dev/null -w \"Frontend 5173: %{http_code}\\\\n\" http://localhost:5173)",
       "Bash(curl -sv -H \"Origin: http://localhost:5173\" http://localhost:4001/api/app/settings)",
       "Bash(curl -sv -X OPTIONS -H 'Origin: http://localhost:5173' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: Content-Type,Authorization' http://localhost:4001/api/auth/login)",
-      "Bash(curl -s -X POST http://localhost:4001/api/auth/login -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' -d '{\"email\":\"gcgean@hotmail.com\",\"password\":\"csqwe123\"}')"
+      "Bash(curl -s -X POST http://localhost:4001/api/auth/login -H 'Content-Type: application/json' -H 'Origin: http://localhost:5173' -d '{\"email\":\"gcgean@hotmail.com\",\"password\":\"csqwe123\"}')",
+      "Bash(curl -sv -H \"Origin: http://localhost:5174\" http://localhost:4001/api/app/settings)",
+      "Bash(cmd /c \"powershell -Command \\\\\"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\\\\\"\")",
+      "Bash(cmd /c \"powershell -Command \\\\\"Get-Process node -ErrorAction SilentlyContinue | Select-Object Id,CPU\\\\\"\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('LOGIN OK, user:', d.get\\('user',{}\\).get\\('name','?'\\)\\)\")",
+      "Bash(curl -v -X POST http://localhost:4001/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"gcgean@hotmail.com\",\"password\":\"csqwe123\"}')",
+      "Bash(curl -s --max-time 5 http://localhost:4001/api/app/settings)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(PGPASSWORD=nosigilo psql -h localhost -p 5433 -U nosigilo -d nosigilo -c \"SELECT id FROM _migrations ORDER BY id;\")",
+      "Bash(cmd /c \"powershell -Command \\\\\"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Write-Host 'OK'\\\\\"\")"
     ]
   }
 }
