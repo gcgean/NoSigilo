@@ -458,7 +458,14 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(var(--vh,100dvh)-3.5rem)] min-h-0 sm:h-[calc(var(--vh,100dvh)-4rem)] md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]">
+    <div className={cn(
+      "flex min-h-0 md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
+      // When a conversation is open the bottom nav is hidden → only subtract header height.
+      // When showing the conversation list the nav is visible → subtract header + nav.
+      selectedChat && isMobileViewport
+        ? "h-[calc(var(--vh,100dvh)-3.5rem)] sm:h-[calc(var(--vh,100dvh)-4rem)]"
+        : "h-[calc(var(--vh,100dvh)-7rem)] sm:h-[calc(var(--vh,100dvh)-7.5rem)]"
+    )}>
       {/* Conversations List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",
@@ -631,11 +638,17 @@ export default function Chat() {
                 return (
                   <div
                     key={msg.id}
-                    className={cn("flex", isMine ? "justify-end" : "justify-start")}
+                    className={cn("flex items-end gap-2", isMine ? "justify-end" : "justify-start")}
                   >
+                    {/* Small avatar beside received messages */}
+                    {!isMine && (
+                      <div className="shrink-0 mb-0.5">
+                        <UserAvatar user={selectedConversation?.user} className="h-7 w-7" />
+                      </div>
+                    )}
                     <div
                       className={cn(
-                        "group relative max-w-[82%] rounded-2xl px-3 py-2.5 md:max-w-[70%] md:px-4 md:py-2",
+                        "group relative max-w-[78%] rounded-2xl px-3 py-2.5 md:max-w-[65%] md:px-4 md:py-2",
                         isMine
                           ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                           : "bg-secondary rounded-bl-sm"
