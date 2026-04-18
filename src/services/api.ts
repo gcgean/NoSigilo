@@ -138,7 +138,7 @@ export const profileService = {
     return response.data;
   },
 
-  uploadMedia: async (file: File, options?: { isPrivate?: boolean }) => {
+  uploadMedia: async (file: File, options?: { isPrivate?: boolean; source?: 'post' | 'chat' | 'profile' }) => {
     let uploadFile = file;
     if (file.type.startsWith('image/')) {
       uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82 });
@@ -147,7 +147,7 @@ export const profileService = {
     formData.append('file', uploadFile);
     try {
       const response = await apiClient.post('/media/upload', formData, {
-        params: { isPrivate: options?.isPrivate ? 1 : 0 },
+        params: { isPrivate: options?.isPrivate ? 1 : 0, source: options?.source || 'post' },
         headers: { 'Content-Type': 'multipart/form-data' },
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
@@ -292,6 +292,11 @@ export const chatService = {
 
   markAsRead: async (conversationId: string) => {
     const response = await apiClient.post(`/conversations/${conversationId}/read`);
+    return response.data;
+  },
+
+  deleteMessage: async (messageId: string, forEveryone: boolean) => {
+    const response = await apiClient.delete(`/messages/${messageId}`, { data: { forEveryone } });
     return response.data;
   },
 };

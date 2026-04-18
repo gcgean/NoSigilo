@@ -1872,7 +1872,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/photos/recent', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
-      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND mime_type LIKE 'image/%' ORDER BY created_at DESC LIMIT 20",
+      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 20",
       [req.auth!.userId]
     );
     res.json(
@@ -2453,6 +2453,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     const isPrivate = String(req.query.isPrivate || '') === '1';
+    const mediaSource = ['chat', 'post', 'profile'].includes(String(req.query.source || '')) ? String(req.query.source) : 'post';
     const mime = req.file.mimetype || '';
     const maxOtherBytes = 5 * 1024 * 1024;
     if (isPrivate && !mime.startsWith('image/')) {
@@ -2477,8 +2478,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const id = randomUUID();
     await run(
       db,
-      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
-      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, nowIso()]
+      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
+      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, nowIso()]
     );
     await persist();
     if (isPrivate) {
@@ -3510,6 +3511,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
+             m.deleted_for_all, m.deleted_by_ids,
              med.filename as media_filename, med.mime_type as media_mime_type
       FROM messages m
       LEFT JOIN media med ON med.id = m.media_id
@@ -3519,22 +3521,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     `,
       [conversationId]
     );
+    const viewerId = req.auth!.userId;
     res.json(
-      rows.map((m: any) => ({
-        id: m.id,
-        conversationId: m.conversation_id,
-        senderId: m.sender_id,
-        content: canViewReceived || m.sender_id === req.auth!.userId ? m.content : null,
-        mediaId: m.is_view_once && m.is_viewed ? null : m.media_id,
-        mediaUrl: m.is_view_once && m.is_viewed ? null : (m.media_filename ? `/uploads/${m.media_filename}` : null),
-        mediaMimeType: m.is_view_once && m.is_viewed ? null : m.media_mime_type,
-        isViewOnce: !!m.is_view_once,
-        isViewed: !!m.is_viewed,
-        isDelivered: !!m.is_delivered,
-        isLocked: !canViewReceived && m.sender_id !== req.auth!.userId,
-        createdAt: m.created_at,
-        isRead: !!m.is_read
-      }))
+      rows.map((m: any) => {
+        const deletedForAll = !!m.deleted_for_all;
+        let deletedByIds: string[] = [];
+        try { deletedByIds = JSON.parse(m.deleted_by_ids || '[]'); } catch { deletedByIds = []; }
+        const deletedForMe = deletedForAll || deletedByIds.includes(viewerId);
+        return {
+          id: m.id,
+          conversationId: m.conversation_id,
+          senderId: m.sender_id,
+          content: deletedForMe ? null : (canViewReceived || m.sender_id === viewerId ? m.content : null),
+          mediaId: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : m.media_id),
+          mediaUrl: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : (m.media_filename ? `/uploads/${m.media_filename}` : null)),
+          mediaMimeType: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : m.media_mime_type),
+          isViewOnce: !!m.is_view_once,
+          isViewed: !!m.is_viewed,
+          isDelivered: !!m.is_delivered,
+          isLocked: !deletedForMe && !canViewReceived && m.sender_id !== viewerId,
+          createdAt: m.created_at,
+          isRead: !!m.is_read,
+          isDeletedForAll: deletedForAll,
+          isDeletedForMe: deletedForMe,
+        };
+      })
     );
   });
 
@@ -3582,6 +3593,59 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     io?.to(msg.conversation_id).emit('message.viewed', { messageId, conversationId: msg.conversation_id });
 
     res.json({ ok: true });
+  });
+
+  app.delete('/api/messages/:messageId', requireAuth(env, db), async (req, res) => {
+    try {
+      const messageId = req.params.messageId;
+      const schema = z.object({ forEveryone: z.boolean().optional() });
+      const parsed = schema.safeParse(req.body);
+      const forEveryone = parsed.success && parsed.data.forEveryone === true;
+
+      const msg = (await queryOne(db, 'SELECT id, conversation_id, sender_id, deleted_for_all, deleted_by_ids FROM messages WHERE id = ?', [messageId])) as any;
+      if (!msg) {
+        res.status(404).json({ error: 'not_found' });
+        return;
+      }
+
+      const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [String(msg.conversation_id)])) as any;
+      if (!conv || (String(conv.user_a_id) !== req.auth!.userId && String(conv.user_b_id) !== req.auth!.userId)) {
+        res.status(403).json({ error: 'forbidden' });
+        return;
+      }
+
+      if (forEveryone) {
+        // Only sender can delete for everyone
+        if (String(msg.sender_id) !== req.auth!.userId) {
+          res.status(403).json({ error: 'only_sender_can_delete_for_everyone' });
+          return;
+        }
+        await run(db, 'UPDATE messages SET deleted_for_all = 1 WHERE id = ?', [messageId]);
+      } else {
+        // Delete only for current user — add their id to deleted_by_ids
+        let ids: string[] = [];
+        try { ids = JSON.parse(msg.deleted_by_ids || '[]'); } catch { ids = []; }
+        if (!ids.includes(req.auth!.userId)) {
+          ids.push(req.auth!.userId);
+        }
+        await run(db, 'UPDATE messages SET deleted_by_ids = ? WHERE id = ?', [JSON.stringify(ids), messageId]);
+      }
+      await persist();
+
+      const io = req.app.get('io') as SocketIOServer | undefined;
+      if (forEveryone) {
+        io?.to(String(msg.conversation_id)).emit('message.deleted', {
+          messageId,
+          conversationId: String(msg.conversation_id),
+          forEveryone: true,
+        });
+      }
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('DELETE /api/messages/:messageId error', err);
+      res.status(500).json({ error: 'internal_error' });
+    }
   });
 
   app.post('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, ImagePlus, Zap, Eye, EyeOff, X, Trash2, User, Wifi, WifiOff, MessageCircle } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -43,6 +43,8 @@ type Message = {
   isDelivered?: boolean;
   isRead?: boolean;
   isLocked?: boolean;
+  isDeletedForAll?: boolean;
+  isDeletedForMe?: boolean;
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
@@ -70,9 +72,11 @@ export default function Chat() {
   const [isUploading, setIsUploading] = useState(false);
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const premiumAccess = hasPremiumAccess(user);
@@ -263,8 +267,16 @@ export default function Chat() {
 
     const viewedHandler = ({ messageId, conversationId }: { messageId: string; conversationId: string }) => {
       if (conversationId === selectedChat) {
-        setMessages(prev => prev.map(m => 
+        setMessages(prev => prev.map(m =>
           m.id === messageId ? { ...m, isViewed: true } : m
+        ));
+      }
+    };
+
+    const deletedHandler = ({ messageId, conversationId, forEveryone }: { messageId: string; conversationId: string; forEveryone: boolean }) => {
+      if (conversationId === selectedChat && forEveryone) {
+        setMessages(prev => prev.map(m =>
+          m.id === messageId ? { ...m, isDeletedForAll: true, isDeletedForMe: true, content: null, mediaId: null, mediaUrl: null } : m
         ));
       }
     };
@@ -273,13 +285,43 @@ export default function Chat() {
     on('message.new', handler);
     on('message.read', readHandler);
     on('message.viewed', viewedHandler);
+    on('message.deleted', deletedHandler);
     return () => {
       off('message.created', handler);
       off('message.new', handler);
       off('message.read', readHandler);
       off('message.viewed', viewedHandler);
+      off('message.deleted', deletedHandler);
     };
   }, [on, off, selectedChat, user?.id]);
+
+  const handleDeleteMessage = useCallback(async (messageId: string, forEveryone: boolean) => {
+    setContextMenu(null);
+    try {
+      await chatService.deleteMessage(messageId, forEveryone);
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? {
+              ...m,
+              isDeletedForMe: true,
+              isDeletedForAll: forEveryone ? true : m.isDeletedForAll,
+              content: null,
+              mediaId: null,
+              mediaUrl: null,
+            }
+          : m
+      ));
+    } catch {
+      toast({ title: 'Não foi possível apagar a mensagem', variant: 'destructive' });
+    }
+  }, [toast]);
+
+  const openContextMenu = useCallback((e: React.MouseEvent | React.TouchEvent, messageId: string) => {
+    e.preventDefault();
+    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0]?.clientY ?? 0 : (e as React.MouseEvent).clientY;
+    setContextMenu({ messageId, x: clientX, y: clientY });
+  }, []);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
     if (!premiumAccess) {
@@ -346,7 +388,7 @@ export default function Chat() {
     const localUrl = URL.createObjectURL(file);
     setIsUploading(true);
     try {
-      const { id } = await profileService.uploadMedia(file);
+      const { id } = await profileService.uploadMedia(file, { source: 'chat' });
       await handleSendMessage(undefined, id, localUrl);
     } catch (err) {
       toast({ 
@@ -543,120 +585,122 @@ export default function Chat() {
           <ScrollArea className="flex-1">
             <div className="space-y-3 px-3 py-3 md:space-y-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
-              {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg, idx) => (
-                <div
-                  key={msg.id}
-                  className={cn(
-                    "flex",
-                    msg.senderId === user?.id ? "justify-end" : "justify-start"
-                  )}
-                >
+              {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg) => {
+                const isMine = msg.senderId === user?.id;
+                const isDeleted = msg.isDeletedForMe || msg.isDeletedForAll;
+                return (
                   <div
-                    className={cn(
-                      "group relative max-w-[82%] rounded-2xl px-3 py-2.5 md:max-w-[70%] md:px-4 md:py-2",
-                      msg.senderId === user?.id
-                        ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
-                        : "bg-secondary rounded-bl-sm"
-                    )}
+                    key={msg.id}
+                    className={cn("flex", isMine ? "justify-end" : "justify-start")}
                   >
-                    {msg.isLocked ? (
-                      <button
-                        type="button"
-                        className="flex items-center gap-2 text-left"
-                        onClick={redirectToPlans}
-                      >
-                        <Lock className="w-4 h-4" />
-                        <p>Assine para ver esta mensagem</p>
-                      </button>
-                    ) : (
-                      <div className="flex flex-col gap-2">
-                        {msg.mediaId && (
-                          <div className="relative rounded-lg overflow-hidden max-w-full">
-                            {msg.isViewOnce ? (
-                              msg.isViewed ? (
-                                <div className="bg-black/10 backdrop-blur-sm p-4 flex items-center gap-3 border border-white/10 rounded-lg opacity-60">
-                                  <EyeOff className="w-5 h-5 text-muted-foreground" />
-                                  <span className="text-xs font-medium italic">Mensagem visualizada</span>
-                                </div>
-                              ) : (
-                                <div 
-                                  className="bg-black/20 backdrop-blur-md p-8 flex flex-col items-center justify-center gap-2 border border-white/20 rounded-lg cursor-pointer hover:bg-black/30 transition-colors"
-                                  onClick={async () => {
-                                     if (!msg.mediaUrl || msg.isViewed || msg.id.startsWith('temp-')) return;
-                                     
-                                     const finalUrl = msg.mediaUrl.startsWith('blob:') 
-                                       ? msg.mediaUrl 
-                                       : resolveServerUrl(msg.mediaUrl);
-                                     
-                                     setViewingPhoto(finalUrl);
-                                     
-                                     // Mark as viewed in backend immediately
-                                     try {
-                                       await chatService.markMessageAsViewed(msg.id);
-                                       setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isViewed: true } : m));
-                                     } catch (err) {
-                                       console.error('Failed to mark as viewed:', err);
-                                     }
-                                   }}
-                                >
-                                  <Zap className="w-8 h-8 text-yellow-400" />
-                                  <span className="text-xs font-medium">Foto de visualização única</span>
-                                  <Button size="sm" variant="secondary" className="mt-2 h-8">
-                                    <Eye className="w-4 h-4 mr-1" /> Visualizar
-                                  </Button>
-                                </div>
-                              )
-                            ) : (
-                              msg.mediaMimeType?.startsWith('video/') ? (
-                                <VideoWithPreview
-                                  src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')} 
-                                  controls
-                                  className="max-h-60 w-auto rounded-lg"
-                                />
-                              ) : (
-                                <img 
-                                  src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')} 
-                                  alt="Mídia" 
-                                  className="max-h-72 w-auto object-contain rounded-lg"
-                                  onClick={() => {
-                                    if (!msg.mediaUrl) return;
-                                    const finalUrl = msg.mediaUrl.startsWith('blob:') 
-                                      ? msg.mediaUrl 
-                                      : resolveServerUrl(msg.mediaUrl);
-                                    setViewingPhoto(finalUrl);
-                                  }}
-                                />
-                              )
-                            )}
-                          </div>
-                        )}
-                        {msg.content && <p className="break-words text-[15px] leading-6 md:text-base">{msg.content}</p>}
-                      </div>
-                    )}
-                    <div className={cn(
-                      "flex items-center justify-end gap-1 mt-1",
-                      msg.senderId === user?.id ? "text-primary-foreground/70" : "text-muted-foreground"
-                    )}>
-                      <span className="text-[10px]">
-                        {formatTime(msg.createdAt)}
-                      </span>
-                      {msg.senderId === user?.id && (
-                        <span className="flex items-center">
-                          {msg.isSending ? (
-                            <div className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                          ) : msg.isRead ? (
-                            <CheckCheck className="w-3 h-3 text-blue-400" />
-                          ) : msg.isDelivered ? (
-                            <CheckCheck className="w-3 h-3" />
-                          ) : (
-                            <Check className="w-3 h-3" />
-                          )}
-                        </span>
+                    <div
+                      className={cn(
+                        "group relative max-w-[82%] rounded-2xl px-3 py-2.5 md:max-w-[70%] md:px-4 md:py-2",
+                        isMine
+                          ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
+                          : "bg-secondary rounded-bl-sm"
                       )}
+                      onContextMenu={(e) => !isDeleted && !msg.isSending && openContextMenu(e, msg.id)}
+                      onTouchStart={(e) => {
+                        if (isDeleted || msg.isSending) return;
+                        longPressTimer.current = setTimeout(() => openContextMenu(e, msg.id), 500);
+                      }}
+                      onTouchEnd={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                      onTouchMove={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                    >
+                      {isDeleted ? (
+                        <p className="italic text-[13px] opacity-60">
+                          {msg.isDeletedForAll ? 'Mensagem apagada' : 'Você apagou esta mensagem'}
+                        </p>
+                      ) : msg.isLocked ? (
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 text-left"
+                          onClick={redirectToPlans}
+                        >
+                          <Lock className="w-4 h-4" />
+                          <p>Assine para ver esta mensagem</p>
+                        </button>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {msg.mediaId && (
+                            <div className="relative rounded-lg overflow-hidden max-w-full">
+                              {msg.isViewOnce ? (
+                                msg.isViewed ? (
+                                  <div className="bg-black/10 backdrop-blur-sm p-4 flex items-center gap-3 border border-white/10 rounded-lg opacity-60">
+                                    <EyeOff className="w-5 h-5 text-muted-foreground" />
+                                    <span className="text-xs font-medium italic">Mensagem visualizada</span>
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="bg-black/20 backdrop-blur-md p-8 flex flex-col items-center justify-center gap-2 border border-white/20 rounded-lg cursor-pointer hover:bg-black/30 transition-colors"
+                                    onClick={async () => {
+                                      if (!msg.mediaUrl || msg.isViewed || msg.id.startsWith('temp-')) return;
+                                      const finalUrl = msg.mediaUrl.startsWith('blob:') ? msg.mediaUrl : resolveServerUrl(msg.mediaUrl);
+                                      setViewingPhoto(finalUrl);
+                                      try {
+                                        await chatService.markMessageAsViewed(msg.id);
+                                        setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, isViewed: true } : m));
+                                      } catch (err) {
+                                        console.error('Failed to mark as viewed:', err);
+                                      }
+                                    }}
+                                  >
+                                    <Zap className="w-8 h-8 text-yellow-400" />
+                                    <span className="text-xs font-medium">Foto de visualização única</span>
+                                    <button type="button" className="mt-2 h-8 px-3 text-sm rounded-md bg-secondary flex items-center gap-1">
+                                      <Eye className="w-4 h-4 mr-1" /> Visualizar
+                                    </button>
+                                  </div>
+                                )
+                              ) : (
+                                msg.mediaMimeType?.startsWith('video/') ? (
+                                  <VideoWithPreview
+                                    src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')}
+                                    controls
+                                    className="max-h-60 w-auto rounded-lg"
+                                  />
+                                ) : (
+                                  <img
+                                    src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')}
+                                    alt="Mídia"
+                                    className="max-h-72 w-auto object-contain rounded-lg"
+                                    onClick={() => {
+                                      if (!msg.mediaUrl) return;
+                                      const finalUrl = msg.mediaUrl.startsWith('blob:') ? msg.mediaUrl : resolveServerUrl(msg.mediaUrl);
+                                      setViewingPhoto(finalUrl);
+                                    }}
+                                  />
+                                )
+                              )}
+                            </div>
+                          )}
+                          {msg.content && <p className="break-words text-[15px] leading-6 md:text-base">{msg.content}</p>}
+                        </div>
+                      )}
+                      <div className={cn(
+                        "flex items-center justify-end gap-1 mt-1",
+                        isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                      )}>
+                        <span className="text-[10px]">{formatTime(msg.createdAt)}</span>
+                        {isMine && (
+                          <span className="flex items-center">
+                            {msg.isSending ? (
+                              <div className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                            ) : msg.isRead ? (
+                              <CheckCheck className="w-3 h-3 text-blue-400" />
+                            ) : msg.isDelivered ? (
+                              <CheckCheck className="w-3 h-3" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={scrollRef} />
             </div>
           </ScrollArea>
@@ -771,6 +815,42 @@ export default function Chat() {
         </div>
       )}
       
+      {/* Message context menu */}
+      {contextMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setContextMenu(null)}
+          />
+          <div
+            className="fixed z-50 min-w-[160px] overflow-hidden rounded-xl border bg-background shadow-xl"
+            style={{
+              left: Math.min(contextMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 400) - 180),
+              top: Math.min(contextMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 600) - 100),
+            }}
+          >
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+              onClick={() => handleDeleteMessage(contextMenu.messageId, false)}
+            >
+              <Trash2 className="h-4 w-4 text-muted-foreground" />
+              Apagar para mim
+            </button>
+            {messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                onClick={() => handleDeleteMessage(contextMenu.messageId, true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Apagar para todos
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
       <Dialog open={!!viewingPhoto} onOpenChange={(open) => !open && setViewingPhoto(null)}>
         <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none flex items-center justify-center">
           <DialogTitle className="sr-only">Visualizar Foto</DialogTitle>

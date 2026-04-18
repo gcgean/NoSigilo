@@ -1,0 +1,2 @@
+ALTER TABLE messages ADD COLUMN deleted_for_all INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN deleted_by_ids TEXT NOT NULL DEFAULT '[]';

@@ -10,7 +10,12 @@
       "mcp__Claude_in_Chrome__computer",
       "mcp__Claude_in_Chrome__read_console_messages",
       "Bash(Remove-Item -Recurse -Force \"C:\\\\Projetos Web\\\\NoSigilo\\\\node_modules\\\\.vite\" -ErrorAction SilentlyContinue)",
-      "Bash(Write-Host \"Cache limpo\")"
+      "Bash(Write-Host \"Cache limpo\")",
+      "Bash(npx tsc *)",
+      "Bash(taskkill /PID 34912 /F)",
+      "Bash(cmd /c \"taskkill /PID 34912 /F\")",
+      "Bash(cmd /c \"netstat -ano | findstr :4001\")",
+      "Bash(cmd /c \"cd /d \\\\\"C:\\\\Projetos Web\\\\NoSigilo\\\\backend\\\\\" && start /B npm run dev > backend_out.txt 2>&1\")"
     ]
   }
 }
