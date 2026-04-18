@@ -1051,7 +1051,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.disable('x-powered-by');
   app.use(
     cors({
-      origin: env.FRONTEND_ORIGIN,
+      origin: (requestOrigin, callback) => {
+        // Allow the configured FRONTEND_ORIGIN + any localhost port (dev)
+        const allowed = env.FRONTEND_ORIGIN;
+        if (!requestOrigin) return callback(null, true);
+        if (requestOrigin === allowed) return callback(null, true);
+        if (/^https?:\/\/localhost(:\d+)?$/.test(requestOrigin)) return callback(null, true);
+        if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(requestOrigin)) return callback(null, true);
+        return callback(null, false);
+      },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
     })
