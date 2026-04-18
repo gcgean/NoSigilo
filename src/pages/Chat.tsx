@@ -77,6 +77,8 @@ export default function Chat() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Capture touch coords at touch-start so they're available when timer fires
+  const touchCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const premiumAccess = hasPremiumAccess(user);
@@ -316,11 +318,27 @@ export default function Chat() {
     }
   }, [toast]);
 
-  const openContextMenu = useCallback((e: React.MouseEvent | React.TouchEvent, messageId: string) => {
+  const openContextMenu = useCallback((e: React.MouseEvent, messageId: string) => {
     e.preventDefault();
-    const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0]?.clientY ?? 0 : (e as React.MouseEvent).clientY;
-    setContextMenu({ messageId, x: clientX, y: clientY });
+    setContextMenu({ messageId, x: e.clientX, y: e.clientY });
+  }, []);
+
+  const startLongPress = useCallback((e: React.TouchEvent, messageId: string) => {
+    // Capture coords NOW (before timer fires and touches collection clears)
+    touchCoords.current = {
+      x: e.touches[0]?.clientX ?? 0,
+      y: e.touches[0]?.clientY ?? 0,
+    };
+    longPressTimer.current = setTimeout(() => {
+      setContextMenu({ messageId, x: touchCoords.current.x, y: touchCoords.current.y });
+    }, 600);
+  }, []);
+
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
   }, []);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
@@ -601,12 +619,9 @@ export default function Chat() {
                           : "bg-secondary rounded-bl-sm"
                       )}
                       onContextMenu={(e) => !isDeleted && !msg.isSending && openContextMenu(e, msg.id)}
-                      onTouchStart={(e) => {
-                        if (isDeleted || msg.isSending) return;
-                        longPressTimer.current = setTimeout(() => openContextMenu(e, msg.id), 500);
-                      }}
-                      onTouchEnd={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
-                      onTouchMove={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                      onTouchStart={(e) => { if (!isDeleted && !msg.isSending) startLongPress(e, msg.id); }}
+                      onTouchEnd={cancelLongPress}
+                      onTouchMove={cancelLongPress}
                     >
                       {isDeleted ? (
                         <p className="italic text-[13px] opacity-60">
@@ -816,40 +831,46 @@ export default function Chat() {
       )}
       
       {/* Message context menu */}
-      {contextMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setContextMenu(null)}
-          />
-          <div
-            className="fixed z-50 min-w-[160px] overflow-hidden rounded-xl border bg-background shadow-xl"
-            style={{
-              left: Math.min(contextMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 400) - 180),
-              top: Math.min(contextMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 600) - 100),
-            }}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
-              onClick={() => handleDeleteMessage(contextMenu.messageId, false)}
+      {contextMenu && (() => {
+        const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
+        const vh = typeof window !== 'undefined' ? window.innerHeight : 700;
+        const menuW = 190;
+        const menuH = messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id ? 110 : 56;
+        const x = Math.max(8, Math.min(contextMenu.x, vw - menuW - 8));
+        const y = Math.max(8, Math.min(contextMenu.y, vh - menuH - 8));
+        return (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setContextMenu(null)}
+              onTouchStart={() => setContextMenu(null)}
+            />
+            <div
+              className="fixed z-50 min-w-[190px] overflow-hidden rounded-xl border bg-background shadow-2xl"
+              style={{ left: x, top: y }}
             >
-              <Trash2 className="h-4 w-4 text-muted-foreground" />
-              Apagar para mim
-            </button>
-            {messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id && (
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={() => handleDeleteMessage(contextMenu.messageId, true)}
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+                onClick={() => handleDeleteMessage(contextMenu.messageId, false)}
               >
-                <Trash2 className="h-4 w-4" />
-                Apagar para todos
+                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                Apagar para mim
               </button>
-            )}
-          </div>
-        </>
-      )}
+              {messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors border-t"
+                  onClick={() => handleDeleteMessage(contextMenu.messageId, true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Apagar para todos
+                </button>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       <Dialog open={!!viewingPhoto} onOpenChange={(open) => !open && setViewingPhoto(null)}>
         <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none flex items-center justify-center">
