@@ -16,8 +16,8 @@ export default function Favorites() {
           <Heart className="w-6 h-6 text-primary-foreground" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold">Favoritos</h1>
-          <p className="text-muted-foreground">{favorites.length} pessoas salvas</p>
+          <h1 className="text-2xl font-bold">Curtidos</h1>
+          <p className="text-muted-foreground">{favorites.length} perfis salvos (inclui curtidas do Match)</p>
         </div>
       </div>
 
@@ -64,9 +64,9 @@ export default function Favorites() {
       ) : (
         <Card className="text-center py-16 glass rounded-xl">
           <Star className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">Nenhum favorito ainda</h3>
+          <h3 className="text-xl font-semibold mb-2">Nenhum curtido ainda</h3>
           <p className="text-muted-foreground mb-4">
-            Adicione pessoas aos seus favoritos para encontrá-las facilmente.
+            Curta perfis no Match para adicioná-los automaticamente aqui.
           </p>
           <Link to="/search">
             <Button className="bg-gradient-primary hover:opacity-90">

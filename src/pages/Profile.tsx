@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateAge } from '@/utils/age';
@@ -58,6 +58,17 @@ function PhotoItem({
           />
         </DialogTrigger>
         <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+          <DialogClose asChild>
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              className="absolute right-3 top-3 z-[60] h-9 w-9 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+              aria-label="Fechar foto"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogClose>
           <img
             src={resolveMediaUrl(photo.url)}
             alt=""
@@ -552,6 +563,17 @@ export default function Profile() {
                 </button>
               </DialogTrigger>
               <DialogContent className="p-0 max-w-3xl bg-transparent border-0 shadow-none">
+                <DialogClose asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    className="absolute right-3 top-3 z-[60] h-9 w-9 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+                    aria-label="Fechar foto"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </DialogClose>
                 <div className="w-full aspect-square sm:aspect-[4/3] bg-black/60 rounded-lg overflow-hidden">
                   <img src={mainPhotoUrl} alt={profileData.name} className="w-full h-full object-contain" />
                 </div>

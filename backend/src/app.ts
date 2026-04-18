@@ -2560,6 +2560,21 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const { city, ageRange, genders, radar, search } = req.query;
     const params: any[] = [req.auth!.userId];
     let whereClause = 'u.id != ?';
+    whereClause += ` AND NOT EXISTS (
+      SELECT 1
+      FROM likes l
+      WHERE l.user_id = ?
+        AND l.target_type = 'user'
+        AND l.target_id = u.id
+    )`;
+    params.push(req.auth!.userId);
+    whereClause += ` AND NOT EXISTS (
+      SELECT 1
+      FROM match_passes mp
+      WHERE mp.user_id = ?
+        AND mp.passed_user_id = u.id
+    )`;
+    params.push(req.auth!.userId);
     const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {
@@ -2702,14 +2717,92 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         {
           userId: targetUserId,
           type: 'profile.liked',
-          title: 'Alguém curtiu seu perfil',
-          description: `${actorName} curtiu seu perfil no Match.`,
+          title: 'Você recebeu um match',
+          description: `${actorName} deu match com você.`,
           dataJson: { actorId: myId, actorName },
         }
       );
     }
+    await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
+    await persist();
 
     res.json({ ok: true });
+  });
+
+  app.post('/api/match/pass', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
+    const schema = z.object({ userId: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const targetUserId = parsed.data.userId;
+    const myId = req.auth!.userId;
+    if (targetUserId === myId) {
+      res.status(400).json({ error: 'cannot_pass_self' });
+      return;
+    }
+
+    const existing = (await queryOne(db, 'SELECT id FROM match_passes WHERE user_id = ? AND passed_user_id = ? LIMIT 1', [
+      myId,
+      targetUserId,
+    ])) as any;
+
+    if (!existing?.id) {
+      await run(db, 'INSERT INTO match_passes (id, user_id, passed_user_id, created_at) VALUES (?, ?, ?, ?)', [
+        randomUUID(),
+        myId,
+        targetUserId,
+        nowIso(),
+      ]);
+    }
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/match/liked', requireAuth(env, db), async (req, res) => {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
+    const rows = await queryAll(
+      db,
+      `
+      SELECT
+        u.*,
+        l.created_at as liked_at,
+        (
+          SELECT m.filename
+          FROM media m
+          WHERE m.user_id = u.id AND m.is_main = 1 AND m.is_private = 0
+          ORDER BY m.created_at DESC
+          LIMIT 1
+        ) as main_filename
+      FROM likes l
+      JOIN users u ON u.id = l.target_id
+      WHERE l.user_id = ?
+        AND l.target_type = 'user'
+      ORDER BY l.created_at DESC
+      LIMIT 200
+    `,
+      [req.auth!.userId]
+    );
+
+    const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    res.json(
+      rows.map((r: any) => ({
+        ...rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false),
+        likedAt: r.liked_at,
+        mainMediaUrl: r.main_filename ? `/uploads/${String(r.main_filename)}` : null,
+      }))
+    );
   });
 
   app.get('/api/match/suggestions', requireAuth(env, db), (_req, res) => {
@@ -2786,6 +2879,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const radarLat = cityRow?.lat != null ? Number(cityRow.lat) : null;
     const radarLon = cityRow?.lon != null ? Number(cityRow.lon) : null;
 
+    const radarMessage = parsed.data.message.trim();
+
     await run(
       db,
       `INSERT INTO radar_broadcasts (
@@ -2799,7 +2894,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         radarState,
         radarLat,
         radarLon,
-        parsed.data.message.trim(),
+        radarMessage,
         JSON.stringify(normalizedTargetGender),
         parsed.data.radius,
         parsed.data.durationHours,
@@ -2858,6 +2953,34 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         [viewId, id, String(candidate.id), createdAt, null, null]
       );
 
+      const pair = [req.auth!.userId, String(candidate.id)].sort((a, b) => a.localeCompare(b));
+      let conversation = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
+      if (!conversation?.id) {
+        const conversationId = randomUUID();
+        await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [conversationId, pair[0], pair[1], nowIso()]);
+        conversation = { id: conversationId };
+      }
+      const messageId = randomUUID();
+      const messageCreatedAt = nowIso();
+      await run(
+        db,
+        'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [messageId, String(conversation.id), req.auth!.userId, radarMessage, null, 0, 1, messageCreatedAt]
+      );
+      io?.to(String(conversation.id)).emit('message.created', {
+        id: messageId,
+        conversationId: String(conversation.id),
+        senderId: req.auth!.userId,
+        content: radarMessage,
+        mediaId: null,
+        mediaUrl: null,
+        mediaMimeType: null,
+        clientId: null,
+        isViewOnce: false,
+        isDelivered: true,
+        createdAt: messageCreatedAt,
+      });
+
       deliveredCount += 1;
       await createNotification(
         { db, io },
@@ -2872,6 +2995,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             senderName: parsed.data.isAnonymous ? 'Perfil discreto' : String(me.name || 'Alguem'),
             city: radarCity,
             state: radarState,
+            conversationId: String(conversation.id),
           },
         }
       );
@@ -3501,28 +3625,40 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/likes', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1) });
+    const schema = z.object({
+      targetType: z.enum(['post', 'user', 'photo']),
+      targetId: z.string().min(1),
+      reaction: z.enum(['heart', 'fire', 'love', 'wow', 'devil', 'splash']).optional(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
-    const existing = (await queryOne(db, 'SELECT id FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?', [
+    const existing = (await queryOne(db, 'SELECT id, reaction FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?', [
       req.auth!.userId,
       parsed.data.targetType,
       parsed.data.targetId,
     ])) as any;
+    const reaction = parsed.data.reaction || null;
     if (existing?.id) {
-      res.json({ id: String(existing.id) });
+      if (reaction && String(existing.reaction || '') !== reaction) {
+        await run(db, 'UPDATE likes SET reaction = ? WHERE id = ?', [reaction, String(existing.id)]);
+        await persist();
+        res.json({ id: String(existing.id), updated: true });
+        return;
+      }
+      res.json({ id: String(existing.id), updated: false });
       return;
     }
 
     const id = randomUUID();
-    await run(db, 'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)', [
+    await run(db, 'INSERT INTO likes (id, user_id, target_type, target_id, reaction, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       parsed.data.targetType,
       parsed.data.targetId,
+      reaction,
       nowIso(),
     ]);
     await persist();
@@ -3578,7 +3714,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await queryAll(
       db,
       `
-      SELECT l.id, l.created_at,
+      SELECT l.id, l.created_at, l.reaction,
         u.id as user_id, u.name as user_name, u.avatar as user_avatar
       FROM likes l
       JOIN users u ON u.id = l.user_id
@@ -3592,6 +3728,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       rows.map((r: any) => ({
         id: r.id,
         createdAt: r.created_at,
+        reaction: r.reaction || null,
         user: { id: r.user_id, name: r.user_name, avatar: r.user_avatar },
       }))
     );

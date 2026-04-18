@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { usersService, matchService } from '@/services/api';
+import { matchService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { calculateAge } from '@/utils/age';
 import { format } from 'date-fns';
@@ -31,6 +31,8 @@ export default function SearchPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [onlyLiked, setOnlyLiked] = useState(false);
+  const [likedProfiles, setLikedProfiles] = useState<any[]>([]);
   
   // Filters
   const [ageRange, setAgeRange] = useState('all');
@@ -46,9 +48,51 @@ export default function SearchPage() {
     );
   };
 
+  const filterLikedProfiles = (profiles: any[]) => {
+    const searchValue = search.trim().toLowerCase();
+    const cityValue = city.trim().toLowerCase();
+    return profiles.filter((profile) => {
+      const name = String(profile?.name || '').toLowerCase();
+      const profileCity = String(profile?.city || '').toLowerCase();
+      const profileState = String(profile?.state || '').toLowerCase();
+      const profileGender = String(profile?.gender || '');
+      const age = calculateAge(profile?.birthDate);
+
+      if (searchValue && !name.includes(searchValue) && !profileCity.includes(searchValue) && !profileState.includes(searchValue)) {
+        return false;
+      }
+
+      if (cityValue && !profileCity.includes(cityValue) && !profileState.includes(cityValue)) {
+        return false;
+      }
+
+      if (selectedGenders.length > 0 && !selectedGenders.includes(profileGender)) {
+        return false;
+      }
+
+      if (ageRange !== 'all') {
+        if (!age) return false;
+        if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
+        if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
+        if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
+        if (ageRange === '45+' && age < 45) return false;
+      }
+
+      return true;
+    });
+  };
+
   const loadResults = async () => {
     setIsLoading(true);
     try {
+      if (onlyLiked) {
+        const likedData = await matchService.getLikedProfiles();
+        const likedArray = Array.isArray(likedData) ? likedData : [];
+        setLikedProfiles(likedArray);
+        setResults(filterLikedProfiles(likedArray));
+        return;
+      }
+
       const params = {
         city: city.trim() || undefined,
         search: search.trim() || undefined,
@@ -65,6 +109,13 @@ export default function SearchPage() {
     }
   };
 
+  useEffect(() => {
+    matchService
+      .getLikedProfiles()
+      .then((list) => setLikedProfiles(Array.isArray(list) ? list : []))
+      .catch(() => setLikedProfiles([]));
+  }, []);
+
   // Automatic search for city and name with debounce
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -72,12 +123,12 @@ export default function SearchPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [city, search]);
+  }, [city, search, onlyLiked]);
 
   // Search when other filters change
   useEffect(() => {
     void loadResults();
-  }, [ageRange, radar, selectedGenders]);
+  }, [ageRange, radar, selectedGenders, onlyLiked]);
 
   return (
     <div className="max-w-4xl mx-auto w-full">
@@ -88,7 +139,7 @@ export default function SearchPage() {
       </div>
 
       {/* Search & Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+      <div className="flex flex-col gap-3 mb-6">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
           <Input
@@ -98,14 +149,38 @@ export default function SearchPage() {
             className="pl-10"
           />
         </div>
-        <Button
-          variant={showFilters ? 'default' : 'outline'}
-          onClick={() => setShowFilters(!showFilters)}
-          className="gap-2 sm:self-auto"
-        >
-          <Filter className="w-4 h-4" />
-          Filtros
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            type="button"
+            variant={onlyLiked ? 'default' : 'outline'}
+            onClick={() => setOnlyLiked((prev) => !prev)}
+            className={
+              onlyLiked
+                ? 'animate-liked-filter gap-2 border-0 bg-gradient-primary text-white hover:opacity-95 motion-reduce:animate-none'
+                : 'gap-2 border-primary/50 bg-primary/5 text-primary hover:bg-primary/10'
+            }
+          >
+            <Heart className={onlyLiked ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
+            Somente curtidos
+            <span
+              className={
+                onlyLiked
+                  ? 'rounded-full bg-pink-300/30 px-2 py-0.5 text-xs font-semibold text-white'
+                  : 'rounded-full bg-pink-500/15 px-2 py-0.5 text-xs font-semibold text-pink-600'
+              }
+            >
+              {likedProfiles.length}
+            </span>
+          </Button>
+          <Button
+            variant={showFilters ? 'default' : 'outline'}
+            onClick={() => setShowFilters(!showFilters)}
+            className="gap-2 sm:self-auto"
+          >
+            <Filter className="w-4 h-4" />
+            Filtros
+          </Button>
+        </div>
       </div>
 
       {/* Filters Panel */}
@@ -192,7 +267,9 @@ export default function SearchPage() {
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Buscando perfis...</div>
       ) : results.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">Nenhum perfil encontrado com esses filtros.</div>
+        <div className="text-center py-12 text-muted-foreground">
+          {onlyLiked ? 'Nenhum perfil curtido encontrado com esses filtros.' : 'Nenhum perfil encontrado com esses filtros.'}
+        </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {results.map((profile) => {

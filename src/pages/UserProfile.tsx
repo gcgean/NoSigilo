@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,33 +26,114 @@ import { hasPremiumAccess } from '@/utils/premium';
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PhotoComment = { id: string; content: string; createdAt: string; user?: { id?: string; name?: string; avatar?: string | null } };
+type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
+const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
+  { id: 'heart', emoji: '💜' },
+  { id: 'fire', emoji: '🔥' },
+  { id: 'love', emoji: '😍' },
+  { id: 'wow', emoji: '🤭' },
+  { id: 'devil', emoji: '😈' },
+  { id: 'splash', emoji: '💦' },
+];
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
 }
 
-function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: string; currentUserId?: string | null }) {
+function PhotoItem({
+  photos,
+  initialIndex,
+  currentUserId,
+}: {
+  photos: Photo[];
+  initialIndex: number;
+  currentUserId?: string | null;
+}) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [likesCount, setLikesCount] = useState(0);
   const [likedByMe, setLikedByMe] = useState(false);
+  const [myReaction, setMyReaction] = useState<PhotoReaction | null>(null);
+  const [reactionCounts, setReactionCounts] = useState<Record<PhotoReaction, number>>({
+    heart: 0,
+    fire: 0,
+    love: 0,
+    wow: 0,
+    devil: 0,
+    splash: 0,
+  });
   const [comments, setComments] = useState<PhotoComment[]>([]);
   const [commentDraft, setCommentDraft] = useState('');
   const [isLoadingInteractions, setIsLoadingInteractions] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const currentPhoto = photos[currentIndex] ?? photos[0];
+  const currentPhotoId = String(currentPhoto?.id || '');
+  const currentPhotoUrl = String(currentPhoto?.url || '');
+  const hasGalleryNavigation = photos.length > 1;
+
+  const goPrev = () => {
+    if (photos.length <= 1) return;
+    setCurrentIndex((prev) => (prev <= 0 ? photos.length - 1 : prev - 1));
+  };
+
+  const goNext = () => {
+    if (photos.length <= 1) return;
+    setCurrentIndex((prev) => (prev >= photos.length - 1 ? 0 : prev + 1));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    const touch = e.changedTouches?.[0];
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    if (startX === null || startY === null || !touch) return;
+
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+
+    if (deltaX < 0) {
+      goNext();
+    } else {
+      goPrev();
+    }
+  };
 
   const loadInteractions = async () => {
+    if (!currentPhotoId) return;
     setIsLoadingInteractions(true);
     try {
       const [likes, commentsList] = await Promise.all([
-        interactionsService.getLikes('photo', photoId),
-        interactionsService.getComments('photo', photoId),
+        interactionsService.getLikes('photo', currentPhotoId),
+        interactionsService.getComments('photo', currentPhotoId),
       ]);
       const likesArray = Array.isArray(likes) ? likes : [];
       const commentsArray = Array.isArray(commentsList) ? commentsList : [];
       setLikesCount(likesArray.length);
       setLikedByMe(likesArray.some((l: any) => String(l?.user?.id || '') === String(currentUserId || '')));
+      const counts: Record<PhotoReaction, number> = { heart: 0, fire: 0, love: 0, wow: 0, devil: 0, splash: 0 };
+      let mine: PhotoReaction | null = null;
+      for (const like of likesArray) {
+        const reaction = (String(like?.reaction || 'heart') as PhotoReaction);
+        if (Object.prototype.hasOwnProperty.call(counts, reaction)) counts[reaction] += 1;
+        if (String(like?.user?.id || '') === String(currentUserId || '') && Object.prototype.hasOwnProperty.call(counts, reaction)) {
+          mine = reaction;
+        }
+      }
+      setReactionCounts(counts);
+      setMyReaction(mine);
       setComments(commentsArray);
     } catch {
       toast({ title: 'Falha ao carregar interações da foto', description: 'Tente novamente.', variant: 'destructive' });
@@ -63,18 +144,36 @@ function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: stri
 
   useEffect(() => {
     if (!open) return;
+    setCommentDraft('');
     void loadInteractions();
-  }, [open, photoId, currentUserId]);
+  }, [open, currentPhotoId, currentUserId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goPrev();
+      }
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goNext();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, photos.length]);
 
   const toggleLike = async () => {
+    if (!currentPhotoId) return;
     const nextLiked = !likedByMe;
     setLikedByMe(nextLiked);
     setLikesCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
     try {
       if (nextLiked) {
-        await interactionsService.like('photo', photoId);
+        await interactionsService.like('photo', currentPhotoId);
       } else {
-        await interactionsService.unlike('photo', photoId);
+        await interactionsService.unlike('photo', currentPhotoId);
       }
     } catch {
       setLikedByMe(!nextLiked);
@@ -83,12 +182,32 @@ function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: stri
     }
   };
 
+  const reactToPhoto = async (reaction: PhotoReaction) => {
+    if (!currentPhotoId) return;
+    if (myReaction === reaction) {
+      try {
+        await interactionsService.unlike('photo', currentPhotoId);
+        await loadInteractions();
+      } catch {
+        toast({ title: 'Falha ao remover reação', description: 'Tente novamente.', variant: 'destructive' });
+      }
+      return;
+    }
+    try {
+      await interactionsService.like('photo', currentPhotoId, reaction);
+      await loadInteractions();
+    } catch {
+      toast({ title: 'Falha ao reagir', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
   const sendComment = async () => {
+    if (!currentPhotoId) return;
     const content = commentDraft.trim();
     if (!content) return;
     setIsSendingComment(true);
     try {
-      await interactionsService.comment('photo', photoId, content);
+      await interactionsService.comment('photo', currentPhotoId, content);
       setCommentDraft('');
       await loadInteractions();
     } catch {
@@ -101,21 +220,62 @@ function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: stri
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <div className="relative aspect-square rounded-xl overflow-hidden cursor-zoom-in">
+        <div className="relative aspect-square rounded-xl overflow-hidden cursor-zoom-in" onClick={() => setCurrentIndex(initialIndex)}>
           <img
-            src={resolveMediaUrl(url)}
+            src={resolveMediaUrl(currentPhotoUrl)}
             alt=""
             className="w-full h-full object-cover transition-transform hover:scale-105"
           />
         </div>
       </DialogTrigger>
       <DialogContent className="max-h-[96dvh] max-w-[96vw] overflow-y-auto border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+        <Button
+          type="button"
+          size="icon"
+          variant="secondary"
+          className="absolute right-3 top-3 z-[60] h-9 w-9 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+          onClick={() => setOpen(false)}
+          aria-label="Fechar foto"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+        {hasGalleryNavigation ? (
+          <>
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              className="absolute left-3 top-1/2 z-[60] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+              onClick={goPrev}
+              aria-label="Foto anterior"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              className="absolute right-3 top-1/2 z-[60] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+              onClick={goNext}
+              aria-label="Próxima foto"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </>
+        ) : null}
         <div className="mx-auto w-full max-w-3xl">
-          <img
-            src={resolveMediaUrl(url)}
-            alt=""
-            className="block max-h-[70dvh] w-full rounded-xl object-contain"
-          />
+          <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            <img
+              src={resolveMediaUrl(currentPhotoUrl)}
+              alt=""
+              className="block max-h-[70dvh] w-full rounded-xl object-contain"
+            />
+          </div>
+          {hasGalleryNavigation ? (
+            <div className="mt-2 text-center text-xs text-white/75">
+              Foto {currentIndex + 1} de {photos.length}
+            </div>
+          ) : null}
           <div className="mt-3 rounded-xl border border-white/10 bg-black/50 p-3 text-white">
             <div className="mb-3 flex items-center gap-4">
               <button
@@ -131,6 +291,23 @@ function PhotoItem({ photoId, url, currentUserId }: { photoId: string; url: stri
                 {comments.length}
               </div>
               {isLoadingInteractions ? <span className="text-xs text-white/60">Atualizando...</span> : null}
+            </div>
+
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {PHOTO_REACTIONS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => void reactToPhoto(item.id)}
+                  className={cn(
+                    'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                    myReaction === item.id ? 'border-primary bg-primary/25 text-white' : 'border-white/15 bg-white/5 text-white/90'
+                  )}
+                >
+                  <span className="mr-1">{item.emoji}</span>
+                  <span>{reactionCounts[item.id] || 0}</span>
+                </button>
+              ))}
             </div>
 
             <div className="mb-3 max-h-40 space-y-2 overflow-y-auto pr-1">
@@ -510,8 +687,8 @@ export default function UserProfile() {
 
         <TabsContent value="public">
           <div className="grid grid-cols-3 gap-3">
-            {publicPhotos.map((photo) => (
-              <PhotoItem key={photo.id} photoId={photo.id} url={photo.url} currentUserId={me?.id} />
+            {publicPhotos.map((photo, index) => (
+              <PhotoItem key={photo.id} photos={publicPhotos} initialIndex={index} currentUserId={me?.id} />
             ))}
             {publicPhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos públicas.</div>}
           </div>
@@ -522,8 +699,8 @@ export default function UserProfile() {
             <div className="grid grid-cols-3 gap-3">
               {isLoadingPrivate && <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingPrivate &&
-                privatePhotos.map((photo) => (
-                  <PhotoItem key={photo.id} photoId={photo.id} url={photo.url} currentUserId={me?.id} />
+                privatePhotos.map((photo, index) => (
+                  <PhotoItem key={photo.id} photos={privatePhotos} initialIndex={index} currentUserId={me?.id} />
                 ))}
               {!isLoadingPrivate && privatePhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos privadas.</div>}
             </div>

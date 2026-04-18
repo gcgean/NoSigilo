@@ -148,6 +148,10 @@
   .animate-pulse-slow {
     animation: pulse 3s ease-in-out infinite;
   }
+
+  .animate-liked-filter {
+    animation: liked-filter-pulse 2.6s ease-in-out infinite;
+  }
 }
 
 @keyframes float {
@@ -158,4 +162,13 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+@keyframes liked-filter-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 1px hsl(340 85% 62% / 0.45), 0 0 14px hsl(340 85% 62% / 0.18);
+  }
+  50% {
+    box-shadow: 0 0 0 1px hsl(340 85% 62% / 0.68), 0 0 24px hsl(340 85% 62% / 0.34);
+  }
 }

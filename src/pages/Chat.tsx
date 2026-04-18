@@ -148,10 +148,12 @@ export default function Chat() {
   }, [toast]);
 
   useEffect(() => {
-    const conversationId = (location.state as any)?.conversationId ? String((location.state as any).conversationId) : '';
+    const stateConversationId = (location.state as any)?.conversationId ? String((location.state as any).conversationId) : '';
+    const queryConversationId = new URLSearchParams(location.search).get('conversationId') || '';
+    const conversationId = stateConversationId || queryConversationId;
     if (!conversationId) return;
     setSelectedChat(conversationId);
-  }, [location.state]);
+  }, [location.state, location.search]);
 
   useEffect(() => {
     if (USE_MOCKS) return;

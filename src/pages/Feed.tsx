@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { feedService, interactionsService, profileService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
@@ -38,6 +38,25 @@ type Comment = {
   createdAt: string;
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
+
+type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
+const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
+  { id: 'heart', emoji: '💜' },
+  { id: 'fire', emoji: '🔥' },
+  { id: 'love', emoji: '😍' },
+  { id: 'wow', emoji: '🤭' },
+  { id: 'devil', emoji: '😈' },
+  { id: 'splash', emoji: '💦' },
+];
+const EMPTY_REACTION_COUNTS: Record<PhotoReaction, number> = {
+  heart: 0,
+  fire: 0,
+  love: 0,
+  wow: 0,
+  devil: 0,
+  splash: 0,
+};
+const PHOTO_REACTION_LONG_PRESS_MS = 400;
 
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
@@ -87,9 +106,15 @@ export default function Feed() {
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, Comment[]>>({});
   const [commentDraftByPostId, setCommentDraftByPostId] = useState<Record<string, string>>({});
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [photoReactionCounts, setPhotoReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
+  const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
+  const [isLoadingPhotoReactions, setIsLoadingPhotoReactions] = useState<Record<string, boolean>>({});
+  const [openReactionPickerPostId, setOpenReactionPickerPostId] = useState<string | null>(null);
   const [hasNewPosts, setHasNewPosts] = useState(false);
   const currentTopPostIdRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredPostIdRef = useRef<string | null>(null);
   const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
   const [showFirstAccessPostHint, setShowFirstAccessPostHint] = useState(false);
   const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
@@ -434,6 +459,107 @@ export default function Feed() {
       toast({ title: 'Erro ao curtir', description: 'Tente novamente.', variant: 'destructive' });
     }
   };
+
+  const loadPhotoReactions = async (photoId: string) => {
+    if (!photoId) return;
+    setIsLoadingPhotoReactions((prev) => ({ ...prev, [photoId]: true }));
+    try {
+      const likes = await interactionsService.getLikes('photo', photoId);
+      const likesArray = Array.isArray(likes) ? likes : [];
+      const counts: Record<PhotoReaction, number> = { ...EMPTY_REACTION_COUNTS };
+      let mine: PhotoReaction | null = null;
+      for (const like of likesArray) {
+        const reaction = String(like?.reaction || 'heart') as PhotoReaction;
+        if (Object.prototype.hasOwnProperty.call(counts, reaction)) counts[reaction] += 1;
+        if (String(like?.user?.id || '') === String(user?.id || '') && Object.prototype.hasOwnProperty.call(counts, reaction)) {
+          mine = reaction;
+        }
+      }
+      setPhotoReactionCounts((prev) => ({ ...prev, [photoId]: counts }));
+      setMyPhotoReactions((prev) => ({ ...prev, [photoId]: mine }));
+    } catch {
+      setPhotoReactionCounts((prev) => ({ ...prev, [photoId]: { ...EMPTY_REACTION_COUNTS } }));
+      setMyPhotoReactions((prev) => ({ ...prev, [photoId]: null }));
+    } finally {
+      setIsLoadingPhotoReactions((prev) => ({ ...prev, [photoId]: false }));
+    }
+  };
+
+  const reactToPhoto = async (photoId: string, reaction: PhotoReaction) => {
+    if (!photoId) return;
+    const current = myPhotoReactions[photoId] || null;
+    try {
+      if (current === reaction) {
+        await interactionsService.unlike('photo', photoId);
+      } else {
+        await interactionsService.like('photo', photoId, reaction);
+      }
+      await loadPhotoReactions(photoId);
+    } catch {
+      toast({ title: 'Erro ao reagir na foto', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const getPrimaryPhotoId = (post: FeedPost) =>
+    String(
+      (post.media || []).find((m) => String(m.mimeType || '').startsWith('image/') && m.id)?.id || ''
+    );
+
+  const closeReactionPicker = () => {
+    setOpenReactionPickerPostId(null);
+  };
+
+  const startLikeLongPress = (post: FeedPost) => {
+    const photoId = getPrimaryPhotoId(post);
+    if (!photoId) return;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredPostIdRef.current = post.id;
+      setOpenReactionPickerPostId(post.id);
+      if (!photoReactionCounts[photoId]) void loadPhotoReactions(photoId);
+    }, PHOTO_REACTION_LONG_PRESS_MS);
+  };
+
+  const cancelLikeLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleLikeButtonClick = async (post: FeedPost) => {
+    if (longPressTriggeredPostIdRef.current === post.id) {
+      longPressTriggeredPostIdRef.current = null;
+      return;
+    }
+    closeReactionPicker();
+    await handleToggleLike(post);
+  };
+
+  const handleReactFromPost = async (post: FeedPost, reaction: PhotoReaction) => {
+    const photoId = getPrimaryPhotoId(post);
+    if (!photoId) return;
+    await reactToPhoto(photoId, reaction);
+    closeReactionPicker();
+  };
+
+  useEffect(() => {
+    if (!openReactionPickerPostId) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('[data-reaction-picker-root="true"]')) return;
+      closeReactionPicker();
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+    };
+  }, [openReactionPickerPostId]);
+
+  useEffect(() => () => cancelLikeLongPress(), []);
 
   const toggleComments = async (postId: string) => {
     const willOpen = openCommentsPostId !== postId;
@@ -802,16 +928,52 @@ export default function Feed() {
               {/* Post Actions */}
               <div className="p-4 flex items-center justify-between border-t">
                 <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => void handleToggleLike(post)}
-                    className={cn(
-                      "flex items-center gap-2 transition-colors",
-                      post.likedByMe ? "text-primary" : "text-muted-foreground hover:text-primary"
-                    )}
-                  >
-                    <Heart className={cn("w-5 h-5", post.likedByMe && "fill-current")} />
-                    <span className="text-sm font-medium">{post.likesCount}</span>
-                  </button>
+                  <div className="relative" data-reaction-picker-root="true">
+                    <button
+                      onMouseDown={() => startLikeLongPress(post)}
+                      onMouseUp={cancelLikeLongPress}
+                      onMouseLeave={cancelLikeLongPress}
+                      onTouchStart={() => startLikeLongPress(post)}
+                      onTouchEnd={cancelLikeLongPress}
+                      onTouchCancel={cancelLikeLongPress}
+                      onClick={() => void handleLikeButtonClick(post)}
+                      className={cn(
+                        'flex items-center gap-2 transition-colors',
+                        post.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+                      )}
+                    >
+                      <Heart className={cn('w-5 h-5', post.likedByMe && 'fill-current')} />
+                      <span className="text-sm font-medium">{post.likesCount}</span>
+                    </button>
+                    {openReactionPickerPostId === post.id ? (
+                      <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {PHOTO_REACTIONS.map((item) => {
+                            const photoId = getPrimaryPhotoId(post);
+                            const counts = photoReactionCounts[photoId] || EMPTY_REACTION_COUNTS;
+                            const mine = myPhotoReactions[photoId] || null;
+                            return (
+                              <button
+                                key={`${post.id}-${item.id}`}
+                                type="button"
+                                className={cn(
+                                  'rounded-full border px-2.5 py-1 text-xs text-white transition-colors',
+                                  mine === item.id
+                                    ? 'border-primary bg-primary/25'
+                                    : 'border-white/15 bg-white/5 hover:bg-white/10'
+                                )}
+                                onClick={() => void handleReactFromPost(post, item.id)}
+                                disabled={!!isLoadingPhotoReactions[photoId]}
+                              >
+                                <span className="mr-1">{item.emoji}</span>
+                                <span>{counts[item.id] || 0}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     onClick={() => void toggleComments(post.id)}
                     className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -908,6 +1070,17 @@ export default function Feed() {
                     </div>
                   </DialogTrigger>
                   <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+                    <DialogClose asChild>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="secondary"
+                        className="absolute right-3 top-3 z-[60] h-9 w-9 rounded-full border border-white/20 bg-black/70 text-white hover:bg-black/85"
+                        aria-label="Fechar foto"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </DialogClose>
                     <img
                       src={photo.url}
                       alt=""

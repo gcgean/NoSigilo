@@ -51,11 +51,19 @@ const navItems = [
   { path: '/profile', icon: User, label: 'Perfil' },
 ];
 
+const mobileNavItems = [
+  { path: '/feed', icon: Home, label: 'Feed' },
+  { path: '/match', icon: Heart, label: 'Match' },
+  { path: '/radar', icon: Radio, label: 'Radar' },
+  { path: '/chat', icon: MessageCircle, label: 'Chat' },
+  { path: '/search', icon: Search, label: 'Buscar' },
+];
+
 const extraNavItems = [
   { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
-  { path: '/favorites', icon: Star, label: 'Favoritos' },
+  { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
 ];
 
@@ -758,7 +766,7 @@ export default function Layout() {
 
       <nav className="sticky bottom-0 z-40 glass-strong border-t md:hidden pb-[env(safe-area-inset-bottom)]">
         <div className="flex items-center justify-around h-16 px-1">
-          {navItems.map((item) => {
+          {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
               <NavLink

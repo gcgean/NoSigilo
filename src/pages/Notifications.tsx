@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Bell, Check, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { invitesService, notificationsService, privatePhotosService } from '@/services/api';
+import { chatService, invitesService, notificationsService, privatePhotosService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 
@@ -145,6 +145,24 @@ export default function Notifications() {
     }
   };
 
+  const handleNotificationClick = async (notification: NotificationItem) => {
+    if (!notification) return;
+    if (notification.type === 'profile.liked' && notification?.data?.actorId) {
+      try {
+        const actorId = String(notification.data.actorId);
+        const conversation = await chatService.createConversation(actorId);
+        const conversationId = conversation?.id ? String(conversation.id) : '';
+        await markAsRead(notification.id);
+        if (conversationId) {
+          navigate('/chat', { state: { conversationId } });
+          return;
+        }
+      } catch {}
+    }
+    await markAsRead(notification.id);
+    navigate(getNotificationHref(notification));
+  };
+
   return (
     <div className="max-w-2xl mx-auto w-full">
       {/* Header */}
@@ -190,8 +208,7 @@ export default function Notifications() {
                 )}
                 onClick={() => {
                   if (hasInlineActions) return;
-                  void markAsRead(notification.id);
-                  navigate(getNotificationHref(notification));
+                  void handleNotificationClick(notification);
                 }}
                 role="button"
                 tabIndex={0}

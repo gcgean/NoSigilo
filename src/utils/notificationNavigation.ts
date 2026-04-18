@@ -19,7 +19,8 @@ export function getNotificationHref(notification: any): string {
   if (type === 'private_photos.request') return id ? `/notifications?focus=${encodeURIComponent(id)}` : '/notifications';
   if (type === 'private_photos.approved' && ownerId) return `/users/${encodeURIComponent(ownerId)}?tab=private`;
   if (type === 'private_photos.denied' && ownerId) return `/users/${encodeURIComponent(ownerId)}`;
+  if (type === 'radar.received' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
+  if (type === 'radar.contacted' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
 
   return '/notifications';
 }
-

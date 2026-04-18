@@ -32,6 +32,16 @@ type MatchProfile = {
   createdAt?: string | null;
 };
 
+type LikedProfile = {
+  id: string;
+  name: string;
+  avatar?: string | null;
+  mainMediaUrl?: string | null;
+  city?: string | null;
+  state?: string | null;
+  likedAt?: string | null;
+};
+
 function resolveMediaUrl(url?: string | null) {
   if (!url) return '';
   return resolveServerUrl(url);
@@ -43,7 +53,7 @@ const CACHE_KEY_INDEX = 'nosigilo_match_index';
 export default function Match() {
   const { on, off } = useSocket();
   const navigate = useNavigate();
-  const { toggleFavorite, isFavorite } = useFavorites();
+  const { addFavorite } = useFavorites();
   const { user } = useAuth();
   const { toast } = useToast();
   
@@ -64,6 +74,8 @@ export default function Match() {
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHoveringPass, setIsHoveringPass] = useState(false);
   const [isLoading, setIsLoading] = useState(profiles.length === 0);
+  const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);
+  const [isLoadingLikedProfiles, setIsLoadingLikedProfiles] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
 
   const redirectToPlans = () => {
@@ -84,15 +96,16 @@ export default function Match() {
     let cancelled = false;
     if (profiles.length === 0) setIsLoading(true);
 
-    matchService
-      .getCards()
-      .then((data) => {
+    Promise.all([matchService.getCards(), matchService.getLikedProfiles()])
+      .then(([cardsData, likedData]) => {
         if (cancelled) return;
-        const newProfiles = Array.isArray(data) ? data : [];
+        const newProfiles = Array.isArray(cardsData) ? cardsData : [];
+        const liked = Array.isArray(likedData) ? likedData : [];
         setProfiles(newProfiles);
+        setLikedProfiles(liked);
         sessionStorage.setItem(CACHE_KEY_PROFILES, JSON.stringify(newProfiles));
-        
-        setCurrentIndex(prev => {
+
+        setCurrentIndex((prev) => {
           if (prev >= newProfiles.length) {
             sessionStorage.setItem(CACHE_KEY_INDEX, '0');
             return 0;
@@ -184,14 +197,40 @@ export default function Match() {
     if (!currentProfile) return;
     try {
       await matchService.like(currentProfile.id);
+      addFavorite({
+        id: currentProfile.id,
+        name: currentProfile.name,
+        avatar: currentProfile.avatar || undefined,
+        addedAt: new Date().toISOString(),
+      });
+      setLikedProfiles((prev) => {
+        if (prev.some((p) => String(p.id) === String(currentProfile.id))) return prev;
+        return [
+          {
+            id: currentProfile.id,
+            name: currentProfile.name,
+            avatar: currentProfile.avatar || null,
+            mainMediaUrl: currentProfile.mainMediaUrl || null,
+            city: currentProfile.city || null,
+            state: currentProfile.state || null,
+            likedAt: new Date().toISOString(),
+          },
+          ...prev,
+        ];
+      });
     } catch {}
     handleSwipe('right');
   };
 
-  const handlePass = () => {
+  const handlePass = async () => {
     if (!premiumAccess) {
       redirectToPlans();
       return;
+    }
+    if (currentProfile?.id) {
+      try {
+        await matchService.pass(currentProfile.id);
+      } catch {}
     }
     handleSwipe('left');
   };
@@ -216,25 +255,84 @@ export default function Match() {
   };
 
   return (
-    <div className="max-w-lg mx-auto w-full">
+    <div className="max-w-[430px] sm:max-w-lg mx-auto w-full px-2 sm:px-0">
       <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Match</h1>
-          <p className="text-muted-foreground">Encontre sua conexão</p>
+          <h1 className="text-[2rem] sm:text-2xl font-semibold tracking-tight">Match</h1>
+          <p className="text-[1.05rem] sm:text-lg text-muted-foreground/90 font-normal">Encontre sua conexão</p>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => {
-            if (!premiumAccess) {
-              redirectToPlans();
-              return;
-            }
-            navigate('/search');
-          }}
-        >
-          <Filter className="w-5 h-5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (!premiumAccess) {
+                    redirectToPlans();
+                    return;
+                  }
+                  setIsLoadingLikedProfiles(true);
+                  matchService
+                    .getLikedProfiles()
+                    .then((list) => setLikedProfiles(Array.isArray(list) ? list : []))
+                    .catch(() => setLikedProfiles([]))
+                    .finally(() => setIsLoadingLikedProfiles(false));
+                }}
+                className="gap-2"
+              >
+                <Heart className="w-4 h-4" />
+                Curtidos ({likedProfiles.length})
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <p className="font-semibold mb-3">Perfis que você curtiu</p>
+              {isLoadingLikedProfiles ? <p className="text-sm text-muted-foreground">Carregando...</p> : null}
+              {!isLoadingLikedProfiles && likedProfiles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Você ainda não curtiu nenhum perfil.</p>
+              ) : null}
+              {!isLoadingLikedProfiles && likedProfiles.length > 0 ? (
+                <div className="max-h-72 overflow-y-auto space-y-2">
+                  {likedProfiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      className="w-full rounded-lg border p-2 text-left hover:bg-secondary/40 transition-colors"
+                      onClick={() => navigate(`/users/${profile.id}`)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={resolveMediaUrl(profile.mainMediaUrl || profile.avatar || '')}
+                          alt=""
+                          className="h-10 w-10 rounded-full object-cover bg-secondary"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{profile.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {[profile.city, profile.state].filter(Boolean).join(', ') || 'Sem localização'}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </PopoverContent>
+          </Popover>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => {
+              if (!premiumAccess) {
+                redirectToPlans();
+                return;
+              }
+              navigate('/search');
+            }}
+          >
+            <Filter className="w-5 h-5" />
+          </Button>
+        </div>
       </div>
 
       {!premiumAccess && (
@@ -251,15 +349,15 @@ export default function Match() {
         </button>
       )}
 
-      <div className="relative aspect-[3/4] max-h-[70dvh] sm:max-h-[600px]">
+      <div className="relative aspect-[3/4] max-h-[80dvh] sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && premiumAccess && (
-          <div className="absolute inset-0 rounded-3xl glass flex items-center justify-center text-muted-foreground">Carregando...</div>
+          <div className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex items-center justify-center text-muted-foreground">Carregando...</div>
         )}
         {!premiumAccess && (
           <button
             type="button"
             onClick={redirectToPlans}
-            className="absolute inset-0 rounded-3xl glass flex flex-col items-center justify-center gap-3 text-center text-muted-foreground"
+            className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex flex-col items-center justify-center gap-3 text-center text-muted-foreground"
           >
             <Lock className="h-10 w-10 text-destructive" />
             <div>
@@ -269,14 +367,14 @@ export default function Match() {
           </button>
         )}
         {!isLoading && premiumAccess && !currentProfile && (
-          <div className="absolute inset-0 rounded-3xl glass flex items-center justify-center text-muted-foreground">
+          <div className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex items-center justify-center text-muted-foreground">
             Nenhum perfil disponível
           </div>
         )}
         {!isLoading && premiumAccess && currentProfile && (
           <div
             className={cn(
-              'absolute inset-0 rounded-3xl overflow-hidden shadow-elevated transition-all duration-300',
+              'absolute inset-0 rounded-[22px] sm:rounded-3xl overflow-hidden shadow-elevated transition-all duration-300',
               swipeDirection === 'right' && 'animate-swipe-right',
               swipeDirection === 'left' && 'animate-swipe-left'
             )}
@@ -289,7 +387,7 @@ export default function Match() {
               <div className="w-full h-full bg-secondary" />
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
 
             <div className="absolute top-4 left-4 flex gap-2">
               {currentProfile.isVerified && (
@@ -316,28 +414,28 @@ export default function Match() {
               </div>
             )}
 
-            <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
-              <div className="flex items-end justify-between gap-3">
-                <div className="min-w-0">
-                  <button
-                    type="button"
-                    className="text-left text-2xl sm:text-3xl font-bold text-white mb-1 break-words hover:underline"
-                    onClick={() => navigate(`/users/${currentProfile.id}`)}
-                  >
-                    {currentProfile.name}
-                    {age !== null ? `, ${age}` : ''}
-                  </button>
-                  {identityLine ? (
-                    <div className="mb-3 text-sm text-white/80">{identityLine}</div>
-                  ) : (
-                    <div className="flex items-center gap-1 text-white/80 mb-3">
-                      <MapPin className="w-4 h-4" />
-                      <span className="truncate">{cityLine || '—'}</span>
-                    </div>
-                  )}
-                  <p className="text-white/90 text-sm line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
-                  
-                  <div className="flex flex-wrap items-center gap-2">
+              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
+                <div className="flex items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      className="text-left text-[clamp(1.55rem,7vw,2.05rem)] sm:text-3xl font-semibold leading-tight tracking-tight text-white mb-1 break-words hover:underline"
+                      onClick={() => navigate(`/users/${currentProfile.id}`)}
+                    >
+                      {currentProfile.name}
+                      {age !== null ? `, ${age}` : ''}
+                    </button>
+                    {identityLine ? (
+                      <div className="mb-3 text-[0.98rem] sm:text-sm text-white/75 font-normal">{identityLine}</div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-[0.98rem] sm:text-sm text-white/75 mb-3 font-normal">
+                        <MapPin className="w-4 h-4" />
+                        <span className="truncate">{cityLine || '—'}</span>
+                      </div>
+                    )}
+                    <p className="text-white/80 text-[0.98rem] sm:text-sm font-normal line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="secondary"
                       size="sm"
@@ -398,12 +496,12 @@ export default function Match() {
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-5 gap-3 sm:flex sm:items-center sm:justify-center sm:gap-6">
+      <div className="mt-3 sm:mt-6 grid grid-cols-4 gap-2.5 sm:flex sm:items-center sm:justify-center sm:gap-6">
         <Button
           size="lg"
           variant="outline"
-          className="h-14 w-full rounded-full border-2 border-destructive text-destructive hover:bg-destructive hover:text-white transition-all sm:h-16 sm:w-16"
-          onClick={handlePass}
+          className="h-[62px] w-full rounded-[26px] border-2 border-destructive text-destructive hover:bg-destructive hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
+          onClick={() => void handlePass()}
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
           disabled={!currentProfile && premiumAccess}
@@ -413,7 +511,7 @@ export default function Match() {
 
         <Button
           size="lg"
-          className="h-16 w-full rounded-full bg-gradient-primary shadow-glow hover:opacity-90 transition-all sm:h-20 sm:w-20"
+          className="h-[70px] w-full rounded-[28px] bg-gradient-primary shadow-glow hover:opacity-90 transition-all sm:h-20 sm:w-20 sm:rounded-full"
           onClick={() => void handleLike()}
           disabled={!currentProfile && premiumAccess}
         >
@@ -423,7 +521,7 @@ export default function Match() {
         <Button
           size="lg"
           variant="outline"
-          className="h-14 w-full rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16"
+          className="h-[62px] w-full rounded-[26px] border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => {
             if (!currentProfile) return;
             if (!premiumAccess) {
@@ -440,42 +538,16 @@ export default function Match() {
         <Button
           size="lg"
           variant="outline"
-          className="h-14 w-full rounded-full border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16"
+          className="h-[62px] w-full rounded-[26px] border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => void handleOpenChat()}
           disabled={!currentProfile && premiumAccess}
         >
           <MessageCircle className="w-8 h-8" />
         </Button>
 
-        <Button
-          size="lg"
-          variant="outline"
-          className={cn(
-            "h-14 w-full rounded-full border-2 transition-all sm:h-16 sm:w-16",
-            currentProfile && isFavorite(currentProfile.id)
-              ? "border-gold bg-gold text-black hover:bg-gold/90"
-              : "border-gold text-gold hover:bg-gold hover:text-black"
-          )}
-          disabled={!currentProfile && premiumAccess}
-          onClick={() => {
-            if (!currentProfile) return;
-            if (!premiumAccess) {
-              redirectToPlans();
-              return;
-            }
-            toggleFavorite({
-              id: currentProfile.id,
-              name: currentProfile.name,
-              avatar: currentProfile.avatar || undefined,
-              addedAt: new Date().toISOString()
-            });
-          }}
-        >
-          <Star className={cn("w-8 h-8", currentProfile && isFavorite(currentProfile.id) && "fill-current")} />
-        </Button>
       </div>
 
-      <p className="text-center text-sm text-muted-foreground mt-4 px-4">Arraste para os lados ou use os botões</p>
+      <p className="text-center text-[0.98rem] text-muted-foreground/90 mt-4 px-4">Arraste para os lados ou use os botões</p>
     </div>
   );
 }

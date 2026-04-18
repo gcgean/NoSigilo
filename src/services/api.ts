@@ -193,6 +193,16 @@ export const matchService = {
     return response.data;
   },
 
+  pass: async (userId: string) => {
+    const response = await apiClient.post('/match/pass', { userId });
+    return response.data;
+  },
+
+  getLikedProfiles: async () => {
+    const response = await apiClient.get('/match/liked');
+    return response.data;
+  },
+
   getSuggestions: async () => {
     const response = await apiClient.get('/match/suggestions');
     return response.data;
@@ -278,8 +288,12 @@ export const chatService = {
 
 // Likes & Comments Service
 export const interactionsService = {
-  like: async (targetType: 'post' | 'photo', targetId: string) => {
-    const response = await apiClient.post('/likes', { targetType, targetId });
+  like: async (
+    targetType: 'post' | 'photo',
+    targetId: string,
+    reaction?: 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash'
+  ) => {
+    const response = await apiClient.post('/likes', { targetType, targetId, reaction });
     return response.data;
   },
 

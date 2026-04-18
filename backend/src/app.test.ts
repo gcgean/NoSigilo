@@ -284,6 +284,60 @@ describe('nosigilo backend', () => {
     expect(sugAudiencePriority.body[0]?.gender).toContain('Casal');
   });
 
+  it('match cards hide liked/passed profiles and liked list returns liked users', async () => {
+    const me = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Matcher',
+      email: 'matcher@example.com',
+      password: 'senha123',
+      birthDate: '1992-01-01',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const likedTarget = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Liked Target',
+      email: 'liked-target@example.com',
+      password: 'senha123',
+      birthDate: '1995-01-01',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const passedTarget = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Passed Target',
+      email: 'passed-target@example.com',
+      password: 'senha123',
+      birthDate: '1996-01-01',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${me.token}`)
+      .send({ userId: likedTarget.user.id })
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/match/pass')
+      .set('Authorization', `Bearer ${me.token}`)
+      .send({ userId: passedTarget.user.id })
+      .expect(200);
+
+    const cards = await request(ctx.app).get('/api/match/cards').set('Authorization', `Bearer ${me.token}`).expect(200);
+    expect(Array.isArray(cards.body)).toBe(true);
+    expect(cards.body.some((u: any) => String(u.id) === String(likedTarget.user.id))).toBe(false);
+    expect(cards.body.some((u: any) => String(u.id) === String(passedTarget.user.id))).toBe(false);
+
+    const likedList = await request(ctx.app).get('/api/match/liked').set('Authorization', `Bearer ${me.token}`).expect(200);
+    expect(Array.isArray(likedList.body)).toBe(true);
+    expect(likedList.body.some((u: any) => String(u.id) === String(likedTarget.user.id))).toBe(true);
+    expect(likedList.body.some((u: any) => String(u.id) === String(passedTarget.user.id))).toBe(false);
+  });
+
   it('expired users can view chat with locked incoming messages but cannot start or reply', async () => {
     const regA = await registerInvitedUser(ctx, sponsorToken, {
       name: 'A',
@@ -765,11 +819,28 @@ describe('nosigilo backend', () => {
     expect(incoming.body.incoming.length).toBeGreaterThan(0);
     expect(incoming.body.incoming[0].message).toContain('Casal na cidade');
 
+    const viewerConversations = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    const radarConversation = viewerConversations.body.find((c: any) => c?.user?.id === sender.user.id);
+    expect(radarConversation?.id).toBeTypeOf('string');
+
+    const viewerMessages = await request(ctx.app)
+      .get(`/api/conversations/${radarConversation.id}/messages`)
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(Array.isArray(viewerMessages.body)).toBe(true);
+    expect(
+      viewerMessages.body.some((m: any) => m.senderId === sender.user.id && String(m.content || '').includes('Casal na cidade hoje'))
+    ).toBe(true);
+
     const contact = await request(ctx.app)
       .post(`/api/radar/${incoming.body.incoming[0].id}/contact`)
       .set('Authorization', `Bearer ${viewer.token}`)
       .expect(200);
     expect(contact.body.conversationId).toBeTypeOf('string');
+    expect(contact.body.conversationId).toBe(radarConversation.id);
 
     const mine = await request(ctx.app).get('/api/radar').set('Authorization', `Bearer ${sender.token}`).expect(200);
     expect(mine.body.myBroadcasts[0].deliveriesCount).toBeGreaterThanOrEqual(1);
