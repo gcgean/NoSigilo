@@ -33,6 +33,7 @@ type FeedPost = {
   likesCount: number;
   commentsCount: number;
   likedByMe: boolean;
+  reactions?: { type: string; count: number }[];
 };
 
 type Comment = {
@@ -60,6 +61,14 @@ const EMPTY_REACTION_COUNTS: Record<PhotoReaction, number> = {
   splash: 0,
 };
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
+const REACTION_EMOJI: Record<string, string> = {
+  heart: '💜',
+  fire: '🔥',
+  love: '😍',
+  wow: '🤭',
+  devil: '😈',
+  splash: '💦',
+};
 
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
@@ -113,6 +122,10 @@ export default function Feed() {
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
   const [isLoadingPhotoReactions, setIsLoadingPhotoReactions] = useState<Record<string, boolean>>({});
   const [openReactionPickerPostId, setOpenReactionPickerPostId] = useState<string | null>(null);
+  const [reactionsModalPostId, setReactionsModalPostId] = useState<string | null>(null);
+  const [reactionsModalTab, setReactionsModalTab] = useState<string>('all');
+  const [reactionsModalData, setReactionsModalData] = useState<Array<{ id: string; reaction: string | null; user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } }>>([]);
+  const [isLoadingReactionsModal, setIsLoadingReactionsModal] = useState(false);
   const [hasNewPosts, setHasNewPosts] = useState(false);
   const currentTopPostIdRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -571,6 +584,21 @@ export default function Feed() {
 
   useEffect(() => () => cancelLikeLongPress(), []);
 
+  const openReactionsModal = async (postId: string) => {
+    setReactionsModalPostId(postId);
+    setReactionsModalTab('all');
+    setReactionsModalData([]);
+    setIsLoadingReactionsModal(true);
+    try {
+      const data = await interactionsService.getLikes('post', postId);
+      setReactionsModalData(Array.isArray(data) ? data : []);
+    } catch {
+      setReactionsModalData([]);
+    } finally {
+      setIsLoadingReactionsModal(false);
+    }
+  };
+
   const toggleComments = async (postId: string) => {
     const willOpen = openCommentsPostId !== postId;
     setOpenCommentsPostId(willOpen ? postId : null);
@@ -1002,6 +1030,7 @@ export default function Feed() {
               {/* Post Actions */}
               <div className="flex items-center justify-between border-t p-3 sm:p-4">
                 <div className="flex items-center gap-4">
+                  {/* Like button with long-press reaction picker */}
                   <div className="relative" data-reaction-picker-root="true">
                     <button
                       onMouseDown={() => startLikeLongPress(post)}
@@ -1017,7 +1046,6 @@ export default function Feed() {
                       )}
                     >
                       <Heart className={cn('w-5 h-5', post.likedByMe && 'fill-current')} />
-                      <span className="text-sm font-medium">{post.likesCount}</span>
                     </button>
                     {openReactionPickerPostId === post.id ? (
                       <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
@@ -1048,6 +1076,8 @@ export default function Feed() {
                       </div>
                     ) : null}
                   </div>
+
+                  {/* Comment button */}
                   <button
                     onClick={() => void toggleComments(post.id)}
                     className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -1056,6 +1086,32 @@ export default function Feed() {
                     <span className="text-sm font-medium">{post.commentsCount}</span>
                   </button>
                 </div>
+
+                {/* Reactions summary — right side */}
+                {post.likesCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => void openReactionsModal(post.id)}
+                    className="flex items-center gap-1.5 rounded-full hover:bg-muted/60 px-2 py-1 transition-colors"
+                  >
+                    {/* Stacked emoji bubbles */}
+                    <div className="flex items-center">
+                      {(post.reactions && post.reactions.length > 0
+                        ? post.reactions.slice(0, 3)
+                        : [{ type: 'heart', count: post.likesCount }]
+                      ).map((r, i) => (
+                        <span
+                          key={r.type}
+                          className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] ring-2 ring-background"
+                          style={{ marginLeft: i > 0 ? '-6px' : 0, zIndex: 3 - i }}
+                        >
+                          {REACTION_EMOJI[r.type] ?? '💜'}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-sm font-medium text-muted-foreground">{post.likesCount}</span>
+                  </button>
+                )}
               </div>
 
               {openCommentsPostId === post.id && (
@@ -1129,6 +1185,94 @@ export default function Feed() {
           ) : null}
           <div ref={loadMoreRef} />
         </div>
+
+        {/* Reactions Modal */}
+        {reactionsModalPostId !== null && (() => {
+          const modalPost = allPosts.find((p) => p.id === reactionsModalPostId);
+          if (!modalPost) return null;
+
+          // Build tabs: all + each distinct reaction type
+          const reactionTypes = reactionsModalData.reduce<Record<string, typeof reactionsModalData>>((acc, r) => {
+            const key = r.reaction || 'heart';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(r);
+            return acc;
+          }, {});
+          const tabList = [
+            { key: 'all', label: `Todas`, count: reactionsModalData.length },
+            ...Object.entries(reactionTypes)
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([k, v]) => ({ key: k, label: REACTION_EMOJI[k] ?? '💜', count: v.length })),
+          ];
+          const displayRows = reactionsModalTab === 'all'
+            ? reactionsModalData
+            : reactionsModalData.filter((r) => (r.reaction || 'heart') === reactionsModalTab);
+
+          return (
+            <Dialog open onOpenChange={(open) => { if (!open) setReactionsModalPostId(null); }}>
+              <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden">
+                {/* Header tabs */}
+                <div className="flex items-center gap-1 overflow-x-auto border-b px-3 pt-3 pb-0">
+                  {tabList.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setReactionsModalTab(tab.key)}
+                      className={cn(
+                        'flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-sm font-medium transition-colors',
+                        reactionsModalTab === tab.key
+                          ? 'border-b-2 border-primary text-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <span>{tab.label}</span>
+                      <span className={cn(
+                        'rounded-full px-1.5 py-0.5 text-xs font-semibold',
+                        reactionsModalTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      )}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* User list */}
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {isLoadingReactionsModal ? (
+                    <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Carregando...
+                    </div>
+                  ) : displayRows.length === 0 ? (
+                    <p className="p-6 text-center text-sm text-muted-foreground">Nenhuma reação ainda.</p>
+                  ) : (
+                    <ul className="divide-y">
+                      {displayRows.map((r) => (
+                        <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                          <div className="relative shrink-0">
+                            <Avatar className="h-10 w-10">
+                              <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
+                              <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
+                            </Avatar>
+                            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
+                              {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold">{r.user.name}</p>
+                            {getIdentityLine(r.user) ? (
+                              <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
+                            ) : null}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
 
         {/* Sidebar */}
         <div className="hidden md:block space-y-6">

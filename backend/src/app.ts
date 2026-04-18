@@ -628,8 +628,21 @@ async function createNotification(
   return id;
 }
 
+async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string; targetId: string }): Promise<boolean> {
+  if (data.viewerId === data.targetId) return false;
+  const row = await queryOne(
+    options.db,
+    `SELECT 1 FROM blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1`,
+    [data.viewerId, data.targetId, data.targetId, data.viewerId]
+  );
+  return !!row;
+}
+
 async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: string; toUserId: string }) {
   if (data.fromUserId === data.toUserId) return true;
+  // Block check — if either party has blocked the other, no messages allowed
+  const blocked = await isUserBlocked(options, { viewerId: data.fromUserId, targetId: data.toUserId });
+  if (blocked) return false;
   const row = (await queryOne(options.db, 'SELECT allow_messages FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
   const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
   if (setting === 'everyone') return true;
@@ -1742,13 +1755,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId]);
+    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at, gender, looking_for_json FROM users WHERE id = ?', [req.auth!.userId]);
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
+    const viewerLookingFor = Array.isArray(safeJsonParse((viewerRow as any)?.looking_for_json))
+      ? (safeJsonParse((viewerRow as any)?.looking_for_json) as string[])
+      : [];
     const page = Number(req.query.page || 1);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
     const reelsOnlyFilter = includeReelsOnly ? '' : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
+    const fetchLimit = includeReelsOnly ? Math.max(limit + 1, 200) : limit + 1;
     const rows = await queryAll(
       db,
       `
@@ -1760,14 +1777,28 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       WHERE 1=1
         AND (u.is_banned = 0 OR u.is_banned IS NULL)
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM blocks b
+          WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+             OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+        )
         ${reelsOnlyFilter}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `,
-      [limit + 1, offset]
+      [req.auth!.userId, req.auth!.userId, fetchLimit, 0]
     );
 
-    const slice = rows.slice(0, limit);
+    const orderedRows = includeReelsOnly
+      ? [...rows].sort((a: any, b: any) => {
+          const aInterested = matchesLookingFor(viewerLookingFor, a.author_gender) ? 0 : 1;
+          const bInterested = matchesLookingFor(viewerLookingFor, b.author_gender) ? 0 : 1;
+          if (aInterested !== bInterested) return aInterested - bInterested;
+          return new Date(String(b.created_at || '')).getTime() - new Date(String(a.created_at || '')).getTime();
+        })
+      : rows;
+
+    const slice = orderedRows.slice(offset, offset + limit);
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -1827,6 +1858,25 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       for (const r of likedByMeRows as any[]) likedByMeSet.add(String(r.target_id));
     }
 
+    // Aggregate reactions per post (reaction type → count, top 3 distinct types)
+    const reactionsByPostId = new Map<string, { type: string; count: number }[]>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const reactionRows = await queryAll(
+        db,
+        `SELECT target_id, COALESCE(reaction, 'heart') as reaction, COUNT(*) as c
+         FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders})
+         GROUP BY target_id, COALESCE(reaction, 'heart')
+         ORDER BY target_id, c DESC`,
+        postIds
+      );
+      for (const rr of reactionRows as any[]) {
+        const pid = String(rr.target_id);
+        if (!reactionsByPostId.has(pid)) reactionsByPostId.set(pid, []);
+        reactionsByPostId.get(pid)!.push({ type: String(rr.reaction), count: Number(rr.c) });
+      }
+    }
+
     res.json({
       posts: slice.map((r: any) => ({
         id: r.id,
@@ -1845,8 +1895,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         likesCount: likesCountByPostId.get(String(r.id)) ?? 0,
         commentsCount: commentsCountByPostId.get(String(r.id)) ?? 0,
         likedByMe: likedByMeSet.has(String(r.id)),
+        reactions: reactionsByPostId.get(String(r.id)) ?? [],
       })),
-      hasMore: rows.length > limit,
+      hasMore: orderedRows.length > offset + limit,
     });
   });
 
@@ -2117,6 +2168,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
+    const viewerId = req.auth!.userId;
     const row = await queryOne(
       db,
       `
@@ -2145,12 +2197,178 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
+    // Check if the viewing user has been blocked by the target (or viewer blocked target)
+    if (viewerId !== userId) {
+      const blockRow = await queryOne(
+        db,
+        `SELECT blocker_user_id FROM blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1`,
+        [viewerId, userId, userId, viewerId]
+      );
+      if (blockRow) {
+        const isViewerBlocked = (blockRow as any).blocker_user_id === userId;
+        res.status(403).json({ error: 'blocked', blockedBy: isViewerBlocked ? 'target' : 'viewer' });
+        return;
+      }
+    }
     const presence = req.app.get('presence');
     res.json({
       ...rowToPublicUser(row, presence?.isOnline(String(row.id))),
       publicPhotosCount: Number((row as any).public_photos_count || 0),
       privatePhotosCount: Number((row as any).private_photos_count || 0),
       testimonialsCount: Number((row as any).approved_testimonials_count || 0),
+    });
+  });
+
+  // Block / Unblock endpoints
+  app.post('/api/users/:userId/block', requireAuth(env, db), async (req, res) => {
+    const targetId = String(req.params.userId || '');
+    const blockerId = req.auth!.userId;
+    if (targetId === blockerId) {
+      res.status(400).json({ error: 'cannot_block_self' });
+      return;
+    }
+    const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [targetId]);
+    if (!target) {
+      res.status(404).json({ error: 'user_not_found' });
+      return;
+    }
+    await db.run(
+      `INSERT OR IGNORE INTO blocks (blocker_user_id, blocked_user_id) VALUES (?, ?)`,
+      [blockerId, targetId]
+    );
+    res.json({ success: true, blocked: true });
+  });
+
+  app.delete('/api/users/:userId/block', requireAuth(env, db), async (req, res) => {
+    const targetId = String(req.params.userId || '');
+    const blockerId = req.auth!.userId;
+    await db.run(
+      `DELETE FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?`,
+      [blockerId, targetId]
+    );
+    res.json({ success: true, blocked: false });
+  });
+
+  app.get('/api/users/:userId/block', requireAuth(env, db), async (req, res) => {
+    const targetId = String(req.params.userId || '');
+    const viewerId = req.auth!.userId;
+    const row = await queryOne(
+      db,
+      `SELECT blocker_user_id FROM blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1`,
+      [viewerId, targetId, targetId, viewerId]
+    );
+    if (!row) {
+      res.json({ blocked: false, blockedByMe: false, blockedByThem: false });
+      return;
+    }
+    const blockedByMe = (row as any).blocker_user_id === viewerId;
+    res.json({ blocked: true, blockedByMe, blockedByThem: !blockedByMe });
+  });
+
+  // ─── Search / browse users ───────────────────────────────────────────────
+  app.get('/api/users', requireAuth(env, db), async (req, res) => {
+    const viewerId = req.auth!.userId;
+    const page   = Math.max(1, Number(req.query.page  || 1));
+    const limit  = Math.min(40, Math.max(1, Number(req.query.limit || 20)));
+    const offset = (page - 1) * limit;
+
+    const search   = req.query.search   ? String(req.query.search).trim()   : '';
+    const city     = req.query.city     ? String(req.query.city).trim()     : '';
+    const ageRange = req.query.ageRange ? String(req.query.ageRange).trim() : 'all';
+    const genders  = req.query.genders  ? String(req.query.genders).split(',').map((g) => g.trim()).filter(Boolean) : [];
+    const radarKm  = req.query.radar    ? Number(req.query.radar)           : null;
+
+    const params: any[] = [];
+    const conditions: string[] = [
+      'u.id != ?',
+      '(u.is_banned = 0 OR u.is_banned IS NULL)',
+      '(u.is_deactivated = 0 OR u.is_deactivated IS NULL)',
+      `NOT EXISTS (
+        SELECT 1 FROM blocks b
+        WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+           OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+      )`,
+    ];
+    params.push(viewerId, viewerId, viewerId);
+
+    if (search) {
+      conditions.push('(u.name LIKE ? OR u.city LIKE ? OR u.state LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (city) {
+      conditions.push('(u.city LIKE ? OR u.state LIKE ?)');
+      params.push(`%${city}%`, `%${city}%`);
+    }
+
+    if (genders.length > 0) {
+      conditions.push(`u.gender IN (${genders.map(() => '?').join(',')})`);
+      params.push(...genders);
+    }
+
+    if (ageRange !== 'all') {
+      const [minStr, maxStr] = ageRange.replace('+', '-150').split('-');
+      const minAge = Number(minStr);
+      const maxAge = Number(maxStr) || 150;
+      const now = new Date();
+      const maxBirth = new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+      const minBirth = new Date(now.getFullYear() - maxAge - 1, now.getMonth(), now.getDate() + 1).toISOString().split('T')[0];
+      conditions.push('u.birth_date BETWEEN ? AND ?');
+      params.push(minBirth, maxBirth);
+    }
+
+    // Get viewer's lat/lon for radar filter
+    let viewerLat: number | null = null;
+    let viewerLon: number | null = null;
+    if (radarKm !== null) {
+      const me = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ?', [viewerId])) as any;
+      viewerLat = me?.lat ? Number(me.lat) : null;
+      viewerLon = me?.lon ? Number(me.lon) : null;
+      if (viewerLat !== null && viewerLon !== null) {
+        const latDelta = radarKm / 111;
+        const lonDelta = radarKm / (111 * Math.cos((viewerLat * Math.PI) / 180));
+        conditions.push('u.lat BETWEEN ? AND ? AND u.lon BETWEEN ? AND ?');
+        params.push(viewerLat - latDelta, viewerLat + latDelta, viewerLon - lonDelta, viewerLon + lonDelta);
+      }
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
+
+    // Ordering: online first → last_seen_at DESC (recently seen first) → created_at DESC (newest accounts)
+    const orderBy = `
+      CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= datetime('now', '-5 minutes') THEN 0 ELSE 1 END ASC,
+      CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
+      u.last_seen_at DESC,
+      u.created_at DESC
+    `;
+
+    // Fetch limit+1 to know if there are more pages
+    params.push(limit + 1, offset);
+    const rows = await queryAll(
+      db,
+      `SELECT u.*,
+        (SELECT m.filename FROM media m WHERE m.user_id = u.id AND m.is_main = 1 AND m.is_private = 0 ORDER BY m.created_at DESC LIMIT 1) as main_filename
+       FROM users u
+       WHERE ${whereClause}
+       ORDER BY ${orderBy}
+       LIMIT ? OFFSET ?`,
+      params
+    );
+
+    const hasMore = rows.length > limit;
+    const slice = rows.slice(0, limit);
+
+    res.json({
+      users: slice.map((r: any) => {
+        const u = rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false);
+        return {
+          ...u,
+          mainMediaUrl: r.main_filename ? `/uploads/${String(r.main_filename)}` : null,
+        };
+      }),
+      hasMore,
+      page,
     });
   });
 
@@ -2729,6 +2947,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         AND mp.passed_user_id = u.id
     )`;
     params.push(req.auth!.userId);
+    whereClause += ` AND NOT EXISTS (
+      SELECT 1 FROM blocks b
+      WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+         OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+    )`;
+    params.push(req.auth!.userId, req.auth!.userId);
     const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { feedService, interactionsService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -8,6 +10,7 @@ import MobileState from '@/components/MobileState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { useToast } from '@/hooks/use-toast';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null };
 type FeedPost = {
@@ -16,6 +19,9 @@ type FeedPost = {
   createdAt: string;
   author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
   media: FeedMedia[];
+  likesCount?: number;
+  commentsCount?: number;
+  likedByMe?: boolean;
 };
 
 type ReelItem = {
@@ -25,6 +31,17 @@ type ReelItem = {
   author: FeedPost['author'];
   content: string;
   createdAt: string;
+  likesCount: number;
+  commentsCount: number;
+  likedByMe: boolean;
+};
+
+type ReelStats = { likesCount: number; commentsCount: number };
+type ReelComment = {
+  id: string;
+  content: string;
+  createdAt: string;
+  user?: { id: string; name: string; avatar?: string | null };
 };
 
 function getSeenRapStorageKey(userId?: string | null) {
@@ -47,6 +64,7 @@ function formatWhen(iso: string) {
 export default function Reels() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
@@ -55,6 +73,12 @@ export default function Reels() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [likedByPostId, setLikedByPostId] = useState<Record<string, boolean>>({});
+  const [statsByPostId, setStatsByPostId] = useState<Record<string, ReelStats>>({});
+  const [commentsOpenFor, setCommentsOpenFor] = useState<ReelItem | null>(null);
+  const [comments, setComments] = useState<ReelComment[]>([]);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [isSendingComment, setIsSendingComment] = useState(false);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -91,10 +115,30 @@ export default function Reels() {
               author: post.author,
               content: String(post.content || ''),
               createdAt: String(post.createdAt || ''),
+              likesCount: Number(post.likesCount || 0),
+              commentsCount: Number(post.commentsCount || 0),
+              likedByMe: post.likedByMe === true,
             }))
         ) as ReelItem[];
 
         setReels(nextReels);
+        setLikedByPostId(
+          nextReels.reduce<Record<string, boolean>>((acc, item) => {
+            acc[item.postId] = item.likedByMe;
+            return acc;
+          }, {})
+        );
+        setStatsByPostId(
+          nextReels.reduce<Record<string, ReelStats>>((acc, item) => {
+            if (!acc[item.postId]) {
+              acc[item.postId] = {
+                likesCount: item.likesCount,
+                commentsCount: item.commentsCount,
+              };
+            }
+            return acc;
+          }, {})
+        );
         setMutedById(
           nextReels.reduce<Record<string, boolean>>((acc, item) => {
             acc[item.id] = true;
@@ -130,7 +174,7 @@ export default function Reels() {
       try {
         localStorage.setItem(getSeenRapStorageKey(user?.id), JSON.stringify(next));
       } catch {
-        // Ignora falha de persistência local sem quebrar a navegação
+        // Falha de persistencia local nao pode quebrar o player
       }
       return next;
     });
@@ -220,14 +264,115 @@ export default function Reels() {
     }
   }, []);
 
+  const loadComments = useCallback(async (reel: ReelItem) => {
+    setIsLoadingComments(true);
+    try {
+      const data = await interactionsService.getComments('post', reel.postId);
+      setComments(Array.isArray(data) ? data : []);
+    } catch {
+      setComments([]);
+      toast({
+        title: 'Não foi possível carregar os comentários',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingComments(false);
+    }
+  }, [toast]);
+
+  const openComments = useCallback(async (reel: ReelItem) => {
+    setCommentsOpenFor(reel);
+    setCommentDraft('');
+    await loadComments(reel);
+  }, [loadComments]);
+
+  const handleToggleLike = useCallback(async (reel: ReelItem) => {
+    if (!user) return;
+    const already = !!likedByPostId[reel.postId];
+
+    setLikedByPostId((prev) => ({ ...prev, [reel.postId]: !already }));
+    setStatsByPostId((prev) => {
+      const current = prev[reel.postId] ?? { likesCount: reel.likesCount, commentsCount: reel.commentsCount };
+      return {
+        ...prev,
+        [reel.postId]: {
+          ...current,
+          likesCount: Math.max(0, current.likesCount + (already ? -1 : 1)),
+        },
+      };
+    });
+
+    try {
+      if (already) {
+        await interactionsService.unlike('post', reel.postId);
+      } else {
+        await interactionsService.like('post', reel.postId);
+      }
+    } catch {
+      setLikedByPostId((prev) => ({ ...prev, [reel.postId]: already }));
+      setStatsByPostId((prev) => {
+        const current = prev[reel.postId] ?? { likesCount: reel.likesCount, commentsCount: reel.commentsCount };
+        return {
+          ...prev,
+          [reel.postId]: {
+            ...current,
+            likesCount: Math.max(0, current.likesCount + (already ? 0 : -1) + (already ? 1 : 0)),
+          },
+        };
+      });
+      toast({
+        title: 'Não foi possível atualizar a curtida',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  }, [likedByPostId, toast, user]);
+
+  const handleSubmitComment = useCallback(async () => {
+    if (!commentsOpenFor || !commentDraft.trim()) return;
+
+    setIsSendingComment(true);
+    try {
+      await interactionsService.comment('post', commentsOpenFor.postId, commentDraft.trim());
+      setCommentDraft('');
+      setStatsByPostId((prev) => {
+        const current = prev[commentsOpenFor.postId] ?? {
+          likesCount: commentsOpenFor.likesCount,
+          commentsCount: commentsOpenFor.commentsCount,
+        };
+        return {
+          ...prev,
+          [commentsOpenFor.postId]: {
+            ...current,
+            commentsCount: current.commentsCount + 1,
+          },
+        };
+      });
+      await loadComments(commentsOpenFor);
+    } catch {
+      toast({
+        title: 'Não foi possível comentar',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSendingComment(false);
+    }
+  }, [commentDraft, commentsOpenFor, loadComments, toast]);
+
   const reelsWithMeta = useMemo(
     () =>
       orderedReels.map((item) => ({
         ...item,
         identityLine: formatProfileIdentityLine(item.author),
         when: item.createdAt ? formatWhen(item.createdAt) : '',
+        stats: statsByPostId[item.postId] ?? {
+          likesCount: item.likesCount,
+          commentsCount: item.commentsCount,
+        },
       })),
-    [orderedReels]
+    [orderedReels, statsByPostId]
   );
 
   if (isLoading) {
@@ -314,13 +459,6 @@ export default function Reels() {
           {/* Dark gradient overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
-          {/* Top — counter */}
-          <div className="absolute left-0 right-0 top-4 flex justify-center">
-            <span className="rounded-full bg-black/40 px-3 py-1 text-xs font-medium text-white/80 backdrop-blur-sm">
-              {idx + 1} / {orderedReels.length}
-            </span>
-          </div>
-
           {/* Right side actions */}
           <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-4">
             {/* Mute */}
@@ -335,39 +473,23 @@ export default function Reels() {
             </button>
 
             {/* Like */}
-            <button
-              type="button"
-              onClick={async () => {
-                if (!user) return;
-                const already = likedByPostId[reel.postId];
-                setLikedByPostId(prev => ({ ...prev, [reel.postId]: !already }));
-                try {
-                  if (already) {
-                    await interactionsService.unlike('post', reel.postId);
-                  } else {
-                    await interactionsService.like('post', reel.postId);
-                  }
-                } catch {
-                  // Revert optimistic update
-                  setLikedByPostId(prev => ({ ...prev, [reel.postId]: already }));
-                }
-              }}
-              className="flex flex-col items-center gap-1 text-white"
-            >
+            <button type="button" onClick={() => void handleToggleLike(reel)} className="flex flex-col items-center gap-1 text-white">
               <div className={`flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 ${likedByPostId[reel.postId] ? 'bg-rose-500/70' : 'bg-black/40'}`}>
                 <Heart className={`h-5 w-5 ${likedByPostId[reel.postId] ? 'fill-white' : ''}`} />
               </div>
+              <span className="text-xs font-medium text-white/85">{reel.stats.likesCount}</span>
             </button>
 
-            {/* Open in feed */}
+            {/* Comments */}
             <button
               type="button"
-              onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
+              onClick={() => void openComments(reel)}
               className="flex flex-col items-center gap-1 text-white"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm transition hover:bg-black/60">
                 <MessageCircle className="h-5 w-5" />
               </div>
+              <span className="text-xs font-medium text-white/85">{reel.stats.commentsCount}</span>
             </button>
           </div>
 
@@ -443,6 +565,79 @@ export default function Reels() {
           )}
         </div>
       ))}
+
+      <Dialog
+        open={!!commentsOpenFor}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCommentsOpenFor(null);
+            setComments([]);
+            setCommentDraft('');
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] w-[min(92vw,34rem)] overflow-hidden rounded-2xl border-zinc-800 bg-zinc-950 p-0 text-white">
+          <DialogHeader className="border-b border-white/10 px-5 py-4 text-left">
+            <DialogTitle className="text-base font-semibold">
+              {commentsOpenFor ? `Comentários de ${commentsOpenFor.author.name}` : 'Comentários'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[52dvh] overflow-y-auto px-5 py-4">
+            {isLoadingComments ? (
+              <div className="py-10 text-center text-sm text-white/60">Carregando comentários...</div>
+            ) : comments.length === 0 ? (
+              <div className="py-10 text-center text-sm text-white/60">Ainda não há comentários neste vídeo.</div>
+            ) : (
+              <div className="space-y-4">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="mb-1 flex items-center gap-3">
+                      {comment.user?.avatar ? (
+                        <img
+                          src={resolveServerUrl(comment.user.avatar)}
+                          alt={comment.user.name}
+                          className="h-9 w-9 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">
+                          {String(comment.user?.name || 'U')[0].toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">
+                          {comment.user?.name || 'Usuário'}
+                        </p>
+                        <p className="text-xs text-white/50">{formatWhen(comment.createdAt)}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm leading-6 text-white/85">{comment.content}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-white/10 px-5 py-4">
+            <div className="flex items-end gap-3">
+              <Textarea
+                value={commentDraft}
+                onChange={(event) => setCommentDraft(event.target.value)}
+                placeholder="Comentar vídeo..."
+                className="min-h-[96px] resize-none border-white/10 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500"
+              />
+              <Button
+                type="button"
+                onClick={() => void handleSubmitComment()}
+                disabled={isSendingComment || !commentDraft.trim()}
+                className="h-12 shrink-0 rounded-xl bg-gradient-primary px-4 text-white hover:opacity-90"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

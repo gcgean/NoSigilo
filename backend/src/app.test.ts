@@ -544,6 +544,73 @@ describe('nosigilo backend', () => {
     expect(feed.body.posts.some((post: any) => String(post.id) === bannedPostId)).toBe(false);
   });
 
+  it('reels prioritize interested profiles first and keep newest first within each group', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Rap',
+      email: 'viewer-rap@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      lookingFor: ['Mulher'],
+    });
+    const viewerToken = viewerReg.token;
+
+    const interestedRecentReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Mulher Recente',
+      email: 'mulher-recente@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const interestedOlderReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Mulher Antiga',
+      email: 'mulher-antiga@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const uninterestedNewestReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Homem Novo',
+      email: 'homem-novo@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+
+    const createReelPostAs = async (token: string, content: string) => {
+      const upload = await request(ctx.app)
+        .post('/api/media/upload')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('file', Buffer.from('fake video'), { filename: `${content}.mp4`, contentType: 'video/mp4' })
+        .expect(200);
+
+      const post = await request(ctx.app)
+        .post('/api/posts')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ content, mediaIds: [upload.body.id], reelsOnly: true })
+        .expect(200);
+
+      return String(post.body.id);
+    };
+
+    const interestedRecentPostId = await createReelPostAs(interestedRecentReg.token, 'Rap recente');
+    const interestedOlderPostId = await createReelPostAs(interestedOlderReg.token, 'Rap antigo');
+    const uninterestedNewestPostId = await createReelPostAs(uninterestedNewestReg.token, 'Rap fora do interesse');
+
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-18T12:00:00.000Z', interestedRecentPostId]);
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-17T12:00:00.000Z', interestedOlderPostId]);
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-18T18:00:00.000Z', uninterestedNewestPostId]);
+
+    const feed = await request(ctx.app)
+      .get('/api/feed')
+      .query({ includeReelsOnly: true, limit: 10 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+
+    expect(Array.isArray(feed.body.posts)).toBe(true);
+    expect(feed.body.posts.slice(0, 3).map((post: any) => String(post.id))).toEqual([
+      interestedRecentPostId,
+      interestedOlderPostId,
+      uninterestedNewestPostId,
+    ]);
+  });
+
   it('likes and comments generate notifications for post owner', async () => {
     const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Owner',

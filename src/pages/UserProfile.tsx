@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -371,6 +371,9 @@ export default function UserProfile() {
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [blockStatus, setBlockStatus] = useState<{ blocked: boolean; blockedByMe: boolean; blockedByThem: boolean } | null>(null);
+  const [isBlockLoading, setIsBlockLoading] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const lastRegisteredVisitRef = useRef<string | null>(null);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
@@ -401,10 +404,29 @@ export default function UserProfile() {
     setIsLoading(true);
     void (async () => {
       try {
-        const user = await usersService.getUser(userId);
+        const [userResult, blockResult] = await Promise.allSettled([
+          usersService.getUser(userId),
+          usersService.getBlockStatus(userId),
+        ]);
+
         if (cancelled) return;
 
+        // Handle blocked scenario — API returns 403 with error 'blocked'
+        if (userResult.status === 'rejected') {
+          const err = userResult.reason as any;
+          if (err?.response?.status === 403 && err?.response?.data?.error === 'blocked') {
+            const bStatus = blockResult.status === 'fulfilled' ? blockResult.value : { blocked: true, blockedByMe: false, blockedByThem: true };
+            setBlockStatus(bStatus);
+          }
+          setProfile(null);
+          setPublicPhotos([]);
+          setAccess({ status: 'none' });
+          return;
+        }
+
+        const user = userResult.value;
         setProfile(user);
+        if (blockResult.status === 'fulfilled') setBlockStatus(blockResult.value);
 
         const [photosResult, accessResult] = await Promise.allSettled([
           usersService.getUserPhotos(userId, 'public'),
@@ -576,6 +598,35 @@ export default function UserProfile() {
     }
   };
 
+  const handleBlock = async () => {
+    if (!userId) return;
+    setIsBlockLoading(true);
+    try {
+      await usersService.blockUser(userId);
+      setBlockStatus({ blocked: true, blockedByMe: true, blockedByThem: false });
+      toast({ title: 'Usuário bloqueado', description: 'Ele não poderá mais ver seu perfil ou enviar mensagens.' });
+      setShowBlockConfirm(false);
+    } catch {
+      toast({ title: 'Falha ao bloquear', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsBlockLoading(false);
+    }
+  };
+
+  const handleUnblock = async () => {
+    if (!userId) return;
+    setIsBlockLoading(true);
+    try {
+      await usersService.unblockUser(userId);
+      setBlockStatus({ blocked: false, blockedByMe: false, blockedByThem: false });
+      toast({ title: 'Usuário desbloqueado', description: 'O bloqueio foi removido.' });
+    } catch {
+      toast({ title: 'Falha ao desbloquear', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsBlockLoading(false);
+    }
+  };
+
   const sendTestimonial = async () => {
     if (!userId) return;
     const content = testimonialDraft.trim();
@@ -600,6 +651,53 @@ export default function UserProfile() {
   }
 
   if (!profile) {
+    // Blocked by them OR we blocked them — show appropriate message
+    if (blockStatus?.blockedByThem) {
+      return (
+        <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+            <Ban className="w-8 h-8 text-destructive" />
+          </div>
+          <h2 className="text-lg font-semibold">Perfil indisponível</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Você não pode visualizar este perfil pois foi bloqueado(a) por este usuário, ou bloqueou este usuário.
+          </p>
+          {blockStatus?.blockedByMe && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isBlockLoading}
+              onClick={() => void handleUnblock()}
+            >
+              <ShieldOff className="w-4 h-4 mr-1.5" />
+              {isBlockLoading ? 'Desbloqueando...' : 'Desbloquear'}
+            </Button>
+          )}
+        </div>
+      );
+    }
+    if (blockStatus?.blockedByMe) {
+      return (
+        <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+            <Ban className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h2 className="text-lg font-semibold">Usuário bloqueado</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Você bloqueou este usuário. Desbloqueie para ver o perfil.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isBlockLoading}
+            onClick={() => void handleUnblock()}
+          >
+            <ShieldOff className="w-4 h-4 mr-1.5" />
+            {isBlockLoading ? 'Desbloqueando...' : 'Desbloquear'}
+          </Button>
+        </div>
+      );
+    }
     return <div className="max-w-2xl mx-auto w-full text-sm text-muted-foreground">Perfil não encontrado.</div>;
   }
 
@@ -717,6 +815,53 @@ export default function UserProfile() {
                 <Flag className="w-3.5 h-3.5" />
                 Denunciar
               </Button>
+              {blockStatus?.blockedByMe ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1 text-muted-foreground"
+                  disabled={isBlockLoading}
+                  onClick={() => void handleUnblock()}
+                >
+                  <ShieldOff className="w-3.5 h-3.5" />
+                  {isBlockLoading ? 'Desbloqueando...' : 'Desbloquear'}
+                </Button>
+              ) : (
+                <>
+                  {showBlockConfirm ? (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-1.5 text-xs">
+                      <span className="text-destructive font-medium">Bloquear usuário?</span>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-6 px-2 text-xs"
+                        disabled={isBlockLoading}
+                        onClick={() => void handleBlock()}
+                      >
+                        {isBlockLoading ? '...' : 'Sim'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setShowBlockConfirm(false)}
+                      >
+                        Não
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-destructive/70 border-destructive/20 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
+                      onClick={() => setShowBlockConfirm(true)}
+                    >
+                      <Ban className="w-3.5 h-3.5" />
+                      Bloquear
+                    </Button>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>

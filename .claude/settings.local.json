@@ -70,7 +70,15 @@
       "Bash(curl -s --max-time 5 http://localhost:4001/api/app/settings)",
       "Bash(echo \"exit:$?\")",
       "Bash(PGPASSWORD=nosigilo psql -h localhost -p 5433 -U nosigilo -d nosigilo -c \"SELECT id FROM _migrations ORDER BY id;\")",
-      "Bash(cmd /c \"powershell -Command \\\\\"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Write-Host 'OK'\\\\\"\")"
+      "Bash(cmd /c \"powershell -Command \\\\\"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Write-Host 'OK'\\\\\"\")",
+      "Bash(npm run *)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(echo \"Frontend PID: $!\")",
+      "Read(//tmp/**)",
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 4984 //F)",
+      "Bash(taskkill //PID 29460 //F)"
     ]
   }
 }

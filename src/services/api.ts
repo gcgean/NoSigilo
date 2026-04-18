@@ -370,6 +370,19 @@ export const notificationsService = {
 };
 
 export const usersService = {
+  searchUsers: async (params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    city?: string;
+    ageRange?: string;
+    genders?: string;
+    radar?: string;
+  }) => {
+    const response = await apiClient.get('/users', { params });
+    return response.data as { users: any[]; hasMore: boolean; page: number };
+  },
+
   getUser: async (userId: string) => {
     const response = await apiClient.get(`/users/${userId}`);
     return response.data;
@@ -393,6 +406,21 @@ export const usersService = {
   getUserPosts: async (userId: string, params?: { page?: number; limit?: number; videosOnly?: boolean }) => {
     const response = await apiClient.get(`/users/${userId}/posts`, { params });
     return response.data as { posts: Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>; hasMore: boolean };
+  },
+
+  getBlockStatus: async (userId: string) => {
+    const response = await apiClient.get(`/users/${userId}/block`);
+    return response.data as { blocked: boolean; blockedByMe: boolean; blockedByThem: boolean };
+  },
+
+  blockUser: async (userId: string) => {
+    const response = await apiClient.post(`/users/${userId}/block`);
+    return response.data as { success: boolean; blocked: boolean };
+  },
+
+  unblockUser: async (userId: string) => {
+    const response = await apiClient.delete(`/users/${userId}/block`);
+    return response.data as { success: boolean; blocked: boolean };
   },
 };
 

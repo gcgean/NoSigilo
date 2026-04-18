@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { matchService } from '@/services/api';
+import { usersService, matchService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { calculateAge } from '@/utils/age';
 import { format } from 'date-fns';
@@ -28,89 +27,133 @@ const genderOptions = [
   { value: 'Travesti', label: 'Travesti' },
 ];
 
+const PAGE_SIZE = 24;
+
 export default function SearchPage() {
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+
+  // Results / pagination state
   const [results, setResults] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // Liked profiles mode
   const [onlyLiked, setOnlyLiked] = useState(false);
   const [likedProfiles, setLikedProfiles] = useState<any[]>([]);
-  
+  const [filteredLiked, setFilteredLiked] = useState<any[]>([]);
+
   // Filters
   const [ageRange, setAgeRange] = useState('all');
   const [city, setCity] = useState('');
-  const [radar, setRadar] = useState('50');
+  const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
 
-  const handleGenderToggle = (gender: string) => {
-    setSelectedGenders(prev => 
-      prev.includes(gender) 
-        ? prev.filter(g => g !== gender)
-        : [...prev, gender]
-    );
-  };
+  // Sentinel ref for IntersectionObserver (infinite scroll)
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
-  const filterLikedProfiles = (profiles: any[]) => {
-    const searchValue = search.trim().toLowerCase();
-    const cityValue = city.trim().toLowerCase();
-    return profiles.filter((profile) => {
-      const name = String(profile?.name || '').toLowerCase();
-      const profileCity = String(profile?.city || '').toLowerCase();
-      const profileState = String(profile?.state || '').toLowerCase();
-      const profileGender = String(profile?.gender || '');
-      const age = calculateAge(profile?.birthDate);
+  // Debounce ref for text inputs
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-      if (searchValue && !name.includes(searchValue) && !profileCity.includes(searchValue) && !profileState.includes(searchValue)) {
-        return false;
-      }
+  // ── helpers ────────────────────────────────────────────────────────────────
+  const buildParams = useCallback(
+    (p: number) => ({
+      page: p,
+      limit: PAGE_SIZE,
+      search: search.trim() || undefined,
+      city: city.trim() || undefined,
+      ageRange: ageRange !== 'all' ? ageRange : undefined,
+      genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
+      radar: radar !== 'all' ? radar : undefined,
+    }),
+    [search, city, ageRange, selectedGenders, radar]
+  );
 
-      if (cityValue && !profileCity.includes(cityValue) && !profileState.includes(cityValue)) {
-        return false;
-      }
+  const applyLikedFilters = useCallback(
+    (profiles: any[]) => {
+      const q = search.trim().toLowerCase();
+      const c = city.trim().toLowerCase();
+      return profiles.filter((p) => {
+        const name   = String(p?.name  || '').toLowerCase();
+        const pCity  = String(p?.city  || '').toLowerCase();
+        const pState = String(p?.state || '').toLowerCase();
+        const age    = calculateAge(p?.birthDate);
 
-      if (selectedGenders.length > 0 && !selectedGenders.includes(profileGender)) {
-        return false;
-      }
+        if (q && !name.includes(q) && !pCity.includes(q) && !pState.includes(q)) return false;
+        if (c && !pCity.includes(c) && !pState.includes(c)) return false;
+        if (selectedGenders.length > 0 && !selectedGenders.includes(String(p?.gender || ''))) return false;
+        if (ageRange !== 'all') {
+          if (!age) return false;
+          if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
+          if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
+          if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
+          if (ageRange === '45+' && age < 45) return false;
+        }
+        return true;
+      });
+    },
+    [search, city, ageRange, selectedGenders]
+  );
 
-      if (ageRange !== 'all') {
-        if (!age) return false;
-        if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
-        if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
-        if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
-        if (ageRange === '45+' && age < 45) return false;
-      }
-
-      return true;
-    });
-  };
-
-  const loadResults = async () => {
+  // ── fetch first page (reset) ───────────────────────────────────────────────
+  const fetchFirstPage = useCallback(async () => {
+    if (onlyLiked) {
+      setFilteredLiked(applyLikedFilters(likedProfiles));
+      return;
+    }
     setIsLoading(true);
+    setResults([]);
+    setPage(1);
+    setHasMore(false);
     try {
-      if (onlyLiked) {
-        const likedData = await matchService.getLikedProfiles();
-        const likedArray = Array.isArray(likedData) ? likedData : [];
-        setLikedProfiles(likedArray);
-        setResults(filterLikedProfiles(likedArray));
-        return;
-      }
-
-      const params = {
-        city: city.trim() || undefined,
-        search: search.trim() || undefined,
-        ageRange: ageRange !== 'all' ? ageRange : undefined,
-        genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
-        radar: radar !== 'all' ? radar : undefined,
-      };
-      const data = await matchService.getCards(params);
-      setResults(Array.isArray(data) ? data : []);
+      const data = await usersService.searchUsers(buildParams(1));
+      setResults(data.users);
+      setHasMore(data.hasMore);
+      setPage(1);
     } catch {
       setResults([]);
+      setHasMore(false);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles]);
 
+  // ── fetch next page ────────────────────────────────────────────────────────
+  const fetchNextPage = useCallback(async () => {
+    if (isLoadingMore || !hasMore || onlyLiked) return;
+    setIsLoadingMore(true);
+    const nextPage = page + 1;
+    try {
+      const data = await usersService.searchUsers(buildParams(nextPage));
+      setResults((prev) => [...prev, ...data.users]);
+      setHasMore(data.hasMore);
+      setPage(nextPage);
+    } catch {
+      // silently ignore load-more errors
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoadingMore, hasMore, onlyLiked, page, buildParams]);
+
+  // ── IntersectionObserver for infinite scroll ──────────────────────────────
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          void fetchNextPage();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchNextPage]);
+
+  // ── Load liked profiles once ───────────────────────────────────────────────
   useEffect(() => {
     matchService
       .getLikedProfiles()
@@ -118,19 +161,36 @@ export default function SearchPage() {
       .catch(() => setLikedProfiles([]));
   }, []);
 
-  // Automatic search for city and name with debounce
+  // ── React to filter changes (debounce text, immediate for dropdowns) ───────
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void loadResults();
-    }, 500);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void fetchFirstPage();
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [search, city]);
 
-    return () => clearTimeout(timer);
-  }, [city, search, onlyLiked]);
-
-  // Search when other filters change
   useEffect(() => {
-    void loadResults();
+    void fetchFirstPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ageRange, radar, selectedGenders, onlyLiked]);
+
+  // ── Update filtered liked when raw list changes ────────────────────────────
+  useEffect(() => {
+    if (onlyLiked) setFilteredLiked(applyLikedFilters(likedProfiles));
+  }, [likedProfiles, onlyLiked, applyLikedFilters]);
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  const handleGenderToggle = (gender: string) => {
+    setSelectedGenders((prev) =>
+      prev.includes(gender) ? prev.filter((g) => g !== gender) : [...prev, gender]
+    );
+  };
+
+  const displayResults = onlyLiked ? filteredLiked : results;
+  const isEmpty        = !isLoading && displayResults.length === 0;
 
   return (
     <div className="max-w-4xl mx-auto w-full">
@@ -197,9 +257,9 @@ export default function SearchPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Qualquer</SelectItem>
-                  <SelectItem value="18-25">18-25</SelectItem>
-                  <SelectItem value="26-35">26-35</SelectItem>
-                  <SelectItem value="36-45">36-45</SelectItem>
+                  <SelectItem value="18-25">18–25</SelectItem>
+                  <SelectItem value="26-35">26–35</SelectItem>
+                  <SelectItem value="36-45">36–45</SelectItem>
                   <SelectItem value="45+">45+</SelectItem>
                 </SelectContent>
               </Select>
@@ -225,11 +285,11 @@ export default function SearchPage() {
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Cidade</label>
-              <CitySearch 
-                value={city} 
-                onChange={setCity} 
+              <CitySearch
+                value={city}
+                onChange={setCity}
                 onSelect={(c) => setCity(c)}
-                showLocate={false} 
+                showLocate={false}
               />
             </div>
           </div>
@@ -238,29 +298,26 @@ export default function SearchPage() {
             <label className="text-sm font-medium mb-3 block">Perfis que você quer encontrar</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-4 gap-x-2">
               {genderOptions.map((opt) => (
-                <div key={opt.value} className="flex items-center space-x-2 group cursor-pointer" onClick={() => handleGenderToggle(opt.value)}>
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                    selectedGenders.includes(opt.value) 
-                      ? 'border-primary bg-primary/10' 
-                      : 'border-muted-foreground/30 group-hover:border-primary/50'
-                  }`}>
+                <div
+                  key={opt.value}
+                  className="flex items-center space-x-2 group cursor-pointer"
+                  onClick={() => handleGenderToggle(opt.value)}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      selectedGenders.includes(opt.value)
+                        ? 'border-primary bg-primary/10'
+                        : 'border-muted-foreground/30 group-hover:border-primary/50'
+                    }`}
+                  >
                     {selectedGenders.includes(opt.value) && (
                       <div className="w-2.5 h-2.5 rounded-full bg-primary" />
                     )}
                   </div>
-                  <span className="text-sm cursor-pointer select-none">
-                    {opt.label}
-                  </span>
+                  <span className="text-sm cursor-pointer select-none">{opt.label}</span>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-3">Priorização sugerida do NoSigilo: casais, mulheres solteiras e homens solteiros, conforme o filtro escolhido.</p>
-          </div>
-
-          <div className="flex justify-stretch sm:justify-end">
-            <Button onClick={() => void loadResults()} className="h-11 w-full rounded-xl bg-gradient-primary px-5 text-sm font-medium hover:opacity-90 sm:h-10 sm:w-auto sm:rounded-md sm:px-8">
-              Aplicar Filtros
-            </Button>
           </div>
         </div>
       )}
@@ -272,7 +329,7 @@ export default function SearchPage() {
           title="Buscando perfis"
           description="Refinando os resultados com os filtros que você escolheu."
         />
-      ) : results.length === 0 ? (
+      ) : isEmpty ? (
         <MobileState
           icon={Search}
           title={onlyLiked ? 'Nenhum curtido encontrado' : 'Nenhum perfil encontrado'}
@@ -283,69 +340,98 @@ export default function SearchPage() {
           }
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-          {results.map((profile) => {
-            const age = calculateAge(profile.birthDate);
-            return (
-              <NavLink
-                key={profile.id}
-                to={getUserProfileHref(profile.id, undefined, '/search')}
-                className="group relative overflow-hidden rounded-xl cursor-pointer transition-all hover:shadow-glow"
-              >
-                <div className="aspect-[3/4] w-full h-full">
-                  <UserAvatar 
-                    user={profile} 
-                    className="w-full h-full rounded-none" 
-                    indicatorClassName="hidden" 
-                  />
-                </div>
-                
-                {/* Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+        <>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+            {displayResults.map((profile) => {
+              const age = calculateAge(profile.birthDate);
+              const avatarUrl = profile.mainMediaUrl
+                ? resolveServerUrl(profile.mainMediaUrl)
+                : undefined;
 
-                {/* Online Indicator / Last Seen */}
-                <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
-                  {profile.isOnline ? (
-                    <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background" title="Online agora" />
-                  ) : profile.lastSeenAt ? (
-                    <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md">
-                      {format(new Date(profile.lastSeenAt), "HH:mm", { locale: ptBR })}
+              return (
+                <NavLink
+                  key={profile.id}
+                  to={getUserProfileHref(profile.id, undefined, '/search')}
+                  className="group relative overflow-hidden rounded-xl cursor-pointer transition-all hover:shadow-glow"
+                >
+                  <div className="aspect-[3/4] w-full h-full">
+                    <UserAvatar
+                      user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
+                      className="w-full h-full rounded-none"
+                      indicatorClassName="hidden"
+                    />
+                  </div>
+
+                  {/* Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+                  {/* Online Indicator / Last Seen */}
+                  <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
+                    {profile.isOnline ? (
+                      <span
+                        className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background"
+                        title="Online agora"
+                      />
+                    ) : profile.lastSeenAt ? (
+                      <Badge
+                        variant="secondary"
+                        className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md"
+                      >
+                        {format(new Date(profile.lastSeenAt), 'HH:mm', { locale: ptBR })}
+                      </Badge>
+                    ) : null}
+                  </div>
+
+                  {/* Verified badge */}
+                  {profile.isVerified && (
+                    <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
+                      <Sparkles className="h-3 w-3" />
                     </Badge>
-                  ) : null}
-                </div>
-
-                {/* Badges */}
-                {profile.isVerified && (
-                  <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
-                    <Sparkles className="h-3 w-3" />
-                  </Badge>
-                )}
-
-                {/* Info */}
-                <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
-                  <h3 className="text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
-                    {profile.name}{age ? `, ${age}` : ''}
-                  </h3>
-                  {formatProfileIdentityLine(profile) ? (
-                    <div className="text-xs text-white/70 sm:text-sm">{formatProfileIdentityLine(profile)}</div>
-                  ) : (
-                    <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
-                      <MapPin className="h-3 w-3" />
-                      <span className="truncate">{profile.city || '—'}</span>
-                    </div>
                   )}
-                </div>
 
-                {/* Hover Actions */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
-                    <Heart className="w-6 h-6" />
-                  </Button>
+                  {/* Info */}
+                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                    <h3 className="text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
+                      {profile.name}{age ? `, ${age}` : ''}
+                    </h3>
+                    {formatProfileIdentityLine(profile) ? (
+                      <div className="text-xs text-white/70 sm:text-sm">
+                        {formatProfileIdentityLine(profile)}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
+                        <MapPin className="h-3 w-3" />
+                        <span className="truncate">{profile.city || '—'}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Hover action */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
+                      <Heart className="w-6 h-6" />
+                    </Button>
+                  </div>
+                </NavLink>
+              );
+            })}
+          </div>
+
+          {/* Infinite scroll sentinel */}
+          {!onlyLiked && (
+            <div ref={sentinelRef} className="mt-6 flex justify-center min-h-[40px]">
+              {isLoadingMore && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Carregando mais...
                 </div>
-              </NavLink>
-            );
-          })}
-        </div>
+              )}
+              {!hasMore && !isLoadingMore && results.length > 0 && (
+                <p className="text-xs text-muted-foreground">Todos os perfis foram exibidos</p>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

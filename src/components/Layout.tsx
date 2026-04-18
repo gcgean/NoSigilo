@@ -133,7 +133,7 @@ export default function Layout() {
   const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
   const trialDaysLeft =
     trialEnds !== null ? Math.ceil((trialEnds - clockNow) / (1000 * 60 * 60 * 24)) : null;
-  const firstAccessRewardKey = user?.id ? `nosigilo:first-access-reward:${user.id}` : null;
+  const firstAccessRewardSeenKey = user?.id ? `nosigilo:first-access-reward-seen:${user.id}` : null;
   const refreshUnread = useCallback(async () => {
     try {
       const [notifs, chatUnread] = await Promise.all([
@@ -257,8 +257,8 @@ export default function Layout() {
     if (!user?.id) return;
     const key = `nosigilo:first-access-flow:${user.id}`;
     hadFirstAccessFlowRef.current = hadFirstAccessFlowRef.current || Boolean(localStorage.getItem(key));
-    if (firstAccessRewardKey && sessionStorage.getItem(firstAccessRewardKey) === '1') {
-      setShowFirstAccessReward(true);
+    if (firstAccessRewardSeenKey && localStorage.getItem(firstAccessRewardSeenKey) === '1') {
+      setShowFirstAccessReward(false);
     }
     const raw = localStorage.getItem(key);
     if (!raw) {
@@ -279,30 +279,16 @@ export default function Layout() {
 
       localStorage.removeItem(key);
       setFirstAccessFlow(null);
-      if (firstAccessRewardKey) {
-        sessionStorage.setItem(firstAccessRewardKey, '1');
+      if (firstAccessRewardSeenKey && localStorage.getItem(firstAccessRewardSeenKey) !== '1') {
+        // Marca como exibido para nunca mais reaparecer em novos acessos
+        localStorage.setItem(firstAccessRewardSeenKey, '1');
         setShowFirstAccessReward(true);
       }
     } catch {
       localStorage.removeItem(key);
       setFirstAccessFlow(null);
     }
-  }, [firstAccessFlowVersion, firstAccessRewardKey, user?.avatar, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    if (!firstAccessRewardKey) return;
-    const flowKey = `nosigilo:first-access-flow:${user.id}`;
-    const hasFlow = Boolean(localStorage.getItem(flowKey));
-    if (hasFlow) {
-      hadFirstAccessFlowRef.current = true;
-      return;
-    }
-    if (!hadFirstAccessFlowRef.current) return;
-    if (sessionStorage.getItem(firstAccessRewardKey) === '1') {
-      setShowFirstAccessReward(true);
-    }
-  }, [firstAccessRewardKey, user?.id, location.key]);
+  }, [firstAccessFlowVersion, firstAccessRewardSeenKey, user?.avatar, user?.id]);
 
   useEffect(() => {
     if (!user) return;
@@ -730,7 +716,6 @@ export default function Layout() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (firstAccessRewardKey) sessionStorage.removeItem(firstAccessRewardKey);
                       setShowFirstAccessReward(false);
                     }}
                     className="absolute right-3 top-3 rounded-full p-1 text-muted-foreground transition hover:bg-background/70 hover:text-foreground"
