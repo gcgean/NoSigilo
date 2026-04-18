@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { CitySearch } from '@/components/CitySearch';
 import { radarService } from '@/services/api';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -603,7 +604,7 @@ export default function Radar() {
                                 <button
                                   type="button"
                                   className="truncate text-left text-sm font-medium hover:underline"
-                                  onClick={() => navigate(`/users/${delivery.viewer.id}`)}
+                                  onClick={() => navigate(getUserProfileHref(delivery.viewer.id, user?.id, '/radar'))}
                                 >
                                   {delivery.viewer.name}
                                 </button>
@@ -669,7 +670,7 @@ export default function Radar() {
                         <button
                           type="button"
                           className="text-left font-medium hover:underline"
-                          onClick={() => navigate(`/users/${item.sender.id}`)}
+                          onClick={() => navigate(getUserProfileHref(item.sender.id, user?.id, '/radar'))}
                         >
                           {item.sender.name}
                         </button>

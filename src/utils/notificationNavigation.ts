@@ -1,3 +1,5 @@
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
+
 export function getNotificationHref(notification: any): string {
   const type = String(notification?.type || '');
   const id = notification?.id ? String(notification.id) : '';
@@ -10,16 +12,16 @@ export function getNotificationHref(notification: any): string {
   if (type === 'post.liked' && postId) return `/feed?postId=${encodeURIComponent(postId)}`;
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
-  if (type === 'profile.liked' && data.actorId) return `/users/${encodeURIComponent(String(data.actorId))}`;
-  if (type === 'profile.visited' && data.actorId) return `/users/${encodeURIComponent(String(data.actorId))}`;
+  if (type === 'profile.liked' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
+  if (type === 'profile.visited' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
 
   if (type === 'testimonial.pending') return `/profile#testimonials`;
-  if (type === 'testimonial.approved' && profileUserId) return `/users/${encodeURIComponent(profileUserId)}?tab=testimonials#testimonials`;
-  if (type === 'testimonial.rejected' && profileUserId) return `/users/${encodeURIComponent(profileUserId)}?tab=testimonials#testimonials`;
+  if (type === 'testimonial.approved' && profileUserId) return `${getUserProfileHref(profileUserId, undefined, '/notifications')}?tab=testimonials#testimonials`;
+  if (type === 'testimonial.rejected' && profileUserId) return `${getUserProfileHref(profileUserId, undefined, '/notifications')}?tab=testimonials#testimonials`;
 
   if (type === 'private_photos.request') return id ? `/notifications?focus=${encodeURIComponent(id)}` : '/notifications';
-  if (type === 'private_photos.approved' && ownerId) return `/users/${encodeURIComponent(ownerId)}?tab=private`;
-  if (type === 'private_photos.denied' && ownerId) return `/users/${encodeURIComponent(ownerId)}`;
+  if (type === 'private_photos.approved' && ownerId) return `${getUserProfileHref(ownerId, undefined, '/notifications')}?tab=private`;
+  if (type === 'private_photos.denied' && ownerId) return getUserProfileHref(ownerId, undefined, '/notifications');
   if (type === 'radar.received' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
   if (type === 'radar.contacted' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
 

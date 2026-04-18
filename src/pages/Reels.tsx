@@ -7,6 +7,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null };
 type FeedPost = {
@@ -361,7 +362,7 @@ export default function Reels() {
             {/* Open in feed */}
             <button
               type="button"
-              onClick={() => navigate(`/users/${reel.author.id}`)}
+              onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
               className="flex flex-col items-center gap-1 text-white"
             >
               <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm transition hover:bg-black/60">
@@ -377,7 +378,7 @@ export default function Reels() {
               <button
                 type="button"
                 className="overflow-hidden rounded-full ring-2 ring-white/30"
-                onClick={() => navigate(`/users/${reel.author.id}`)}
+                onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
               >
                 {reel.author.avatar ? (
                   <img
@@ -395,7 +396,7 @@ export default function Reels() {
                 <button
                   type="button"
                   className="block truncate text-left text-[15px] font-semibold hover:underline"
-                  onClick={() => navigate(`/users/${reel.author.id}`)}
+                  onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
                 >
                   {reel.author.name}
                 </button>
@@ -408,7 +409,7 @@ export default function Reels() {
                 type="button"
                 size="sm"
                 className="h-9 shrink-0 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-white hover:opacity-90"
-                onClick={() => navigate(`/users/${reel.author.id}`)}
+                onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
               >
                 Ver perfil
               </Button>

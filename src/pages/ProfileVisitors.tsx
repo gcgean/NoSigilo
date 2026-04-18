@@ -9,6 +9,7 @@ import { profileService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -137,7 +138,7 @@ export default function ProfileVisitors() {
         <div className="space-y-4">
           {visitors.map((v) => (
             <Card key={v.id} className="p-4 flex items-center justify-between glass hover:bg-secondary/20 transition-colors">
-              <NavLink to={`/users/${v.visitor.id}`} className="flex items-center gap-4 flex-1">
+              <NavLink to={getUserProfileHref(v.visitor.id, user?.id, '/profile/visitors')} className="flex items-center gap-4 flex-1">
                 <Avatar className="h-12 w-12 border-2 border-background">
                   <AvatarImage src={v.visitor.avatar ? resolveServerUrl(v.visitor.avatar) : undefined} />
                   <AvatarFallback>{v.visitor.name[0]}</AvatarFallback>
@@ -154,7 +155,7 @@ export default function ProfileVisitors() {
                   ) : null}
                 </div>
               </NavLink>
-              <NavLink to={`/users/${v.visitor.id}`}>
+              <NavLink to={getUserProfileHref(v.visitor.id, user?.id, '/profile/visitors')}>
                 <Button variant="ghost" size="sm" className="gap-2">
                   <User className="w-4 h-4" />
                   Ver perfil

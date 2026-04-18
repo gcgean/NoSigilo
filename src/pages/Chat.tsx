@@ -20,6 +20,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -117,8 +118,7 @@ export default function Chat() {
   };
 
   const goToUserProfile = (userId?: string) => {
-    if (!userId) return;
-    navigate(`/users/${userId}`);
+    navigate(getUserProfileHref(userId, user?.id, '/chat'));
   };
 
   useEffect(() => {
@@ -615,7 +615,7 @@ export default function Chat() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => navigate(`/users/${selectedConversation?.user.id}`)}>
+                  <DropdownMenuItem onClick={() => navigate(getUserProfileHref(selectedConversation?.user.id, user?.id, '/chat'))}>
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
                   </DropdownMenuItem>

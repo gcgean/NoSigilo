@@ -15,6 +15,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 type MatchProfile = {
   id: string;
@@ -299,7 +300,7 @@ export default function Match() {
                       key={profile.id}
                       type="button"
                       className="w-full rounded-lg border p-2 text-left hover:bg-secondary/40 transition-colors"
-                      onClick={() => navigate(`/users/${profile.id}`)}
+                      onClick={() => navigate(getUserProfileHref(profile.id, user?.id, '/match'))}
                     >
                       <div className="flex items-center gap-2">
                         <img
@@ -393,7 +394,7 @@ export default function Match() {
             )}
           >
             {coverUrl ? (
-              <button type="button" className="w-full h-full" onClick={() => navigate(`/users/${currentProfile.id}`)}>
+              <button type="button" className="w-full h-full" onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}>
                 <img src={coverUrl} alt={currentProfile.name} className="w-full h-full object-cover" />
               </button>
             ) : (
@@ -433,7 +434,7 @@ export default function Match() {
                     <button
                       type="button"
                       className="text-left text-[clamp(1.55rem,7vw,2.05rem)] sm:text-3xl font-semibold leading-tight tracking-tight text-white mb-1 break-words hover:underline"
-                      onClick={() => navigate(`/users/${currentProfile.id}`)}
+                      onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
                     >
                       {currentProfile.name}
                       {age !== null ? `, ${age}` : ''}
@@ -453,7 +454,7 @@ export default function Match() {
                       variant="secondary"
                       size="sm"
                       className="h-10 rounded-xl bg-white/20 px-4 text-sm font-medium text-white border-none backdrop-blur-md gap-2 hover:bg-white/30 sm:h-9 sm:rounded-md sm:px-3"
-                      onClick={() => navigate(`/users/${currentProfile.id}`)}
+                      onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
                     >
                       <User className="h-4 w-4" /> Ver Perfil
                     </Button>
@@ -541,7 +542,7 @@ export default function Match() {
               redirectToPlans();
               return;
             }
-            navigate(`/users/${currentProfile.id}`);
+            navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'));
           }}
           disabled={!currentProfile && premiumAccess}
         >

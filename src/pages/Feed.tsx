@@ -20,6 +20,7 @@ import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
@@ -864,7 +865,7 @@ export default function Feed() {
               {/* Post Header */}
               <div className="flex items-center justify-between p-3 sm:p-4">
                 <Link
-                  to={post.author.id === user?.id ? '/profile' : `/users/${post.author.id}`}
+                  to={getUserProfileHref(post.author.id, user?.id, '/feed')}
                   className="flex items-center gap-3 hover:opacity-90 transition-opacity"
                 >
                   <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
@@ -1065,7 +1066,7 @@ export default function Feed() {
                       {(commentsByPostId[post.id] || []).map((c) => (
                         <div key={c.id} className="flex items-start gap-3">
                           <Link
-                            to={c.user.id === user?.id ? '/profile' : `/users/${c.user.id}`}
+                            to={getUserProfileHref(c.user.id, user?.id, '/feed')}
                             className="hover:opacity-90 transition-opacity"
                           >
                             <Avatar className="w-8 h-8">
@@ -1076,7 +1077,7 @@ export default function Feed() {
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
                               <Link
-                                to={c.user.id === user?.id ? '/profile' : `/users/${c.user.id}`}
+                                to={getUserProfileHref(c.user.id, user?.id, '/feed')}
                                 className="text-sm font-medium hover:underline"
                               >
                                 {c.user.name}

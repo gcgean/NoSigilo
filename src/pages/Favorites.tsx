@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Link } from 'react-router-dom';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { Card } from '@/components/ui/card';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 export default function Favorites() {
   const { favorites, removeFavorite } = useFavorites();
@@ -38,7 +39,7 @@ export default function Favorites() {
 
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <Link to={`/users/${favorite.id}`} className="font-semibold hover:underline">
+                  <Link to={getUserProfileHref(favorite.id)} className="font-semibold hover:underline">
                     {favorite.name}
                   </Link>
                 </div>
@@ -46,7 +47,7 @@ export default function Favorites() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Link to={`/users/${favorite.id}`}>
+                <Link to={getUserProfileHref(favorite.id)}>
                   <Button variant="outline">Ver perfil</Button>
                 </Link>
                 <Button 

@@ -15,6 +15,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { CitySearch } from '@/components/CitySearch';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -288,7 +289,7 @@ export default function SearchPage() {
             return (
               <NavLink
                 key={profile.id}
-                to={`/users/${profile.id}`}
+                to={getUserProfileHref(profile.id, undefined, '/search')}
                 className="group relative overflow-hidden rounded-xl cursor-pointer transition-all hover:shadow-glow"
               >
                 <div className="aspect-[3/4] w-full h-full">

@@ -16,6 +16,7 @@ import { feedService, notificationsService, privatePhotosService, profileService
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -749,7 +750,7 @@ export default function Profile() {
                         <Button
                           size="sm"
                           className="self-stretch sm:self-auto bg-gradient-primary hover:opacity-90"
-                          onClick={() => navigate(`/users/${visit.visitor.id}`)}
+                          onClick={() => navigate(getUserProfileHref(visit.visitor.id, user?.id, '/profile'))}
                         >
                           Ver visitante
                         </Button>
@@ -834,7 +835,7 @@ export default function Profile() {
                   <button
                     type="button"
                     className="font-medium mb-1 hover:underline"
-                    onClick={() => navigate(`/users/${t.author.id}`)}
+                    onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
                   >
                     {t.author.name}
                   </button>
@@ -977,7 +978,7 @@ export default function Profile() {
                                   <button
                                     type="button"
                                     className="font-medium hover:underline"
-                                    onClick={() => navigate(`/users/${item.requester.id}`)}
+                                    onClick={() => navigate(getUserProfileHref(item.requester.id, user?.id, '/profile'))}
                                   >
                                     {item.requester.name}
                                   </button>
@@ -1015,7 +1016,7 @@ export default function Profile() {
                                   <button
                                     type="button"
                                     className="font-medium hover:underline"
-                                    onClick={() => navigate(`/users/${item.requester.id}`)}
+                                    onClick={() => navigate(getUserProfileHref(item.requester.id, user?.id, '/profile'))}
                                   >
                                     {item.requester.name}
                                   </button>
