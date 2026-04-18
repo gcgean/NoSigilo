@@ -14,6 +14,7 @@ import { NavLink } from 'react-router-dom';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CitySearch } from '@/components/CitySearch';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import MobileState from '@/components/MobileState';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -265,11 +266,21 @@ export default function SearchPage() {
 
       {/* Results Grid */}
       {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">Buscando perfis...</div>
+        <MobileState
+          loading
+          title="Buscando perfis"
+          description="Refinando os resultados com os filtros que você escolheu."
+        />
       ) : results.length === 0 ? (
-        <div className="py-10 text-center text-muted-foreground sm:py-12">
-          {onlyLiked ? 'Nenhum perfil curtido encontrado com esses filtros.' : 'Nenhum perfil encontrado com esses filtros.'}
-        </div>
+        <MobileState
+          icon={Search}
+          title={onlyLiked ? 'Nenhum curtido encontrado' : 'Nenhum perfil encontrado'}
+          description={
+            onlyLiked
+              ? 'Ajuste a busca ou os filtros para localizar alguém da sua lista de curtidos.'
+              : 'Tente ampliar os filtros para aparecerem mais perfis.'
+          }
+        />
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           {results.map((profile) => {

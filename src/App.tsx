@@ -33,6 +33,7 @@ import Profile from "./pages/Profile";
 import ProfileVisitors from "./pages/ProfileVisitors";
 import Chat from "./pages/Chat";
 import Search from "./pages/Search";
+import Reels from "./pages/Reels";
 import Notifications from "./pages/Notifications";
 import FriendRequests from "./pages/FriendRequests";
 import Favorites from "./pages/Favorites";
@@ -83,6 +84,7 @@ const App = () => (
                       <Route path="/users/:userId" element={<UserProfile />} />
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/search" element={<Search />} />
+                      <Route path="/reels" element={<Reels />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/events" element={<Events />} />

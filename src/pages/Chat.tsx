@@ -19,6 +19,7 @@ import EmojiPicker, { Theme } from 'emoji-picker-react';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import VideoWithPreview from '@/components/VideoWithPreview';
+import MobileState from '@/components/MobileState';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -403,8 +404,23 @@ export default function Chat() {
 
         <ScrollArea className="flex-1">
           {isLoadingConversations && (
-            <div className="p-4 text-sm text-muted-foreground">Carregando...</div>
+            <div className="p-3 sm:p-4">
+              <MobileState
+                loading
+                title="Carregando conversas"
+                description="Buscando suas mensagens mais recentes."
+              />
+            </div>
           )}
+          {!isLoadingConversations && filteredConversations.length === 0 ? (
+            <div className="p-3 sm:p-4">
+              <MobileState
+                icon={MessageCircle}
+                title="Nenhuma conversa por aqui"
+                description="Quando alguém falar com você, a conversa aparece nesta lista."
+              />
+            </div>
+          ) : null}
           {!isLoadingConversations && (USE_MOCKS ? [] : filteredConversations).map((conversation) => (
             <div
               key={conversation.id}

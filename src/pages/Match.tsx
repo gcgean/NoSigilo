@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
+import MobileState from '@/components/MobileState';
 
 type MatchProfile = {
   id: string;
@@ -352,7 +353,14 @@ export default function Match() {
 
       <div className="relative aspect-[3/4] max-h-[80dvh] sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && premiumAccess && (
-          <div className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex items-center justify-center text-muted-foreground">Carregando...</div>
+          <div className="absolute inset-0">
+            <MobileState
+              loading
+              className="h-full rounded-[22px] sm:rounded-3xl"
+              title="Carregando perfis"
+              description="Separando novas sugestões para o seu Match."
+            />
+          </div>
         )}
         {!premiumAccess && (
           <button
@@ -368,8 +376,12 @@ export default function Match() {
           </button>
         )}
         {!isLoading && premiumAccess && !currentProfile && (
-          <div className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex items-center justify-center text-muted-foreground">
-            Nenhum perfil disponível
+          <div className="absolute inset-0">
+            <MobileState
+              className="h-full rounded-[22px] sm:rounded-3xl"
+              title="Nenhum perfil disponível"
+              description="Quando entrarem novos perfis no seu alcance, eles aparecem aqui."
+            />
           </div>
         )}
         {!isLoading && premiumAccess && currentProfile && (

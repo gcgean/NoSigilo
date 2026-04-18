@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
+import MobileState from '@/components/MobileState';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
@@ -772,6 +773,16 @@ export default function Feed() {
               <Button
                 type="button"
                 size="sm"
+                variant="outline"
+                className="h-11 rounded-xl gap-2 border-primary/30 bg-background px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
+                onClick={() => navigate('/reels')}
+              >
+                <Clapperboard className="h-4 w-4" />
+                Reels
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 variant={feedFilter === 'favorites' ? 'default' : 'outline'}
                 onClick={() => setFeedFilter('favorites')}
                 disabled={favorites.length === 0}
@@ -800,9 +811,18 @@ export default function Feed() {
               ) : null}
             </div>
           </Card>
-          {isLoading && <Card className="p-6 glass text-muted-foreground">Carregando...</Card>}
+          {isLoading && (
+            <MobileState
+              loading
+              title="Carregando publicações"
+              description="Organizando o feed para mostrar as novidades primeiro."
+            />
+          )}
           {!isLoading && feedFilter === 'favorites' && favorites.length > 0 && visiblePosts.length === 0 ? (
-            <Card className="p-6 glass text-muted-foreground">Nenhuma publicação dos seus favoritos ainda.</Card>
+            <MobileState
+              title="Nenhuma publicação dos curtidos"
+              description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
+            />
           ) : null}
           {!isLoading && visiblePosts.map((post) => (
             <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden glass">
@@ -1059,7 +1079,10 @@ export default function Feed() {
             </Card>
           ))}
           {!isLoading && visiblePosts.length === 0 && feedFilter === 'all' ? (
-            <Card className="p-6 glass text-muted-foreground">Sem postagens ainda.</Card>
+            <MobileState
+              title="Sem publicações por enquanto"
+              description="Assim que alguém postar no feed, você já vê por aqui."
+            />
           ) : null}
           {!isLoading && hasMore ? (
             <Card className="p-4 glass flex items-center justify-center">
