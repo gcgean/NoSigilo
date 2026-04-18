@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
@@ -897,7 +898,30 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
-            <div className="w-full min-w-0 max-w-full rounded-[1.15rem] border border-border/70 bg-background p-1.5 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            {/* View-once active banner */}
+            {isViewOnceEnabled && (
+              <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-3 py-2">
+                <Zap className="h-3.5 w-3.5 shrink-0 fill-yellow-400 text-yellow-400" />
+                <p className="min-w-0 flex-1 text-xs font-medium text-yellow-700 dark:text-yellow-300">
+                  Visualização única ativa — a próxima mídia só poderá ser vista uma vez pelo destinatário.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setIsViewOnceEnabled(false)}
+                  className="shrink-0 rounded p-0.5 text-yellow-600 transition hover:bg-yellow-400/20"
+                  aria-label="Desativar visualização única"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
+            <div className={cn(
+              "w-full min-w-0 max-w-full rounded-[1.15rem] p-1.5 shadow-sm transition-colors duration-200 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none",
+              isViewOnceEnabled
+                ? "border border-yellow-400/70 bg-yellow-400/8 shadow-[0_0_0_2px_rgba(250,204,21,0.18)]"
+                : "border border-border/70 bg-background"
+            )}>
               <div className="flex w-full min-w-0 max-w-full items-end gap-2">
                 <input
                 type="file"
@@ -935,16 +959,35 @@ export default function Chat() {
                     </PopoverContent>
                   </Popover>
 
-                  <Button
-                    variant={isViewOnceEnabled ? "secondary" : "ghost"}
-                    size="icon"
-                    onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
-                    className={cn("h-9.5 w-9.5 rounded-xl md:h-9 md:w-9", isViewOnceEnabled && "text-yellow-500")}
-                    title="Visualização única"
-                    disabled={!premiumAccess}
-                  >
-                    <Zap className="w-5 h-5" />
-                  </Button>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
+                          className={cn(
+                            "h-9.5 w-9.5 rounded-xl transition-all duration-200 md:h-9 md:w-9",
+                            isViewOnceEnabled
+                              ? "bg-yellow-400/20 text-yellow-500 ring-1 ring-yellow-400/60 hover:bg-yellow-400/30"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                          aria-label="Visualização única"
+                          disabled={!premiumAccess}
+                        >
+                          <Zap className={cn("w-5 h-5 transition-all", isViewOnceEnabled && "fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.8)]")} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-[220px] text-center text-xs">
+                        <p className="font-semibold">⚡ Visualização única</p>
+                        <p className="mt-0.5 text-muted-foreground">
+                          {isViewOnceEnabled
+                            ? 'Ativo — a próxima mídia só poderá ser vista uma vez. Toque para desativar.'
+                            : 'Ative para enviar uma foto que some após ser visualizada uma vez.'}
+                        </p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
 
               <textarea
@@ -962,7 +1005,12 @@ export default function Chat() {
                   }
                 }}
                 rows={1}
-                className="min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-3.5 py-2.5 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
+                className={cn(
+                  "min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-2.5 text-[15px] leading-6 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  isViewOnceEnabled
+                    ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
+                    : "border-primary/15 bg-background focus-visible:ring-primary/40"
+                )}
                 disabled={!premiumAccess}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
