@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { feedService, likesService } from '@/services/api';
+import { feedService, interactionsService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
@@ -181,7 +181,7 @@ export default function Reels() {
       <div className="flex h-[calc(100dvh-8rem)] items-center justify-center">
         <MobileState
           loading
-          title="Carregando vídeos"
+          title="Carregando Rap"
           description="Separando os vídeos do feed para você assistir em sequência."
         />
       </div>
@@ -289,9 +289,9 @@ export default function Reels() {
                 setLikedByPostId(prev => ({ ...prev, [reel.postId]: !already }));
                 try {
                   if (already) {
-                    await likesService.unlike('post', reel.postId);
+                    await interactionsService.unlike('post', reel.postId);
                   } else {
-                    await likesService.like('post', reel.postId);
+                    await interactionsService.like('post', reel.postId);
                   }
                 } catch {
                   // Revert optimistic update
@@ -347,7 +347,7 @@ export default function Reels() {
                   {reel.author.name}
                 </button>
                 <p className="truncate text-xs text-white/70">
-                  {reel.identityLine || reel.when || 'Vídeo curto'}
+                  {reel.identityLine || reel.when || 'Rap'}
                 </p>
               </div>
 

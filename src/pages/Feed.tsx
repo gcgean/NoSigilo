@@ -715,7 +715,7 @@ export default function Feed() {
                 ))}
               </div>
             )}
-            {/* Reels-only toggle — appears when a video is attached */}
+            {/* Rap-only toggle — appears when a video is attached */}
             {attachments.some((a) => a.file.type.startsWith('video/')) && (
               <div className={cn(
                 'mt-3 flex items-center justify-between rounded-xl border px-4 py-3 transition-colors',
@@ -727,10 +727,10 @@ export default function Feed() {
                   <Clapperboard className={cn('w-4 h-4 shrink-0', reelsOnly ? 'text-primary' : 'text-muted-foreground')} />
                   <div className="min-w-0">
                     <p className={cn('text-sm font-medium', reelsOnly ? 'text-primary' : 'text-foreground')}>
-                      Somente em Vídeos Curtos
+                      Somente em Rap
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
-                      {reelsOnly ? 'Não aparecerá no feed principal' : 'Aparecerá no feed e em Vídeos Curtos'}
+                      {reelsOnly ? 'Não aparecerá no feed principal' : 'Aparecerá no feed e em Rap'}
                     </p>
                   </div>
                 </div>
@@ -813,7 +813,7 @@ export default function Feed() {
                 onClick={() => navigate('/reels')}
               >
                 <Clapperboard className="h-4 w-4" />
-                Vídeos Curtos
+                Rap
               </Button>
               <Button
                 type="button"
