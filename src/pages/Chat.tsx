@@ -90,6 +90,10 @@ export default function Chat() {
   const [isSmMobile, setIsSmMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 640 : false
   );
+  // Dynamically computed style for the outer chat container on mobile.
+  // Uses position:fixed + visualViewport tracking so the chat correctly
+  // shrinks/moves when the on-screen keyboard appears on iOS and Android.
+  const [mobileStyle, setMobileStyle] = useState<React.CSSProperties>({});
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 767px)');
@@ -104,6 +108,89 @@ export default function Chat() {
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
   }, []);
+
+  // ─── Mobile layout: visualViewport-aware positioning ───────────────────────
+  // Problem: on iOS Safari, when the on-screen keyboard opens the layout
+  // viewport does NOT shrink. The browser may also scroll the page to keep the
+  // focused input visible, shifting our sticky/fixed elements out of view.
+  //
+  // Fix: when a conversation is open on mobile, switch the outer container to
+  // position:fixed and re-compute its top/height from visualViewport every time
+  // the viewport resizes or scrolls (i.e., every time the keyboard
+  // appears/disappears). This keeps the chat panel pixel-perfect within the
+  // visible screen area regardless of keyboard state.
+  //
+  // For the conversation list (no selected chat) we keep the CSS-calc approach
+  // because the user isn't typing and keyboard interactions there are brief.
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileStyle({});
+      return;
+    }
+
+    // Header height in px: h-14 (56 px) below 640 px, sm:h-16 (64 px) above.
+    const headerPx = isSmMobile ? 64 : 56;
+    const headerRem = isSmMobile ? '4rem' : '3.5rem';
+
+    const update = () => {
+      if (selectedChat) {
+        // Conversation open → fixed + visual-viewport tracking
+        const vv = window.visualViewport;
+        const vh = vv ? vv.height : window.innerHeight;
+        const vTop = vv ? Math.round(vv.offsetTop) : 0;
+        setMobileStyle({
+          position: 'fixed',
+          top: vTop + headerPx,
+          left: 0,
+          right: 0,
+          height: Math.max(vh - headerPx, 200), // 200 px minimum so it never collapses
+          width: '100%',
+          zIndex: 30,
+        });
+      } else {
+        // Conversation list → regular CSS calc (safe-area aware)
+        setMobileStyle({
+          height: `calc(var(--vh, 100dvh) - ${headerRem} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
+        });
+      }
+    };
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', update);
+      vv.addEventListener('scroll', update);
+    }
+    window.addEventListener('resize', update);
+    update(); // run immediately
+
+    return () => {
+      const vv2 = window.visualViewport;
+      if (vv2) {
+        vv2.removeEventListener('resize', update);
+        vv2.removeEventListener('scroll', update);
+      }
+      window.removeEventListener('resize', update);
+      setMobileStyle({});
+    };
+  }, [isMobileViewport, selectedChat, isSmMobile]);
+
+  // Lock page scroll while a conversation is open on mobile so iOS can't scroll
+  // the page under our fixed chat panel when the keyboard appears.
+  useEffect(() => {
+    const lock = isMobileViewport && !!selectedChat;
+    if (lock) {
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, [isMobileViewport, selectedChat]);
+  // ───────────────────────────────────────────────────────────────────────────
 
   // When a conversation is open on mobile, signal Layout to hide the bottom nav so
   // the chat can use the full screen (keyboard-aware via --vh CSS variable).
@@ -472,23 +559,10 @@ export default function Chat() {
     }
   };
 
-  // On mobile: use inline style so we can mix var(--vh) with env(safe-area-inset-bottom).
-  // Header height: h-14 (3.5rem) on <640px, sm:h-16 (4rem) on 640-767px.
-  // When a conversation is open the bottom nav is hidden → subtract header only.
-  // When showing the conversation list the nav (h-14 = 3.5rem + safe-area-inset-bottom) is visible.
-  const headerH = isSmMobile ? '4rem' : '3.5rem';
-  const mobileHeightStyle: React.CSSProperties | undefined = isMobileViewport
-    ? {
-        height: selectedChat
-          ? `calc(var(--vh, 100dvh) - ${headerH})`
-          : `calc(var(--vh, 100dvh) - ${headerH} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
-      }
-    : undefined;
-
   return (
     <div
       className="flex w-full min-h-0 max-w-full overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]"
-      style={mobileHeightStyle}
+      style={isMobileViewport ? mobileStyle : undefined}
     >
       {/* Conversations List */}
       <div className={cn(
