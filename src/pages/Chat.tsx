@@ -82,7 +82,29 @@ export default function Chat() {
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const premiumAccess = hasPremiumAccess(user);
-  const isMobileViewport = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setIsMobileViewport(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  // When a conversation is open on mobile, signal Layout to hide the bottom nav so
+  // the chat can use the full screen (keyboard-aware via --vh CSS variable).
+  useEffect(() => {
+    if (selectedChat && isMobileViewport) {
+      document.body.setAttribute('data-chat-open', '1');
+    } else {
+      document.body.removeAttribute('data-chat-open');
+    }
+    return () => {
+      document.body.removeAttribute('data-chat-open');
+    };
+  }, [selectedChat, isMobileViewport]);
 
   const redirectToPlans = () => {
     toast({
@@ -436,7 +458,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-8rem)] min-h-0 md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]">
+    <div className="flex h-[calc(var(--vh,100dvh)-3.5rem)] min-h-0 sm:h-[calc(var(--vh,100dvh)-4rem)] md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]">
       {/* Conversations List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",

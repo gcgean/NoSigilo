@@ -2,7 +2,7 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
 
     <!-- Primary SEO -->
     <title>NoSigilo — Swing e Troca de Casais no Brasil | Rede Adulta Discreta</title>
@@ -81,6 +81,20 @@
       }
     }
     </script>
+  <!-- Keyboard-aware viewport height: sets --vh = visual viewport height, shrinks when keyboard opens -->
+  <script>
+    (function () {
+      function setVH() {
+        var h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--vh', h + 'px');
+      }
+      setVH();
+      window.addEventListener('resize', setVH);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', setVH);
+      }
+    })();
+  </script>
   </head>
 
   <body>

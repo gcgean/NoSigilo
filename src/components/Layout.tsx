@@ -115,6 +115,16 @@ export default function Layout() {
   const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
   const isMobile = useIsMobile();
   const isMobileChatRoute = isMobile && location.pathname === '/chat';
+  const [isChatConvOpen, setIsChatConvOpen] = useState(false);
+
+  // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
+  useEffect(() => {
+    const check = () => setIsChatConvOpen(document.body.hasAttribute('data-chat-open'));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-chat-open'] });
+    return () => observer.disconnect();
+  }, []);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const hadFirstAccessFlowRef = useRef(false);
@@ -782,7 +792,10 @@ export default function Layout() {
         </main>
       </div>
 
-      <nav className="sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]">
+      <nav className={cn(
+        "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
+        isChatConvOpen && "hidden"
+      )}>
         <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
