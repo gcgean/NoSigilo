@@ -1757,7 +1757,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         u.gender as author_gender, u.city as author_city, u.state as author_state
       FROM posts p
       JOIN users u ON u.id = p.user_id
-      WHERE 1=1 ${reelsOnlyFilter}
+      WHERE 1=1
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        ${reelsOnlyFilter}
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `,
