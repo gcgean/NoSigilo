@@ -633,8 +633,8 @@ export default function Feed() {
         </div>
       ) : null}
       {/* Composer */}
-      <Card className="p-4 mb-6 glass">
-        <div className="flex gap-4">
+      <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
+        <div className="flex gap-3 sm:gap-4">
           <Avatar>
             <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
             <AvatarFallback>{String(user?.name || 'U')[0]}</AvatarFallback>
@@ -645,7 +645,7 @@ export default function Feed() {
               placeholder="O que está pensando?"
               value={postContent}
               onChange={(e) => setPostContent(e.target.value)}
-              className="resize-none border-0 bg-transparent focus-visible:ring-0 p-0 text-base"
+              className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input sm:text-sm"
               rows={2}
             />
             {attachments.length > 0 && (
@@ -706,7 +706,7 @@ export default function Feed() {
                 ))}
               </div>
             )}
-            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+            <div className="mt-3 flex items-center justify-between border-t pt-3 sm:mt-4 sm:pt-4">
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -737,7 +737,7 @@ export default function Feed() {
               </div>
               <Button 
                 size="sm" 
-                className="bg-gradient-primary hover:opacity-90 gap-2"
+                className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
                 disabled={(!postContent.trim() && attachments.length === 0) || isPublishing}
                 onClick={handlePublish}
               >
@@ -756,11 +756,11 @@ export default function Feed() {
         />
       </Card>
 
-      <div className="grid md:grid-cols-3 gap-6">
+      <div className="grid gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
-        <div className="md:col-span-2 space-y-6">
+        <div className="space-y-4 md:col-span-2 md:space-y-6">
           <Card className="p-3 glass">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -772,14 +772,31 @@ export default function Feed() {
               <Button
                 type="button"
                 size="sm"
-                variant={feedFilter === 'favorites' ? 'secondary' : 'ghost'}
+                variant={feedFilter === 'favorites' ? 'default' : 'outline'}
                 onClick={() => setFeedFilter('favorites')}
                 disabled={favorites.length === 0}
+                className={cn(
+                  'gap-2',
+                  feedFilter === 'favorites'
+                    ? 'animate-liked-filter border-0 bg-gradient-primary text-white hover:opacity-95 motion-reduce:animate-none'
+                    : 'border-primary/50 bg-primary/5 text-primary hover:bg-primary/10'
+                )}
               >
-                Favoritos
+                <Heart className={cn('h-4 w-4', feedFilter === 'favorites' && 'fill-current')} />
+                Somente curtidos
+                <span
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-semibold',
+                    feedFilter === 'favorites'
+                      ? 'bg-pink-300/30 text-white'
+                      : 'bg-pink-500/15 text-pink-600'
+                  )}
+                >
+                  {favorites.length}
+                </span>
               </Button>
               {feedFilter === 'favorites' && favorites.length === 0 ? (
-                <span className="text-sm text-muted-foreground ml-1">Adicione favoritos para filtrar.</span>
+                <span className="ml-1 text-sm text-muted-foreground">Adicione curtidos para filtrar.</span>
               ) : null}
             </div>
           </Card>
@@ -790,23 +807,23 @@ export default function Feed() {
           {!isLoading && visiblePosts.map((post) => (
             <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden glass">
               {/* Post Header */}
-              <div className="p-4 flex items-center justify-between">
+              <div className="flex items-center justify-between p-3 sm:p-4">
                 <Link
                   to={post.author.id === user?.id ? '/profile' : `/users/${post.author.id}`}
                   className="flex items-center gap-3 hover:opacity-90 transition-opacity"
                 >
-                  <Avatar>
+                  <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
                     <AvatarImage src={post.author.avatar ? resolveServerUrl(post.author.avatar) : undefined} />
                     <AvatarFallback>{String(post.author.name || 'U')[0]}</AvatarFallback>
                   </Avatar>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold hover:underline">{post.author.name}</span>
+                      <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{post.author.name}</span>
                     </div>
                     {getIdentityLine(post.author) ? (
-                      <div className="text-xs text-muted-foreground">{getIdentityLine(post.author)}</div>
+                      <div className="truncate text-xs text-muted-foreground">{getIdentityLine(post.author)}</div>
                     ) : null}
-                    <span className="text-sm text-muted-foreground">{formatWhen(post.createdAt)}</span>
+                    <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(post.createdAt)}</span>
                   </div>
                 </Link>
                 <div className="flex items-center gap-1">
@@ -815,6 +832,7 @@ export default function Feed() {
                       type="button"
                       variant="ghost"
                       size="icon"
+                      className="h-10 w-10 rounded-full"
                       onClick={() =>
                         toggleFavorite({
                           id: String(post.author.id),
@@ -827,7 +845,7 @@ export default function Feed() {
                     >
                       <Star
                         className={cn(
-                          'w-5 h-5',
+                          'h-4.5 w-4.5',
                           isFavorite(String(post.author.id)) ? 'text-gold fill-current' : 'text-muted-foreground'
                         )}
                       />
@@ -835,8 +853,8 @@ export default function Feed() {
                   ) : null}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="w-5 h-5" />
+                      <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full">
+                        <MoreHorizontal className="h-4.5 w-4.5" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -864,14 +882,14 @@ export default function Feed() {
 
               {/* Post Content */}
               {post.content?.trim() ? (
-                <div className="px-4 pb-3">
-                  <p>{post.content}</p>
+                <div className="px-3 pb-3 sm:px-4">
+                  <p className="text-[0.95rem] leading-6 sm:text-base">{post.content}</p>
                 </div>
               ) : null}
 
               {/* Post Media */}
               {post.media?.length > 0 && (
-                <div className="space-y-2 px-4 pb-3">
+                <div className="space-y-2 px-3 pb-3 sm:px-4">
                   {post.media.map((m) => (
                     <div key={m.id} className="relative rounded-lg overflow-hidden">
                       {String(m.mimeType || '').startsWith('video/') ? (
@@ -926,7 +944,7 @@ export default function Feed() {
               )}
 
               {/* Post Actions */}
-              <div className="p-4 flex items-center justify-between border-t">
+              <div className="flex items-center justify-between border-t p-3 sm:p-4">
                 <div className="flex items-center gap-4">
                   <div className="relative" data-reaction-picker-root="true">
                     <button
@@ -985,7 +1003,7 @@ export default function Feed() {
               </div>
 
               {openCommentsPostId === post.id && (
-                <div className="p-4 border-t space-y-3">
+                <div className="space-y-3 border-t p-3 sm:p-4">
                   {isLoadingComments && <p className="text-sm text-muted-foreground">Carregando comentários...</p>}
                   {!isLoadingComments && (
                     <div className="space-y-3">

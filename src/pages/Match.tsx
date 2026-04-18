@@ -255,11 +255,11 @@ export default function Match() {
   };
 
   return (
-    <div className="max-w-[430px] sm:max-w-lg mx-auto w-full px-2 sm:px-0">
-      <div className="flex items-center justify-between gap-3 mb-4 sm:mb-6">
+    <div className="mx-auto w-full max-w-[430px] px-2 sm:max-w-lg sm:px-0">
+      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-6">
         <div>
-          <h1 className="text-[2rem] sm:text-2xl font-semibold tracking-tight">Match</h1>
-          <p className="text-[1.05rem] sm:text-lg text-muted-foreground/90 font-normal">Encontre sua conexão</p>
+          <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>
+          <p className="text-[0.98rem] font-normal text-muted-foreground/90 sm:text-lg">Encontre sua conexão</p>
         </div>
         <div className="flex items-center gap-2">
           <Popover>
@@ -279,7 +279,7 @@ export default function Match() {
                     .catch(() => setLikedProfiles([]))
                     .finally(() => setIsLoadingLikedProfiles(false));
                 }}
-                className="gap-2"
+                className="h-11 rounded-xl gap-2 px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
               >
                 <Heart className="w-4 h-4" />
                 Curtidos ({likedProfiles.length})
@@ -329,6 +329,7 @@ export default function Match() {
               }
               navigate('/search');
             }}
+            className="h-11 w-11 rounded-xl sm:h-10 sm:w-10 sm:rounded-md"
           >
             <Filter className="w-5 h-5" />
           </Button>
@@ -339,7 +340,7 @@ export default function Match() {
         <button
           type="button"
           onClick={redirectToPlans}
-          className="mb-6 flex w-full items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-5 py-4 text-left transition-colors hover:bg-destructive/10"
+          className="mb-4 flex w-full items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 sm:mb-6 sm:px-5 sm:py-4"
         >
           <div>
             <p className="font-semibold text-destructive">Match bloqueado</p>
@@ -389,28 +390,28 @@ export default function Match() {
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
 
-            <div className="absolute top-4 left-4 flex gap-2">
+            <div className="absolute left-3 top-3 flex gap-1.5 sm:left-4 sm:top-4 sm:gap-2">
               {currentProfile.isVerified && (
-                <Badge className="bg-success text-white gap-1">
-                  <Sparkles className="w-3 h-3" /> Verificado
+                <Badge className="h-5 rounded-full bg-success px-2 text-[10px] font-medium text-white gap-1">
+                  <Sparkles className="h-3 w-3" /> Verificado
                 </Badge>
               )}
               {currentProfile.isPremium && (
-                <Badge className="bg-gold text-black gap-1">
-                  <Star className="w-3 h-3" /> Premium
+                <Badge className="h-5 rounded-full bg-gold px-2 text-[10px] font-medium text-black gap-1">
+                  <Star className="h-3 w-3" /> Premium
                 </Badge>
               )}
               {isNewProfile && (
-                <Badge variant="secondary" className="bg-blue-500/20 text-blue-400 border-blue-500/30 gap-1">
+                <Badge variant="secondary" className="h-5 rounded-full border-blue-500/30 bg-blue-500/20 px-2 text-[10px] font-medium text-blue-400 gap-1">
                   Perfil Novo
                 </Badge>
               )}
             </div>
 
             {currentProfile.isOnline && isHoveringPass && (
-              <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-success" />
-                <span className="text-xs text-white/90">Online</span>
+              <div className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-black/40 px-2.5 py-1 sm:right-4 sm:top-4 sm:gap-2 sm:px-3">
+                <span className="h-2.5 w-2.5 rounded-full bg-success" />
+                <span className="text-[10px] font-medium text-white/90 sm:text-xs">Online</span>
               </div>
             )}
 
@@ -439,26 +440,26 @@ export default function Match() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="bg-white/20 hover:bg-white/30 text-white border-none backdrop-blur-md gap-2"
+                      className="h-10 rounded-xl bg-white/20 px-4 text-sm font-medium text-white border-none backdrop-blur-md gap-2 hover:bg-white/30 sm:h-9 sm:rounded-md sm:px-3"
                       onClick={() => navigate(`/users/${currentProfile.id}`)}
                     >
-                      <User className="w-4 h-4" /> Ver Perfil
+                      <User className="h-4 w-4" /> Ver Perfil
                     </Button>
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="bg-primary/80 hover:bg-primary text-white border-none backdrop-blur-md gap-2"
+                      className="h-10 rounded-xl bg-primary/80 px-4 text-sm font-medium text-white border-none backdrop-blur-md gap-2 hover:bg-primary sm:h-9 sm:rounded-md sm:px-3"
                       onClick={() => void handleOpenChat()}
                     >
-                      <MessageCircle className="w-4 h-4" /> Mandar msg
+                      <MessageCircle className="h-4 w-4" /> Mandar msg
                     </Button>
                   </div>
                 </div>
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="shrink-0 text-white hover:bg-white/10">
-                      <MoreHorizontal className="w-5 h-5" />
+                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-white hover:bg-white/10">
+                      <MoreHorizontal className="h-4.5 w-4.5" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64">
@@ -496,32 +497,32 @@ export default function Match() {
         )}
       </div>
 
-      <div className="mt-3 sm:mt-6 grid grid-cols-4 gap-2.5 sm:flex sm:items-center sm:justify-center sm:gap-6">
+      <div className="mt-3 grid grid-cols-4 gap-2 sm:mt-6 sm:flex sm:items-center sm:justify-center sm:gap-6">
         <Button
           size="lg"
           variant="outline"
-          className="h-[62px] w-full rounded-[26px] border-2 border-destructive text-destructive hover:bg-destructive hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
+          className="h-[58px] w-full rounded-[22px] border-2 border-destructive text-destructive transition-all hover:bg-destructive hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => void handlePass()}
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
           disabled={!currentProfile && premiumAccess}
         >
-          <X className="w-8 h-8" />
+          <X className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
         <Button
           size="lg"
-          className="h-[70px] w-full rounded-[28px] bg-gradient-primary shadow-glow hover:opacity-90 transition-all sm:h-20 sm:w-20 sm:rounded-full"
+          className="h-[64px] w-full rounded-[24px] bg-gradient-primary shadow-glow transition-all hover:opacity-90 sm:h-20 sm:w-20 sm:rounded-full"
           onClick={() => void handleLike()}
           disabled={!currentProfile && premiumAccess}
         >
-          <Heart className="w-8 h-8 sm:w-10 sm:h-10" fill="white" />
+          <Heart className="h-7 w-7 sm:h-10 sm:w-10" fill="white" />
         </Button>
 
         <Button
           size="lg"
           variant="outline"
-          className="h-[62px] w-full rounded-[26px] border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
+          className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => {
             if (!currentProfile) return;
             if (!premiumAccess) {
@@ -532,22 +533,22 @@ export default function Match() {
           }}
           disabled={!currentProfile && premiumAccess}
         >
-          <User className="w-8 h-8" />
+          <User className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
         <Button
           size="lg"
           variant="outline"
-          className="h-[62px] w-full rounded-[26px] border-2 border-primary text-primary hover:bg-primary hover:text-white transition-all sm:h-16 sm:w-16 sm:rounded-full"
+          className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => void handleOpenChat()}
           disabled={!currentProfile && premiumAccess}
         >
-          <MessageCircle className="w-8 h-8" />
+          <MessageCircle className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
       </div>
 
-      <p className="text-center text-[0.98rem] text-muted-foreground/90 mt-4 px-4">Arraste para os lados ou use os botões</p>
+      <p className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
     </div>
   );
 }

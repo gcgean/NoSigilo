@@ -112,6 +112,7 @@ export default function Layout() {
   const [showFirstAccessReward, setShowFirstAccessReward] = useState(false);
   const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
   const isMobile = useIsMobile();
+  const isMobileChatRoute = isMobile && location.pathname === '/chat';
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const hadFirstAccessFlowRef = useRef(false);
@@ -420,29 +421,29 @@ export default function Layout() {
       <FirstAccessTutorial />
       {/* Header */}
       <header className="sticky top-0 z-40 glass-strong border-b">
-        <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-3 sm:px-4">
+        <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
           <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
             <BrandLogo
               size="sm"
               className="gap-2"
-              markClassName="shadow-[0_12px_28px_rgba(169,59,255,0.34)]"
+              markClassName="h-9 w-9 rounded-lg p-2 shadow-[0_12px_28px_rgba(169,59,255,0.34)] sm:h-10 sm:w-10 sm:rounded-xl"
               textClassName="hidden sm:block truncate text-xl"
             />
           </NavLink>
 
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:gap-2">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
             <NavLink to="/notifications">
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="w-5 h-5" />
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full sm:h-10 sm:w-10">
+                <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                 {unreadCount > 0 ? (
-                  <span className="absolute top-1 right-1 inline-flex items-center justify-center min-w-5 h-5 px-1 text-xs rounded-full bg-primary text-primary-foreground">
+                  <span className="absolute right-0.5 top-0.5 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground sm:right-1 sm:top-1 sm:min-w-5 sm:h-5 sm:text-xs">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 ) : null}
               </Button>
             </NavLink>
 
-            <HelpButton />
+            <HelpButton buttonClassName="h-9 w-9 rounded-full sm:h-10 sm:w-10" iconClassName="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 
             {accessCountdown && (
               <NavLink to={accessCountdown.href} className="hidden min-w-0 shrink sm:block">
@@ -464,10 +465,10 @@ export default function Layout() {
 
             {subscriptionsEnabled ? (
               <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
-                <Button variant="ghost" size="icon" className="relative" aria-label="Ver planos">
-                  <Crown className="w-5 h-5 text-gold" />
+                <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Ver planos">
+                  <Crown className="h-4.5 w-4.5 text-gold" />
                   {!user?.isPremium ? (
-                    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-destructive" />
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
                   ) : null}
                 </Button>
               </NavLink>
@@ -482,12 +483,12 @@ export default function Layout() {
                     : ''
                 )}
               >
-                <div className="h-9 w-9 shrink-0 rounded-full bg-secondary overflow-hidden">
+                <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary sm:h-9 sm:w-9">
                   {user?.avatar ? (
                     <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <User className="w-5 h-5" />
+                      <User className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                     </div>
                   )}
                 </div>
@@ -597,9 +598,14 @@ export default function Layout() {
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 px-3 py-4 pb-24 sm:px-4 sm:py-6 md:pb-6">
-          <div className="mx-auto w-full max-w-6xl">
-            {accessBanner ? (
+        <main
+          className={cn(
+            'flex-1 min-w-0 px-3 py-3 pb-20 sm:px-4 sm:py-6 md:pb-6',
+            isMobileChatRoute && 'px-0 py-0 pb-0 sm:px-0 sm:py-0'
+          )}
+        >
+          <div className={cn('mx-auto w-full max-w-6xl', isMobileChatRoute && 'max-w-none')}>
+            {!isMobileChatRoute && accessBanner ? (
               <div className="mb-4">
                 <NavLink
                   to={accessBanner.href}
@@ -617,7 +623,7 @@ export default function Layout() {
                 </NavLink>
               </div>
             ) : null}
-            {showPwaInstallPrompt ? (
+            {!isMobileChatRoute && showPwaInstallPrompt ? (
               <div className="mb-4">
                 <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -639,7 +645,7 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            {accessCountdown && (
+            {!isMobileChatRoute && accessCountdown && (
               <div className="mb-4 sm:hidden">
                 {accessCountdown.tone === 'premium' ? (
                   <NavLink to="/subscriptions" className="inline-flex max-w-full">
@@ -673,7 +679,7 @@ export default function Layout() {
                 )}
               </div>
             )}
-            {showFirstAccessReward ? (
+            {!isMobileChatRoute && showFirstAccessReward ? (
               <div className="mb-4">
                 <div className="relative overflow-hidden rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/12 via-lime-400/10 to-amber-400/12 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.12)]">
                   <button
@@ -705,7 +711,7 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            {user?.id && firstAccessFlow && (firstAccessFlow.needsPhoto || firstAccessFlow.needsPost) ? (
+            {!isMobileChatRoute && user?.id && firstAccessFlow && (firstAccessFlow.needsPhoto || firstAccessFlow.needsPost) ? (
               <div className="mb-4">
                 <div className="overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/12 via-rose-500/10 to-orange-400/10 p-4 shadow-[0_12px_40px_rgba(236,72,153,0.08)]">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -764,8 +770,8 @@ export default function Layout() {
         </main>
       </div>
 
-      <nav className="sticky bottom-0 z-40 glass-strong border-t md:hidden pb-[env(safe-area-inset-bottom)]">
-        <div className="flex items-center justify-around h-16 px-1">
+      <nav className="sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]">
+        <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
@@ -773,17 +779,17 @@ export default function Layout() {
                 key={item.path}
                 to={item.path}
                 className={cn(
-                  "flex min-w-0 flex-1 flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors relative",
+                  "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <item.icon className={cn("w-5 h-5", isActive && "animate-scale-in")} />
-                <span className="max-w-full truncate text-[11px]">{item.label}</span>
+                <item.icon className={cn("h-4.5 w-4.5", isActive && "animate-scale-in")} />
+                <span className="max-w-full truncate text-[10px] leading-4">{item.label}</span>
                 {item.path === '/match' && hasUnreadMatch && (
-                  <span className="absolute top-2 right-4 w-2 h-2 rounded-full bg-destructive animate-pulse" />
+                  <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
                 )}
                 {item.path === '/chat' && unreadMessagesCount > 0 && (
-                  <span className="absolute top-1 right-3 min-w-[1.25rem] h-5 px-1 flex items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white border-2 border-background">
+                  <span className="absolute right-2.5 top-0.5 flex h-4.5 min-w-[1.1rem] items-center justify-center rounded-full border-2 border-background bg-destructive px-1 text-[9px] font-bold text-white">
                     {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                   </span>
                 )}
@@ -793,10 +799,10 @@ export default function Layout() {
           <button
             type="button"
             onClick={logout}
-            className="flex min-w-0 flex-1 flex-col items-center gap-1 px-2 py-2 rounded-lg transition-colors relative text-muted-foreground hover:text-destructive"
+            className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:text-destructive"
           >
-            <LogOut className="w-5 h-5" />
-            <span className="max-w-full truncate text-[11px]">Sair</span>
+            <LogOut className="h-4.5 w-4.5" />
+            <span className="max-w-full truncate text-[10px] leading-4">Sair</span>
           </button>
         </div>
       </nav>

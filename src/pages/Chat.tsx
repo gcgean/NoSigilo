@@ -75,6 +75,7 @@ export default function Chat() {
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const premiumAccess = hasPremiumAccess(user);
+  const isMobileViewport = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
 
   const redirectToPlans = () => {
     toast({
@@ -374,7 +375,7 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex h-[calc(100dvh-8.5rem)] min-h-[28rem]">
+    <div className="flex h-[calc(100dvh-8rem)] min-h-0 md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]">
       {/* Conversations List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",
@@ -414,18 +415,18 @@ export default function Chat() {
                 if (e.key === 'Enter') setSelectedChat(conversation.id);
               }}
               className={cn(
-                "w-full p-4 flex items-center gap-3 hover:bg-secondary/50 transition-colors border-b",
+                "w-full border-b p-3 flex items-center gap-3 hover:bg-secondary/50 transition-colors sm:p-4",
                 selectedChat === conversation.id && "bg-secondary"
               )}
             >
               <div className="relative">
-                <UserAvatar user={conversation.user} />
+                <UserAvatar user={conversation.user} className="h-11 w-11 sm:h-10 sm:w-10" />
               </div>
-              <div className="flex-1 text-left">
+              <div className="min-w-0 flex-1 text-left">
                 <div className="flex items-center justify-between">
                   <button
                     type="button"
-                    className="font-medium hover:underline"
+                    className="truncate pr-2 text-[0.98rem] font-medium hover:underline sm:text-base"
                     onClick={(e) => {
                       e.stopPropagation();
                       goToUserProfile(conversation.user.id);
@@ -434,7 +435,7 @@ export default function Chat() {
                     {conversation.user.name}
                   </button>
                   {conversation.unreadCount && conversation.unreadCount > 0 && (
-                    <Badge variant="destructive" className="h-5 min-w-[1.25rem] px-1 flex items-center justify-center rounded-full text-[10px] font-bold">
+                    <Badge variant="destructive" className="flex h-5 min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold">
                       {conversation.unreadCount}
                     </Badge>
                   )}
@@ -443,7 +444,7 @@ export default function Chat() {
                   <p className="text-xs truncate text-muted-foreground">{getIdentityLine(conversation.user)}</p>
                 ) : null}
                 <p className={cn(
-                  "text-sm truncate",
+                  "truncate text-[13px] sm:text-sm",
                   conversation.unreadCount && conversation.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
                 )}>
                   {conversation.unreadCount && conversation.unreadCount > 0 ? 'Nova mensagem' : 'Toque para abrir'}
@@ -456,24 +457,26 @@ export default function Chat() {
 
       {/* Chat Area */}
       {selectedChat ? (
-        <div className="flex-1 flex flex-col">
+        <div className="flex min-h-0 flex-1 flex-col bg-background">
           {/* Chat Header */}
-          <div className="p-4 border-b flex items-center justify-between glass">
-            <div className="flex items-center gap-3">
+          <div className="sticky top-0 z-20 flex items-center justify-between border-b bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
+            <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden"
+                className="h-9 w-9 shrink-0 rounded-full md:hidden"
                 onClick={() => setSelectedChat(null)}
               >
                 <ArrowLeft className="w-5 h-5" />
               </Button>
-              <UserAvatar user={selectedConversation?.user} />
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="shrink-0">
+                <UserAvatar user={selectedConversation?.user} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
-                    className="font-semibold hover:underline"
+                    className="truncate text-left font-semibold hover:underline"
                     onClick={() => goToUserProfile(selectedConversation?.user.id)}
                   >
                     {selectedConversation?.user.name}
@@ -485,22 +488,22 @@ export default function Chat() {
                     />
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="block truncate text-xs text-muted-foreground">
                   {getIdentityLine(selectedConversation?.user) || 'Chat'}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon">
-                <Phone className="w-5 h-5" />
+            <div className="flex shrink-0 items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                <Phone className="h-4.5 w-4.5" />
               </Button>
-              <Button variant="ghost" size="icon">
-                <Video className="w-5 h-5" />
+              <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full sm:inline-flex">
+                <Video className="h-4.5 w-4.5" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon">
-                    <MoreVertical className="w-5 h-5" />
+                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                    <MoreVertical className="h-4.5 w-4.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -521,8 +524,8 @@ export default function Chat() {
           </div>
 
           {/* Messages */}
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-4">
+          <ScrollArea className="flex-1">
+            <div className="space-y-3 px-3 py-3 md:space-y-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg, idx) => (
                 <div
@@ -534,7 +537,7 @@ export default function Chat() {
                 >
                   <div
                     className={cn(
-                      "max-w-[70%] px-4 py-2 rounded-2xl relative group",
+                      "group relative max-w-[82%] rounded-2xl px-3 py-2.5 md:max-w-[70%] md:px-4 md:py-2",
                       msg.senderId === user?.id
                         ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                         : "bg-secondary rounded-bl-sm"
@@ -598,7 +601,7 @@ export default function Chat() {
                                 <img 
                                   src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')} 
                                   alt="Mídia" 
-                                  className="max-h-60 w-auto object-contain rounded-lg"
+                                  className="max-h-72 w-auto object-contain rounded-lg"
                                   onClick={() => {
                                     if (!msg.mediaUrl) return;
                                     const finalUrl = msg.mediaUrl.startsWith('blob:') 
@@ -611,7 +614,7 @@ export default function Chat() {
                             )}
                           </div>
                         )}
-                        {msg.content && <p>{msg.content}</p>}
+                        {msg.content && <p className="break-words text-[15px] leading-6 md:text-base">{msg.content}</p>}
                       </div>
                     )}
                     <div className={cn(
@@ -643,12 +646,12 @@ export default function Chat() {
           </ScrollArea>
 
           {/* Message Input */}
-          <div className="sticky bottom-0 z-10 border-t bg-background/95 p-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:p-4">
+          <div className="sticky bottom-0 z-10 border-t bg-background/96 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4">
             {!premiumAccess && (
               <button
                 type="button"
                 onClick={redirectToPlans}
-                className="mb-3 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
+                className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
               >
                 <div>
                   <p className="font-medium text-destructive">Respostas bloqueadas</p>
@@ -716,13 +719,13 @@ export default function Chat() {
                   adjustMessageInputHeight();
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth >= 768) {
+                  if (e.key === 'Enter' && !e.shiftKey && !isMobileViewport) {
                     e.preventDefault();
                     void handleSendMessage(message);
                   }
                 }}
                 rows={1}
-                className="min-h-[48px] flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
+                className="min-h-[46px] flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
                 disabled={!premiumAccess}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
@@ -730,7 +733,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-12 w-12 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-11 w-11 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
@@ -738,7 +741,7 @@ export default function Chat() {
               </Button>
               </div>
             </div>
-            <div className="h-[max(env(safe-area-inset-bottom),0px)] md:hidden" />
+            <div className="h-[calc(max(env(safe-area-inset-bottom),0px)+0.25rem)] md:hidden" />
           </div>
         </div>
       ) : (

@@ -5,17 +5,22 @@ import { startFirstAccessTutorial } from '@/components/FirstAccessTutorial';
 
 const HELP_VIDEO_URL = import.meta.env.VITE_HELP_VIDEO_URL || 'https://www.youtube.com';
 
+type HelpButtonProps = {
+  buttonClassName?: string;
+  iconClassName?: string;
+};
+
 function qrUrl(data: string) {
   const encoded = encodeURIComponent(data);
   return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encoded}`;
 }
 
-export default function HelpButton() {
+export default function HelpButton({ buttonClassName, iconClassName }: HelpButtonProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Ajuda">
-          <HelpCircle className="w-5 h-5" />
+        <Button variant="ghost" size="icon" aria-label="Ajuda" className={buttonClassName}>
+          <HelpCircle className={iconClassName || 'w-5 h-5'} />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">

@@ -133,20 +133,20 @@ export default function SearchPage() {
   return (
     <div className="max-w-4xl mx-auto w-full">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Buscar</h1>
+      <div className="mb-4 sm:mb-6">
+        <h1 className="mb-1.5 text-[1.8rem] font-bold sm:mb-2 sm:text-2xl">Buscar</h1>
         <p className="text-muted-foreground">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
 
       {/* Search & Filters */}
-      <div className="flex flex-col gap-3 mb-6">
+      <div className="mb-4 flex flex-col gap-3 sm:mb-6">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+          <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome ou cidade..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
+            className="h-11 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-[15px] focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
           />
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -156,8 +156,8 @@ export default function SearchPage() {
             onClick={() => setOnlyLiked((prev) => !prev)}
             className={
               onlyLiked
-                ? 'animate-liked-filter gap-2 border-0 bg-gradient-primary text-white hover:opacity-95 motion-reduce:animate-none'
-                : 'gap-2 border-primary/50 bg-primary/5 text-primary hover:bg-primary/10'
+                ? 'animate-liked-filter h-11 rounded-xl gap-2 border-0 bg-gradient-primary px-4 text-sm font-medium text-white hover:opacity-95 motion-reduce:animate-none'
+                : 'h-11 rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-primary hover:bg-primary/10'
             }
           >
             <Heart className={onlyLiked ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
@@ -175,7 +175,7 @@ export default function SearchPage() {
           <Button
             variant={showFilters ? 'default' : 'outline'}
             onClick={() => setShowFilters(!showFilters)}
-            className="gap-2 sm:self-auto"
+            className="h-11 rounded-xl gap-2 px-4 text-sm font-medium sm:self-auto"
           >
             <Filter className="w-4 h-4" />
             Filtros
@@ -185,8 +185,8 @@ export default function SearchPage() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="glass rounded-xl p-4 sm:p-6 mb-6 animate-slide-up space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="glass mb-4 animate-slide-up space-y-5 rounded-xl p-4 sm:mb-6 sm:p-6 sm:space-y-6">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
             <div>
               <label className="text-sm font-medium mb-2 block">Idade</label>
               <Select value={ageRange} onValueChange={setAgeRange}>
@@ -256,7 +256,7 @@ export default function SearchPage() {
           </div>
 
           <div className="flex justify-stretch sm:justify-end">
-            <Button onClick={() => void loadResults()} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90 px-8">
+            <Button onClick={() => void loadResults()} className="h-11 w-full rounded-xl bg-gradient-primary px-5 text-sm font-medium hover:opacity-90 sm:h-10 sm:w-auto sm:rounded-md sm:px-8">
               Aplicar Filtros
             </Button>
           </div>
@@ -267,18 +267,18 @@ export default function SearchPage() {
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Buscando perfis...</div>
       ) : results.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="py-10 text-center text-muted-foreground sm:py-12">
           {onlyLiked ? 'Nenhum perfil curtido encontrado com esses filtros.' : 'Nenhum perfil encontrado com esses filtros.'}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           {results.map((profile) => {
             const age = calculateAge(profile.birthDate);
             return (
               <NavLink
                 key={profile.id}
                 to={`/users/${profile.id}`}
-                className="group relative rounded-2xl overflow-hidden cursor-pointer hover:shadow-glow transition-all"
+                className="group relative overflow-hidden rounded-xl cursor-pointer transition-all hover:shadow-glow"
               >
                 <div className="aspect-[3/4] w-full h-full">
                   <UserAvatar 
@@ -292,11 +292,11 @@ export default function SearchPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
                 {/* Online Indicator / Last Seen */}
-                <div className="absolute top-3 right-3 flex items-center gap-2">
+                <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
                   {profile.isOnline ? (
-                    <span className="w-3 h-3 bg-success rounded-full ring-2 ring-background" title="Online agora" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background" title="Online agora" />
                   ) : profile.lastSeenAt ? (
-                    <Badge variant="secondary" className="bg-black/40 text-white border-none text-[10px] backdrop-blur-md">
+                    <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md">
                       {format(new Date(profile.lastSeenAt), "HH:mm", { locale: ptBR })}
                     </Badge>
                   ) : null}
@@ -304,21 +304,21 @@ export default function SearchPage() {
 
                 {/* Badges */}
                 {profile.isVerified && (
-                  <Badge className="absolute top-3 left-3 bg-success/90 text-white gap-1">
-                    <Sparkles className="w-3 h-3" />
+                  <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
+                    <Sparkles className="h-3 w-3" />
                   </Badge>
                 )}
 
                 {/* Info */}
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <h3 className="text-white font-semibold text-sm sm:text-lg leading-tight">
+                <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                  <h3 className="text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
                     {profile.name}{age ? `, ${age}` : ''}
                   </h3>
                   {formatProfileIdentityLine(profile) ? (
-                    <div className="text-sm text-white/70">{formatProfileIdentityLine(profile)}</div>
+                    <div className="text-xs text-white/70 sm:text-sm">{formatProfileIdentityLine(profile)}</div>
                   ) : (
-                    <div className="flex items-center gap-1 text-white/70 text-sm">
-                      <MapPin className="w-3 h-3" />
+                    <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
+                      <MapPin className="h-3 w-3" />
                       <span className="truncate">{profile.city || '—'}</span>
                     </div>
                   )}
