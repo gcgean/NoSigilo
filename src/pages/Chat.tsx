@@ -3,7 +3,6 @@ import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -77,7 +76,7 @@ export default function Chat() {
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null); // for auto-scroll-to-bottom
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Capture touch coords at touch-start so they're available when timer fires
   const touchCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -87,10 +86,21 @@ export default function Chat() {
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
+  // Tracks whether the sm: breakpoint (640px) is active – needed for header height (3.5rem vs 4rem)
+  const [isSmMobile, setIsSmMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 640 : false
+  );
 
   useEffect(() => {
     const mql = window.matchMedia('(max-width: 767px)');
     const onChange = () => setIsMobileViewport(mql.matches);
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 640px)');
+    const onChange = () => setIsSmMobile(mql.matches);
     mql.addEventListener('change', onChange);
     return () => mql.removeEventListener('change', onChange);
   }, []);
@@ -121,10 +131,12 @@ export default function Chat() {
     navigate(getUserProfileHref(userId, user?.id, '/chat'));
   };
 
+  // Scroll to bottom when messages change – uses native scrollTop on the container div
+  // (avoids the Radix ScrollArea port-scrolling issue on iOS/Android)
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   const adjustMessageInputHeight = () => {
@@ -460,15 +472,24 @@ export default function Chat() {
     }
   };
 
+  // On mobile: use inline style so we can mix var(--vh) with env(safe-area-inset-bottom).
+  // Header height: h-14 (3.5rem) on <640px, sm:h-16 (4rem) on 640-767px.
+  // When a conversation is open the bottom nav is hidden → subtract header only.
+  // When showing the conversation list the nav (h-14 = 3.5rem + safe-area-inset-bottom) is visible.
+  const headerH = isSmMobile ? '4rem' : '3.5rem';
+  const mobileHeightStyle: React.CSSProperties | undefined = isMobileViewport
+    ? {
+        height: selectedChat
+          ? `calc(var(--vh, 100dvh) - ${headerH})`
+          : `calc(var(--vh, 100dvh) - ${headerH} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
+      }
+    : undefined;
+
   return (
-    <div className={cn(
-      "flex w-full min-h-0 max-w-full overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]",
-      // When a conversation is open the bottom nav is hidden → only subtract header height.
-      // When showing the conversation list the nav is visible → subtract header + nav.
-      selectedChat && isMobileViewport
-        ? "h-[calc(var(--vh,100dvh)-3.5rem)] sm:h-[calc(var(--vh,100dvh)-4rem)]"
-        : "h-[calc(var(--vh,100dvh)-7rem)] sm:h-[calc(var(--vh,100dvh)-7.5rem)]"
-    )}>
+    <div
+      className="flex w-full min-h-0 max-w-full overflow-hidden md:h-[calc(100dvh-8.5rem)] md:min-h-[28rem]"
+      style={mobileHeightStyle}
+    >
       {/* Conversations List */}
       <div className={cn(
         "w-full md:w-80 border-r flex flex-col",
@@ -494,7 +515,11 @@ export default function Chat() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1">
+        {/* Native div – Radix ScrollArea has known issues with dynamic height on iOS/Android */}
+        <div
+          className="flex-1 overflow-y-auto overscroll-y-contain"
+          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        >
           {isLoadingConversations && (
             <div className="p-3 sm:p-4">
               <MobileState
@@ -560,7 +585,7 @@ export default function Chat() {
               </div>
             </div>
           ))}
-        </ScrollArea>
+        </div>
       </div>
 
       {/* Chat Area */}
@@ -631,9 +656,12 @@ export default function Chat() {
             </div>
           </div>
 
-          {/* Messages */}
-          <ScrollArea className="flex-1 w-full min-w-0">
-            <div className="w-full min-w-0 max-w-full space-y-2.5 overflow-x-hidden px-2.5 py-2.5 md:space-y-4 md:p-4">
+          {/* Messages – native scrollable div; ref used for scroll-to-bottom */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden space-y-2.5 px-2.5 py-2.5 md:space-y-4 md:p-4"
+            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+          >
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
@@ -754,9 +782,9 @@ export default function Chat() {
                   </div>
                 );
               })}
-              <div ref={scrollRef} />
-            </div>
-          </ScrollArea>
+              {/* Sentinel – keeps scroll-to-bottom target for future use */}
+              <div aria-hidden />
+          </div>
 
           {/* Message Input */}
           <div

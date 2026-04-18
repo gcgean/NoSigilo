@@ -646,10 +646,10 @@ export default function Layout() {
         <main
           className={cn(
             'flex-1 min-w-0 px-3 py-3 pb-20 sm:px-4 sm:py-6 md:pb-6',
-            isMobileChatRoute && 'px-0 py-0 pb-0 sm:px-0 sm:py-0'
+            isMobileChatRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
           )}
         >
-          <div className={cn('mx-auto w-full max-w-6xl', isMobileChatRoute && 'max-w-none')}>
+          <div className={cn('mx-auto w-full max-w-6xl', isMobileChatRoute && 'max-w-none h-full')}>
             {!isMobileChatRoute && accessBanner ? (
               <div className="mb-4">
                 <NavLink
