@@ -567,24 +567,24 @@ export default function Chat() {
       {selectedChat ? (
         <div className="flex w-full min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden bg-background">
           {/* Chat Header */}
-          <div className="sticky top-0 z-20 flex w-full min-w-0 max-w-full items-center justify-between border-b bg-background/95 px-3 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
-            <div className="flex min-w-0 items-center gap-3">
+          <div className="sticky top-0 z-20 flex w-full min-w-0 max-w-full items-center justify-between border-b bg-background/95 px-2.5 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
+            <div className="flex min-w-0 items-center gap-2.5">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-full md:hidden"
+                className="h-8.5 w-8.5 shrink-0 rounded-full md:hidden"
                 onClick={() => setSelectedChat(null)}
               >
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft className="w-4.5 h-4.5" />
               </Button>
               <div className="shrink-0">
-                <UserAvatar user={selectedConversation?.user} />
+                <UserAvatar user={selectedConversation?.user} className="h-9 w-9 sm:h-10 sm:w-10" />
               </div>
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
-                    className="truncate text-left font-semibold hover:underline"
+                    className="truncate text-left text-[15px] font-semibold leading-5 hover:underline"
                     onClick={() => goToUserProfile(selectedConversation?.user.id)}
                   >
                     {selectedConversation?.user.name}
@@ -596,21 +596,21 @@ export default function Chat() {
                     />
                   )}
                 </div>
-                <span className="block truncate text-xs text-muted-foreground">
+                <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                   {getIdentityLine(selectedConversation?.user) || 'Chat'}
                 </span>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+              <Button variant="ghost" size="icon" className="h-8.5 w-8.5 rounded-full">
                 <Phone className="h-4.5 w-4.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full sm:inline-flex">
+              <Button variant="ghost" size="icon" className="hidden h-8.5 w-8.5 rounded-full sm:inline-flex">
                 <Video className="h-4.5 w-4.5" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                  <Button variant="ghost" size="icon" className="h-8.5 w-8.5 rounded-full">
                     <MoreVertical className="h-4.5 w-4.5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -633,7 +633,7 @@ export default function Chat() {
 
           {/* Messages */}
           <ScrollArea className="flex-1 w-full min-w-0">
-            <div className="w-full min-w-0 max-w-full space-y-3 overflow-x-hidden px-3 py-3 md:space-y-4 md:p-4">
+            <div className="w-full min-w-0 max-w-full space-y-2.5 overflow-x-hidden px-2.5 py-2.5 md:space-y-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
@@ -651,7 +651,7 @@ export default function Chat() {
                     )}
                     <div
                       className={cn(
-                        "group relative min-w-0 max-w-[85%] rounded-2xl px-3 py-2.5 sm:max-w-[78%] md:max-w-[65%] md:px-4 md:py-2",
+                        "group relative min-w-0 max-w-[79%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2",
                         isMine
                           ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                           : "bg-secondary rounded-bl-sm"
@@ -760,10 +760,10 @@ export default function Chat() {
 
           {/* Message Input */}
           <div
-            className="sticky bottom-0 z-10 w-full min-w-0 max-w-full border-t bg-background/96 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
+            className="sticky bottom-0 z-10 w-full min-w-0 max-w-full border-t bg-background/96 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
             style={{
-              paddingLeft: 'max(0.75rem, env(safe-area-inset-left))',
-              paddingRight: 'max(0.75rem, env(safe-area-inset-right))',
+              paddingLeft: 'max(0.625rem, env(safe-area-inset-left))',
+              paddingRight: 'max(0.625rem, env(safe-area-inset-right))',
             }}
           >
             {!premiumAccess && (
@@ -779,7 +779,7 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
-            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background p-2 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+            <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[1.15rem] border border-border/70 bg-background p-1.5 shadow-sm md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
               <div className="flex w-full min-w-0 max-w-full items-end gap-2">
                 <input
                 type="file"
@@ -788,13 +788,13 @@ export default function Chat() {
                 accept="image/*"
                 onChange={handleImageUpload}
                 />
-                <div className="flex shrink-0 items-center gap-1 rounded-xl bg-muted/40 px-1 py-1 md:gap-0 md:bg-transparent md:px-0 md:py-0">
+                <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-muted/40 px-0.5 py-0.5 md:gap-0 md:bg-transparent md:px-0 md:py-0">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
-                    className="h-10 w-10 rounded-xl md:h-9 md:w-9"
+                    className="h-9.5 w-9.5 rounded-xl md:h-9 md:w-9"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -805,7 +805,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-10 w-10 rounded-xl md:h-9 md:w-9">
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-9.5 w-9.5 rounded-xl md:h-9 md:w-9">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -821,7 +821,7 @@ export default function Chat() {
                     variant={isViewOnceEnabled ? "secondary" : "ghost"}
                     size="icon"
                     onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
-                    className={cn("h-10 w-10 rounded-xl md:h-9 md:w-9", isViewOnceEnabled && "text-yellow-500")}
+                    className={cn("h-9.5 w-9.5 rounded-xl md:h-9 md:w-9", isViewOnceEnabled && "text-yellow-500")}
                     title="Visualização única"
                     disabled={!premiumAccess}
                   >
@@ -844,7 +844,7 @@ export default function Chat() {
                   }
                 }}
                 rows={1}
-                className="min-h-[46px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
+                className="min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 border-primary/15 bg-background px-3.5 py-2.5 text-[15px] leading-6 outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm"
                 disabled={!premiumAccess}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
@@ -852,7 +852,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-11 w-11 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-10.5 w-10.5 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
@@ -860,7 +860,7 @@ export default function Chat() {
               </Button>
               </div>
             </div>
-            <div className="h-[calc(max(env(safe-area-inset-bottom),0px)+0.25rem)] md:hidden" />
+            <div className="h-[max(env(safe-area-inset-bottom),0px)] md:hidden" />
           </div>
         </div>
       ) : (
