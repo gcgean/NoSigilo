@@ -28,6 +28,7 @@ type Conversation = {
   id: string;
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
   createdAt?: string;
+  lastMessageAt?: string | null;
   unreadCount?: number;
   isHighlighted?: boolean;
   highlightNote?: string | null;
@@ -80,6 +81,8 @@ export default function Chat() {
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
+  const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
+  const [messageSearch, setMessageSearch] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
@@ -265,9 +268,29 @@ export default function Chat() {
     return conversations.filter(c => (c.unreadCount || 0) > 0).length;
   }, [conversations]);
 
+  const isConversationNew = useCallback((conversation: Conversation) => {
+    const baseDate = conversation.lastMessageAt || conversation.createdAt;
+    if (!baseDate) return false;
+    const timestamp = new Date(baseDate).getTime();
+    if (Number.isNaN(timestamp)) return false;
+    return Date.now() - timestamp <= 24 * 60 * 60 * 1000;
+  }, []);
+
+  const unreadTabCount = useMemo(
+    () => conversations.filter((c) => (c.unreadCount || 0) > 0).length,
+    [conversations]
+  );
+
+  const newTabCount = useMemo(
+    () => conversations.filter((c) => isConversationNew(c) && (c.unreadCount || 0) > 0).length,
+    [conversations, isConversationNew]
+  );
+
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
     return conversations.filter((c) => {
+      if (conversationTab === 'unread' && (c.unreadCount || 0) <= 0) return false;
+      if (conversationTab === 'new' && !(isConversationNew(c) && (c.unreadCount || 0) > 0)) return false;
       if (showOnlyHighlighted && !c.isHighlighted) return false;
       if (!q) return true;
       return (
@@ -275,7 +298,13 @@ export default function Chat() {
         (c.highlightNote || '').toLowerCase().includes(q)
       );
     });
-  }, [search, conversations, showOnlyHighlighted]);
+  }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew]);
+
+  const filteredMessages = useMemo(() => {
+    const q = messageSearch.trim().toLowerCase();
+    if (!q) return messages;
+    return messages.filter((m) => String(m.content || '').toLowerCase().includes(q));
+  }, [messages, messageSearch]);
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
     formatProfileIdentityLine(profile);
 
@@ -309,6 +338,7 @@ export default function Chat() {
   useEffect(() => {
     if (USE_MOCKS) return;
     if (!selectedChat || !user?.id) return;
+    setMessageSearch('');
     
     // Reset unread count locally
     setConversations(prev => prev.map(c => 
@@ -670,6 +700,41 @@ export default function Chat() {
               className="pl-9"
             />
           </div>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={conversationTab === 'all' ? 'default' : 'outline'}
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => setConversationTab('all')}
+            >
+              Todas
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={conversationTab === 'unread' ? 'default' : 'outline'}
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => setConversationTab('unread')}
+            >
+              Não lidas
+              <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", conversationTab === 'unread' ? "bg-primary-foreground/20" : "bg-muted")}>
+                {unreadTabCount}
+              </span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={conversationTab === 'new' ? 'default' : 'outline'}
+              className="h-8 rounded-full px-3 text-xs"
+              onClick={() => setConversationTab('new')}
+            >
+              Novas
+              <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", conversationTab === 'new' ? "bg-primary-foreground/20" : "bg-muted")}>
+                {newTabCount}
+              </span>
+            </Button>
+          </div>
           <div className="mt-3 flex items-center">
             <Button
               type="button"
@@ -861,6 +926,18 @@ export default function Chat() {
             </div>
           </div>
 
+          <div className="border-b bg-background px-2.5 py-2 md:px-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar nesta conversa..."
+                value={messageSearch}
+                onChange={(e) => setMessageSearch(e.target.value)}
+                className="h-9 pl-9"
+              />
+            </div>
+          </div>
+
           {/* Messages – native scrollable div; ref used for scroll-to-bottom */}
           <div
             ref={messagesContainerRef}
@@ -868,7 +945,7 @@ export default function Chat() {
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
-              {!isLoadingMessages && (USE_MOCKS ? [] : messages).map((msg) => {
+              {!isLoadingMessages && (USE_MOCKS ? [] : filteredMessages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
                 const isDeleted = msg.isDeletedForMe || msg.isDeletedForAll;
                 return (

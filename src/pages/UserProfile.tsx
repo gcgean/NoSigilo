@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -819,6 +819,7 @@ export default function UserProfile() {
       0
   );
   const videosCount = Number(profile?.videosCount ?? userVideos.length ?? 0);
+  const profileVisitsCount = Number(profile?.profileVisitsCount ?? 0);
 
   if (!isSelf && !premiumAccess) {
     return (
@@ -891,11 +892,6 @@ export default function UserProfile() {
                   <span className="font-medium">Opções sexuais:</span> {sexualOptionsLabel}
                 </div>
               ) : null}
-              {!profile?.isOnline && profile?.lastSeenAt && (
-                <div className="text-xs">
-                  Visto por último em {format(new Date(profile.lastSeenAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                </div>
-              )}
               {profile?.isOnline && (
                 <div className="text-xs text-success font-medium flex items-center justify-center sm:justify-start gap-1">
                   <span className="w-2 h-2 rounded-full bg-success" />
@@ -904,7 +900,39 @@ export default function UserProfile() {
               )}
             </div>
 
-            {profile?.bio ? <p className="text-muted-foreground text-sm mb-4">{profile.bio}</p> : null}
+            {!isSelf && profile?.bio ? (
+              <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
+                <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
+                  Leia nossa descrição antes de chamar no chat
+                </p>
+                <p className="text-[15px] leading-relaxed text-foreground/95">{profile.bio}</p>
+              </div>
+            ) : profile?.bio ? (
+              <p className="text-muted-foreground text-sm mb-4">{profile.bio}</p>
+            ) : null}
+
+            {!isSelf ? (
+              <div className="mb-4 rounded-xl border bg-background/70 p-3.5">
+                <div className="grid grid-cols-2 gap-2.5 text-sm">
+                  <div className="rounded-xl border bg-card px-3 py-2.5">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                      <span className="text-[11px] uppercase tracking-wide">Alcance</span>
+                    </div>
+                    <p className="text-lg font-bold leading-none">{profileVisitsCount.toLocaleString('pt-BR')}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Visitas no perfil</p>
+                  </div>
+                  <div className="rounded-xl border bg-card px-3 py-2.5">
+                    <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
+                      <BadgeCheck className="h-3.5 w-3.5" />
+                      <span className="text-[11px] uppercase tracking-wide">Confiança</span>
+                    </div>
+                    <p className="text-lg font-bold leading-none">{testimonialsCount.toLocaleString('pt-BR')}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Depoimentos e indicações</p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             
             <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
               <Button

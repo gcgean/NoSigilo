@@ -2187,7 +2187,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           SELECT COUNT(*)
           FROM testimonials t
           WHERE t.profile_user_id = u.id AND t.status = 'approved'
-        ) as approved_testimonials_count
+        ) as approved_testimonials_count,
+        (
+          SELECT COUNT(*)
+          FROM profile_visits v
+          WHERE v.visited_user_id = u.id
+        ) as profile_visits_count
       FROM users u
       WHERE u.id = ?
     `,
@@ -2216,6 +2221,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       publicPhotosCount: Number((row as any).public_photos_count || 0),
       privatePhotosCount: Number((row as any).private_photos_count || 0),
       testimonialsCount: Number((row as any).approved_testimonials_count || 0),
+      profileVisitsCount: Number((row as any).profile_visits_count || 0),
     });
   });
 
@@ -3757,6 +3763,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           id: r.id, 
           user: other, 
           createdAt: r.created_at,
+          lastMessageAt: r.last_message_at || null,
           unreadCount: Number(r.unread_count || 0),
           isHighlighted: Number(r.is_highlighted || 0) === 1,
           highlightNote: typeof r.highlight_note === 'string' ? r.highlight_note : null,

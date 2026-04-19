@@ -261,21 +261,41 @@ export default function Reels() {
     return () => observer.disconnect();
   }, [markReelAsSeen, orderedReels]);
 
-  const scrollTo = useCallback((idx: number) => {
+  const scrollTo = useCallback((idx: number, behavior: ScrollBehavior = 'smooth') => {
     const reel = orderedReels[idx];
     if (!reel) return;
     const el = itemRefs.current[reel.id];
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el?.scrollIntoView({ behavior, block: 'start' });
   }, [orderedReels]);
+
+  const restartFromBeginning = useCallback(() => {
+    const firstReel = orderedReels[0];
+    if (!firstReel) return;
+
+    // If we're already at the first item (single video case), force replay.
+    const firstVideo = videoRefs.current[firstReel.id];
+    if (firstVideo) {
+      try {
+        firstVideo.currentTime = 0;
+      } catch {
+        // ignore
+      }
+      void firstVideo.play().catch(() => {});
+    }
+
+    setPlayingId(firstReel.id);
+    setCurrentIndex(0);
+    scrollTo(0, 'auto');
+  }, [orderedReels, scrollTo]);
 
   const handleVideoEnded = useCallback((idx: number) => {
     const next = idx + 1;
     if (next < orderedReels.length) {
       scrollTo(next);
     } else {
-      scrollTo(0);
+      restartFromBeginning();
     }
-  }, [orderedReels.length, scrollTo]);
+  }, [orderedReels.length, restartFromBeginning, scrollTo]);
 
   const toggleMute = useCallback((id: string) => {
     setMutedById((prev) => {
