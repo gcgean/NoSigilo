@@ -2343,15 +2343,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
 
     // Ordering: online first → last_seen_at DESC (recently seen first) → created_at DESC (newest accounts)
+    // Use a JS-generated ISO threshold so the same SQL works in both SQLite and PostgreSQL.
+    const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const orderBy = `
-      CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= datetime('now', '-5 minutes') THEN 0 ELSE 1 END ASC,
+      CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
       CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
       u.last_seen_at DESC,
       u.created_at DESC
     `;
 
     // Fetch limit+1 to know if there are more pages
-    params.push(limit + 1, offset);
+    params.push(onlineThresholdIso, limit + 1, offset);
     const rows = await queryAll(
       db,
       `SELECT u.*,
