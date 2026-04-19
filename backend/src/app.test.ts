@@ -660,6 +660,44 @@ describe('nosigilo backend', () => {
     expect(ownerId).toBeTypeOf('string');
   });
 
+  it('favoriting a user generates notification for the favorited profile', async () => {
+    const targetReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Favoritado',
+      email: 'favoritado@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const targetToken = targetReg.token;
+    const targetId = String(targetReg.user.id);
+
+    const actorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Favoritador',
+      email: 'favoritador@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const actorToken = actorReg.token;
+    const actorId = String(actorReg.user.id);
+
+    await request(ctx.app)
+      .post('/api/likes')
+      .set('Authorization', `Bearer ${actorToken}`)
+      .send({ targetType: 'user', targetId })
+      .expect(200);
+
+    const targetNotifs = await request(ctx.app)
+      .get('/api/notifications')
+      .set('Authorization', `Bearer ${targetToken}`)
+      .expect(200);
+
+    expect(Array.isArray(targetNotifs.body)).toBe(true);
+    expect(
+      targetNotifs.body.some(
+        (n: any) => n.type === 'profile.favorited' && n.data?.actorId === actorId
+      )
+    ).toBe(true);
+  });
+
   it('private photos require approval and generate notifications', async () => {
     const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Dono',
@@ -937,6 +975,100 @@ describe('nosigilo backend', () => {
 
     expect(Array.isArray(list.body)).toBe(true);
     expect(list.body.some((c: any) => c.id === conversationId && c.user?.id === idA)).toBe(true);
+  });
+
+  it('search endpoint returns other active profiles for authenticated user', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'BuscaViewer',
+      email: 'busca-viewer@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+    const viewerToken = viewerReg.token;
+    const viewerId = String(viewerReg.user.id);
+
+    const targetReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'BuscaTarget',
+      email: 'busca-target@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+    const targetId = String(targetReg.user.id);
+
+    const response = await request(ctx.app)
+      .get('/api/users')
+      .query({ search: 'BuscaTarget', limit: 20, page: 1 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+
+    expect(Array.isArray(response.body?.users)).toBe(true);
+    expect(response.body.users.some((u: any) => String(u.id) === targetId)).toBe(true);
+    expect(response.body.users.some((u: any) => String(u.id) === viewerId)).toBe(false);
+  });
+
+  it('allows highlighting a conversation with note and prioritizes it in list', async () => {
+    const regA = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'DestA',
+      email: 'desta@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const tokenA = regA.token;
+
+    const regB = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'DestB',
+      email: 'destb@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const idB = regB.user.id as string;
+
+    const regC = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'DestC',
+      email: 'destc@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const idC = regC.user.id as string;
+
+    const convAB = await request(ctx.app)
+      .post('/api/conversations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ userId: idB })
+      .expect(200);
+
+    const convAC = await request(ctx.app)
+      .post('/api/conversations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ userId: idC })
+      .expect(200);
+
+    await request(ctx.app)
+      .post(`/api/conversations/${convAC.body.id}/messages`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ content: 'Mensagem recente' })
+      .expect(200);
+
+    await request(ctx.app)
+      .patch(`/api/conversations/${convAB.body.id}/highlight`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ highlighted: true, note: 'chamar em Fortaleza', color: 'violet' })
+      .expect(200);
+
+    const list = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    expect(Array.isArray(list.body)).toBe(true);
+    expect(list.body[0]?.id).toBe(convAB.body.id);
+    expect(list.body[0]?.isHighlighted).toBe(true);
+    expect(list.body[0]?.highlightNote).toBe('chamar em Fortaleza');
+    expect(list.body[0]?.highlightColor).toBe('violet');
   });
 
   it('premium users can create events with notifications enabled', async () => {

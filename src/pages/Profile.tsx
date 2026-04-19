@@ -62,13 +62,14 @@ function PhotoItem({
   isTogglingVisibility: boolean;
 }) {
   const [showActions, setShowActions] = React.useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   return (
     <div
       className="relative aspect-square rounded-xl overflow-hidden group"
       onTouchStart={() => setShowActions(v => !v)}
       onMouseLeave={() => setShowActions(false)}
     >
-      <Dialog>
+      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
         <DialogTrigger asChild>
           <img
             src={resolveMediaUrl(photo.url)}
@@ -91,8 +92,50 @@ function PhotoItem({
           <img
             src={resolveMediaUrl(photo.url)}
             alt=""
-            className="block max-h-[88dvh] w-auto max-w-full rounded-xl object-contain"
+            className="block max-h-[72dvh] w-auto max-w-full rounded-xl object-contain"
           />
+          <div className="absolute bottom-3 left-3 right-3 z-50 rounded-xl border border-white/15 bg-black/65 p-2 backdrop-blur-sm">
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-10 justify-center text-xs"
+                disabled={photo.isMain || photo.isPrivate}
+                onClick={() => {
+                  void onSetMain(photo.id);
+                  setIsPreviewOpen(false);
+                }}
+              >
+                {photo.isMain ? 'Principal' : 'Definir principal'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-10 justify-center text-xs"
+                disabled={isTogglingVisibility}
+                onClick={() => {
+                  void onToggleVisibility(photo.id, photo.isPrivate);
+                  setIsPreviewOpen(false);
+                }}
+              >
+                {photo.isPrivate ? 'Tornar pública' : 'Tornar privada'}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-10 justify-center text-xs"
+                onClick={() => {
+                  void onDelete(photo.id);
+                  setIsPreviewOpen(false);
+                }}
+              >
+                Excluir
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary">Principal</Badge>}

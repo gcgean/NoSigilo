@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" fill="none">
+  <defs>
+    <linearGradient id="nosigilo192Stroke" x1="30" y1="18" x2="162" y2="164" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F4A8FF" />
+      <stop offset="0.52" stop-color="#D76BFF" />
+      <stop offset="1" stop-color="#A93BFF" />
+    </linearGradient>
+    <radialGradient id="nosigilo192Glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(58 42) rotate(48.5) scale(160.483)">
+      <stop stop-color="#173B75" stop-opacity="0.9" />
+      <stop offset="0.38" stop-color="#0E172B" stop-opacity="0.6" />
+      <stop offset="1" stop-color="#050816" />
+    </radialGradient>
+    <filter id="nosigilo192Bloom" x="0" y="0" width="192" height="192" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="7" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.64 0 1 0 0 0.23 0 0 1 0 1 0 0 0 0.95 0" result="glow" />
+      <feMerge>
+        <feMergeNode in="glow" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="192" height="192" rx="48" fill="url(#nosigilo192Glow)" />
+  <g filter="url(#nosigilo192Bloom)" stroke="url(#nosigilo192Stroke)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M60 73V50C60 30.12 76.12 14 96 14C115.88 14 132 30.12 132 50V73" stroke-width="10" />
+    <path d="M45 73H126C139.255 73 150 83.7452 150 97V127C150 140.255 139.255 151 126 151H45C31.7452 151 21 140.255 21 127V97C21 83.7452 31.7452 73 45 73Z" stroke-width="10" />
+    <path d="M85.5 109C85.5 103.201 90.201 98.5 96 98.5C101.799 98.5 106.5 103.201 106.5 109C106.5 112.815 104.466 116.155 101.438 117.992V130H90.562V117.992C87.5344 116.155 85.5 112.815 85.5 109Z" stroke-width="8" />
+    <path d="M131.25 94.5L165 106V126.25C165 145.594 151.383 160.325 131.25 166.5C111.117 160.325 97.5 145.594 97.5 126.25V106L131.25 94.5Z" stroke-width="8" />
+    <path d="M131.25 113.5L146 118.25V126.25C146 136.242 139.958 144.024 131.25 148.25C122.542 144.024 116.5 136.242 116.5 126.25V118.25L131.25 113.5Z" stroke-width="6.5" />
+  </g>
+</svg>

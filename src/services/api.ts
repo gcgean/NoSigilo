@@ -285,6 +285,14 @@ export const chatService = {
     return response.data;
   },
 
+  updateConversationHighlight: async (
+    conversationId: string,
+    data: { highlighted: boolean; note?: string | null; color?: 'rose' | 'amber' | 'violet' | 'sky' | null }
+  ) => {
+    const response = await apiClient.patch(`/conversations/${conversationId}/highlight`, data);
+    return response.data;
+  },
+
   markMessageAsViewed: async (messageId: string) => {
     const response = await apiClient.post(`/messages/${messageId}/view`);
     return response.data;
@@ -304,7 +312,7 @@ export const chatService = {
 // Likes & Comments Service
 export const interactionsService = {
   like: async (
-    targetType: 'post' | 'photo',
+    targetType: 'post' | 'photo' | 'user',
     targetId: string,
     reaction?: 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash'
   ) => {
@@ -312,7 +320,7 @@ export const interactionsService = {
     return response.data;
   },
 
-  unlike: async (targetType: 'post' | 'photo', targetId: string) => {
+  unlike: async (targetType: 'post' | 'photo' | 'user', targetId: string) => {
     const response = await apiClient.delete('/likes', { data: { targetType, targetId } });
     return response.data;
   },
@@ -329,6 +337,16 @@ export const interactionsService = {
 
   getComments: async (targetType: string, targetId: string) => {
     const response = await apiClient.get('/comments', { params: { targetType, targetId } });
+    return response.data;
+  },
+
+  updateComment: async (commentId: string, content: string) => {
+    const response = await apiClient.put(`/comments/${commentId}`, { content });
+    return response.data;
+  },
+
+  deleteComment: async (commentId: string) => {
+    const response = await apiClient.delete(`/comments/${commentId}`);
     return response.data;
   },
 };

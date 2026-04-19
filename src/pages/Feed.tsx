@@ -21,6 +21,16 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import {
+  COMMENT_ACTION_BUTTON_BASE,
+  COMMENT_ACTION_DELETE_CLASS,
+  COMMENT_ACTION_EDIT_CLASS,
+  COMMENT_CANCEL_BUTTON_CLASS,
+  COMMENT_EMOJI_CHIP_CLASS,
+  COMMENT_INLINE_INPUT_CLASS,
+  COMMENT_QUICK_EMOJIS,
+  COMMENT_SAVE_BUTTON_CLASS,
+} from '@/components/comments/commentStyles';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
@@ -69,7 +79,6 @@ const REACTION_EMOJI: Record<string, string> = {
   devil: '😈',
   splash: '💦',
 };
-
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -117,6 +126,8 @@ export default function Feed() {
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, Comment[]>>({});
   const [commentDraftByPostId, setCommentDraftByPostId] = useState<Record<string, string>>({});
+  const [editingCommentByPostId, setEditingCommentByPostId] = useState<Record<string, string | null>>({});
+  const [editCommentDraftById, setEditCommentDraftById] = useState<Record<string, string>>({});
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [photoReactionCounts, setPhotoReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
@@ -599,6 +610,32 @@ export default function Feed() {
     }
   };
 
+  const handleToggleFavorite = async (author: FeedPost['author']) => {
+    const favoriteUser = {
+      id: String(author.id),
+      name: String(author.name || ''),
+      avatar: author.avatar || undefined,
+      addedAt: new Date().toISOString(),
+    };
+    const alreadyFavorite = isFavorite(favoriteUser.id);
+
+    toggleFavorite(favoriteUser);
+    try {
+      if (alreadyFavorite) {
+        await interactionsService.unlike('user', favoriteUser.id);
+      } else {
+        await interactionsService.like('user', favoriteUser.id);
+      }
+    } catch {
+      toggleFavorite(favoriteUser);
+      toast({
+        title: 'Não foi possível atualizar favorito',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const toggleComments = async (postId: string) => {
     const willOpen = openCommentsPostId !== postId;
     setOpenCommentsPostId(willOpen ? postId : null);
@@ -628,6 +665,58 @@ export default function Feed() {
     } catch {
       toast({ title: 'Erro ao comentar', description: 'Tente novamente.', variant: 'destructive' });
       setCommentDraftByPostId((prev) => ({ ...prev, [postId]: draft }));
+    }
+  };
+
+  const appendEmojiToCommentDraft = (postId: string, emoji: string) => {
+    setCommentDraftByPostId((prev) => ({ ...prev, [postId]: `${prev[postId] || ''}${emoji}` }));
+  };
+
+  const startEditingComment = (postId: string, comment: Comment) => {
+    setEditingCommentByPostId((prev) => ({ ...prev, [postId]: comment.id }));
+    setEditCommentDraftById((prev) => ({ ...prev, [comment.id]: comment.content || '' }));
+  };
+
+  const cancelEditingComment = (postId: string) => {
+    const editingId = editingCommentByPostId[postId];
+    setEditingCommentByPostId((prev) => ({ ...prev, [postId]: null }));
+    if (editingId) {
+      setEditCommentDraftById((prev) => {
+        const next = { ...prev };
+        delete next[editingId];
+        return next;
+      });
+    }
+  };
+
+  const saveEditedComment = async (postId: string, commentId: string) => {
+    const draft = (editCommentDraftById[commentId] || '').trim();
+    if (!draft) return;
+    try {
+      await interactionsService.updateComment(commentId, draft);
+      const list = await interactionsService.getComments('post', postId);
+      setCommentsByPostId((prev) => ({ ...prev, [postId]: Array.isArray(list) ? list : [] }));
+      setEditingCommentByPostId((prev) => ({ ...prev, [postId]: null }));
+      setEditCommentDraftById((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    } catch {
+      toast({ title: 'Erro ao editar comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const deleteComment = async (postId: string, commentId: string) => {
+    try {
+      await interactionsService.deleteComment(commentId);
+      const list = await interactionsService.getComments('post', postId);
+      setCommentsByPostId((prev) => ({ ...prev, [postId]: Array.isArray(list) ? list : [] }));
+      setAllPosts((prev) =>
+        prev.map((p) => (p.id === postId ? { ...p, commentsCount: Math.max(0, (p.commentsCount || 0) - 1) } : p))
+      );
+    } catch {
+      toast({ title: 'Erro ao excluir comentário', description: 'Tente novamente.', variant: 'destructive' });
     }
   };
 
@@ -917,14 +1006,7 @@ export default function Feed() {
                       variant="ghost"
                       size="icon"
                       className="h-10 w-10 rounded-full"
-                      onClick={() =>
-                        toggleFavorite({
-                          id: String(post.author.id),
-                          name: String(post.author.name || ''),
-                          avatar: post.author.avatar || undefined,
-                          addedAt: new Date().toISOString(),
-                        })
-                      }
+                      onClick={() => void handleToggleFavorite(post.author)}
                       aria-label={isFavorite(String(post.author.id)) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                     >
                       <Star
@@ -1139,11 +1221,62 @@ export default function Feed() {
                                 {c.user.name}
                               </Link>
                               <span className="text-xs text-muted-foreground">{formatWhen(c.createdAt)}</span>
+                              {String(c.user.id) === String(user?.id || '') ? (
+                                <div className="ml-auto flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
+                                    onClick={() => startEditingComment(post.id, c)}
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                                    onClick={() => void deleteComment(post.id, c.id)}
+                                  >
+                                    Excluir
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
                             {getIdentityLine(c.user) ? (
                               <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div>
                             ) : null}
-                            <p className="text-sm text-muted-foreground">{c.content}</p>
+                            {editingCommentByPostId[post.id] === c.id ? (
+                              <div className="mt-1 flex items-center gap-2">
+                                <Input
+                                  value={editCommentDraftById[c.id] || ''}
+                                  onChange={(e) =>
+                                    setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') void saveEditedComment(post.id, c.id);
+                                  }}
+                                  className={COMMENT_INLINE_INPUT_CLASS}
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className={COMMENT_SAVE_BUTTON_CLASS}
+                                  onClick={() => void saveEditedComment(post.id, c.id)}
+                                  disabled={!(editCommentDraftById[c.id] || '').trim()}
+                                >
+                                  Salvar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className={COMMENT_CANCEL_BUTTON_CLASS}
+                                  onClick={() => cancelEditingComment(post.id)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">{c.content}</p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1165,6 +1298,18 @@ export default function Feed() {
                     <Button type="button" onClick={() => void sendComment(post.id)} disabled={!(commentDraftByPostId[post.id] || '').trim()}>
                       Enviar
                     </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {COMMENT_QUICK_EMOJIS.map((emoji) => (
+                      <button
+                        key={`${post.id}-emoji-${emoji}`}
+                        type="button"
+                        onClick={() => appendEmojiToCommentDraft(post.id, emoji)}
+                        className={COMMENT_EMOJI_CHIP_CLASS}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1248,22 +1393,28 @@ export default function Feed() {
                   ) : (
                     <ul className="divide-y">
                       {displayRows.map((r) => (
-                        <li key={r.id} className="flex items-center gap-3 px-4 py-3">
-                          <div className="relative shrink-0">
-                            <Avatar className="h-10 w-10">
-                              <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
-                              <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
-                            </Avatar>
-                            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
-                              {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold">{r.user.name}</p>
-                            {getIdentityLine(r.user) ? (
-                              <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
-                            ) : null}
-                          </div>
+                        <li key={r.id}>
+                          <Link
+                            to={getUserProfileHref(r.user.id, user?.id, '/feed')}
+                            onClick={() => setReactionsModalPostId(null)}
+                            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                          >
+                            <div className="relative shrink-0">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
+                                <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
+                              </Avatar>
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
+                                {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
+                              </span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{r.user.name}</p>
+                              {getIdentityLine(r.user) ? (
+                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
+                              ) : null}
+                            </div>
+                          </Link>
                         </li>
                       ))}
                     </ul>

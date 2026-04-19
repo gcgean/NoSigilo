@@ -3707,7 +3707,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       db,
       `
       SELECT * FROM (
-        SELECT c.id, c.user_a_id, c.user_b_id, c.created_at,
+        SELECT c.id, c.user_a_id, c.user_b_id, c.created_at, c.is_highlighted, c.highlight_note, c.highlight_color,
           ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state,
           ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state,
           (
@@ -3726,7 +3726,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         JOIN users ub ON ub.id = c.user_b_id
         WHERE c.user_a_id = ? OR c.user_b_id = ?
       ) conversations_with_meta
-      ORDER BY COALESCE(last_message_at, created_at) DESC
+      ORDER BY is_highlighted DESC, COALESCE(last_message_at, created_at) DESC
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
@@ -3757,7 +3757,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           id: r.id, 
           user: other, 
           createdAt: r.created_at,
-          unreadCount: Number(r.unread_count || 0)
+          unreadCount: Number(r.unread_count || 0),
+          isHighlighted: Number(r.is_highlighted || 0) === 1,
+          highlightNote: typeof r.highlight_note === 'string' ? r.highlight_note : null,
+          highlightColor: typeof r.highlight_color === 'string' ? r.highlight_color : null
         };
       })
     );
@@ -4120,6 +4123,23 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           }
         );
       }
+    } else if (parsed.data.targetType === 'user') {
+      const target = (await queryOne(db, 'SELECT id FROM users WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
+      const targetUserId = target?.id ? String(target.id) : null;
+      if (targetUserId && targetUserId !== req.auth!.userId) {
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        await createNotification(
+          { db, io },
+          {
+            userId: targetUserId,
+            type: 'profile.favorited',
+            title: 'Seu perfil foi favoritado',
+            description: `${actorName} favoritou seu perfil.`,
+            dataJson: { actorId: req.auth!.userId, actorName },
+          }
+        );
+      }
     }
     res.json({ id });
   });
@@ -4214,6 +4234,97 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       }
     }
     res.json({ id });
+  });
+
+  app.put('/api/comments/:commentId', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      content: z.string().min(1).max(2000),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const commentId = String(req.params.commentId || '');
+    const comment = (await queryOne(db, 'SELECT id, user_id FROM comments WHERE id = ? LIMIT 1', [commentId])) as any;
+    if (!comment) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (String(comment.user_id) !== req.auth!.userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    await run(db, 'UPDATE comments SET content = ? WHERE id = ?', [parsed.data.content, commentId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.patch('/api/conversations/:conversationId/highlight', requireAuth(env, db), async (req, res) => {
+    const conversationId = req.params.conversationId;
+    const schema = z.object({
+      highlighted: z.boolean(),
+      note: z
+        .string()
+        .trim()
+        .max(120, 'Nota muito longa')
+        .optional()
+        .nullable(),
+      color: z.enum(['rose', 'amber', 'violet', 'sky']).optional().nullable(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [conversationId])) as any;
+    if (!conv) {
+      res.status(404).json({ error: 'conversation_not_found' });
+      return;
+    }
+    if (conv.user_a_id !== req.auth!.userId && conv.user_b_id !== req.auth!.userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    const highlighted = parsed.data.highlighted;
+    const note = highlighted ? (parsed.data.note && parsed.data.note.length > 0 ? parsed.data.note : null) : null;
+    const color = highlighted ? (parsed.data.color || 'rose') : null;
+
+    await run(
+      db,
+      'UPDATE conversations SET is_highlighted = ?, highlight_note = ?, highlight_color = ? WHERE id = ?',
+      [highlighted ? 1 : 0, note, color, conversationId]
+    );
+    await persist();
+
+    res.json({
+      ok: true,
+      conversationId,
+      isHighlighted: highlighted,
+      highlightNote: note,
+      highlightColor: color,
+    });
+  });
+
+  app.delete('/api/comments/:commentId', requireAuth(env, db), async (req, res) => {
+    const commentId = String(req.params.commentId || '');
+    const comment = (await queryOne(db, 'SELECT id, user_id FROM comments WHERE id = ? LIMIT 1', [commentId])) as any;
+    if (!comment) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (String(comment.user_id) !== req.auth!.userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+
+    await run(db, 'DELETE FROM comments WHERE id = ?', [commentId]);
+    await persist();
+    res.json({ ok: true });
   });
 
   app.get('/api/comments', requireAuth(env, db), async (req, res) => {

@@ -115,14 +115,20 @@ export default function Layout() {
   const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
   const isMobile = useIsMobile();
   const isMobileChatRoute = isMobile && location.pathname === '/chat';
+  const isMobileReelsRoute = isMobile && location.pathname === '/reels';
   const [isChatConvOpen, setIsChatConvOpen] = useState(false);
+  const [isReelsMaximized, setIsReelsMaximized] = useState(false);
+  const isMobileReelsMaximized = isMobileReelsRoute && isReelsMaximized;
 
   // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
   useEffect(() => {
-    const check = () => setIsChatConvOpen(document.body.hasAttribute('data-chat-open'));
+    const check = () => {
+      setIsChatConvOpen(document.body.hasAttribute('data-chat-open'));
+      setIsReelsMaximized(document.body.hasAttribute('data-reels-maximized'));
+    };
     check();
     const observer = new MutationObserver(check);
-    observer.observe(document.body, { attributes: true, attributeFilter: ['data-chat-open'] });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['data-chat-open', 'data-reels-maximized'] });
     return () => observer.disconnect();
   }, []);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -439,6 +445,7 @@ export default function Layout() {
     <div className="min-h-screen bg-background flex flex-col">
       <FirstAccessTutorial />
       {/* Header */}
+      {!isMobileReelsMaximized && (
       <header className="sticky top-0 z-40 glass-strong border-b">
         <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
           <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
@@ -526,6 +533,7 @@ export default function Layout() {
           </div>
         </div>
       </header>
+      )}
 
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:flex w-64 border-r glass flex-col p-4 sticky top-16 h-[calc(100dvh-4rem)] overflow-y-auto">
@@ -630,10 +638,11 @@ export default function Layout() {
         <main
           className={cn(
             'flex-1 min-w-0 px-3 py-3 pb-20 sm:px-4 sm:py-6 md:pb-6',
-            isMobileChatRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
+            isMobileChatRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0',
+            isMobileReelsMaximized && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
           )}
         >
-          <div className={cn('mx-auto w-full max-w-6xl', isMobileChatRoute && 'max-w-none h-full')}>
+          <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsMaximized) && 'max-w-none h-full')}>
             {!isMobileChatRoute && accessBanner ? (
               <div className="mb-4">
                 <NavLink
@@ -800,7 +809,7 @@ export default function Layout() {
 
       <nav className={cn(
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
-        isChatConvOpen && "hidden"
+        (isChatConvOpen || isMobileReelsMaximized) && "hidden"
       )}>
         <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {

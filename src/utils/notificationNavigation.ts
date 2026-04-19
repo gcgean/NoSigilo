@@ -13,6 +13,7 @@ export function getNotificationHref(notification: any): string {
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
   if (type === 'profile.liked' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
+  if (type === 'profile.favorited' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
   if (type === 'profile.visited' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
 
   if (type === 'testimonial.pending') return `/profile#testimonials`;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -29,6 +29,9 @@ type Conversation = {
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
   createdAt?: string;
   unreadCount?: number;
+  isHighlighted?: boolean;
+  highlightNote?: string | null;
+  highlightColor?: 'rose' | 'amber' | 'violet' | 'sky' | null;
 };
 
 type Message = {
@@ -51,6 +54,17 @@ type Message = {
   clientId?: string;
 };
 
+const HIGHLIGHT_COLORS: Array<{ id: 'rose' | 'amber' | 'violet' | 'sky'; label: string; className: string; borderColor: string }> = [
+  { id: 'rose', label: 'Rosa', className: 'bg-rose-50/70', borderColor: '#f43f5e' },
+  { id: 'amber', label: 'Âmbar', className: 'bg-amber-50/70', borderColor: '#f59e0b' },
+  { id: 'violet', label: 'Violeta', className: 'bg-violet-50/70', borderColor: '#8b5cf6' },
+  { id: 'sky', label: 'Azul', className: 'bg-sky-50/70', borderColor: '#0ea5e9' },
+];
+
+function getHighlightColorMeta(color?: 'rose' | 'amber' | 'violet' | 'sky' | null) {
+  return HIGHLIGHT_COLORS.find((item) => item.id === color) || HIGHLIGHT_COLORS[0];
+}
+
 function formatTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
@@ -69,12 +83,17 @@ export default function Chat() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [showOnlyHighlighted, setShowOnlyHighlighted] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
+  const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
+  const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
+  const [highlightColorDraft, setHighlightColorDraft] = useState<'rose' | 'amber' | 'violet' | 'sky'>('rose');
+  const [isSavingHighlight, setIsSavingHighlight] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // for auto-scroll-to-bottom
@@ -248,35 +267,36 @@ export default function Chat() {
 
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter((c) => c.user?.name?.toLowerCase().includes(q));
-  }, [search, conversations]);
+    return conversations.filter((c) => {
+      if (showOnlyHighlighted && !c.isHighlighted) return false;
+      if (!q) return true;
+      return (
+        c.user?.name?.toLowerCase().includes(q) ||
+        (c.highlightNote || '').toLowerCase().includes(q)
+      );
+    });
+  }, [search, conversations, showOnlyHighlighted]);
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
     formatProfileIdentityLine(profile);
 
+  const loadConversations = useCallback(async () => {
+    if (USE_MOCKS) return;
+    setIsLoadingConversations(true);
+    try {
+      const data = await chatService.getConversations();
+      setConversations(Array.isArray(data) ? data : []);
+    } catch {
+      toast({ title: 'Erro ao carregar conversas', description: 'Tente novamente.', variant: 'destructive' });
+      setConversations([]);
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     if (USE_MOCKS) return;
-    let cancelled = false;
-    setIsLoadingConversations(true);
-    chatService
-      .getConversations()
-      .then((data) => {
-        if (cancelled) return;
-        setConversations(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        toast({ title: 'Erro ao carregar conversas', description: 'Tente novamente.', variant: 'destructive' });
-        setConversations([]);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setIsLoadingConversations(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [toast]);
+    void loadConversations();
+  }, [loadConversations]);
 
   useEffect(() => {
     const stateConversationId = (location.state as any)?.conversationId ? String((location.state as any).conversationId) : '';
@@ -320,7 +340,7 @@ export default function Chat() {
     return () => {
       cancelled = true;
     };
-  }, [selectedChat, emit, toast]);
+  }, [selectedChat, emit, toast, loadConversations, user?.id]);
 
   useEffect(() => {
     if (USE_MOCKS) return;
@@ -333,9 +353,7 @@ export default function Chat() {
         
         if (index === -1) {
           // If conversation not found, we should fetch it or just reload the list
-          chatService.getConversations().then(data => {
-            setConversations(Array.isArray(data) ? data : []);
-          });
+          void loadConversations();
           return prev;
         }
         
@@ -560,6 +578,64 @@ export default function Chat() {
     }
   };
 
+  const openHighlightDialog = () => {
+    if (!selectedConversation) return;
+    setHighlightNoteDraft(selectedConversation.highlightNote || '');
+    setHighlightColorDraft(selectedConversation.highlightColor || 'rose');
+    setHighlightDialogOpen(true);
+  };
+
+  const handleSaveConversationHighlight = async () => {
+    if (!selectedConversation) return;
+    setIsSavingHighlight(true);
+    try {
+      await chatService.updateConversationHighlight(selectedConversation.id, {
+        highlighted: true,
+        note: highlightNoteDraft.trim() || null,
+        color: highlightColorDraft,
+      });
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === selectedConversation.id
+            ? {
+                ...conversation,
+                isHighlighted: true,
+                highlightNote: highlightNoteDraft.trim() || null,
+                highlightColor: highlightColorDraft,
+              }
+            : conversation
+        )
+      );
+      setHighlightDialogOpen(false);
+      toast({ title: 'Conversa destacada' });
+      void loadConversations();
+    } catch {
+      toast({ title: 'Erro ao destacar conversa', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsSavingHighlight(false);
+    }
+  };
+
+  const handleRemoveConversationHighlight = async () => {
+    if (!selectedConversation) return;
+    try {
+      await chatService.updateConversationHighlight(selectedConversation.id, {
+        highlighted: false,
+      });
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === selectedConversation.id
+            ? { ...conversation, isHighlighted: false, highlightNote: null, highlightColor: null }
+            : conversation
+        )
+      );
+      toast({ title: 'Destaque removido' });
+      void loadConversations();
+    } catch {
+      toast({ title: 'Erro ao remover destaque', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -594,6 +670,24 @@ export default function Chat() {
               className="pl-9"
             />
           </div>
+          <div className="mt-3 flex items-center">
+            <Button
+              type="button"
+              size="sm"
+              variant={showOnlyHighlighted ? 'default' : 'outline'}
+              className={cn(
+                "h-8 rounded-full px-3 text-xs",
+                showOnlyHighlighted ? "bg-primary text-primary-foreground" : ""
+              )}
+              onClick={() => setShowOnlyHighlighted((prev) => !prev)}
+            >
+              <Pin className="mr-1.5 h-3.5 w-3.5" />
+              Somente destacadas
+              <span className={cn("ml-2 rounded-full px-1.5 py-0.5 text-[10px]", showOnlyHighlighted ? "bg-primary-foreground/20" : "bg-muted")}>
+                {conversations.filter((c) => c.isHighlighted).length}
+              </span>
+            </Button>
+          </div>
         </div>
 
         {/* Native div – Radix ScrollArea has known issues with dynamic height on iOS/Android */}
@@ -619,8 +713,10 @@ export default function Chat() {
               />
             </div>
           ) : null}
-          {!isLoadingConversations && (USE_MOCKS ? [] : filteredConversations).map((conversation) => (
-            <div
+          {!isLoadingConversations && (USE_MOCKS ? [] : filteredConversations).map((conversation) => {
+            const highlightMeta = getHighlightColorMeta(conversation.highlightColor);
+            return (
+              <div
               key={conversation.id}
               onClick={() => setSelectedChat(conversation.id)}
               role="button"
@@ -630,24 +726,31 @@ export default function Chat() {
               }}
               className={cn(
                 "w-full border-b p-3 flex items-center gap-3 hover:bg-secondary/50 transition-colors sm:p-4",
-                selectedChat === conversation.id && "bg-secondary"
+                selectedChat === conversation.id && "bg-secondary",
+                conversation.isHighlighted && highlightMeta.className
               )}
+              style={conversation.isHighlighted ? { borderLeft: `3px solid ${highlightMeta.borderColor}` } : undefined}
             >
               <div className="relative">
                 <UserAvatar user={conversation.user} className="h-11 w-11 sm:h-10 sm:w-10" />
               </div>
               <div className="min-w-0 flex-1 text-left">
                 <div className="flex items-center justify-between">
-                  <button
-                    type="button"
-                    className="truncate pr-2 text-[0.98rem] font-medium hover:underline sm:text-base"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      goToUserProfile(conversation.user.id);
-                    }}
-                  >
-                    {conversation.user.name}
-                  </button>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {conversation.isHighlighted ? (
+                      <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    ) : null}
+                    <button
+                      type="button"
+                      className="truncate pr-2 text-[0.98rem] font-medium hover:underline sm:text-base"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        goToUserProfile(conversation.user.id);
+                      }}
+                    >
+                      {conversation.user.name}
+                    </button>
+                  </div>
                   {conversation.unreadCount && conversation.unreadCount > 0 && (
                     <Badge variant="destructive" className="flex h-5 min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold">
                       {conversation.unreadCount}
@@ -657,6 +760,11 @@ export default function Chat() {
                 {getIdentityLine(conversation.user) ? (
                   <p className="text-xs truncate text-muted-foreground">{getIdentityLine(conversation.user)}</p>
                 ) : null}
+                {conversation.isHighlighted && conversation.highlightNote ? (
+                  <p className="text-xs truncate text-primary font-medium">
+                    {conversation.highlightNote}
+                  </p>
+                ) : null}
                 <p className={cn(
                   "truncate text-[13px] sm:text-sm",
                   conversation.unreadCount && conversation.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
@@ -664,8 +772,9 @@ export default function Chat() {
                   {conversation.unreadCount && conversation.unreadCount > 0 ? 'Nova mensagem' : 'Toque para abrir'}
                 </p>
               </div>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -705,6 +814,11 @@ export default function Chat() {
                 <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                   {getIdentityLine(selectedConversation?.user) || 'Chat'}
                 </span>
+                {selectedConversation?.isHighlighted && selectedConversation.highlightNote ? (
+                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                    {selectedConversation.highlightNote}
+                  </span>
+                ) : null}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -725,6 +839,16 @@ export default function Chat() {
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={openHighlightDialog}>
+                    <Pin className="w-4 h-4 mr-2" />
+                    {selectedConversation?.isHighlighted ? 'Editar destaque' : 'Destacar conversa'}
+                  </DropdownMenuItem>
+                  {selectedConversation?.isHighlighted ? (
+                    <DropdownMenuItem onClick={() => void handleRemoveConversationHighlight()}>
+                      <X className="w-4 h-4 mr-2" />
+                      Remover destaque
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
                     onClick={() => setConfirmDeleteConv(true)}
@@ -1091,6 +1215,47 @@ export default function Chat() {
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setConfirmDeleteConv(false)}>Cancelar</Button>
             <Button variant="destructive" onClick={() => void handleDeleteConversation()}>Apagar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={highlightDialogOpen} onOpenChange={setHighlightDialogOpen}>
+        <DialogContent>
+          <DialogTitle>Destacar conversa</DialogTitle>
+          <DialogDescription>
+            Marque esta conversa como prioridade e adicione um lembrete rápido para não esquecer.
+          </DialogDescription>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Cor do destaque</p>
+              <select
+                value={highlightColorDraft}
+                onChange={(e) => setHighlightColorDraft(e.target.value as 'rose' | 'amber' | 'violet' | 'sky')}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                {HIGHLIGHT_COLORS.map((color) => (
+                  <option key={color.id} value={color.id}>
+                    {color.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Lembrete (opcional)</p>
+              <Input
+                value={highlightNoteDraft}
+                onChange={(e) => setHighlightNoteDraft(e.target.value)}
+                maxLength={120}
+                placeholder="Ex.: chamar quando estiver em cidade X"
+              />
+              <p className="text-[11px] text-muted-foreground">{highlightNoteDraft.length}/120</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setHighlightDialogOpen(false)}>Cancelar</Button>
+            <Button disabled={isSavingHighlight} onClick={() => void handleSaveConversationHighlight()}>
+              {isSavingHighlight ? 'Salvando...' : 'Salvar destaque'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

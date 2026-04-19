@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { feedService, interactionsService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -11,6 +12,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
+import {
+  COMMENT_ACTION_BUTTON_BASE,
+  COMMENT_ACTION_DELETE_CLASS,
+  COMMENT_ACTION_EDIT_CLASS,
+  COMMENT_CANCEL_BUTTON_CLASS,
+  COMMENT_EMOJI_CHIP_CLASS,
+  COMMENT_INLINE_INPUT_CLASS,
+  COMMENT_QUICK_EMOJIS,
+  COMMENT_SAVE_BUTTON_CLASS,
+} from '@/components/comments/commentStyles';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null };
 type FeedPost = {
@@ -43,7 +55,6 @@ type ReelComment = {
   createdAt: string;
   user?: { id: string; name: string; avatar?: string | null };
 };
-
 function getSeenRapStorageKey(userId?: string | null) {
   return `nosigilo:rap:seen:${userId || 'anon'}`;
 }
@@ -65,6 +76,7 @@ export default function Reels() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
@@ -79,6 +91,9 @@ export default function Reels() {
   const [commentDraft, setCommentDraft] = useState('');
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentDraft, setEditCommentDraft] = useState('');
+  const [isMobileMaximized, setIsMobileMaximized] = useState(false);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -95,6 +110,25 @@ export default function Reels() {
       setSeenReelIds([]);
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!isMobileMaximized) {
+      document.body.removeAttribute('data-reels-maximized');
+      return;
+    }
+    document.body.setAttribute('data-reels-maximized', '1');
+    return () => {
+      document.body.removeAttribute('data-reels-maximized');
+    };
+  }, [isMobileMaximized]);
+
+  useEffect(() => {
+    if (!isMobile && isMobileMaximized) {
+      setIsMobileMaximized(false);
+    }
+  }, [isMobile, isMobileMaximized]);
+
+  const reelViewportHeight = isMobile && isMobileMaximized ? '100dvh' : 'calc(100dvh - 8rem)';
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +318,8 @@ export default function Reels() {
   const openComments = useCallback(async (reel: ReelItem) => {
     setCommentsOpenFor(reel);
     setCommentDraft('');
+    setEditingCommentId(null);
+    setEditCommentDraft('');
     await loadComments(reel);
   }, [loadComments]);
 
@@ -361,6 +397,61 @@ export default function Reels() {
     }
   }, [commentDraft, commentsOpenFor, loadComments, toast]);
 
+  const startEditingComment = (comment: ReelComment) => {
+    setEditingCommentId(comment.id);
+    setEditCommentDraft(comment.content || '');
+  };
+
+  const cancelEditingComment = () => {
+    setEditingCommentId(null);
+    setEditCommentDraft('');
+  };
+
+  const saveEditedComment = async (commentId: string) => {
+    if (!commentsOpenFor) return;
+    const content = editCommentDraft.trim();
+    if (!content) return;
+    try {
+      await interactionsService.updateComment(commentId, content);
+      setEditingCommentId(null);
+      setEditCommentDraft('');
+      await loadComments(commentsOpenFor);
+    } catch {
+      toast({
+        title: 'Não foi possível editar o comentário',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const removeComment = async (commentId: string) => {
+    if (!commentsOpenFor) return;
+    try {
+      await interactionsService.deleteComment(commentId);
+      setStatsByPostId((prev) => {
+        const current = prev[commentsOpenFor.postId] ?? {
+          likesCount: commentsOpenFor.likesCount,
+          commentsCount: commentsOpenFor.commentsCount,
+        };
+        return {
+          ...prev,
+          [commentsOpenFor.postId]: {
+            ...current,
+            commentsCount: Math.max(0, current.commentsCount - 1),
+          },
+        };
+      });
+      await loadComments(commentsOpenFor);
+    } catch {
+      toast({
+        title: 'Não foi possível excluir o comentário',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const reelsWithMeta = useMemo(
     () =>
       orderedReels.map((item) => ({
@@ -404,7 +495,7 @@ export default function Reels() {
       ref={containerRef}
       className="relative overflow-y-scroll"
       style={{
-        height: 'calc(100dvh - 8rem)',
+        height: reelViewportHeight,
         scrollSnapType: 'y mandatory',
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
@@ -438,7 +529,7 @@ export default function Reels() {
           data-reel-id={reel.id}
           className="relative flex w-full items-center justify-center bg-black"
           style={{
-            height: 'calc(100dvh - 8rem)',
+            height: reelViewportHeight,
             scrollSnapAlign: 'start',
             scrollSnapStop: 'always',
           }}
@@ -461,6 +552,16 @@ export default function Reels() {
 
           {/* Right side actions */}
           <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-4">
+            {/* Maximize (mobile) */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMaximized((prev) => !prev)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60 md:hidden"
+              aria-label={isMobileMaximized ? 'Desfazer maximização' : 'Maximizar vídeo'}
+            >
+              {isMobileMaximized ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </button>
+
             {/* Mute */}
             <button
               type="button"
@@ -573,6 +674,8 @@ export default function Reels() {
             setCommentsOpenFor(null);
             setComments([]);
             setCommentDraft('');
+            setEditingCommentId(null);
+            setEditCommentDraft('');
           }
         }}
       >
@@ -610,8 +713,57 @@ export default function Reels() {
                         </p>
                         <p className="text-xs text-white/50">{formatWhen(comment.createdAt)}</p>
                       </div>
+                      {String(comment.user?.id || '') === String(user?.id || '') ? (
+                        <div className="ml-auto flex items-center gap-2">
+                          <button
+                            type="button"
+                            className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
+                            onClick={() => startEditingComment(comment)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                            onClick={() => void removeComment(comment.id)}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                    <p className="text-sm leading-6 text-white/85">{comment.content}</p>
+                    {editingCommentId === comment.id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editCommentDraft}
+                          onChange={(event) => setEditCommentDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') void saveEditedComment(comment.id);
+                          }}
+                          className={COMMENT_INLINE_INPUT_CLASS}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className={COMMENT_SAVE_BUTTON_CLASS}
+                          onClick={() => void saveEditedComment(comment.id)}
+                          disabled={!editCommentDraft.trim()}
+                        >
+                          Salvar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className={COMMENT_CANCEL_BUTTON_CLASS}
+                          onClick={cancelEditingComment}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="text-sm leading-6 text-white/85">{comment.content}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -619,21 +771,35 @@ export default function Reels() {
           </div>
 
           <div className="border-t border-white/10 px-5 py-4">
-            <div className="flex items-end gap-3">
-              <Textarea
-                value={commentDraft}
-                onChange={(event) => setCommentDraft(event.target.value)}
-                placeholder="Comentar vídeo..."
-                className="min-h-[96px] resize-none border-white/10 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500"
-              />
-              <Button
-                type="button"
-                onClick={() => void handleSubmitComment()}
-                disabled={isSendingComment || !commentDraft.trim()}
-                className="h-12 shrink-0 rounded-xl bg-gradient-primary px-4 text-white hover:opacity-90"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="space-y-2">
+              <div className="flex items-end gap-3">
+                <Textarea
+                  value={commentDraft}
+                  onChange={(event) => setCommentDraft(event.target.value)}
+                  placeholder="Comentar vídeo..."
+                  className="min-h-[96px] resize-none border-white/10 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500"
+                />
+                <Button
+                  type="button"
+                  onClick={() => void handleSubmitComment()}
+                  disabled={isSendingComment || !commentDraft.trim()}
+                  className="h-12 shrink-0 rounded-xl bg-gradient-primary px-4 text-white hover:opacity-90"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {COMMENT_QUICK_EMOJIS.map((emoji) => (
+                  <button
+                    key={`reel-emoji-${emoji}`}
+                    type="button"
+                    onClick={() => setCommentDraft((prev) => `${prev}${emoji}`)}
+                    className={COMMENT_EMOJI_CHIP_CLASS}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </DialogContent>

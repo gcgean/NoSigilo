@@ -1,5 +1,5 @@
-const CACHE_NAME = 'nosigilo-shell-v1';
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.ico', '/icon-192.svg', '/icon-512.svg'];
+const CACHE_NAME = 'nosigilo-shell-v2';
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/apple-touch-icon.svg', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

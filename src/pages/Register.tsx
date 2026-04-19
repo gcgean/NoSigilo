@@ -434,26 +434,7 @@ export default function Register() {
                     <p>O NoSigilo é uma plataforma +18 para interações adultas consensuais, com foco principal em casais e singles femininos e masculinos.</p>
                     <p>Ao criar a conta, você confirma que é maior de idade e concorda em respeitar privacidade, consentimento, discrição e as regras da comunidade.</p>
                   </div>
-                  <div className="pt-4 border-t space-y-4">
-                    <div className="p-4 rounded-xl bg-background/40 border space-y-2">
-                      <h4 className="font-semibold">Resumo do Cadastro</h4>
-                      <div className="space-y-1 text-sm">
-                        <p>
-                          <span className="text-muted-foreground">Nome:</span> {formData.name}
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">E-mail:</span> {formData.email}
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">Local:</span> {formData.city}
-                          {formData.state ? `, ${formData.state}` : ''}
-                        </p>
-                        <p>
-                          <span className="text-muted-foreground">Perfis priorizados:</span> {formData.lookingFor.join(', ')}
-                        </p>
-                      </div>
-                    </div>
-
+                  <div className="space-y-4">
                     <div className="flex items-start space-x-3">
                       <input
                         id="terms"

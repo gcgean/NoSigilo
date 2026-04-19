@@ -1,0 +1,3 @@
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_highlighted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS highlight_note TEXT;
+ALTER TABLE conversations ADD COLUMN IF NOT EXISTS highlight_color TEXT;

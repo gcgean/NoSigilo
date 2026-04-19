@@ -15,6 +15,7 @@ import { CitySearch } from '@/components/CitySearch';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { useToast } from '@/hooks/use-toast';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -30,6 +31,7 @@ const genderOptions = [
 const PAGE_SIZE = 24;
 
 export default function SearchPage() {
+  const { toast } = useToast();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -115,10 +117,15 @@ export default function SearchPage() {
     } catch {
       setResults([]);
       setHasMore(false);
+      toast({
+        title: 'Erro ao buscar perfis',
+        description: 'Não foi possível carregar os resultados. Tente novamente.',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles]);
+  }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles, toast]);
 
   // ── fetch next page ────────────────────────────────────────────────────────
   const fetchNextPage = useCallback(async () => {

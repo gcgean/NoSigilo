@@ -22,6 +22,16 @@ import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
+import {
+  COMMENT_ACTION_BUTTON_BASE,
+  COMMENT_ACTION_DELETE_CLASS,
+  COMMENT_ACTION_EDIT_CLASS,
+  COMMENT_CANCEL_BUTTON_CLASS,
+  COMMENT_EMOJI_CHIP_CLASS,
+  COMMENT_INLINE_INPUT_CLASS,
+  COMMENT_QUICK_EMOJIS,
+  COMMENT_SAVE_BUTTON_CLASS,
+} from '@/components/comments/commentStyles';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -35,7 +45,6 @@ const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
   { id: 'devil', emoji: '😈' },
   { id: 'splash', emoji: '💦' },
 ];
-
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
@@ -66,6 +75,8 @@ function PhotoItem({
   });
   const [comments, setComments] = useState<PhotoComment[]>([]);
   const [commentDraft, setCommentDraft] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentDraft, setEditCommentDraft] = useState('');
   const [isLoadingInteractions, setIsLoadingInteractions] = useState(false);
   const [isSendingComment, setIsSendingComment] = useState(false);
   const touchStartXRef = useRef<number | null>(null);
@@ -217,6 +228,38 @@ function PhotoItem({
     }
   };
 
+  const startEditingComment = (comment: PhotoComment) => {
+    setEditingCommentId(comment.id);
+    setEditCommentDraft(comment.content || '');
+  };
+
+  const cancelEditingComment = () => {
+    setEditingCommentId(null);
+    setEditCommentDraft('');
+  };
+
+  const saveEditedComment = async (commentId: string) => {
+    const content = editCommentDraft.trim();
+    if (!content) return;
+    try {
+      await interactionsService.updateComment(commentId, content);
+      setEditingCommentId(null);
+      setEditCommentDraft('');
+      await loadInteractions();
+    } catch {
+      toast({ title: 'Falha ao editar comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const removeComment = async (commentId: string) => {
+    try {
+      await interactionsService.deleteComment(commentId);
+      await loadInteractions();
+    } catch {
+      toast({ title: 'Falha ao excluir comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -314,31 +357,96 @@ function PhotoItem({
               {comments.length === 0 ? <p className="text-sm text-white/70">Sem comentários ainda.</p> : null}
               {comments.map((c) => (
                 <div key={c.id} className="rounded-lg bg-white/5 p-2">
-                  <p className="text-xs font-semibold text-white">{String(c.user?.name || 'Usuário')}</p>
-                  <p className="text-sm text-white/85">{c.content}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-white">{String(c.user?.name || 'Usuário')}</p>
+                    {String(c.user?.id || '') === String(currentUserId || '') ? (
+                      <div className="ml-auto flex items-center gap-2">
+                        <button
+                          type="button"
+                          className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
+                          onClick={() => startEditingComment(c)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                          onClick={() => void removeComment(c.id)}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                  {editingCommentId === c.id ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        value={editCommentDraft}
+                        onChange={(e) => setEditCommentDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void saveEditedComment(c.id);
+                        }}
+                        className={COMMENT_INLINE_INPUT_CLASS}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className={COMMENT_SAVE_BUTTON_CLASS}
+                        onClick={() => void saveEditedComment(c.id)}
+                        disabled={!editCommentDraft.trim()}
+                      >
+                        Salvar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={COMMENT_CANCEL_BUTTON_CLASS}
+                        onClick={cancelEditingComment}
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-white/85">{c.content}</p>
+                  )}
                 </div>
               ))}
             </div>
 
-            <div className="flex gap-2">
-              <Input
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void sendComment();
-                }}
-                placeholder="Comentar foto..."
-                className="border-white/15 bg-white/5 text-white placeholder:text-white/50"
-              />
-              <Button
-                type="button"
-                size="icon"
-                className="bg-gradient-primary hover:opacity-90"
-                disabled={isSendingComment || !commentDraft.trim()}
-                onClick={() => void sendComment()}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={commentDraft}
+                  onChange={(e) => setCommentDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void sendComment();
+                  }}
+                  placeholder="Comentar foto..."
+                  className="border-white/15 bg-white/5 text-white placeholder:text-white/50"
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  className="bg-gradient-primary hover:opacity-90"
+                  disabled={isSendingComment || !commentDraft.trim()}
+                  onClick={() => void sendComment()}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {COMMENT_QUICK_EMOJIS.map((emoji) => (
+                  <button
+                    key={`photo-emoji-${emoji}`}
+                    type="button"
+                    onClick={() => setCommentDraft((prev) => `${prev}${emoji}`)}
+                    className={COMMENT_EMOJI_CHIP_CLASS}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
