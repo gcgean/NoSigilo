@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +45,9 @@ const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
   { id: 'devil', emoji: '😈' },
   { id: 'splash', emoji: '💦' },
 ];
+const FULLSCREEN_VIDEO_SWIPE_THRESHOLD_PX = 36;
+const FULLSCREEN_VIDEO_SWIPE_VERTICAL_DOMINANCE = 1.15;
+
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
@@ -267,11 +270,11 @@ function PhotoItem({
           <img
             src={resolveMediaUrl(currentPhotoUrl)}
             alt=""
-            className="w-full h-full object-cover transition-transform hover:scale-105"
+            className="h-full w-full bg-black object-contain transition-transform hover:scale-105 sm:object-cover"
           />
         </div>
       </DialogTrigger>
-      <DialogContent className="max-h-[96dvh] max-w-[96vw] overflow-y-auto border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+      <DialogContent className="max-h-[96dvh] max-w-[96vw] overflow-y-auto border-white/10 bg-black/92 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] shadow-2xl sm:p-3">
         <Button
           type="button"
           size="icon"
@@ -476,6 +479,8 @@ export default function UserProfile() {
   const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+  const [maximizedVideoIndex, setMaximizedVideoIndex] = useState<number | null>(null);
+  const maximizedTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
@@ -753,6 +758,58 @@ export default function UserProfile() {
       setIsSendingTestimonial(false);
     }
   };
+
+  const closeMaximizedVideo = () => {
+    setMaximizedVideoIndex(null);
+  };
+
+  const openMaximizedVideoAt = (index: number) => {
+    if (index < 0 || index >= userVideos.length) return;
+    setMaximizedVideoIndex(index);
+  };
+
+  const goToNextMaximizedVideo = () => {
+    if (maximizedVideoIndex === null || userVideos.length <= 1) return;
+    setMaximizedVideoIndex((prev) => {
+      if (prev === null) return prev;
+      return prev >= userVideos.length - 1 ? 0 : prev + 1;
+    });
+  };
+
+  const goToPrevMaximizedVideo = () => {
+    if (maximizedVideoIndex === null || userVideos.length <= 1) return;
+    setMaximizedVideoIndex((prev) => {
+      if (prev === null) return prev;
+      return prev <= 0 ? userVideos.length - 1 : prev - 1;
+    });
+  };
+
+  const handleMaximizedTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const touch = e.touches?.[0];
+    if (!touch) return;
+    maximizedTouchStartRef.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleMaximizedTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    const start = maximizedTouchStartRef.current;
+    maximizedTouchStartRef.current = null;
+    const touch = e.changedTouches?.[0];
+    if (!start || !touch) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaY) < FULLSCREEN_VIDEO_SWIPE_THRESHOLD_PX) return;
+    if (Math.abs(deltaY) <= Math.abs(deltaX) * FULLSCREEN_VIDEO_SWIPE_VERTICAL_DOMINANCE) return;
+    if (deltaY < 0) {
+      goToNextMaximizedVideo();
+    } else {
+      goToPrevMaximizedVideo();
+    }
+  };
+
+  const maximizedVideo =
+    maximizedVideoIndex !== null && maximizedVideoIndex >= 0 && maximizedVideoIndex < userVideos.length
+      ? userVideos[maximizedVideoIndex]
+      : null;
 
   if (isLoading) {
     return <div className="max-w-2xl mx-auto w-full text-sm text-muted-foreground">Carregando...</div>;
@@ -1077,15 +1134,28 @@ export default function UserProfile() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {userVideos.map((video) => (
+              {userVideos.map((video, index) => (
                 <div
                   key={video.id}
                   className="relative aspect-[9/16] rounded-xl overflow-hidden bg-black cursor-pointer group"
                   onClick={() => setPlayingVideoId(playingVideoId === video.id ? null : video.id)}
                 >
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    className="absolute right-2 top-2 z-20 h-8 w-8 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+                    aria-label="Maximizar vídeo"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openMaximizedVideoAt(index);
+                    }}
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
                   <video
                     src={video.url}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full bg-black object-contain sm:object-cover"
                     playsInline
                     muted
                     loop
@@ -1168,6 +1238,76 @@ export default function UserProfile() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={maximizedVideoIndex !== null}
+        onOpenChange={(open) => {
+          if (!open) closeMaximizedVideo();
+        }}
+      >
+        <DialogContent className="h-[100dvh] w-screen max-w-none rounded-none border-0 bg-black p-0 sm:h-[96dvh] sm:max-w-[96vw] sm:rounded-xl sm:border sm:border-white/15">
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            className="absolute right-3 top-3 z-[70] h-10 w-10 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+            aria-label="Fechar vídeo"
+            onClick={closeMaximizedVideo}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          {userVideos.length > 1 ? (
+            <>
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="absolute left-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+                aria-label="Vídeo anterior"
+                onClick={goToPrevMaximizedVideo}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                className="absolute right-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+                aria-label="Próximo vídeo"
+                onClick={goToNextMaximizedVideo}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+            </>
+          ) : null}
+          {maximizedVideo ? (
+            <div
+              className="relative flex h-full w-full items-center justify-center bg-black"
+              onTouchStart={handleMaximizedTouchStart}
+              onTouchEnd={handleMaximizedTouchEnd}
+            >
+              <video
+                src={maximizedVideo.url || ''}
+                className="h-full w-full bg-black object-contain"
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+              />
+              {userVideos.length > 1 && maximizedVideoIndex !== null ? (
+                <div className="absolute top-4 left-1/2 z-[65] -translate-x-1/2 rounded-full border border-white/20 bg-black/55 px-3 py-1 text-xs text-white/90">
+                  {maximizedVideoIndex + 1}/{userVideos.length}
+                </div>
+              ) : null}
+              {maximizedVideo.content ? (
+                <div className="pointer-events-none absolute bottom-4 left-4 right-4 rounded-xl border border-white/15 bg-black/55 p-2.5 backdrop-blur-sm">
+                  <p className="line-clamp-3 text-sm text-white/90">{maximizedVideo.content}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

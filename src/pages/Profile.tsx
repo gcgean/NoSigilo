@@ -74,10 +74,10 @@ function PhotoItem({
           <img
             src={resolveMediaUrl(photo.url)}
             alt=""
-            className="w-full h-full object-cover cursor-zoom-in"
+            className="h-full w-full cursor-zoom-in bg-black object-contain sm:object-cover"
           />
         </DialogTrigger>
-        <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 shadow-2xl sm:p-3">
+        <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] shadow-2xl sm:p-3">
           <DialogClose asChild>
             <Button
               type="button"

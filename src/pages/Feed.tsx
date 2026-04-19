@@ -785,7 +785,7 @@ export default function Feed() {
                           <VideoWithPreview
                             key={p.url}
                             src={p.url}
-                            className="w-full h-full object-cover"
+                            className="h-full w-full bg-black object-contain sm:object-cover"
                             controls
                             muted
                             preload="auto"
@@ -815,7 +815,7 @@ export default function Feed() {
                         <img
                           src={p.url}
                           alt=""
-                          className="w-full h-full object-cover"
+                          className="h-full w-full bg-black object-contain sm:object-cover"
                           onLoad={(e) => setAspectForKey(p.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
                         />
                       </div>
@@ -1063,7 +1063,7 @@ export default function Feed() {
                           <div className="w-full" style={aspectStyleForKey(m.id)}>
                             <VideoWithPreview
                               src={resolveMediaUrl(m.url)}
-                              className="w-full h-full object-cover"
+                              className="h-full w-full bg-black object-contain sm:object-cover"
                               controls
                               muted
                               playsInline
@@ -1099,7 +1099,7 @@ export default function Feed() {
                           <img
                             src={resolveMediaUrl(m.url)}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="h-full w-full bg-black object-contain sm:object-cover"
                             onLoad={(e) => setAspectForKey(m.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
                           />
                         </div>

@@ -637,7 +637,7 @@ export default function Layout() {
 
         <main
           className={cn(
-            'flex-1 min-w-0 px-3 py-3 pb-20 sm:px-4 sm:py-6 md:pb-6',
+            'flex-1 min-w-0 px-3 py-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:py-6 md:pb-6',
             isMobileChatRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0',
             isMobileReelsMaximized && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
           )}
