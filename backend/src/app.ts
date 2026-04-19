@@ -1766,6 +1766,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
     const reelsOnlyFilter = includeReelsOnly ? '' : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
     const fetchLimit = includeReelsOnly ? offset + limit + 1 : limit + 1;
+    const queryOffset = includeReelsOnly ? 0 : offset;
     const rows = await queryAll(
       db,
       `
@@ -1786,7 +1787,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       ORDER BY p.created_at DESC
       LIMIT ? OFFSET ?
     `,
-      [req.auth!.userId, req.auth!.userId, fetchLimit, 0]
+      [req.auth!.userId, req.auth!.userId, fetchLimit, queryOffset]
     );
 
     const orderedRows = includeReelsOnly
