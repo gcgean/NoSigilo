@@ -5220,18 +5220,46 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-      const rows = await queryAll(db, 'SELECT * FROM users ORDER BY created_at DESC LIMIT 200');
-      const presence = req.app.get('presence');
-      res.json(
-        rows.map((row) => ({
-          ...rowToPublicUser(row, presence?.isOnline(String(row.id)), {
-            showEmail: true,
-            subscriptionsEnabled,
-          }),
-          isBanned: Number(row.is_banned || 0) === 1,
-          bannedAt: row.banned_at ?? null,
-        }))
-      );
+      const requestedPage = Number(req.query.page || 1);
+      const requestedLimit = Number(req.query.limit || 100);
+      const page = Number.isFinite(requestedPage) ? Math.max(1, Math.trunc(requestedPage)) : 1;
+      const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(Math.trunc(requestedLimit), 20), 500) : 100;
+      const offset = (page - 1) * limit;
+      const search = String(req.query.search || '').trim().toLowerCase();
+      const hasSearch = search.length > 0;
+
+      const whereSql = hasSearch
+        ? "WHERE LOWER(COALESCE(name, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ?"
+        : '';
+      const whereParams = hasSearch ? [`%${search}%`, `%${search}%`] : [];
+
+      const [totalRow, rows] = await Promise.all([
+        queryOne(db, `SELECT COUNT(*) as c FROM users ${whereSql}`, whereParams),
+        queryAll(db, `SELECT * FROM users ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [...whereParams, limit, offset]),
+      ]);
+
+      const total = Number((totalRow as any)?.c || 0);
+      const presence = req.app.get('presence') as undefined | {
+        isOnline?: (userId: string) => boolean;
+        countOnline?: () => number;
+      };
+      const mappedUsers = rows.map((row) => ({
+        ...rowToPublicUser(row, presence?.isOnline ? presence.isOnline(String(row.id)) : false, {
+          showEmail: true,
+          subscriptionsEnabled,
+        }),
+        isBanned: Number(row.is_banned || 0) === 1,
+        bannedAt: row.banned_at ?? null,
+      }));
+
+      res.json({
+        users: mappedUsers,
+        total,
+        page,
+        limit,
+        hasMore: offset + mappedUsers.length < total,
+        onlineNow: presence?.countOnline ? Number(presence.countOnline()) : 0,
+      });
     } catch (err) {
       console.error('[admin/users]', err);
       res.status(500).json({ error: 'internal' });
@@ -5309,19 +5337,65 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         : 120;
       const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      const [totalRow, todayRow, last7DaysRow, rows] = await Promise.all([
+      const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
+
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, topUsersRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
+        queryOne(
+          db,
+          `SELECT COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) as c
+           FROM site_visits
+           WHERE created_at >= ?`,
+          [todayIso]
+        ),
         queryAll(
           db,
-          `SELECT sv.*, u.name AS user_name, u.email AS user_email
+          `SELECT sv.*, u.name AS user_name, u.email AS user_email, u.city AS user_city, u.state AS user_state
            FROM site_visits sv
            LEFT JOIN users u ON u.id = sv.user_id
            ORDER BY sv.created_at DESC
            LIMIT ?`,
           [limit]
+        ),
+        queryAll(
+          db,
+          `SELECT SUBSTR(created_at, 1, 10) AS day, COUNT(*) AS c
+           FROM site_visits
+           WHERE created_at >= ?
+           GROUP BY SUBSTR(created_at, 1, 10)
+           ORDER BY day DESC
+           LIMIT 30`,
+          [thirtyDaysAgoIso]
+        ),
+        queryAll(
+          db,
+          `SELECT
+             COALESCE(NULLIF(u.state, ''), NULLIF(u.city, ''), NULLIF(sv.country, ''), 'Desconhecido') AS region_label,
+             COUNT(*) AS c
+           FROM site_visits sv
+           LEFT JOIN users u ON u.id = sv.user_id
+           GROUP BY region_label
+           ORDER BY c DESC
+           LIMIT 10`
+        ),
+        queryAll(
+          db,
+          `SELECT
+             sv.user_id,
+             u.name AS user_name,
+             u.email AS user_email,
+             COUNT(*) AS accesses,
+             COUNT(DISTINCT SUBSTR(sv.created_at, 1, 10)) AS active_days,
+             MAX(sv.created_at) AS last_access_at
+           FROM site_visits sv
+           JOIN users u ON u.id = sv.user_id
+           GROUP BY sv.user_id, u.name, u.email
+           ORDER BY accesses DESC
+           LIMIT 10`
         ),
       ]);
 
@@ -5337,6 +5411,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         utmMedium: row.utm_medium ? String(row.utm_medium) : null,
         utmCampaign: row.utm_campaign ? String(row.utm_campaign) : null,
         country: row.country ? String(row.country) : null,
+        region: row.user_state
+          ? String(row.user_state)
+          : row.user_city
+            ? String(row.user_city)
+            : row.country
+              ? String(row.country)
+              : 'Desconhecido',
         timezone: row.timezone ? String(row.timezone) : null,
         language: row.language ? String(row.language) : null,
         deviceType: row.device_type ? String(row.device_type) : 'desktop',
@@ -5360,6 +5441,29 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         total: Number((totalRow as any)?.c || 0),
         today: Number((todayRow as any)?.c || 0),
         last7Days: Number((last7DaysRow as any)?.c || 0),
+        uniqueToday: Number((uniqueTodayRow as any)?.c || 0),
+        onlineNow: presence?.countOnline ? Number(presence.countOnline()) : 0,
+        byDay: (dailyRows as any[]).map((row: any) => ({
+          label: String(row.day || ''),
+          count: Number(row.c || 0),
+        })),
+        byRegion: (regionRows as any[]).map((row: any) => ({
+          label: String(row.region_label || 'Desconhecido'),
+          count: Number(row.c || 0),
+        })),
+        topUsers: (topUsersRows as any[]).map((row: any) => {
+          const accesses = Number(row.accesses || 0);
+          const activeDays = Math.max(1, Number(row.active_days || 1));
+          return {
+            userId: String(row.user_id || ''),
+            name: row.user_name ? String(row.user_name) : 'Usuário',
+            email: row.user_email ? String(row.user_email) : null,
+            accesses,
+            activeDays,
+            frequency: Number((accesses / activeDays).toFixed(2)),
+            lastAccessAt: row.last_access_at ? String(row.last_access_at) : null,
+          };
+        }),
         byOrigin: groupCounts(history.map((item) => item.originType), 'direct'),
         byCountry: groupCounts(history.map((item) => item.country), 'Desconhecido'),
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),

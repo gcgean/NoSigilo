@@ -34,6 +34,13 @@ async function main() {
       const n = onlineCounts.get(userId);
       return typeof n === 'number' && n > 0;
     },
+    countOnline: () => {
+      let total = 0;
+      for (const value of onlineCounts.values()) {
+        if (value > 0) total += 1;
+      }
+      return total;
+    },
   });
   io.use((socket, next) => {
     const token = (socket.handshake.auth as any)?.token;

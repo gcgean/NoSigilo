@@ -207,10 +207,10 @@ describe('nosigilo backend', () => {
       .set('Authorization', `Bearer ${reg.token}`)
       .expect(200);
 
-    expect(Array.isArray(adminUsers.body)).toBe(true);
-    expect(adminUsers.body.some((entry: any) => entry.email === 'admin-promovido@example.com' && entry.isAdmin === true)).toBe(
-      true
-    );
+    const adminUsersList = Array.isArray(adminUsers.body?.users) ? adminUsers.body.users : [];
+    expect(Array.isArray(adminUsersList)).toBe(true);
+    expect(typeof adminUsers.body?.total).toBe('number');
+    expect(adminUsersList.some((entry: any) => entry.email === 'admin-promovido@example.com' && entry.isAdmin === true)).toBe(true);
 
     const finance = await request(ctx.app)
       .get('/api/admin/finance/summary')
@@ -722,7 +722,7 @@ describe('nosigilo backend', () => {
       const posts = Array.isArray(response.body.posts) ? response.body.posts : [];
       expect(posts.length).toBeLessThanOrEqual(50);
 
-      const currentPageIds = new Set(posts.map((post: any) => String(post.id)));
+      const currentPageIds = new Set<string>(posts.map((post: any) => String(post.id)));
       if (safety > 0) {
         const overlap = [...currentPageIds].some((id) => previousPageIds.has(id));
         expect(overlap).toBe(false);

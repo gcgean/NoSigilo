@@ -91,6 +91,7 @@ type VisitHistoryItem = {
   utmMedium: string | null;
   utmCampaign: string | null;
   country: string | null;
+  region?: string | null;
   timezone: string | null;
   language: string | null;
   deviceType: string;
@@ -98,10 +99,25 @@ type VisitHistoryItem = {
   userEmail: string | null;
 };
 
+type TopAccessUser = {
+  userId: string;
+  name: string;
+  email: string | null;
+  accesses: number;
+  activeDays: number;
+  frequency: number;
+  lastAccessAt: string | null;
+};
+
 type VisitAnalytics = {
   total: number;
   today: number;
   last7Days: number;
+  uniqueToday: number;
+  onlineNow: number;
+  byDay: VisitBreakdown[];
+  byRegion: VisitBreakdown[];
+  topUsers: TopAccessUser[];
   byOrigin: VisitBreakdown[];
   byCountry: VisitBreakdown[];
   byPage: VisitBreakdown[];
@@ -123,6 +139,11 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   total: 0,
   today: 0,
   last7Days: 0,
+  uniqueToday: 0,
+  onlineNow: 0,
+  byDay: [],
+  byRegion: [],
+  topUsers: [],
   byOrigin: [],
   byCountry: [],
   byPage: [],
@@ -157,10 +178,16 @@ function formatAccessRemaining(entry: AdminUser) {
 }
 
 export default function Admin() {
+  const USERS_PAGE_SIZE = 200;
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const [photos, setPhotos] = useState<AdminPhoto[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
+  const [usersOnlineNow, setUsersOnlineNow] = useState(0);
+  const [usersPage, setUsersPage] = useState(1);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [isLoadingMoreUsers, setIsLoadingMoreUsers] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
   const [searchQuery, setSearchQuery] = useState('');
@@ -176,12 +203,54 @@ export default function Admin() {
   useEffect(() => {
     let cancelled = false;
 
+    const normalizeUsers = (input: unknown) => {
+      const usersArray = Array.isArray(input)
+        ? input
+        : isRecord(input) && Array.isArray((input as any).users)
+          ? ((input as any).users as unknown[])
+          : [];
+      const total = isRecord(input) && typeof (input as any).total === 'number'
+        ? Number((input as any).total)
+        : usersArray.length;
+      const page = isRecord(input) && typeof (input as any).page === 'number'
+        ? Number((input as any).page)
+        : 1;
+      const hasMore = isRecord(input) && typeof (input as any).hasMore === 'boolean'
+        ? Boolean((input as any).hasMore)
+        : usersArray.length >= USERS_PAGE_SIZE;
+      const onlineNow = isRecord(input) && typeof (input as any).onlineNow === 'number'
+        ? Number((input as any).onlineNow)
+        : 0;
+
+      const mapped = usersArray.map((entry) => {
+        const item = isRecord(entry) ? entry : {};
+        return {
+          id: String(item.id || ''),
+          name: String(item.name || 'Usuário'),
+          email: item.email ? String(item.email) : undefined,
+          avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
+          isPremium: !!item.isPremium,
+          isAdmin: !!item.isAdmin,
+          createdAt: item.createdAt ? String(item.createdAt) : undefined,
+          lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
+          trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
+          hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
+          hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
+          isOnline: !!item.isOnline,
+          status: item.isBanned ? 'banned' as const : 'active' as const,
+          reports: 0,
+        } satisfies AdminUser;
+      });
+
+      return { mapped, total, page, hasMore, onlineNow };
+    };
+
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsers, rawLogs, rawFinance, rawSettings, rawReportsResult, rawVisitAnalytics] = await Promise.all([
+        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult, rawVisitAnalytics] = await Promise.all([
           adminService.getPendingPhotos().catch(() => []),
-          adminService.getUsers().catch(() => []),
+          adminService.getUsers({ page: 1, limit: USERS_PAGE_SIZE }).catch(() => []),
           adminService.getLogs().catch(() => []),
           adminService.getFinanceSummary().catch(() => null),
           adminService.getSettings().catch(() => null),
@@ -208,29 +277,27 @@ export default function Admin() {
             : []
         );
 
+        const normalizedUsers = normalizeUsers(rawUsersResult);
+        const pendingReportCounts = new Map<string, number>();
+        if (Array.isArray(rawReports)) {
+          for (const entry of rawReports) {
+            const item = isRecord(entry) ? entry : {};
+            const targetType = String(item.targetType || '');
+            const targetId = String(item.targetId || '');
+            if (targetType !== 'user' || !targetId) continue;
+            pendingReportCounts.set(targetId, (pendingReportCounts.get(targetId) || 0) + 1);
+          }
+        }
         setUsers(
-          Array.isArray(rawUsers)
-            ? rawUsers.map((entry) => {
-                const item = isRecord(entry) ? entry : {};
-                return {
-                  id: String(item.id || ''),
-                  name: String(item.name || 'Usuário'),
-                  email: item.email ? String(item.email) : undefined,
-                  avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
-                  isPremium: !!item.isPremium,
-                  isAdmin: !!item.isAdmin,
-                  createdAt: item.createdAt ? String(item.createdAt) : undefined,
-                  lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
-                  trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
-                  hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
-                  hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
-                  isOnline: !!item.isOnline,
-                  status: item.isBanned ? 'banned' as const : 'active' as const,
-                  reports: 0,
-                };
-              })
-            : []
+          normalizedUsers.mapped.map((entry) => ({
+            ...entry,
+            reports: pendingReportCounts.get(entry.id) || 0,
+          }))
         );
+        setUsersTotal(normalizedUsers.total);
+        setUsersPage(normalizedUsers.page);
+        setHasMoreUsers(normalizedUsers.hasMore);
+        setUsersOnlineNow(normalizedUsers.onlineNow);
 
         setLogs(
           Array.isArray(rawLogs)
@@ -287,6 +354,76 @@ export default function Admin() {
       cancelled = true;
     };
   }, [toast]);
+
+  const loadMoreUsers = async () => {
+    if (isLoadingMoreUsers || !hasMoreUsers) return;
+    const nextPage = usersPage + 1;
+    setIsLoadingMoreUsers(true);
+    try {
+      const reportCountMap = new Map<string, number>();
+      for (const report of reports) {
+        if (report.targetType !== 'user' || !report.targetId) continue;
+        reportCountMap.set(report.targetId, (reportCountMap.get(report.targetId) || 0) + 1);
+      }
+      const rawUsersResult = await adminService.getUsers({ page: nextPage, limit: USERS_PAGE_SIZE, search: searchQuery || undefined });
+      const usersArray = Array.isArray(rawUsersResult)
+        ? rawUsersResult
+        : isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).users)
+          ? ((rawUsersResult as any).users as unknown[])
+          : [];
+      const mapped = usersArray.map((entry) => {
+        const item = isRecord(entry) ? entry : {};
+        return {
+          id: String(item.id || ''),
+          name: String(item.name || 'Usuário'),
+          email: item.email ? String(item.email) : undefined,
+          avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
+          isPremium: !!item.isPremium,
+          isAdmin: !!item.isAdmin,
+          createdAt: item.createdAt ? String(item.createdAt) : undefined,
+          lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
+          trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
+          hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
+          hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
+          isOnline: !!item.isOnline,
+          status: item.isBanned ? 'banned' as const : 'active' as const,
+          reports: reportCountMap.get(String(item.id || '')) || 0,
+        } satisfies AdminUser;
+      });
+      const nextHasMore = isRecord(rawUsersResult) && typeof (rawUsersResult as any).hasMore === 'boolean'
+        ? Boolean((rawUsersResult as any).hasMore)
+        : mapped.length >= USERS_PAGE_SIZE;
+      const nextOnlineNow = isRecord(rawUsersResult) && typeof (rawUsersResult as any).onlineNow === 'number'
+        ? Number((rawUsersResult as any).onlineNow)
+        : usersOnlineNow;
+      const nextTotal = isRecord(rawUsersResult) && typeof (rawUsersResult as any).total === 'number'
+        ? Number((rawUsersResult as any).total)
+        : usersTotal;
+
+      setUsers((prev) => {
+        const seen = new Set(prev.map((u) => u.id));
+        const merged = [...prev];
+        for (const item of mapped) {
+          if (!item.id || seen.has(item.id)) continue;
+          seen.add(item.id);
+          merged.push(item);
+        }
+        return merged;
+      });
+      setUsersPage(nextPage);
+      setHasMoreUsers(nextHasMore);
+      setUsersOnlineNow(nextOnlineNow);
+      setUsersTotal(nextTotal);
+    } catch {
+      toast({
+        title: 'Falha ao carregar mais usuários',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingMoreUsers(false);
+    }
+  };
 
   const filteredUsers = useMemo(
     () =>
@@ -408,7 +545,7 @@ export default function Admin() {
               <Users className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{users.length}</p>
+              <p className="text-2xl font-bold">{usersTotal}</p>
               <p className="text-xs text-muted-foreground">Usuários</p>
             </div>
           </div>
@@ -638,6 +775,17 @@ export default function Admin() {
               {!isLoading && filteredUsers.length === 0 ? (
                 <div className="text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
               ) : null}
+              {!isLoading && hasMoreUsers && !searchQuery ? (
+                <div className="pt-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => void loadMoreUsers()}
+                    disabled={isLoadingMoreUsers}
+                  >
+                    {isLoadingMoreUsers ? 'Carregando...' : 'Carregar mais usuários'}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         </TabsContent>
@@ -760,8 +908,12 @@ export default function Admin() {
               <h3 className="font-semibold mb-4">Leitura atual da API</h3>
               <div className="space-y-3 text-sm text-muted-foreground">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
-                  <span>Usuários retornados</span>
-                  <span className="font-semibold text-foreground">{users.length}</span>
+                  <span>Usuários carregados</span>
+                  <span className="font-semibold text-foreground">{users.length} / {usersTotal}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
+                  <span>Online simultâneos</span>
+                  <span className="font-semibold text-foreground">{usersOnlineNow}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
                   <span>Fotos retornadas</span>
@@ -834,6 +986,42 @@ export default function Admin() {
               </Card>
             </div>
 
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.onlineNow}</p>
+                    <p className="text-xs text-muted-foreground">Online simultâneos (agora)</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/15 flex items-center justify-center">
+                    <Globe2 className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.uniqueToday}</p>
+                    <p className="text-xs text-muted-foreground">Visitantes únicos (24h)</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-5 glass">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{visitAnalytics.byDay.length}</p>
+                    <p className="text-xs text-muted-foreground">Dias com dados (30d)</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
             <div className="grid gap-6 xl:grid-cols-3">
               <Card className="p-6 glass">
                 <h3 className="mb-4 font-semibold">Origem das visitas</h3>
@@ -887,6 +1075,66 @@ export default function Admin() {
               </Card>
             </div>
 
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Acessos por dia (últimos 30)</h3>
+                <div className="space-y-2">
+                  {visitAnalytics.byDay.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem dados por dia ainda.</p>
+                  ) : (
+                    visitAnalytics.byDay.map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span>{entry.label}</span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Acessos por região</h3>
+                <div className="space-y-2">
+                  {visitAnalytics.byRegion.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem dados por região ainda.</p>
+                  ) : (
+                    visitAnalytics.byRegion.map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span>{entry.label}</span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-6 glass">
+              <h3 className="mb-4 font-semibold">Usuários que mais acessam (frequência)</h3>
+              <div className="space-y-2">
+                {visitAnalytics.topUsers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Sem usuários autenticados suficientes para gerar ranking.</p>
+                ) : (
+                  visitAnalytics.topUsers.map((entry) => (
+                    <div key={entry.userId} className="rounded-lg bg-secondary/30 p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-foreground">{entry.name}</p>
+                          <p className="text-xs text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{entry.accesses} acessos</Badge>
+                          <Badge variant="outline">{entry.activeDays} dia(s)</Badge>
+                          <Badge variant="secondary">{entry.frequency} / dia</Badge>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">Último acesso: {formatDateTime(entry.lastAccessAt)}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Card>
+
             <div className="glass rounded-xl p-6">
               <div className="mb-4">
                 <h3 className="font-semibold">Histórico detalhado</h3>
@@ -915,7 +1163,7 @@ export default function Admin() {
                           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                             <span>Referrer: {item.referrerDomain || item.referrer || 'Direto'}</span>
                             <span>UTM: {item.utmSource || '—'}</span>
-                            <span>Local: {item.country || 'Desconhecido'}</span>
+                            <span>Local: {item.region || item.country || 'Desconhecido'}</span>
                             <span>Fuso: {item.timezone || '—'}</span>
                             <span>Idioma: {item.language || '—'}</span>
                           </div>
