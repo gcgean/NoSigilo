@@ -73,6 +73,7 @@ function formatWhen(iso: string) {
 }
 
 export default function Reels() {
+  const REELS_PAGE_SIZE = 40;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -81,6 +82,9 @@ export default function Reels() {
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [reelsPage, setReelsPage] = useState(1);
+  const [hasMoreReels, setHasMoreReels] = useState(true);
+  const [isLoadingMoreReels, setIsLoadingMoreReels] = useState(false);
   const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -97,6 +101,59 @@ export default function Reels() {
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const mapPostsToReels = useCallback((posts: FeedPost[]) => {
+    return posts.flatMap((post) =>
+      (post.media || [])
+        .filter((media) => String(media.mimeType || '').startsWith('video/') && media.url)
+        .map((media) => ({
+          id: String(media.id),
+          postId: String(post.id),
+          url: resolveServerUrl(media.url || ''),
+          author: post.author,
+          content: String(post.content || ''),
+          createdAt: String(post.createdAt || ''),
+          likesCount: Number(post.likesCount || 0),
+          commentsCount: Number(post.commentsCount || 0),
+          likedByMe: post.likedByMe === true,
+        }))
+    ) as ReelItem[];
+  }, []);
+
+  const appendReels = useCallback((nextItems: ReelItem[]) => {
+    if (nextItems.length === 0) return;
+    setReels((prev) => {
+      const seen = new Set(prev.map((item) => item.id));
+      const merged = [...prev];
+      for (const item of nextItems) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        merged.push(item);
+      }
+      return merged;
+    });
+    setLikedByPostId((prev) => {
+      const next = { ...prev };
+      for (const item of nextItems) next[item.postId] = item.likedByMe;
+      return next;
+    });
+    setStatsByPostId((prev) => {
+      const next = { ...prev };
+      for (const item of nextItems) {
+        if (!next[item.postId]) {
+          next[item.postId] = { likesCount: item.likesCount, commentsCount: item.commentsCount };
+        }
+      }
+      return next;
+    });
+    setMutedById((prev) => {
+      const next = { ...prev };
+      for (const item of nextItems) {
+        if (typeof next[item.id] === 'undefined') next[item.id] = true;
+      }
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     try {
@@ -135,54 +192,22 @@ export default function Reels() {
     setIsLoading(true);
 
     feedService
-      .getFeed({ page: 1, limit: 40, includeReelsOnly: true })
+      .getFeed({ page: 1, limit: REELS_PAGE_SIZE, includeReelsOnly: true })
       .then((data) => {
         if (cancelled) return;
         const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
-        const nextReels = posts.flatMap((post) =>
-          (post.media || [])
-            .filter((media) => String(media.mimeType || '').startsWith('video/') && media.url)
-            .map((media) => ({
-              id: String(media.id),
-              postId: String(post.id),
-              url: resolveServerUrl(media.url || ''),
-              author: post.author,
-              content: String(post.content || ''),
-              createdAt: String(post.createdAt || ''),
-              likesCount: Number(post.likesCount || 0),
-              commentsCount: Number(post.commentsCount || 0),
-              likedByMe: post.likedByMe === true,
-            }))
-        ) as ReelItem[];
-
-        setReels(nextReels);
-        setLikedByPostId(
-          nextReels.reduce<Record<string, boolean>>((acc, item) => {
-            acc[item.postId] = item.likedByMe;
-            return acc;
-          }, {})
-        );
-        setStatsByPostId(
-          nextReels.reduce<Record<string, ReelStats>>((acc, item) => {
-            if (!acc[item.postId]) {
-              acc[item.postId] = {
-                likesCount: item.likesCount,
-                commentsCount: item.commentsCount,
-              };
-            }
-            return acc;
-          }, {})
-        );
-        setMutedById(
-          nextReels.reduce<Record<string, boolean>>((acc, item) => {
-            acc[item.id] = true;
-            return acc;
-          }, {})
-        );
+        setReels([]);
+        setLikedByPostId({});
+        setStatsByPostId({});
+        setMutedById({});
+        setReelsPage(1);
+        setHasMoreReels(Boolean(data?.hasMore));
+        appendReels(mapPostsToReels(posts));
       })
       .catch(() => {
         if (cancelled) return;
         setReels([]);
+        setHasMoreReels(false);
       })
       .finally(() => {
         if (cancelled) return;
@@ -190,7 +215,28 @@ export default function Reels() {
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [appendReels, mapPostsToReels]);
+
+  const loadMoreReels = useCallback(async () => {
+    if (isLoading || isLoadingMoreReels || !hasMoreReels) return;
+    const nextPage = reelsPage + 1;
+    setIsLoadingMoreReels(true);
+    try {
+      const data = await feedService.getFeed({ page: nextPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
+      const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
+      appendReels(mapPostsToReels(posts));
+      setReelsPage(nextPage);
+      setHasMoreReels(Boolean(data?.hasMore));
+    } catch {
+      toast({
+        title: 'Não foi possível carregar mais vídeos',
+        description: 'Tente novamente em instantes.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingMoreReels(false);
+    }
+  }, [appendReels, hasMoreReels, isLoading, isLoadingMoreReels, mapPostsToReels, reelsPage, toast]);
 
   const orderedReels = useMemo(() => {
     const seenIds = new Set(initialSeenReelIds);
@@ -296,6 +342,15 @@ export default function Reels() {
       restartFromBeginning();
     }
   }, [orderedReels.length, restartFromBeginning, scrollTo]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!hasMoreReels || isLoadingMoreReels) return;
+    if (orderedReels.length === 0) return;
+    if (currentIndex >= orderedReels.length - 3) {
+      void loadMoreReels();
+    }
+  }, [currentIndex, hasMoreReels, isLoading, isLoadingMoreReels, loadMoreReels, orderedReels.length]);
 
   const toggleMute = useCallback((id: string) => {
     setMutedById((prev) => {

@@ -1765,7 +1765,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
     const reelsOnlyFilter = includeReelsOnly ? '' : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    const fetchLimit = includeReelsOnly ? Math.max(limit + 1, 200) : limit + 1;
+    const fetchLimit = includeReelsOnly ? offset + limit + 1 : limit + 1;
     const rows = await queryAll(
       db,
       `

@@ -611,6 +611,71 @@ describe('nosigilo backend', () => {
     ]);
   });
 
+  it('paginates reels feed beyond 200 items without truncation', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Rap Paginação',
+      email: 'viewer-rap-paginacao@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      lookingFor: ['Mulher'],
+    });
+    const viewerToken = viewerReg.token;
+
+    const authorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autora Rap Paginação',
+      email: 'author-rap-paginacao@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const authorId = String(authorReg.user.id);
+
+    const marker = '[TEST-REELS-PAGINACAO]';
+    const baseTime = Date.parse('2099-04-19T12:00:00.000Z');
+    for (let i = 0; i < 230; i += 1) {
+      const postId = `reel-page-${i}-${Math.random().toString(16).slice(2)}`;
+      const createdAt = new Date(baseTime - i * 60_000).toISOString();
+      await run(
+        ctx.db,
+        'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [postId, authorId, `${marker} Rap paginado ${i}`, null, 1, createdAt]
+      );
+    }
+    await ctx.db.persist();
+
+    const page1 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ includeReelsOnly: true, limit: 50, page: 1 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+    expect(page1.body.posts).toHaveLength(50);
+    expect(page1.body.hasMore).toBe(true);
+    expect(page1.body.posts.every((post: any) => String(post.content || '').includes(marker))).toBe(true);
+
+    const page4 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ includeReelsOnly: true, limit: 50, page: 4 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+    expect(page4.body.posts).toHaveLength(50);
+    expect(page4.body.hasMore).toBe(true);
+    expect(page4.body.posts.every((post: any) => String(post.content || '').includes(marker))).toBe(true);
+
+    const page5 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ includeReelsOnly: true, limit: 50, page: 5 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+    expect(Array.isArray(page5.body.posts)).toBe(true);
+    expect(page5.body.posts.length).toBeGreaterThan(0);
+    expect(page5.body.posts.length).toBeLessThanOrEqual(50);
+    expect(page5.body.hasMore).toBe(false);
+    expect(page5.body.posts.some((post: any) => String(post.content || '').includes(marker))).toBe(true);
+
+    const page4Ids = new Set(page4.body.posts.map((post: any) => String(post.id)));
+    const overlapWithPage5 = page5.body.posts.some((post: any) => page4Ids.has(String(post.id)));
+    expect(overlapWithPage5).toBe(false);
+  });
+
   it('likes and comments generate notifications for post owner', async () => {
     const ownerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Owner',
