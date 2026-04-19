@@ -544,6 +544,70 @@ describe('nosigilo backend', () => {
     expect(feed.body.posts.some((post: any) => String(post.id) === bannedPostId)).toBe(false);
   });
 
+  it('paginates feed and reaches older posts across pages', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Feed Paginação',
+      email: 'viewer-feed-paginacao@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+    const viewerToken = viewerReg.token;
+
+    const authorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Feed Paginação',
+      email: 'author-feed-paginacao@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const authorId = String(authorReg.user.id);
+
+    const marker = '[TEST-FEED-PAGINACAO]';
+    const totalPosts = 95;
+    const baseTime = Date.parse('2100-01-01T12:00:00.000Z');
+    const expectedIds = new Set<string>();
+
+    for (let i = 0; i < totalPosts; i += 1) {
+      const postId = `feed-page-${i}-${Math.random().toString(16).slice(2)}`;
+      const createdAt = new Date(baseTime - i * 60_000).toISOString();
+      expectedIds.add(postId);
+      await run(
+        ctx.db,
+        'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [postId, authorId, `${marker} Feed paginado ${i}`, null, 0, createdAt]
+      );
+    }
+    await ctx.db.persist();
+
+    const foundIds = new Set<string>();
+    let page = 1;
+    let hasMore = true;
+    let safety = 0;
+
+    while (hasMore && safety < 12) {
+      const response = await request(ctx.app)
+        .get('/api/feed')
+        .query({ limit: 20, page })
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
+
+      const posts = Array.isArray(response.body.posts) ? response.body.posts : [];
+      for (const post of posts) {
+        if (String(post.content || '').includes(marker)) {
+          foundIds.add(String(post.id));
+        }
+      }
+
+      hasMore = Boolean(response.body.hasMore);
+      page += 1;
+      safety += 1;
+    }
+
+    expect(foundIds.size).toBe(totalPosts);
+    for (const id of expectedIds) {
+      expect(foundIds.has(id)).toBe(true);
+    }
+  });
+
   it('reels prioritize interested profiles first and keep newest first within each group', async () => {
     const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Viewer Rap',
@@ -642,38 +706,42 @@ describe('nosigilo backend', () => {
     }
     await ctx.db.persist();
 
-    const page1 = await request(ctx.app)
-      .get('/api/feed')
-      .query({ includeReelsOnly: true, limit: 50, page: 1 })
-      .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(200);
-    expect(page1.body.posts).toHaveLength(50);
-    expect(page1.body.hasMore).toBe(true);
-    expect(page1.body.posts.every((post: any) => String(post.content || '').includes(marker))).toBe(true);
+    const foundMarkerIds = new Set<string>();
+    let page = 1;
+    let hasMore = true;
+    let safety = 0;
+    const previousPageIds = new Set<string>();
 
-    const page4 = await request(ctx.app)
-      .get('/api/feed')
-      .query({ includeReelsOnly: true, limit: 50, page: 4 })
-      .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(200);
-    expect(page4.body.posts).toHaveLength(50);
-    expect(page4.body.hasMore).toBe(true);
-    expect(page4.body.posts.every((post: any) => String(post.content || '').includes(marker))).toBe(true);
+    while (hasMore && safety < 16) {
+      const response = await request(ctx.app)
+        .get('/api/feed')
+        .query({ includeReelsOnly: true, limit: 50, page })
+        .set('Authorization', `Bearer ${viewerToken}`)
+        .expect(200);
 
-    const page5 = await request(ctx.app)
-      .get('/api/feed')
-      .query({ includeReelsOnly: true, limit: 50, page: 5 })
-      .set('Authorization', `Bearer ${viewerToken}`)
-      .expect(200);
-    expect(Array.isArray(page5.body.posts)).toBe(true);
-    expect(page5.body.posts.length).toBeGreaterThan(0);
-    expect(page5.body.posts.length).toBeLessThanOrEqual(50);
-    expect(page5.body.hasMore).toBe(false);
-    expect(page5.body.posts.some((post: any) => String(post.content || '').includes(marker))).toBe(true);
+      const posts = Array.isArray(response.body.posts) ? response.body.posts : [];
+      expect(posts.length).toBeLessThanOrEqual(50);
 
-    const page4Ids = new Set(page4.body.posts.map((post: any) => String(post.id)));
-    const overlapWithPage5 = page5.body.posts.some((post: any) => page4Ids.has(String(post.id)));
-    expect(overlapWithPage5).toBe(false);
+      const currentPageIds = new Set(posts.map((post: any) => String(post.id)));
+      if (safety > 0) {
+        const overlap = [...currentPageIds].some((id) => previousPageIds.has(id));
+        expect(overlap).toBe(false);
+      }
+      previousPageIds.clear();
+      for (const id of currentPageIds) previousPageIds.add(id);
+
+      for (const post of posts) {
+        if (String(post.content || '').includes(marker)) {
+          foundMarkerIds.add(String(post.id));
+        }
+      }
+
+      hasMore = Boolean(response.body.hasMore);
+      page += 1;
+      safety += 1;
+    }
+
+    expect(foundMarkerIds.size).toBe(230);
   });
 
   it('likes and comments generate notifications for post owner', async () => {

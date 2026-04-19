@@ -1799,7 +1799,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         })
       : rows;
 
-    const slice = orderedRows.slice(offset, offset + limit);
+    const slice = includeReelsOnly ? orderedRows.slice(offset, offset + limit) : orderedRows.slice(0, limit);
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -1898,7 +1898,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         likedByMe: likedByMeSet.has(String(r.id)),
         reactions: reactionsByPostId.get(String(r.id)) ?? [],
       })),
-      hasMore: orderedRows.length > offset + limit,
+      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : rows.length > limit,
     });
   });
 
