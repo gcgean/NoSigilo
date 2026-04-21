@@ -78,7 +78,10 @@
       "Bash(pkill -f \"tsx watch\")",
       "Bash(netstat -ano)",
       "Bash(taskkill //PID 4984 //F)",
-      "Bash(taskkill //PID 29460 //F)"
+      "Bash(taskkill //PID 29460 //F)",
+      "Bash(curl -s http://localhost:4001/api/health)",
+      "Bash(psql \"postgres://nosigilo:nosigilo@localhost:5433/nosigilo\" -f \"/c/Projetos Web/NoSigilo/backend/migrations/031_experiences.sql\")",
+      "Bash(curl -s http://localhost:4001/api/users/test/experiences -H \"Authorization: Bearer test\")"
     ]
   }
 }
