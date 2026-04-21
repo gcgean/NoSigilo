@@ -116,6 +116,28 @@ export const feedService = {
   },
 };
 
+export const experienceService = {
+  getFeed: async (params?: { page?: number; limit?: number }) => {
+    const response = await apiClient.get('/feed/experiences', { params });
+    return response.data;
+  },
+
+  create: async (data: { title: string; description: string; mediaIds?: string[] }) => {
+    const response = await apiClient.post('/experiences', data);
+    return response.data;
+  },
+
+  delete: async (experienceId: string) => {
+    const response = await apiClient.delete(`/experiences/${experienceId}`);
+    return response.data;
+  },
+
+  getByUser: async (userId: string) => {
+    const response = await apiClient.get(`/users/${userId}/experiences`);
+    return response.data;
+  },
+};
+
 // Profile Service
 export const profileService = {
   getProfile: async () => {
@@ -312,7 +334,7 @@ export const chatService = {
 // Likes & Comments Service
 export const interactionsService = {
   like: async (
-    targetType: 'post' | 'photo' | 'user',
+    targetType: 'post' | 'photo' | 'user' | 'experience',
     targetId: string,
     reaction?: 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash'
   ) => {
@@ -320,7 +342,7 @@ export const interactionsService = {
     return response.data;
   },
 
-  unlike: async (targetType: 'post' | 'photo' | 'user', targetId: string) => {
+  unlike: async (targetType: 'post' | 'photo' | 'user' | 'experience', targetId: string) => {
     const response = await apiClient.delete('/likes', { data: { targetType, targetId } });
     return response.data;
   },
@@ -487,8 +509,8 @@ export const invitesService = {
 };
 
 export const testimonialsService = {
-  create: async (profileUserId: string, content: string) => {
-    const response = await apiClient.post('/testimonials', { profileUserId, content });
+  create: async (profileUserId: string, content: string, mediaIds?: string[]) => {
+    const response = await apiClient.post('/testimonials', { profileUserId, content, ...(mediaIds?.length ? { mediaIds } : {}) });
     return response.data;
   },
   respond: async (testimonialId: string, accept: boolean) => {
@@ -636,6 +658,16 @@ export const adminService = {
     return response.data;
   },
 
+  getSuggestions: async (status?: string) => {
+    const response = await apiClient.get('/admin/suggestions', { params: status && status !== 'all' ? { status } : {} });
+    return response.data;
+  },
+
+  replySuggestion: async (id: string, reply: string, status?: string) => {
+    const response = await apiClient.put(`/admin/suggestions/${id}/reply`, { reply, ...(status ? { status } : {}) });
+    return response.data;
+  },
+
   getVisitAnalytics: async (limit = 120) => {
     const response = await apiClient.get('/admin/analytics/visits', { params: { limit } });
     return response.data;
@@ -658,6 +690,17 @@ export const adminService = {
 
   resolveReport: async (reportId: string) => {
     const response = await apiClient.put(`/admin/reports/${reportId}/resolve`);
+    return response.data;
+  },
+};
+
+export const suggestionsService = {
+  submit: async (data: { category: string; content: string }) => {
+    const response = await apiClient.post('/suggestions', data);
+    return response.data;
+  },
+  getMine: async () => {
+    const response = await apiClient.get('/suggestions/mine');
     return response.data;
   },
 };

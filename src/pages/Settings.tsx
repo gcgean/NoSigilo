@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, LogOut,
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { feedService, profileService } from '@/services/api';
+import { feedService, profileService, suggestionsService } from '@/services/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -222,7 +222,7 @@ export default function Settings() {
       <h1 className="text-2xl font-bold mb-6">Configurações</h1>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="w-full grid grid-cols-4">
+        <TabsList className="w-full grid grid-cols-5">
           <TabsTrigger value="profile" className="gap-2">
             <User className="w-4 h-4" />
             <span className="hidden sm:inline">Perfil</span>
@@ -238,6 +238,10 @@ export default function Settings() {
           <TabsTrigger value="security" className="gap-2">
             <Shield className="w-4 h-4" />
             <span className="hidden sm:inline">Segurança</span>
+          </TabsTrigger>
+          <TabsTrigger value="suggestions" className="gap-2">
+            <Lightbulb className="w-4 h-4" />
+            <span className="hidden sm:inline">Sugestões</span>
           </TabsTrigger>
         </TabsList>
 
@@ -936,7 +940,153 @@ export default function Settings() {
             </div>
           </div>
         </TabsContent>
+
+        {/* Suggestions Tab */}
+        <TabsContent value="suggestions" className="space-y-6">
+          <SuggestionsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+const SUGGESTION_CATEGORIES = [
+  { value: 'feature', label: 'Nova funcionalidade' },
+  { value: 'improvement', label: 'Melhoria' },
+  { value: 'bug', label: 'Problema / Bug' },
+  { value: 'general', label: 'Geral' },
+];
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  new:      { label: 'Recebida',  color: 'bg-blue-500/10 text-blue-600',   icon: <Clock className="w-3.5 h-3.5" /> },
+  read:     { label: 'Lida',      color: 'bg-muted text-muted-foreground',  icon: <Eye className="w-3.5 h-3.5" /> },
+  planned:  { label: 'Planejada', color: 'bg-purple-500/10 text-purple-600',icon: <Lightbulb className="w-3.5 h-3.5" /> },
+  done:     { label: 'Concluída', color: 'bg-green-500/10 text-green-600',  icon: <CheckCircle2 className="w-3.5 h-3.5" /> },
+  rejected: { label: 'Não aplicável', color: 'bg-red-500/10 text-red-500', icon: <XCircle className="w-3.5 h-3.5" /> },
+};
+
+function SuggestionsTab() {
+  const { toast } = useToast();
+  const [category, setCategory] = useState('general');
+  const [content, setContent] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+
+  useEffect(() => {
+    suggestionsService.getMine()
+      .then((data) => setHistory(Array.isArray(data) ? data : []))
+      .catch(() => setHistory([]))
+      .finally(() => setIsLoadingHistory(false));
+  }, []);
+
+  const handleSend = async () => {
+    if (content.trim().length < 10) {
+      toast({ title: 'Mensagem muito curta', description: 'Escreva pelo menos 10 caracteres.', variant: 'destructive' });
+      return;
+    }
+    setIsSending(true);
+    try {
+      await suggestionsService.submit({ category, content: content.trim() });
+      toast({ title: 'Sugestão enviada!', description: 'Obrigado pelo feedback. Vamos analisar em breve.' });
+      setContent('');
+      const data = await suggestionsService.getMine();
+      setHistory(Array.isArray(data) ? data : []);
+    } catch {
+      toast({ title: 'Erro ao enviar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Composer */}
+      <div className="glass rounded-xl p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <MessageSquarePlus className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">Enviar sugestão ou feedback</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Tem uma ideia, encontrou um problema ou quer sugerir uma melhoria? Conta pra gente!
+        </p>
+        <div className="space-y-3">
+          <div>
+            <Label className="mb-1.5 block">Categoria</Label>
+            <div className="flex flex-wrap gap-2">
+              {SUGGESTION_CATEGORIES.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setCategory(c.value)}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                    category === c.value
+                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      : 'border-border text-muted-foreground hover:border-primary/50'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <Label className="mb-1.5 block">Mensagem</Label>
+            <Textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Descreva sua sugestão ou problema com o máximo de detalhes..."
+              rows={5}
+              maxLength={2000}
+              className="resize-none"
+            />
+            <div className="mt-1 text-right text-xs text-muted-foreground">{content.length}/2000</div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              className="bg-gradient-primary hover:opacity-90 gap-2"
+              disabled={isSending || content.trim().length < 10}
+              onClick={() => void handleSend()}
+            >
+              <Send className="w-4 h-4" />
+              {isSending ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="glass rounded-xl p-6 space-y-4">
+        <h3 className="font-semibold">Minhas sugestões</h3>
+        {isLoadingHistory && <p className="text-sm text-muted-foreground">Carregando...</p>}
+        {!isLoadingHistory && history.length === 0 && (
+          <p className="text-sm text-muted-foreground">Você ainda não enviou nenhuma sugestão.</p>
+        )}
+        {!isLoadingHistory && history.map((s) => {
+          const cfg = STATUS_CONFIG[s.status] ?? STATUS_CONFIG.new;
+          const catLabel = SUGGESTION_CATEGORIES.find((c) => c.value === s.category)?.label ?? s.category;
+          return (
+            <div key={s.id} className="rounded-xl border bg-card p-4 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-medium text-muted-foreground">{catLabel}</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${cfg.color}`}>
+                  {cfg.icon}{cfg.label}
+                </span>
+              </div>
+              <p className="text-sm whitespace-pre-wrap">{s.content}</p>
+              {s.adminReply && (
+                <div className="mt-2 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2">
+                  <p className="text-xs font-semibold text-primary mb-1">Resposta da equipe</p>
+                  <p className="text-sm text-muted-foreground">{s.adminReply}</p>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {new Date(s.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

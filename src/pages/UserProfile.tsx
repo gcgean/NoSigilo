@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2 } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService } from '@/services/api';
+import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
@@ -34,7 +34,7 @@ import {
 } from '@/components/comments/commentStyles';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
-type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
+type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PhotoComment = { id: string; content: string; createdAt: string; user?: { id?: string; name?: string; avatar?: string | null } };
 type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
 const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
@@ -465,7 +465,7 @@ export default function UserProfile() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'testimonials' | 'videos'>('public');
+  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'testimonials' | 'videos' | 'experiences'>('public');
   const [profile, setProfile] = useState<any | null>(null);
   const [publicPhotos, setPublicPhotos] = useState<Photo[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<Photo[]>([]);
@@ -478,11 +478,16 @@ export default function UserProfile() {
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
   const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [userExperiences, setUserExperiences] = useState<Array<{ id: string; title: string; description: string; createdAt: string; likesCount: number; commentsCount: number; likedByMe: boolean }>>([]);
+  const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [maximizedVideoIndex, setMaximizedVideoIndex] = useState<number | null>(null);
   const maximizedTouchStartRef = useRef<{ x: number; y: number } | null>(null);
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
+  const [testimonialPhotos, setTestimonialPhotos] = useState<File[]>([]);
+  const [testimonialPhotoPreview, setTestimonialPhotoPreview] = useState<string[]>([]);
+  const [testimonialPhotoIndex, setTestimonialPhotoIndex] = useState<Record<string, number>>({});
   const [showReportDialog, setShowReportDialog] = useState(false);
   const [blockStatus, setBlockStatus] = useState<{ blocked: boolean; blockedByMe: boolean; blockedByThem: boolean } | null>(null);
   const [isBlockLoading, setIsBlockLoading] = useState(false);
@@ -662,6 +667,18 @@ export default function UserProfile() {
     return () => { cancelled = true; };
   }, [activeTab, userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    if (activeTab !== 'experiences') return;
+    if (userExperiences.length > 0) return;
+    setIsLoadingExperiences(true);
+    experienceService
+      .getByUser(userId)
+      .then((data) => setUserExperiences(Array.isArray(data) ? data : []))
+      .catch(() => setUserExperiences([]))
+      .finally(() => setIsLoadingExperiences(false));
+  }, [activeTab, userId]);
+
   const ageLabel = useMemo(() => buildProfileAgeLabel(profile), [profile]);
   const sexualOptionsLabel = useMemo(() => {
     if (!Array.isArray(profile?.lookingFor)) return '';
@@ -749,8 +766,15 @@ export default function UserProfile() {
     }
     setIsSendingTestimonial(true);
     try {
-      await testimonialsService.create(userId, content);
+      const mediaIds: string[] = [];
+      for (const file of testimonialPhotos) {
+        const uploaded = await profileService.uploadMedia(file, { source: 'post' });
+        if (uploaded?.id) mediaIds.push(String(uploaded.id));
+      }
+      await testimonialsService.create(userId, content, mediaIds);
       setTestimonialDraft('');
+      setTestimonialPhotos([]);
+      setTestimonialPhotoPreview([]);
       toast({ title: 'Depoimento enviado', description: 'O usuário precisa aprovar para aparecer no perfil.' });
     } catch {
       toast({ title: 'Falha ao enviar depoimento', description: 'Tente novamente.', variant: 'destructive' });
@@ -1086,6 +1110,10 @@ export default function UserProfile() {
             <Star className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Depoimentos ({testimonialsCount})</span>
           </TabsTrigger>
+          <TabsTrigger value="experiences" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <BookOpen className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Experiências ({activeTab === 'experiences' ? userExperiences.length : ''})</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="public">
@@ -1193,49 +1221,164 @@ export default function UserProfile() {
         </TabsContent>
 
         <TabsContent value="testimonials">
-          <div className="glass rounded-xl p-6 mb-4">
-            <h3 className="font-semibold mb-2">Deixe um depoimento</h3>
-            <Textarea
-              value={testimonialDraft}
-              onChange={(e) => setTestimonialDraft(e.target.value)}
-              placeholder="Conte como foi sua experiência..."
-              rows={4}
-            />
-            <div className="flex justify-end mt-3">
-              <Button className="bg-gradient-primary hover:opacity-90" disabled={isSendingTestimonial} onClick={() => void sendTestimonial()}>
-                {isSendingTestimonial ? 'Enviando...' : 'Enviar'}
-              </Button>
+          {/* Composer */}
+          {!isSelf && (
+            <div className="glass rounded-xl p-4 mb-4">
+              <div className="flex gap-3">
+                <Avatar className="w-9 h-9 shrink-0">
+                  <AvatarImage src={me?.avatar ? resolveServerUrl(me.avatar) : undefined} />
+                  <AvatarFallback>{String(me?.name || 'U')[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 space-y-2">
+                  <Textarea
+                    value={testimonialDraft}
+                    onChange={(e) => setTestimonialDraft(e.target.value)}
+                    placeholder="Conte como foi sua experiência..."
+                    rows={3}
+                    className="resize-none"
+                  />
+                  {/* Photo previews */}
+                  {testimonialPhotoPreview.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {testimonialPhotoPreview.map((src, i) => (
+                        <div key={i} className="relative w-20 h-20">
+                          <img src={src} className="w-20 h-20 rounded-lg object-cover" />
+                          <button
+                            type="button"
+                            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white text-xs"
+                            onClick={() => {
+                              setTestimonialPhotos((p) => p.filter((_, idx) => idx !== i));
+                              setTestimonialPhotoPreview((p) => p.filter((_, idx) => idx !== i));
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []).slice(0, 5 - testimonialPhotos.length);
+                          setTestimonialPhotos((p) => [...p, ...files].slice(0, 5));
+                          files.forEach((f) => {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => setTestimonialPhotoPreview((p) => [...p, ev.target?.result as string]);
+                            reader.readAsDataURL(f);
+                          });
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                    <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={isSendingTestimonial || testimonialDraft.trim().length < 10} onClick={() => void sendTestimonial()}>
+                      {isSendingTestimonial ? 'Enviando...' : 'Enviar'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div id="testimonials" className="glass rounded-xl p-6">
-            <h3 className="font-semibold mb-4">Depoimentos</h3>
-            {isLoadingTestimonials ? <div className="text-sm text-muted-foreground">Carregando...</div> : null}
-            {!isLoadingTestimonials && testimonials.filter((t) => String(t.status) === 'approved').length === 0 ? (
-              <div className="text-sm text-muted-foreground">Sem depoimentos ainda.</div>
-            ) : null}
+          {/* List */}
+          <div id="testimonials" className="space-y-3">
+            {isLoadingTestimonials && <div className="text-sm text-muted-foreground">Carregando...</div>}
+            {!isLoadingTestimonials && testimonials.filter((t) => String(t.status) === 'approved').length === 0 && (
+              <div className="glass rounded-xl p-6 text-center text-sm text-muted-foreground">Sem depoimentos ainda.</div>
+            )}
             {!isLoadingTestimonials &&
               testimonials
                 .filter((t) => String(t.status) === 'approved')
-                .map((t) => (
-                  <div key={t.id} className="rounded-xl border p-4 mb-3 bg-secondary/10">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Avatar className="w-8 h-8">
-                        <AvatarImage src={t.author.avatar ? resolveServerUrl(t.author.avatar) : undefined} />
-                        <AvatarFallback>{String(t.author.name || 'U')[0]}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{t.author.name}</div>
-                        {formatProfileIdentityLine(t.author) ? (
-                          <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</div>
-                        ) : null}
+                .map((t) => {
+                  const photos = t.media?.filter((m) => m.mimeType.startsWith('image/')) ?? [];
+                  const photoIdx = testimonialPhotoIndex[t.id] ?? 0;
+                  return (
+                    <div key={t.id} className="rounded-2xl border bg-card p-4">
+                      {/* Header */}
+                      <div className="flex items-start gap-3">
+                        <Avatar className="w-10 h-10 shrink-0">
+                          <AvatarImage src={t.author.avatar ? resolveServerUrl(t.author.avatar) : undefined} />
+                          <AvatarFallback>{String(t.author.name || 'U')[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm">{t.author.name}</span>
+                            {formatProfileIdentityLine(t.author) ? (
+                              <span className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</span>
+                            ) : null}
+                            <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
+                              {format(new Date(t.createdAt), "d 'de' MMM", { locale: ptBR })}
+                            </span>
+                          </div>
+                          {/* Text */}
+                          <p className="mt-1.5 text-sm leading-6 whitespace-pre-wrap">{t.content}</p>
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground ml-auto">{new Date(t.createdAt).toLocaleDateString()}</div>
+                      {/* Photos carousel */}
+                      {photos.length > 0 && (
+                        <div className="relative mt-3 overflow-hidden rounded-xl">
+                          <img
+                            src={resolveServerUrl(photos[photoIdx].url)}
+                            className="w-full max-h-72 object-cover rounded-xl"
+                          />
+                          {photos.length > 1 && (
+                            <>
+                              <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
+                                {photoIdx + 1}/{photos.length}
+                              </span>
+                              <button
+                                type="button"
+                                className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white"
+                                onClick={() => setTestimonialPhotoIndex((p) => ({ ...p, [t.id]: (photoIdx - 1 + photos.length) % photos.length }))}
+                              >
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white"
+                                onClick={() => setTestimonialPhotoIndex((p) => ({ ...p, [t.id]: (photoIdx + 1) % photos.length }))}
+                              >
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
-                  </div>
-                ))}
+                  );
+                })}
           </div>
+        </TabsContent>
+
+        <TabsContent value="experiences">
+          {isLoadingExperiences ? (
+            <p className="text-sm text-muted-foreground">Carregando experiências...</p>
+          ) : userExperiences.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+              <BookOpen className="w-10 h-10 opacity-40" />
+              <p className="text-sm">Nenhuma experiência compartilhada ainda.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {userExperiences.map((exp) => (
+                <div key={exp.id} className="rounded-xl border bg-card p-4 space-y-2">
+                  <h3 className="font-bold text-base">{exp.title}</h3>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-6">{exp.description}</p>
+                  <div className="flex items-center gap-4 pt-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1"><Heart className="w-4 h-4" /> {exp.likesCount}</span>
+                    <span className="flex items-center gap-1"><MessageCircle className="w-4 h-4" /> {exp.commentsCount}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

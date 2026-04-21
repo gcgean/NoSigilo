@@ -1951,6 +1951,184 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
+  app.get('/api/feed/experiences', requireAuth(env, db), async (req, res) => {
+    const page = Number(req.query.page || 1);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
+    const offset = (Math.max(1, page) - 1) * limit;
+    const rows = await queryAll(
+      db,
+      `
+      SELECT e.id, e.title, e.description, e.created_at,
+        u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+        u.gender as author_gender, u.city as author_city, u.state as author_state
+      FROM experiences e
+      JOIN users u ON u.id = e.user_id
+      WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM blocks b
+          WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+             OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+        )
+      ORDER BY e.created_at DESC
+      LIMIT ? OFFSET ?
+    `,
+      [req.auth!.userId, req.auth!.userId, limit + 1, offset]
+    );
+
+    const slice = rows.slice(0, limit);
+    const experienceIds = slice.map((r: any) => String(r.id));
+    const likesCountByExperienceId = new Map<string, number>();
+    const commentsCountByExperienceId = new Map<string, number>();
+    const likedByMeSet = new Set<string>();
+
+    if (experienceIds.length > 0) {
+      const placeholders = experienceIds.map(() => '?').join(', ');
+      const likeCounts = await queryAll(
+        db,
+        `SELECT target_id, COUNT(*) as c
+         FROM likes
+         WHERE target_type = 'experience' AND target_id IN (${placeholders})
+         GROUP BY target_id`,
+        experienceIds
+      );
+      for (const lr of likeCounts as any[]) likesCountByExperienceId.set(String(lr.target_id), Number(lr.c || 0));
+
+      const commentCounts = await queryAll(
+        db,
+        `SELECT target_id, COUNT(*) as c
+         FROM comments
+         WHERE target_type = 'experience' AND target_id IN (${placeholders})
+         GROUP BY target_id`,
+        experienceIds
+      );
+      for (const cr of commentCounts as any[]) commentsCountByExperienceId.set(String(cr.target_id), Number(cr.c || 0));
+
+      const likedByMeRows = await queryAll(
+        db,
+        `SELECT target_id
+         FROM likes
+         WHERE target_type = 'experience' AND user_id = ? AND target_id IN (${placeholders})`,
+        [req.auth!.userId, ...experienceIds]
+      );
+      for (const r of likedByMeRows as any[]) likedByMeSet.add(String(r.target_id));
+    }
+
+    const mediaByExpId = new Map<string, Array<{ id: string; url: string; mimeType: string }>>();
+    if (experienceIds.length > 0) {
+      const ph2 = experienceIds.map(() => '?').join(', ');
+      const mediaRows = await queryAll(db, `SELECT em.experience_id, m.id, m.filename, m.mime_type FROM experience_media em JOIN media m ON m.id = em.media_id WHERE em.experience_id IN (${ph2}) ORDER BY em.experience_id, em.sort_order`, experienceIds);
+      for (const m of mediaRows as any[]) {
+        const eid = String(m.experience_id);
+        if (!mediaByExpId.has(eid)) mediaByExpId.set(eid, []);
+        mediaByExpId.get(eid)!.push({ id: String(m.id), url: `/uploads/${m.filename}`, mimeType: String(m.mime_type || '') });
+      }
+    }
+
+    res.json({
+      experiences: slice.map((r: any) => ({
+        id: String(r.id),
+        title: String(r.title || ''),
+        description: String(r.description || ''),
+        createdAt: r.created_at,
+        media: mediaByExpId.get(String(r.id)) ?? [],
+        author: {
+          id: r.author_id,
+          name: r.author_name,
+          avatar: r.author_avatar,
+          gender: r.author_gender ?? null,
+          city: r.author_city ?? null,
+          state: r.author_state ?? null,
+        },
+        likesCount: likesCountByExperienceId.get(String(r.id)) ?? 0,
+        commentsCount: commentsCountByExperienceId.get(String(r.id)) ?? 0,
+        likedByMe: likedByMeSet.has(String(r.id)),
+      })),
+      hasMore: rows.length > limit,
+    });
+  });
+
+  app.post('/api/experiences', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      title: z.string().min(3).max(120),
+      description: z.string().min(20).max(6000),
+      mediaIds: z.array(z.string()).max(10).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const id = randomUUID();
+    await run(db, 'INSERT INTO experiences (id, user_id, title, description, created_at) VALUES (?, ?, ?, ?, ?)', [
+      id,
+      req.auth!.userId,
+      parsed.data.title.trim(),
+      parsed.data.description.trim(),
+      nowIso(),
+    ]);
+    if (parsed.data.mediaIds && parsed.data.mediaIds.length > 0) {
+      for (let i = 0; i < parsed.data.mediaIds.length; i++) {
+        await run(db, 'INSERT INTO experience_media (experience_id, media_id, sort_order) VALUES (?, ?, ?)', [id, parsed.data.mediaIds[i], i]);
+      }
+    }
+    await persist();
+    res.json({ id });
+  });
+
+  app.delete('/api/experiences/:experienceId', requireAuth(env, db), async (req, res) => {
+    const experienceId = String(req.params.experienceId || '');
+    const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [experienceId])) as any;
+    if (!experience) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (String(experience.user_id) !== req.auth!.userId) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+    await run(db, "DELETE FROM likes WHERE target_type = 'experience' AND target_id = ?", [experienceId]);
+    await run(db, "DELETE FROM comments WHERE target_type = 'experience' AND target_id = ?", [experienceId]);
+    await run(db, 'DELETE FROM experiences WHERE id = ? AND user_id = ?', [experienceId, req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/users/:userId/experiences', requireAuth(env, db), async (req, res) => {
+    const targetUserId = String(req.params.userId || '');
+    const rows = await queryAll(
+      db,
+      `SELECT e.id, e.title, e.description, e.created_at
+       FROM experiences e
+       WHERE e.user_id = ?
+       ORDER BY e.created_at DESC
+       LIMIT 50`,
+      [targetUserId]
+    );
+    const experienceIds = rows.map((r: any) => String(r.id));
+    const likesCountMap = new Map<string, number>();
+    const commentsCountMap = new Map<string, number>();
+    const likedByMeSet = new Set<string>();
+    if (experienceIds.length > 0) {
+      const ph = experienceIds.map(() => '?').join(', ');
+      const lc = await queryAll(db, `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'experience' AND target_id IN (${ph}) GROUP BY target_id`, experienceIds);
+      for (const r of lc as any[]) likesCountMap.set(String(r.target_id), Number(r.c || 0));
+      const cc = await queryAll(db, `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'experience' AND target_id IN (${ph}) GROUP BY target_id`, experienceIds);
+      for (const r of cc as any[]) commentsCountMap.set(String(r.target_id), Number(r.c || 0));
+      const lm = await queryAll(db, `SELECT target_id FROM likes WHERE target_type = 'experience' AND user_id = ? AND target_id IN (${ph})`, [req.auth!.userId, ...experienceIds]);
+      for (const r of lm as any[]) likedByMeSet.add(String(r.target_id));
+    }
+    res.json(rows.map((r: any) => ({
+      id: String(r.id),
+      title: String(r.title || ''),
+      description: String(r.description || ''),
+      createdAt: r.created_at,
+      likesCount: likesCountMap.get(String(r.id)) ?? 0,
+      commentsCount: commentsCountMap.get(String(r.id)) ?? 0,
+      likedByMe: likedByMeSet.has(String(r.id)),
+    })));
+  });
+
   app.get('/api/photos/recent', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
@@ -2427,6 +2605,25 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     `,
       params
     );
+    const testimonialIds = rows.map((r: any) => String(r.id));
+    const mediaByTestimonialId = new Map<string, Array<{ id: string; url: string; mimeType: string }>>();
+    if (testimonialIds.length > 0) {
+      const ph = testimonialIds.map(() => '?').join(', ');
+      const mediaRows = await queryAll(
+        db,
+        `SELECT tm.testimonial_id, m.id, m.filename, m.mime_type
+         FROM testimonial_media tm
+         JOIN media m ON m.id = tm.media_id
+         WHERE tm.testimonial_id IN (${ph})
+         ORDER BY tm.testimonial_id, tm.sort_order`,
+        testimonialIds
+      );
+      for (const m of mediaRows as any[]) {
+        const tid = String(m.testimonial_id);
+        if (!mediaByTestimonialId.has(tid)) mediaByTestimonialId.set(tid, []);
+        mediaByTestimonialId.get(tid)!.push({ id: String(m.id), url: `/uploads/${m.filename}`, mimeType: String(m.mime_type || '') });
+      }
+    }
     res.json(
       rows.map((r: any) => ({
         id: r.id,
@@ -2434,6 +2631,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         status: r.status,
         createdAt: r.created_at,
         updatedAt: r.updated_at,
+        media: mediaByTestimonialId.get(String(r.id)) ?? [],
         author: {
           id: r.author_id,
           name: r.author_name,
@@ -4080,7 +4278,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.post('/api/likes', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const schema = z.object({
-      targetType: z.enum(['post', 'user', 'photo']),
+      targetType: z.enum(['post', 'user', 'photo', 'experience']),
       targetId: z.string().min(1),
       reaction: z.enum(['heart', 'fire', 'love', 'wow', 'devil', 'splash']).optional(),
     });
@@ -4150,12 +4348,29 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           }
         );
       }
+    } else if (parsed.data.targetType === 'experience') {
+      const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
+      const ownerId = experience?.user_id ? String(experience.user_id) : null;
+      if (ownerId && ownerId !== req.auth!.userId) {
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        await createNotification(
+          { db, io },
+          {
+            userId: ownerId,
+            type: 'experience.liked',
+            title: 'Curtiram seu conto',
+            description: `${actorName} curtiu seu conto.`,
+            dataJson: { experienceId: parsed.data.targetId, actorId: req.auth!.userId, actorName },
+          }
+        );
+      }
     }
     res.json({ id });
   });
 
   app.delete('/api/likes', requireAuth(env, db), async (req, res) => {
-    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1) });
+    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo', 'experience']), targetId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -4172,7 +4387,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/likes', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.enum(['post', 'user', 'photo']),
+      targetType: z.enum(['post', 'user', 'photo', 'experience']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });
@@ -4207,7 +4422,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
+    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo', 'experience']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -4239,6 +4454,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             title: 'Novo comentário',
             description: `${actorName} comentou: ${preview}`,
             dataJson: { postId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId, actorName, content: parsed.data.content, createdAt },
+          }
+        );
+      }
+    } else if (parsed.data.targetType === 'experience') {
+      const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
+      const ownerId = experience?.user_id ? String(experience.user_id) : null;
+      if (ownerId && ownerId !== req.auth!.userId) {
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        const preview = String(parsed.data.content).slice(0, 140);
+        await createNotification(
+          { db, io },
+          {
+            userId: ownerId,
+            type: 'experience.commented',
+            title: 'Novo comentário no seu conto',
+            description: `${actorName} comentou: ${preview}`,
+            dataJson: { experienceId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId, actorName, content: parsed.data.content, createdAt },
           }
         );
       }
@@ -4339,7 +4572,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.get('/api/comments', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      targetType: z.enum(['post', 'user', 'photo']),
+      targetType: z.enum(['post', 'user', 'photo', 'experience']),
       targetId: z.string().min(1),
       limit: z.coerce.number().int().min(1).max(200).optional(),
     });
@@ -4382,7 +4615,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/testimonials', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ profileUserId: z.string().min(1), content: z.string().min(10).max(1000) });
+    const schema = z.object({
+      profileUserId: z.string().min(1),
+      content: z.string().min(10).max(1000),
+      mediaIds: z.array(z.string()).max(5).optional(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -4404,6 +4641,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       'INSERT INTO testimonials (id, profile_user_id, author_user_id, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [id, parsed.data.profileUserId, req.auth!.userId, parsed.data.content, 'pending', now, now]
     );
+    if (parsed.data.mediaIds && parsed.data.mediaIds.length > 0) {
+      for (let i = 0; i < parsed.data.mediaIds.length; i++) {
+        await run(db, 'INSERT INTO testimonial_media (testimonial_id, media_id, sort_order) VALUES (?, ?, ?)', [id, parsed.data.mediaIds[i], i]);
+      }
+    }
     await persist();
     const author = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const authorName = author?.name ? String(author.name) : 'Alguém';
@@ -5573,6 +5815,44 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       console.error('[admin/reports/resolve]', err);
       res.status(500).json({ error: 'internal' });
     }
+  });
+
+  // ── Suggestions ──────────────────────────────────────────────────────────────
+  app.post('/api/suggestions', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      category: z.enum(['bug', 'feature', 'improvement', 'general']).default('general'),
+      content: z.string().min(10).max(2000),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const id = randomUUID();
+    const now = nowIso();
+    await run(db, 'INSERT INTO suggestions (id, user_id, category, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, req.auth!.userId, parsed.data.category, parsed.data.content, 'new', now, now]);
+    await persist();
+    res.json({ id });
+  });
+
+  app.get('/api/suggestions/mine', requireAuth(env, db), async (req, res) => {
+    const rows = await queryAll(db, 'SELECT id, category, content, status, admin_reply, created_at FROM suggestions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.auth!.userId]);
+    res.json(rows.map((r: any) => ({ id: r.id, category: r.category, content: r.content, status: r.status, adminReply: r.admin_reply ?? null, createdAt: r.created_at })));
+  });
+
+  app.get('/api/admin/suggestions', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const status = String(req.query.status || 'all');
+    const whereClause = status === 'all' ? '' : 'WHERE s.status = ?';
+    const params: any[] = status === 'all' ? [] : [status];
+    const rows = await queryAll(db, `SELECT s.id, s.category, s.content, s.status, s.admin_reply, s.created_at, u.id as user_id, u.name as user_name, u.avatar as user_avatar FROM suggestions s JOIN users u ON u.id = s.user_id ${whereClause} ORDER BY s.created_at DESC LIMIT 200`, params);
+    res.json(rows.map((r: any) => ({ id: r.id, category: r.category, content: r.content, status: r.status, adminReply: r.admin_reply ?? null, createdAt: r.created_at, user: { id: r.user_id, name: r.user_name, avatar: r.user_avatar } })));
+  });
+
+  app.put('/api/admin/suggestions/:id/reply', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ reply: z.string().max(1000), status: z.enum(['new', 'read', 'planned', 'done', 'rejected']).optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const id = String(req.params.id || '');
+    await run(db, 'UPDATE suggestions SET admin_reply = ?, status = COALESCE(?, status), updated_at = ? WHERE id = ?', [parsed.data.reply, parsed.data.status ?? null, nowIso(), id]);
+    await persist();
+    res.json({ ok: true });
   });
 
   app.use((req, res) => {

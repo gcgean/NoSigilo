@@ -315,7 +315,7 @@ export default function Landing() {
             </div>
 
             <p className="text-sm text-muted-foreground">
-              © 2025 NoSigilo. Todos os direitos reservados.
+              © 2025 NoSigilo.net. Todos os direitos reservados.
             </p>
           </div>
         </div>

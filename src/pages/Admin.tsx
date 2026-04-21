@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
-  Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick
+  Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
+  Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -651,6 +652,10 @@ export default function Admin() {
             <FileText className="w-4 h-4" />
             Logs
           </TabsTrigger>
+          <TabsTrigger value="suggestions" className="gap-2">
+            <Lightbulb className="w-4 h-4" />
+            Sugestões
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="photos">
@@ -1180,7 +1185,193 @@ export default function Admin() {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="suggestions">
+          <AdminSuggestionsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+const SUGGESTION_STATUS_OPTIONS = [
+  { value: 'all',      label: 'Todas' },
+  { value: 'new',      label: 'Novas' },
+  { value: 'read',     label: 'Lidas' },
+  { value: 'planned',  label: 'Planejadas' },
+  { value: 'done',     label: 'Concluídas' },
+  { value: 'rejected', label: 'Não aplicável' },
+];
+
+const SUGGESTION_STATUS_STYLES: Record<string, string> = {
+  new:      'bg-blue-500/10 text-blue-600',
+  read:     'bg-muted text-muted-foreground',
+  planned:  'bg-purple-500/10 text-purple-600',
+  done:     'bg-green-500/10 text-green-600',
+  rejected: 'bg-red-500/10 text-red-500',
+};
+
+const SUGGESTION_CATEGORIES: Record<string, string> = {
+  feature:     'Nova funcionalidade',
+  improvement: 'Melhoria',
+  bug:         'Bug / Problema',
+  general:     'Geral',
+};
+
+function AdminSuggestionsTab() {
+  const { toast } = useToast();
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState<Record<string, string>>({});
+  const [replyStatus, setReplyStatus] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
+
+  const load = async (status: string) => {
+    setIsLoading(true);
+    try {
+      const data = await adminService.getSuggestions(status);
+      setSuggestions(Array.isArray(data) ? data : []);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(filterStatus); }, [filterStatus]);
+
+  const handleSaveReply = async (id: string) => {
+    const reply = (replyDraft[id] || '').trim();
+    const status = replyStatus[id];
+    setIsSaving((p) => ({ ...p, [id]: true }));
+    try {
+      await adminService.replySuggestion(id, reply, status || undefined);
+      toast({ title: 'Resposta salva' });
+      await load(filterStatus);
+      setExpandedId(null);
+    } catch {
+      toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } finally {
+      setIsSaving((p) => ({ ...p, [id]: false }));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Filter */}
+      <div className="flex flex-wrap gap-2">
+        {SUGGESTION_STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => setFilterStatus(opt.value)}
+            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
+              filterStatus === opt.value
+                ? 'border-primary bg-primary/10 text-primary font-medium'
+                : 'border-border text-muted-foreground hover:border-primary/50'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading && <p className="text-sm text-muted-foreground">Carregando...</p>}
+      {!isLoading && suggestions.length === 0 && (
+        <div className="glass rounded-xl p-8 text-center text-sm text-muted-foreground">
+          Nenhuma sugestão encontrada.
+        </div>
+      )}
+
+      {!isLoading && suggestions.map((s) => {
+        const isExpanded = expandedId === s.id;
+        const statusStyle = SUGGESTION_STATUS_STYLES[s.status] ?? SUGGESTION_STATUS_STYLES.new;
+        const catLabel = SUGGESTION_CATEGORIES[s.category] ?? s.category;
+        return (
+          <Card key={s.id} className="p-4 space-y-3">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Avatar className="w-8 h-8 shrink-0">
+                  <AvatarImage src={s.user.avatar ? resolveServerUrl(s.user.avatar) : undefined} />
+                  <AvatarFallback>{String(s.user.name || 'U')[0]}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate">{s.user.name}</p>
+                  <p className="text-xs text-muted-foreground">{catLabel} · {new Date(s.createdAt).toLocaleDateString('pt-BR')}</p>
+                </div>
+              </div>
+              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 ${statusStyle}`}>
+                {s.status === 'new' && <Clock className="w-3.5 h-3.5" />}
+                {s.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {s.status === 'rejected' && <XCircle className="w-3.5 h-3.5" />}
+                {SUGGESTION_STATUS_OPTIONS.find((o) => o.value === s.status)?.label ?? s.status}
+              </span>
+            </div>
+
+            {/* Content */}
+            <p className="text-sm whitespace-pre-wrap">{s.content}</p>
+
+            {/* Admin reply preview */}
+            {s.adminReply && !isExpanded && (
+              <div className="rounded-lg bg-primary/5 border border-primary/15 px-3 py-2">
+                <p className="text-xs font-semibold text-primary mb-1">Sua resposta</p>
+                <p className="text-sm text-muted-foreground line-clamp-2">{s.adminReply}</p>
+              </div>
+            )}
+
+            {/* Toggle reply panel */}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+              onClick={() => {
+                setExpandedId(isExpanded ? null : s.id);
+                if (!replyDraft[s.id]) setReplyDraft((p) => ({ ...p, [s.id]: s.adminReply ?? '' }));
+                if (!replyStatus[s.id]) setReplyStatus((p) => ({ ...p, [s.id]: s.status }));
+              }}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              {isExpanded ? 'Fechar' : 'Responder / alterar status'}
+              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {isExpanded && (
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex flex-wrap gap-2">
+                  {SUGGESTION_STATUS_OPTIONS.filter((o) => o.value !== 'all').map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setReplyStatus((p) => ({ ...p, [s.id]: opt.value }))}
+                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        (replyStatus[s.id] ?? s.status) === opt.value
+                          ? 'border-primary bg-primary/10 text-primary font-medium'
+                          : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  className="w-full rounded-lg border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  rows={3}
+                  placeholder="Escreva uma resposta para o usuário (opcional)..."
+                  value={replyDraft[s.id] ?? ''}
+                  onChange={(e) => setReplyDraft((p) => ({ ...p, [s.id]: e.target.value }))}
+                />
+                <div className="flex justify-end">
+                  <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={isSaving[s.id]} onClick={() => void handleSaveReply(s.id)}>
+                    {isSaving[s.id] ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }

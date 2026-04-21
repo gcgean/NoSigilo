@@ -63,7 +63,7 @@ export function BrandLogo({ className, markClassName, textClassName, size = 'md'
       >
         <BrandGlyph className={cn('text-white', sizing.icon)} />
       </div>
-      {showText ? <span className={cn('font-bold text-gradient', sizing.text, textClassName)}>NoSigilo</span> : null}
+      {showText ? <span className={cn('font-bold text-gradient', sizing.text, textClassName)}>NoSigilo.net</span> : null}
     </div>
   );
 }

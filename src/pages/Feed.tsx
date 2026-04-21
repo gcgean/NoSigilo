@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { feedService, interactionsService, profileService } from '@/services/api';
+import { experienceService, feedService, interactionsService, profileService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -44,6 +44,18 @@ type FeedPost = {
   commentsCount: number;
   likedByMe: boolean;
   reactions?: { type: string; count: number }[];
+};
+
+type FeedExperience = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  media?: Array<{ id: string; url: string; mimeType: string }>;
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
+  likesCount: number;
+  commentsCount: number;
+  likedByMe: boolean;
 };
 
 type Comment = {
@@ -105,6 +117,8 @@ export default function Feed() {
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const premiumAccess = hasPremiumAccess(user);
   const [postContent, setPostContent] = useState('');
+  const [experienceTitle, setExperienceTitle] = useState('');
+  const [experienceDescription, setExperienceDescription] = useState('');
   const [reelsOnly, setReelsOnly] = useState(false);
   const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -112,6 +126,7 @@ export default function Feed() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isPublishingExperience, setIsPublishingExperience] = useState(false);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
@@ -145,10 +160,29 @@ export default function Feed() {
   const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
   const [showFirstAccessPostHint, setShowFirstAccessPostHint] = useState(false);
   const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
+  const [allExperiences, setAllExperiences] = useState<FeedExperience[]>([]);
+  const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
+  const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
+  const [expPhotoIndex, setExpPhotoIndex] = useState<Record<string, number>>({});
+  const expFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [openCommentsExpId, setOpenCommentsExpId] = useState<string | null>(null);
+  const [commentsByExpId, setCommentsByExpId] = useState<Record<string, Comment[]>>({});
+  const [commentDraftByExpId, setCommentDraftByExpId] = useState<Record<string, string>>({});
+  const [editingCommentByExpId, setEditingCommentByExpId] = useState<Record<string, string | null>>({});
+  const [expReactionCounts, setExpReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
+  const [myExpReactions, setMyExpReactions] = useState<Record<string, PhotoReaction | null>>({});
+  const [isLoadingExpReactions, setIsLoadingExpReactions] = useState<Record<string, boolean>>({});
+  const [openReactionPickerExpId, setOpenReactionPickerExpId] = useState<string | null>(null);
+  const [reactionsModalExpId, setReactionsModalExpId] = useState<string | null>(null);
+  const [reactionsModalExpData, setReactionsModalExpData] = useState<Array<{ id: string; reaction: string | null; user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } }>>([]);
+  const [reactionsModalExpTab, setReactionsModalExpTab] = useState<string>('all');
+  const [isLoadingExpReactionsModal, setIsLoadingExpReactionsModal] = useState(false);
+  const longPressExpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredExpIdRef = useRef<string | null>(null);
 
-  const [feedFilter, setFeedFilter] = useState<'all' | 'favorites'>(() => {
+  const [feedFilter, setFeedFilter] = useState<'all' | 'favorites' | 'experiences'>(() => {
     const v = localStorage.getItem('nosigilo_feed_filter');
-    return v === 'favorites' ? 'favorites' : 'all';
+    return v === 'favorites' || v === 'experiences' ? v : 'all';
   });
   useEffect(() => {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
@@ -200,8 +234,22 @@ export default function Feed() {
     }
   };
 
+  const reloadExperiences = async () => {
+    setIsLoadingExperiences(true);
+    try {
+      const feed = await experienceService.getFeed({ page: 1, limit: 50 });
+      setAllExperiences(Array.isArray(feed?.experiences) ? feed.experiences : []);
+    } catch {
+      toast({ title: 'Erro ao carregar experiências', description: 'Tente novamente.', variant: 'destructive' });
+      setAllExperiences([]);
+    } finally {
+      setIsLoadingExperiences(false);
+    }
+  };
+
   useEffect(() => {
     void reload();
+    void reloadExperiences();
   }, []);
 
   useEffect(() => {
@@ -472,6 +520,202 @@ export default function Feed() {
       toast({ title: 'Erro ao publicar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const handlePublishExperience = async () => {
+    const title = experienceTitle.trim();
+    const description = experienceDescription.trim();
+    if (!title || !description) return;
+    if (title.length < 3) {
+      toast({ title: 'Título muito curto', description: 'O título precisa ter pelo menos 3 caracteres.', variant: 'destructive' });
+      return;
+    }
+    if (description.length < 20) {
+      toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres.', variant: 'destructive' });
+      return;
+    }
+    setIsPublishingExperience(true);
+    try {
+      const mediaIds: string[] = [];
+      for (const a of expAttachments) {
+        const uploaded = await profileService.uploadMedia(a.file);
+        if (uploaded?.id) mediaIds.push(String(uploaded.id));
+      }
+      await experienceService.create({ title, description, ...(mediaIds.length ? { mediaIds } : {}) });
+      setExperienceTitle('');
+      setExperienceDescription('');
+      setExpAttachments([]);
+      toast({ title: 'Experiência publicada', description: 'Seu conto já está visível na aba Experiências.' });
+      await reloadExperiences();
+    } catch (e: any) {
+      toast({ title: 'Erro ao publicar experiência', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsPublishingExperience(false);
+    }
+  };
+
+  const handleToggleExperienceLike = async (experience: FeedExperience) => {
+    const nextLiked = !experience.likedByMe;
+    setAllExperiences((prev) =>
+      prev.map((item) =>
+        item.id === experience.id
+          ? { ...item, likedByMe: nextLiked, likesCount: Math.max(0, item.likesCount + (nextLiked ? 1 : -1)) }
+          : item
+      )
+    );
+    try {
+      if (nextLiked) {
+        await interactionsService.like('experience', experience.id);
+      } else {
+        await interactionsService.unlike('experience', experience.id);
+      }
+    } catch {
+      setAllExperiences((prev) => prev.map((item) => (item.id === experience.id ? experience : item)));
+      toast({ title: 'Erro ao curtir experiência', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const loadExpReactions = async (expId: string) => {
+    setIsLoadingExpReactions((prev) => ({ ...prev, [expId]: true }));
+    try {
+      const likes = await interactionsService.getLikes('experience', expId);
+      const likesArray = Array.isArray(likes) ? likes : [];
+      const counts: Record<PhotoReaction, number> = { ...EMPTY_REACTION_COUNTS };
+      let mine: PhotoReaction | null = null;
+      for (const like of likesArray) {
+        const reaction = String(like?.reaction || 'heart') as PhotoReaction;
+        if (Object.prototype.hasOwnProperty.call(counts, reaction)) counts[reaction] += 1;
+        if (String(like?.user?.id || '') === String(user?.id || '') && Object.prototype.hasOwnProperty.call(counts, reaction)) mine = reaction;
+      }
+      setExpReactionCounts((prev) => ({ ...prev, [expId]: counts }));
+      setMyExpReactions((prev) => ({ ...prev, [expId]: mine }));
+    } catch {
+      setExpReactionCounts((prev) => ({ ...prev, [expId]: { ...EMPTY_REACTION_COUNTS } }));
+      setMyExpReactions((prev) => ({ ...prev, [expId]: null }));
+    } finally {
+      setIsLoadingExpReactions((prev) => ({ ...prev, [expId]: false }));
+    }
+  };
+
+  const reactToExp = async (expId: string, reaction: PhotoReaction) => {
+    const current = myExpReactions[expId] || null;
+    try {
+      if (current === reaction) {
+        await interactionsService.unlike('experience', expId);
+      } else {
+        await interactionsService.like('experience', expId, reaction);
+      }
+      await loadExpReactions(expId);
+      const totalLikes = Object.values(expReactionCounts[expId] || EMPTY_REACTION_COUNTS).reduce((a, b) => a + b, 0);
+      setAllExperiences((prev) => prev.map((e) => e.id === expId ? { ...e, likesCount: totalLikes, likedByMe: current !== reaction } : e));
+    } catch {
+      toast({ title: 'Erro ao reagir', description: 'Tente novamente.', variant: 'destructive' });
+    }
+    setOpenReactionPickerExpId(null);
+  };
+
+  const startExpLikeLongPress = (expId: string) => {
+    if (longPressExpTimerRef.current) clearTimeout(longPressExpTimerRef.current);
+    longPressExpTimerRef.current = setTimeout(() => {
+      longPressTriggeredExpIdRef.current = expId;
+      setOpenReactionPickerExpId(expId);
+      if (!expReactionCounts[expId]) void loadExpReactions(expId);
+    }, 500);
+  };
+
+  const cancelExpLikeLongPress = () => {
+    if (longPressExpTimerRef.current) {
+      clearTimeout(longPressExpTimerRef.current);
+      longPressExpTimerRef.current = null;
+    }
+  };
+
+  const handleExpLikeClick = async (experience: FeedExperience) => {
+    if (longPressTriggeredExpIdRef.current === experience.id) {
+      longPressTriggeredExpIdRef.current = null;
+      return;
+    }
+    setOpenReactionPickerExpId(null);
+    await handleToggleExperienceLike(experience);
+  };
+
+  const toggleExpComments = async (expId: string) => {
+    const willOpen = openCommentsExpId !== expId;
+    setOpenCommentsExpId(willOpen ? expId : null);
+    if (!willOpen) return;
+    if (commentsByExpId[expId]) return;
+    try {
+      const list = await interactionsService.getComments('experience', expId);
+      setCommentsByExpId((prev) => ({ ...prev, [expId]: Array.isArray(list) ? list : [] }));
+    } catch {
+      setCommentsByExpId((prev) => ({ ...prev, [expId]: [] }));
+    }
+  };
+
+  const sendExpComment = async (expId: string) => {
+    const draft = (commentDraftByExpId[expId] || '').trim();
+    if (!draft) return;
+    setCommentDraftByExpId((prev) => ({ ...prev, [expId]: '' }));
+    try {
+      await interactionsService.comment('experience', expId, draft);
+      const list = await interactionsService.getComments('experience', expId);
+      setCommentsByExpId((prev) => ({ ...prev, [expId]: Array.isArray(list) ? list : [] }));
+      setAllExperiences((prev) => prev.map((e) => e.id === expId ? { ...e, commentsCount: e.commentsCount + 1 } : e));
+    } catch {
+      toast({ title: 'Erro ao comentar', description: 'Tente novamente.', variant: 'destructive' });
+      setCommentDraftByExpId((prev) => ({ ...prev, [expId]: draft }));
+    }
+  };
+
+  const startEditingExpComment = (expId: string, comment: Comment) => {
+    setEditingCommentByExpId((prev) => ({ ...prev, [expId]: comment.id }));
+    setEditCommentDraftById((prev) => ({ ...prev, [comment.id]: comment.content || '' }));
+  };
+
+  const cancelEditingExpComment = (expId: string) => {
+    const editingId = editingCommentByExpId[expId];
+    setEditingCommentByExpId((prev) => ({ ...prev, [expId]: null }));
+    if (editingId) setEditCommentDraftById((prev) => { const next = { ...prev }; delete next[editingId]; return next; });
+  };
+
+  const saveEditedExpComment = async (expId: string, commentId: string) => {
+    const draft = (editCommentDraftById[commentId] || '').trim();
+    if (!draft) return;
+    try {
+      await interactionsService.updateComment(commentId, draft);
+      const list = await interactionsService.getComments('experience', expId);
+      setCommentsByExpId((prev) => ({ ...prev, [expId]: Array.isArray(list) ? list : [] }));
+      setEditingCommentByExpId((prev) => ({ ...prev, [expId]: null }));
+      setEditCommentDraftById((prev) => { const next = { ...prev }; delete next[commentId]; return next; });
+    } catch {
+      toast({ title: 'Erro ao editar comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const deleteExpComment = async (expId: string, commentId: string) => {
+    try {
+      await interactionsService.deleteComment(commentId);
+      const list = await interactionsService.getComments('experience', expId);
+      setCommentsByExpId((prev) => ({ ...prev, [expId]: Array.isArray(list) ? list : [] }));
+      setAllExperiences((prev) => prev.map((e) => e.id === expId ? { ...e, commentsCount: Math.max(0, e.commentsCount - 1) } : e));
+    } catch {
+      toast({ title: 'Erro ao excluir comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const openExpReactionsModal = async (expId: string) => {
+    setReactionsModalExpId(expId);
+    setReactionsModalExpTab('all');
+    setReactionsModalExpData([]);
+    setIsLoadingExpReactionsModal(true);
+    try {
+      const data = await interactionsService.getLikes('experience', expId);
+      setReactionsModalExpData(Array.isArray(data) ? data : []);
+    } catch {
+      setReactionsModalExpData([]);
+    } finally {
+      setIsLoadingExpReactionsModal(false);
     }
   };
 
@@ -760,6 +1004,75 @@ export default function Feed() {
         </div>
       ) : null}
       {/* Composer */}
+      {feedFilter === 'experiences' ? (
+        <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
+          <div className="space-y-3">
+            <Input
+              placeholder="Título do conto"
+              value={experienceTitle}
+              onChange={(e) => setExperienceTitle(e.target.value)}
+              maxLength={120}
+            />
+            <div className="relative">
+              <Textarea
+                placeholder="Descreva sua experiência..."
+                value={experienceDescription}
+                onChange={(e) => setExperienceDescription(e.target.value)}
+                className="min-h-[160px] resize-y rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[140px] sm:rounded-md sm:border-input sm:text-sm"
+                rows={6}
+              />
+              <span className={cn('absolute bottom-2 right-3 text-xs', experienceDescription.trim().length < 20 ? 'text-muted-foreground' : 'text-green-500')}>
+                {experienceDescription.trim().length}/20 mín.
+              </span>
+            </div>
+            {/* Photo previews */}
+            {expAttachments.length > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                {expAttachments.map((a, i) => (
+                  <div key={a.id} className="relative w-20 h-20">
+                    <img src={a.url} className="w-20 h-20 rounded-lg object-cover" />
+                    <button
+                      type="button"
+                      className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white text-xs"
+                      onClick={() => {
+                        URL.revokeObjectURL(a.url);
+                        setExpAttachments((p) => p.filter((_, idx) => idx !== i));
+                      }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Image className="w-4 h-4" />
+                <span className="text-sm">Foto</span>
+                <input
+                  ref={expFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []).slice(0, 10 - expAttachments.length);
+                    setExpAttachments((p) => [...p, ...files.map((f) => ({ id: `${f.name}-${Math.random()}`, file: f, url: URL.createObjectURL(f) }))]);
+                    if (expFileInputRef.current) expFileInputRef.current.value = '';
+                  }}
+                />
+              </label>
+              <Button
+                size="sm"
+                className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
+                disabled={experienceTitle.trim().length < 3 || experienceDescription.trim().length < 20 || isPublishingExperience}
+                onClick={handlePublishExperience}
+              >
+                <Send className="w-4 h-4" />
+                {isPublishingExperience ? 'Publicando...' : 'Publicar experiência'}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      ) : (
       <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
         <div className="flex gap-3 sm:gap-4">
           <Avatar>
@@ -909,6 +1222,7 @@ export default function Feed() {
           onChange={(e) => handleFilesSelected(e.target.files)}
         />
       </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
@@ -923,6 +1237,16 @@ export default function Feed() {
               >
                 Todos
               </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={feedFilter === 'experiences' ? 'secondary' : 'ghost'}
+                onClick={() => setFeedFilter('experiences')}
+              >
+                Experiências
+              </Button>
+              {feedFilter !== 'experiences' ? (
+                <>
               <Button
                 type="button"
                 size="sm"
@@ -962,22 +1286,264 @@ export default function Feed() {
               {feedFilter === 'favorites' && favorites.length === 0 ? (
                 <span className="ml-1 text-sm text-muted-foreground">Adicione curtidos para filtrar.</span>
               ) : null}
+                </>
+              ) : null}
             </div>
           </Card>
-          {isLoading && (
+          {feedFilter === 'experiences' ? (
+            <>
+              {isLoadingExperiences ? (
+                <MobileState
+                  loading
+                  title="Carregando experiências"
+                  description="Buscando os contos mais recentes da rede."
+                />
+              ) : null}
+              {!isLoadingExperiences && allExperiences.length === 0 ? (
+                <MobileState
+                  title="Sem experiências por enquanto"
+                  description="Seja o primeiro a compartilhar um conto e iniciar essa aba."
+                />
+              ) : null}
+              {!isLoadingExperiences &&
+                allExperiences.map((experience) => (
+                  <Card key={experience.id} className="overflow-hidden glass">
+                    <div className="flex items-center justify-between p-3 sm:p-4">
+                      <Link
+                        to={getUserProfileHref(experience.author.id, user?.id, '/feed')}
+                        className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+                      >
+                        <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
+                          <AvatarImage src={experience.author.avatar ? resolveServerUrl(experience.author.avatar) : undefined} />
+                          <AvatarFallback>{String(experience.author.name || 'U')[0]}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{experience.author.name}</span>
+                          {getIdentityLine(experience.author) ? (
+                            <div className="truncate text-xs text-muted-foreground">{getIdentityLine(experience.author)}</div>
+                          ) : null}
+                          <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(experience.createdAt)}</span>
+                        </div>
+                      </Link>
+                      {experience.author.id === user?.id ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full">
+                              <MoreHorizontal className="h-4.5 w-4.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={async () => {
+                                try {
+                                  await experienceService.delete(experience.id);
+                                  toast({ title: 'Experiência removida' });
+                                  await reloadExperiences();
+                                } catch {
+                                  toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Remover experiência
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                    </div>
+                    <div className="px-3 pb-3 sm:px-4">
+                      <h3 className="text-lg font-bold">{experience.title}</h3>
+                      <p className="mt-2 whitespace-pre-wrap text-[0.95rem] leading-6 text-muted-foreground sm:text-base">
+                        {experience.description}
+                      </p>
+                    </div>
+                    {/* Photo carousel */}
+                    {(experience.media ?? []).filter((m) => m.mimeType.startsWith('image/')).length > 0 && (() => {
+                      const photos = (experience.media ?? []).filter((m) => m.mimeType.startsWith('image/'));
+                      const idx = expPhotoIndex[experience.id] ?? 0;
+                      return (
+                        <div className="relative mx-3 mb-3 overflow-hidden rounded-xl">
+                          <img src={resolveServerUrl(photos[idx].url)} className="w-full max-h-80 object-cover rounded-xl" />
+                          {photos.length > 1 && (
+                            <>
+                              <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
+                                {idx + 1}/{photos.length}
+                              </span>
+                              <button type="button" className="absolute left-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white" onClick={() => setExpPhotoIndex((p) => ({ ...p, [experience.id]: (idx - 1 + photos.length) % photos.length }))}>
+                                <ChevronLeft className="w-4 h-4" />
+                              </button>
+                              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-black/50 text-white" onClick={() => setExpPhotoIndex((p) => ({ ...p, [experience.id]: (idx + 1) % photos.length }))}>
+                                <ChevronRight className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {/* Experience Actions */}
+                    <div className="flex items-center justify-between border-t p-3 sm:p-4">
+                      <div className="flex items-center gap-4">
+                        {/* Reaction picker */}
+                        <div className="relative" data-reaction-picker-root="true">
+                          <button
+                            onMouseDown={() => startExpLikeLongPress(experience.id)}
+                            onMouseUp={cancelExpLikeLongPress}
+                            onMouseLeave={cancelExpLikeLongPress}
+                            onTouchStart={() => startExpLikeLongPress(experience.id)}
+                            onTouchEnd={cancelExpLikeLongPress}
+                            onTouchCancel={cancelExpLikeLongPress}
+                            onClick={() => void handleExpLikeClick(experience)}
+                            className={cn(
+                              'flex items-center gap-2 transition-colors',
+                              experience.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+                            )}
+                          >
+                            <Heart className={cn('w-5 h-5', experience.likedByMe && 'fill-current')} />
+                          </button>
+                          {openReactionPickerExpId === experience.id ? (
+                            <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {PHOTO_REACTIONS.map((item) => {
+                                  const counts = expReactionCounts[experience.id] || EMPTY_REACTION_COUNTS;
+                                  const mine = myExpReactions[experience.id] || null;
+                                  return (
+                                    <button
+                                      key={`exp-${experience.id}-${item.id}`}
+                                      type="button"
+                                      className={cn(
+                                        'rounded-full border px-2.5 py-1 text-xs text-white transition-colors',
+                                        mine === item.id
+                                          ? 'border-primary bg-primary/25'
+                                          : 'border-white/15 bg-white/5 hover:bg-white/10'
+                                      )}
+                                      onClick={() => void reactToExp(experience.id, item.id)}
+                                      disabled={!!isLoadingExpReactions[experience.id]}
+                                    >
+                                      <span className="mr-1">{item.emoji}</span>
+                                      <span>{counts[item.id] || 0}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                        {/* Comment button */}
+                        <button
+                          onClick={() => void toggleExpComments(experience.id)}
+                          className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <MessageCircle className="w-5 h-5" />
+                          <span className="text-sm font-medium">{experience.commentsCount}</span>
+                        </button>
+                      </div>
+                      {/* Likes summary */}
+                      {experience.likesCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => void openExpReactionsModal(experience.id)}
+                          className="flex items-center gap-1.5 rounded-full hover:bg-muted/60 px-2 py-1 transition-colors"
+                        >
+                          <div className="flex items-center">
+                            {(() => {
+                              const counts = expReactionCounts[experience.id];
+                              const bubbles = counts
+                                ? Object.entries(counts).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k)
+                                : ['heart'];
+                              return bubbles.map((type, i) => (
+                                <span
+                                  key={type}
+                                  className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] ring-2 ring-background"
+                                  style={{ marginLeft: i > 0 ? '-6px' : 0, zIndex: 3 - i }}
+                                >
+                                  {REACTION_EMOJI[type] ?? '💜'}
+                                </span>
+                              ));
+                            })()}
+                          </div>
+                          <span className="text-sm font-medium text-muted-foreground">{experience.likesCount}</span>
+                        </button>
+                      )}
+                    </div>
+                    {/* Comments section */}
+                    {openCommentsExpId === experience.id && (
+                      <div className="space-y-3 border-t p-3 sm:p-4">
+                        <div className="space-y-3">
+                          {(commentsByExpId[experience.id] || []).map((c) => (
+                            <div key={c.id} className="flex items-start gap-3">
+                              <Link to={getUserProfileHref(c.user.id, user?.id, '/feed')} className="hover:opacity-90 transition-opacity">
+                                <Avatar className="w-8 h-8">
+                                  <AvatarImage src={c.user.avatar ? resolveServerUrl(c.user.avatar) : undefined} />
+                                  <AvatarFallback>{String(c.user.name || 'U')[0]}</AvatarFallback>
+                                </Avatar>
+                              </Link>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <Link to={getUserProfileHref(c.user.id, user?.id, '/feed')} className="text-sm font-medium hover:underline">
+                                    {c.user.name}
+                                  </Link>
+                                  <span className="text-xs text-muted-foreground">{formatWhen(c.createdAt)}</span>
+                                  {String(c.user.id) === String(user?.id || '') ? (
+                                    <div className="ml-auto flex items-center gap-2">
+                                      <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`} onClick={() => startEditingExpComment(experience.id, c)}>Editar</button>
+                                      <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteExpComment(experience.id, c.id)}>Excluir</button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                                {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div> : null}
+                                {editingCommentByExpId[experience.id] === c.id ? (
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <Input
+                                      value={editCommentDraftById[c.id] || ''}
+                                      onChange={(e) => setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') void saveEditedExpComment(experience.id, c.id); }}
+                                      className={COMMENT_INLINE_INPUT_CLASS}
+                                    />
+                                    <Button type="button" size="sm" className={COMMENT_SAVE_BUTTON_CLASS} onClick={() => void saveEditedExpComment(experience.id, c.id)} disabled={!(editCommentDraftById[c.id] || '').trim()}>Salvar</Button>
+                                    <Button type="button" size="sm" variant="outline" className={COMMENT_CANCEL_BUTTON_CLASS} onClick={() => cancelEditingExpComment(experience.id)}>Cancelar</Button>
+                                  </div>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">{c.content}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {(commentsByExpId[experience.id] || []).length === 0 && (
+                            <p className="text-sm text-muted-foreground">Nenhum comentário ainda.</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Escreva um comentário..."
+                            value={commentDraftByExpId[experience.id] || ''}
+                            onChange={(e) => setCommentDraftByExpId((prev) => ({ ...prev, [experience.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') void sendExpComment(experience.id); }}
+                          />
+                          <Button type="button" onClick={() => void sendExpComment(experience.id)} disabled={!(commentDraftByExpId[experience.id] || '').trim()}>
+                            Enviar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                ))}
+            </>
+          ) : null}
+          {feedFilter !== 'experiences' && isLoading && (
             <MobileState
               loading
               title="Carregando publicações"
               description="Organizando o feed para mostrar as novidades primeiro."
             />
           )}
-          {!isLoading && feedFilter === 'favorites' && favorites.length > 0 && visiblePosts.length === 0 ? (
+          {feedFilter !== 'experiences' && !isLoading && feedFilter === 'favorites' && favorites.length > 0 && visiblePosts.length === 0 ? (
             <MobileState
               title="Nenhuma publicação dos curtidos"
               description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
             />
           ) : null}
-          {!isLoading && visiblePosts.map((post) => (
+          {feedFilter !== 'experiences' && !isLoading && visiblePosts.map((post) => (
             <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden glass">
               {/* Post Header */}
               <div className="flex items-center justify-between p-3 sm:p-4">
@@ -1315,20 +1881,20 @@ export default function Feed() {
               )}
             </Card>
           ))}
-          {!isLoading && visiblePosts.length === 0 && feedFilter === 'all' ? (
+          {feedFilter !== 'experiences' && !isLoading && visiblePosts.length === 0 && feedFilter === 'all' ? (
             <MobileState
               title="Sem publicações por enquanto"
               description="Assim que alguém postar no feed, você já vê por aqui."
             />
           ) : null}
-          {!isLoading && hasMore ? (
+          {feedFilter !== 'experiences' && !isLoading && hasMore ? (
             <Card className="p-4 glass flex items-center justify-center">
               <Button type="button" variant="secondary" disabled={isLoadingMore} onClick={() => void loadMore()}>
                 {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
               </Button>
             </Card>
           ) : null}
-          <div ref={loadMoreRef} />
+          {feedFilter !== 'experiences' ? <div ref={loadMoreRef} /> : null}
         </div>
 
         {/* Reactions Modal */}
@@ -1397,6 +1963,92 @@ export default function Feed() {
                           <Link
                             to={getUserProfileHref(r.user.id, user?.id, '/feed')}
                             onClick={() => setReactionsModalPostId(null)}
+                            className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
+                          >
+                            <div className="relative shrink-0">
+                              <Avatar className="h-10 w-10">
+                                <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
+                                <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
+                              </Avatar>
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
+                                {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
+                              </span>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{r.user.name}</p>
+                              {getIdentityLine(r.user) ? (
+                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
+                              ) : null}
+                            </div>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
+
+        {/* Experience Reactions Modal */}
+        {reactionsModalExpId !== null && (() => {
+          const reactionTypes = reactionsModalExpData.reduce<Record<string, typeof reactionsModalExpData>>((acc, r) => {
+            const key = r.reaction || 'heart';
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(r);
+            return acc;
+          }, {});
+          const tabList = [
+            { key: 'all', label: 'Todas', count: reactionsModalExpData.length },
+            ...Object.entries(reactionTypes)
+              .sort((a, b) => b[1].length - a[1].length)
+              .map(([k, v]) => ({ key: k, label: REACTION_EMOJI[k] ?? '💜', count: v.length })),
+          ];
+          const displayRows = reactionsModalExpTab === 'all'
+            ? reactionsModalExpData
+            : reactionsModalExpData.filter((r) => (r.reaction || 'heart') === reactionsModalExpTab);
+          return (
+            <Dialog open onOpenChange={(open) => { if (!open) setReactionsModalExpId(null); }}>
+              <DialogContent className="max-w-sm p-0 gap-0 overflow-hidden">
+                <div className="flex items-center gap-1 overflow-x-auto border-b px-3 pt-3 pb-0">
+                  {tabList.map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setReactionsModalExpTab(tab.key)}
+                      className={cn(
+                        'flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-sm font-medium transition-colors',
+                        reactionsModalExpTab === tab.key
+                          ? 'border-b-2 border-primary text-primary'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <span>{tab.label}</span>
+                      <span className={cn(
+                        'rounded-full px-1.5 py-0.5 text-xs font-semibold',
+                        reactionsModalExpTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                      )}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {isLoadingExpReactionsModal ? (
+                    <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      Carregando...
+                    </div>
+                  ) : displayRows.length === 0 ? (
+                    <p className="p-6 text-center text-sm text-muted-foreground">Nenhuma reação ainda.</p>
+                  ) : (
+                    <ul className="divide-y">
+                      {displayRows.map((r) => (
+                        <li key={r.id}>
+                          <Link
+                            to={getUserProfileHref(r.user.id, user?.id, '/feed')}
+                            onClick={() => setReactionsModalExpId(null)}
                             className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40"
                           >
                             <div className="relative shrink-0">

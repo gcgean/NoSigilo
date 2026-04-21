@@ -434,7 +434,7 @@ export default function Layout() {
     }
 
     toast({
-      title: 'Instalar NoSigilo',
+      title: 'Instalar NoSigilo.net',
       description:
         'No iPhone: toque no botão Compartilhar do Safari e depois em "Adicionar à Tela de Início".',
     });
@@ -668,7 +668,7 @@ export default function Layout() {
                     <div>
                       <p className="font-semibold text-primary">Deseja instalar o app?</p>
                       <p className="text-sm text-muted-foreground">
-                        Instale o NoSigilo no celular para abrir como aplicativo e acessar mais rápido.
+                        Instale o NoSigilo.net no celular para abrir como aplicativo e acessar mais rápido.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

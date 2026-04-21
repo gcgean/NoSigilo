@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -12,7 +12,7 @@ import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { hasPremiumAccess } from '@/utils/premium';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
-import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService } from '@/services/api';
+import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -48,6 +48,10 @@ function visitTimeAgo(iso: string) {
   return `Há ${diffDays} d`;
 }
 
+const REACTION_EMOJI_MAP: Record<string, string> = {
+  heart: '💜', fire: '🔥', love: '😍', wow: '🤭', devil: '😈', splash: '💦',
+};
+
 function PhotoItem({
   photo,
   onSetMain,
@@ -61,23 +65,43 @@ function PhotoItem({
   onToggleVisibility: (id: string, currentIsPrivate: boolean) => void;
   isTogglingVisibility: boolean;
 }) {
-  const [showActions, setShowActions] = React.useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  const [likes, setLikes] = React.useState<Array<{ id: string; reaction?: string | null; user: { id: string; name: string; avatar?: string | null } }>>([]);
+  const [isLoadingLikes, setIsLoadingLikes] = React.useState(false);
+  const [showLikes, setShowLikes] = React.useState(false);
+
+  const loadLikes = async () => {
+    if (photo.isPrivate) return;
+    setIsLoadingLikes(true);
+    try {
+      const data = await interactionsService.getLikes('photo', photo.id);
+      setLikes(Array.isArray(data) ? data : []);
+    } catch {
+      setLikes([]);
+    } finally {
+      setIsLoadingLikes(false);
+    }
+  };
+
+  const handleOpen = (open: boolean) => {
+    setIsPreviewOpen(open);
+    if (open) void loadLikes();
+    if (!open) setShowLikes(false);
+  };
+
   return (
-    <div
-      className="relative aspect-square rounded-xl overflow-hidden group"
-      onTouchStart={() => setShowActions(v => !v)}
-      onMouseLeave={() => setShowActions(false)}
-    >
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+    <div className="relative aspect-square rounded-xl overflow-hidden group">
+      <Dialog open={isPreviewOpen} onOpenChange={handleOpen}>
         <DialogTrigger asChild>
-          <img
-            src={resolveMediaUrl(photo.url)}
-            alt=""
-            className="h-full w-full cursor-zoom-in bg-black object-contain sm:object-cover"
-          />
+          <button type="button" className="h-full w-full">
+            <img
+              src={resolveMediaUrl(photo.url)}
+              alt=""
+              className="h-full w-full cursor-zoom-in bg-black object-contain sm:object-cover"
+            />
+          </button>
         </DialogTrigger>
-        <DialogContent className="flex max-h-[96dvh] max-w-[96vw] items-center justify-center border-white/10 bg-black/92 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] shadow-2xl sm:p-3">
+        <DialogContent className="flex flex-col max-h-[96dvh] max-w-[96vw] border-white/10 bg-black/95 p-0 shadow-2xl overflow-hidden">
           <DialogClose asChild>
             <Button
               type="button"
@@ -89,12 +113,59 @@ function PhotoItem({
               <X className="h-4 w-4" />
             </Button>
           </DialogClose>
-          <img
-            src={resolveMediaUrl(photo.url)}
-            alt=""
-            className="block max-h-[72dvh] w-auto max-w-full rounded-xl object-contain"
-          />
-          <div className="absolute bottom-3 left-3 right-3 z-50 rounded-xl border border-white/15 bg-black/65 p-2 backdrop-blur-sm">
+
+          {/* Photo */}
+          <div className="flex flex-1 items-center justify-center p-3 pb-1">
+            <img
+              src={resolveMediaUrl(photo.url)}
+              alt=""
+              className="block max-h-[55dvh] w-auto max-w-full rounded-xl object-contain"
+            />
+          </div>
+
+          {/* Likes section */}
+          {!photo.isPrivate && (
+            <div className="px-3 py-2">
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm text-white/80 hover:text-white transition-colors"
+                onClick={() => setShowLikes((v) => !v)}
+              >
+                <Heart className="w-4 h-4 text-primary" />
+                {isLoadingLikes ? (
+                  <span>Carregando...</span>
+                ) : (
+                  <span>{likes.length > 0 ? `${likes.length} curtida${likes.length > 1 ? 's' : ''}` : 'Nenhuma curtida ainda'}</span>
+                )}
+                {likes.length > 0 && (
+                  <span className="text-xs text-white/50">{showLikes ? '▲' : '▼'}</span>
+                )}
+              </button>
+
+              {showLikes && likes.length > 0 && (
+                <div className="mt-2 max-h-36 overflow-y-auto space-y-2 rounded-xl bg-white/5 p-2">
+                  {likes.map((l) => (
+                    <div key={l.id} className="flex items-center gap-2">
+                      <div className="relative shrink-0">
+                        <Avatar className="h-8 w-8">
+                          <AvatarFallback className="text-xs bg-white/10 text-white">
+                            {String(l.user.name || 'U')[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="absolute -bottom-0.5 -right-0.5 text-[11px]">
+                          {REACTION_EMOJI_MAP[l.reaction || 'heart'] ?? '💜'}
+                        </span>
+                      </div>
+                      <span className="text-sm text-white/90 truncate">{l.user.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="px-3 pb-3 pt-1">
             <div className="grid grid-cols-3 gap-2">
               <Button
                 type="button"
@@ -102,10 +173,7 @@ function PhotoItem({
                 variant="secondary"
                 className="h-10 justify-center text-xs"
                 disabled={photo.isMain || photo.isPrivate}
-                onClick={() => {
-                  void onSetMain(photo.id);
-                  setIsPreviewOpen(false);
-                }}
+                onClick={() => { void onSetMain(photo.id); setIsPreviewOpen(false); }}
               >
                 {photo.isMain ? 'Principal' : 'Definir principal'}
               </Button>
@@ -115,10 +183,7 @@ function PhotoItem({
                 variant="secondary"
                 className="h-10 justify-center text-xs"
                 disabled={isTogglingVisibility}
-                onClick={() => {
-                  void onToggleVisibility(photo.id, photo.isPrivate);
-                  setIsPreviewOpen(false);
-                }}
+                onClick={() => { void onToggleVisibility(photo.id, photo.isPrivate); setIsPreviewOpen(false); }}
               >
                 {photo.isPrivate ? 'Tornar pública' : 'Tornar privada'}
               </Button>
@@ -127,10 +192,7 @@ function PhotoItem({
                 size="sm"
                 variant="destructive"
                 className="h-10 justify-center text-xs"
-                onClick={() => {
-                  void onDelete(photo.id);
-                  setIsPreviewOpen(false);
-                }}
+                onClick={() => { void onDelete(photo.id); setIsPreviewOpen(false); }}
               >
                 Excluir
               </Button>
@@ -138,39 +200,28 @@ function PhotoItem({
           </div>
         </DialogContent>
       </Dialog>
-      {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary">Principal</Badge>}
-      <div className={`absolute inset-0 bg-black/50 transition-opacity flex items-center justify-center gap-2 ${showActions ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="text-white"
-          onClick={() => void onSetMain(photo.id)}
-        >
+
+      {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary pointer-events-none">Principal</Badge>}
+
+      {/* Hover overlay — desktop only */}
+      <div className="absolute inset-0 bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 pointer-events-none sm:pointer-events-auto">
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onSetMain(photo.id)}>
           <Edit2 className="w-4 h-4" />
         </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="text-white"
-          onClick={() => void onDelete(photo.id)}
-        >
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onDelete(photo.id)}>
           <Trash2 className="w-4 h-4" />
         </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="text-white"
-          disabled={isTogglingVisibility}
-          onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}
-        >
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" disabled={isTogglingVisibility} onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}>
           {photo.isPrivate ? <Image className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
         </Button>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => setIsPreviewOpen(true)}>
+          <Maximize2 className="w-4 h-4" />
+        </Button>
       </div>
-      <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] text-white/90 sm:hidden">
-        {photo.isPrivate ? 'Foto privada • toque no cadeado para tornar pública' : 'Foto pública • toque na fechadura para tornar privada'}
+
+      {/* Mobile hint */}
+      <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] text-white/90 sm:hidden pointer-events-none">
+        {photo.isPrivate ? 'Foto privada • toque para ver opções' : 'Foto pública • toque para ver curtidas'}
       </div>
     </div>
   );
