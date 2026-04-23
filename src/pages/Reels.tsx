@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2 } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,7 @@ import {
   COMMENT_SAVE_BUTTON_CLASS,
 } from '@/components/comments/commentStyles';
 
-type FeedMedia = { id: string; url: string | null; mimeType?: string | null };
+type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedPost = {
   id: string;
   content: string;
@@ -82,6 +82,7 @@ export default function Reels() {
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLockedVideos, setHasLockedVideos] = useState(false);
   const [reelsPage, setReelsPage] = useState(1);
   const [hasMoreReels, setHasMoreReels] = useState(true);
   const [isLoadingMoreReels, setIsLoadingMoreReels] = useState(false);
@@ -197,16 +198,24 @@ export default function Reels() {
         if (cancelled) return;
         const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
         setReels([]);
+        setHasLockedVideos(false);
         setLikedByPostId({});
         setStatsByPostId({});
         setMutedById({});
         setReelsPage(1);
         setHasMoreReels(Boolean(data?.hasMore));
+        const containsLockedVideo = posts.some((post) =>
+          (post.media || []).some(
+            (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
+          )
+        );
+        if (containsLockedVideo) setHasLockedVideos(true);
         appendReels(mapPostsToReels(posts));
       })
       .catch(() => {
         if (cancelled) return;
         setReels([]);
+        setHasLockedVideos(false);
         setHasMoreReels(false);
       })
       .finally(() => {
@@ -224,6 +233,12 @@ export default function Reels() {
     try {
       const data = await feedService.getFeed({ page: nextPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
       const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
+      const containsLockedVideo = posts.some((post) =>
+        (post.media || []).some(
+          (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
+        )
+      );
+      if (containsLockedVideo) setHasLockedVideos(true);
       appendReels(mapPostsToReels(posts));
       setReelsPage(nextPage);
       setHasMoreReels(Boolean(data?.hasMore));
@@ -554,6 +569,29 @@ export default function Reels() {
   }
 
   if (reelsWithMeta.length === 0) {
+    if (hasLockedVideos) {
+      return (
+        <div className="flex h-[calc(100dvh-8rem)] items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Lock className="h-6 w-6 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold">Vídeos disponíveis apenas para Premium</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Existem vídeos no Rap, mas seu plano atual não permite assistir.
+            </p>
+            <Button
+              type="button"
+              className="mt-5 w-full gap-2 bg-gradient-primary text-white hover:opacity-90"
+              onClick={() => navigate('/subscriptions')}
+            >
+              <Crown className="h-4 w-4" />
+              Ver planos
+            </Button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex h-[calc(100dvh-8rem)] items-center justify-center">
         <MobileState
