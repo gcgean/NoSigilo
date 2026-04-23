@@ -678,6 +678,11 @@ export const adminService = {
     return response.data;
   },
 
+  getResourcesStatus: async () => {
+    const response = await apiClient.get('/admin/resources-status');
+    return response.data;
+  },
+
   setSubscriptionsEnabled: async (enabled: boolean) => {
     const response = await apiClient.put('/admin/settings/subscriptions', { enabled });
     return response.data;

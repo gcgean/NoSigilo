@@ -7,6 +7,7 @@ import path from 'node:path';
 import { mkdirSync, existsSync, createReadStream, statSync, renameSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { cpus, freemem, loadavg, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
@@ -3131,9 +3132,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
-    const me = (await queryOne(db, 'SELECT lat, lon, looking_for_json FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const me = (await queryOne(db, 'SELECT lat, lon, city, looking_for_json FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
+    const myCity = String(me?.city || '').trim() || null;
     const myLookingFor = Array.isArray(safeJsonParse(me?.looking_for_json)) ? safeJsonParse(me?.looking_for_json) as string[] : [];
 
     const { city, ageRange, genders, radar, search } = req.query;
@@ -3201,6 +3203,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       params.push(myLat - latDelta, myLat + latDelta, myLon - lonDelta, myLon + lonDelta);
     }
 
+    const cityPrioritySql = myCity
+      ? "CASE WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
+      : '';
+    if (myCity) params.push(myCity);
+
     params.push(nowIso());
     const audiencePriority = buildAudiencePriorityOrder('u.gender', effectiveGenders);
     params.push(...audiencePriority.params);
@@ -3229,6 +3236,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       FROM users u
       WHERE ${whereClause}
       ORDER BY 
+        ${cityPrioritySql}
         CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
         ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
         ${myLat !== null && myLon !== null 
@@ -5559,6 +5567,42 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await setSystemSetting(db, 'subscriptions_enabled', parsed.data.enabled ? '1' : '0');
     await persist();
     res.json({ subscriptionsEnabled: parsed.data.enabled });
+  });
+
+  app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), (_req, res) => {
+    const processMemory = process.memoryUsage();
+    const systemTotal = totalmem();
+    const systemFree = freemem();
+    const systemUsed = Math.max(0, systemTotal - systemFree);
+    const rss = Number(processMemory.rss || 0);
+
+    const toMb = (value: number) => Math.round((value / 1024 / 1024) * 100) / 100;
+    const toPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
+
+    res.json({
+      checkedAt: nowIso(),
+      nodeVersion: process.version,
+      platform: process.platform,
+      uptimeSec: Math.round(process.uptime()),
+      cpu: {
+        count: cpus().length,
+        loadAvg1m: Number(loadavg()[0].toFixed(2)),
+        loadAvg5m: Number(loadavg()[1].toFixed(2)),
+        loadAvg15m: Number(loadavg()[2].toFixed(2)),
+      },
+      memory: {
+        rssMb: toMb(rss),
+        heapUsedMb: toMb(Number(processMemory.heapUsed || 0)),
+        heapTotalMb: toMb(Number(processMemory.heapTotal || 0)),
+        externalMb: toMb(Number(processMemory.external || 0)),
+        arrayBuffersMb: toMb(Number(processMemory.arrayBuffers || 0)),
+        systemTotalMb: toMb(systemTotal),
+        systemFreeMb: toMb(systemFree),
+        systemUsedMb: toMb(systemUsed),
+        processUsagePercent: toPct(rss, systemTotal),
+        systemUsagePercent: toPct(systemUsed, systemTotal),
+      },
+    });
   });
 
   app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {

@@ -631,7 +631,7 @@ export default function Profile() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
       {/* Profile Header */}
       <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
         {firstAccessPhotoMode ? (
@@ -1194,17 +1194,17 @@ export default function Profile() {
       {/* Premium Upsell */}
       {!profileData.premium && subscriptionsEnabled && (
         <div className="mt-6 p-6 rounded-2xl bg-gradient-to-r from-gold/20 to-primary/20 border border-gold/30">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 min-w-0">
             <div className="w-14 h-14 rounded-xl bg-gold flex items-center justify-center">
               <Sparkles className="w-7 h-7 text-black" />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h3 className="font-semibold mb-1">Seja Premium</h3>
               <p className="text-sm text-muted-foreground">
                 Desbloqueie recursos exclusivos e destaque seu perfil
               </p>
             </div>
-            <Button className="bg-gold text-black hover:bg-gold/90" onClick={() => navigate('/subscriptions')}>
+            <Button className="w-full sm:w-auto bg-gold text-black hover:bg-gold/90" onClick={() => navigate('/subscriptions')}>
               Ver Planos
             </Button>
           </div>
@@ -1216,9 +1216,9 @@ export default function Profile() {
 
 function InfoRow({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/60 py-2">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-medium text-foreground">{value?.trim() ? value : '—'}</span>
+    <div className="flex items-center justify-between gap-4 border-b border-border/60 py-2 min-w-0">
+      <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+      <span className="text-sm font-medium text-foreground min-w-0 text-right break-words">{value?.trim() ? value : '—'}</span>
     </div>
   );
 }

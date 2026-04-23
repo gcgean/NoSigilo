@@ -25,7 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { CitySearch } from '@/components/CitySearch';
-import { radarService } from '@/services/api';
+import { locationService, radarService } from '@/services/api';
 import { hasPremiumAccess } from '@/utils/premium';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -149,6 +149,7 @@ export default function Radar() {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [showOnlyOnline, setShowOnlyOnline] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [canCreate, setCanCreate] = useState(radarAllowed);
   const [myBroadcasts, setMyBroadcasts] = useState<RadarBroadcast[]>([]);
@@ -304,6 +305,56 @@ export default function Radar() {
     }
   };
 
+  const handleUseDeviceLocation = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: 'Geolocalização indisponível',
+        description: 'Seu navegador não suporta localização por GPS.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLocating(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      await locationService.updateLocation(lat, lon);
+      const nearest = await locationService.getNearestCity(lat, lon);
+
+      const nextCity = String(nearest?.city?.name || '').trim();
+      const nextState = String(nearest?.city?.state || '').trim().toUpperCase();
+      if (nextCity && nextState) {
+        setCity(nextCity);
+        setState(nextState);
+        setCityInput(`${nextCity}, ${nextState}`);
+      }
+
+      toast({
+        title: 'Localização atualizada',
+        description: nextCity && nextState
+          ? `Radar configurado para ${nextCity}, ${nextState}.`
+          : 'Sua localização foi atualizada com sucesso.',
+      });
+    } catch {
+      toast({
+        title: 'Não foi possível usar o GPS',
+        description: 'Permita o acesso à localização do dispositivo para preencher a cidade.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
   const handleDeactivateBroadcast = async (id: string) => {
     try {
       await radarService.deactivateBroadcast(id);
@@ -424,6 +475,16 @@ export default function Radar() {
                   setCityInput(`${nextCity}, ${nextState}`);
                 }}
               />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleUseDeviceLocation()}
+                disabled={isLocating}
+                className="h-9 w-full justify-center gap-2 text-xs sm:text-sm"
+              >
+                <MapPin className="h-4 w-4" />
+                {isLocating ? 'Obtendo localização...' : 'Usar GPS do dispositivo'}
+              </Button>
             </div>
 
             <div className="space-y-2">

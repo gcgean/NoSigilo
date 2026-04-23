@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { usersService, matchService } from '@/services/api';
+import { usersService, matchService, locationService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { calculateAge } from '@/utils/age';
 import { format } from 'date-fns';
@@ -52,6 +52,7 @@ export default function SearchPage() {
   const [city, setCity] = useState('');
   const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
+  const [isLocating, setIsLocating] = useState(false);
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -199,8 +200,47 @@ export default function SearchPage() {
   const displayResults = onlyLiked ? filteredLiked : results;
   const isEmpty        = !isLoading && displayResults.length === 0;
 
+  const handleUseDeviceRadar = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: 'Geolocalização indisponível',
+        description: 'Seu navegador não suporta localização por GPS.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLocating(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 0,
+        });
+      });
+
+      await locationService.updateLocation(position.coords.latitude, position.coords.longitude);
+      if (radar === 'all') setRadar('25');
+      await fetchFirstPage();
+
+      toast({
+        title: 'Localização atualizada',
+        description: 'Busca por proximidade ativada com a localização do seu dispositivo.',
+      });
+    } catch {
+      toast({
+        title: 'Não foi possível usar o GPS',
+        description: 'Permita o acesso à localização do dispositivo para buscar por proximidade.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto w-full">
+    <div className="max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <h1 className="mb-1.5 text-[1.8rem] font-bold sm:mb-2 sm:text-2xl">Buscar</h1>
@@ -289,6 +329,16 @@ export default function SearchPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleUseDeviceRadar()}
+                disabled={isLocating}
+                className="mt-2 h-9 w-full justify-center gap-2 text-xs sm:text-sm"
+              >
+                <MapPin className="h-4 w-4" />
+                {isLocating ? 'Obtendo localização...' : 'Usar GPS do dispositivo'}
+              </Button>
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Cidade</label>

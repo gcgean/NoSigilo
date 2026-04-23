@@ -257,13 +257,13 @@ export default function Match() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[430px] px-2 sm:max-w-lg sm:px-0">
-      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-6">
-        <div>
+    <div className="mx-auto w-full max-w-[430px] px-2 sm:max-w-lg sm:px-0 min-w-0 overflow-x-hidden">
+      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-6 min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>
           <p className="text-[0.98rem] font-normal text-muted-foreground/90 sm:text-lg">Encontre sua conexão</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Popover>
             <PopoverTrigger asChild>
               <Button

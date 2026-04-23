@@ -481,29 +481,25 @@ export default function Feed() {
       setActivePicker(null);
       if (user?.id) {
         const key = `nosigilo:first-access-flow:${user.id}`;
-        try {
-          const raw = localStorage.getItem(key);
-          const flow = raw ? JSON.parse(raw) : {};
-          completedFirstPostStep = Boolean(flow?.needsPost);
-          localStorage.setItem(
-            key,
-            JSON.stringify({
-              ...flow,
-              needsPhoto: user?.avatar ? false : flow?.needsPhoto,
-              needsPost: false,
-            })
-          );
-        } catch {
-          completedFirstPostStep = false;
-          localStorage.setItem(
-            key,
-            JSON.stringify({
-              needsPhoto: !user?.avatar,
-              needsPost: false,
-            })
-          );
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const flow = JSON.parse(raw) as { needsPhoto?: boolean; needsPost?: boolean };
+            completedFirstPostStep = Boolean(flow?.needsPost);
+            localStorage.setItem(
+              key,
+              JSON.stringify({
+                ...flow,
+                needsPhoto: user?.avatar ? false : flow?.needsPhoto,
+                needsPost: false,
+              })
+            );
+            window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
+          } catch {
+            completedFirstPostStep = false;
+            localStorage.removeItem(key);
+          }
         }
-        window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
       }
       if (completedFirstPostStep) {
         toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
@@ -965,7 +961,7 @@ export default function Feed() {
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0 overflow-x-hidden">
       {hasNewPosts ? (
         <div className="mb-4">
           <Card className="p-3 glass flex items-center justify-between">
@@ -1224,11 +1220,11 @@ export default function Feed() {
       </Card>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3 md:gap-6">
+      <div className="grid min-w-0 gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
-        <div className="space-y-4 md:col-span-2 md:space-y-6">
+        <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
           <Card className="p-3 glass">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Button
                 type="button"
                 size="sm"
@@ -1245,6 +1241,17 @@ export default function Feed() {
               >
                 Experiências
               </Button>
+              {feedFilter === 'experiences' ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setFeedFilter('all')}
+                  className="h-11 w-full gap-2 rounded-xl bg-gradient-primary text-sm font-semibold text-white hover:opacity-95 md:hidden"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Voltar para o feed
+                </Button>
+              ) : null}
               {feedFilter !== 'experiences' ? (
                 <>
               <Button
@@ -1308,10 +1315,10 @@ export default function Feed() {
               {!isLoadingExperiences &&
                 allExperiences.map((experience) => (
                   <Card key={experience.id} className="overflow-hidden glass">
-                    <div className="flex items-center justify-between p-3 sm:p-4">
+                    <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link
                         to={getUserProfileHref(experience.author.id, user?.id, '/feed')}
-                        className="flex items-center gap-3 hover:opacity-90 transition-opacity"
+                        className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-90 transition-opacity"
                       >
                         <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
                           <AvatarImage src={experience.author.avatar ? resolveServerUrl(experience.author.avatar) : undefined} />
@@ -1546,11 +1553,11 @@ export default function Feed() {
           {feedFilter !== 'experiences' && !isLoading && visiblePosts.map((post) => (
             <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden glass">
               {/* Post Header */}
-              <div className="flex items-center justify-between p-3 sm:p-4">
-                <Link
-                  to={getUserProfileHref(post.author.id, user?.id, '/feed')}
-                  className="flex items-center gap-3 hover:opacity-90 transition-opacity"
-                >
+                    <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
+                      <Link
+                        to={getUserProfileHref(post.author.id, user?.id, '/feed')}
+                        className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-90 transition-opacity"
+                      >
                   <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
                     <AvatarImage src={post.author.avatar ? resolveServerUrl(post.author.avatar) : undefined} />
                     <AvatarFallback>{String(post.author.name || 'U')[0]}</AvatarFallback>
@@ -1565,7 +1572,7 @@ export default function Feed() {
                     <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(post.createdAt)}</span>
                   </div>
                 </Link>
-                <div className="flex items-center gap-1">
+                <div className="flex shrink-0 items-center gap-1">
                   {post.author.id !== user?.id ? (
                     <Button
                       type="button"

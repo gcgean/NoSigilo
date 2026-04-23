@@ -164,14 +164,14 @@ export default function Notifications() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">Notificações</h1>
           <p className="text-muted-foreground">Fique por dentro de tudo</p>
         </div>
-        <Button variant="ghost" size="sm" className="gap-2" onClick={() => void handleMarkAll()} disabled={isLoading || unreadCount === 0}>
+        <Button variant="ghost" size="sm" className="w-full sm:w-auto gap-2" onClick={() => void handleMarkAll()} disabled={isLoading || unreadCount === 0}>
           <Check className="w-4 h-4" />
           Marcar todas como lidas
         </Button>
@@ -226,7 +226,7 @@ export default function Notifications() {
                   </div>
 
                   {isPrivateRequest && (
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Button size="sm" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleApprove(notification); }}>
                         <UserCheck className="w-4 h-4" />
                         Permitir
@@ -239,7 +239,7 @@ export default function Notifications() {
                   )}
 
                   {isInvitePending && (
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="mt-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Button size="sm" className="gap-2" disabled={busyId === notification.id} onClick={(e) => { e.stopPropagation(); void handleApproveInvite(notification); }}>
                         <UserCheck className="w-4 h-4" />
                         Aprovar entrada

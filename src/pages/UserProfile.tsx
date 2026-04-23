@@ -836,14 +836,14 @@ export default function UserProfile() {
       : null;
 
   if (isLoading) {
-    return <div className="max-w-2xl mx-auto w-full text-sm text-muted-foreground">Carregando...</div>;
+    return <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden text-sm text-muted-foreground">Carregando...</div>;
   }
 
   if (!profile) {
     // Blocked by them OR we blocked them — show appropriate message
     if (blockStatus?.blockedByThem) {
       return (
-        <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+        <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
           <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
             <Ban className="w-8 h-8 text-destructive" />
           </div>
@@ -867,7 +867,7 @@ export default function UserProfile() {
     }
     if (blockStatus?.blockedByMe) {
       return (
-        <div className="max-w-2xl mx-auto w-full flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+        <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
             <Ban className="w-8 h-8 text-muted-foreground" />
           </div>
@@ -887,7 +887,7 @@ export default function UserProfile() {
         </div>
       );
     }
-    return <div className="max-w-2xl mx-auto w-full text-sm text-muted-foreground">Perfil não encontrado.</div>;
+    return <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden text-sm text-muted-foreground">Perfil não encontrado.</div>;
   }
 
   const publicPhotosCount = Number(profile?.publicPhotosCount ?? publicPhotos.length ?? 0);
@@ -904,7 +904,7 @@ export default function UserProfile() {
 
   if (!isSelf && !premiumAccess) {
     return (
-      <div className="max-w-2xl mx-auto w-full">
+      <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
         <button
           type="button"
           onClick={() => navigate('/subscriptions')}
@@ -921,9 +921,9 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto w-full">
+    <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
       <div className="glass rounded-2xl p-6 mb-6">
-        <div className="flex flex-col sm:flex-row items-center gap-6">
+        <div className="flex flex-col sm:flex-row items-center gap-6 min-w-0">
           <div className="relative">
             <UserAvatar 
               user={profile} 

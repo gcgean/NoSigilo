@@ -62,6 +62,31 @@ type AdminSettings = {
   subscriptionsEnabled: boolean;
 };
 
+type AdminResourcesStatus = {
+  checkedAt: string;
+  nodeVersion: string;
+  platform: string;
+  uptimeSec: number;
+  cpu: {
+    count: number;
+    loadAvg1m: number;
+    loadAvg5m: number;
+    loadAvg15m: number;
+  };
+  memory: {
+    rssMb: number;
+    heapUsedMb: number;
+    heapTotalMb: number;
+    externalMb: number;
+    arrayBuffersMb: number;
+    systemTotalMb: number;
+    systemFreeMb: number;
+    systemUsedMb: number;
+    processUsagePercent: number;
+    systemUsagePercent: number;
+  };
+};
+
 type AdminReport = {
   id: string;
   reporterName: string;
@@ -197,6 +222,8 @@ export default function Admin() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [settings, setSettings] = useState<AdminSettings>({ subscriptionsEnabled: true });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isLoadingResourcesStatus, setIsLoadingResourcesStatus] = useState(false);
+  const [resourcesStatus, setResourcesStatus] = useState<AdminResourcesStatus | null>(null);
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
@@ -527,6 +554,49 @@ export default function Admin() {
     }
   };
 
+  const handleLoadResourcesStatus = async () => {
+    setIsLoadingResourcesStatus(true);
+    try {
+      const data = await adminService.getResourcesStatus();
+      if (!isRecord(data)) {
+        throw new Error('invalid_payload');
+      }
+      setResourcesStatus({
+        checkedAt: String(data.checkedAt || ''),
+        nodeVersion: String(data.nodeVersion || ''),
+        platform: String(data.platform || ''),
+        uptimeSec: Number(data.uptimeSec || 0),
+        cpu: {
+          count: Number((data as any).cpu?.count || 0),
+          loadAvg1m: Number((data as any).cpu?.loadAvg1m || 0),
+          loadAvg5m: Number((data as any).cpu?.loadAvg5m || 0),
+          loadAvg15m: Number((data as any).cpu?.loadAvg15m || 0),
+        },
+        memory: {
+          rssMb: Number((data as any).memory?.rssMb || 0),
+          heapUsedMb: Number((data as any).memory?.heapUsedMb || 0),
+          heapTotalMb: Number((data as any).memory?.heapTotalMb || 0),
+          externalMb: Number((data as any).memory?.externalMb || 0),
+          arrayBuffersMb: Number((data as any).memory?.arrayBuffersMb || 0),
+          systemTotalMb: Number((data as any).memory?.systemTotalMb || 0),
+          systemFreeMb: Number((data as any).memory?.systemFreeMb || 0),
+          systemUsedMb: Number((data as any).memory?.systemUsedMb || 0),
+          processUsagePercent: Number((data as any).memory?.processUsagePercent || 0),
+          systemUsagePercent: Number((data as any).memory?.systemUsagePercent || 0),
+        },
+      });
+      toast({ title: 'Status de recursos atualizado' });
+    } catch {
+      toast({
+        title: 'Falha ao consultar recursos',
+        description: 'Não foi possível buscar o status de recursos do servidor.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingResourcesStatus(false);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto w-full">
       <div className="flex items-center gap-3 mb-6">
@@ -619,6 +689,57 @@ export default function Admin() {
             />
           </div>
         </div>
+      </Card>
+
+      <Card className="mb-6 p-5 glass">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Recursos do servidor</p>
+            <p className="text-sm text-muted-foreground">
+              Consulta em tempo real de memória, CPU e uptime para acompanhamento técnico.
+            </p>
+          </div>
+          <Button
+            type="button"
+            className="self-start gap-2"
+            onClick={() => void handleLoadResourcesStatus()}
+            disabled={isLoadingResourcesStatus}
+          >
+            <Eye className="w-4 h-4" />
+            {isLoadingResourcesStatus ? 'Consultando...' : 'Consultar status de recursos'}
+          </Button>
+        </div>
+
+        {resourcesStatus ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Uptime</p>
+              <p className="text-base font-semibold">{Math.floor(resourcesStatus.uptimeSec / 3600)}h {Math.floor((resourcesStatus.uptimeSec % 3600) / 60)}m</p>
+              <p className="text-xs text-muted-foreground">Node {resourcesStatus.nodeVersion} · {resourcesStatus.platform}</p>
+            </div>
+            <div className="rounded-xl border bg-background p-3">
+              <p className="text-xs text-muted-foreground">CPU</p>
+              <p className="text-base font-semibold">{resourcesStatus.cpu.count} núcleos</p>
+              <p className="text-xs text-muted-foreground">
+                Load avg: {resourcesStatus.cpu.loadAvg1m} / {resourcesStatus.cpu.loadAvg5m} / {resourcesStatus.cpu.loadAvg15m}
+              </p>
+            </div>
+            <div className="rounded-xl border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Memória</p>
+              <p className="text-base font-semibold">
+                {resourcesStatus.memory.systemUsedMb.toLocaleString('pt-BR')} MB / {resourcesStatus.memory.systemTotalMb.toLocaleString('pt-BR')} MB
+              </p>
+              <p className="text-xs text-muted-foreground">
+                SO: {resourcesStatus.memory.systemUsagePercent}% · Processo: {resourcesStatus.memory.processUsagePercent}%
+              </p>
+            </div>
+            <div className="rounded-xl border bg-background p-3 md:col-span-3">
+              <p className="text-xs text-muted-foreground">
+                Última consulta: {formatDateTime(resourcesStatus.checkedAt)}
+              </p>
+            </div>
+          </div>
+        ) : null}
       </Card>
 
       <Tabs defaultValue="photos" className="space-y-6">
