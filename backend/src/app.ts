@@ -1823,7 +1823,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       );
       for (const mr of mediaRows as any[]) {
         const mimeType = mr.mime_type ? String(mr.mime_type) : null;
-        const locked = !viewerHasPremium && !!mimeType && mimeType.startsWith('video/');
+        const locked = !includeReelsOnly && !viewerHasPremium && !!mimeType && mimeType.startsWith('video/');
         mediaById.set(String(mr.id), {
           id: String(mr.id),
           url: locked ? null : `/uploads/${mr.filename}`,

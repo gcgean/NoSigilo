@@ -192,36 +192,56 @@ export default function Reels() {
     let cancelled = false;
     setIsLoading(true);
 
-    feedService
-      .getFeed({ page: 1, limit: REELS_PAGE_SIZE, includeReelsOnly: true })
-      .then((data) => {
+    (async () => {
+      try {
         if (cancelled) return;
-        const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
         setReels([]);
         setHasLockedVideos(false);
         setLikedByPostId({});
         setStatsByPostId({});
         setMutedById({});
-        setReelsPage(1);
-        setHasMoreReels(Boolean(data?.hasMore));
-        const containsLockedVideo = posts.some((post) =>
-          (post.media || []).some(
-            (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
-          )
-        );
-        if (containsLockedVideo) setHasLockedVideos(true);
-        appendReels(mapPostsToReels(posts));
-      })
-      .catch(() => {
+
+        let currentPage = 1;
+        let hasMore = true;
+        let foundAnyReel = false;
+        let foundLockedVideo = false;
+
+        while (hasMore && !foundAnyReel) {
+          const data = await feedService.getFeed({ page: currentPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
+          if (cancelled) return;
+
+          const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
+          const pageReels = mapPostsToReels(posts);
+
+          const containsLockedVideo = posts.some((post) =>
+            (post.media || []).some(
+              (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
+            )
+          );
+          if (containsLockedVideo) foundLockedVideo = true;
+
+          if (pageReels.length > 0) {
+            appendReels(pageReels);
+            foundAnyReel = true;
+          }
+
+          hasMore = Boolean(data?.hasMore);
+          if (!foundAnyReel && hasMore) currentPage += 1;
+        }
+
+        if (foundLockedVideo) setHasLockedVideos(true);
+        setReelsPage(currentPage);
+        setHasMoreReels(hasMore);
+      } catch {
         if (cancelled) return;
         setReels([]);
         setHasLockedVideos(false);
         setHasMoreReels(false);
-      })
-      .finally(() => {
+      } finally {
         if (cancelled) return;
         setIsLoading(false);
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [appendReels, mapPostsToReels]);
