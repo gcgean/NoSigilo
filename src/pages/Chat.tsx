@@ -161,13 +161,15 @@ export default function Chat() {
         const vv = window.visualViewport;
         const vh = vv ? vv.height : window.innerHeight;
         const vTop = vv ? Math.round(vv.offsetTop) : 0;
+        const vLeft = vv ? Math.round(vv.offsetLeft) : 0;
+        const vWidth = vv ? Math.round(vv.width) : window.innerWidth;
         setMobileStyle({
           position: 'fixed',
           top: vTop + headerPx,
-          left: 0,
-          right: 0,
+          left: vLeft,
+          right: 'auto',
           height: Math.max(vh - headerPx, 200), // 200 px minimum so it never collapses
-          width: '100%',
+          width: Math.max(vWidth, 280),
           zIndex: 30,
         });
       } else {
@@ -1038,7 +1040,7 @@ export default function Chat() {
                               )}
                             </div>
                           )}
-                          {msg.content && <p className="break-words text-[15px] leading-6 md:text-base">{msg.content}</p>}
+                          {msg.content && <p className="break-words text-[16px] leading-6 md:text-base">{msg.content}</p>}
                         </div>
                       )}
                       <div className={cn(
@@ -1137,7 +1139,7 @@ export default function Chat() {
                     size="icon"
                     onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
-                    className="h-9.5 w-9.5 rounded-xl md:h-9 md:w-9"
+                    className="h-10 w-10 rounded-xl md:h-9 md:w-9"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1148,7 +1150,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-9.5 w-9.5 rounded-xl md:h-9 md:w-9">
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-10 w-10 rounded-xl md:h-9 md:w-9">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -1168,7 +1170,7 @@ export default function Chat() {
                           size="icon"
                           onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
                           className={cn(
-                            "h-9.5 w-9.5 rounded-xl transition-all duration-200 md:h-9 md:w-9",
+                            "h-10 w-10 rounded-xl transition-all duration-200 md:h-9 md:w-9",
                             isViewOnceEnabled
                               ? "bg-yellow-400/20 text-yellow-500 ring-1 ring-yellow-400/60 hover:bg-yellow-400/30"
                               : "text-muted-foreground hover:text-foreground"
@@ -1207,7 +1209,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-2.5 text-[15px] leading-6 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[48px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-6 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
@@ -1219,11 +1221,11 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-10.5 w-10.5 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-11 w-11 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
-                <Send className="w-5 h-5" />
+                <Send className="w-5.5 h-5.5 md:w-5 md:h-5" />
               </Button>
               </div>
             </div>

@@ -981,15 +981,13 @@ export default function UserProfile() {
               )}
             </div>
 
-            {!isSelf && profile?.bio ? (
+            {profile?.bio ? (
               <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
                 <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
-                  Leia nossa descrição antes de chamar no chat
+                  {isSelf ? 'Sua descrição do perfil' : 'Leia nossa descrição antes de chamar no chat'}
                 </p>
-                <p className="text-[15px] leading-relaxed text-foreground/95">{profile.bio}</p>
+                <p className="text-[15px] leading-relaxed text-primary">{profile.bio}</p>
               </div>
-            ) : profile?.bio ? (
-              <p className="text-muted-foreground text-sm mb-4">{profile.bio}</p>
             ) : null}
 
             {!isSelf ? (
