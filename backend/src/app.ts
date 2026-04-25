@@ -5623,13 +5623,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const limit = Number.isFinite(requestedLimit)
         ? Math.min(Math.max(Math.trunc(requestedLimit), 20), 500)
         : 120;
+      const requestedCityUsersPeriodDays = Number(req.query.cityUsersPeriodDays || 0);
+      const cityUsersPeriodDays = [30, 90, 365].includes(requestedCityUsersPeriodDays)
+        ? requestedCityUsersPeriodDays
+        : null;
+      const cityUsersFromIso = cityUsersPeriodDays
+        ? new Date(Date.now() - cityUsersPeriodDays * 24 * 60 * 60 * 1000).toISOString()
+        : null;
       const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, topUsersRows] = await Promise.all([
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
@@ -5673,6 +5680,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         queryAll(
           db,
           `SELECT
+             CASE
+               WHEN TRIM(COALESCE(u.city, '')) <> '' AND TRIM(COALESCE(u.state, '')) <> '' THEN TRIM(COALESCE(u.city, '')) || ', ' || UPPER(TRIM(COALESCE(u.state, '')))
+               WHEN TRIM(COALESCE(u.city, '')) <> '' THEN TRIM(COALESCE(u.city, ''))
+               WHEN TRIM(COALESCE(sv.country, '')) <> '' THEN TRIM(COALESCE(sv.country, ''))
+               ELSE 'Não informado'
+             END AS city_label,
+             COUNT(*) AS c
+           FROM site_visits sv
+           LEFT JOIN users u ON u.id = sv.user_id
+           GROUP BY city_label
+           ORDER BY c DESC
+           LIMIT 20`
+        ),
+        queryAll(
+          db,
+          `SELECT
              sv.user_id,
              u.name AS user_name,
              u.email AS user_email,
@@ -5684,6 +5707,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
            GROUP BY sv.user_id, u.name, u.email
            ORDER BY accesses DESC
            LIMIT 10`
+        ),
+        queryAll(
+          db,
+          `SELECT
+             CASE
+               WHEN TRIM(COALESCE(u.city, '')) = '' THEN 'Não informado'
+               WHEN TRIM(COALESCE(u.state, '')) = '' THEN TRIM(COALESCE(u.city, ''))
+               ELSE TRIM(COALESCE(u.city, '')) || ', ' || UPPER(TRIM(COALESCE(u.state, '')))
+             END AS city_label,
+             COUNT(*) AS c
+           FROM users u
+           WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
+             ${cityUsersFromIso ? 'AND u.created_at >= ?' : ''}
+           GROUP BY city_label
+           ORDER BY c DESC
+           LIMIT 20`,
+          cityUsersFromIso ? [cityUsersFromIso] : []
+        ),
+        queryOne(
+          db,
+          `SELECT COUNT(*) as c
+           FROM users u
+           WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
+             ${cityUsersFromIso ? 'AND u.created_at >= ?' : ''}`,
+          cityUsersFromIso ? [cityUsersFromIso] : []
         ),
       ]);
 
@@ -5725,6 +5773,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           .slice(0, 8);
       };
 
+      const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
       res.json({
         total: Number((totalRow as any)?.c || 0),
         today: Number((todayRow as any)?.c || 0),
@@ -5739,6 +5788,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           label: String(row.region_label || 'Desconhecido'),
           count: Number(row.c || 0),
         })),
+        byAccessCity: (cityAccessRows as any[]).map((row: any) => ({
+          label: String(row.city_label || 'Não informado'),
+          count: Number(row.c || 0),
+        })),
+        byUserCity: (topCitiesRows as any[]).map((row: any) => ({
+          label: String(row.city_label || 'Não informado'),
+          count: Number(row.c || 0),
+          percentage: totalUsersByCity > 0
+            ? Number(((Number(row.c || 0) / totalUsersByCity) * 100).toFixed(2))
+            : 0,
+        })),
+        cityUsersTotal: totalUsersByCity,
+        cityUsersPeriodDays,
         topUsers: (topUsersRows as any[]).map((row: any) => {
           const accesses = Number(row.accesses || 0);
           const activeDays = Math.max(1, Number(row.active_days || 1));

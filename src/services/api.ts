@@ -668,8 +668,13 @@ export const adminService = {
     return response.data;
   },
 
-  getVisitAnalytics: async (limit = 120) => {
-    const response = await apiClient.get('/admin/analytics/visits', { params: { limit } });
+  getVisitAnalytics: async (limit = 120, cityUsersPeriodDays?: number) => {
+    const response = await apiClient.get('/admin/analytics/visits', {
+      params: {
+        limit,
+        ...(cityUsersPeriodDays ? { cityUsersPeriodDays } : {}),
+      },
+    });
     return response.data;
   },
 

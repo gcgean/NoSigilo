@@ -103,6 +103,7 @@ type AdminReport = {
 type VisitBreakdown = {
   label: string;
   count: number;
+  percentage?: number;
 };
 
 type VisitHistoryItem = {
@@ -143,6 +144,10 @@ type VisitAnalytics = {
   onlineNow: number;
   byDay: VisitBreakdown[];
   byRegion: VisitBreakdown[];
+  byAccessCity: VisitBreakdown[];
+  byUserCity: VisitBreakdown[];
+  cityUsersTotal: number;
+  cityUsersPeriodDays: number | null;
   topUsers: TopAccessUser[];
   byOrigin: VisitBreakdown[];
   byCountry: VisitBreakdown[];
@@ -169,6 +174,10 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   onlineNow: 0,
   byDay: [],
   byRegion: [],
+  byAccessCity: [],
+  byUserCity: [],
+  cityUsersTotal: 0,
+  cityUsersPeriodDays: null,
   topUsers: [],
   byOrigin: [],
   byCountry: [],
@@ -227,6 +236,7 @@ export default function Admin() {
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
+  const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -276,14 +286,13 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult, rawVisitAnalytics] = await Promise.all([
+        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult] = await Promise.all([
           adminService.getPendingPhotos().catch(() => []),
           adminService.getUsers({ page: 1, limit: USERS_PAGE_SIZE }).catch(() => []),
           adminService.getLogs().catch(() => []),
           adminService.getFinanceSummary().catch(() => null),
           adminService.getSettings().catch(() => null),
           adminService.getReports('pending').catch(() => []),
-          adminService.getVisitAnalytics().catch(() => null),
         ]);
         const rawReports = rawReportsResult;
 
@@ -364,7 +373,6 @@ export default function Admin() {
               })
             : []
         );
-        setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
       } catch {
         if (cancelled) return;
         toast({
@@ -382,6 +390,23 @@ export default function Admin() {
       cancelled = true;
     };
   }, [toast]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const periodDays = cityUsersPeriod === 'all' ? undefined : Number(cityUsersPeriod);
+    adminService.getVisitAnalytics(120, periodDays)
+      .then((rawVisitAnalytics) => {
+        if (cancelled) return;
+        setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setVisitAnalytics(DEFAULT_VISIT_ANALYTICS);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cityUsersPeriod]);
 
   const loadMoreUsers = async () => {
     if (isLoadingMoreUsers || !hasMoreUsers) return;
@@ -1201,7 +1226,7 @@ export default function Admin() {
               </Card>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
+            <div className="grid gap-6 xl:grid-cols-3">
               <Card className="p-6 glass">
                 <h3 className="mb-4 font-semibold">Acessos por dia (últimos 30)</h3>
                 <div className="space-y-2">
@@ -1233,33 +1258,98 @@ export default function Admin() {
                   )}
                 </div>
               </Card>
+
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Acessos por cidade (ranking)</h3>
+                <div className="space-y-2">
+                  {visitAnalytics.byAccessCity.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem dados por cidade ainda.</p>
+                  ) : (
+                    visitAnalytics.byAccessCity.map((entry, index) => (
+                      <div key={`${entry.label}-${index}`} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="truncate">
+                          <span className="mr-2 text-xs text-muted-foreground">#{index + 1}</span>
+                          {entry.label}
+                        </span>
+                        <Badge variant="outline">{entry.count}</Badge>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
             </div>
 
-            <Card className="p-6 glass">
-              <h3 className="mb-4 font-semibold">Usuários que mais acessam (frequência)</h3>
-              <div className="space-y-2">
-                {visitAnalytics.topUsers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sem usuários autenticados suficientes para gerar ranking.</p>
-                ) : (
-                  visitAnalytics.topUsers.map((entry) => (
-                    <div key={entry.userId} className="rounded-lg bg-secondary/30 p-3 text-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div>
-                          <p className="font-medium text-foreground">{entry.name}</p>
-                          <p className="text-xs text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Usuários que mais acessam (frequência)</h3>
+                <div className="space-y-2">
+                  {visitAnalytics.topUsers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem usuários autenticados suficientes para gerar ranking.</p>
+                  ) : (
+                    visitAnalytics.topUsers.map((entry) => (
+                      <div key={entry.userId} className="rounded-lg bg-secondary/30 p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium text-foreground">{entry.name}</p>
+                            <p className="text-xs text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant="outline">{entry.accesses} acessos</Badge>
+                            <Badge variant="outline">{entry.activeDays} dia(s)</Badge>
+                            <Badge variant="secondary">{entry.frequency} / dia</Badge>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">{entry.accesses} acessos</Badge>
-                          <Badge variant="outline">{entry.activeDays} dia(s)</Badge>
-                          <Badge variant="secondary">{entry.frequency} / dia</Badge>
+                        <p className="mt-2 text-xs text-muted-foreground">Último acesso: {formatDateTime(entry.lastAccessAt)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6 glass">
+                <h3 className="mb-4 font-semibold">Usuários cadastrados por cidade (ranking)</h3>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {[
+                    { value: 'all' as const, label: 'Todos' },
+                    { value: '30' as const, label: '30 dias' },
+                    { value: '90' as const, label: '90 dias' },
+                    { value: '365' as const, label: '365 dias' },
+                  ].map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      size="sm"
+                      variant={cityUsersPeriod === option.value ? 'default' : 'outline'}
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setCityUsersPeriod(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Base considerada: {visitAnalytics.cityUsersTotal.toLocaleString('pt-BR')} usuário(s).
+                </p>
+                <div className="space-y-2">
+                  {visitAnalytics.byUserCity.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem dados de cidade para exibir.</p>
+                  ) : (
+                    visitAnalytics.byUserCity.map((entry, index) => (
+                      <div key={`${entry.label}-${index}`} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="truncate">
+                          <span className="mr-2 text-xs text-muted-foreground">#{index + 1}</span>
+                          {entry.label}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline">{entry.count}</Badge>
+                          <Badge variant="secondary">{Number(entry.percentage || 0).toFixed(2)}%</Badge>
                         </div>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">Último acesso: {formatDateTime(entry.lastAccessAt)}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </Card>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
 
             <div className="glass rounded-xl p-6">
               <div className="mb-4">
