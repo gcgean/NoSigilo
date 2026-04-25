@@ -255,9 +255,9 @@ export default function Chat() {
     const el = messageInputRef.current;
     if (!el) return;
     el.style.height = '0px';
-    const lineHeight = 24;
+    const lineHeight = 20;
     const minHeight = lineHeight;
-    const maxHeight = lineHeight * 3;
+    const maxHeight = lineHeight * 2;
     const next = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
     el.style.height = `${next}px`;
   };
@@ -1125,7 +1125,7 @@ export default function Chat() {
                 ? "border border-yellow-400/70 bg-yellow-400/8 shadow-[0_0_0_2px_rgba(250,204,21,0.18)]"
                 : "border border-border/70 bg-background"
             )}>
-              <div className="flex w-full min-w-0 max-w-full items-end gap-2">
+              <div className="flex w-full min-w-0 max-w-full items-center gap-2 md:items-end">
                 <input
                 type="file"
                 ref={fileInputRef}
@@ -1209,7 +1209,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[48px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-6 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-2.5 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"

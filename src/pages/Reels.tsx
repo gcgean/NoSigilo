@@ -408,6 +408,14 @@ export default function Reels() {
     }
   }, []);
 
+  const handleVideoAreaClick = useCallback((id: string) => {
+    if (isMobile && !isMobileMaximized) {
+      setIsMobileMaximized(true);
+      return;
+    }
+    togglePlay(id);
+  }, [isMobile, isMobileMaximized, togglePlay]);
+
   const loadComments = useCallback(async (reel: ReelItem) => {
     setIsLoadingComments(true);
     try {
@@ -677,7 +685,7 @@ export default function Reels() {
             muted={mutedById[reel.id] ?? true}
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
-            onClick={() => togglePlay(reel.id)}
+            onClick={() => handleVideoAreaClick(reel.id)}
           />
 
           {/* Dark gradient overlay */}
@@ -789,7 +797,7 @@ export default function Reels() {
           {playingId !== reel.id && (
             <button
               type="button"
-              onClick={() => togglePlay(reel.id)}
+              onClick={() => handleVideoAreaClick(reel.id)}
               className="absolute inset-0 flex items-center justify-center"
             >
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">

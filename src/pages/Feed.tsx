@@ -1262,7 +1262,7 @@ export default function Feed() {
                   type="button"
                   size="sm"
                   onClick={() => setFeedFilter('all')}
-                  className="h-11 w-full gap-2 rounded-xl bg-gradient-primary text-sm font-semibold text-white hover:opacity-95 md:hidden"
+                  className="h-11 basis-full shrink-0 gap-2 rounded-xl bg-gradient-primary px-3 text-center text-sm font-semibold text-white whitespace-normal leading-tight hover:opacity-95 md:hidden"
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Voltar para o feed

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateAge } from '@/utils/age';
@@ -250,6 +251,9 @@ export default function Profile() {
   const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
   const [busyMediaVisibilityId, setBusyMediaVisibilityId] = useState<string | null>(null);
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioDraft, setBioDraft] = useState(user?.bio || '');
+  const [isSavingBio, setIsSavingBio] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -376,6 +380,10 @@ export default function Profile() {
     void loadProfileVisits();
   }, []);
 
+  useEffect(() => {
+    if (!isEditingBio) setBioDraft(user?.bio || '');
+  }, [isEditingBio, user?.bio]);
+
   const loadTestimonials = async () => {
     if (!user?.id) return;
     try {
@@ -435,6 +443,26 @@ export default function Profile() {
       toast({ title: 'Falha ao enviar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleCancelBioEdit = () => {
+    setBioDraft(user?.bio || '');
+    setIsEditingBio(false);
+  };
+
+  const handleSaveBio = async () => {
+    const nextBio = bioDraft.trim();
+    try {
+      setIsSavingBio(true);
+      await profileService.updateProfile({ bio: nextBio || null });
+      updateUser({ bio: nextBio || '' });
+      setIsEditingBio(false);
+      toast({ title: 'Descrição atualizada' });
+    } catch (e: any) {
+      toast({ title: 'Falha ao salvar descrição', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsSavingBio(false);
     }
   };
 
@@ -718,7 +746,65 @@ export default function Profile() {
               </div>
             )}
 
-            <p className="text-muted-foreground text-sm mb-4">{profileData.bio}</p>
+            <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
+                  Sua descrição do perfil
+                </p>
+                {!isEditingBio ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-8 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
+                    onClick={() => setIsEditingBio(true)}
+                  >
+                    Editar
+                  </Button>
+                ) : null}
+              </div>
+
+              {isEditingBio ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={bioDraft}
+                    onChange={(e) => setBioDraft(e.target.value)}
+                    maxLength={500}
+                    rows={4}
+                    className="min-h-[110px] border-primary/30 bg-background/85 text-[15px] leading-relaxed text-primary placeholder:text-primary/55"
+                    placeholder="Conte um pouco sobre você..."
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-xs text-primary/75">{bioDraft.length}/500</span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="border-primary/30 text-primary hover:bg-primary/10"
+                        onClick={handleCancelBioEdit}
+                        disabled={isSavingBio}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-gradient-primary hover:opacity-90"
+                        onClick={() => void handleSaveBio()}
+                        disabled={isSavingBio}
+                      >
+                        {isSavingBio ? 'Salvando...' : 'Salvar'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[15px] leading-relaxed text-primary whitespace-pre-line">
+                  {profileData.bio || 'Adicione uma descrição para aparecer no seu perfil.'}
+                </p>
+              )}
+            </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center sm:justify-start gap-3">
               <NavLink to="/settings">
