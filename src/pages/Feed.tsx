@@ -83,6 +83,7 @@ const EMPTY_REACTION_COUNTS: Record<PhotoReaction, number> = {
   splash: 0,
 };
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
+const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
 const REACTION_EMOJI: Record<string, string> = {
   heart: '💜',
   fire: '🔥',
@@ -435,7 +436,22 @@ export default function Feed() {
 
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const list = Array.from(files).map((f) => ({
+    const acceptedFiles = Array.from(files).filter((f) => {
+      if (f.type.startsWith('video/') && f.size > VIDEO_MAX_BYTES) {
+        toast({
+          title: 'Vídeo muito grande',
+          description: 'O tamanho máximo permitido é 200 MB por vídeo.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+      return true;
+    });
+    if (acceptedFiles.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    const list = acceptedFiles.map((f) => ({
       id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(16).slice(2)}`,
       file: f,
       url: URL.createObjectURL(f),

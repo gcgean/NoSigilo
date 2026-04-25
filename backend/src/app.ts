@@ -497,18 +497,24 @@ async function compressUploadedVideo(file: Express.Multer.File) {
   const tempOutputPath = `${currentPath}.compressed.mp4`;
   const nextFilename = replaceFileExtension(file.filename, '.mp4');
   const nextPath = path.join(path.dirname(currentPath), nextFilename);
+  const VIDEO_MAX_DURATION_SECONDS = 120; // 2 minutes
 
   const args = [
     '-y',
     '-i', currentPath,
+    '-t', String(VIDEO_MAX_DURATION_SECONDS),
     '-vf', "scale='min(1280,iw)':-2",
     '-c:v', 'libx264',
-    '-preset', 'veryfast',
-    '-crf', '30',
+    '-preset', 'faster',
+    '-crf', '24',
+    '-maxrate', '2500k',
+    '-bufsize', '5000k',
     '-pix_fmt', 'yuv420p',
     '-movflags', '+faststart',
     '-c:a', 'aac',
-    '-b:a', '128k',
+    '-b:a', '96k',
+    '-ac', '2',
+    '-ar', '48000',
     tempOutputPath,
   ];
 
