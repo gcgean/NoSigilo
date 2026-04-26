@@ -157,15 +157,16 @@ export default function Chat() {
 
     const update = () => {
       if (selectedChat) {
-        // Conversation open → fixed + visual-viewport tracking
+        // Conversation open → fixed + visual-viewport tracking.
+        // Use left:0/right:0 so the panel always fills the full layout-viewport
+        // width (avoids cutting the right side when visualViewport.offsetLeft > 0).
         const vv = window.visualViewport;
         const vh = vv ? vv.height : window.innerHeight;
         const vTop = vv ? Math.round(vv.offsetTop) : 0;
-        const vLeft = vv ? Math.round(vv.offsetLeft) : 0;
         setMobileStyle({
           position: 'fixed',
           top: vTop + headerPx,
-          left: vLeft,
+          left: 0,
           right: 0,
           height: Math.max(Math.floor(vh) - headerPx, 200), // 200 px minimum so it never collapses
           zIndex: 30,
