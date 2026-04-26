@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
-  Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp
+  Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -146,6 +146,7 @@ type VisitAnalytics = {
   byRegion: VisitBreakdown[];
   byAccessCity: VisitBreakdown[];
   byUserCity: VisitBreakdown[];
+  byDevice: VisitBreakdown[];
   cityUsersTotal: number;
   cityUsersPeriodDays: number | null;
   topUsers: TopAccessUser[];
@@ -176,6 +177,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   byRegion: [],
   byAccessCity: [],
   byUserCity: [],
+  byDevice: [],
   cityUsersTotal: 0,
   cityUsersPeriodDays: null,
   topUsers: [],
@@ -210,6 +212,17 @@ function formatAccessRemaining(entry: AdminUser) {
   if (hours <= 24) return `${hours}h restantes`;
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
   return `${days} dia(s) restantes`;
+}
+
+function getDeviceMeta(deviceType: string) {
+  const normalized = String(deviceType || '').toLowerCase();
+  if (normalized === 'mobile') {
+    return { label: 'Celular', icon: Smartphone };
+  }
+  if (normalized === 'tablet') {
+    return { label: 'Tablet', icon: Tablet };
+  }
+  return { label: 'Computador', icon: Monitor };
 }
 
 export default function Admin() {
@@ -634,7 +647,7 @@ export default function Admin() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+      <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="p-4 glass">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
@@ -679,7 +692,7 @@ export default function Admin() {
             </div>
           </div>
         </Card>
-        <Card className="p-4 glass col-span-2 xl:col-span-1">
+        <Card className="p-4 glass sm:col-span-2 xl:col-span-1">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <Globe2 className="w-5 h-5 text-primary" />
@@ -768,7 +781,7 @@ export default function Admin() {
       </Card>
 
       <Tabs defaultValue="photos" className="space-y-6">
-        <TabsList>
+        <TabsList className="flex w-full max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="photos" className="gap-2">
             <Image className="w-4 h-4" />
             Moderação de Fotos
@@ -1101,7 +1114,7 @@ export default function Admin() {
 
         <TabsContent value="visits">
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Card className="p-5 glass">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -1137,7 +1150,7 @@ export default function Admin() {
               </Card>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Card className="p-5 glass">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
@@ -1173,105 +1186,131 @@ export default function Admin() {
               </Card>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card className="p-6 glass">
+            <div className="grid gap-4 xl:grid-cols-4 xl:gap-6">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Origem das visitas</h3>
                 <div className="space-y-3">
                   {visitAnalytics.byOrigin.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Ainda sem visitas registradas.</p>
                   ) : (
                     visitAnalytics.byOrigin.map((entry) => (
-                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="capitalize">{entry.label}</span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate capitalize">{entry.label}</span>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
                 </div>
               </Card>
 
-              <Card className="p-6 glass">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Local das visitas</h3>
                 <div className="space-y-3">
                   {visitAnalytics.byCountry.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Ainda sem local identificado.</p>
                   ) : (
                     visitAnalytics.byCountry.map((entry) => (
-                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-primary" />
-                          {entry.label}
+                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="flex min-w-0 items-center gap-2">
+                          <MapPin className="h-4 w-4 shrink-0 text-primary" />
+                          <span className="truncate">{entry.label}</span>
                         </span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
                 </div>
               </Card>
 
-              <Card className="p-6 glass">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Páginas mais vistas</h3>
                 <div className="space-y-3">
                   {visitAnalytics.byPage.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Ainda sem páginas registradas.</p>
                   ) : (
                     visitAnalytics.byPage.map((entry) => (
-                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="truncate">{entry.label}</span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate">{entry.label}</span>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
                 </div>
               </Card>
+
+              <Card className="p-4 glass sm:p-6">
+                <h3 className="mb-4 font-semibold">Acessos por dispositivo</h3>
+                <div className="space-y-3">
+                  {visitAnalytics.byDevice.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Ainda sem dados de dispositivo.</p>
+                  ) : (
+                    visitAnalytics.byDevice.map((entry) => {
+                      const deviceMeta = getDeviceMeta(entry.label);
+                      const DeviceIcon = deviceMeta.icon;
+                      return (
+                        <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                          <span className="flex min-w-0 items-center gap-2">
+                            <DeviceIcon className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="truncate">{deviceMeta.label}</span>
+                          </span>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Badge variant="outline">{entry.count}</Badge>
+                            <Badge variant="secondary">{Number(entry.percentage || 0).toFixed(2)}%</Badge>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              <Card className="p-6 glass">
+            <div className="grid gap-4 xl:grid-cols-3 xl:gap-6">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Acessos por dia (últimos 30)</h3>
                 <div className="space-y-2">
                   {visitAnalytics.byDay.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem dados por dia ainda.</p>
                   ) : (
                     visitAnalytics.byDay.map((entry) => (
-                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span>{entry.label}</span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate">{entry.label}</span>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
                 </div>
               </Card>
 
-              <Card className="p-6 glass">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Acessos por região</h3>
                 <div className="space-y-2">
                   {visitAnalytics.byRegion.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem dados por região ainda.</p>
                   ) : (
                     visitAnalytics.byRegion.map((entry) => (
-                      <div key={entry.label} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span>{entry.label}</span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate">{entry.label}</span>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
                 </div>
               </Card>
 
-              <Card className="p-6 glass">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Acessos por cidade (ranking)</h3>
                 <div className="space-y-2">
                   {visitAnalytics.byAccessCity.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem dados por cidade ainda.</p>
                   ) : (
                     visitAnalytics.byAccessCity.map((entry, index) => (
-                      <div key={`${entry.label}-${index}`} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="truncate">
-                          <span className="mr-2 text-xs text-muted-foreground">#{index + 1}</span>
+                      <div key={`${entry.label}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate">
+                          <span className="mr-2 shrink-0 text-xs text-muted-foreground">#{index + 1}</span>
                           {entry.label}
                         </span>
-                        <Badge variant="outline">{entry.count}</Badge>
+                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
                       </div>
                     ))
                   )}
@@ -1279,8 +1318,8 @@ export default function Admin() {
               </Card>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-2">
-              <Card className="p-6 glass">
+            <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Usuários que mais acessam (frequência)</h3>
                 <div className="space-y-2">
                   {visitAnalytics.topUsers.length === 0 ? (
@@ -1306,7 +1345,7 @@ export default function Admin() {
                 </div>
               </Card>
 
-              <Card className="p-6 glass">
+              <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Usuários cadastrados por cidade (ranking)</h3>
                 <div className="mb-3 flex flex-wrap gap-2">
                   {[
@@ -1335,12 +1374,12 @@ export default function Admin() {
                     <p className="text-sm text-muted-foreground">Sem dados de cidade para exibir.</p>
                   ) : (
                     visitAnalytics.byUserCity.map((entry, index) => (
-                      <div key={`${entry.label}-${index}`} className="flex items-center justify-between rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="truncate">
+                      <div key={`${entry.label}-${index}`} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
+                        <span className="min-w-0 truncate">
                           <span className="mr-2 text-xs text-muted-foreground">#{index + 1}</span>
                           {entry.label}
                         </span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
                           <Badge variant="outline">{entry.count}</Badge>
                           <Badge variant="secondary">{Number(entry.percentage || 0).toFixed(2)}%</Badge>
                         </div>

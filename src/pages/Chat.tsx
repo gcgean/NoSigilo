@@ -256,8 +256,8 @@ export default function Chat() {
     if (!el) return;
     el.style.height = '0px';
     const lineHeight = 20;
-    const minHeight = lineHeight;
-    const maxHeight = lineHeight * 2;
+    const minHeight = 24;
+    const maxHeight = lineHeight * 3;
     const next = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
     el.style.height = `${next}px`;
   };
@@ -943,7 +943,7 @@ export default function Chat() {
           {/* Messages – native scrollable div; ref used for scroll-to-bottom */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden space-y-2.5 px-2.5 py-2.5 md:space-y-4 md:p-4"
+            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden space-y-2.5 px-2.5 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:space-y-4 md:p-4"
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
@@ -963,7 +963,7 @@ export default function Chat() {
                     )}
                     <div
                       className={cn(
-                        "group relative min-w-0 max-w-[79%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2",
+                        "group relative min-w-0 max-w-[84%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2",
                         isMine
                           ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
                           : "bg-secondary rounded-bl-sm"
@@ -1077,7 +1077,7 @@ export default function Chat() {
               to anchor to the viewport bottom (behind the home indicator) instead
               of the container bottom, which clips the icons on the left. */}
           <div
-            className="w-full min-w-0 max-w-full border-t bg-background/96 py-1.5 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
+            className="w-full min-w-0 max-w-full border-t bg-background/96 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82 md:p-4"
             style={{
               paddingLeft: 'max(0.625rem, env(safe-area-inset-left))',
               paddingRight: 'max(0.625rem, env(safe-area-inset-right))',
@@ -1120,12 +1120,12 @@ export default function Chat() {
             )}
 
             <div className={cn(
-              "w-full min-w-0 max-w-full rounded-[1.15rem] p-1.5 shadow-sm transition-colors duration-200 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none",
+              "w-full min-w-0 max-w-full rounded-[1.25rem] p-1.5 shadow-sm transition-colors duration-200 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none",
               isViewOnceEnabled
                 ? "border border-yellow-400/70 bg-yellow-400/8 shadow-[0_0_0_2px_rgba(250,204,21,0.18)]"
                 : "border border-border/70 bg-background"
             )}>
-              <div className="flex w-full min-w-0 max-w-full items-center gap-2 md:items-end">
+              <div className="flex w-full min-w-0 max-w-full items-end gap-2">
                 <input
                 type="file"
                 ref={fileInputRef}
@@ -1139,7 +1139,7 @@ export default function Chat() {
                     size="icon"
                     onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
-                    className="h-10 w-10 rounded-xl md:h-9 md:w-9"
+                    className="h-11 w-9 rounded-xl min-[380px]:w-10 md:h-9 md:w-9"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1150,7 +1150,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-10 w-10 rounded-xl md:h-9 md:w-9">
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl min-[380px]:w-10 md:h-9 md:w-9">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -1170,7 +1170,7 @@ export default function Chat() {
                           size="icon"
                           onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
                           className={cn(
-                            "h-10 w-10 rounded-xl transition-all duration-200 md:h-9 md:w-9",
+                            "h-11 w-9 rounded-xl transition-all duration-200 min-[380px]:w-10 md:h-9 md:w-9",
                             isViewOnceEnabled
                               ? "bg-yellow-400/20 text-yellow-500 ring-1 ring-yellow-400/60 hover:bg-yellow-400/30"
                               : "text-muted-foreground hover:text-foreground"
@@ -1209,7 +1209,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[44px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-2.5 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[48px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
@@ -1221,7 +1221,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-11 w-11 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-12 w-12 shrink-0 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >

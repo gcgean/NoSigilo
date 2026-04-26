@@ -379,8 +379,8 @@ export default function Radar() {
   const totalDeliveries = myBroadcasts.reduce((acc, item) => acc + item.deliveriesCount, 0);
 
   return (
-    <div className="container max-w-6xl py-6 space-y-6">
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-hero p-8 text-center">
+    <div className="container max-w-6xl min-w-0 space-y-4 overflow-x-hidden py-4 pb-24 sm:space-y-6 sm:py-6 md:pb-6">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-hero p-5 text-center sm:p-8">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute left-1/2 top-1/2 h-96 w-96 -translate-x-1/2 -translate-y-1/2">
             <div className="absolute inset-0 rounded-full border-2 border-primary/30 animate-ping" style={{ animationDuration: '3s' }} />
@@ -390,20 +390,20 @@ export default function Radar() {
         </div>
 
         <div className="relative z-10">
-          <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/20 shadow-glow">
-            <Radio className="h-10 w-10 text-primary" />
+          <div className="mb-3 inline-flex h-16 w-16 items-center justify-center rounded-full bg-primary/20 shadow-glow sm:mb-4 sm:h-20 sm:w-20">
+            <Radio className="h-8 w-8 text-primary sm:h-10 sm:w-10" />
           </div>
-          <h1 className="mb-2 text-3xl font-bold">Radar Adulto Discreto</h1>
-          <p className="mx-auto max-w-2xl text-muted-foreground">
+          <h1 className="mb-2 text-2xl font-bold leading-tight sm:text-3xl">Radar Adulto Discreto</h1>
+          <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
             Avise quem combina com voce que esta na cidade, acompanhe quem recebeu, quem visualizou e quem decidiu puxar conversa.
           </p>
         </div>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <Card className="glass overflow-hidden">
+          <CardHeader className="p-4 pb-3 sm:p-6">
+            <CardTitle className="flex items-start gap-2 text-xl leading-tight sm:items-center">
               <Send className="h-5 w-5 text-primary" />
               Avisar que voce esta na cidade
             </CardTitle>
@@ -411,11 +411,11 @@ export default function Radar() {
               Trial ativo libera o radar completo. Depois do periodo gratis, o clique leva para os planos.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
             {!canCreate && (
-              <div className="flex items-center justify-between gap-3 rounded-lg border bg-secondary/30 p-3 text-sm text-muted-foreground">
+              <div className="flex flex-col gap-3 rounded-lg border bg-secondary/30 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <span>Seu periodo gratis terminou. Para seguir usando o radar, escolha um plano.</span>
-                <Button type="button" size="sm" className="gap-2 bg-gradient-primary hover:opacity-90" onClick={() => navigate('/subscriptions')}>
+                <Button type="button" size="sm" className="h-10 w-full gap-2 bg-gradient-primary hover:opacity-90 sm:w-auto" onClick={() => navigate('/subscriptions')}>
                   <Crown className="h-4 w-4" />
                   Ver planos
                 </Button>
@@ -425,24 +425,24 @@ export default function Radar() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Uso de hoje</div>
-                <div className="mt-2 flex items-end justify-between gap-3">
+                <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
                   <div>
                     <div className="text-2xl font-bold">{usage.dailyRemaining}</div>
                     <div className="text-xs text-muted-foreground">restante de {usage.dailyLimit}</div>
                   </div>
-                  <Badge variant={usage.dailyRemaining > 0 ? 'secondary' : 'destructive'}>
+                  <Badge className="shrink-0" variant={usage.dailyRemaining > 0 ? 'secondary' : 'destructive'}>
                     {usage.dailyUsed}/{usage.dailyLimit} usados
                   </Badge>
                 </div>
               </div>
               <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Uso da semana</div>
-                <div className="mt-2 flex items-end justify-between gap-3">
+                <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
                   <div>
                     <div className="text-2xl font-bold">{usage.weeklyRemaining}</div>
                     <div className="text-xs text-muted-foreground">restantes de {usage.weeklyLimit}</div>
                   </div>
-                  <Badge variant={usage.weeklyRemaining > 0 ? 'secondary' : 'destructive'}>
+                  <Badge className="shrink-0" variant={usage.weeklyRemaining > 0 ? 'secondary' : 'destructive'}>
                     {usage.weeklyUsed}/{usage.weeklyLimit} usados
                   </Badge>
                 </div>
@@ -480,7 +480,7 @@ export default function Radar() {
                 variant="outline"
                 onClick={() => void handleUseDeviceLocation()}
                 disabled={isLocating}
-                className="h-9 w-full justify-center gap-2 text-xs sm:text-sm"
+                className="h-11 w-full justify-center gap-2 rounded-xl text-sm sm:h-9 sm:rounded-md"
               >
                 <MapPin className="h-4 w-4" />
                 {isLocating ? 'Obtendo localização...' : 'Usar GPS do dispositivo'}
@@ -493,7 +493,7 @@ export default function Radar() {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Escreva uma mensagem adulta, respeitosa e discreta..."
-                className="min-h-[100px]"
+                className="min-h-[112px] rounded-xl text-base leading-6 sm:min-h-[100px] sm:text-sm"
                 maxLength={200}
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -510,9 +510,9 @@ export default function Radar() {
 
             <div className="space-y-2">
               <Label className="text-xs text-muted-foreground">Templates rapidos</Label>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {MESSAGE_TEMPLATES.slice(0, 3).map((template, i) => (
-                  <Badge key={i} variant="secondary" className="cursor-pointer hover:bg-primary/20 text-xs" onClick={() => handleUseTemplate(template)}>
+                  <Badge key={i} variant="secondary" className="cursor-pointer whitespace-normal py-1.5 text-xs leading-snug hover:bg-primary/20" onClick={() => handleUseTemplate(template)}>
                     {template.slice(0, 34)}...
                   </Badge>
                 ))}
@@ -528,7 +528,7 @@ export default function Radar() {
                   { value: 'male', label: 'Homens solteiros' },
                   { value: 'couple', label: 'Casais' },
                 ].map((option) => (
-                  <Badge key={option.value} variant={targetGender.includes(option.value) ? 'default' : 'outline'} className="cursor-pointer" onClick={() => handleGenderToggle(option.value)}>
+                  <Badge key={option.value} variant={targetGender.includes(option.value) ? 'default' : 'outline'} className="min-h-9 cursor-pointer px-3 py-2 text-sm" onClick={() => handleGenderToggle(option.value)}>
                     {targetGender.includes(option.value) && <Check className="mr-1 h-3 w-3" />}
                     {option.label}
                   </Badge>
@@ -541,13 +541,15 @@ export default function Radar() {
                 <Label>Raio de alcance</Label>
                 <span className="text-sm text-muted-foreground">{radius[0]} km</span>
               </div>
-              <Slider value={radius} onValueChange={setRadius} max={100} min={5} step={5} />
+              <div className="px-1 py-3">
+                <Slider value={radius} onValueChange={setRadius} max={100} min={5} step={5} />
+              </div>
             </div>
 
             <div className="space-y-2">
               <Label>Duracao do radar</Label>
               <Select value={duration} onValueChange={setDuration}>
-                <SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -563,15 +565,15 @@ export default function Radar() {
             </div>
 
             <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
+              <div className="flex items-center justify-between gap-4 rounded-xl border bg-secondary/20 p-3">
+                <div className="min-w-0 space-y-0.5">
                   <Label className="text-sm">Modo anonimo</Label>
                   <p className="text-xs text-muted-foreground">No recebido, seu nome so aparece como perfil discreto.</p>
                 </div>
                 <Switch checked={isAnonymous} onCheckedChange={setIsAnonymous} />
               </div>
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
+              <div className="flex items-center justify-between gap-4 rounded-xl border bg-secondary/20 p-3">
+                <div className="min-w-0 space-y-0.5">
                   <Label className="text-sm">Apenas online</Label>
                   <p className="text-xs text-muted-foreground">Entrega priorizada a quem estiver online no momento em que abrir o radar.</p>
                 </div>
@@ -579,7 +581,7 @@ export default function Radar() {
               </div>
             </div>
 
-            <Button className="mt-4 w-full" size="lg" onClick={handleSendBroadcast} disabled={isSending || !city || !state || !message.trim() || limitReached}>
+            <Button className="mt-4 h-12 w-full rounded-xl bg-gradient-primary text-base font-semibold hover:opacity-90" size="lg" onClick={handleSendBroadcast} disabled={isSending || !city || !state || !message.trim() || limitReached}>
               {isSending ? (
                 <>
                   <Radio className="h-4 w-4 animate-pulse" />
@@ -595,16 +597,16 @@ export default function Radar() {
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="glass">
-            <CardHeader className="pb-3">
+        <div className="space-y-4 sm:space-y-6">
+          <Card className="glass overflow-hidden">
+            <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Navigation className="h-5 w-5 text-primary" />
                 Seus radares
               </CardTitle>
               <CardDescription>Voce acompanha quem recebeu, visualizou e puxou conversa a partir do radar.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 p-4 pt-0 sm:p-6 sm:pt-0">
               {isLoading ? (
                 <div className="py-8 text-center text-muted-foreground">Carregando radar...</div>
               ) : myBroadcasts.length === 0 ? (
@@ -615,15 +617,15 @@ export default function Radar() {
               ) : (
                 <>
                   {activeBroadcasts.map((broadcast) => (
-                    <div key={broadcast.id} className="rounded-lg border border-border/50 bg-secondary/50 p-4">
-                      <div className="mb-2 flex items-start justify-between gap-3">
+                    <div key={broadcast.id} className="rounded-xl border border-border/50 bg-secondary/50 p-3.5 sm:p-4">
+                      <div className="mb-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <p className="font-medium">{broadcast.city}, {broadcast.state}</p>
                           <p className="text-xs text-muted-foreground">
                             Ativo ha {formatElapsed(broadcast.createdAt)} . {formatRemaining(broadcast.expiresAt)}
                           </p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => void handleDeactivateBroadcast(broadcast.id)}>
+                        <Button variant="ghost" size="sm" className="h-9 w-full sm:w-auto" onClick={() => void handleDeactivateBroadcast(broadcast.id)}>
                           Desativar
                         </Button>
                       </div>
@@ -651,8 +653,8 @@ export default function Radar() {
                         <div className="mt-4 space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Quem recebeu</p>
                           {broadcast.deliveries.slice(0, 6).map((delivery) => (
-                            <div key={`${broadcast.id}-${delivery.viewer.id}-${delivery.deliveredAt}`} className="flex items-center gap-3 rounded-lg border bg-background/50 p-3">
-                              <div className="h-10 w-10 overflow-hidden rounded-full bg-secondary">
+                            <div key={`${broadcast.id}-${delivery.viewer.id}-${delivery.deliveredAt}`} className="flex min-w-0 flex-col gap-3 rounded-lg border bg-background/50 p-3 min-[420px]:flex-row min-[420px]:items-center">
+                              <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-secondary">
                                 {delivery.viewer.avatar ? (
                                   <img src={resolveServerUrl(delivery.viewer.avatar)} alt={delivery.viewer.name} className="h-full w-full object-cover" />
                                 ) : (
@@ -671,7 +673,7 @@ export default function Radar() {
                                 </button>
                                 <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(delivery.viewer) || 'Perfil da rede'}</div>
                               </div>
-                              <div className="flex flex-wrap gap-1">
+                              <div className="flex shrink-0 flex-wrap gap-1">
                                 <Badge variant="outline">Recebido</Badge>
                                 {delivery.viewedAt ? <Badge variant="outline">Visualizou</Badge> : null}
                                 {delivery.contactedAt ? <Badge className="bg-primary/15 text-primary">Conversou</Badge> : null}
@@ -698,15 +700,15 @@ export default function Radar() {
             </CardContent>
           </Card>
 
-          <Card className="glass border-primary/30">
-            <CardHeader className="pb-3">
+          <Card className="glass overflow-hidden border-primary/30">
+            <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <MessageCircle className="h-5 w-5 text-primary" />
                 Radares que voce recebeu
               </CardTitle>
               <CardDescription>Quando alguem usar o radar perto da sua cidade, o aviso aparece aqui com botao de conversa.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 p-4 pt-0 sm:p-6 sm:pt-0">
               {isLoading ? (
                 <div className="py-6 text-center text-muted-foreground">Carregando avisos recebidos...</div>
               ) : incoming.length === 0 ? (
@@ -716,7 +718,7 @@ export default function Radar() {
                 </div>
               ) : (
                 incoming.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-border/50 bg-secondary/40 p-4">
+                  <div key={item.id} className="rounded-xl border border-border/50 bg-secondary/40 p-3.5 sm:p-4">
                     <div className="mb-3 flex items-start gap-3">
                       <div className="h-12 w-12 overflow-hidden rounded-full bg-secondary">
                         {item.sender.avatar ? (
@@ -748,7 +750,7 @@ export default function Radar() {
                       <Badge variant="secondary">{item.radius} km</Badge>
                       <Badge variant="secondary">{item.durationHours} h</Badge>
                     </div>
-                    <Button className="w-full gap-2 bg-gradient-primary hover:opacity-90" onClick={() => void handleContactRadar(item.id)}>
+                    <Button className="h-11 w-full gap-2 rounded-xl bg-gradient-primary hover:opacity-90" onClick={() => void handleContactRadar(item.id)}>
                       <MessageCircle className="h-4 w-4" />
                       Conversar sobre este radar
                     </Button>
@@ -758,33 +760,33 @@ export default function Radar() {
             </CardContent>
           </Card>
 
-          <Card className="glass">
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-3 gap-4 text-center">
+          <Card className="glass overflow-hidden">
+            <CardContent className="p-4 sm:pt-6">
+              <div className="grid grid-cols-3 gap-2 text-center sm:gap-4">
                 <div>
-                  <p className="text-2xl font-bold text-primary">{totalDeliveries}</p>
+                  <p className="text-xl font-bold text-primary sm:text-2xl">{totalDeliveries}</p>
                   <p className="text-xs text-muted-foreground">Receberam</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-primary">{totalViews}</p>
+                  <p className="text-xl font-bold text-primary sm:text-2xl">{totalViews}</p>
                   <p className="text-xs text-muted-foreground">Visualizaram</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-primary">{totalResponses}</p>
+                  <p className="text-xl font-bold text-primary sm:text-2xl">{totalResponses}</p>
                   <p className="text-xs text-muted-foreground">Conversaram</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="glass border-primary/30">
-            <CardHeader className="pb-3">
+          <Card className="glass overflow-hidden border-primary/30">
+            <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Sparkles className="h-5 w-5 text-primary" />
                 Como o radar funciona
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li className="flex items-start gap-2">
                   <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-success" />

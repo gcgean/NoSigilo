@@ -205,7 +205,7 @@ function PhotoItem({
       {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary pointer-events-none">Principal</Badge>}
 
       {/* Hover overlay — desktop only */}
-      <div className="absolute inset-0 bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 pointer-events-none sm:pointer-events-auto">
+      <div className="absolute inset-0 bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 pointer-events-none sm:group-hover:pointer-events-auto">
         <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onSetMain(photo.id)}>
           <Edit2 className="w-4 h-4" />
         </Button>

@@ -257,13 +257,13 @@ export default function Match() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[430px] px-2 sm:max-w-lg sm:px-0 min-w-0 overflow-x-hidden">
-      <div className="mb-3 flex items-center justify-between gap-3 sm:mb-6 min-w-0">
+    <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0">
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>
           <p className="text-[0.98rem] font-normal text-muted-foreground/90 sm:text-lg">Encontre sua conexão</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex shrink-0 items-center gap-2">
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -281,13 +281,13 @@ export default function Match() {
                     .catch(() => setLikedProfiles([]))
                     .finally(() => setIsLoadingLikedProfiles(false));
                 }}
-                className="h-11 rounded-xl gap-2 px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
+                className="h-11 rounded-xl gap-2 px-3 text-sm font-medium sm:h-9 sm:rounded-md"
               >
                 <Heart className="w-4 h-4" />
                 Curtidos ({likedProfiles.length})
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80">
+            <PopoverContent className="w-[calc(100vw-2rem)] max-w-80">
               <p className="font-semibold mb-3">Perfis que você curtiu</p>
               {isLoadingLikedProfiles ? <p className="text-sm text-muted-foreground">Carregando...</p> : null}
               {!isLoadingLikedProfiles && likedProfiles.length === 0 ? (
@@ -352,7 +352,7 @@ export default function Match() {
         </button>
       )}
 
-      <div className="relative aspect-[3/4] max-h-[80dvh] sm:aspect-[3/4] sm:max-h-[600px]">
+      <div className="relative h-[min(68dvh,520px)] min-h-[390px] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && premiumAccess && (
           <div className="absolute inset-0">
             <MobileState
@@ -428,32 +428,32 @@ export default function Match() {
               </div>
             )}
 
-              <div className="absolute bottom-0 left-0 right-0 p-5 sm:p-6">
-                <div className="flex items-end justify-between gap-3">
-                  <div className="min-w-0">
+              <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
+                <div className="flex min-w-0 items-end justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <button
                       type="button"
-                      className="text-left text-[clamp(1.55rem,7vw,2.05rem)] sm:text-3xl font-semibold leading-tight tracking-tight text-white mb-1 break-words hover:underline"
+                      className="mb-1 text-left text-[clamp(1.45rem,7vw,2.05rem)] font-semibold leading-tight tracking-tight text-white break-words hover:underline sm:text-3xl"
                       onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
                     >
                       {currentProfile.name}
                       {age !== null ? `, ${age}` : ''}
                     </button>
                     {identityLine ? (
-                      <div className="mb-3 text-[0.98rem] sm:text-sm text-white/75 font-normal">{identityLine}</div>
+                      <div className="mb-3 text-[0.95rem] font-normal text-white/75 sm:text-sm">{identityLine}</div>
                     ) : (
                       <div className="flex items-center gap-1 text-[0.98rem] sm:text-sm text-white/75 mb-3 font-normal">
                         <MapPin className="w-4 h-4" />
                         <span className="truncate">{cityLine || '—'}</span>
                       </div>
                     )}
-                    <p className="text-white/80 text-[0.98rem] sm:text-sm font-normal line-clamp-2 mb-4">{currentProfile.bio || ''}</p>
+                    <p className="mb-4 line-clamp-2 text-[0.95rem] font-normal text-white/80 sm:text-sm">{currentProfile.bio || ''}</p>
                     
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="h-10 rounded-xl bg-white/20 px-4 text-sm font-medium text-white border-none backdrop-blur-md gap-2 hover:bg-white/30 sm:h-9 sm:rounded-md sm:px-3"
+                      className="h-10 rounded-xl border-none bg-white/20 px-3 text-sm font-medium text-white backdrop-blur-md gap-2 hover:bg-white/30 sm:h-9 sm:rounded-md"
                       onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
                     >
                       <User className="h-4 w-4" /> Ver Perfil
@@ -461,7 +461,7 @@ export default function Match() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="h-10 rounded-xl bg-primary/80 px-4 text-sm font-medium text-white border-none backdrop-blur-md gap-2 hover:bg-primary sm:h-9 sm:rounded-md sm:px-3"
+                      className="h-10 rounded-xl border-none bg-primary/80 px-3 text-sm font-medium text-white backdrop-blur-md gap-2 hover:bg-primary sm:h-9 sm:rounded-md"
                       onClick={() => void handleOpenChat()}
                     >
                       <MessageCircle className="h-4 w-4" /> Mandar msg

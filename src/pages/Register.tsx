@@ -234,37 +234,37 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-start justify-center overflow-x-hidden bg-background p-2 py-3 sm:items-center sm:p-4">
       <div className="absolute inset-0 bg-gradient-hero" />
 
-      <div className="relative z-10 w-full max-w-lg">
-        <Link to="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors">
+      <div className="relative z-10 w-full max-w-lg min-w-0">
+        <Link to="/" className="mb-4 inline-flex min-h-10 items-center gap-2 text-muted-foreground transition-colors hover:text-foreground sm:mb-8">
           <ArrowLeft className="w-4 h-4" />
           Voltar
         </Link>
 
-        <div className="glass-strong rounded-2xl p-8 shadow-glow">
-          <div className="flex items-center gap-3 mb-6">
+        <div className="glass-strong rounded-2xl p-5 shadow-glow sm:p-8">
+          <div className="mb-5 flex min-w-0 items-center gap-3 sm:mb-6">
             <BrandLogo size="md" showText={false} />
-            <div>
-              <h1 className="text-2xl font-bold">Criar Conta</h1>
+            <div className="min-w-0">
+              <h1 className="text-2xl font-bold leading-tight">Criar Conta</h1>
               <p className="text-muted-foreground text-sm">Passo {currentStep} de 4</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-8">
+          <div className="mb-6 flex items-center gap-1.5 sm:mb-8 sm:gap-2">
             {steps.map((step, idx) => (
               <div key={step.id} className="flex items-center flex-1">
                 <div
                   className={cn(
-                    'w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all',
+                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-all sm:h-8 sm:w-8',
                     currentStep >= step.id ? 'bg-gradient-primary text-primary-foreground shadow-glow' : 'bg-secondary text-muted-foreground'
                   )}
                 >
                   {step.id}
                 </div>
                 {idx < steps.length - 1 && (
-                  <div className={cn('flex-1 h-1 mx-2 rounded-full transition-all', currentStep > step.id ? 'bg-primary' : 'bg-secondary')} />
+                  <div className={cn('mx-1.5 h-1 flex-1 rounded-full transition-all sm:mx-2', currentStep > step.id ? 'bg-primary' : 'bg-secondary')} />
                 )}
               </div>
             ))}
@@ -277,7 +277,7 @@ export default function Register() {
                   <Label htmlFor="name">Nome</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                    <Input id="name" placeholder="Seu nome" value={formData.name} onChange={(e) => updateField('name', e.target.value)} className="pl-10" required />
+                    <Input id="name" placeholder="Seu nome" value={formData.name} onChange={(e) => updateField('name', e.target.value)} className="h-12 rounded-xl pl-10 text-base sm:h-10 sm:rounded-md sm:text-sm" required />
                   </div>
                 </div>
 
@@ -291,7 +291,7 @@ export default function Register() {
                       placeholder="seu@email.com"
                       value={formData.email}
                       onChange={(e) => updateField('email', e.target.value)}
-                      className="pl-10"
+                      className="h-12 rounded-xl pl-10 text-base sm:h-10 sm:rounded-md sm:text-sm"
                       required
                     />
                   </div>
@@ -307,7 +307,7 @@ export default function Register() {
                       placeholder="••••••••"
                       value={formData.password}
                       onChange={(e) => updateField('password', e.target.value)}
-                      className="pl-10"
+                      className="h-12 rounded-xl pl-10 text-base sm:h-10 sm:rounded-md sm:text-sm"
                       required
                     />
                   </div>
@@ -316,10 +316,10 @@ export default function Register() {
                 <div className="space-y-2">
                   <Label>Meu perfil principal</Label>
                   <Select value={formData.gender} onValueChange={(v) => updateField('gender', v)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm">
                       <SelectValue placeholder="Selecione como seu perfil será exibido" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[50dvh]">
                       {genderOptions.map((g) => (
                         <SelectItem key={g.value} value={g.value}>
                           {g.label}
@@ -341,7 +341,7 @@ export default function Register() {
                   Priorizamos principalmente casais, mulheres solteiras e homens solteiros com base no perfil que mais combina com {isCouple ? 'vocês' : 'você'}.
                 </p>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:grid-cols-3">
                   {genderOptions.map((opt) => {
                     const selected = formData.lookingFor.includes(opt.value);
                     return (
@@ -354,12 +354,12 @@ export default function Register() {
                           if (e.key === 'Enter' || e.key === ' ') setLookingFor(opt.value, !selected);
                         }}
                         className={cn(
-                          'relative overflow-hidden rounded-xl border p-4 text-left transition-all',
+                          'relative min-h-[92px] overflow-hidden rounded-xl border p-3.5 text-left transition-all sm:p-4',
                           selected ? 'border-primary bg-primary/10 shadow-glow' : 'border-border hover:bg-secondary/40'
                         )}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div>
+                          <div className="min-w-0">
                             <p className="font-medium leading-tight">{opt.label}</p>
                             <p className="text-xs text-muted-foreground mt-1">{opt.hint}</p>
                           </div>
@@ -396,7 +396,7 @@ export default function Register() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-4 min-[380px]:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="state">Estado (UF)</Label>
                     <Input
@@ -404,7 +404,7 @@ export default function Register() {
                       placeholder="SP"
                       value={formData.state}
                       onChange={(e) => updateField('state', e.target.value.toUpperCase().slice(0, 2))}
-                      className="uppercase"
+                      className="h-12 rounded-xl text-base uppercase sm:h-10 sm:rounded-md sm:text-sm"
                     />
                   </div>
                   <div className="space-y-2">
@@ -412,7 +412,7 @@ export default function Register() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full"
+                      className="h-12 w-full rounded-xl sm:h-10 sm:rounded-md"
                       onClick={() => {
                         updateField('city', '');
                         updateField('state', '');
@@ -426,10 +426,10 @@ export default function Register() {
             )}
 
             {currentStep === 4 && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="p-6 rounded-xl bg-secondary/30 border space-y-4">
+              <div className="space-y-5 animate-fade-in sm:space-y-6">
+                <div className="rounded-xl border bg-secondary/30 p-4 space-y-4 sm:p-6">
                   <h3 className="font-semibold">Só falta criar o seu acesso</h3>
-                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-muted-foreground space-y-2">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-sm text-muted-foreground space-y-2 sm:p-4">
                     <p className="font-medium text-foreground">Antes de continuar</p>
                     <p>O NoSigilo é uma plataforma +18 para interações adultas consensuais, com foco principal em casais e singles femininos e masculinos.</p>
                     <p>Ao criar a conta, você confirma que é maior de idade e concorda em respeitar privacidade, consentimento, discrição e as regras da comunidade.</p>
@@ -441,7 +441,7 @@ export default function Register() {
                         type="checkbox"
                         checked={formData.acceptTerms}
                         onChange={(e) => updateField('acceptTerms', e.target.checked)}
-                        className="mt-1 h-4 w-4 accent-primary"
+                        className="mt-1 h-5 w-5 shrink-0 accent-primary"
                       />
                       <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed">
                         Declaro que tenho 18 anos ou mais e aceito os{' '}
@@ -461,13 +461,13 @@ export default function Register() {
                       </label>
                     </div>
 
-                    <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90 shadow-glow" disabled={isLoading || !formData.acceptTerms}>
+                    <Button type="submit" className="h-12 w-full rounded-xl bg-gradient-primary shadow-glow hover:opacity-90 sm:h-10 sm:rounded-md" disabled={isLoading || !formData.acceptTerms}>
                       {isLoading ? 'Criando...' : 'Concluir cadastro'}
                     </Button>
                   </div>
                 </div>
 
-                <div className="p-6 rounded-xl bg-secondary/30 border space-y-4">
+                <div className="rounded-xl border bg-secondary/30 p-4 space-y-4 sm:p-6">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Users className="w-4 h-4 text-primary" />
                     Conheçam novas pessoas!
@@ -476,7 +476,7 @@ export default function Register() {
                   {isLoadingSuggestions && <p className="text-sm text-muted-foreground">Carregando sugestões...</p>}
                   {!isLoadingSuggestions && suggestions.length === 0 && <p className="text-sm text-muted-foreground">Sem sugestões por enquanto. Você pode continuar.</p>}
                   {!isLoadingSuggestions && suggestions.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {suggestions.map((u: any) => {
                         const id = String(u.id);
                         const selected = selectedSuggestionIds.includes(id);
@@ -508,7 +508,7 @@ export default function Register() {
                             <p className="font-medium truncate">{u.name}</p>
                             <p className="text-xs text-muted-foreground truncate">{u.city ? `${u.city}${u.state ? `, ${u.state}` : ''}` : ''}</p>
                             <div className="mt-2">
-                              <Button type="button" variant="outline" size="sm" className="w-full" onClick={(e) => e.stopPropagation()}>
+                              <Button type="button" variant="outline" size="sm" className="h-9 w-full rounded-lg" onClick={(e) => e.stopPropagation()}>
                                 {selected ? 'Selecionado' : 'Favoritar'}
                               </Button>
                             </div>
@@ -521,9 +521,9 @@ export default function Register() {
               </div>
             )}
 
-            <div className="flex gap-3 mt-8">
+            <div className="mt-6 flex gap-3 sm:mt-8">
               {currentStep > 1 && (
-                <Button type="button" variant="outline" onClick={handleBack} className="flex-1">
+                <Button type="button" variant="outline" onClick={handleBack} className="h-12 flex-1 rounded-xl sm:h-10 sm:rounded-md">
                   Voltar
                 </Button>
               )}
@@ -533,7 +533,7 @@ export default function Register() {
                   type="button" 
                   onClick={handleNext} 
                   disabled={isLoading}
-                  className="flex-1 bg-gradient-primary hover:opacity-90 gap-2"
+                  className="h-12 flex-1 rounded-xl bg-gradient-primary hover:opacity-90 gap-2 sm:h-10 sm:rounded-md"
                 >
                   {isLoading ? 'Verificando...' : 'Próximo'}
                   {!isLoading && <ArrowRight className="w-4 h-4" />}

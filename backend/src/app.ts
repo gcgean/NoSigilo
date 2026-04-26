@@ -5642,7 +5642,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow] = await Promise.all([
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
@@ -5739,6 +5739,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
              ${cityUsersFromIso ? 'AND u.created_at >= ?' : ''}`,
           cityUsersFromIso ? [cityUsersFromIso] : []
         ),
+        queryAll(
+          db,
+          `SELECT COALESCE(NULLIF(TRIM(device_type), ''), 'desktop') AS device_label, COUNT(*) AS c
+           FROM site_visits
+           GROUP BY device_label
+           ORDER BY c DESC`
+        ),
       ]);
 
       const history = rows.map((row: any) => ({
@@ -5780,8 +5787,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       };
 
       const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
+      const totalVisits = Number((totalRow as any)?.c || 0);
       res.json({
-        total: Number((totalRow as any)?.c || 0),
+        total: totalVisits,
         today: Number((todayRow as any)?.c || 0),
         last7Days: Number((last7DaysRow as any)?.c || 0),
         uniqueToday: Number((uniqueTodayRow as any)?.c || 0),
@@ -5805,6 +5813,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             ? Number(((Number(row.c || 0) / totalUsersByCity) * 100).toFixed(2))
             : 0,
         })),
+        byDevice: (deviceRows as any[]).map((row: any) => {
+          const count = Number(row.c || 0);
+          const rawLabel = String(row.device_label || 'desktop').toLowerCase();
+          const label = rawLabel === 'mobile'
+            ? 'mobile'
+            : rawLabel === 'tablet'
+              ? 'tablet'
+              : 'desktop';
+          return {
+            label,
+            count,
+            percentage: totalVisits > 0 ? Number(((count / totalVisits) * 100).toFixed(2)) : 0,
+          };
+        }),
         cityUsersTotal: totalUsersByCity,
         cityUsersPeriodDays,
         topUsers: (topUsersRows as any[]).map((row: any) => {

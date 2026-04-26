@@ -977,7 +977,7 @@ export default function Feed() {
   };
 
   return (
-    <div className="w-full min-w-0 overflow-x-hidden">
+    <div className="w-full min-w-0 overflow-x-hidden pb-24 md:pb-0">
       {hasNewPosts ? (
         <div className="mb-4">
           <Card className="p-3 glass flex items-center justify-between">
@@ -1086,12 +1086,12 @@ export default function Feed() {
         </Card>
       ) : (
       <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
-        <div className="flex gap-3 sm:gap-4">
-          <Avatar>
+        <div className="flex min-w-0 gap-3 sm:gap-4">
+          <Avatar className="h-10 w-10 shrink-0">
             <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
             <AvatarFallback>{String(user?.name || 'U')[0]}</AvatarFallback>
           </Avatar>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <Textarea
               ref={composerRef}
               placeholder="O que está pensando?"
@@ -1185,8 +1185,8 @@ export default function Feed() {
               </div>
             )}
 
-            <div className="mt-3 flex items-center justify-between border-t pt-3 sm:mt-4 sm:pt-4">
-              <div className="flex gap-2">
+            <div className="mt-3 flex flex-col gap-3 border-t pt-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:mt-4 sm:pt-4">
+              <div className="flex min-w-0 flex-wrap gap-2">
                 <Button
                   type="button"
                   variant={activePicker === 'image' ? 'default' : 'ghost'}
@@ -1216,7 +1216,7 @@ export default function Feed() {
               </div>
               <Button
                 size="sm"
-                className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
+                className="h-11 w-full rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 min-[420px]:w-auto min-[420px]:shrink-0 sm:h-9 sm:rounded-md sm:px-3"
                 disabled={(!postContent.trim() && attachments.length === 0) || isPublishing}
                 onClick={handlePublish}
               >
@@ -1239,12 +1239,18 @@ export default function Feed() {
       <div className="grid min-w-0 gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
         <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
-          <Card className="p-3 glass">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Card className="overflow-hidden p-3 glass">
+            <div className={cn(
+              'flex min-w-0 items-center gap-2',
+              feedFilter === 'experiences'
+                ? 'flex-wrap'
+                : 'flex-nowrap overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+            )}>
               <Button
                 type="button"
                 size="sm"
                 variant={feedFilter === 'all' ? 'secondary' : 'ghost'}
+                className="shrink-0"
                 onClick={() => setFeedFilter('all')}
               >
                 Todos
@@ -1253,6 +1259,7 @@ export default function Feed() {
                 type="button"
                 size="sm"
                 variant={feedFilter === 'experiences' ? 'secondary' : 'ghost'}
+                className="shrink-0"
                 onClick={() => setFeedFilter('experiences')}
               >
                 Experiências
@@ -1274,7 +1281,7 @@ export default function Feed() {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-11 rounded-xl gap-2 border-primary/30 bg-background px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
+                className="h-11 shrink-0 rounded-xl gap-2 border-primary/30 bg-background px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
                 onClick={() => navigate('/reels')}
               >
                 <Clapperboard className="h-4 w-4" />
@@ -1287,7 +1294,7 @@ export default function Feed() {
                 onClick={() => setFeedFilter('favorites')}
                 disabled={favorites.length === 0}
                 className={cn(
-                  'gap-2',
+                  'shrink-0 gap-2',
                   feedFilter === 'favorites'
                     ? 'animate-liked-filter border-0 bg-gradient-primary text-white hover:opacity-95 motion-reduce:animate-none'
                     : 'border-primary/50 bg-primary/5 text-primary hover:bg-primary/10'

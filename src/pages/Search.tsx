@@ -240,11 +240,11 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
+    <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden pb-24 md:pb-0">
       {/* Header */}
       <div className="mb-4 sm:mb-6">
         <h1 className="mb-1.5 text-[1.8rem] font-bold sm:mb-2 sm:text-2xl">Buscar</h1>
-        <p className="text-muted-foreground">Encontre casais e singles compatíveis com o seu interesse</p>
+        <p className="text-[0.98rem] leading-6 text-muted-foreground sm:text-base">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
 
       {/* Search & Filters */}
@@ -255,18 +255,18 @@ export default function SearchPage() {
             placeholder="Buscar por nome ou cidade..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="h-11 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-[15px] focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
+            className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
           />
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex sm:flex-row">
           <Button
             type="button"
             variant={onlyLiked ? 'default' : 'outline'}
             onClick={() => setOnlyLiked((prev) => !prev)}
             className={
               onlyLiked
-                ? 'animate-liked-filter h-11 rounded-xl gap-2 border-0 bg-gradient-primary px-4 text-sm font-medium text-white hover:opacity-95 motion-reduce:animate-none'
-                : 'h-11 rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-primary hover:bg-primary/10'
+                ? 'animate-liked-filter h-11 w-full justify-center rounded-xl gap-2 border-0 bg-gradient-primary px-4 text-sm font-medium text-white hover:opacity-95 motion-reduce:animate-none'
+                : 'h-11 w-full justify-center rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-primary hover:bg-primary/10'
             }
           >
             <Heart className={onlyLiked ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
@@ -284,7 +284,7 @@ export default function SearchPage() {
           <Button
             variant={showFilters ? 'default' : 'outline'}
             onClick={() => setShowFilters(!showFilters)}
-            className="h-11 rounded-xl gap-2 px-4 text-sm font-medium sm:self-auto"
+            className="h-11 w-full justify-center rounded-xl gap-2 px-4 text-sm font-medium sm:self-auto"
           >
             <Filter className="w-4 h-4" />
             Filtros
@@ -299,7 +299,7 @@ export default function SearchPage() {
             <div>
               <label className="text-sm font-medium mb-2 block">Idade</label>
               <Select value={ageRange} onValueChange={setAgeRange}>
-                <SelectTrigger>
+                <SelectTrigger className="h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm">
                   <SelectValue placeholder="Qualquer" />
                 </SelectTrigger>
                 <SelectContent>
@@ -312,11 +312,11 @@ export default function SearchPage() {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block text-center md:text-left">Radar (km)</label>
+              <label className="text-sm font-medium mb-2 block">Radar (km)</label>
               <div className="relative">
                 <RadarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Select value={radar} onValueChange={setRadar}>
-                  <SelectTrigger className="pl-9">
+                  <SelectTrigger className="h-12 rounded-xl pl-9 text-base sm:h-10 sm:rounded-md sm:text-sm">
                     <SelectValue placeholder="Raio de busca" />
                   </SelectTrigger>
                   <SelectContent>
@@ -334,7 +334,7 @@ export default function SearchPage() {
                 variant="outline"
                 onClick={() => void handleUseDeviceRadar()}
                 disabled={isLocating}
-                className="mt-2 h-9 w-full justify-center gap-2 text-xs sm:text-sm"
+                className="mt-2 h-11 w-full justify-center gap-2 rounded-xl text-sm"
               >
                 <MapPin className="h-4 w-4" />
                 {isLocating ? 'Obtendo localização...' : 'Usar GPS do dispositivo'}
@@ -353,15 +353,15 @@ export default function SearchPage() {
 
           <div>
             <label className="text-sm font-medium mb-3 block">Perfis que você quer encontrar</label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-4 gap-x-2">
+            <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2 sm:grid-cols-4 sm:gap-y-4">
               {genderOptions.map((opt) => (
                 <div
                   key={opt.value}
-                  className="flex items-center space-x-2 group cursor-pointer"
+                  className="group flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-border/60 bg-background/70 p-3 transition-colors hover:border-primary/40 hover:bg-primary/5 sm:border-0 sm:bg-transparent sm:p-0"
                   onClick={() => handleGenderToggle(opt.value)}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
                       selectedGenders.includes(opt.value)
                         ? 'border-primary bg-primary/10'
                         : 'border-muted-foreground/30 group-hover:border-primary/50'
@@ -371,7 +371,7 @@ export default function SearchPage() {
                       <div className="w-2.5 h-2.5 rounded-full bg-primary" />
                     )}
                   </div>
-                  <span className="text-sm cursor-pointer select-none">{opt.label}</span>
+                  <span className="min-w-0 cursor-pointer select-none text-sm leading-tight">{opt.label}</span>
                 </div>
               ))}
             </div>
@@ -398,7 +398,7 @@ export default function SearchPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+          <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 md:gap-4">
             {displayResults.map((profile) => {
               const age = calculateAge(profile.birthDate);
               const avatarUrl = profile.mainMediaUrl
@@ -409,9 +409,9 @@ export default function SearchPage() {
                 <NavLink
                   key={profile.id}
                   to={getUserProfileHref(profile.id, undefined, '/search')}
-                  className="group relative overflow-hidden rounded-xl cursor-pointer transition-all hover:shadow-glow"
+                  className="group relative min-w-0 cursor-pointer overflow-hidden rounded-2xl transition-all hover:shadow-glow"
                 >
-                  <div className="aspect-[3/4] w-full h-full">
+                  <div className="aspect-[4/5] w-full min-[420px]:aspect-[3/4]">
                     <UserAvatar
                       user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
                       className="w-full h-full rounded-none"
@@ -448,11 +448,11 @@ export default function SearchPage() {
 
                   {/* Info */}
                   <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
-                    <h3 className="text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
+                    <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
                       {profile.name}{age ? `, ${age}` : ''}
                     </h3>
                     {formatProfileIdentityLine(profile) ? (
-                      <div className="text-xs text-white/70 sm:text-sm">
+                      <div className="truncate text-xs text-white/70 sm:text-sm">
                         {formatProfileIdentityLine(profile)}
                       </div>
                     ) : (
@@ -464,7 +464,7 @@ export default function SearchPage() {
                   </div>
 
                   {/* Hover action */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
                     <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
                       <Heart className="w-6 h-6" />
                     </Button>
@@ -476,7 +476,7 @@ export default function SearchPage() {
 
           {/* Infinite scroll sentinel */}
           {!onlyLiked && (
-            <div ref={sentinelRef} className="mt-6 flex justify-center min-h-[40px]">
+            <div ref={sentinelRef} className="mt-6 flex min-h-[40px] justify-center pb-6">
               {isLoadingMore && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />

@@ -186,7 +186,7 @@ export default function Reels() {
     }
   }, [isMobile, isMobileMaximized]);
 
-  const reelViewportHeight = isMobile && isMobileMaximized ? '100dvh' : 'calc(100dvh - 8rem)';
+  const reelViewportHeight = isMobile && isMobileMaximized ? '100dvh' : 'calc(100dvh - 8.75rem)';
 
   useEffect(() => {
     let cancelled = false;
@@ -586,7 +586,7 @@ export default function Reels() {
 
   if (isLoading) {
     return (
-      <div className="flex h-[calc(100dvh-8rem)] items-center justify-center">
+      <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
         <MobileState
           loading
           title="Carregando Rap"
@@ -599,7 +599,7 @@ export default function Reels() {
   if (reelsWithMeta.length === 0) {
     if (hasLockedVideos) {
       return (
-        <div className="flex h-[calc(100dvh-8rem)] items-center justify-center px-4">
+        <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
           <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
             <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <Lock className="h-6 w-6 text-primary" />
@@ -621,7 +621,7 @@ export default function Reels() {
       );
     }
     return (
-      <div className="flex h-[calc(100dvh-8rem)] items-center justify-center">
+      <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
         <MobileState
           icon={Clapperboard}
           title="Nenhum vídeo disponível"
@@ -634,7 +634,7 @@ export default function Reels() {
   return (
     <div
       ref={containerRef}
-      className="relative overflow-y-scroll"
+      className="relative min-w-0 overflow-y-scroll"
       style={{
         height: reelViewportHeight,
         scrollSnapType: 'y mandatory',
@@ -668,7 +668,7 @@ export default function Reels() {
           key={reel.id}
           ref={(node) => { itemRefs.current[reel.id] = node; }}
           data-reel-id={reel.id}
-          className="relative flex w-full items-center justify-center bg-black"
+          className="relative flex w-full min-w-0 items-center justify-center overflow-hidden bg-black"
           style={{
             height: reelViewportHeight,
             scrollSnapAlign: 'start',
@@ -692,12 +692,12 @@ export default function Reels() {
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
           {/* Right side actions */}
-          <div className="absolute right-3 top-1/2 flex -translate-y-1/2 flex-col items-center gap-4">
+          <div className="absolute bottom-36 right-2.5 flex flex-col items-center gap-3 sm:right-3 md:top-1/2 md:bottom-auto md:-translate-y-1/2 md:gap-4">
             {/* Maximize (mobile) */}
             <button
               type="button"
               onClick={() => setIsMobileMaximized((prev) => !prev)}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60 md:hidden"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11 md:hidden"
               aria-label={isMobileMaximized ? 'Desfazer maximização' : 'Maximizar vídeo'}
             >
               {isMobileMaximized ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
@@ -707,7 +707,7 @@ export default function Reels() {
             <button
               type="button"
               onClick={() => toggleMute(reel.id)}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 text-white backdrop-blur-sm transition hover:bg-black/60"
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11"
             >
               {mutedById[reel.id] ?? true
                 ? <VolumeX className="h-5 w-5" />
@@ -716,7 +716,7 @@ export default function Reels() {
 
             {/* Like */}
             <button type="button" onClick={() => void handleToggleLike(reel)} className="flex flex-col items-center gap-1 text-white">
-              <div className={`flex h-11 w-11 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 ${likedByPostId[reel.postId] ? 'bg-rose-500/70' : 'bg-black/40'}`}>
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11 ${likedByPostId[reel.postId] ? 'bg-rose-500/75' : 'bg-black/45'}`}>
                 <Heart className={`h-5 w-5 ${likedByPostId[reel.postId] ? 'fill-white' : ''}`} />
               </div>
               <span className="text-xs font-medium text-white/85">{reel.stats.likesCount}</span>
@@ -728,7 +728,7 @@ export default function Reels() {
               onClick={() => void openComments(reel)}
               className="flex flex-col items-center gap-1 text-white"
             >
-              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm transition hover:bg-black/60">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11">
                 <MessageCircle className="h-5 w-5" />
               </div>
               <span className="text-xs font-medium text-white/85">{reel.stats.commentsCount}</span>
@@ -736,9 +736,9 @@ export default function Reels() {
           </div>
 
           {/* Bottom info */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 pb-6 text-white">
+          <div className="absolute bottom-0 left-0 right-0 p-3 pb-5 pr-16 text-white sm:p-4 sm:pb-6 sm:pr-20">
             {/* Author */}
-            <div className="mb-3 flex items-center gap-3">
+            <div className="mb-3 flex min-w-0 items-center gap-2.5 sm:gap-3">
               <button
                 type="button"
                 className="overflow-hidden rounded-full ring-2 ring-white/30"
@@ -772,7 +772,7 @@ export default function Reels() {
               <Button
                 type="button"
                 size="sm"
-                className="h-9 shrink-0 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-white hover:opacity-90"
+                className="h-10 shrink-0 rounded-xl bg-gradient-primary px-3 text-sm font-semibold text-white hover:opacity-90 sm:h-9 sm:px-4"
                 onClick={() => navigate(getUserProfileHref(reel.author.id, user?.id, '/rap'))}
               >
                 Ver perfil
@@ -781,7 +781,7 @@ export default function Reels() {
 
             {/* Caption */}
             {reel.content ? (
-              <p className="line-clamp-2 text-sm leading-6 text-white/90">{reel.content}</p>
+              <p className="line-clamp-2 text-sm leading-5 text-white/90 sm:leading-6">{reel.content}</p>
             ) : null}
 
             {/* Swipe hint — only on first video */}
@@ -820,14 +820,14 @@ export default function Reels() {
           }
         }}
       >
-        <DialogContent className="max-h-[85dvh] w-[min(92vw,34rem)] overflow-hidden rounded-2xl border-zinc-800 bg-zinc-950 p-0 text-white">
-          <DialogHeader className="border-b border-white/10 px-5 py-4 text-left">
+        <DialogContent className="max-h-[90dvh] w-[min(94vw,34rem)] overflow-hidden rounded-2xl border-zinc-800 bg-zinc-950 p-0 text-white">
+          <DialogHeader className="border-b border-white/10 px-4 py-3 text-left sm:px-5 sm:py-4">
             <DialogTitle className="text-base font-semibold">
               {commentsOpenFor ? `Comentários de ${commentsOpenFor.author.name}` : 'Comentários'}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="max-h-[52dvh] overflow-y-auto px-5 py-4">
+          <div className="max-h-[54dvh] overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
             {isLoadingComments ? (
               <div className="py-10 text-center text-sm text-white/60">Carregando comentários...</div>
             ) : comments.length === 0 ? (
@@ -911,20 +911,20 @@ export default function Reels() {
             )}
           </div>
 
-          <div className="border-t border-white/10 px-5 py-4">
+          <div className="border-t border-white/10 px-4 py-3 sm:px-5 sm:py-4">
             <div className="space-y-2">
-              <div className="flex items-end gap-3">
+              <div className="flex items-end gap-2 sm:gap-3">
                 <Textarea
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}
                   placeholder="Comentar vídeo..."
-                  className="min-h-[96px] resize-none border-white/10 bg-white text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500"
+                  className="min-h-[72px] resize-none rounded-xl border-white/10 bg-white text-base text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500 sm:min-h-[96px] sm:text-sm"
                 />
                 <Button
                   type="button"
                   onClick={() => void handleSubmitComment()}
                   disabled={isSendingComment || !commentDraft.trim()}
-                  className="h-12 shrink-0 rounded-xl bg-gradient-primary px-4 text-white hover:opacity-90"
+                  className="h-12 w-12 shrink-0 rounded-xl bg-gradient-primary px-0 text-white hover:opacity-90 sm:px-4"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
