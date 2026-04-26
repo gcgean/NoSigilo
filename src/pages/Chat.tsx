@@ -162,14 +162,12 @@ export default function Chat() {
         const vh = vv ? vv.height : window.innerHeight;
         const vTop = vv ? Math.round(vv.offsetTop) : 0;
         const vLeft = vv ? Math.round(vv.offsetLeft) : 0;
-        const vWidth = vv ? Math.round(vv.width) : window.innerWidth;
         setMobileStyle({
           position: 'fixed',
           top: vTop + headerPx,
           left: vLeft,
-          right: 'auto',
-          height: Math.max(vh - headerPx, 200), // 200 px minimum so it never collapses
-          width: Math.max(vWidth, 280),
+          right: 0,
+          height: Math.max(Math.floor(vh) - headerPx, 200), // 200 px minimum so it never collapses
           zIndex: 30,
         });
       } else {
