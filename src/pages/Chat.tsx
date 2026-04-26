@@ -203,6 +203,9 @@ export default function Chat() {
   useEffect(() => {
     const lock = isMobileViewport && !!selectedChat;
     if (lock) {
+      // Reset horizontal scroll before locking so the fixed chat panel
+      // aligns correctly with the viewport left edge (scrollX must be 0).
+      window.scrollTo(0, window.scrollY);
       document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
     } else {
