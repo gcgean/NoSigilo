@@ -253,6 +253,20 @@ export default function Chat() {
     el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  // When the keyboard opens/closes on mobile the messages container shrinks/grows.
+  // If the user was already at the bottom, keep them there so the latest message
+  // stays visible instead of getting clipped at the bottom edge.
+  useEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 60;
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const adjustMessageInputHeight = () => {
     const el = messageInputRef.current;
     if (!el) return;
