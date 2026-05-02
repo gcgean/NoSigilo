@@ -5,9 +5,42 @@ import { API_URL as RESOLVED_API_URL } from '@/utils/serverUrl';
 export const API_URL = RESOLVED_API_URL;
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 const NETWORK_TOAST_COOLDOWN_MS = 8000;
+const RESUME_NETWORK_GRACE_MS = 12000;
+const RESUME_RETRY_DELAY_MS = 1200;
 let lastNetworkToastAt = 0;
 let lastPremiumToastAt = 0;
 let isHandlingUnauthorized = false;
+let lastVisibilityResumeAt = typeof Date !== 'undefined' ? Date.now() : 0;
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      lastVisibilityResumeAt = Date.now();
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('pageshow', () => {
+    lastVisibilityResumeAt = Date.now();
+  });
+}
+
+function isSafeRetryMethod(method?: string) {
+  const normalized = String(method || 'get').toLowerCase();
+  return normalized === 'get' || normalized === 'head' || normalized === 'options';
+}
+
+function shouldSuppressNetworkToast() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    return true;
+  }
+  return Date.now() - lastVisibilityResumeAt < RESUME_NETWORK_GRACE_MS;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -32,10 +65,23 @@ apiClient.interceptors.request.use(
 // Response interceptor - handle 401
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (!error.response) {
+      const config = (error.config || {}) as typeof error.config & { __resumeRetry?: boolean };
+      const canRetryAfterResume =
+        !config.__resumeRetry &&
+        shouldSuppressNetworkToast() &&
+        isSafeRetryMethod(config.method) &&
+        (typeof navigator === 'undefined' || navigator.onLine !== false);
+
+      if (canRetryAfterResume) {
+        config.__resumeRetry = true;
+        await wait(RESUME_RETRY_DELAY_MS);
+        return apiClient.request(config);
+      }
+
       const now = Date.now();
-      if (now - lastNetworkToastAt > NETWORK_TOAST_COOLDOWN_MS) {
+      if (!shouldSuppressNetworkToast() && now - lastNetworkToastAt > NETWORK_TOAST_COOLDOWN_MS) {
         lastNetworkToastAt = now;
         toast({
           title: 'Servidor indisponível',

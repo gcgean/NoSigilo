@@ -633,6 +633,11 @@ export const adminService = {
     return response.data;
   },
 
+  deletePhoto: async (photoId: string) => {
+    const response = await apiClient.delete(`/admin/photos/${photoId}`);
+    return response.data;
+  },
+
   getUsers: async (params?: { page?: number; limit?: number; search?: string }) => {
     const response = await apiClient.get('/admin/users', { params });
     return response.data;
@@ -645,6 +650,16 @@ export const adminService = {
 
   unbanUser: async (userId: string) => {
     const response = await apiClient.put(`/admin/users/${userId}/unban`);
+    return response.data;
+  },
+
+  deactivateUser: async (userId: string) => {
+    const response = await apiClient.put(`/admin/users/${userId}/deactivate`);
+    return response.data;
+  },
+
+  reactivateUser: async (userId: string) => {
+    const response = await apiClient.put(`/admin/users/${userId}/reactivate`);
     return response.data;
   },
 

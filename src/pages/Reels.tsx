@@ -186,6 +186,11 @@ export default function Reels() {
     }
   }, [isMobile, isMobileMaximized]);
 
+  useEffect(() => {
+    if (!isMobile) return;
+    setIsMobileMaximized(true);
+  }, [isMobile]);
+
   const reelViewportHeight = isMobile && isMobileMaximized ? '100dvh' : 'calc(100dvh - 8.75rem)';
 
   useEffect(() => {

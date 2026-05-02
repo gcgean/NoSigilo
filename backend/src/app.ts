@@ -206,6 +206,18 @@ function limitText(value: string | null | undefined, max = 255) {
   return text.slice(0, max);
 }
 
+function buildExperienceTitle(title: string | null | undefined, description: string) {
+  const explicitTitle = limitText(title, 120);
+  if (explicitTitle && explicitTitle.length >= 3) return explicitTitle;
+
+  const normalized = String(description || '').trim().replace(/\s+/g, ' ');
+  if (!normalized) return 'Experiência';
+
+  const sentence = normalized.split(/[.!?]/)[0]?.trim() || normalized;
+  const derived = sentence.slice(0, 120).trim();
+  return derived.length >= 3 ? derived : 'Experiência';
+}
+
 function getHeaderValue(req: express.Request, headerName: string) {
   const raw = req.headers[headerName.toLowerCase()];
   if (Array.isArray(raw)) return raw[0] || null;
@@ -428,6 +440,11 @@ function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: num
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+function roundDistanceKm(distanceKm: number) {
+  if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
+  return Math.round(distanceKm * 10) / 10;
+}
+
 function mapUserGenderToRadarAudience(gender: string | null | undefined) {
   const value = String(gender || '').trim();
   if (!value) return null;
@@ -633,6 +650,27 @@ async function createNotification(
     createdAt,
   });
   return id;
+}
+
+async function ensureConversationBetweenUsers(db: DbHandle, userAId: string, userBId: string) {
+  const pair = [userAId, userBId].sort((a, b) => a.localeCompare(b));
+  const existing = (await queryOne(
+    db,
+    'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?',
+    [pair[0], pair[1]]
+  )) as any;
+  if (existing?.id) {
+    return String(existing.id);
+  }
+
+  const conversationId = randomUUID();
+  await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [
+    conversationId,
+    pair[0],
+    pair[1],
+    nowIso(),
+  ]);
+  return conversationId;
 }
 
 async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string; targetId: string }): Promise<boolean> {
@@ -1125,6 +1163,35 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   mkdirSync(uploadsDir, { recursive: true });
   mkdirSync(privateUploadsDir, { recursive: true });
 
+  const deleteStoredMedia = async (mediaId: string) => {
+    const media = (await queryOne(
+      db,
+      'SELECT id, user_id, filename, is_main, is_private FROM media WHERE id = ? LIMIT 1',
+      [mediaId]
+    )) as any;
+    if (!media) return null;
+
+    await run(db, 'DELETE FROM media WHERE id = ?', [mediaId]);
+    if (media.is_main && !media.is_private) {
+      await run(db, 'UPDATE users SET avatar = NULL WHERE id = ?', [String(media.user_id)]);
+    }
+    await persist();
+
+    const filename = String(media.filename || '');
+    const candidateDirs = media.is_private
+      ? [privateUploadsDir, ...legacyPrivateUploadsDirCandidates]
+      : [uploadsDir, ...legacyUploadsDirCandidates];
+    for (const dir of candidateDirs) {
+      const filePath = path.join(dir, filename);
+      if (!existsSync(filePath)) continue;
+      try {
+        unlinkSync(filePath);
+      } catch {}
+    }
+
+    return media;
+  };
+
   app.get('/uploads/:filename', async (req, res) => {
     const filename = String(req.params.filename || '');
     if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
@@ -1407,6 +1474,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          LIMIT 1`,
         [inviteToken]
       )) as InviteRow | null;
+      if (!invite) {
+        res.status(404).json({ error: 'invalid_invite' });
+        return;
+      }
+      if (String(invite.status) !== 'created') {
+        res.status(409).json({ error: 'invite_unavailable' });
+        return;
+      }
     }
 
     const existingEmail = await queryOne(db, 'SELECT id FROM users WHERE email = ?', [email]);
@@ -1440,7 +1515,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         email,
         bcrypt.hashSync(parsed.data.password, 10),
         parsed.data.name,
-        null,
+        '',
         null,
         null,
         parsed.data.city ?? null,
@@ -1477,8 +1552,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       );
       await run(
         db,
-        'UPDATE invite_links SET used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
-        [createdAt, createdAt, String(invite.id)]
+        'UPDATE invite_links SET status = ?, approved_at = COALESCE(approved_at, ?), used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
+        ['approved', createdAt, createdAt, createdAt, String(invite.id)]
       );
     }
     await persist();
@@ -1537,14 +1612,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(403).json({ error: 'account_banned' });
       return;
     }
+    if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) === 1) {
+      res.status(403).json({ error: 'account_deactivated_by_admin' });
+      return;
+    }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
     if (!ok) {
       res.status(401).json({ error: 'invalid_credentials' });
       return;
     }
     // Auto-reactivate deactivated profile on successful login
-    if (Number(row.is_deactivated || 0) === 1) {
-      await run(db, 'UPDATE users SET is_deactivated = 0, deactivated_at = NULL WHERE id = ?', [String(row.id)]);
+    if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) !== 1) {
+      await run(
+        db,
+        'UPDATE users SET is_deactivated = 0, deactivated_at = NULL, deactivated_by_admin = 0, deactivated_by = NULL WHERE id = ?',
+        [String(row.id)]
+      );
       await persist();
     }
     if (shouldUseHubBilling(env)) {
@@ -1760,10 +1843,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
   });
 
-  app.get('/api/feed', requireAuth(env, db), async (req, res) => {
+app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at, gender, looking_for_json FROM users WHERE id = ?', [req.auth!.userId]);
+    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at, gender, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId]);
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
+    const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
     const viewerLookingFor = Array.isArray(safeJsonParse((viewerRow as any)?.looking_for_json))
       ? (safeJsonParse((viewerRow as any)?.looking_for_json) as string[])
       : [];
@@ -1771,7 +1855,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
-    const reelsOnlyFilter = includeReelsOnly ? '' : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
+    const reelsOnlyFilter = includeReelsOnly
+      ? 'AND p.is_reels_only = 1'
+      : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
     const fetchLimit = includeReelsOnly ? offset + limit + 1 : limit + 1;
     const queryOffset = includeReelsOnly ? 0 : offset;
     const rows = await queryAll(
@@ -1785,6 +1871,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       WHERE 1=1
         AND (u.is_banned = 0 OR u.is_banned IS NULL)
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
         AND NOT EXISTS (
           SELECT 1 FROM blocks b
           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
@@ -2057,7 +2144,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.post('/api/experiences', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
-      title: z.string().min(3).max(120),
+      title: z.string().max(120).optional().or(z.literal('')),
       description: z.string().min(20).max(6000),
       mediaIds: z.array(z.string()).max(10).optional(),
     });
@@ -2070,7 +2157,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await run(db, 'INSERT INTO experiences (id, user_id, title, description, created_at) VALUES (?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
-      parsed.data.title.trim(),
+      buildExperienceTitle(parsed.data.title, parsed.data.description),
       parsed.data.description.trim(),
       nowIso(),
     ]);
@@ -2290,7 +2377,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.put('/api/profile/deactivate', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
-      await run(db, 'UPDATE users SET is_deactivated = 1, deactivated_at = ? WHERE id = ?', [nowIso(), userId]);
+      await run(
+        db,
+        'UPDATE users SET is_deactivated = 1, deactivated_at = ?, deactivated_by_admin = 0, deactivated_by = NULL WHERE id = ?',
+        [nowIso(), userId]
+      );
       await persist();
       res.json({ ok: true });
     } catch (err) {
@@ -2303,7 +2394,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.put('/api/profile/reactivate', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
-      await run(db, 'UPDATE users SET is_deactivated = 0, deactivated_at = NULL WHERE id = ?', [userId]);
+      await run(
+        db,
+        'UPDATE users SET is_deactivated = 0, deactivated_at = NULL, deactivated_by_admin = 0, deactivated_by = NULL WHERE id = ?',
+        [userId]
+      );
       await persist();
       res.json({ ok: true });
     } catch (err) {
@@ -2352,9 +2447,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
   });
 
-  app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
+app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
     const viewerId = req.auth!.userId;
+    const viewerRow = viewerId === userId ? null : ((await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [viewerId])) as any);
     const row = await queryOne(
       db,
       `
@@ -2371,6 +2467,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         ) as private_photos_count,
         (
           SELECT COUNT(*)
+          FROM media m
+          WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'video/%' AND (m.source IS NULL OR m.source != 'chat')
+        ) as videos_count,
+        (
+          SELECT COUNT(*)
           FROM testimonials t
           WHERE t.profile_user_id = u.id AND t.status = 'approved'
         ) as approved_testimonials_count,
@@ -2385,6 +2486,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       [userId]
     );
     if (!row) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    if (viewerId !== userId && Number((row as any).is_admin || 0) === 1 && Number(viewerRow?.is_admin || 0) !== 1) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
@@ -2406,6 +2511,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       ...rowToPublicUser(row, presence?.isOnline(String(row.id))),
       publicPhotosCount: Number((row as any).public_photos_count || 0),
       privatePhotosCount: Number((row as any).private_photos_count || 0),
+      videosCount: Number((row as any).videos_count || 0),
       testimonialsCount: Number((row as any).approved_testimonials_count || 0),
       profileVisitsCount: Number((row as any).profile_visits_count || 0),
     });
@@ -2458,8 +2564,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   // ─── Search / browse users ───────────────────────────────────────────────
-  app.get('/api/users', requireAuth(env, db), async (req, res) => {
+app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
+    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon FROM users WHERE id = ?', [viewerId])) as any;
+    const viewerIsAdmin = Number(viewerRow?.is_admin || 0) === 1;
     const page   = Math.max(1, Number(req.query.page  || 1));
     const limit  = Math.min(40, Math.max(1, Number(req.query.limit || 20)));
     const offset = (page - 1) * limit;
@@ -2482,6 +2590,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       )`,
     ];
     params.push(viewerId, viewerId, viewerId);
+
+    if (!viewerIsAdmin) {
+      conditions.push('(u.is_admin = 0 OR u.is_admin IS NULL)');
+    }
 
     if (search) {
       conditions.push('(u.name LIKE ? OR u.city LIKE ? OR u.state LIKE ?)');
@@ -2509,13 +2621,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       params.push(minBirth, maxBirth);
     }
 
-    // Get viewer's lat/lon for radar filter
-    let viewerLat: number | null = null;
-    let viewerLon: number | null = null;
+    let viewerLat: number | null = viewerRow?.lat != null ? Number(viewerRow.lat) : null;
+    let viewerLon: number | null = viewerRow?.lon != null ? Number(viewerRow.lon) : null;
     if (radarKm !== null) {
-      const me = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ?', [viewerId])) as any;
-      viewerLat = me?.lat ? Number(me.lat) : null;
-      viewerLon = me?.lon ? Number(me.lon) : null;
       if (viewerLat !== null && viewerLon !== null) {
         const latDelta = radarKm / 111;
         const lonDelta = radarKm / (111 * Math.cos((viewerLat * Math.PI) / 180));
@@ -2530,8 +2638,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // Ordering: online first → last_seen_at DESC (recently seen first) → created_at DESC (newest accounts)
     // Use a JS-generated ISO threshold so the same SQL works in both SQLite and PostgreSQL.
     const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const distanceOrderBy =
+      viewerLat !== null && viewerLon !== null
+        ? `
+      CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
+      ABS(u.lat - ${viewerLat}) + ABS(u.lon - ${viewerLon}) ASC,
+    `
+        : '';
     const orderBy = `
       CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
+      ${distanceOrderBy}
       CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
       u.last_seen_at DESC,
       u.created_at DESC
@@ -2556,9 +2672,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({
       users: slice.map((r: any) => {
         const u = rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false);
+        const distanceKm =
+          viewerLat !== null && viewerLon !== null && r.lat != null && r.lon != null
+            ? roundDistanceKm(
+                haversineKm(
+                  { lat: viewerLat, lon: viewerLon },
+                  { lat: Number(r.lat), lon: Number(r.lon) }
+                )
+              )
+            : null;
         return {
           ...u,
           mainMediaUrl: r.main_filename ? `/uploads/${String(r.main_filename)}` : null,
+          distanceKm,
         };
       }),
       hasMore,
@@ -3087,12 +3213,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.delete('/api/media/:mediaId', requireAuth(env, db), async (req, res) => {
     const mediaId = req.params.mediaId;
-    const media = (await queryOne(db, 'SELECT id, is_main, is_private FROM media WHERE id = ? AND user_id = ?', [mediaId, req.auth!.userId])) as any;
-    await run(db, 'DELETE FROM media WHERE id = ? AND user_id = ?', [mediaId, req.auth!.userId]);
-    if (media && media.is_main && !media.is_private) {
-      await run(db, 'UPDATE users SET avatar = NULL WHERE id = ?', [req.auth!.userId]);
+    const media = (await queryOne(db, 'SELECT id, user_id FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
+    if (!media) {
+      res.status(404).json({ error: 'not_found' });
+      return;
     }
-    await persist();
+    if (String(media.user_id) !== req.auth!.userId && !req.auth!.isAdmin) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+    await deleteStoredMedia(mediaId);
     res.json({ ok: true });
   });
 
@@ -3138,11 +3268,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
-    const me = (await queryOne(db, 'SELECT lat, lon, city, looking_for_json FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const me = (await queryOne(db, 'SELECT lat, lon, city, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
     const myCity = String(me?.city || '').trim() || null;
     const myLookingFor = Array.isArray(safeJsonParse(me?.looking_for_json)) ? safeJsonParse(me?.looking_for_json) as string[] : [];
+    const viewerIsAdmin = Number(me?.is_admin || 0) === 1;
 
     const { city, ageRange, genders, radar, search } = req.query;
     const params: any[] = [req.auth!.userId];
@@ -3168,6 +3299,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
     )`;
     params.push(req.auth!.userId, req.auth!.userId);
+    if (!viewerIsAdmin) {
+      whereClause += ' AND (u.is_admin = 0 OR u.is_admin IS NULL)';
+    }
     const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {
@@ -3321,6 +3455,66 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           dataJson: { actorId: myId, actorName },
         }
       );
+
+      const reciprocalLike = (await queryOne(
+        db,
+        'SELECT id FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ? LIMIT 1',
+        [targetUserId, 'user', myId]
+      )) as any;
+
+      if (reciprocalLike?.id) {
+        const conversationId = await ensureConversationBetweenUsers(db, myId, targetUserId);
+        const matchMessageId = randomUUID();
+        const matchCreatedAt = nowIso();
+        const matchMessage = 'Vocês se curtiram mutuamente. Agora podem conversar por aqui.';
+
+        await run(
+          db,
+          'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [matchMessageId, conversationId, myId, matchMessage, 1, matchCreatedAt]
+        );
+        await persist();
+
+        const messagePayload = {
+          id: matchMessageId,
+          conversationId,
+          senderId: myId,
+          content: matchMessage,
+          mediaId: null,
+          mediaUrl: null,
+          mediaMimeType: null,
+          clientId: null,
+          isViewOnce: false,
+          isDelivered: true,
+          createdAt: matchCreatedAt,
+        };
+
+        io?.to(`user:${myId}`).emit('message.new', messagePayload);
+        io?.to(`user:${targetUserId}`).emit('message.new', messagePayload);
+
+        const targetUser = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [targetUserId])) as any;
+        const targetName = targetUser?.name ? String(targetUser.name) : 'essa pessoa';
+        await createNotification(
+          { db, io },
+          {
+            userId: myId,
+            type: 'match.mutual',
+            title: 'Curtida recíproca',
+            description: `Você e ${targetName} se curtiram. A conversa já está liberada.`,
+            dataJson: { conversationId, actorId: targetUserId, actorName: targetName },
+          }
+        );
+        await createNotification(
+          { db, io },
+          {
+            userId: targetUserId,
+            type: 'match.mutual',
+            title: 'Curtida recíproca',
+            description: `Você e ${actorName} se curtiram. A conversa já está liberada.`,
+            dataJson: { conversationId, actorId: myId, actorName },
+          }
+        );
+      }
     }
     await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
     await persist();
@@ -3371,6 +3565,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
+    const viewer = (await queryOne(db, 'SELECT lat, lon, is_admin FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const viewerLat = viewer?.lat != null ? Number(viewer.lat) : null;
+    const viewerLon = viewer?.lon != null ? Number(viewer.lon) : null;
+    const viewerIsAdmin = Number(viewer?.is_admin || 0) === 1;
+
     const rows = await queryAll(
       db,
       `
@@ -3388,6 +3587,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       JOIN users u ON u.id = l.target_id
       WHERE l.user_id = ?
         AND l.target_type = 'user'
+        ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
       ORDER BY l.created_at DESC
       LIMIT 200
     `,
@@ -3396,11 +3596,23 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
     res.json(
-      rows.map((r: any) => ({
-        ...rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false),
-        likedAt: r.liked_at,
-        mainMediaUrl: r.main_filename ? `/uploads/${String(r.main_filename)}` : null,
-      }))
+      rows.map((r: any) => {
+        const distanceKm =
+          viewerLat !== null && viewerLon !== null && r.lat != null && r.lon != null
+            ? roundDistanceKm(
+                haversineKm(
+                  { lat: viewerLat, lon: viewerLon },
+                  { lat: Number(r.lat), lon: Number(r.lon) }
+                )
+              )
+            : null;
+        return {
+          ...rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false),
+          likedAt: r.liked_at,
+          mainMediaUrl: r.main_filename ? `/uploads/${String(r.main_filename)}` : null,
+          distanceKm,
+        };
+      })
     );
   });
 
@@ -5448,9 +5660,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await queryAll(
       db,
       `
-      SELECT m.id, m.filename, m.created_at, u.id as user_id, u.name as user_name
+      SELECT m.id, m.filename, m.created_at, m.is_private, u.id as user_id, u.name as user_name
       FROM media m
       JOIN users u ON u.id = m.user_id
+      WHERE m.mime_type LIKE 'image/%'
+        AND (m.source IS NULL OR m.source != 'chat')
       ORDER BY m.created_at DESC
       LIMIT 50
     `
@@ -5458,7 +5672,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json(
       rows.map((r: any) => ({
         id: r.id,
-        url: `/uploads/${r.filename}`,
+        url: Number(r.is_private || 0) === 1
+          ? `/private-uploads/${r.id}?token=${encodeURIComponent(jwt.sign({ mediaId: String(r.id) }, env.JWT_SECRET, { expiresIn: '30m' }))}`
+          : `/uploads/${r.filename}`,
         userId: r.user_id,
         userName: r.user_name,
         uploadedAt: r.created_at,
@@ -5473,6 +5689,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   app.put('/api/admin/photos/:photoId/reject', requireAuth(env, db), requireAdmin(), (_req, res) => {
     res.json({ ok: true });
+  });
+
+  app.delete('/api/admin/photos/:photoId', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const photoId = String(req.params.photoId || '');
+    if (!photoId) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const media = await deleteStoredMedia(photoId);
+    if (!media) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    res.json({ ok: true, id: photoId });
   });
 
   app.get('/api/admin/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
@@ -5508,6 +5738,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         }),
         isBanned: Number(row.is_banned || 0) === 1,
         bannedAt: row.banned_at ?? null,
+        isDeactivated: Number(row.is_deactivated || 0) === 1,
+        deactivatedAt: row.deactivated_at ?? null,
+        deactivatedByAdmin: Number(row.deactivated_by_admin || 0) === 1,
       }));
 
       res.json({
@@ -5549,6 +5782,45 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.json({ ok: true, userId, banned: false });
     } catch (err) {
       console.error('[admin/users/unban]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  app.put('/api/admin/users/:userId/deactivate', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const adminId = req.auth!.userId;
+      const target = (await queryOne(db, 'SELECT id, is_admin FROM users WHERE id = ?', [userId])) as any;
+      if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+      if (String(target.id) === adminId) { res.status(400).json({ error: 'cannot_deactivate_self' }); return; }
+      if (Number(target.is_admin || 0) === 1) { res.status(400).json({ error: 'cannot_deactivate_admin' }); return; }
+      await run(
+        db,
+        'UPDATE users SET is_deactivated = 1, deactivated_at = ?, deactivated_by_admin = 1, deactivated_by = ? WHERE id = ?',
+        [nowIso(), adminId, userId]
+      );
+      await persist();
+      res.json({ ok: true, userId, deactivated: true });
+    } catch (err) {
+      console.error('[admin/users/deactivate]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  app.put('/api/admin/users/:userId/reactivate', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
+      if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+      await run(
+        db,
+        'UPDATE users SET is_deactivated = 0, deactivated_at = NULL, deactivated_by_admin = 0, deactivated_by = NULL WHERE id = ?',
+        [userId]
+      );
+      await persist();
+      res.json({ ok: true, userId, deactivated: false });
+    } catch (err) {
+      console.error('[admin/users/reactivate]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

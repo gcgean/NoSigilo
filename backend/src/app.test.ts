@@ -225,6 +225,78 @@ describe('nosigilo backend', () => {
     });
   });
 
+  it('admin can remove a photo uploaded by another user', async () => {
+    const owner = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dona da Foto',
+      email: 'dona-foto@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const admin = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Moderador Foto',
+      email: 'moderador-foto@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+
+    const upload = await request(ctx.app)
+      .post('/api/media/upload')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .attach('file', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]), { filename: 'moderacao.png', contentType: 'image/png' })
+      .expect(200);
+    const mediaId = String(upload.body.id);
+
+    await request(ctx.app)
+      .delete(`/api/admin/photos/${mediaId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .expect(200);
+
+    const mediaRow = await ctx.db.queryOne('SELECT id FROM media WHERE id = ? LIMIT 1', [mediaId]);
+    expect(mediaRow).toBeNull();
+  });
+
+  it('admin deactivation blocks login until the account is reactivated', async () => {
+    const target = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Moderado',
+      email: 'perfil-moderado@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const admin = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Moderador Conta',
+      email: 'moderador-conta@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+
+    await request(ctx.app)
+      .put(`/api/admin/users/${target.user.id}/deactivate`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: 'perfil-moderado@example.com', password: 'senha123' })
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body.error).toBe('account_deactivated_by_admin');
+      });
+
+    await request(ctx.app)
+      .put(`/api/admin/users/${target.user.id}/reactivate`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: 'perfil-moderado@example.com', password: 'senha123' })
+      .expect(200);
+  });
+
   it('cities search and nearest work', async () => {
     await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
       'São Paulo',
@@ -336,6 +408,161 @@ describe('nosigilo backend', () => {
     expect(Array.isArray(likedList.body)).toBe(true);
     expect(likedList.body.some((u: any) => String(u.id) === String(likedTarget.user.id))).toBe(true);
     expect(likedList.body.some((u: any) => String(u.id) === String(passedTarget.user.id))).toBe(false);
+  });
+
+  it('creates a conversation with automatic message when likes are mutual', async () => {
+    const regA = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Mutual A',
+      email: 'mutual-a@example.com',
+      password: 'senha123',
+      birthDate: '1991-01-01',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const regB = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Mutual B',
+      email: 'mutual-b@example.com',
+      password: 'senha123',
+      birthDate: '1993-01-01',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${regA.token}`)
+      .send({ userId: regB.user.id })
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${regB.token}`)
+      .send({ userId: regA.user.id })
+      .expect(200);
+
+    const convListA = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${regA.token}`)
+      .expect(200);
+    const convForA = convListA.body.find((conversation: any) => String(conversation.user?.id) === String(regB.user.id));
+    expect(convForA?.id).toBeTypeOf('string');
+
+    const convListB = await request(ctx.app)
+      .get('/api/conversations')
+      .set('Authorization', `Bearer ${regB.token}`)
+      .expect(200);
+    const convForB = convListB.body.find((conversation: any) => String(conversation.user?.id) === String(regA.user.id));
+    expect(String(convForB?.id)).toBe(String(convForA.id));
+
+    const msgsA = await request(ctx.app)
+      .get(`/api/conversations/${convForA.id}/messages`)
+      .set('Authorization', `Bearer ${regA.token}`)
+      .expect(200);
+    expect(msgsA.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
+
+    const msgsB = await request(ctx.app)
+      .get(`/api/conversations/${convForA.id}/messages`)
+      .set('Authorization', `Bearer ${regB.token}`)
+      .expect(200);
+    expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
+  });
+
+  it('hides admin profiles from regular users across discovery routes', async () => {
+    const regularViewer = await createBootstrapSponsor(ctx, {
+      email: 'viewer-admin-hidden@example.com',
+      name: 'Viewer Comum',
+    });
+
+    const adminProfile = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Admin Oculto',
+      email: 'admin-oculto@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const regularProfile = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Visivel',
+      email: 'perfil-visivel@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [adminProfile.user.id]);
+
+    const adminPost = await request(ctx.app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${adminProfile.token}`)
+      .send({ content: 'Post do admin oculto' })
+      .expect(200);
+
+    const regularPost = await request(ctx.app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${regularProfile.token}`)
+      .send({ content: 'Post do perfil visivel' })
+      .expect(200);
+
+    const usersList = await request(ctx.app)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(200);
+
+    expect(Array.isArray(usersList.body.users)).toBe(true);
+    expect(usersList.body.users.some((user: any) => String(user.id) === String(adminProfile.user.id))).toBe(false);
+    expect(usersList.body.users.some((user: any) => String(user.id) === String(regularProfile.user.id))).toBe(true);
+
+    await request(ctx.app)
+      .get(`/api/users/${adminProfile.user.id}`)
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(404);
+
+    const visibleProfile = await request(ctx.app)
+      .get(`/api/users/${regularProfile.user.id}`)
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(200);
+    expect(String(visibleProfile.body.id)).toBe(String(regularProfile.user.id));
+
+    const feed = await request(ctx.app)
+      .get('/api/feed')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(200);
+
+    expect(feed.body.posts.some((post: any) => String(post.id) === String(adminPost.body.id))).toBe(false);
+    expect(feed.body.posts.some((post: any) => String(post.id) === String(regularPost.body.id))).toBe(true);
+
+    const matchCards = await request(ctx.app)
+      .get('/api/match/cards')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(200);
+
+    expect(matchCards.body.some((user: any) => String(user.id) === String(adminProfile.user.id))).toBe(false);
+    expect(matchCards.body.some((user: any) => String(user.id) === String(regularProfile.user.id))).toBe(true);
+
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .send({ userId: adminProfile.user.id })
+      .expect(200);
+
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .send({ userId: regularProfile.user.id })
+      .expect(200);
+
+    const likedList = await request(ctx.app)
+      .get('/api/match/liked')
+      .set('Authorization', `Bearer ${regularViewer.token}`)
+      .expect(200);
+
+    expect(likedList.body.some((user: any) => String(user.id) === String(adminProfile.user.id))).toBe(false);
+    expect(likedList.body.some((user: any) => String(user.id) === String(regularProfile.user.id))).toBe(true);
   });
 
   it('expired users can view chat with locked incoming messages but cannot start or reply', async () => {

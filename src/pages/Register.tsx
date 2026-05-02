@@ -209,7 +209,7 @@ export default function Register() {
         localStorage.setItem(
           `nosigilo:first-access-flow:${createdUser.user.id}`,
           JSON.stringify({
-            needsPhoto: !createdUser.user.avatar,
+            needsPhoto: true,
             needsPost: true,
             startedAt: new Date().toISOString(),
           })

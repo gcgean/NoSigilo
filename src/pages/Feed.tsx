@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -111,7 +111,7 @@ function resolveMediaUrl(url: string | null) {
 }
 
 export default function Feed() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -159,6 +159,9 @@ export default function Feed() {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredPostIdRef = useRef<string | null>(null);
   const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [showProfilePhotoGate, setShowProfilePhotoGate] = useState(false);
+  const [isUploadingProfilePhoto, setIsUploadingProfilePhoto] = useState(false);
   const [showFirstAccessPostHint, setShowFirstAccessPostHint] = useState(false);
   const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
   const [allExperiences, setAllExperiences] = useState<FeedExperience[]>([]);
@@ -278,8 +281,8 @@ export default function Feed() {
       if (!raw) {
         setShowFirstAccessPostHint(false);
       } else {
-        const flow = JSON.parse(raw) as { needsPost?: boolean };
-        setShowFirstAccessPostHint(Boolean(flow?.needsPost));
+        const flow = JSON.parse(raw) as { needsPhoto?: boolean; needsPost?: boolean };
+        setShowFirstAccessPostHint(!Boolean(flow?.needsPhoto) && Boolean(flow?.needsPost));
       }
     } catch {
       setShowFirstAccessPostHint(false);
@@ -289,11 +292,73 @@ export default function Feed() {
   }, [firstAccessPostMode, user?.id, allPosts.length]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setShowProfilePhotoGate(false);
+      return;
+    }
+    setShowProfilePhotoGate(!user.avatar);
+  }, [user?.avatar, user?.id]);
+
+  useEffect(() => {
     if (!firstAccessPostMode) return;
     if (!checkedFirstAccessPostHint) return;
     if (showFirstAccessPostHint) return;
     navigate('/feed', { replace: true });
   }, [checkedFirstAccessPostHint, firstAccessPostMode, navigate, showFirstAccessPostHint]);
+
+  const handleProfilePhotoGateChange = async (files: FileList | null) => {
+    const selected = files?.[0];
+    if (!selected) return;
+    if (!selected.type.startsWith('image/')) {
+      toast({ title: 'Arquivo inválido', description: 'Selecione uma imagem para a foto de perfil.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setIsUploadingProfilePhoto(true);
+      const uploaded = await profileService.uploadMedia(selected, { isPrivate: false, source: 'profile' });
+      const mediaId = uploaded?.id ? String(uploaded.id) : '';
+      const url = uploaded?.url ? String(uploaded.url) : '';
+      if (!mediaId) {
+        throw new Error('Não foi possível concluir o envio da foto.');
+      }
+      try {
+        await feedService.createPost({ content: '', mediaIds: [mediaId] });
+      } catch {}
+      await profileService.setMainPhoto(mediaId);
+      if (url) updateUser({ avatar: resolveMediaUrl(url) });
+      if (user?.id) {
+        const key = `nosigilo:first-access-flow:${user.id}`;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const flow = JSON.parse(raw) as { needsPhoto?: boolean; needsPost?: boolean; startedAt?: string };
+            localStorage.setItem(
+              key,
+              JSON.stringify({
+                ...flow,
+                needsPhoto: false,
+              })
+            );
+            window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
+          } catch {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+      setShowProfilePhotoGate(false);
+      toast({ title: 'Foto de perfil atualizada', description: 'Agora seu perfil já pode seguir normalmente no feed.' });
+    } catch (error) {
+      toast({
+        title: 'Falha ao enviar foto',
+        description: error instanceof Error ? error.message : 'Tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingProfilePhoto(false);
+      if (profilePhotoInputRef.current) profilePhotoInputRef.current.value = '';
+    }
+  };
 
   const loadMore = async () => {
     if (isLoading || isLoadingMoreRef.current || !hasMoreRef.current) return;
@@ -538,11 +603,7 @@ export default function Feed() {
   const handlePublishExperience = async () => {
     const title = experienceTitle.trim();
     const description = experienceDescription.trim();
-    if (!title || !description) return;
-    if (title.length < 3) {
-      toast({ title: 'Título muito curto', description: 'O título precisa ter pelo menos 3 caracteres.', variant: 'destructive' });
-      return;
-    }
+    if (!description) return;
     if (description.length < 20) {
       toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres.', variant: 'destructive' });
       return;
@@ -1020,7 +1081,7 @@ export default function Feed() {
         <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
           <div className="space-y-3">
             <Input
-              placeholder="Título do conto"
+              placeholder="Título do conto (opcional)"
               value={experienceTitle}
               onChange={(e) => setExperienceTitle(e.target.value)}
               maxLength={120}
@@ -1075,7 +1136,7 @@ export default function Feed() {
               <Button
                 size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
-                disabled={experienceTitle.trim().length < 3 || experienceDescription.trim().length < 20 || isPublishingExperience}
+                disabled={experienceDescription.trim().length < 20 || isPublishingExperience}
                 onClick={handlePublishExperience}
               >
                 <Send className="w-4 h-4" />
@@ -1926,6 +1987,51 @@ export default function Feed() {
           ) : null}
           {feedFilter !== 'experiences' ? <div ref={loadMoreRef} /> : null}
         </div>
+
+        <input
+          ref={profilePhotoInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => void handleProfilePhotoGateChange(e.target.files)}
+        />
+
+        <Dialog
+          open={showProfilePhotoGate}
+          onOpenChange={(open) => {
+            if (open || !showProfilePhotoGate) {
+              setShowProfilePhotoGate(open);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md [&>button]:hidden">
+            <div className="space-y-4">
+              <div className="space-y-2 text-center">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Camera className="h-7 w-7" />
+                </div>
+                <h2 className="text-xl font-semibold">Adicione sua foto de perfil</h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Para continuar no feed, envie agora uma foto principal para o seu perfil.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border bg-secondary/20 p-4 text-sm text-muted-foreground">
+                Sua conta já foi criada. Falta só essa etapa para liberar a navegação normalmente.
+              </div>
+
+              <Button
+                type="button"
+                className="w-full"
+                disabled={isUploadingProfilePhoto}
+                onClick={() => profilePhotoInputRef.current?.click()}
+              >
+                {isUploadingProfilePhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                {isUploadingProfilePhoto ? 'Enviando foto...' : 'Escolher foto de perfil'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Reactions Modal */}
         {reactionsModalPostId !== null && (() => {

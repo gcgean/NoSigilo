@@ -40,6 +40,9 @@ type AdminUser = {
   hubAccessStatus?: string | null;
   isOnline?: boolean;
   status: 'active' | 'banned';
+  isDeactivated?: boolean;
+  deactivatedAt?: string | null;
+  deactivatedByAdmin?: boolean;
   reports: number;
 };
 
@@ -289,6 +292,9 @@ export default function Admin() {
           hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
           isOnline: !!item.isOnline,
           status: item.isBanned ? 'banned' as const : 'active' as const,
+          isDeactivated: !!item.isDeactivated,
+          deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
+          deactivatedByAdmin: !!item.deactivatedByAdmin,
           reports: 0,
         } satisfies AdminUser;
       });
@@ -453,6 +459,9 @@ export default function Admin() {
           hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
           isOnline: !!item.isOnline,
           status: item.isBanned ? 'banned' as const : 'active' as const,
+          isDeactivated: !!item.isDeactivated,
+          deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
+          deactivatedByAdmin: !!item.deactivatedByAdmin,
           reports: reportCountMap.get(String(item.id || '')) || 0,
         } satisfies AdminUser;
       });
@@ -553,6 +562,20 @@ export default function Admin() {
     }
   };
 
+  const handleDeletePhoto = async (photoId: string) => {
+    if (!window.confirm('Remover esta foto da plataforma? Essa ação oculta a mídia para todos os usuários.')) return;
+    setBusyPhotoId(photoId);
+    try {
+      await adminService.deletePhoto(photoId);
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      toast({ title: 'Foto removida da plataforma' });
+    } catch {
+      toast({ title: 'Erro ao remover foto', variant: 'destructive' });
+    } finally {
+      setBusyPhotoId(null);
+    }
+  };
+
   const handleBanUser = async (userId: string) => {
     setBusyUserId(userId);
     try {
@@ -574,6 +597,41 @@ export default function Admin() {
       toast({ title: 'Usuário desbanido' });
     } catch {
       toast({ title: 'Erro ao desbanir usuário', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleDeactivateUser = async (userId: string) => {
+    if (!window.confirm('Desativar esta conta agora? A pessoa deixará de acessar e aparecer na plataforma até reativação.')) return;
+    setBusyUserId(userId);
+    try {
+      await adminService.deactivateUser(userId);
+      setUsers((prev) => prev.map((u) => (
+        u.id === userId
+          ? { ...u, isDeactivated: true, deactivatedAt: new Date().toISOString(), deactivatedByAdmin: true }
+          : u
+      )));
+      toast({ title: 'Conta desativada pela administração' });
+    } catch {
+      toast({ title: 'Erro ao desativar conta', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleReactivateUser = async (userId: string) => {
+    setBusyUserId(userId);
+    try {
+      await adminService.reactivateUser(userId);
+      setUsers((prev) => prev.map((u) => (
+        u.id === userId
+          ? { ...u, isDeactivated: false, deactivatedAt: null, deactivatedByAdmin: false }
+          : u
+      )));
+      toast({ title: 'Conta reativada' });
+    } catch {
+      toast({ title: 'Erro ao reativar conta', variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }
@@ -835,7 +893,7 @@ export default function Admin() {
                     <img src={photo.url} alt={photo.userName} className="w-full aspect-square object-cover rounded-lg" />
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-2 p-3">
                       <p className="text-white text-sm font-medium text-center">{photo.userName}</p>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap justify-center gap-2">
                         <Button
                           size="sm"
                           className="bg-success hover:bg-success/90"
@@ -851,6 +909,14 @@ export default function Admin() {
                           onClick={() => void handleRejectPhoto(photo.id)}
                         >
                           <X className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={busyPhotoId === photo.id}
+                          onClick={() => void handleDeletePhoto(photo.id)}
+                        >
+                          Remover
                         </Button>
                       </div>
                     </div>
@@ -896,6 +962,7 @@ export default function Admin() {
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
+                        {entry.isDeactivated && <Badge variant="outline" className="text-xs">Conta desativada</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -904,15 +971,35 @@ export default function Admin() {
                           {entry.isPremium ? 'Assinatura' : 'Trial'}: <strong className="text-foreground">{formatAccessRemaining(entry)}</strong>
                         </span>
                         {entry.hubAccessStatus ? <span>Status Hub: {entry.hubAccessStatus}</span> : null}
+                        {entry.isDeactivated ? <span>Desativada em: {formatDateTime(entry.deactivatedAt)}</span> : null}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <Badge variant="outline" className="gap-1">
                       <Eye className="w-3 h-3" />
                       {entry.reports} denúncias
                     </Badge>
+                    {entry.isDeactivated ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busyUserId === entry.id}
+                        onClick={() => void handleReactivateUser(entry.id)}
+                      >
+                        Reativar conta
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busyUserId === entry.id || entry.isAdmin}
+                        onClick={() => void handleDeactivateUser(entry.id)}
+                      >
+                        Desativar conta
+                      </Button>
+                    )}
                     {entry.status === 'banned' ? (
                       <Button
                         variant="outline"
@@ -926,7 +1013,7 @@ export default function Admin() {
                       <Button
                         variant="destructive"
                         size="sm"
-                        disabled={busyUserId === entry.id}
+                        disabled={busyUserId === entry.id || entry.isAdmin}
                         onClick={() => void handleBanUser(entry.id)}
                       >
                         <Ban className="w-4 h-4 mr-1" />

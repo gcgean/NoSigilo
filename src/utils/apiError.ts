@@ -10,6 +10,8 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
   switch (code) {
     case 'account_banned':
       return { title: 'Conta suspensa', description: 'Esta conta foi suspensa por violar as diretrizes da comunidade.' };
+    case 'account_deactivated_by_admin':
+      return { title: 'Conta desativada', description: 'Sua conta foi desativada pela administração da plataforma.' };
     case 'invalid_credentials':
       return { title: 'Erro ao entrar', description: 'E-mail ou senha incorretos.' };
     case 'email_in_use':

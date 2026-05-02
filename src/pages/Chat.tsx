@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -79,6 +79,7 @@ export default function Chat() {
   const { toast } = useToast();
   const location = useLocation();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null);
   const [message, setMessage] = useState('');
   const [search, setSearch] = useState('');
   const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
@@ -105,6 +106,8 @@ export default function Chat() {
   const touchCoords = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
+  const activeConversation =
+    selectedConversation ?? (selectedConversationSnapshot?.id === selectedChat ? selectedConversationSnapshot : null);
   const premiumAccess = hasPremiumAccess(user);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -354,6 +357,16 @@ export default function Chat() {
   }, [location.state, location.search]);
 
   useEffect(() => {
+    if (!selectedChat) {
+      setSelectedConversationSnapshot(null);
+      return;
+    }
+    if (selectedConversation) {
+      setSelectedConversationSnapshot(selectedConversation);
+    }
+  }, [selectedChat, selectedConversation]);
+
+  useEffect(() => {
     if (USE_MOCKS) return;
     if (!selectedChat || !user?.id) return;
     setMessageSearch('');
@@ -506,6 +519,22 @@ export default function Chat() {
       toast({ title: 'Não foi possível apagar a mensagem', variant: 'destructive' });
     }
   }, [toast]);
+
+  const handleCopyMessageText = useCallback(async (messageId: string) => {
+    const messageToCopy = messages.find((messageItem) => messageItem.id === messageId);
+    const text = String(messageToCopy?.content || '').trim();
+    setContextMenu(null);
+    if (!text) {
+      toast({ title: 'Nada para copiar', description: 'Essa mensagem não possui texto.', variant: 'destructive' });
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Texto copiado' });
+    } catch {
+      toast({ title: 'Não foi possível copiar', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  }, [messages, toast]);
 
   const openContextMenu = useCallback((e: React.MouseEvent, messageId: string) => {
     e.preventDefault();
@@ -876,16 +905,16 @@ export default function Chat() {
                 <ArrowLeft className="w-4.5 h-4.5" />
               </Button>
               <div className="shrink-0">
-                <UserAvatar user={selectedConversation?.user} className="h-9 w-9 sm:h-10 sm:w-10" />
+                <UserAvatar user={activeConversation?.user} className="h-9 w-9 sm:h-10 sm:w-10" />
               </div>
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <button
                     type="button"
                     className="truncate text-left text-[15px] font-semibold leading-5 hover:underline"
-                    onClick={() => goToUserProfile(selectedConversation?.user.id)}
+                    onClick={() => goToUserProfile(activeConversation?.user.id)}
                   >
-                    {selectedConversation?.user.name}
+                    {activeConversation?.user.name || 'Conversa'}
                   </button>
                   {!isConnected && (
                     <WifiOff
@@ -895,11 +924,11 @@ export default function Chat() {
                   )}
                 </div>
                 <span className="block truncate text-[11px] leading-4 text-muted-foreground">
-                  {getIdentityLine(selectedConversation?.user) || 'Chat'}
+                  {getIdentityLine(activeConversation?.user) || 'Chat'}
                 </span>
-                {selectedConversation?.isHighlighted && selectedConversation.highlightNote ? (
+                {activeConversation?.isHighlighted && activeConversation.highlightNote ? (
                   <span className="block truncate text-[11px] leading-4 font-medium text-primary">
-                    {selectedConversation.highlightNote}
+                    {activeConversation.highlightNote}
                   </span>
                 ) : null}
               </div>
@@ -918,15 +947,15 @@ export default function Chat() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => navigate(getUserProfileHref(selectedConversation?.user.id, user?.id, '/chat'))}>
+                  <DropdownMenuItem onClick={() => navigate(getUserProfileHref(activeConversation?.user.id, user?.id, '/chat'))}>
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={openHighlightDialog}>
                     <Pin className="w-4 h-4 mr-2" />
-                    {selectedConversation?.isHighlighted ? 'Editar destaque' : 'Destacar conversa'}
+                    {activeConversation?.isHighlighted ? 'Editar destaque' : 'Destacar conversa'}
                   </DropdownMenuItem>
-                  {selectedConversation?.isHighlighted ? (
+                  {activeConversation?.isHighlighted ? (
                     <DropdownMenuItem onClick={() => void handleRemoveConversationHighlight()}>
                       <X className="w-4 h-4 mr-2" />
                       Remover destaque
@@ -974,7 +1003,7 @@ export default function Chat() {
                     {/* Small avatar beside received messages */}
                     {!isMine && (
                       <div className="shrink-0 mb-0.5">
-                        <UserAvatar user={selectedConversation?.user} className="h-7 w-7" />
+                        <UserAvatar user={activeConversation?.user} className="h-7 w-7" />
                       </div>
                     )}
                     <div
@@ -1262,8 +1291,12 @@ export default function Chat() {
       {contextMenu && (() => {
         const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
         const vh = typeof window !== 'undefined' ? window.innerHeight : 700;
+        const contextMessage = messages.find((m) => m.id === contextMenu.messageId);
+        const canCopyText = Boolean(String(contextMessage?.content || '').trim());
+        const canDeleteForEveryone = contextMessage?.senderId === user?.id;
         const menuW = 190;
-        const menuH = messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id ? 110 : 56;
+        const itemCount = 1 + (canCopyText ? 1 : 0) + (canDeleteForEveryone ? 1 : 0);
+        const menuH = itemCount * 56;
         const x = Math.max(8, Math.min(contextMenu.x, vw - menuW - 8));
         const y = Math.max(8, Math.min(contextMenu.y, vh - menuH - 8));
         return (
@@ -1277,15 +1310,25 @@ export default function Chat() {
               className="fixed z-50 min-w-[190px] overflow-hidden rounded-xl border bg-background shadow-2xl"
               style={{ left: x, top: y }}
             >
+              {canCopyText && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+                  onClick={() => void handleCopyMessageText(contextMenu.messageId)}
+                >
+                  <Copy className="h-4 w-4 text-muted-foreground" />
+                  Copiar texto
+                </button>
+              )}
               <button
                 type="button"
-                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+                className="flex w-full items-center gap-2.5 border-t px-4 py-3 text-sm hover:bg-secondary transition-colors first:border-t-0"
                 onClick={() => handleDeleteMessage(contextMenu.messageId, false)}
               >
                 <Trash2 className="h-4 w-4 text-muted-foreground" />
                 Apagar para mim
               </button>
-              {messages.find(m => m.id === contextMenu.messageId)?.senderId === user?.id && (
+              {canDeleteForEveryone && (
                 <button
                   type="button"
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors border-t"

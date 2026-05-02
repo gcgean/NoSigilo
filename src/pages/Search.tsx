@@ -30,6 +30,14 @@ const genderOptions = [
 
 const PAGE_SIZE = 24;
 
+function formatDistanceKm(distanceKm: unknown) {
+  if (typeof distanceKm !== 'number' || !Number.isFinite(distanceKm) || distanceKm < 0) return null;
+  return `${distanceKm.toLocaleString('pt-BR', {
+    minimumFractionDigits: distanceKm < 10 && !Number.isInteger(distanceKm) ? 1 : 0,
+    maximumFractionDigits: distanceKm < 10 ? 1 : 0,
+  })} km de você`;
+}
+
 export default function SearchPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState('');
@@ -78,24 +86,31 @@ export default function SearchPage() {
     (profiles: any[]) => {
       const q = search.trim().toLowerCase();
       const c = city.trim().toLowerCase();
-      return profiles.filter((p) => {
-        const name   = String(p?.name  || '').toLowerCase();
-        const pCity  = String(p?.city  || '').toLowerCase();
-        const pState = String(p?.state || '').toLowerCase();
-        const age    = calculateAge(p?.birthDate);
+      return profiles
+        .filter((p) => {
+          const name   = String(p?.name  || '').toLowerCase();
+          const pCity  = String(p?.city  || '').toLowerCase();
+          const pState = String(p?.state || '').toLowerCase();
+          const age    = calculateAge(p?.birthDate);
 
-        if (q && !name.includes(q) && !pCity.includes(q) && !pState.includes(q)) return false;
-        if (c && !pCity.includes(c) && !pState.includes(c)) return false;
-        if (selectedGenders.length > 0 && !selectedGenders.includes(String(p?.gender || ''))) return false;
-        if (ageRange !== 'all') {
-          if (!age) return false;
-          if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
-          if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
-          if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
-          if (ageRange === '45+' && age < 45) return false;
-        }
-        return true;
-      });
+          if (q && !name.includes(q) && !pCity.includes(q) && !pState.includes(q)) return false;
+          if (c && !pCity.includes(c) && !pState.includes(c)) return false;
+          if (selectedGenders.length > 0 && !selectedGenders.includes(String(p?.gender || ''))) return false;
+          if (ageRange !== 'all') {
+            if (!age) return false;
+            if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
+            if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
+            if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
+            if (ageRange === '45+' && age < 45) return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          const aDistance = typeof a?.distanceKm === 'number' ? a.distanceKm : Number.POSITIVE_INFINITY;
+          const bDistance = typeof b?.distanceKm === 'number' ? b.distanceKm : Number.POSITIVE_INFINITY;
+          if (aDistance !== bDistance) return aDistance - bDistance;
+          return String(b?.likedAt || '').localeCompare(String(a?.likedAt || ''));
+        });
     },
     [search, city, ageRange, selectedGenders]
   );
@@ -404,6 +419,7 @@ export default function SearchPage() {
               const avatarUrl = profile.mainMediaUrl
                 ? resolveServerUrl(profile.mainMediaUrl)
                 : undefined;
+              const distanceLabel = formatDistanceKm(profile.distanceKm);
 
               return (
                 <NavLink
@@ -424,6 +440,14 @@ export default function SearchPage() {
 
                   {/* Online Indicator / Last Seen */}
                   <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
+                    {distanceLabel ? (
+                      <Badge
+                        variant="secondary"
+                        className="h-5 rounded-full border-none bg-black/45 px-2 text-[10px] font-medium text-white backdrop-blur-md"
+                      >
+                        {distanceLabel}
+                      </Badge>
+                    ) : null}
                     {profile.isOnline ? (
                       <span
                         className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background"
@@ -451,6 +475,11 @@ export default function SearchPage() {
                     <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
                       {profile.name}{age ? `, ${age}` : ''}
                     </h3>
+                    {distanceLabel ? (
+                      <div className="truncate text-xs text-white/85 sm:text-sm">
+                        {distanceLabel}
+                      </div>
+                    ) : null}
                     {formatProfileIdentityLine(profile) ? (
                       <div className="truncate text-xs text-white/70 sm:text-sm">
                         {formatProfileIdentityLine(profile)}

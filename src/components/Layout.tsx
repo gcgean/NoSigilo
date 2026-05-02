@@ -119,6 +119,7 @@ export default function Layout() {
   const [isChatConvOpen, setIsChatConvOpen] = useState(false);
   const [isReelsMaximized, setIsReelsMaximized] = useState(false);
   const isMobileReelsMaximized = isMobileReelsRoute && isReelsMaximized;
+  const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileReelsMaximized;
 
   // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
   useEffect(() => {
@@ -131,6 +132,17 @@ export default function Layout() {
     observer.observe(document.body, { attributes: true, attributeFilter: ['data-chat-open', 'data-reels-maximized'] });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!isMobileChatRoute) {
+      document.body.removeAttribute('data-chat-open');
+      setIsChatConvOpen(false);
+    }
+    if (!isMobileReelsRoute) {
+      document.body.removeAttribute('data-reels-maximized');
+      setIsReelsMaximized(false);
+    }
+  }, [isMobileChatRoute, isMobileReelsRoute, location.pathname]);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
@@ -319,6 +331,20 @@ export default function Layout() {
       window.clearInterval(intervalId);
     };
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleResume = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refreshUnread();
+    };
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('pageshow', handleResume);
+    return () => {
+      document.removeEventListener('visibilitychange', handleResume);
+      window.removeEventListener('pageshow', handleResume);
+    };
+  }, [refreshUnread, user?.id]);
 
   const handleNotificationsBellClick = useCallback(() => {
     if (unreadCount <= 0) return;
@@ -809,7 +835,7 @@ export default function Layout() {
 
       <nav className={cn(
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
-        (isChatConvOpen || isMobileReelsMaximized) && "hidden"
+        shouldHideMobileNav && "hidden"
       )}>
         <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {
