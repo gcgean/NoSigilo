@@ -94,6 +94,7 @@ export type PublicUser = {
   billingAddressCity?: string | null;
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
+  distanceKm?: number | null;
 };
 
 type InviteRow = {
@@ -2447,10 +2448,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
   });
 
-app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
+  app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
     const viewerId = req.auth!.userId;
-    const viewerRow = viewerId === userId ? null : ((await queryOne(db, 'SELECT is_admin FROM users WHERE id = ?', [viewerId])) as any);
+    const viewerRow = viewerId === userId ? null : ((await queryOne(db, 'SELECT is_admin, lat, lon FROM users WHERE id = ?', [viewerId])) as any);
     const row = await queryOne(
       db,
       `
@@ -2507,6 +2508,15 @@ app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
       }
     }
     const presence = req.app.get('presence');
+    const distanceKm =
+      viewerId !== userId && viewerRow?.lat != null && viewerRow?.lon != null && (row as any).lat != null && (row as any).lon != null
+        ? roundDistanceKm(
+            haversineKm(
+              { lat: Number(viewerRow.lat), lon: Number(viewerRow.lon) },
+              { lat: Number((row as any).lat), lon: Number((row as any).lon) }
+            )
+          )
+        : null;
     res.json({
       ...rowToPublicUser(row, presence?.isOnline(String(row.id))),
       publicPhotosCount: Number((row as any).public_photos_count || 0),
@@ -2514,6 +2524,7 @@ app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
       videosCount: Number((row as any).videos_count || 0),
       testimonialsCount: Number((row as any).approved_testimonials_count || 0),
       profileVisitsCount: Number((row as any).profile_visits_count || 0),
+      distanceKm,
     });
   });
 
@@ -4136,13 +4147,16 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/conversations', requireAuth(env, db), async (req, res) => {
+    const viewer = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const viewerLat = viewer?.lat != null ? Number(viewer.lat) : null;
+    const viewerLon = viewer?.lon != null ? Number(viewer.lon) : null;
     const rows = await queryAll(
       db,
       `
       SELECT * FROM (
         SELECT c.id, c.user_a_id, c.user_b_id, c.created_at, c.is_highlighted, c.highlight_note, c.highlight_color,
-          ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state,
-          ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state,
+          ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state, ua.lat as user_a_lat, ua.lon as user_a_lon,
+          ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state, ub.lat as user_b_lat, ub.lon as user_b_lon,
           (
             SELECT COUNT(*) FROM messages m
             WHERE m.conversation_id = c.id
@@ -4175,6 +4189,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                 gender: r.user_b_gender ?? null,
                 city: r.user_b_city ?? null,
                 state: r.user_b_state ?? null,
+                distanceKm:
+                  viewerLat !== null && viewerLon !== null && r.user_b_lat != null && r.user_b_lon != null
+                    ? roundDistanceKm(
+                        haversineKm(
+                          { lat: viewerLat, lon: viewerLon },
+                          { lat: Number(r.user_b_lat), lon: Number(r.user_b_lon) }
+                        )
+                      )
+                    : null,
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_b_id)) : false
               }
             : { 
@@ -4184,6 +4207,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                 gender: r.user_a_gender ?? null,
                 city: r.user_a_city ?? null,
                 state: r.user_a_state ?? null,
+                distanceKm:
+                  viewerLat !== null && viewerLon !== null && r.user_a_lat != null && r.user_a_lon != null
+                    ? roundDistanceKm(
+                        haversineKm(
+                          { lat: viewerLat, lon: viewerLon },
+                          { lat: Number(r.user_a_lat), lon: Number(r.user_a_lon) }
+                        )
+                      )
+                    : null,
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false
               };
         return { 
@@ -5848,39 +5880,49 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), (_req, res) => {
-    const processMemory = process.memoryUsage();
-    const systemTotal = totalmem();
-    const systemFree = freemem();
-    const systemUsed = Math.max(0, systemTotal - systemFree);
-    const rss = Number(processMemory.rss || 0);
+    try {
+      const processMemory = process.memoryUsage();
+      const systemTotal = totalmem();
+      const systemFree = freemem();
+      const systemUsed = Math.max(0, systemTotal - systemFree);
+      const rss = Number(processMemory.rss || 0);
+      const cpuCount = Math.max(1, cpus().length);
+      const currentLoad = loadavg();
 
-    const toMb = (value: number) => Math.round((value / 1024 / 1024) * 100) / 100;
-    const toPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
+      const toMb = (value: number) => Math.round((value / 1024 / 1024) * 100) / 100;
+      const toPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
+      const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value * 100) / 100));
+      const cpuUsagePercent = clampPct((Number(currentLoad[0] || 0) / cpuCount) * 100);
 
-    res.json({
-      checkedAt: nowIso(),
-      nodeVersion: process.version,
-      platform: process.platform,
-      uptimeSec: Math.round(process.uptime()),
-      cpu: {
-        count: cpus().length,
-        loadAvg1m: Number(loadavg()[0].toFixed(2)),
-        loadAvg5m: Number(loadavg()[1].toFixed(2)),
-        loadAvg15m: Number(loadavg()[2].toFixed(2)),
-      },
-      memory: {
-        rssMb: toMb(rss),
-        heapUsedMb: toMb(Number(processMemory.heapUsed || 0)),
-        heapTotalMb: toMb(Number(processMemory.heapTotal || 0)),
-        externalMb: toMb(Number(processMemory.external || 0)),
-        arrayBuffersMb: toMb(Number(processMemory.arrayBuffers || 0)),
-        systemTotalMb: toMb(systemTotal),
-        systemFreeMb: toMb(systemFree),
-        systemUsedMb: toMb(systemUsed),
-        processUsagePercent: toPct(rss, systemTotal),
-        systemUsagePercent: toPct(systemUsed, systemTotal),
-      },
-    });
+      res.json({
+        checkedAt: nowIso(),
+        nodeVersion: process.version,
+        platform: process.platform,
+        uptimeSec: Math.round(process.uptime()),
+        cpu: {
+          count: cpuCount,
+          loadAvg1m: Number(Number(currentLoad[0] || 0).toFixed(2)),
+          loadAvg5m: Number(Number(currentLoad[1] || 0).toFixed(2)),
+          loadAvg15m: Number(Number(currentLoad[2] || 0).toFixed(2)),
+          usagePercent: cpuUsagePercent,
+        },
+        memory: {
+          rssMb: toMb(rss),
+          heapUsedMb: toMb(Number(processMemory.heapUsed || 0)),
+          heapTotalMb: toMb(Number(processMemory.heapTotal || 0)),
+          externalMb: toMb(Number(processMemory.external || 0)),
+          arrayBuffersMb: toMb(Number(processMemory.arrayBuffers || 0)),
+          systemTotalMb: toMb(systemTotal),
+          systemFreeMb: toMb(systemFree),
+          systemUsedMb: toMb(systemUsed),
+          processUsagePercent: toPct(rss, systemTotal),
+          systemUsagePercent: toPct(systemUsed, systemTotal),
+        },
+      });
+    } catch (error) {
+      console.error('[admin/resources-status]', error);
+      res.status(500).json({ error: 'resources_unavailable' });
+    }
   });
 
   app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {

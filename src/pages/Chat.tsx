@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -26,7 +26,7 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 type Conversation = {
   id: string;
-  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
+  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null };
   createdAt?: string;
   lastMessageAt?: string | null;
   unreadCount?: number;
@@ -70,6 +70,16 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function isMutualMatchSystemMessage(message: Message) {
+  return !message.mediaId && String(message.content || '').trim() === 'Vocês se curtiram mutuamente. Agora podem conversar por aqui.';
+}
+
+function formatDistanceLabel(distanceKm?: number | null) {
+  const value = Number(distanceKm);
+  if (!Number.isFinite(value) || value < 0) return '';
+  return `${value.toLocaleString('pt-BR', { minimumFractionDigits: value % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km de você`;
 }
 
 export default function Chat() {
@@ -926,6 +936,11 @@ export default function Chat() {
                 <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                   {getIdentityLine(activeConversation?.user) || 'Chat'}
                 </span>
+                {formatDistanceLabel(activeConversation?.user.distanceKm) ? (
+                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                    {formatDistanceLabel(activeConversation?.user.distanceKm)}
+                  </span>
+                ) : null}
                 {activeConversation?.isHighlighted && activeConversation.highlightNote ? (
                   <span className="block truncate text-[11px] leading-4 font-medium text-primary">
                     {activeConversation.highlightNote}
@@ -995,26 +1010,35 @@ export default function Chat() {
               {!isLoadingMessages && (USE_MOCKS ? [] : filteredMessages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
                 const isDeleted = msg.isDeletedForMe || msg.isDeletedForAll;
+                const isMutualMatchMessage = isMutualMatchSystemMessage(msg);
                 return (
                   <div
                     key={msg.id}
-                    className={cn("flex w-full min-w-0 items-end gap-2", isMine ? "justify-end" : "justify-start")}
+                    className={cn(
+                      'flex w-full min-w-0 items-end gap-2',
+                      isMutualMatchMessage ? 'justify-center' : isMine ? 'justify-end' : 'justify-start',
+                    )}
                   >
                     {/* Small avatar beside received messages */}
-                    {!isMine && (
+                    {!isMine && !isMutualMatchMessage && (
                       <div className="shrink-0 mb-0.5">
                         <UserAvatar user={activeConversation?.user} className="h-7 w-7" />
                       </div>
                     )}
                     <div
                       className={cn(
-                        "group relative min-w-0 max-w-[84%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2",
-                        isMine
-                          ? "bg-gradient-primary text-primary-foreground rounded-br-sm"
-                          : "bg-secondary rounded-bl-sm"
+                        'group relative min-w-0',
+                        isMutualMatchMessage
+                          ? 'max-w-[92%] rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-center shadow-sm sm:max-w-[80%] md:max-w-[70%]'
+                          : cn(
+                              'max-w-[84%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2',
+                              isMine
+                                ? 'bg-gradient-primary text-primary-foreground rounded-br-sm'
+                                : 'bg-secondary rounded-bl-sm'
+                            )
                       )}
-                      onContextMenu={(e) => !isDeleted && !msg.isSending && openContextMenu(e, msg.id)}
-                      onTouchStart={(e) => { if (!isDeleted && !msg.isSending) startLongPress(e, msg.id); }}
+                      onContextMenu={(e) => !isDeleted && !msg.isSending && !isMutualMatchMessage && openContextMenu(e, msg.id)}
+                      onTouchStart={(e) => { if (!isDeleted && !msg.isSending && !isMutualMatchMessage) startLongPress(e, msg.id); }}
                       onTouchEnd={cancelLongPress}
                       onTouchMove={cancelLongPress}
                     >
@@ -1033,6 +1057,16 @@ export default function Chat() {
                         </button>
                       ) : (
                         <div className="flex flex-col gap-2">
+                          {isMutualMatchMessage && (
+                            <div className="flex items-center justify-center gap-2 text-primary">
+                              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12">
+                                <HeartHandshake className="h-4 w-4" />
+                              </span>
+                              <span className="text-xs font-bold uppercase tracking-[0.18em]">
+                                Novo match confirmado
+                              </span>
+                            </div>
+                          )}
                           {msg.mediaId && (
                             <div className="relative rounded-lg overflow-hidden max-w-full">
                               {msg.isViewOnce ? (
@@ -1085,15 +1119,28 @@ export default function Chat() {
                               )}
                             </div>
                           )}
-                          {msg.content && <p className="break-words text-[16px] leading-6 md:text-base">{msg.content}</p>}
+                          {msg.content && (
+                            <p
+                              className={cn(
+                                'break-words text-[16px] leading-6 md:text-base',
+                                isMutualMatchMessage && 'text-sm font-semibold leading-5 text-primary md:text-sm',
+                              )}
+                            >
+                              {msg.content}
+                            </p>
+                          )}
                         </div>
                       )}
                       <div className={cn(
-                        "flex items-center justify-end gap-1 mt-1",
-                        isMine ? "text-primary-foreground/70" : "text-muted-foreground"
+                        'flex items-center gap-1 mt-1',
+                        isMutualMatchMessage
+                          ? 'justify-center text-muted-foreground'
+                          : isMine
+                            ? 'justify-end text-primary-foreground/70'
+                            : 'justify-end text-muted-foreground'
                       )}>
                         <span className="text-[10px]">{formatTime(msg.createdAt)}</span>
-                        {isMine && (
+                        {isMine && !isMutualMatchMessage && (
                           <span className="flex items-center">
                             {msg.isSending ? (
                               <div className="w-3 h-3 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />

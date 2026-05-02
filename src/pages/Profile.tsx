@@ -13,7 +13,7 @@ import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { hasPremiumAccess } from '@/utils/premium';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
-import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService } from '@/services/api';
+import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -59,17 +59,20 @@ function PhotoItem({
   onDelete,
   onToggleVisibility,
   isTogglingVisibility,
+  onRefreshPrivatePhotos,
 }: {
   photo: Photo;
   onSetMain: (id: string) => void;
   onDelete: (id: string) => void;
   onToggleVisibility: (id: string, currentIsPrivate: boolean) => void;
   isTogglingVisibility: boolean;
+  onRefreshPrivatePhotos?: () => Promise<void>;
 }) {
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
   const [likes, setLikes] = React.useState<Array<{ id: string; reaction?: string | null; user: { id: string; name: string; avatar?: string | null } }>>([]);
   const [isLoadingLikes, setIsLoadingLikes] = React.useState(false);
   const [showLikes, setShowLikes] = React.useState(false);
+  const privateRefreshAttemptedRef = React.useRef(false);
 
   const loadLikes = async () => {
     if (photo.isPrivate) return;
@@ -86,8 +89,20 @@ function PhotoItem({
 
   const handleOpen = (open: boolean) => {
     setIsPreviewOpen(open);
+    if (open && photo.isPrivate) void onRefreshPrivatePhotos?.();
     if (open) void loadLikes();
     if (!open) setShowLikes(false);
+  };
+
+  React.useEffect(() => {
+    privateRefreshAttemptedRef.current = false;
+  }, [photo.url]);
+
+  const handlePrivateImageError = () => {
+    if (!photo.isPrivate) return;
+    if (privateRefreshAttemptedRef.current) return;
+    privateRefreshAttemptedRef.current = true;
+    void onRefreshPrivatePhotos?.();
   };
 
   return (
@@ -99,6 +114,7 @@ function PhotoItem({
               src={resolveMediaUrl(photo.url)}
               alt=""
               className="h-full w-full cursor-zoom-in bg-black object-contain sm:object-cover"
+              onError={handlePrivateImageError}
             />
           </button>
         </DialogTrigger>
@@ -121,6 +137,7 @@ function PhotoItem({
               src={resolveMediaUrl(photo.url)}
               alt=""
               className="block max-h-[55dvh] w-auto max-w-full rounded-xl object-contain"
+              onError={handlePrivateImageError}
             />
           </div>
 
@@ -254,6 +271,7 @@ export default function Profile() {
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState(user?.bio || '');
   const [isSavingBio, setIsSavingBio] = useState(false);
+  const [isUpdatingGpsLocation, setIsUpdatingGpsLocation] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -412,6 +430,7 @@ export default function Profile() {
 
   useEffect(() => {
     if (activeTab !== 'private') return;
+    void loadPhotos();
     void loadPrivatePhotoRequests();
   }, [activeTab]);
 
@@ -463,6 +482,68 @@ export default function Profile() {
       toast({ title: 'Falha ao salvar descrição', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsSavingBio(false);
+    }
+  };
+
+  const handleUpdateLocationFromGps = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: 'GPS indisponível',
+        description: 'Seu aparelho ou navegador não disponibiliza localização.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsUpdatingGpsLocation(true);
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+
+      const lat = Number(position.coords.latitude);
+      const lng = Number(position.coords.longitude);
+
+      await locationService.updateLocation(lat, lng);
+
+      let nextCity = user?.city || '';
+      let nextState = user?.state || '';
+      try {
+        const nearest = await locationService.getNearestCity(lat, lng);
+        if (nearest?.name) nextCity = String(nearest.name);
+        if (nearest?.state) nextState = String(nearest.state);
+      } catch {}
+
+      updateUser({
+        city: nextCity || null,
+        state: nextState || null,
+      });
+
+      toast({
+        title: 'Localização atualizada',
+        description: nextCity && nextState ? `${nextCity}, ${nextState}` : 'Seu GPS foi atualizado com sucesso.',
+      });
+    } catch (error: any) {
+      const code = Number(error?.code || 0);
+      const description =
+        code === 1
+          ? 'Você negou a permissão de localização do aparelho.'
+          : code === 2
+            ? 'Não foi possível identificar sua posição atual.'
+            : code === 3
+              ? 'O GPS demorou demais para responder. Tente novamente.'
+              : 'Não foi possível atualizar sua localização agora.';
+      toast({
+        title: 'Falha ao atualizar localização',
+        description,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingGpsLocation(false);
     }
   };
 
@@ -813,6 +894,17 @@ export default function Profile() {
                   Editar Perfil
                 </Button>
               </NavLink>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => void handleUpdateLocationFromGps()}
+                disabled={isUpdatingGpsLocation}
+              >
+                <MapPin className="w-4 h-4" />
+                {isUpdatingGpsLocation ? 'Atualizando GPS...' : 'Atualizar localização pelo GPS'}
+              </Button>
               <NavLink to="/settings">
                 <Button variant="ghost" size="sm" className="w-full gap-2">
                   <Settings className="w-4 h-4" />
@@ -1102,6 +1194,7 @@ export default function Profile() {
                 onDelete={handleDelete}
                 onToggleVisibility={handleToggleMediaVisibility}
                 isTogglingVisibility={busyMediaVisibilityId === photo.id}
+                onRefreshPrivatePhotos={loadPhotos}
               />
             ))}
             
@@ -1238,6 +1331,7 @@ export default function Profile() {
                 onDelete={handleDelete}
                 onToggleVisibility={handleToggleMediaVisibility}
                 isTogglingVisibility={busyMediaVisibilityId === photo.id}
+                onRefreshPrivatePhotos={loadPhotos}
               />
             ))}
 

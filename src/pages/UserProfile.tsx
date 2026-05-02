@@ -685,6 +685,11 @@ export default function UserProfile() {
     return profile.lookingFor.filter((x: unknown) => typeof x === 'string' && x.trim()).join(' • ');
   }, [profile?.lookingFor]);
   const cityLine = useMemo(() => [profile?.city, profile?.state].filter(Boolean).join(', ') || '—', [profile?.city, profile?.state]);
+  const distanceLabel = useMemo(() => {
+    const distance = Number(profile?.distanceKm);
+    if (!Number.isFinite(distance) || distance < 0) return '';
+    return `${distance.toLocaleString('pt-BR', { minimumFractionDigits: distance % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km de você`;
+  }, [profile?.distanceKm]);
   const avatarUrl = useMemo(() => resolveMediaUrl(profile?.avatar || ''), [profile?.avatar]);
 
   const isNewProfile = useMemo(() => {
@@ -953,6 +958,11 @@ export default function UserProfile() {
                 <MapPin className="w-4 h-4" />
                 <span>{cityLine}</span>
               </div>
+              {distanceLabel ? (
+                <div className="flex items-center justify-center sm:justify-start gap-1 text-xs font-medium text-primary">
+                  <span>{distanceLabel}</span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-center sm:justify-start gap-3 text-sm">
                 <span>{profile?.gender || '—'}</span>
                 {ageLabel ? (

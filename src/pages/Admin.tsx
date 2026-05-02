@@ -72,6 +72,7 @@ type AdminResourcesStatus = {
   uptimeSec: number;
   cpu: {
     count: number;
+    usagePercent: number;
     loadAvg1m: number;
     loadAvg5m: number;
     loadAvg15m: number;
@@ -228,6 +229,29 @@ function getDeviceMeta(deviceType: string) {
   return { label: 'Computador', icon: Monitor };
 }
 
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value * 100) / 100));
+}
+
+function formatUptimeLabel(totalSeconds: number) {
+  const safeSeconds = Math.max(0, Math.trunc(totalSeconds || 0));
+  const days = Math.floor(safeSeconds / 86400);
+  const hours = Math.floor((safeSeconds % 86400) / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function getUsageHealth(percent: number) {
+  const safe = clampPercent(percent);
+  if (safe >= 90) return { label: 'Muito alto', tone: 'text-destructive', bar: 'bg-destructive' };
+  if (safe >= 75) return { label: 'Atenção', tone: 'text-amber-600', bar: 'bg-amber-500' };
+  return { label: 'Saudável', tone: 'text-emerald-600', bar: 'bg-emerald-500' };
+}
+
 export default function Admin() {
   const USERS_PAGE_SIZE = 200;
   const { user, updateUser } = useAuth();
@@ -253,6 +277,18 @@ export default function Admin() {
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
+  const cpuUsagePercent = resourcesStatus
+    ? clampPercent(
+        resourcesStatus.cpu.usagePercent || (
+          resourcesStatus.cpu.count > 0
+            ? (resourcesStatus.cpu.loadAvg1m / resourcesStatus.cpu.count) * 100
+            : 0
+        )
+      )
+    : 0;
+  const memoryUsagePercent = resourcesStatus ? clampPercent(resourcesStatus.memory.systemUsagePercent) : 0;
+  const cpuHealth = getUsageHealth(cpuUsagePercent);
+  const memoryHealth = getUsageHealth(memoryUsagePercent);
 
   useEffect(() => {
     let cancelled = false;
@@ -664,6 +700,7 @@ export default function Admin() {
         uptimeSec: Number(data.uptimeSec || 0),
         cpu: {
           count: Number((data as any).cpu?.count || 0),
+          usagePercent: Number((data as any).cpu?.usagePercent || 0),
           loadAvg1m: Number((data as any).cpu?.loadAvg1m || 0),
           loadAvg5m: Number((data as any).cpu?.loadAvg5m || 0),
           loadAvg15m: Number((data as any).cpu?.loadAvg15m || 0),
@@ -685,7 +722,7 @@ export default function Admin() {
     } catch {
       toast({
         title: 'Falha ao consultar recursos',
-        description: 'Não foi possível buscar o status de recursos do servidor.',
+        description: 'Não foi possível buscar o uso de CPU e memória do servidor agora.',
         variant: 'destructive',
       });
     } finally {
@@ -792,7 +829,7 @@ export default function Admin() {
           <div className="space-y-1">
             <p className="text-sm font-semibold">Recursos do servidor</p>
             <p className="text-sm text-muted-foreground">
-              Consulta em tempo real de memória, CPU e uptime para acompanhamento técnico.
+              Veja em porcentagem quanto do servidor está sendo usado agora para decidir se já está na hora de fazer upgrade.
             </p>
           </div>
           <Button
@@ -802,36 +839,61 @@ export default function Admin() {
             disabled={isLoadingResourcesStatus}
           >
             <Eye className="w-4 h-4" />
-            {isLoadingResourcesStatus ? 'Consultando...' : 'Consultar status de recursos'}
+            {isLoadingResourcesStatus ? 'Consultando...' : 'Ver uso do servidor'}
           </Button>
         </div>
 
         {resourcesStatus ? (
           <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-xl border bg-background p-3">
-              <p className="text-xs text-muted-foreground">Uptime</p>
-              <p className="text-base font-semibold">{Math.floor(resourcesStatus.uptimeSec / 3600)}h {Math.floor((resourcesStatus.uptimeSec % 3600) / 60)}m</p>
-              <p className="text-xs text-muted-foreground">Node {resourcesStatus.nodeVersion} · {resourcesStatus.platform}</p>
-            </div>
-            <div className="rounded-xl border bg-background p-3">
-              <p className="text-xs text-muted-foreground">CPU</p>
-              <p className="text-base font-semibold">{resourcesStatus.cpu.count} núcleos</p>
-              <p className="text-xs text-muted-foreground">
-                Load avg: {resourcesStatus.cpu.loadAvg1m} / {resourcesStatus.cpu.loadAvg5m} / {resourcesStatus.cpu.loadAvg15m}
+            <div className="rounded-xl border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Uso de CPU</p>
+                  <p className="text-3xl font-bold">{cpuUsagePercent.toLocaleString('pt-BR')}%</p>
+                </div>
+                <span className={`text-xs font-semibold ${cpuHealth.tone}`}>{cpuHealth.label}</span>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className={`h-full rounded-full ${cpuHealth.bar}`} style={{ width: `${cpuUsagePercent}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Baseado na carga média do último minuto em {resourcesStatus.cpu.count} núcleo(s).
               </p>
             </div>
-            <div className="rounded-xl border bg-background p-3">
-              <p className="text-xs text-muted-foreground">Memória</p>
-              <p className="text-base font-semibold">
+
+            <div className="rounded-xl border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Uso de memória</p>
+                  <p className="text-3xl font-bold">{memoryUsagePercent.toLocaleString('pt-BR')}%</p>
+                </div>
+                <span className={`text-xs font-semibold ${memoryHealth.tone}`}>{memoryHealth.label}</span>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className={`h-full rounded-full ${memoryHealth.bar}`} style={{ width: `${memoryUsagePercent}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
                 {resourcesStatus.memory.systemUsedMb.toLocaleString('pt-BR')} MB / {resourcesStatus.memory.systemTotalMb.toLocaleString('pt-BR')} MB
               </p>
               <p className="text-xs text-muted-foreground">
-                SO: {resourcesStatus.memory.systemUsagePercent}% · Processo: {resourcesStatus.memory.processUsagePercent}%
+                O site está usando {resourcesStatus.memory.processUsagePercent.toLocaleString('pt-BR')}% da memória total do servidor.
               </p>
             </div>
-            <div className="rounded-xl border bg-background p-3 md:col-span-3">
+
+            <div className="rounded-xl border bg-background p-4">
+              <p className="text-xs text-muted-foreground">Servidor ligado há</p>
+              <p className="text-3xl font-bold">{formatUptimeLabel(resourcesStatus.uptimeSec)}</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Última atualização: {formatDateTime(resourcesStatus.checkedAt)}
+              </p>
               <p className="text-xs text-muted-foreground">
-                Última consulta: {formatDateTime(resourcesStatus.checkedAt)}
+                Node {resourcesStatus.nodeVersion} · {resourcesStatus.platform}
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-background p-4 md:col-span-3">
+              <p className="text-xs text-muted-foreground">
+                Leitura rápida: abaixo de 75% costuma estar confortável; entre 75% e 89% pede atenção; acima de 90% já é sinal forte para avaliar upgrade.
               </p>
             </div>
           </div>
