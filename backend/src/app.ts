@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'node:path';
-import { mkdirSync, existsSync, createReadStream, statSync, renameSync, unlinkSync } from 'node:fs';
+import { mkdirSync, existsSync, createReadStream, statSync, statfsSync, renameSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { cpus, freemem, loadavg, totalmem } from 'node:os';
@@ -5890,9 +5890,18 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const currentLoad = loadavg();
 
       const toMb = (value: number) => Math.round((value / 1024 / 1024) * 100) / 100;
+      const toGb = (value: number) => Math.round((value / 1024 / 1024 / 1024) * 100) / 100;
       const toPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
       const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value * 100) / 100));
       const cpuUsagePercent = clampPct((Number(currentLoad[0] || 0) / cpuCount) * 100);
+      const asNumber = (value: number | bigint | undefined | null) => typeof value === 'bigint' ? Number(value) : Number(value || 0);
+      const diskStats = statfsSync(backendRootDir);
+      const diskBlockSize = asNumber((diskStats as any).bsize || (diskStats as any).frsize || 0);
+      const diskAvailableBlocks = asNumber((diskStats as any).bavail ?? (diskStats as any).bfree ?? 0);
+      const diskTotalBlocks = asNumber((diskStats as any).blocks || 0);
+      const diskTotalBytes = diskBlockSize > 0 ? diskBlockSize * diskTotalBlocks : 0;
+      const diskFreeBytes = diskBlockSize > 0 ? diskBlockSize * diskAvailableBlocks : 0;
+      const diskUsedBytes = Math.max(0, diskTotalBytes - diskFreeBytes);
 
       res.json({
         checkedAt: nowIso(),
@@ -5917,6 +5926,12 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           systemUsedMb: toMb(systemUsed),
           processUsagePercent: toPct(rss, systemTotal),
           systemUsagePercent: toPct(systemUsed, systemTotal),
+        },
+        disk: {
+          totalGb: toGb(diskTotalBytes),
+          freeGb: toGb(diskFreeBytes),
+          usedGb: toGb(diskUsedBytes),
+          usagePercent: toPct(diskUsedBytes, diskTotalBytes),
         },
       });
     } catch (error) {

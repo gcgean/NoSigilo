@@ -89,6 +89,12 @@ type AdminResourcesStatus = {
     processUsagePercent: number;
     systemUsagePercent: number;
   };
+  disk: {
+    totalGb: number;
+    freeGb: number;
+    usedGb: number;
+    usagePercent: number;
+  };
 };
 
 type AdminReport = {
@@ -287,8 +293,10 @@ export default function Admin() {
       )
     : 0;
   const memoryUsagePercent = resourcesStatus ? clampPercent(resourcesStatus.memory.systemUsagePercent) : 0;
+  const diskUsagePercent = resourcesStatus ? clampPercent(resourcesStatus.disk.usagePercent) : 0;
   const cpuHealth = getUsageHealth(cpuUsagePercent);
   const memoryHealth = getUsageHealth(memoryUsagePercent);
+  const diskHealth = getUsageHealth(diskUsagePercent);
 
   useEffect(() => {
     let cancelled = false;
@@ -717,6 +725,12 @@ export default function Admin() {
           processUsagePercent: Number((data as any).memory?.processUsagePercent || 0),
           systemUsagePercent: Number((data as any).memory?.systemUsagePercent || 0),
         },
+        disk: {
+          totalGb: Number((data as any).disk?.totalGb || 0),
+          freeGb: Number((data as any).disk?.freeGb || 0),
+          usedGb: Number((data as any).disk?.usedGb || 0),
+          usagePercent: Number((data as any).disk?.usagePercent || 0),
+        },
       });
       toast({ title: 'Status de recursos atualizado' });
     } catch {
@@ -844,7 +858,7 @@ export default function Admin() {
         </div>
 
         {resourcesStatus ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border bg-background p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -877,6 +891,25 @@ export default function Admin() {
               </p>
               <p className="text-xs text-muted-foreground">
                 O site está usando {resourcesStatus.memory.processUsagePercent.toLocaleString('pt-BR')}% da memória total do servidor.
+              </p>
+            </div>
+
+            <div className="rounded-xl border bg-background p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Uso de armazenamento</p>
+                  <p className="text-3xl font-bold">{diskUsagePercent.toLocaleString('pt-BR')}%</p>
+                </div>
+                <span className={`text-xs font-semibold ${diskHealth.tone}`}>{diskHealth.label}</span>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div className={`h-full rounded-full ${diskHealth.bar}`} style={{ width: `${diskUsagePercent}%` }} />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {resourcesStatus.disk.usedGb.toLocaleString('pt-BR')} GB / {resourcesStatus.disk.totalGb.toLocaleString('pt-BR')} GB
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Espaço livre: {resourcesStatus.disk.freeGb.toLocaleString('pt-BR')} GB
               </p>
             </div>
 
