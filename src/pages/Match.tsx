@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle } from 'lucide-react';
+import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,24 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
+import { User as UserType } from '@/contexts/AuthContext';
+
+function calcProfileCompletion(user: UserType | null) {
+  if (!user) return { percent: 0, missing: [] as string[] };
+  const checks: Array<{ label: string; weight: number; ok: boolean }> = [
+    { label: 'Foto de perfil', weight: 20, ok: !!user.avatar },
+    { label: 'Bio', weight: 15, ok: !!user.bio },
+    { label: 'Cidade', weight: 15, ok: !!user.city },
+    { label: 'Data de nascimento', weight: 15, ok: !!user.birthDate },
+    { label: 'Gênero', weight: 15, ok: !!user.gender },
+    { label: 'O que você busca', weight: 10, ok: Array.isArray(user.lookingFor) && user.lookingFor.length > 0 },
+    { label: 'Estado civil', weight: 10, ok: !!user.maritalStatus },
+  ];
+  const percent = checks.reduce((sum, c) => sum + (c.ok ? c.weight : 0), 0);
+  const missing = checks.filter((c) => !c.ok).map((c) => c.label);
+  return { percent, missing };
+}
 
 type MatchProfile = {
   id: string;
@@ -78,7 +96,11 @@ export default function Match() {
   const [isLoading, setIsLoading] = useState(profiles.length === 0);
   const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);
   const [isLoadingLikedProfiles, setIsLoadingLikedProfiles] = useState(false);
+  const [hasSwipedAny, setHasSwipedAny] = useState(() => sessionStorage.getItem('nosigilo_match_swiped') === '1');
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
+  const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion(user), [user]);
 
   const redirectToPlans = () => {
     toast({
@@ -140,6 +162,10 @@ export default function Match() {
   }, [on, off]);
 
   useEffect(() => {
+    getPushActivationState().then((s) => setPushEnabled(s.enabled)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     // Clear match notifications when entering match page
     const clearMatchNotifs = async () => {
       try {
@@ -173,8 +199,23 @@ export default function Match() {
     return resolveMediaUrl(currentProfile.mainMediaUrl || currentProfile.avatar || '');
   }, [currentProfile]);
 
+  const handleEnablePush = async () => {
+    setPushLoading(true);
+    try {
+      await enablePushNotifications();
+      setPushEnabled(true);
+      toast({ title: 'Notificações ativadas!', description: 'Você será avisado quando novos perfis chegarem.' });
+    } catch {
+      toast({ title: 'Não foi possível ativar', description: 'Verifique as permissões do seu navegador.', variant: 'destructive' });
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   const handleSwipe = (direction: 'left' | 'right') => {
     const swipedProfileId = currentProfile?.id ? String(currentProfile.id) : null;
+    setHasSwipedAny(true);
+    sessionStorage.setItem('nosigilo_match_swiped', '1');
     setSwipeDirection(direction);
     window.setTimeout(() => {
       setSwipeDirection(null);
@@ -376,13 +417,80 @@ export default function Match() {
             </div>
           </button>
         )}
-        {!isLoading && premiumAccess && !currentProfile && (
-          <div className="absolute inset-0">
-            <MobileState
-              className="h-full rounded-[22px] sm:rounded-3xl"
-              title="Nenhum perfil disponível"
-              description="Quando entrarem novos perfis no seu alcance, eles aparecem aqui."
-            />
+        {!isLoading && premiumAccess && !currentProfile && hasSwipedAny && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+              <Heart className="h-8 w-8 text-primary" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold">Você viu todos os perfis!</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Novos perfis chegam em breve. Ative as notificações e seja o primeiro a saber.
+              </p>
+            </div>
+            {!pushEnabled ? (
+              <Button
+                onClick={() => void handleEnablePush()}
+                disabled={pushLoading}
+                className="gap-2 rounded-xl"
+              >
+                <Bell className="h-4 w-4" />
+                {pushLoading ? 'Ativando…' : 'Ativar notificações'}
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-success font-medium">
+                <BellOff className="h-4 w-4" />
+                Notificações ativas
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground/70">
+              Sua busca cobre todo o Brasil — novos usuários aparecem aqui assim que cadastram.
+            </p>
+          </div>
+        )}
+        {!isLoading && premiumAccess && !currentProfile && !hasSwipedAny && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <User className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-lg font-semibold">Nenhum perfil no momento</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Perfis completos aparecem primeiro nos resultados de outras pessoas.
+              </p>
+            </div>
+            {profilePercent < 100 && (
+              <div className="w-full max-w-xs">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-medium">Seu perfil está {profilePercent}% completo</span>
+                  <span className="text-muted-foreground">{profilePercent}%</span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{ width: `${profilePercent}%` }}
+                  />
+                </div>
+                {profileMissing.length > 0 && (
+                  <div className="mt-3 space-y-1.5 text-left">
+                    {profileMissing.slice(0, 3).map((item) => (
+                      <div key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 rounded-xl"
+              onClick={() => navigate('/settings')}
+            >
+              Completar perfil <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         )}
         {!isLoading && premiumAccess && currentProfile && (
