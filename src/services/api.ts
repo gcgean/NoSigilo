@@ -409,6 +409,27 @@ export const notificationsService = {
   },
 };
 
+export const pushService = {
+  getPublicKey: async () => {
+    const response = await apiClient.get('/push/public-key');
+    return response.data as { publicKey: string };
+  },
+
+  subscribe: async (subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: { p256dh: string; auth: string };
+  }) => {
+    const response = await apiClient.post('/push/subscribe', subscription);
+    return response.data;
+  },
+
+  unsubscribe: async (endpoint: string) => {
+    const response = await apiClient.post('/push/unsubscribe', { endpoint });
+    return response.data;
+  },
+};
+
 export const usersService = {
   searchUsers: async (params: {
     page?: number;

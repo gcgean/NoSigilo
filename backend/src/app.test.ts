@@ -1582,4 +1582,47 @@ describe('nosigilo backend', () => {
       mine.body.myBroadcasts[0].deliveries.some((entry: any) => entry.viewer.name === 'Viewer Radar' && !!entry.viewedAt && !!entry.contactedAt)
     ).toBe(true);
   });
+
+  it('allows the logged device to subscribe and unsubscribe from push notifications', async () => {
+    const invited = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Push User',
+      email: 'push-user@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+    });
+
+    const publicKey = await request(ctx.app)
+      .get('/api/push/public-key')
+      .set('Authorization', `Bearer ${invited.token}`)
+      .expect(200);
+    expect(typeof publicKey.body.publicKey).toBe('string');
+    expect(publicKey.body.publicKey.length).toBeGreaterThan(20);
+
+    const endpoint = 'https://push.example.com/subscriptions/device-1';
+    await request(ctx.app)
+      .post('/api/push/subscribe')
+      .set('Authorization', `Bearer ${invited.token}`)
+      .send({
+        endpoint,
+        expirationTime: null,
+        keys: {
+          p256dh: 'BExampleP256dhValue123456789',
+          auth: 'AuthValue123',
+        },
+      })
+      .expect(200);
+
+    const stored = await ctx.db.queryOne('SELECT user_id, endpoint FROM push_subscriptions WHERE endpoint = ? LIMIT 1', [endpoint]);
+    expect((stored as any)?.user_id).toBe(invited.user.id);
+    expect((stored as any)?.endpoint).toBe(endpoint);
+
+    await request(ctx.app)
+      .post('/api/push/unsubscribe')
+      .set('Authorization', `Bearer ${invited.token}`)
+      .send({ endpoint })
+      .expect(200);
+
+    const removed = await ctx.db.queryOne('SELECT id FROM push_subscriptions WHERE endpoint = ? LIMIT 1', [endpoint]);
+    expect(removed).toBeNull();
+  });
 });

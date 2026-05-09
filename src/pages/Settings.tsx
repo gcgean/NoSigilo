@@ -29,6 +29,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { CitySearch } from '@/components/CitySearch';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import {
+  disablePushNotifications,
+  enablePushNotifications,
+  getPushActivationState,
+} from '@/utils/pushNotifications';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean };
 
@@ -43,6 +48,7 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingPushState, setIsLoadingPushState] = useState(true);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -110,6 +116,26 @@ export default function Settings() {
     }));
   }, [user?.notificationVisits]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadPushState = async () => {
+      try {
+        const state = await getPushActivationState();
+        if (cancelled) return;
+        setNotifications((prev) => ({ ...prev, push: state.enabled }));
+      } catch {
+        if (cancelled) return;
+        setNotifications((prev) => ({ ...prev, push: false }));
+      } finally {
+        if (!cancelled) setIsLoadingPushState(false);
+      }
+    };
+    void loadPushState();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
@@ -126,10 +152,26 @@ export default function Settings() {
     setIsLoading(true);
     try {
       await profileService.updateProfile({ notificationVisits: notifications.visits });
+      if (notifications.push) {
+        await enablePushNotifications();
+      } else {
+        await disablePushNotifications();
+      }
+      const pushState = await getPushActivationState().catch(() => ({ enabled: false }));
       updateUser({ notificationVisits: notifications.visits });
-      toast({ title: 'Preferências de notificação atualizadas!' });
-    } catch {
-      toast({ title: 'Erro ao salvar notificações', variant: 'destructive' });
+      setNotifications((prev) => ({ ...prev, push: !!pushState.enabled }));
+      toast({
+        title: 'Preferências de notificação atualizadas!',
+        description: notifications.push
+          ? 'Este aparelho agora pode receber avisos de novas mensagens e matches.'
+          : 'Os avisos push foram desligados neste aparelho.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao salvar notificações',
+        description: error?.message || 'Tente novamente.',
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -793,11 +835,14 @@ export default function Settings() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-medium">Push</p>
-                <p className="text-sm text-muted-foreground">Notificações no navegador</p>
+                <p className="text-sm text-muted-foreground">
+                  Avisos no celular instalado como app para novas mensagens e matches
+                </p>
               </div>
               <Switch
                 checked={notifications.push}
                 onCheckedChange={(v) => setNotifications({ ...notifications, push: v })}
+                disabled={isLoadingPushState}
               />
             </div>
           </div>

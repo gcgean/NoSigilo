@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { cpus, freemem, loadavg, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import webpush from 'web-push';
 import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
@@ -39,6 +40,9 @@ type Env = {
   HUB_BILLING_ADMIN_PASSWORD?: string;
   HUB_BILLING_PRODUCT_ID?: string;
   HUB_BILLING_WEBHOOK_SECRET?: string;
+  VAPID_PUBLIC_KEY?: string;
+  VAPID_PRIVATE_KEY?: string;
+  VAPID_SUBJECT?: string;
 };
 
 export type PublicUser = {
@@ -132,9 +136,55 @@ function getAdminEmails(): Set<string> {
   return new Set(['admin@nosigilo.com']);
 }
 const ADMIN_EMAILS = getAdminEmails();
+const GENERATED_VAPID_KEYS = webpush.generateVAPIDKeys();
+let hasWarnedAboutEphemeralVapidKeys = false;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+type BrowserPushSubscription = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+};
+
+type PushDeliveryPayload = {
+  title: string;
+  body?: string | null;
+  url?: string | null;
+  tag?: string | null;
+  data?: Record<string, unknown> | null;
+  icon?: string | null;
+  badge?: string | null;
+};
+
+function getWebPushConfig(env: Env) {
+  const configuredPublicKey = String(env.VAPID_PUBLIC_KEY || '').trim();
+  const configuredPrivateKey = String(env.VAPID_PRIVATE_KEY || '').trim();
+  const usingEphemeralKeys = !configuredPublicKey || !configuredPrivateKey;
+
+  if (usingEphemeralKeys && !hasWarnedAboutEphemeralVapidKeys) {
+    hasWarnedAboutEphemeralVapidKeys = true;
+    console.warn(
+      '[PUSH WARNING] VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configuradas. Gerando chaves temporárias apenas para desenvolvimento.'
+    );
+  }
+
+  return {
+    publicKey: configuredPublicKey || GENERATED_VAPID_KEYS.publicKey,
+    privateKey: configuredPrivateKey || GENERATED_VAPID_KEYS.privateKey,
+    subject: String(env.VAPID_SUBJECT || '').trim() || 'mailto:suporte@nosigilo.net',
+  };
+}
+
+function configureWebPush(env: Env) {
+  const config = getWebPushConfig(env);
+  webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+  return config;
 }
 
 const PROFILE_VISIT_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000;
@@ -502,6 +552,65 @@ function safeJsonParse(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function buildWebPushPayload(payload: PushDeliveryPayload) {
+  return JSON.stringify({
+    title: payload.title,
+    body: payload.body ?? '',
+    url: payload.url ?? '/notifications',
+    tag: payload.tag ?? 'nosigilo',
+    data: payload.data ?? null,
+    icon: payload.icon ?? '/icon-192.svg',
+    badge: payload.badge ?? '/icon-192.svg',
+  });
+}
+
+async function sendPushToUser(
+  options: { db: DbHandle; env: Env },
+  data: { userId: string; payload: PushDeliveryPayload }
+) {
+  configureWebPush(options.env);
+  const rows = await queryAll(
+    options.db,
+    'SELECT id, endpoint, subscription_json FROM push_subscriptions WHERE user_id = ?',
+    [data.userId]
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+
+  const serializedPayload = buildWebPushPayload(data.payload);
+  let sentCount = 0;
+
+  for (const row of rows as any[]) {
+    const subscription = safeJsonParse(String(row.subscription_json || '')) as BrowserPushSubscription | null;
+    if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+      await run(options.db, 'DELETE FROM push_subscriptions WHERE id = ?', [String(row.id)]);
+      continue;
+    }
+
+    try {
+      await webpush.sendNotification(subscription as any, serializedPayload);
+      sentCount += 1;
+      await run(options.db, 'UPDATE push_subscriptions SET last_used_at = ?, updated_at = ? WHERE id = ?', [
+        nowIso(),
+        nowIso(),
+        String(row.id),
+      ]);
+    } catch (error: any) {
+      const statusCode = Number(error?.statusCode || 0);
+      if (statusCode === 404 || statusCode === 410) {
+        await run(options.db, 'DELETE FROM push_subscriptions WHERE id = ?', [String(row.id)]);
+        continue;
+      }
+      console.error('Falha ao enviar push notification:', error);
+    }
+  }
+
+  if (sentCount > 0) {
+    await options.db.persist();
+  }
+
+  return sentCount;
 }
 
 function replaceFileExtension(filename: string, nextExtension: string) {
@@ -1145,6 +1254,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const __dirname = path.dirname(__filename);
   const backendRootDir = path.join(__dirname, '..');
   const repoRootDir = path.join(backendRootDir, '..');
+  const pushConfig = configureWebPush(env);
 
   const storageRootDir = path.join(backendRootDir, 'storage');
   const uploadsDir = path.join(storageRootDir, 'public');
@@ -3525,6 +3635,32 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             dataJson: { conversationId, actorId: myId, actorName },
           }
         );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: myId,
+            payload: {
+              title: 'Novo match confirmado',
+              body: `Você e ${targetName} se curtiram. Toque para abrir o chat.`,
+              url: `/chat?conversationId=${encodeURIComponent(conversationId)}`,
+              tag: `match:${conversationId}`,
+              data: { conversationId, actorId: targetUserId },
+            },
+          }
+        );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: targetUserId,
+            payload: {
+              title: 'Novo match confirmado',
+              body: `Você e ${actorName} se curtiram. Toque para abrir o chat.`,
+              url: `/chat?conversationId=${encodeURIComponent(conversationId)}`,
+              tag: `match:${conversationId}`,
+              data: { conversationId, actorId: myId },
+            },
+          }
+        );
       }
     }
     await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
@@ -4530,6 +4666,26 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       isDelivered: true,
       createdAt 
     });
+    const sender = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const senderName = sender?.name ? String(sender.name) : 'Nova mensagem';
+    const previewText = content
+      ? String(content).trim().slice(0, 140)
+      : String(mediaMimeType || '').startsWith('video/')
+        ? 'Enviou um vídeo para você.'
+        : 'Enviou uma foto para você.';
+    await sendPushToUser(
+      { db, env },
+      {
+        userId: otherId,
+        payload: {
+          title: senderName,
+          body: previewText || 'Nova mensagem no chat.',
+          url: `/chat?conversationId=${encodeURIComponent(conversationId)}`,
+          tag: `chat:${conversationId}`,
+          data: { conversationId, senderId: req.auth!.userId },
+        },
+      }
+    );
     res.json({ id });
   });
 
@@ -5106,6 +5262,81 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
     await run(db, 'UPDATE friend_requests SET status = ? WHERE id = ?', [parsed.data.accept ? 'accepted' : 'declined', requestId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.get('/api/push/public-key', requireAuth(env, db), async (_req, res) => {
+    res.json({ publicKey: pushConfig.publicKey });
+  });
+
+  app.post('/api/push/subscribe', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      endpoint: z.string().url(),
+      expirationTime: z.number().nullable().optional(),
+      keys: z.object({
+        p256dh: z.string().min(1),
+        auth: z.string().min(1),
+      }),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const subscription = parsed.data as BrowserPushSubscription;
+    const existing = (await queryOne(db, 'SELECT id FROM push_subscriptions WHERE endpoint = ? LIMIT 1', [
+      subscription.endpoint,
+    ])) as any;
+    const timestamp = nowIso();
+    const userAgent = limitText(getHeaderValue(req, 'user-agent'), 255);
+
+    if (existing?.id) {
+      await run(
+        db,
+        'UPDATE push_subscriptions SET user_id = ?, subscription_json = ?, user_agent = ?, updated_at = ? WHERE id = ?',
+        [
+          req.auth!.userId,
+          JSON.stringify(subscription),
+          userAgent,
+          timestamp,
+          String(existing.id),
+        ]
+      );
+    } else {
+      await run(
+        db,
+        `INSERT INTO push_subscriptions (id, user_id, endpoint, subscription_json, user_agent, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          req.auth!.userId,
+          subscription.endpoint,
+          JSON.stringify(subscription),
+          userAgent,
+          timestamp,
+          timestamp,
+        ]
+      );
+    }
+
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.post('/api/push/unsubscribe', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({ endpoint: z.string().url() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    await run(db, 'DELETE FROM push_subscriptions WHERE user_id = ? AND endpoint = ?', [
+      req.auth!.userId,
+      parsed.data.endpoint,
+    ]);
     await persist();
     res.json({ ok: true });
   });

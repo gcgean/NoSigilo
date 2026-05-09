@@ -38,6 +38,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { syncPushSubscription } from '@/utils/pushNotifications';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -345,6 +346,11 @@ export default function Layout() {
       window.removeEventListener('pageshow', handleResume);
     };
   }, [refreshUnread, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void syncPushSubscription().catch(() => {});
+  }, [user?.id]);
 
   const handleNotificationsBellClick = useCallback(() => {
     if (unreadCount <= 0) return;

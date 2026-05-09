@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nosigilo-shell-v2';
+const CACHE_NAME = 'nosigilo-shell-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/apple-touch-icon.svg', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -47,6 +47,65 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         return response;
       });
+    })
+  );
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload = {};
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: 'NoSigilo.net', body: event.data.text() };
+  }
+
+  const title = String(payload?.title || 'NoSigilo.net');
+  const options = {
+    body: payload?.body ? String(payload.body) : '',
+    icon: payload?.icon ? String(payload.icon) : '/icon-192.svg',
+    badge: payload?.badge ? String(payload.badge) : '/icon-192.svg',
+    tag: payload?.tag ? String(payload.tag) : 'nosigilo-push',
+    data: {
+      url: payload?.url ? String(payload.url) : '/notifications',
+      ...(payload?.data && typeof payload.data === 'object' ? payload.data : {}),
+    },
+    renotify: true,
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const relativeUrl =
+    event.notification?.data && typeof event.notification.data.url === 'string'
+      ? event.notification.data.url
+      : '/notifications';
+  const targetUrl = new URL(relativeUrl, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if (!client || !('focus' in client)) continue;
+        if (client.url === targetUrl) {
+          return client.focus();
+        }
+      }
+      for (const client of clients) {
+        if (!client || !('focus' in client)) continue;
+        if (client.url.startsWith(self.location.origin)) {
+          if ('navigate' in client) {
+            return client.navigate(targetUrl).then(() => client.focus());
+          }
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+      return undefined;
     })
   );
 });
