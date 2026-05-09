@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
 import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
-import EmojiPicker, { Theme } from 'emoji-picker-react';
+const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import VideoWithPreview from '@/components/VideoWithPreview';
@@ -1264,10 +1264,12 @@ export default function Chat() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent side="top" align="start" className="p-0 border-none w-auto">
-                      <EmojiPicker
-                        onEmojiClick={(emojiData) => setMessage(prev => prev + emojiData.emoji)}
-                        theme={Theme.LIGHT}
-                      />
+                      <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Carregando…</div>}>
+                        <EmojiPicker
+                          onEmojiClick={(emojiData: { emoji: string }) => setMessage(prev => prev + emojiData.emoji)}
+                          theme={"light" as any}
+                        />
+                      </Suspense>
                     </PopoverContent>
                   </Popover>
 
