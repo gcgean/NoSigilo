@@ -168,12 +168,14 @@ export default function Chat() {
     const headerPx = isSmMobile ? 64 : 56;
     const headerRem = isSmMobile ? '4rem' : '3.5rem';
 
+    const vv = window.visualViewport;
+
     const update = () => {
-      const vv = window.visualViewport;
-      const vh = vv ? vv.height : window.innerHeight;
-      const vTop = vv ? Math.round(vv.offsetTop) : 0;
-      const vLeft = vv ? Math.round(vv.offsetLeft) : 0;
-      const vWidth = vv ? Math.round(vv.width) : window.innerWidth;
+      const viewport = window.visualViewport;
+      const vh = viewport ? viewport.height : window.innerHeight;
+      const vTop = viewport ? Math.round(viewport.offsetTop) : 0;
+      const vLeft = viewport ? Math.round(viewport.offsetLeft) : 0;
+      const vWidth = viewport ? Math.round(viewport.width) : window.innerWidth;
 
       if (selectedChat) {
         // Conversation open → fixed + visual-viewport tracking.
