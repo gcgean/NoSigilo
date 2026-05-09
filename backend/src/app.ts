@@ -496,6 +496,23 @@ function roundDistanceKm(distanceKm: number) {
   return Math.round(distanceKm * 10) / 10;
 }
 
+function radarZoneLabelFromCoordinates(
+  viewer: { lat: number; lon: number },
+  target: { lat: number; lon: number }
+) {
+  const deltaLat = target.lat - viewer.lat;
+  const deltaLon = target.lon - viewer.lon;
+  const absLat = Math.abs(deltaLat);
+  const absLon = Math.abs(deltaLon);
+  if (absLat <= 0.03 && absLon <= 0.03) return 'Centro';
+  if (absLat >= absLon * 1.5) return deltaLat >= 0 ? 'Norte' : 'Sul';
+  if (absLon >= absLat * 1.5) return deltaLon >= 0 ? 'Leste' : 'Oeste';
+  if (deltaLat >= 0 && deltaLon >= 0) return 'Nordeste';
+  if (deltaLat >= 0 && deltaLon < 0) return 'Noroeste';
+  if (deltaLat < 0 && deltaLon >= 0) return 'Sudeste';
+  return 'Sudoeste';
+}
+
 function mapUserGenderToRadarAudience(gender: string | null | undefined) {
   const value = String(gender || '').trim();
   if (!value) return null;
@@ -1963,9 +1980,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
     const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
-    const viewerLookingFor = Array.isArray(safeJsonParse((viewerRow as any)?.looking_for_json))
-      ? (safeJsonParse((viewerRow as any)?.looking_for_json) as string[])
-      : [];
+    const viewerLookingForRaw = safeJsonParse((viewerRow as any)?.looking_for_json);
+    const viewerLookingFor = Array.isArray(viewerLookingForRaw) ? (viewerLookingForRaw as string[]) : [];
     const viewerLat = (viewerRow as any)?.lat != null ? Number((viewerRow as any).lat) : null;
     const viewerLon = (viewerRow as any)?.lon != null ? Number((viewerRow as any).lon) : null;
     const viewerCity = normalizeRadarText((viewerRow as any)?.city || '');
@@ -2032,111 +2048,125 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           const dayStartMs = Date.parse(dayStartIso);
           const nowMs = Date.now();
 
-          const likeCountRows = await queryAll(
-            db,
-            `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
-            candidatePostIds
-          );
-          const commentCountRows = await queryAll(
-            db,
-            `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
-            candidatePostIds
-          );
-          const userLikeRows = await queryAll(
-            db,
-            `SELECT target_id FROM likes WHERE target_type = 'user' AND user_id = ? AND target_id IN (${authorPlaceholders})`,
-            [req.auth!.userId, ...candidateAuthorIds]
-          );
-          const conversationRows = await queryAll(
-            db,
-            `
-            SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as other_user_id
-            FROM conversations
-            WHERE (user_a_id = ? AND user_b_id IN (${authorPlaceholders}))
-               OR (user_b_id = ? AND user_a_id IN (${authorPlaceholders}))
-          `,
-            [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
-          );
-          const friendRows = await queryAll(
-            db,
-            `
-            SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END as other_user_id
-            FROM friend_requests
-            WHERE status = 'accepted'
-              AND ((from_user_id = ? AND to_user_id IN (${authorPlaceholders}))
-                OR (to_user_id = ? AND from_user_id IN (${authorPlaceholders})))
-          `,
-            [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
-          );
-          const visitRows = await queryAll(
-            db,
-            `SELECT DISTINCT visited_user_id FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id IN (${authorPlaceholders})`,
-            [req.auth!.userId, ...candidateAuthorIds]
-          );
-          const likedAuthorPostRows = await queryAll(
-            db,
-            `
-            SELECT p.user_id as author_id, COUNT(*) as c
-            FROM likes l
-            JOIN posts p ON p.id = l.target_id
-            WHERE l.target_type = 'post'
-              AND l.user_id = ?
-              AND p.user_id IN (${authorPlaceholders})
-            GROUP BY p.user_id
-          `,
-            [req.auth!.userId, ...candidateAuthorIds]
-          );
-          const commentedAuthorPostRows = await queryAll(
-            db,
-            `
-            SELECT p.user_id as author_id, COUNT(*) as c
-            FROM comments c
-            JOIN posts p ON p.id = c.target_id
-            WHERE c.target_type = 'post'
-              AND c.user_id = ?
-              AND p.user_id IN (${authorPlaceholders})
-            GROUP BY p.user_id
-          `,
-            [req.auth!.userId, ...candidateAuthorIds]
-          );
-          const todayPostRows = await queryAll(
-            db,
-            `
-            SELECT user_id, COUNT(*) as c
-            FROM posts
-            WHERE user_id IN (${authorPlaceholders})
-              AND created_at >= ?
-              AND (is_reels_only = 0 OR is_reels_only IS NULL)
-            GROUP BY user_id
-          `,
-            [...candidateAuthorIds, dayStartIso]
-          );
-          const todayLikeRows = await queryAll(
-            db,
-            `
-            SELECT p.user_id as author_id, COUNT(*) as c
-            FROM likes l
-            JOIN posts p ON p.id = l.target_id
-            WHERE l.target_type = 'post'
-              AND p.user_id IN (${authorPlaceholders})
-              AND p.created_at >= ?
-            GROUP BY p.user_id
-          `,
-            [...candidateAuthorIds, dayStartIso]
-          );
-          const todayCommentRows = await queryAll(
-            db,
-            `
-            SELECT p.user_id as author_id, COUNT(*) as c
-            FROM comments c
-            JOIN posts p ON p.id = c.target_id
-            WHERE c.target_type = 'post'
-              AND p.user_id IN (${authorPlaceholders})
-              AND p.created_at >= ?
-            GROUP BY p.user_id
-          `,
-            [...candidateAuthorIds, dayStartIso]
-          );
+          const [
+            likeCountRows,
+            commentCountRows,
+            userLikeRows,
+            conversationRows,
+            friendRows,
+            visitRows,
+            likedAuthorPostRows,
+            commentedAuthorPostRows,
+            todayPostRows,
+            todayLikeRows,
+            todayCommentRows,
+          ] = await Promise.all([
+            queryAll(
+              db,
+              `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
+              candidatePostIds
+            ),
+            queryAll(
+              db,
+              `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
+              candidatePostIds
+            ),
+            queryAll(
+              db,
+              `SELECT target_id FROM likes WHERE target_type = 'user' AND user_id = ? AND target_id IN (${authorPlaceholders})`,
+              [req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as other_user_id
+              FROM conversations
+              WHERE (user_a_id = ? AND user_b_id IN (${authorPlaceholders}))
+                 OR (user_b_id = ? AND user_a_id IN (${authorPlaceholders}))
+            `,
+              [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END as other_user_id
+              FROM friend_requests
+              WHERE status = 'accepted'
+                AND ((from_user_id = ? AND to_user_id IN (${authorPlaceholders}))
+                  OR (to_user_id = ? AND from_user_id IN (${authorPlaceholders})))
+            `,
+              [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `SELECT DISTINCT visited_user_id FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id IN (${authorPlaceholders})`,
+              [req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT p.user_id as author_id, COUNT(*) as c
+              FROM likes l
+              JOIN posts p ON p.id = l.target_id
+              WHERE l.target_type = 'post'
+                AND l.user_id = ?
+                AND p.user_id IN (${authorPlaceholders})
+              GROUP BY p.user_id
+            `,
+              [req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT p.user_id as author_id, COUNT(*) as c
+              FROM comments c
+              JOIN posts p ON p.id = c.target_id
+              WHERE c.target_type = 'post'
+                AND c.user_id = ?
+                AND p.user_id IN (${authorPlaceholders})
+              GROUP BY p.user_id
+            `,
+              [req.auth!.userId, ...candidateAuthorIds]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT user_id, COUNT(*) as c
+              FROM posts
+              WHERE user_id IN (${authorPlaceholders})
+                AND created_at >= ?
+                AND (is_reels_only = 0 OR is_reels_only IS NULL)
+              GROUP BY user_id
+            `,
+              [...candidateAuthorIds, dayStartIso]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT p.user_id as author_id, COUNT(*) as c
+              FROM likes l
+              JOIN posts p ON p.id = l.target_id
+              WHERE l.target_type = 'post'
+                AND p.user_id IN (${authorPlaceholders})
+                AND p.created_at >= ?
+              GROUP BY p.user_id
+            `,
+              [...candidateAuthorIds, dayStartIso]
+            ),
+            queryAll(
+              db,
+              `
+              SELECT p.user_id as author_id, COUNT(*) as c
+              FROM comments c
+              JOIN posts p ON p.id = c.target_id
+              WHERE c.target_type = 'post'
+                AND p.user_id IN (${authorPlaceholders})
+                AND p.created_at >= ?
+              GROUP BY p.user_id
+            `,
+              [...candidateAuthorIds, dayStartIso]
+            ),
+          ]);
 
           const likesCountByPostId = new Map<string, number>();
           const commentsCountByPostId = new Map<string, number>();
@@ -2183,8 +2213,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '');
             const sameState = !!viewerState && viewerState === normalizeRadarText(row.author_state || '');
             const matchesInterest = matchesLookingFor(viewerLookingFor, row.author_gender);
-            const hasMedia = Array.isArray(safeJsonParse(row.media_ids_json))
-              ? (safeJsonParse(row.media_ids_json) as unknown[]).some((item) => typeof item === 'string' && item.trim().length > 0)
+            const parsedMediaIds = safeJsonParse(row.media_ids_json);
+            const hasMedia = Array.isArray(parsedMediaIds)
+              ? (parsedMediaIds as unknown[]).some((item) => typeof item === 'string' && item.trim().length > 0)
               : false;
 
             let distanceScore = 0;
@@ -4246,6 +4277,34 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           },
         }
       );
+      const distanceKm =
+        radarLat !== null && radarLon !== null && candidateLat !== null && candidateLon !== null
+          ? roundDistanceKm(haversineKm({ lat: radarLat, lon: radarLon }, { lat: candidateLat, lon: candidateLon }))
+          : null;
+      const actorLabel = parsed.data.isAnonymous ? 'Alguém' : String(me.name || 'Alguém');
+      const body =
+        distanceKm !== null
+          ? `${actorLabel} a ${distanceKm} km de você acabou de publicar um radar. Veja agora.`
+          : `${actorLabel} acabou de publicar um radar na sua região. Veja agora.`;
+      await sendPushToUser(
+        { db, env },
+        {
+          userId: String(candidate.id),
+          payload: {
+            title: 'Radar ativo perto de você',
+            body,
+            url: '/radar',
+            tag: `radar:${id}`,
+            data: {
+              broadcastId: id,
+              senderId: req.auth!.userId,
+              city: radarCity,
+              state: radarState,
+              distanceKm,
+            },
+          },
+        }
+      );
     }
     await persist();
 
@@ -4333,10 +4392,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
     const activeRows = await queryAll(
       db,
-      `SELECT
-        rb.*,
-        u.id as sender_id, u.name as sender_name, u.avatar as sender_avatar, u.gender as sender_gender, u.city as sender_city, u.state as sender_state, u.looking_for_json as sender_looking_for_json
-       FROM radar_broadcasts rb
+       `SELECT
+         rb.*,
+         u.id as sender_id, u.name as sender_name, u.avatar as sender_avatar, u.gender as sender_gender, u.city as sender_city, u.state as sender_state, u.lat as sender_lat, u.lon as sender_lon, u.looking_for_json as sender_looking_for_json
+        FROM radar_broadcasts rb
        JOIN users u ON u.id = rb.user_id
        WHERE rb.user_id != ?
          AND rb.deactivated_at IS NULL
@@ -4346,12 +4405,32 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       [req.auth!.userId, nowIso()]
     );
 
+    const activeBroadcastIds = activeRows.map((row: any) => String(row.id));
+    const existingViewRows =
+      activeBroadcastIds.length > 0
+        ? await queryAll(
+            db,
+            `SELECT id, broadcast_id, delivered_at, viewed_at, contacted_at
+             FROM radar_broadcast_views
+             WHERE viewer_user_id = ?
+               AND broadcast_id IN (${activeBroadcastIds.map(() => '?').join(', ')})`,
+            [req.auth!.userId, ...activeBroadcastIds]
+          )
+        : [];
+    const existingViewsByBroadcastId = new Map<string, any>();
+    for (const row of existingViewRows as any[]) {
+      existingViewsByBroadcastId.set(String(row.broadcast_id), row);
+    }
+
     const incoming: any[] = [];
+    const heatmapZoneCounts = new Map<string, number>();
     for (const row of activeRows as any[]) {
-      const targetGenders = Array.isArray(safeJsonParse(row.target_genders_json)) ? (safeJsonParse(row.target_genders_json) as string[]) : ['all'];
+      const parsedTargetGenders = safeJsonParse(row.target_genders_json);
+      const targetGenders = Array.isArray(parsedTargetGenders) ? (parsedTargetGenders as string[]) : ['all'];
       if (!radarTargetsUser(targetGenders, me.gender)) continue;
       if (row.only_online && presence?.isOnline && !presence.isOnline(String(req.auth!.userId))) continue;
-      const senderLookingFor = Array.isArray(safeJsonParse(row.sender_looking_for_json)) ? (safeJsonParse(row.sender_looking_for_json) as string[]) : [];
+      const parsedSenderLookingFor = safeJsonParse(row.sender_looking_for_json);
+      const senderLookingFor = Array.isArray(parsedSenderLookingFor) ? (parsedSenderLookingFor as string[]) : [];
       if (!radarProfilesAreCompatible(
         { gender: row.sender_gender ?? null, lookingFor: senderLookingFor },
         { gender: me.gender ?? null, lookingFor: myLookingFor }
@@ -4371,11 +4450,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       }
       if (!matchesLocation) continue;
 
-      const existingView = (await queryOne(
-        db,
-        'SELECT id, delivered_at, viewed_at, contacted_at FROM radar_broadcast_views WHERE broadcast_id = ? AND viewer_user_id = ? LIMIT 1',
-        [String(row.id), req.auth!.userId]
-      )) as any;
+      const existingView = existingViewsByBroadcastId.get(String(row.id)) as any;
       if (existingView?.id) {
         if (!existingView.viewed_at) {
           await run(db, 'UPDATE radar_broadcast_views SET viewed_at = ? WHERE id = ?', [nowIso(), String(existingView.id)]);
@@ -4391,11 +4466,21 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           );
         }
       } else {
+        const deliveredAt = nowIso();
+        const viewedAt = nowIso();
+        const newViewId = randomUUID();
         await run(
           db,
           'INSERT INTO radar_broadcast_views (id, broadcast_id, viewer_user_id, delivered_at, viewed_at, contacted_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [randomUUID(), String(row.id), req.auth!.userId, nowIso(), nowIso(), null]
+          [newViewId, String(row.id), req.auth!.userId, deliveredAt, viewedAt, null]
         );
+        existingViewsByBroadcastId.set(String(row.id), {
+          id: newViewId,
+          broadcast_id: String(row.id),
+          delivered_at: deliveredAt,
+          viewed_at: viewedAt,
+          contacted_at: null,
+        });
         await createNotification(
           { db, io },
           {
@@ -4408,6 +4493,20 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         );
       }
 
+      const senderLat = row.sender_lat != null ? Number(row.sender_lat) : null;
+      const senderLon = row.sender_lon != null ? Number(row.sender_lon) : null;
+      const markerLat = senderLat ?? radarLat;
+      const markerLon = senderLon ?? radarLon;
+      const distanceKm =
+        markerLat !== null && markerLon !== null && myLat !== null && myLon !== null
+          ? roundDistanceKm(haversineKm({ lat: markerLat, lon: markerLon }, { lat: myLat, lon: myLon }))
+          : null;
+      const zoneLabel =
+        markerLat !== null && markerLon !== null && myLat !== null && myLon !== null
+          ? radarZoneLabelFromCoordinates({ lat: myLat, lon: myLon }, { lat: markerLat, lon: markerLon })
+          : 'Sua região';
+      heatmapZoneCounts.set(zoneLabel, (heatmapZoneCounts.get(zoneLabel) ?? 0) + 1);
+
       incoming.push({
         id: String(row.id),
         city: String(row.city),
@@ -4418,6 +4517,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         durationHours: Number(row.duration_hours || 24),
         createdAt: String(row.created_at),
         expiresAt: String(row.expires_at),
+        distanceKm,
+        zoneLabel,
         isAnonymous: !!row.is_anonymous,
         showOnlyOnline: !!row.only_online,
         sender: {
@@ -4431,6 +4532,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       });
     }
     await persist();
+
+    const heatmapZones = ['Noroeste', 'Norte', 'Nordeste', 'Oeste', 'Centro', 'Leste', 'Sudoeste', 'Sul', 'Sudeste'].map((label) => ({
+      id: normalizeRadarText(label),
+      label,
+      count: heatmapZoneCounts.get(label) ?? 0,
+    }));
+    const hottestZone = [...heatmapZones].sort((a, b) => b.count - a.count)[0];
 
     res.json({
       canCreate: hasPremiumAccess(me, subscriptionsEnabled),
@@ -4476,7 +4584,96 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         };
       }),
       incoming,
+      heatmap: {
+        totalActive: incoming.length,
+        hottestZone: hottestZone?.count ? hottestZone.label : null,
+        zones: heatmapZones,
+      },
     });
+  });
+
+  app.get('/api/radar/highlights', requireAuth(env, db), async (req, res) => {
+    const me = (await queryOne(
+      db,
+      'SELECT id, name, gender, city, state, lat, lon, looking_for_json FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    if (!me) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    const myLookingForRaw = safeJsonParse(me.looking_for_json);
+    const myLookingFor = Array.isArray(myLookingForRaw) ? (myLookingForRaw as string[]) : [];
+    const rows = await queryAll(
+      db,
+      `SELECT
+         rb.*,
+         u.id as sender_id, u.name as sender_name, u.avatar as sender_avatar, u.gender as sender_gender,
+         u.city as sender_city, u.state as sender_state, u.looking_for_json as sender_looking_for_json
+       FROM radar_broadcasts rb
+       JOIN users u ON u.id = rb.user_id
+       WHERE rb.user_id != ?
+         AND rb.deactivated_at IS NULL
+         AND rb.expires_at > ?
+       ORDER BY rb.created_at DESC
+       LIMIT 40`,
+      [req.auth!.userId, nowIso()]
+    );
+
+    const highlights: any[] = [];
+    for (const row of rows as any[]) {
+      const targetGenders = Array.isArray(safeJsonParse(row.target_genders_json)) ? (safeJsonParse(row.target_genders_json) as string[]) : ['all'];
+      if (!radarTargetsUser(targetGenders, me.gender)) continue;
+
+      const senderLookingFor = Array.isArray(safeJsonParse(row.sender_looking_for_json)) ? (safeJsonParse(row.sender_looking_for_json) as string[]) : [];
+      if (!radarProfilesAreCompatible(
+        { gender: row.sender_gender ?? null, lookingFor: senderLookingFor },
+        { gender: me.gender ?? null, lookingFor: myLookingFor }
+      )) continue;
+
+      let matchesLocation = false;
+      const radarLat = row.city_lat != null ? Number(row.city_lat) : null;
+      const radarLon = row.city_lon != null ? Number(row.city_lon) : null;
+      const myLat = me.lat != null ? Number(me.lat) : null;
+      const myLon = me.lon != null ? Number(me.lon) : null;
+      const distanceKm =
+        radarLat !== null && radarLon !== null && myLat !== null && myLon !== null
+          ? roundDistanceKm(haversineKm({ lat: radarLat, lon: radarLon }, { lat: myLat, lon: myLon }))
+          : null;
+
+      if (distanceKm !== null) {
+        matchesLocation = distanceKm <= Number(row.radius_km || 25);
+      } else {
+        matchesLocation =
+          normalizeRadarText(row.city) === normalizeRadarText(me.city) &&
+          normalizeRadarText(row.state) === normalizeRadarText(me.state);
+      }
+      if (!matchesLocation) continue;
+
+      highlights.push({
+        id: String(row.id),
+        city: String(row.city),
+        state: String(row.state),
+        message: String(row.message),
+        radius: Number(row.radius_km || 25),
+        createdAt: String(row.created_at),
+        expiresAt: String(row.expires_at),
+        distanceKm,
+        isAnonymous: !!row.is_anonymous,
+        sender: {
+          id: String(row.sender_id),
+          name: !!row.is_anonymous ? 'Perfil discreto' : String(row.sender_name),
+          avatar: !!row.is_anonymous ? null : row.sender_avatar ?? null,
+          gender: !!row.is_anonymous ? null : row.sender_gender ?? null,
+          city: row.sender_city ?? null,
+          state: row.sender_state ?? null,
+        },
+      });
+      if (highlights.length >= 6) break;
+    }
+
+    res.json({ highlights });
   });
 
   app.post('/api/radar/:broadcastId/contact', requireAuth(env, db), async (req, res) => {

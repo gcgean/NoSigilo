@@ -1620,6 +1620,9 @@ describe('nosigilo backend', () => {
     expect(Array.isArray(incoming.body.incoming)).toBe(true);
     expect(incoming.body.incoming.length).toBeGreaterThan(0);
     expect(incoming.body.incoming[0].message).toContain('Casal na cidade');
+    expect(typeof incoming.body.incoming[0].zoneLabel).toBe('string');
+    expect(Array.isArray(incoming.body.heatmap?.zones)).toBe(true);
+    expect(Number(incoming.body.heatmap?.totalActive || 0)).toBeGreaterThanOrEqual(1);
 
     const viewerConversations = await request(ctx.app)
       .get('/api/conversations')
@@ -1651,6 +1654,62 @@ describe('nosigilo backend', () => {
     expect(
       mine.body.myBroadcasts[0].deliveries.some((entry: any) => entry.viewer.name === 'Viewer Radar' && !!entry.viewedAt && !!entry.contactedAt)
     ).toBe(true);
+  });
+
+  it('returns radar highlights for nearby compatible users without needing to open the radar page', async () => {
+    await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
+      'Fortaleza',
+      'fortaleza',
+      'CE',
+      -3.7319,
+      -38.5267,
+    ]);
+
+    const sender = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Radar Destaque',
+      email: 'radar-destaque@example.com',
+      password: 'senha123',
+      gender: 'Casal (Ele/Ela)',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    const viewer = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Highlight',
+      email: 'radar-highlight-viewer@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ? WHERE id = ?', [-3.732, -38.5269, sender.user.id]);
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ? WHERE id = ?', [-3.735, -38.52, viewer.user.id]);
+
+    await request(ctx.app)
+      .post('/api/radar')
+      .set('Authorization', `Bearer ${sender.token}`)
+      .send({
+        city: 'Fortaleza',
+        state: 'CE',
+        message: 'Radar quente perto de você agora.',
+        targetGender: ['male'],
+        radius: 25,
+        durationHours: 1,
+        isAnonymous: false,
+        showOnlyOnline: false,
+      })
+      .expect(200);
+
+    const highlights = await request(ctx.app)
+      .get('/api/radar/highlights')
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+
+    expect(Array.isArray(highlights.body.highlights)).toBe(true);
+    expect(highlights.body.highlights.length).toBeGreaterThan(0);
+    expect(highlights.body.highlights[0].message).toContain('Radar quente perto de você');
+    expect(Number(highlights.body.highlights[0].distanceKm || 0)).toBeGreaterThanOrEqual(0);
   });
 
   it('allows the logged device to subscribe and unsubscribe from push notifications', async () => {

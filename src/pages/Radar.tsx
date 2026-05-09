@@ -11,6 +11,7 @@ import {
   MessageCircle,
   Eye,
   Clock3,
+  Flame,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -73,6 +74,8 @@ type IncomingRadar = {
   durationHours: number;
   createdAt: string;
   expiresAt: string;
+  distanceKm?: number | null;
+  zoneLabel?: string | null;
   isAnonymous?: boolean;
   showOnlyOnline?: boolean;
   sender: {
@@ -83,6 +86,12 @@ type IncomingRadar = {
     city?: string | null;
     state?: string | null;
   };
+};
+
+type RadarHeatmap = {
+  totalActive: number;
+  hottestZone: string | null;
+  zones: Array<{ id: string; label: string; count: number }>;
 };
 
 type RadarUsage = {
@@ -154,6 +163,7 @@ export default function Radar() {
   const [canCreate, setCanCreate] = useState(radarAllowed);
   const [myBroadcasts, setMyBroadcasts] = useState<RadarBroadcast[]>([]);
   const [incoming, setIncoming] = useState<IncomingRadar[]>([]);
+  const [heatmap, setHeatmap] = useState<RadarHeatmap>({ totalActive: 0, hottestZone: null, zones: [] });
   const [usage, setUsage] = useState<RadarUsage>({
     dailyLimit: 1,
     dailyUsed: 0,
@@ -170,6 +180,11 @@ export default function Radar() {
       setCanCreate(!!data?.canCreate);
       setMyBroadcasts(Array.isArray(data?.myBroadcasts) ? data.myBroadcasts : []);
       setIncoming(Array.isArray(data?.incoming) ? data.incoming : []);
+      setHeatmap({
+        totalActive: Number(data?.heatmap?.totalActive || 0),
+        hottestZone: data?.heatmap?.hottestZone ? String(data.heatmap.hottestZone) : null,
+        zones: Array.isArray(data?.heatmap?.zones) ? data.heatmap.zones : [],
+      });
       setUsage({
         dailyLimit: Number(data?.usage?.dailyLimit || 1),
         dailyUsed: Number(data?.usage?.dailyUsed || 0),
@@ -182,6 +197,7 @@ export default function Radar() {
       toast({ title: 'Erro ao carregar radar', description: 'Tente novamente.', variant: 'destructive' });
       setMyBroadcasts([]);
       setIncoming([]);
+      setHeatmap({ totalActive: 0, hottestZone: null, zones: [] });
       setUsage({
         dailyLimit: 1,
         dailyUsed: 0,
@@ -377,6 +393,10 @@ export default function Radar() {
   const totalViews = myBroadcasts.reduce((acc, item) => acc + item.viewsCount, 0);
   const totalResponses = myBroadcasts.reduce((acc, item) => acc + item.responsesCount, 0);
   const totalDeliveries = myBroadcasts.reduce((acc, item) => acc + item.deliveriesCount, 0);
+  const hottestZoneCount = useMemo(
+    () => heatmap.zones.find((zone) => zone.label === heatmap.hottestZone)?.count ?? 0,
+    [heatmap]
+  );
 
   return (
     <div className="container max-w-6xl min-w-0 space-y-4 overflow-x-hidden py-4 pb-24 sm:space-y-6 sm:py-6 md:pb-6">
@@ -700,6 +720,57 @@ export default function Radar() {
             </CardContent>
           </Card>
 
+          <Card className="glass overflow-hidden border-primary/20">
+            <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MapPin className="h-5 w-5 text-primary" />
+                Mapa rápido da atividade
+              </CardTitle>
+              <CardDescription>
+                Visão simplificada por zona para mostrar onde o Radar está mais quente agora na sua região.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
+              {isLoading ? (
+                <div className="py-6 text-center text-muted-foreground">Montando mapa simplificado...</div>
+              ) : heatmap.totalActive === 0 ? (
+                <div className="py-6 text-center text-muted-foreground">
+                  <MapPin className="mx-auto mb-3 h-10 w-10 opacity-30" />
+                  <p>Nenhuma concentração ativa perto de você no momento</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/10 bg-primary/5 p-3 text-sm text-muted-foreground">
+                    <Badge className="bg-primary/15 text-primary">{heatmap.totalActive} ativos agora</Badge>
+                    {heatmap.hottestZone ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Flame className="h-4 w-4 text-orange-500" />
+                        Maior concentração em <strong className="text-foreground">{heatmap.hottestZone}</strong> com {hottestZoneCount} radar{hottestZoneCount === 1 ? '' : 'es'}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {heatmap.zones.map((zone) => {
+                      const levelClass =
+                        zone.count >= 3
+                          ? 'border-rose-300 bg-rose-100/70 text-rose-700'
+                          : zone.count >= 1
+                            ? 'border-primary/20 bg-primary/5 text-foreground'
+                            : 'border-border/50 bg-secondary/20 text-muted-foreground';
+                      return (
+                        <div key={zone.id} className={`rounded-2xl border p-3 text-center transition-colors ${levelClass}`}>
+                          <div className="text-xs font-semibold uppercase tracking-[0.14em]">{zone.label}</div>
+                          <div className="mt-2 text-2xl font-bold">{zone.count}</div>
+                          <div className="text-[11px]">{zone.count === 0 ? 'sem radar' : zone.count === 1 ? '1 radar' : `${zone.count} radares`}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="glass overflow-hidden border-primary/30">
             <CardHeader className="p-4 pb-3 sm:p-6 sm:pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
@@ -741,6 +812,7 @@ export default function Radar() {
                         <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
                           <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> ativo ha {formatElapsed(item.createdAt)}</span>
                           <span>{formatRemaining(item.expiresAt)}</span>
+                          {typeof item.distanceKm === 'number' ? <span>{item.distanceKm} km de você</span> : null}
                         </div>
                       </div>
                     </div>
@@ -749,6 +821,7 @@ export default function Radar() {
                       <Badge variant="secondary">{audienceLabel(item.targetGender)}</Badge>
                       <Badge variant="secondary">{item.radius} km</Badge>
                       <Badge variant="secondary">{item.durationHours} h</Badge>
+                      {item.zoneLabel ? <Badge variant="secondary">{item.zoneLabel}</Badge> : null}
                     </div>
                     <Button className="h-11 w-full gap-2 rounded-xl bg-gradient-primary hover:opacity-90" onClick={() => void handleContactRadar(item.id)}>
                       <MessageCircle className="h-4 w-4" />

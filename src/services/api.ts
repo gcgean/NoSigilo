@@ -247,6 +247,11 @@ export const radarService = {
     return response.data;
   },
 
+  getHighlights: async () => {
+    const response = await apiClient.get('/radar/highlights');
+    return response.data;
+  },
+
   createBroadcast: async (data: {
     city: string;
     state: string;

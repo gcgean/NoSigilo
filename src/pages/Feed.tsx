@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2 } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { experienceService, feedService, interactionsService, profileService } from '@/services/api';
+import { experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -39,6 +39,25 @@ type FeedInsights = {
   nearbyRadiusKm: number | null;
   interactionActiveCount: number;
   localPopularCount: number;
+};
+type RadarHighlight = {
+  id: string;
+  city: string;
+  state: string;
+  message: string;
+  radius: number;
+  createdAt: string;
+  expiresAt: string;
+  distanceKm?: number | null;
+  isAnonymous?: boolean;
+  sender: {
+    id: string;
+    name: string;
+    avatar?: string | null;
+    gender?: string | null;
+    city?: string | null;
+    state?: string | null;
+  };
 };
 type FeedPost = {
   id: string;
@@ -118,7 +137,19 @@ function resolveMediaUrl(url: string | null) {
   return resolveServerUrl(url);
 }
 
+function formatRemainingRadarTime(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (!Number.isFinite(diff) || diff <= 0) return 'expirou';
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 60) return `expira em ${Math.max(1, minutes)} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `expira em ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `expira em ${days} d`;
+}
+
 const FEED_SESSION_AUTHOR_COUNTS_KEY = 'nosigilo:feed-session-author-counts';
+const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
 
 function readFeedSessionAuthorCounts() {
   if (typeof window === 'undefined') return {} as Record<string, number>;
@@ -159,6 +190,7 @@ export default function Feed() {
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
   const [feedInsights, setFeedInsights] = useState<FeedInsights | null>(null);
+  const [radarHighlights, setRadarHighlights] = useState<RadarHighlight[]>([]);
   const [feedSessionBaseline, setFeedSessionBaseline] = useState<Record<string, number>>(() => readFeedSessionAuthorCounts());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentsRef = useRef<Array<{ id: string; file: File; url: string }>>([]);
@@ -169,6 +201,7 @@ export default function Feed() {
   const isLoadingMoreRef = useRef(false);
   const trackedFeedPostIdsRef = useRef<Set<string>>(new Set());
   const feedSessionAuthorCountsRef = useRef<Record<string, number>>(readFeedSessionAuthorCounts());
+  const radarHighlightsCacheRef = useRef<{ fetchedAt: number; items: RadarHighlight[] } | null>(null);
 
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, Comment[]>>({});
@@ -243,6 +276,18 @@ export default function Feed() {
     }
     return 'O feed está priorizando pessoas próximas, conexões quentes e novidades recentes.';
   }, [feedInsights]);
+
+  const radarHighlightsSummary = useMemo(() => {
+    if (radarHighlights.length === 0) return null;
+    const nearest = radarHighlights
+      .map((item) => (typeof item.distanceKm === 'number' ? item.distanceKm : null))
+      .filter((value): value is number => value !== null)
+      .sort((a, b) => a - b)[0];
+    if (typeof nearest === 'number') {
+      return `${radarHighlights.length} ${radarHighlights.length === 1 ? 'radar ativo' : 'radares ativos'} perto de você agora. O mais próximo está a ${nearest} km.`;
+    }
+    return `${radarHighlights.length} ${radarHighlights.length === 1 ? 'radar ativo' : 'radares ativos'} na sua região agora.`;
+  }, [radarHighlights]);
 
   const feedDisplayItems = useMemo(() => {
     if (feedFilter !== 'all') {
@@ -344,16 +389,30 @@ export default function Feed() {
   const reload = async () => {
     setIsLoading(true);
     try {
-      const feed = await feedService.getFeed({ page: 1, limit: 20 });
+      const shouldRefreshRadarHighlights =
+        !radarHighlightsCacheRef.current || Date.now() - radarHighlightsCacheRef.current.fetchedAt > RADAR_HIGHLIGHTS_CACHE_TTL_MS;
+      const [feed, radarData] = await Promise.all([
+        feedService.getFeed({ page: 1, limit: 20 }),
+        shouldRefreshRadarHighlights
+          ? radarService.getHighlights().catch(() => ({ highlights: [] }))
+          : Promise.resolve({ highlights: radarHighlightsCacheRef.current?.items ?? [] }),
+      ]);
+      const nextRadarHighlights = Array.isArray(radarData?.highlights) ? radarData.highlights : [];
+      radarHighlightsCacheRef.current = {
+        fetchedAt: Date.now(),
+        items: nextRadarHighlights,
+      };
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       setAllPosts(Array.isArray(feed?.posts) ? feed.posts : []);
       setFeedInsights(feed?.insights ?? null);
+      setRadarHighlights(nextRadarHighlights);
       setPage(1);
       setHasMore(!!feed?.hasMore);
     } catch {
       toast({ title: 'Erro ao carregar feed', description: 'Tente novamente.', variant: 'destructive' });
       setAllPosts([]);
       setFeedInsights(null);
+      setRadarHighlights([]);
       setPage(1);
       setHasMore(false);
     } finally {
@@ -1516,6 +1575,55 @@ export default function Feed() {
                 <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-primary">
                   Ao vivo
                 </Badge>
+              </div>
+            </Card>
+          ) : null}
+          {feedFilter === 'all' && radarHighlights.length > 0 ? (
+            <Card className="overflow-hidden border-rose-200/50 bg-gradient-to-r from-rose-50/80 via-background to-orange-50/70 p-4 glass">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-4 w-4 text-rose-500" />
+                    <p className="text-sm font-semibold text-foreground">Radares ativos perto de você agora</p>
+                  </div>
+                  {radarHighlightsSummary ? (
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{radarHighlightsSummary}</p>
+                  ) : null}
+                </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => navigate('/radar')}>
+                  Ver radar
+                </Button>
+              </div>
+              <div className="mt-3 grid gap-3">
+                {radarHighlights.slice(0, 3).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => navigate('/radar')}
+                    className="rounded-2xl border border-rose-200/60 bg-white/85 p-3 text-left transition-colors hover:border-rose-300 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-foreground">{item.sender.name}</span>
+                          {typeof item.distanceKm === 'number' ? (
+                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[11px] font-medium text-rose-600">
+                              {item.distanceKm} km
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {getIdentityLine(item.sender) ? (
+                          <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.sender)}</div>
+                        ) : null}
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.message}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1 text-xs font-medium text-rose-600">
+                        <TimerReset className="h-3.5 w-3.5" />
+                        <span>{formatRemainingRadarTime(item.expiresAt)}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
               </div>
             </Card>
           ) : null}
