@@ -835,6 +835,76 @@ describe('nosigilo backend', () => {
     }
   });
 
+  it('prioritizes nearby and affinity content before distant posts in the feed', async () => {
+    const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Feed Relevante',
+      email: 'viewer-feed-relevante@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      lookingFor: ['Mulher'],
+    });
+    const viewerToken = viewerReg.token;
+
+    const nearbyAuthorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autora Perto',
+      email: 'autora-perto@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+    const farAuthorReg = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autora Distante',
+      email: 'autora-distante@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+    });
+
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ?, city = ?, state = ? WHERE id = ?', [-3.7319, -38.5267, 'Fortaleza', 'CE', viewerReg.user.id]);
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ?, city = ?, state = ? WHERE id = ?', [-3.7362, -38.4966, 'Fortaleza', 'CE', nearbyAuthorReg.user.id]);
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ?, city = ?, state = ? WHERE id = ?', [-23.5505, -46.6333, 'São Paulo', 'SP', farAuthorReg.user.id]);
+
+    const now = Date.parse('2200-01-01T12:00:00.000Z');
+    const nearbyPostId = `feed-relevant-near-${Math.random().toString(16).slice(2)}`;
+    const farPostId = `feed-relevant-far-${Math.random().toString(16).slice(2)}`;
+    await run(
+      ctx.db,
+      'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [nearbyPostId, nearbyAuthorReg.user.id, 'Perto e com afinidade', null, 0, new Date(now - 2 * 60_000).toISOString()]
+    );
+    await run(
+      ctx.db,
+      'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [farPostId, farAuthorReg.user.id, 'Longe e mais frio', null, 0, new Date(now - 60_000).toISOString()]
+    );
+
+    const conversationId = `conv-feed-${Math.random().toString(16).slice(2)}`;
+    const pair = [String(viewerReg.user.id), String(nearbyAuthorReg.user.id)].sort((a, b) => a.localeCompare(b));
+    await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [
+      conversationId,
+      pair[0],
+      pair[1],
+      new Date(now - 30_000).toISOString(),
+    ]);
+    await run(ctx.db, "INSERT INTO likes (id, user_id, target_type, target_id, created_at, reaction) VALUES (?, ?, 'user', ?, ?, ?)", [
+      `like-feed-${Math.random().toString(16).slice(2)}`,
+      viewerReg.user.id,
+      nearbyAuthorReg.user.id,
+      new Date(now - 20_000).toISOString(),
+      'heart',
+    ]);
+    await ctx.db.persist();
+
+    const feed = await request(ctx.app)
+      .get('/api/feed')
+      .query({ limit: 5, page: 1 })
+      .set('Authorization', `Bearer ${viewerToken}`)
+      .expect(200);
+
+    expect(Array.isArray(feed.body.posts)).toBe(true);
+    expect(String(feed.body.posts[0]?.id)).toBe(nearbyPostId);
+    expect(feed.body.posts[0]?.feedContext?.label).toBeTruthy();
+    expect(Number(feed.body.insights?.nearbyActiveCount || 0)).toBeGreaterThanOrEqual(1);
+  });
+
   it('reels prioritize interested profiles first and keep newest first within each group', async () => {
     const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Viewer Rap',

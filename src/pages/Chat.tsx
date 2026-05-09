@@ -169,30 +169,41 @@ export default function Chat() {
     const headerRem = isSmMobile ? '4rem' : '3.5rem';
 
     const update = () => {
+      const vv = window.visualViewport;
+      const vh = vv ? vv.height : window.innerHeight;
+      const vTop = vv ? Math.round(vv.offsetTop) : 0;
+      const vLeft = vv ? Math.round(vv.offsetLeft) : 0;
+      const vWidth = vv ? Math.round(vv.width) : window.innerWidth;
+
       if (selectedChat) {
         // Conversation open → fixed + visual-viewport tracking.
-        // Use left:0/right:0 so the panel always fills the full layout-viewport
-        // width (avoids cutting the right side when visualViewport.offsetLeft > 0).
-        const vv = window.visualViewport;
-        const vh = vv ? vv.height : window.innerHeight;
-        const vTop = vv ? Math.round(vv.offsetTop) : 0;
+        // On iPhone Safari the visible viewport can become narrower than the
+        // layout viewport while typing, so we pin to the visual viewport width.
         setMobileStyle({
           position: 'fixed',
           top: vTop + headerPx,
-          left: 0,
-          right: 0,
+          left: vLeft,
+          width: Math.max(vWidth, 280),
+          maxWidth: '100vw',
           height: Math.max(Math.floor(vh) - headerPx, 200), // 200 px minimum so it never collapses
           zIndex: 30,
+          overflowX: 'hidden',
         });
       } else {
-        // Conversation list → regular CSS calc (safe-area aware)
+        // Conversation list on iPhone Safari also needs visual viewport tracking,
+        // otherwise the bottom browser bar can leave an empty clipped area.
         setMobileStyle({
-          height: `calc(var(--vh, 100dvh) - ${headerRem} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
+          position: 'relative',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: Math.max(Math.floor(vh) - headerPx - 56, 260),
+          maxHeight: `calc(var(--vh, 100dvh) - ${headerRem} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
+          overflowX: 'hidden',
         });
       }
     };
 
-    const vv = window.visualViewport;
     if (vv) {
       vv.addEventListener('resize', update);
       vv.addEventListener('scroll', update);
@@ -220,14 +231,20 @@ export default function Chat() {
       // aligns correctly with the viewport left edge (scrollX must be 0).
       window.scrollTo(0, window.scrollY);
       document.documentElement.style.overflow = 'hidden';
+      document.documentElement.style.overflowX = 'hidden';
       document.body.style.overflow = 'hidden';
+      document.body.style.overflowX = 'hidden';
     } else {
       document.documentElement.style.overflow = '';
+      document.documentElement.style.overflowX = '';
       document.body.style.overflow = '';
+      document.body.style.overflowX = '';
     }
     return () => {
       document.documentElement.style.overflow = '';
+      document.documentElement.style.overflowX = '';
       document.body.style.overflow = '';
+      document.body.style.overflowX = '';
     };
   }, [isMobileViewport, selectedChat]);
   // ───────────────────────────────────────────────────────────────────────────
@@ -904,7 +921,7 @@ export default function Chat() {
       {selectedChat ? (
         <div className="flex w-full min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden bg-background">
           {/* Chat Header */}
-          <div className="sticky top-0 z-20 flex w-full min-w-0 max-w-full items-center justify-between border-b bg-background/95 px-2.5 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
+          <div className="z-20 flex w-full min-w-0 max-w-full shrink-0 items-center justify-between border-b bg-background/95 px-2.5 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:static md:glass md:p-4">
             <div className="flex min-w-0 items-center gap-2.5">
               <Button
                 variant="ghost"
@@ -988,7 +1005,7 @@ export default function Chat() {
             </div>
           </div>
 
-          <div className="border-b bg-background px-2.5 py-2 md:px-4">
+          <div className="shrink-0 border-b bg-background px-2.5 py-2 md:px-4">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

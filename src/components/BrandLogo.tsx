@@ -19,31 +19,21 @@ function BrandGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
       <defs>
-        <linearGradient id="nosigilo-brand-stroke" x1="20" y1="16" x2="112" y2="112" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#F4A8FF" />
-          <stop offset="0.5" stopColor="#D76BFF" />
-          <stop offset="1" stopColor="#A93BFF" />
+        <linearGradient id="nosigilo-brand-stroke" x1="34" y1="22" x2="98" y2="96" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#FFB8F6" />
+          <stop offset="0.5" stopColor="#F472FF" />
+          <stop offset="1" stopColor="#8B5CFF" />
         </linearGradient>
         <filter id="nosigilo-brand-glow" x="0" y="0" width="128" height="128" filterUnits="userSpaceOnUse">
-          <feGaussianBlur stdDeviation="5" result="blur" />
-          <feColorMatrix
-            in="blur"
-            type="matrix"
-            values="1 0 0 0 0.64  0 1 0 0 0.23  0 0 1 0 1  0 0 0 1 0"
-            result="glow"
-          />
-          <feMerge>
-            <feMergeNode in="glow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
+          <feDropShadow dx="0" dy="8" stdDeviation="10" floodColor="#050816" floodOpacity="0.44" />
         </filter>
       </defs>
       <g filter="url(#nosigilo-brand-glow)" stroke="url(#nosigilo-brand-stroke)" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M40 49V34C40 20.75 50.75 10 64 10C77.25 10 88 20.75 88 34V49" strokeWidth="7" />
-        <path d="M30 49H84C92.84 49 100 56.16 100 65V88C100 96.84 92.84 104 84 104H30C21.16 104 14 96.84 14 88V65C14 56.16 21.16 49 30 49Z" strokeWidth="7" />
-        <path d="M57 73C57 69.13 60.13 66 64 66C67.87 66 71 69.13 71 73C71 75.63 69.55 77.93 67.4 79.13V87H60.6V79.13C58.45 77.93 57 75.63 57 73Z" strokeWidth="6" />
-        <path d="M87.5 63.5L111 71.5V85.5C111 98.92 101.64 108.97 87.5 113.5C73.36 108.97 64 98.92 64 85.5V71.5L87.5 63.5Z" strokeWidth="6" />
-        <path d="M87.5 76.5L98 80V85.5C98 92.67 93.8 98.31 87.5 101.25C81.2 98.31 77 92.67 77 85.5V80L87.5 76.5Z" strokeWidth="5" />
+        <path d="M44 52V45.5C44 31.97 54.97 21 68.5 21C80.87 21 91.09 30.18 92.71 42.11" strokeWidth="7" />
+        <path d="M39 52H76C84.84 52 92 59.16 92 68V81C92 89.84 84.84 97 76 97H39C30.16 97 23 89.84 23 81V68C23 59.16 30.16 52 39 52Z" strokeWidth="7" />
+        <path d="M57.5 72C57.5 68.41 60.41 65.5 64 65.5C67.59 65.5 70.5 68.41 70.5 72C70.5 74.39 69.21 76.48 67.29 77.61V84.5H60.71V77.61C58.79 76.48 57.5 74.39 57.5 72Z" fill="url(#nosigilo-brand-stroke)" stroke="none" />
+        <path d="M81.5 43.5L104.5 50.75V63.5C104.5 75.46 96.41 84.76 84 88.5C71.59 84.76 63.5 75.46 63.5 63.5V50.75L81.5 45.08" strokeWidth="6" />
+        <path d="M84 55L87.09 61.26L94 62.26L89 67.13L90.18 74L84 70.75L77.82 74L79 67.13L74 62.26L80.91 61.26L84 55Z" fill="url(#nosigilo-brand-stroke)" stroke="none" />
       </g>
     </svg>
   );
@@ -56,7 +46,7 @@ export function BrandLogo({ className, markClassName, textClassName, size = 'md'
     <div className={cn('flex items-center gap-3', className)}>
       <div
         className={cn(
-          'flex items-center justify-center bg-[radial-gradient(circle_at_30%_20%,rgba(37,99,235,0.22),transparent_35%),linear-gradient(180deg,#101827_0%,#050816_100%)] shadow-[0_18px_40px_rgba(169,59,255,0.26)]',
+          'flex items-center justify-center bg-[radial-gradient(circle_at_30%_18%,rgba(255,135,243,0.32),transparent_34%),linear-gradient(180deg,#1b2450_0%,#11162e_48%,#060814_100%)] shadow-[0_20px_44px_rgba(98,76,255,0.28)]',
           sizing.mark,
           markClassName
         )}

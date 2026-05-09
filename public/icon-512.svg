@@ -1,30 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <linearGradient id="nosigilo512Stroke" x1="74" y1="42" x2="438" y2="440" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#F4A8FF" />
-      <stop offset="0.52" stop-color="#D76BFF" />
-      <stop offset="1" stop-color="#A93BFF" />
+    <linearGradient id="bg" x1="62" y1="40" x2="450" y2="466" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B2450" />
+      <stop offset="0.45" stop-color="#11162E" />
+      <stop offset="1" stop-color="#060814" />
     </linearGradient>
-    <radialGradient id="nosigilo512Glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(150 108) rotate(48.5) scale(424.991)">
-      <stop stop-color="#173B75" stop-opacity="0.9" />
-      <stop offset="0.38" stop-color="#0E172B" stop-opacity="0.62" />
-      <stop offset="1" stop-color="#050816" />
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(144 82) rotate(42.5) scale(406.713)">
+      <stop stop-color="#FF87F3" stop-opacity="0.9" />
+      <stop offset="0.4" stop-color="#8B5CFF" stop-opacity="0.28" />
+      <stop offset="1" stop-color="#8B5CFF" stop-opacity="0" />
     </radialGradient>
-    <filter id="nosigilo512Bloom" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
-      <feGaussianBlur stdDeviation="16" result="blur" />
-      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.64 0 1 0 0 0.23 0 0 1 0 1 0 0 0 0.95 0" result="glow" />
-      <feMerge>
-        <feMergeNode in="glow" />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
+    <linearGradient id="stroke" x1="132" y1="86" x2="388" y2="374" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB8F6" />
+      <stop offset="0.5" stop-color="#F472FF" />
+      <stop offset="1" stop-color="#8B5CFF" />
+    </linearGradient>
+    <filter id="shadow" x="42" y="42" width="428" height="428" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#050816" flood-opacity="0.44" />
     </filter>
   </defs>
-  <rect width="512" height="512" rx="128" fill="url(#nosigilo512Glow)" />
-  <g filter="url(#nosigilo512Bloom)" stroke="url(#nosigilo512Stroke)" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M160 195V134C160 81 203 38 256 38C309 38 352 81 352 134V195" stroke-width="26" />
-    <path d="M120 195H336C370.242 195 398 222.758 398 257V337C398 371.242 370.242 399 336 399H120C85.7583 399 58 371.242 58 337V257C58 222.758 85.7583 195 120 195Z" stroke-width="26" />
-    <path d="M228 292.5C228 277.312 240.312 265 255.5 265C270.688 265 283 277.312 283 292.5C283 302.365 277.811 311.013 270 315.84V347H241V315.84C233.189 311.013 228 302.365 228 292.5Z" stroke-width="21" />
-    <path d="M350 253L440 283V337C440 388.582 403.401 427.867 350 444C296.599 427.867 260 388.582 260 337V283L350 253Z" stroke-width="21" />
-    <path d="M350 304L389.5 316.5V337C389.5 363.729 373.067 384.507 350 395.5C326.933 384.507 310.5 363.729 310.5 337V316.5L350 304Z" stroke-width="17" />
+
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <rect width="512" height="512" rx="128" fill="url(#halo)" />
+
+  <g filter="url(#shadow)">
+    <path
+      d="M176 210V180C176 119.25 225.25 70 286 70C341.55 70 387.5 111.22 394.79 164.73"
+      stroke="url(#stroke)"
+      stroke-width="26"
+      stroke-linecap="round"
+    />
+    <path
+      d="M154 210H313C347.24 210 375 237.76 375 272V331C375 365.24 347.24 393 313 393H154C119.76 393 92 365.24 92 331V272C92 237.76 119.76 210 154 210Z"
+      stroke="url(#stroke)"
+      stroke-width="26"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M231 291C231 276.09 243.09 264 258 264C272.91 264 285 276.09 285 291C285 300.95 279.55 309.66 271.46 314.28V342H244.54V314.28C236.45 309.66 231 300.95 231 291Z"
+      fill="url(#stroke)"
+    />
+    <path
+      d="M334 171L431 201.5V256.5C431 305.46 397.6 343.96 348 358.75C298.4 343.96 265 305.46 265 256.5V201.5L334 179.98"
+      stroke="url(#stroke)"
+      stroke-width="22"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M348 227L360.15 251.62L387.32 255.57L367.66 274.72L372.3 301.76L348 288.98L323.7 301.76L328.34 274.72L308.68 255.57L335.85 251.62L348 227Z"
+      fill="url(#stroke)"
+    />
   </g>
 </svg>

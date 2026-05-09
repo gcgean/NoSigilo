@@ -1956,12 +1956,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
 app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at, gender, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId]);
+    const viewerRow = await queryOne(
+      db,
+      'SELECT is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state FROM users WHERE id = ?',
+      [req.auth!.userId]
+    );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
     const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
     const viewerLookingFor = Array.isArray(safeJsonParse((viewerRow as any)?.looking_for_json))
       ? (safeJsonParse((viewerRow as any)?.looking_for_json) as string[])
       : [];
+    const viewerLat = (viewerRow as any)?.lat != null ? Number((viewerRow as any).lat) : null;
+    const viewerLon = (viewerRow as any)?.lon != null ? Number((viewerRow as any).lon) : null;
+    const viewerCity = normalizeRadarText((viewerRow as any)?.city || '');
+    const viewerState = normalizeRadarText((viewerRow as any)?.state || '');
     const page = Number(req.query.page || 1);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
@@ -1969,14 +1977,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const reelsOnlyFilter = includeReelsOnly
       ? 'AND p.is_reels_only = 1'
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    const fetchLimit = includeReelsOnly ? offset + limit + 1 : limit + 1;
-    const queryOffset = includeReelsOnly ? 0 : offset;
+    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(220, offset + limit + 80);
     const rows = await queryAll(
       db,
       `
       SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
         u.id as author_id, u.name as author_name, u.avatar as author_avatar,
-        u.gender as author_gender, u.city as author_city, u.state as author_state
+        u.gender as author_gender, u.city as author_city, u.state as author_state,
+        u.lat as author_lat, u.lon as author_lon
       FROM posts p
       JOIN users u ON u.id = p.user_id
       WHERE 1=1
@@ -1990,10 +1998,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         )
         ${reelsOnlyFilter}
       ORDER BY p.created_at DESC
-      LIMIT ? OFFSET ?
+      LIMIT ? OFFSET 0
     `,
-      [req.auth!.userId, req.auth!.userId, fetchLimit, queryOffset]
+      [req.auth!.userId, req.auth!.userId, fetchLimit]
     );
+
+    const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
+    let feedInsights = {
+      nearbyActiveCount: 0,
+      nearbyRadiusKm: null as number | null,
+      interactionActiveCount: 0,
+      localPopularCount: 0,
+    };
 
     const orderedRows = includeReelsOnly
       ? [...rows].sort((a: any, b: any) => {
@@ -2002,9 +2018,280 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           if (aInterested !== bInterested) return aInterested - bInterested;
           return new Date(String(b.created_at || '')).getTime() - new Date(String(a.created_at || '')).getTime();
         })
-      : rows;
+      : await (async () => {
+          const candidateRows = [...rows] as any[];
+          const candidatePostIds = candidateRows.map((row) => String(row.id));
+          const candidateAuthorIds = Array.from(new Set(candidateRows.map((row) => String(row.author_id)).filter(Boolean)));
+          if (candidateRows.length === 0 || candidatePostIds.length === 0 || candidateAuthorIds.length === 0) {
+            return candidateRows;
+          }
 
-    const slice = includeReelsOnly ? orderedRows.slice(offset, offset + limit) : orderedRows.slice(0, limit);
+          const authorPlaceholders = candidateAuthorIds.map(() => '?').join(', ');
+          const postPlaceholders = candidatePostIds.map(() => '?').join(', ');
+          const dayStartIso = startOfCurrentDayIso();
+          const dayStartMs = Date.parse(dayStartIso);
+          const nowMs = Date.now();
+
+          const likeCountRows = await queryAll(
+            db,
+            `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
+            candidatePostIds
+          );
+          const commentCountRows = await queryAll(
+            db,
+            `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
+            candidatePostIds
+          );
+          const userLikeRows = await queryAll(
+            db,
+            `SELECT target_id FROM likes WHERE target_type = 'user' AND user_id = ? AND target_id IN (${authorPlaceholders})`,
+            [req.auth!.userId, ...candidateAuthorIds]
+          );
+          const conversationRows = await queryAll(
+            db,
+            `
+            SELECT CASE WHEN user_a_id = ? THEN user_b_id ELSE user_a_id END as other_user_id
+            FROM conversations
+            WHERE (user_a_id = ? AND user_b_id IN (${authorPlaceholders}))
+               OR (user_b_id = ? AND user_a_id IN (${authorPlaceholders}))
+          `,
+            [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
+          );
+          const friendRows = await queryAll(
+            db,
+            `
+            SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END as other_user_id
+            FROM friend_requests
+            WHERE status = 'accepted'
+              AND ((from_user_id = ? AND to_user_id IN (${authorPlaceholders}))
+                OR (to_user_id = ? AND from_user_id IN (${authorPlaceholders})))
+          `,
+            [req.auth!.userId, req.auth!.userId, ...candidateAuthorIds, req.auth!.userId, ...candidateAuthorIds]
+          );
+          const visitRows = await queryAll(
+            db,
+            `SELECT DISTINCT visited_user_id FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id IN (${authorPlaceholders})`,
+            [req.auth!.userId, ...candidateAuthorIds]
+          );
+          const likedAuthorPostRows = await queryAll(
+            db,
+            `
+            SELECT p.user_id as author_id, COUNT(*) as c
+            FROM likes l
+            JOIN posts p ON p.id = l.target_id
+            WHERE l.target_type = 'post'
+              AND l.user_id = ?
+              AND p.user_id IN (${authorPlaceholders})
+            GROUP BY p.user_id
+          `,
+            [req.auth!.userId, ...candidateAuthorIds]
+          );
+          const commentedAuthorPostRows = await queryAll(
+            db,
+            `
+            SELECT p.user_id as author_id, COUNT(*) as c
+            FROM comments c
+            JOIN posts p ON p.id = c.target_id
+            WHERE c.target_type = 'post'
+              AND c.user_id = ?
+              AND p.user_id IN (${authorPlaceholders})
+            GROUP BY p.user_id
+          `,
+            [req.auth!.userId, ...candidateAuthorIds]
+          );
+          const todayPostRows = await queryAll(
+            db,
+            `
+            SELECT user_id, COUNT(*) as c
+            FROM posts
+            WHERE user_id IN (${authorPlaceholders})
+              AND created_at >= ?
+              AND (is_reels_only = 0 OR is_reels_only IS NULL)
+            GROUP BY user_id
+          `,
+            [...candidateAuthorIds, dayStartIso]
+          );
+          const todayLikeRows = await queryAll(
+            db,
+            `
+            SELECT p.user_id as author_id, COUNT(*) as c
+            FROM likes l
+            JOIN posts p ON p.id = l.target_id
+            WHERE l.target_type = 'post'
+              AND p.user_id IN (${authorPlaceholders})
+              AND p.created_at >= ?
+            GROUP BY p.user_id
+          `,
+            [...candidateAuthorIds, dayStartIso]
+          );
+          const todayCommentRows = await queryAll(
+            db,
+            `
+            SELECT p.user_id as author_id, COUNT(*) as c
+            FROM comments c
+            JOIN posts p ON p.id = c.target_id
+            WHERE c.target_type = 'post'
+              AND p.user_id IN (${authorPlaceholders})
+              AND p.created_at >= ?
+            GROUP BY p.user_id
+          `,
+            [...candidateAuthorIds, dayStartIso]
+          );
+
+          const likesCountByPostId = new Map<string, number>();
+          const commentsCountByPostId = new Map<string, number>();
+          const userLikedAuthorIds = new Set<string>();
+          const conversationAuthorIds = new Set<string>();
+          const friendAuthorIds = new Set<string>();
+          const visitedAuthorIds = new Set<string>();
+          const likedAuthorPostCount = new Map<string, number>();
+          const commentedAuthorPostCount = new Map<string, number>();
+          const todayPostsByAuthorId = new Map<string, number>();
+          const todayLikesByAuthorId = new Map<string, number>();
+          const todayCommentsByAuthorId = new Map<string, number>();
+
+          for (const row of likeCountRows as any[]) likesCountByPostId.set(String(row.target_id), Number(row.c || 0));
+          for (const row of commentCountRows as any[]) commentsCountByPostId.set(String(row.target_id), Number(row.c || 0));
+          for (const row of userLikeRows as any[]) userLikedAuthorIds.add(String(row.target_id));
+          for (const row of conversationRows as any[]) conversationAuthorIds.add(String(row.other_user_id));
+          for (const row of friendRows as any[]) friendAuthorIds.add(String(row.other_user_id));
+          for (const row of visitRows as any[]) visitedAuthorIds.add(String(row.visited_user_id));
+          for (const row of likedAuthorPostRows as any[]) likedAuthorPostCount.set(String(row.author_id), Number(row.c || 0));
+          for (const row of commentedAuthorPostRows as any[]) commentedAuthorPostCount.set(String(row.author_id), Number(row.c || 0));
+          for (const row of todayPostRows as any[]) todayPostsByAuthorId.set(String(row.user_id), Number(row.c || 0));
+          for (const row of todayLikeRows as any[]) todayLikesByAuthorId.set(String(row.author_id), Number(row.c || 0));
+          for (const row of todayCommentRows as any[]) todayCommentsByAuthorId.set(String(row.author_id), Number(row.c || 0));
+
+          const nearbyActiveAuthors = new Set<string>();
+          const interactionActiveAuthors = new Set<string>();
+          const localPopularAuthors = new Set<string>();
+          const ranked = candidateRows.map((row) => {
+            const authorId = String(row.author_id);
+            const postId = String(row.id);
+            const createdAtMs = new Date(String(row.created_at || '')).getTime();
+            const recencyHours = Number.isFinite(createdAtMs) ? Math.max(0, (nowMs - createdAtMs) / 3_600_000) : 999;
+            const postLikes = likesCountByPostId.get(postId) ?? 0;
+            const postComments = commentsCountByPostId.get(postId) ?? 0;
+            const todayPosts = todayPostsByAuthorId.get(authorId) ?? 0;
+            const recentAuthorEngagement = (todayLikesByAuthorId.get(authorId) ?? 0) + (todayCommentsByAuthorId.get(authorId) ?? 0);
+            const authorLat = row.author_lat != null ? Number(row.author_lat) : null;
+            const authorLon = row.author_lon != null ? Number(row.author_lon) : null;
+            const distanceKm =
+              viewerLat !== null && viewerLon !== null && authorLat !== null && authorLon !== null
+                ? roundDistanceKm(haversineKm({ lat: viewerLat, lon: viewerLon }, { lat: authorLat, lon: authorLon }))
+                : null;
+            const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '');
+            const sameState = !!viewerState && viewerState === normalizeRadarText(row.author_state || '');
+            const matchesInterest = matchesLookingFor(viewerLookingFor, row.author_gender);
+            const hasMedia = Array.isArray(safeJsonParse(row.media_ids_json))
+              ? (safeJsonParse(row.media_ids_json) as unknown[]).some((item) => typeof item === 'string' && item.trim().length > 0)
+              : false;
+
+            let distanceScore = 0;
+            if (distanceKm !== null) {
+              if (distanceKm <= 5) distanceScore = 38;
+              else if (distanceKm <= 15) distanceScore = 30;
+              else if (distanceKm <= 40) distanceScore = 22;
+              else if (distanceKm <= 100) distanceScore = 12;
+              else distanceScore = Math.max(2, 10 - Math.floor(distanceKm / 80));
+            } else if (sameCity) {
+              distanceScore = 18;
+            } else if (sameState) {
+              distanceScore = 8;
+            }
+
+            const affinityScore =
+              (conversationAuthorIds.has(authorId) ? 26 : 0) +
+              (userLikedAuthorIds.has(authorId) ? 24 : 0) +
+              (friendAuthorIds.has(authorId) ? 16 : 0) +
+              (visitedAuthorIds.has(authorId) ? 8 : 0) +
+              Math.min((likedAuthorPostCount.get(authorId) ?? 0) * 6, 18) +
+              Math.min((commentedAuthorPostCount.get(authorId) ?? 0) * 8, 16);
+
+            const localPopularityScore =
+              (sameCity ? 10 : sameState ? 4 : 0) +
+              Math.min(todayPosts * 7, 21) +
+              Math.min(recentAuthorEngagement * 2, 16);
+
+            const postEngagementScore = Math.min(postLikes * 1.2, 12) + Math.min(postComments * 1.6, 12);
+            const mediaScore = String(row.media_ids_json || '').trim() ? 5 : 0;
+            const recencyScore = Math.max(0, 52 - recencyHours) * 1.4;
+            const interestScore = matchesInterest ? 16 : -6;
+            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore;
+
+            let reason: 'nearby' | 'affinity' | 'popular_local' | 'recent' = 'recent';
+            let label = 'Novo agora';
+            if (distanceScore >= 18 || (distanceKm !== null && distanceKm <= 20)) {
+              reason = 'nearby';
+              label = distanceKm !== null && distanceKm <= 20 ? `${distanceKm} km de você` : 'Perto de você';
+            } else if (affinityScore >= 18) {
+              reason = 'affinity';
+              label = 'Você já interagiu';
+            } else if (localPopularityScore >= 18) {
+              reason = 'popular_local';
+              label = sameCity ? 'Em alta na sua cidade' : 'Em alta na sua região';
+            }
+
+            if (createdAtMs >= dayStartMs) {
+              if ((distanceKm !== null && distanceKm <= 20) || sameCity) nearbyActiveAuthors.add(authorId);
+              if (affinityScore >= 18) interactionActiveAuthors.add(authorId);
+              if (localPopularityScore >= 18) localPopularAuthors.add(authorId);
+            }
+
+            return {
+              row,
+              authorId,
+              score: totalScore + (hasMedia ? 4 : 0),
+              createdAtMs,
+              reason,
+              label,
+            };
+          });
+
+          ranked.sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return b.createdAtMs - a.createdAtMs;
+          });
+
+          const diversified: typeof ranked = [];
+          const remaining = [...ranked];
+          let lastAuthorId: string | null = null;
+          let repeatedCount = 0;
+          while (remaining.length > 0) {
+            let bestIndex = 0;
+            let bestAdjustedScore = -Infinity;
+            for (let i = 0; i < remaining.length; i += 1) {
+              const candidate = remaining[i];
+              const repeatPenalty = candidate.authorId === lastAuthorId ? 22 + repeatedCount * 12 : 0;
+              const adjustedScore = candidate.score - repeatPenalty;
+              if (adjustedScore > bestAdjustedScore) {
+                bestAdjustedScore = adjustedScore;
+                bestIndex = i;
+              }
+            }
+            const [picked] = remaining.splice(bestIndex, 1);
+            if (!picked) break;
+            diversified.push(picked);
+            if (picked.authorId === lastAuthorId) {
+              repeatedCount += 1;
+            } else {
+              lastAuthorId = picked.authorId;
+              repeatedCount = 1;
+            }
+            feedContextByPostId.set(String(picked.row.id), { reason: picked.reason, label: picked.label });
+          }
+
+          feedInsights = {
+            nearbyActiveCount: nearbyActiveAuthors.size,
+            nearbyRadiusKm: nearbyActiveAuthors.size > 0 ? 20 : null,
+            interactionActiveCount: interactionActiveAuthors.size,
+            localPopularCount: localPopularAuthors.size,
+          };
+
+          return diversified.map((item) => item.row);
+        })();
+
+    const slice = orderedRows.slice(offset, offset + limit);
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -2102,8 +2389,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         commentsCount: commentsCountByPostId.get(String(r.id)) ?? 0,
         likedByMe: likedByMeSet.has(String(r.id)),
         reactions: reactionsByPostId.get(String(r.id)) ?? [],
+        feedContext: feedContextByPostId.get(String(r.id)) ?? null,
       })),
-      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : rows.length > limit,
+      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : rows.length > offset + limit,
+      insights: includeReelsOnly ? null : feedInsights,
     });
   });
 

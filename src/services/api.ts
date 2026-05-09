@@ -91,7 +91,7 @@ export const authService = {
 export const feedService = {
   getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean }) => {
     if (USE_MOCKS) {
-      return { posts: [], hasMore: false };
+      return { posts: [], hasMore: false, insights: null };
     }
     const response = await apiClient.get('/feed', { params });
     return response.data;

@@ -33,6 +33,13 @@ import {
 } from '@/components/comments/commentStyles';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
+type FeedContext = { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string };
+type FeedInsights = {
+  nearbyActiveCount: number;
+  nearbyRadiusKm: number | null;
+  interactionActiveCount: number;
+  localPopularCount: number;
+};
 type FeedPost = {
   id: string;
   content: string;
@@ -44,6 +51,7 @@ type FeedPost = {
   commentsCount: number;
   likedByMe: boolean;
   reactions?: { type: string; count: number }[];
+  feedContext?: FeedContext | null;
 };
 
 type FeedExperience = {
@@ -110,6 +118,25 @@ function resolveMediaUrl(url: string | null) {
   return resolveServerUrl(url);
 }
 
+const FEED_SESSION_AUTHOR_COUNTS_KEY = 'nosigilo:feed-session-author-counts';
+
+function readFeedSessionAuthorCounts() {
+  if (typeof window === 'undefined') return {} as Record<string, number>;
+  try {
+    const raw = window.sessionStorage.getItem(FEED_SESSION_AUTHOR_COUNTS_KEY);
+    if (!raw) return {} as Record<string, number>;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const next: Record<string, number> = {};
+    for (const [key, value] of Object.entries(parsed || {})) {
+      const count = Number(value || 0);
+      if (key && Number.isFinite(count) && count > 0) next[key] = count;
+    }
+    return next;
+  } catch {
+    return {} as Record<string, number>;
+  }
+}
+
 export default function Feed() {
   const { user, updateUser } = useAuth();
   const location = useLocation();
@@ -131,6 +158,8 @@ export default function Feed() {
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
+  const [feedInsights, setFeedInsights] = useState<FeedInsights | null>(null);
+  const [feedSessionBaseline, setFeedSessionBaseline] = useState<Record<string, number>>(() => readFeedSessionAuthorCounts());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentsRef = useRef<Array<{ id: string; file: File; url: string }>>([]);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
@@ -138,6 +167,8 @@ export default function Feed() {
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const isLoadingMoreRef = useRef(false);
+  const trackedFeedPostIdsRef = useRef<Set<string>>(new Set());
+  const feedSessionAuthorCountsRef = useRef<Record<string, number>>(readFeedSessionAuthorCounts());
 
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, Comment[]>>({});
@@ -198,6 +229,78 @@ export default function Feed() {
     return allPosts.filter((p) => favIds.has(String(p.author.id)));
   }, [allPosts, feedFilter, favorites]);
 
+  const feedInsightsSummary = useMemo(() => {
+    if (!feedInsights) return null;
+    if (feedInsights.nearbyActiveCount > 0) {
+      const radiusText = feedInsights.nearbyRadiusKm ? `${feedInsights.nearbyRadiusKm} km` : 'perto de você';
+      return `${feedInsights.nearbyActiveCount} ${feedInsights.nearbyActiveCount === 1 ? 'pessoa postou' : 'pessoas postaram'} hoje a até ${radiusText}.`;
+    }
+    if (feedInsights.interactionActiveCount > 0) {
+      return `${feedInsights.interactionActiveCount} ${feedInsights.interactionActiveCount === 1 ? 'perfil com quem você já interagiu está ativo' : 'perfis com quem você já interagiu estão ativos'} hoje.`;
+    }
+    if (feedInsights.localPopularCount > 0) {
+      return `${feedInsights.localPopularCount} ${feedInsights.localPopularCount === 1 ? 'perfil está em alta na sua região' : 'perfis estão em alta na sua região'} hoje.`;
+    }
+    return 'O feed está priorizando pessoas próximas, conexões quentes e novidades recentes.';
+  }, [feedInsights]);
+
+  const feedDisplayItems = useMemo(() => {
+    if (feedFilter !== 'all') {
+      return visiblePosts.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post }));
+    }
+
+    const primary: FeedPost[] = [];
+    const exploration: FeedPost[] = [];
+    const remaining: FeedPost[] = [];
+    const authorOccurrences = new Map<string, number>();
+
+    for (const post of visiblePosts) {
+      const authorId = String(post.author.id || '');
+      const occurrence = authorOccurrences.get(authorId) ?? 0;
+      const seenBefore = feedSessionBaseline[authorId] ?? 0;
+      authorOccurrences.set(authorId, occurrence + 1);
+
+      if (primary.length < 6 && occurrence === 0) {
+        primary.push(post);
+        continue;
+      }
+
+      if (exploration.length < 4 && occurrence === 0 && seenBefore === 0) {
+        exploration.push(post);
+        continue;
+      }
+
+      remaining.push(post);
+    }
+
+    const items: Array<
+      | { type: 'post'; id: string; post: FeedPost }
+      | { type: 'section'; id: string; title: string; description: string }
+    > = primary.map((post) => ({ type: 'post', id: `post-${post.id}`, post }));
+
+    if (exploration.length > 0) {
+      items.push({
+        type: 'section',
+        id: 'feed-section-exploration',
+        title: 'Descobrir novos perfis',
+        description: 'Um bloco controlado para abrir espaço para pessoas novas antes de repetir os mesmos perfis.',
+      });
+      items.push(...exploration.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
+    }
+
+    if (remaining.length > 0) {
+      items.push({
+        type: 'section',
+        id: 'feed-section-continue',
+        title: 'Continuando o feed',
+        description: 'Agora entram mais publicações das suas conexões e dos perfis que continuam quentes.',
+      });
+      items.push(...remaining.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
+    }
+
+    return items;
+  }, [feedFilter, feedSessionBaseline, visiblePosts]);
+
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
     formatProfileIdentityLine(profile);
 
@@ -221,16 +324,36 @@ export default function Feed() {
     currentTopPostIdRef.current = allPosts[0]?.id ? String(allPosts[0].id) : null;
   }, [allPosts]);
 
+  useEffect(() => {
+    if (allPosts.length === 0) return;
+    const freshPosts = allPosts.filter((post) => !trackedFeedPostIdsRef.current.has(String(post.id)));
+    if (freshPosts.length === 0) return;
+    const nextCounts = { ...feedSessionAuthorCountsRef.current };
+    for (const post of freshPosts) {
+      trackedFeedPostIdsRef.current.add(String(post.id));
+      const authorId = String(post.author.id || '');
+      if (!authorId) continue;
+      nextCounts[authorId] = (nextCounts[authorId] ?? 0) + 1;
+    }
+    feedSessionAuthorCountsRef.current = nextCounts;
+    try {
+      window.sessionStorage.setItem(FEED_SESSION_AUTHOR_COUNTS_KEY, JSON.stringify(nextCounts));
+    } catch {}
+  }, [allPosts]);
+
   const reload = async () => {
     setIsLoading(true);
     try {
       const feed = await feedService.getFeed({ page: 1, limit: 20 });
+      setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       setAllPosts(Array.isArray(feed?.posts) ? feed.posts : []);
+      setFeedInsights(feed?.insights ?? null);
       setPage(1);
       setHasMore(!!feed?.hasMore);
     } catch {
       toast({ title: 'Erro ao carregar feed', description: 'Tente novamente.', variant: 'destructive' });
       setAllPosts([]);
+      setFeedInsights(null);
       setPage(1);
       setHasMore(false);
     } finally {
@@ -366,7 +489,9 @@ export default function Feed() {
     setIsLoadingMore(true);
     try {
       const feed = await feedService.getFeed({ page: nextPage, limit: 20 });
+      setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];
+      if (nextPage === 1) setFeedInsights(feed?.insights ?? null);
       setAllPosts((prev) => {
         if (nextPosts.length === 0) return prev;
         const seen = new Set(prev.map((p) => String(p.id)));
@@ -1381,6 +1506,19 @@ export default function Feed() {
               ) : null}
             </div>
           </Card>
+          {feedFilter === 'all' && feedInsightsSummary ? (
+            <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Mais chance de encontrar algo agora</p>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{feedInsightsSummary}</p>
+                </div>
+                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-primary">
+                  Ao vivo
+                </Badge>
+              </div>
+            </Card>
+          ) : null}
           {feedFilter === 'experiences' ? (
             <>
               {isLoadingExperiences ? (
@@ -1634,42 +1772,55 @@ export default function Feed() {
               description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
             />
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && visiblePosts.map((post) => (
-            <Card key={post.id} id={`post-${post.id}`} className="overflow-hidden glass">
+          {feedFilter !== 'experiences' && !isLoading && feedDisplayItems.map((item) => (
+            item.type === 'section' ? (
+              <Card key={item.id} className="overflow-hidden border-primary/10 bg-gradient-to-r from-background via-primary/5 to-pink-500/5 p-4 glass">
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                  <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+                </div>
+              </Card>
+            ) : (
+            <Card key={item.post.id} id={`post-${item.post.id}`} className="overflow-hidden glass">
               {/* Post Header */}
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link
-                        to={getUserProfileHref(post.author.id, user?.id, '/feed')}
+                        to={getUserProfileHref(item.post.author.id, user?.id, '/feed')}
                         className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-90 transition-opacity"
                       >
                   <Avatar className="h-11 w-11 sm:h-10 sm:w-10">
-                    <AvatarImage src={post.author.avatar ? resolveServerUrl(post.author.avatar) : undefined} />
-                    <AvatarFallback>{String(post.author.name || 'U')[0]}</AvatarFallback>
+                    <AvatarImage src={item.post.author.avatar ? resolveServerUrl(item.post.author.avatar) : undefined} />
+                    <AvatarFallback>{String(item.post.author.name || 'U')[0]}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{post.author.name}</span>
+                      <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{item.post.author.name}</span>
+                      {item.post.feedContext?.label ? (
+                        <Badge variant="outline" className="max-w-[11rem] truncate border-primary/20 bg-primary/5 text-[11px] font-medium text-primary">
+                          {item.post.feedContext.label}
+                        </Badge>
+                      ) : null}
                     </div>
-                    {getIdentityLine(post.author) ? (
-                      <div className="truncate text-xs text-muted-foreground">{getIdentityLine(post.author)}</div>
+                    {getIdentityLine(item.post.author) ? (
+                      <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.post.author)}</div>
                     ) : null}
-                    <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(post.createdAt)}</span>
+                    <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(item.post.createdAt)}</span>
                   </div>
                 </Link>
                 <div className="flex shrink-0 items-center gap-1">
-                  {post.author.id !== user?.id ? (
+                  {item.post.author.id !== user?.id ? (
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className="h-10 w-10 rounded-full"
-                      onClick={() => void handleToggleFavorite(post.author)}
-                      aria-label={isFavorite(String(post.author.id)) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                      onClick={() => void handleToggleFavorite(item.post.author)}
+                      aria-label={isFavorite(String(item.post.author.id)) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
                     >
                       <Star
                         className={cn(
                           'h-4.5 w-4.5',
-                          isFavorite(String(post.author.id)) ? 'text-gold fill-current' : 'text-muted-foreground'
+                          isFavorite(String(item.post.author.id)) ? 'text-gold fill-current' : 'text-muted-foreground'
                         )}
                       />
                     </Button>
@@ -1681,12 +1832,12 @@ export default function Feed() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      {post.author.id === user?.id ? (
+                      {item.post.author.id === user?.id ? (
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
                           onClick={async () => {
                             try {
-                              await feedService.deletePost(post.id);
+                              await feedService.deletePost(item.post.id);
                               toast({ title: 'Publicação removida' });
                               await reload();
                             } catch {
@@ -1704,16 +1855,16 @@ export default function Feed() {
               </div>
 
               {/* Post Content */}
-              {post.content?.trim() ? (
+              {item.post.content?.trim() ? (
                 <div className="px-3 pb-3 sm:px-4">
-                  <p className="text-[0.95rem] leading-6 sm:text-base">{post.content}</p>
+                  <p className="text-[0.95rem] leading-6 sm:text-base">{item.post.content}</p>
                 </div>
               ) : null}
 
               {/* Post Media */}
-              {post.media?.length > 0 && (
+              {item.post.media?.length > 0 && (
                 <div className="space-y-2 px-3 pb-3 sm:px-4">
-                  {post.media.map((m) => (
+                  {item.post.media.map((m) => (
                     <div key={m.id} className="relative rounded-lg overflow-hidden">
                       {String(m.mimeType || '').startsWith('video/') ? (
                         premiumAccess ? (
@@ -1772,42 +1923,42 @@ export default function Feed() {
                   {/* Like button with long-press reaction picker */}
                   <div className="relative" data-reaction-picker-root="true">
                     <button
-                      onMouseDown={() => startLikeLongPress(post)}
+                      onMouseDown={() => startLikeLongPress(item.post)}
                       onMouseUp={cancelLikeLongPress}
                       onMouseLeave={cancelLikeLongPress}
-                      onTouchStart={() => startLikeLongPress(post)}
+                      onTouchStart={() => startLikeLongPress(item.post)}
                       onTouchEnd={cancelLikeLongPress}
                       onTouchCancel={cancelLikeLongPress}
-                      onClick={() => void handleLikeButtonClick(post)}
+                      onClick={() => void handleLikeButtonClick(item.post)}
                       className={cn(
                         'flex items-center gap-2 transition-colors',
-                        post.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+                        item.post.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
                       )}
                     >
-                      <Heart className={cn('w-5 h-5', post.likedByMe && 'fill-current')} />
+                      <Heart className={cn('w-5 h-5', item.post.likedByMe && 'fill-current')} />
                     </button>
-                    {openReactionPickerPostId === post.id ? (
+                    {openReactionPickerPostId === item.post.id ? (
                       <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
                         <div className="flex flex-wrap items-center gap-2">
-                          {PHOTO_REACTIONS.map((item) => {
-                            const photoId = getPrimaryPhotoId(post);
+                          {PHOTO_REACTIONS.map((reaction) => {
+                            const photoId = getPrimaryPhotoId(item.post);
                             const counts = photoReactionCounts[photoId] || EMPTY_REACTION_COUNTS;
                             const mine = myPhotoReactions[photoId] || null;
                             return (
                               <button
-                                key={`${post.id}-${item.id}`}
+                                key={`${item.post.id}-${reaction.id}`}
                                 type="button"
                                 className={cn(
                                   'rounded-full border px-2.5 py-1 text-xs text-white transition-colors',
-                                  mine === item.id
+                                  mine === reaction.id
                                     ? 'border-primary bg-primary/25'
                                     : 'border-white/15 bg-white/5 hover:bg-white/10'
                                 )}
-                                onClick={() => void handleReactFromPost(post, item.id)}
+                                onClick={() => void handleReactFromPost(item.post, reaction.id)}
                                 disabled={!!isLoadingPhotoReactions[photoId]}
                               >
-                                <span className="mr-1">{item.emoji}</span>
-                                <span>{counts[item.id] || 0}</span>
+                                <span className="mr-1">{reaction.emoji}</span>
+                                <span>{counts[reaction.id] || 0}</span>
                               </button>
                             );
                           })}
@@ -1818,26 +1969,26 @@ export default function Feed() {
 
                   {/* Comment button */}
                   <button
-                    onClick={() => void toggleComments(post.id)}
+                    onClick={() => void toggleComments(item.post.id)}
                     className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <MessageCircle className="w-5 h-5" />
-                    <span className="text-sm font-medium">{post.commentsCount}</span>
+                    <span className="text-sm font-medium">{item.post.commentsCount}</span>
                   </button>
                 </div>
 
                 {/* Reactions summary — right side */}
-                {post.likesCount > 0 && (
+                {item.post.likesCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => void openReactionsModal(post.id)}
+                    onClick={() => void openReactionsModal(item.post.id)}
                     className="flex items-center gap-1.5 rounded-full hover:bg-muted/60 px-2 py-1 transition-colors"
                   >
                     {/* Stacked emoji bubbles */}
                     <div className="flex items-center">
-                      {(post.reactions && post.reactions.length > 0
-                        ? post.reactions.slice(0, 3)
-                        : [{ type: 'heart', count: post.likesCount }]
+                      {(item.post.reactions && item.post.reactions.length > 0
+                        ? item.post.reactions.slice(0, 3)
+                        : [{ type: 'heart', count: item.post.likesCount }]
                       ).map((r, i) => (
                         <span
                           key={r.type}
@@ -1848,17 +1999,17 @@ export default function Feed() {
                         </span>
                       ))}
                     </div>
-                    <span className="text-sm font-medium text-muted-foreground">{post.likesCount}</span>
+                    <span className="text-sm font-medium text-muted-foreground">{item.post.likesCount}</span>
                   </button>
                 )}
               </div>
 
-              {openCommentsPostId === post.id && (
+              {openCommentsPostId === item.post.id && (
                 <div className="space-y-3 border-t p-3 sm:p-4">
                   {isLoadingComments && <p className="text-sm text-muted-foreground">Carregando comentários...</p>}
                   {!isLoadingComments && (
                     <div className="space-y-3">
-                      {(commentsByPostId[post.id] || []).map((c) => (
+                      {(commentsByPostId[item.post.id] || []).map((c) => (
                         <div key={c.id} className="flex items-start gap-3">
                           <Link
                             to={getUserProfileHref(c.user.id, user?.id, '/feed')}
@@ -1883,14 +2034,14 @@ export default function Feed() {
                                   <button
                                     type="button"
                                     className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
-                                    onClick={() => startEditingComment(post.id, c)}
+                                    onClick={() => startEditingComment(item.post.id, c)}
                                   >
                                     Editar
                                   </button>
                                   <button
                                     type="button"
                                     className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
-                                    onClick={() => void deleteComment(post.id, c.id)}
+                                    onClick={() => void deleteComment(item.post.id, c.id)}
                                   >
                                     Excluir
                                   </button>
@@ -1900,7 +2051,7 @@ export default function Feed() {
                             {getIdentityLine(c.user) ? (
                               <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div>
                             ) : null}
-                            {editingCommentByPostId[post.id] === c.id ? (
+                            {editingCommentByPostId[item.post.id] === c.id ? (
                               <div className="mt-1 flex items-center gap-2">
                                 <Input
                                   value={editCommentDraftById[c.id] || ''}
@@ -1908,7 +2059,7 @@ export default function Feed() {
                                     setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))
                                   }
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') void saveEditedComment(post.id, c.id);
+                                    if (e.key === 'Enter') void saveEditedComment(item.post.id, c.id);
                                   }}
                                   className={COMMENT_INLINE_INPUT_CLASS}
                                 />
@@ -1916,7 +2067,7 @@ export default function Feed() {
                                   type="button"
                                   size="sm"
                                   className={COMMENT_SAVE_BUTTON_CLASS}
-                                  onClick={() => void saveEditedComment(post.id, c.id)}
+                                  onClick={() => void saveEditedComment(item.post.id, c.id)}
                                   disabled={!(editCommentDraftById[c.id] || '').trim()}
                                 >
                                   Salvar
@@ -1926,7 +2077,7 @@ export default function Feed() {
                                   size="sm"
                                   variant="outline"
                                   className={COMMENT_CANCEL_BUTTON_CLASS}
-                                  onClick={() => cancelEditingComment(post.id)}
+                                  onClick={() => cancelEditingComment(item.post.id)}
                                 >
                                   Cancelar
                                 </Button>
@@ -1937,7 +2088,7 @@ export default function Feed() {
                           </div>
                         </div>
                       ))}
-                      {(commentsByPostId[post.id] || []).length === 0 && (
+                      {(commentsByPostId[item.post.id] || []).length === 0 && (
                         <p className="text-sm text-muted-foreground">Nenhum comentário ainda.</p>
                       )}
                     </div>
@@ -1946,22 +2097,22 @@ export default function Feed() {
                   <div className="flex gap-2">
                     <Input
                       placeholder="Escreva um comentário..."
-                      value={commentDraftByPostId[post.id] || ''}
-                      onChange={(e) => setCommentDraftByPostId((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                      value={commentDraftByPostId[item.post.id] || ''}
+                      onChange={(e) => setCommentDraftByPostId((prev) => ({ ...prev, [item.post.id]: e.target.value }))}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') void sendComment(post.id);
+                        if (e.key === 'Enter') void sendComment(item.post.id);
                       }}
                     />
-                    <Button type="button" onClick={() => void sendComment(post.id)} disabled={!(commentDraftByPostId[post.id] || '').trim()}>
+                    <Button type="button" onClick={() => void sendComment(item.post.id)} disabled={!(commentDraftByPostId[item.post.id] || '').trim()}>
                       Enviar
                     </Button>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {COMMENT_QUICK_EMOJIS.map((emoji) => (
                       <button
-                        key={`${post.id}-emoji-${emoji}`}
+                        key={`${item.post.id}-emoji-${emoji}`}
                         type="button"
-                        onClick={() => appendEmojiToCommentDraft(post.id, emoji)}
+                        onClick={() => appendEmojiToCommentDraft(item.post.id, emoji)}
                         className={COMMENT_EMOJI_CHIP_CLASS}
                       >
                         {emoji}
@@ -1971,6 +2122,7 @@ export default function Feed() {
                 </div>
               )}
             </Card>
+            )
           ))}
           {feedFilter !== 'experiences' && !isLoading && visiblePosts.length === 0 && feedFilter === 'all' ? (
             <MobileState
