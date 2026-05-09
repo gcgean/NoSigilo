@@ -26,7 +26,7 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
 type Conversation = {
   id: string;
-  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null };
+  user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null; isOnline?: boolean; lastSeenAt?: string | null };
   createdAt?: string;
   lastMessageAt?: string | null;
   unreadCount?: number;
@@ -34,6 +34,39 @@ type Conversation = {
   highlightNote?: string | null;
   highlightColor?: 'rose' | 'amber' | 'violet' | 'sky' | null;
 };
+
+function formatLastSeen(lastSeenAt: string | null | undefined, isOnline?: boolean): string {
+  if (isOnline) return 'Online agora';
+  if (!lastSeenAt) return '';
+  const diff = Date.now() - new Date(lastSeenAt).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 2) return 'Visto agora há pouco';
+  if (minutes < 60) return `Visto há ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Visto há ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Visto ontem';
+  if (days < 7) return `Visto há ${days} dias`;
+  return '';
+}
+
+function generateIceBreakers(
+  partnerName: string,
+  partnerCity: string | null | undefined,
+  myCity: string | undefined,
+): string[] {
+  const first = partnerName.split(' ')[0];
+  const suggestions: string[] = [];
+  if (partnerCity && myCity && partnerCity.toLowerCase() === myCity.toLowerCase()) {
+    suggestions.push(`Oi ${first}! Você também é de ${partnerCity}? Que coincidência 😄`);
+  } else if (partnerCity) {
+    suggestions.push(`Oi ${first}! Como é morar em ${partnerCity}? 😊`);
+  }
+  suggestions.push(`Oi ${first}! Vi seu perfil e quis mandar um oi 👋`);
+  suggestions.push(`${first}, se pudesse fazer qualquer coisa neste fim de semana, o que seria? 😄`);
+  suggestions.push(`Oi ${first}! O que você mais gosta de fazer quando quer relaxar?`);
+  return suggestions.slice(0, 4);
+}
 
 type Message = {
   id: string;
@@ -955,7 +988,14 @@ export default function Chat() {
                 <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                   {getIdentityLine(activeConversation?.user) || 'Chat'}
                 </span>
-                {formatDistanceLabel(activeConversation?.user.distanceKm) ? (
+                {formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline) ? (
+                  <span className={cn(
+                    "block truncate text-[11px] leading-4 font-medium",
+                    activeConversation?.user.isOnline ? "text-success" : "text-muted-foreground"
+                  )}>
+                    {formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline)}
+                  </span>
+                ) : formatDistanceLabel(activeConversation?.user.distanceKm) ? (
                   <span className="block truncate text-[11px] leading-4 font-medium text-primary">
                     {formatDistanceLabel(activeConversation?.user.distanceKm)}
                   </span>
@@ -1026,6 +1066,32 @@ export default function Chat() {
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
+              {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation && (
+                <div className="flex flex-col items-center gap-3 py-6 px-2">
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-foreground">Comece a conversa</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Toque em uma sugestão ou escreva sua mensagem
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 w-full max-w-sm">
+                    {generateIceBreakers(
+                      activeConversation.user.name,
+                      activeConversation.user.city,
+                      user?.city,
+                    ).map((suggestion) => (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        onClick={() => setMessage(suggestion)}
+                        className="text-left rounded-xl border border-border bg-secondary/40 px-3 py-2.5 text-sm text-foreground hover:bg-secondary/80 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {!isLoadingMessages && (USE_MOCKS ? [] : filteredMessages).map((msg) => {
                 const isMine = msg.senderId === user?.id;
                 const isDeleted = msg.isDeletedForMe || msg.isDeletedForAll;

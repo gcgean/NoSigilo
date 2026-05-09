@@ -4777,8 +4777,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       `
       SELECT * FROM (
         SELECT c.id, c.user_a_id, c.user_b_id, c.created_at, c.is_highlighted, c.highlight_note, c.highlight_color,
-          ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state, ua.lat as user_a_lat, ua.lon as user_a_lon,
-          ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state, ub.lat as user_b_lat, ub.lon as user_b_lon,
+          ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state, ua.lat as user_a_lat, ua.lon as user_a_lon, ua.last_seen_at as user_a_last_seen_at,
+          ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state, ub.lat as user_b_lat, ub.lon as user_b_lon, ub.last_seen_at as user_b_last_seen_at,
           (
             SELECT COUNT(*) FROM messages m
             WHERE m.conversation_id = c.id
@@ -4820,11 +4820,12 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                         )
                       )
                     : null,
-                isOnline: presence?.isOnline ? presence.isOnline(String(r.user_b_id)) : false
+                isOnline: presence?.isOnline ? presence.isOnline(String(r.user_b_id)) : false,
+                lastSeenAt: r.user_b_last_seen_at ?? null,
               }
-            : { 
-                id: r.user_a_id, 
-                name: r.user_a_name, 
+            : {
+                id: r.user_a_id,
+                name: r.user_a_name,
                 avatar: r.user_a_avatar,
                 gender: r.user_a_gender ?? null,
                 city: r.user_a_city ?? null,
@@ -4838,7 +4839,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                         )
                       )
                     : null,
-                isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false
+                isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false,
+                lastSeenAt: r.user_a_last_seen_at ?? null,
               };
         return { 
           id: r.id, 
