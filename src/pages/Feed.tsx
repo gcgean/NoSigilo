@@ -21,6 +21,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
 import ProfileCompletionBanner from '@/components/ProfileCompletionBanner';
+import EventPromoCard from '@/components/EventPromoCard';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import {
   COMMENT_ACTION_BUTTON_BASE,
@@ -1261,6 +1262,10 @@ export default function Feed() {
           </Card>
         </div>
       ) : null}
+      {user && !firstAccessPostMode && (
+        <EventPromoCard userId={user.id} />
+      )}
+
       {user && !firstAccessPostMode && (
         <ProfileCompletionBanner
           profile={{

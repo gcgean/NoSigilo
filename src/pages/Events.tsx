@@ -934,15 +934,61 @@ export default function Events() {
 
       {/* Empty State */}
       {events.length === 0 && (
-        <div className="text-center py-16 glass rounded-xl">
-          <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-          <h3 className="text-xl font-semibold mb-2">Nenhum evento encontrado</h3>
-          <p className="text-muted-foreground mb-4">
-            Seja o primeiro a criar um evento!
-          </p>
-          <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-primary">
-            Criar Evento
-          </Button>
+        <div className="glass rounded-xl overflow-hidden">
+          {/* Hero */}
+          <div className="px-6 py-10 text-center border-b border-border/50">
+            <div className="flex justify-center gap-3 mb-4 text-4xl">
+              <span>🎉</span><span>👋</span><span>🍷</span>
+            </div>
+            <h3 className="text-xl font-bold mb-2">Seja o primeiro a criar um evento</h3>
+            <p className="text-muted-foreground text-sm max-w-sm mx-auto">
+              Organize um encontro, festa ou jantar e notifique pessoas da sua região em segundos.
+            </p>
+            <Button
+              onClick={() => setShowCreateDialog(true)}
+              className="mt-6 bg-gradient-primary hover:opacity-90 gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Criar meu primeiro evento
+            </Button>
+          </div>
+
+          {/* How it works */}
+          <div className="px-6 py-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">Como funciona</p>
+            <div className="space-y-4">
+              {[
+                { step: '1', icon: '📝', title: 'Crie o evento', desc: 'Dê um nome, data, local e tipo — festa, encontro, jantar e muito mais.' },
+                { step: '2', icon: '📣', title: 'Notifique a comunidade', desc: 'Envie notificações para pessoas próximas por cidade, faixa etária e gênero.' },
+                { step: '3', icon: '✅', title: 'Receba confirmações', desc: 'Acompanhe em tempo real quem vai confirmar presença no seu evento.' },
+              ].map(({ step, icon, title, desc }) => (
+                <div key={step} className="flex items-start gap-4">
+                  <div className="shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-lg">
+                    {icon}
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Event type pills */}
+          <div className="px-6 pb-6">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Tipos de evento</p>
+            <div className="flex flex-wrap gap-2">
+              {EVENT_TYPES.map((t) => (
+                <span
+                  key={t.value}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1 text-xs"
+                >
+                  {t.icon} {t.label}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
