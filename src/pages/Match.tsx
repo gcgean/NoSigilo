@@ -295,6 +295,26 @@ export default function Match() {
     }
   };
 
+  // Gate: user must have a profile photo to access Match
+  if (!user?.avatar) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-6 max-w-sm mx-auto">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <Image className="w-10 h-10 text-primary" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold">Foto necessária para o Match</h2>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Para aparecer e ver perfis no Match, você precisa adicionar uma foto de perfil. Perfis sem foto não participam da descoberta.
+          </p>
+        </div>
+        <Button className="w-full" onClick={() => navigate('/profile')}>
+          Adicionar foto de perfil
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0">
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-6">

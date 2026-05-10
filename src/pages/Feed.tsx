@@ -483,7 +483,17 @@ export default function Feed() {
       setShowProfilePhotoGate(false);
       return;
     }
-    setShowProfilePhotoGate(!user.avatar);
+    if (user.avatar) {
+      setShowProfilePhotoGate(false);
+      return;
+    }
+    // Show once per session — after the user dismisses, don't reopen until browser restarts
+    const sessionKey = `nosigilo:photo-prompt-dismissed:${user.id}`;
+    if (sessionStorage.getItem(sessionKey)) {
+      setShowProfilePhotoGate(false);
+      return;
+    }
+    setShowProfilePhotoGate(true);
   }, [user?.avatar, user?.id]);
 
   useEffect(() => {
@@ -2315,12 +2325,14 @@ export default function Feed() {
         <Dialog
           open={showProfilePhotoGate}
           onOpenChange={(open) => {
-            if (open || !showProfilePhotoGate) {
-              setShowProfilePhotoGate(open);
+            if (!open && user?.id) {
+              // Mark as dismissed for this session so it doesn't reopen on re-navigate
+              sessionStorage.setItem(`nosigilo:photo-prompt-dismissed:${user.id}`, '1');
             }
+            setShowProfilePhotoGate(open);
           }}
         >
-          <DialogContent className="sm:max-w-md [&>button]:hidden">
+          <DialogContent className="sm:max-w-md">
             <div className="space-y-4">
               <div className="space-y-2 text-center">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -2328,12 +2340,12 @@ export default function Feed() {
                 </div>
                 <h2 className="text-xl font-semibold">Adicione sua foto de perfil</h2>
                 <p className="text-sm leading-6 text-muted-foreground">
-                  Para continuar no feed, envie agora uma foto principal para o seu perfil.
+                  Perfis com foto recebem muito mais atenção. Adicione agora para aproveitar melhor a plataforma.
                 </p>
               </div>
 
               <div className="rounded-2xl border bg-secondary/20 p-4 text-sm text-muted-foreground">
-                Sua conta já foi criada. Falta só essa etapa para liberar a navegação normalmente.
+                Sem foto, você não aparece no Match e na Busca — mas pode navegar pelo Feed e Chat normalmente.
               </div>
 
               <Button
@@ -2344,6 +2356,17 @@ export default function Feed() {
               >
                 {isUploadingProfilePhoto ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
                 {isUploadingProfilePhoto ? 'Enviando foto...' : 'Escolher foto de perfil'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-muted-foreground"
+                onClick={() => {
+                  if (user?.id) sessionStorage.setItem(`nosigilo:photo-prompt-dismissed:${user.id}`, '1');
+                  setShowProfilePhotoGate(false);
+                }}
+              >
+                Pular por agora
               </Button>
             </div>
           </DialogContent>

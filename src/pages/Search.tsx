@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Camera } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +42,8 @@ function formatDistanceKm(distanceKm: unknown) {
 
 export default function SearchPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -342,6 +346,26 @@ export default function SearchPage() {
       </NavLink>
     );
   };
+
+  // Gate: user must have a profile photo to use Search
+  if (!user?.avatar) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-6 max-w-sm mx-auto">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <Camera className="w-10 h-10 text-primary" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-bold">Foto necessária para Buscar</h2>
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Para aparecer nos resultados de busca e ver outros perfis, você precisa de uma foto de perfil.
+          </p>
+        </div>
+        <Button className="w-full" onClick={() => navigate('/profile')}>
+          Adicionar foto de perfil
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden pb-24 md:pb-0">

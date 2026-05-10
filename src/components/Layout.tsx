@@ -799,7 +799,7 @@ export default function Layout() {
                     <div>
                       <p className="text-sm font-semibold text-primary">Jornada premium de primeiro acesso</p>
                       <h2 className="text-lg font-bold sm:text-xl">
-                        {firstAccessChecklist.progress}% pronto. Seu perfil esta quase pronto para chamar mais atencao.
+                        {firstAccessChecklist.progress}% pronto. Seu perfil está quase pronto para chamar mais atenção.
                       </h2>
                       <p className="mt-1 text-sm text-muted-foreground">
                         {firstAccessChecklist.remaining === 2
