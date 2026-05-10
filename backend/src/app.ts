@@ -430,7 +430,8 @@ async function countValidatedReferrals(db: DbHandle, inviterUserId: string): Pro
 async function checkAndGrantReferralRewards(
   db: DbHandle,
   io: any,
-  inviterUserId: string
+  inviterUserId: string,
+  env?: Env
 ) {
   const validatedCount = await countValidatedReferrals(db, inviterUserId);
   for (const tier of REFERRAL_TIERS) {
@@ -450,16 +451,37 @@ async function checkAndGrantReferralRewards(
       'INSERT INTO referral_rewards (id, inviter_user_id, reward_type, valid_invites_count, premium_days_granted, granted_at) VALUES (?, ?, ?, ?, ?, ?)',
       [randomUUID(), inviterUserId, tier.rewardType, validatedCount, tier.days, nowIso()]
     );
+    await db.persist();
+    const notifTitle = `Você é ${tier.label}! 🏅`;
+    const notifDesc = `${tier.count} convites validados — você ganhou ${tier.days} dias de Premium.`;
     await createNotification(
       { db, io },
       {
         userId: inviterUserId,
         type: 'referral.reward',
-        title: `Você é ${tier.label}! 🏅`,
-        description: `Seus ${tier.count} convites foram validados. Você ganhou ${tier.days} dias de acesso premium.`,
+        title: notifTitle,
+        description: notifDesc,
         dataJson: { rewardType: tier.rewardType, premiumDays: tier.days, validatedCount },
       }
     );
+    // Push notification (only when env is available)
+    if (env) {
+      try {
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: inviterUserId,
+            payload: {
+              title: notifTitle,
+              body: notifDesc,
+              url: '/invites',
+              tag: `referral.reward:${tier.rewardType}`,
+              data: { rewardType: tier.rewardType },
+            },
+          }
+        );
+      } catch {}
+    }
   }
 }
 
@@ -467,7 +489,8 @@ async function markInviteeAction(
   db: DbHandle,
   io: any,
   inviteeUserId: string,
-  actionBit: number // 1 = profile, 2 = message, 4 = like
+  actionBit: number, // 1 = profile, 2 = message, 4 = like
+  env?: Env
 ) {
   // Find pending entry for this invitee
   const entry = (await queryOne(
@@ -511,7 +534,7 @@ async function markInviteeAction(
   );
 
   if (isValidated) {
-    await checkAndGrantReferralRewards(db, io, String(entry.inviter_user_id));
+    await checkAndGrantReferralRewards(db, io, String(entry.inviter_user_id), env);
   }
 }
 // ───────────────────────────────────────────────────────────────────────────
@@ -3108,7 +3131,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           (v) => v !== null && v !== undefined && String(v).trim() !== ''
         ).length;
         if (filledFields >= 4) {
-          void markInviteeAction(db, ioSvc, req.auth!.userId, 0b001).catch(() => {});
+          void markInviteeAction(db, ioSvc, req.auth!.userId, 0b001, env).catch(() => {});
         }
       } catch {}
     }
@@ -5570,7 +5593,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       }
     );
     // Referral action tracking: bit1 = sent_message
-    void markInviteeAction(db, io, req.auth!.userId, 0b010).catch(() => {});
+    void markInviteeAction(db, io, req.auth!.userId, 0b010, env).catch(() => {});
     res.json({ id });
   });
 
@@ -5673,7 +5696,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           }
         );
         // Referral action tracking: bit2 = liked_profile
-        void markInviteeAction(db, io, req.auth!.userId, 0b100).catch(() => {});
+        void markInviteeAction(db, io, req.auth!.userId, 0b100, env).catch(() => {});
       }
     } else if (parsed.data.targetType === 'experience') {
       const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
@@ -7570,7 +7593,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
       // Re-check rewards for affected inviters (some may have already met threshold before expiry)
       for (const inviterId of inviterIds) {
-        await checkAndGrantReferralRewards(db, io, inviterId);
+        await checkAndGrantReferralRewards(db, io, inviterId, env);
       }
 
       if (expired.length > 0) {

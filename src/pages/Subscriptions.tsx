@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Copy, Crown, QrCode, Star, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { subscriptionsService, authService } from '@/services/api';
+import { subscriptionsService, authService, invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -189,6 +190,7 @@ function normalizeCheckoutStatus(status?: string | null) {
 export default function Subscriptions() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCheckingOut, setIsCheckingOut] = useState<string | null>(null);
@@ -200,6 +202,14 @@ export default function Subscriptions() {
   const [isSavingBilling, setIsSavingBilling] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
+  const [referralValidated, setReferralValidated] = useState<number | null>(null);
+
+  useEffect(() => {
+    invitesService
+      .getRewardProgress()
+      .then((d) => setReferralValidated(d.validatedCount))
+      .catch(() => setReferralValidated(0));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -481,6 +491,48 @@ export default function Subscriptions() {
           </div>
         )}
       </div>
+
+      {/* Referral free-premium callout — shown when user doesn't have premium */}
+      {subscriptionsEnabled && !user?.isPremium && referralValidated !== null && (
+        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Gift className="w-5 h-5 text-emerald-500 shrink-0" />
+                <span className="font-semibold text-foreground">Opção gratuita: convide 3 amigos</span>
+                <span className="text-xs rounded-full bg-emerald-500/15 text-emerald-600 px-2 py-0.5 font-medium">Grátis</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Indique 3 pessoas que se ativem na plataforma e ganhe <span className="font-semibold text-foreground">30 dias de Premium</span> sem pagar nada.
+              </p>
+              {/* Progress */}
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden max-w-[180px]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.round((referralValidated / 3) * 100))}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground shrink-0">
+                  <span className="font-semibold text-foreground">{referralValidated}</span>/3 validados
+                </span>
+                {referralValidated >= 3 && (
+                  <span className="text-xs text-emerald-600 font-semibold">Meta atingida! 🎉</span>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              className="gap-2 border-emerald-400/40 text-emerald-600 hover:bg-emerald-500/10 shrink-0"
+              onClick={() => navigate('/invites')}
+            >
+              <Users className="w-4 h-4" />
+              {referralValidated >= 3 ? 'Resgatar recompensa' : `Convidar (faltam ${3 - referralValidated})`}
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isLoading && <p className="text-muted-foreground">Carregando...</p>}
 

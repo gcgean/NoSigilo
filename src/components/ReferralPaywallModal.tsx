@@ -28,7 +28,7 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
 
   const handleGoPlans = () => {
     onClose();
-    navigate('/plans');
+    navigate('/subscriptions');
   };
 
   const handleGoInvites = () => {
