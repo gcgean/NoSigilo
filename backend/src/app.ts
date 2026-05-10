@@ -7538,5 +7538,52 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     res.status(500).json({ error: 'server_error' });
   }) as express.ErrorRequestHandler);
 
+  // ─── Background job: expire pending invite entries past their validation deadline ──
+  const sweepExpiredInvites = async () => {
+    try {
+      // Find all pending entries whose deadline has passed
+      const expired = (await queryAll(
+        db,
+        `SELECT ile.id AS entry_id, il.inviter_user_id
+         FROM invite_link_entries ile
+         JOIN invite_links il ON il.id = ile.invite_link_id
+         WHERE ile.validation_status = 'pending'
+           AND ile.validation_deadline IS NOT NULL
+           AND ile.validation_deadline < ?`,
+        [nowIso()]
+      )) as any[];
+
+      if (expired.length === 0) return;
+
+      const io = app.get('io') as SocketIOServer | undefined;
+      const inviterIds = new Set<string>();
+
+      for (const row of expired) {
+        await run(
+          db,
+          `UPDATE invite_link_entries SET validation_status = 'expired', failed_reason = 'deadline_passed' WHERE id = ?`,
+          [String(row.entry_id)]
+        );
+        inviterIds.add(String(row.inviter_user_id));
+      }
+      await persist();
+
+      // Re-check rewards for affected inviters (some may have already met threshold before expiry)
+      for (const inviterId of inviterIds) {
+        await checkAndGrantReferralRewards(db, io, inviterId);
+      }
+
+      if (expired.length > 0) {
+        console.log(`[sweep] Marked ${expired.length} invite entr${expired.length === 1 ? 'y' : 'ies'} as expired`);
+      }
+    } catch (err) {
+      console.error('[sweep] sweepExpiredInvites error:', err);
+    }
+  };
+
+  // Run sweep on startup (catches any stragglers from downtime), then hourly
+  void sweepExpiredInvites();
+  setInterval(() => void sweepExpiredInvites(), 60 * 60 * 1000);
+
   return app;
 }

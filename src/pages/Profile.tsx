@@ -11,6 +11,7 @@ import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-
 import { calculateAge } from '@/utils/age';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService } from '@/services/api';
@@ -253,6 +254,7 @@ export default function Profile() {
   const { toast } = useToast();
   const { socket } = useSocket();
   const [activeTab, setActiveTab] = useState('photos');
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -1384,12 +1386,14 @@ export default function Profile() {
                 Desbloqueie recursos exclusivos e destaque seu perfil
               </p>
             </div>
-            <Button className="w-full sm:w-auto bg-gold text-black hover:bg-gold/90" onClick={() => navigate('/subscriptions')}>
+            <Button className="w-full sm:w-auto bg-gold text-black hover:bg-gold/90" onClick={() => setPaywallOpen(true)}>
               Ver Planos
             </Button>
           </div>
         </div>
       )}
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

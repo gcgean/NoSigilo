@@ -29,6 +29,7 @@ import { CitySearch } from '@/components/CitySearch';
 import { locationService, radarService } from '@/services/api';
 import { hasPremiumAccess } from '@/utils/premium';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { resolveServerUrl } from '@/utils/serverUrl';
 
 type RadarDelivery = {
@@ -161,6 +162,7 @@ export default function Radar() {
   const [isLocating, setIsLocating] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [canCreate, setCanCreate] = useState(radarAllowed);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [myBroadcasts, setMyBroadcasts] = useState<RadarBroadcast[]>([]);
   const [incoming, setIncoming] = useState<IncomingRadar[]>([]);
   const [heatmap, setHeatmap] = useState<RadarHeatmap>({ totalActive: 0, hottestZone: null, zones: [] });
@@ -238,12 +240,7 @@ export default function Radar() {
 
   const handleSendBroadcast = async () => {
     if (!radarAllowed || !canCreate) {
-      toast({
-        title: 'Radar disponível após o trial',
-        description: 'Quando seu periodo gratis terminar, o radar passa a ficar nos planos.',
-        variant: 'destructive',
-      });
-      navigate('/subscriptions');
+      setPaywallOpen(true);
       return;
     }
     if (limitReached) {
@@ -314,7 +311,7 @@ export default function Radar() {
               : 'Tente novamente.',
         variant: 'destructive',
       });
-      if (premiumRequired) navigate('/subscriptions');
+      if (premiumRequired) setPaywallOpen(true);
       if (dailyLimitError || weeklyLimitError) await loadRadar();
     } finally {
       setIsSending(false);
@@ -435,7 +432,7 @@ export default function Radar() {
             {!canCreate && (
               <div className="flex flex-col gap-3 rounded-lg border bg-secondary/30 p-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                 <span>Seu periodo gratis terminou. Para seguir usando o radar, escolha um plano.</span>
-                <Button type="button" size="sm" className="h-10 w-full gap-2 bg-gradient-primary hover:opacity-90 sm:w-auto" onClick={() => navigate('/subscriptions')}>
+                <Button type="button" size="sm" className="h-10 w-full gap-2 bg-gradient-primary hover:opacity-90 sm:w-auto" onClick={() => setPaywallOpen(true)}>
                   <Crown className="h-4 w-4" />
                   Ver planos
                 </Button>
@@ -882,6 +879,8 @@ export default function Radar() {
           </Card>
         </div>
       </div>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

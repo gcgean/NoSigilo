@@ -43,6 +43,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useNavigate } from 'react-router-dom';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { eventsService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -144,6 +145,7 @@ export default function Events() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const premiumAccess = hasPremiumAccess(user);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [step, setStep] = useState(1);
@@ -286,7 +288,7 @@ export default function Events() {
         description: premiumRequired ? 'Assine um plano para criar eventos após o teste grátis.' : 'Tente novamente.',
         variant: 'destructive',
       });
-      if (premiumRequired) navigate('/subscriptions');
+      if (premiumRequired) setPaywallOpen(true);
       return;
     }
 
@@ -366,12 +368,7 @@ export default function Events() {
           open={showCreateDialog}
           onOpenChange={(open) => {
             if (open && !premiumAccess) {
-              toast({
-                title: 'Criar eventos é Premium',
-                description: 'Assine um plano para criar eventos após o teste grátis.',
-                variant: 'destructive',
-              });
-              navigate('/subscriptions');
+              setPaywallOpen(true);
               return;
             }
             setShowCreateDialog(open);
@@ -991,6 +988,8 @@ export default function Events() {
           </div>
         </div>
       )}
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import ProfileCompletionBanner from '@/components/ProfileCompletionBanner';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -189,6 +190,7 @@ export default function Feed() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isPublishingExperience, setIsPublishingExperience] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
@@ -2059,10 +2061,8 @@ export default function Feed() {
                           <div className="w-full bg-secondary/30 border flex flex-col items-center justify-center gap-3" style={aspectStyleForKey(m.id)}>
                             <Lock className="w-6 h-6 text-muted-foreground" />
                             <p className="text-sm text-muted-foreground">Vídeos disponíveis apenas para Premium</p>
-                            <Button asChild size="sm" className="bg-gradient-primary hover:opacity-90 gap-2">
-                              <a href="/subscriptions">
-                                <Crown className="w-4 h-4" /> Ver planos
-                              </a>
+                            <Button size="sm" className="bg-gradient-primary hover:opacity-90 gap-2" onClick={() => setPaywallOpen(true)}>
+                              <Crown className="w-4 h-4" /> Ver planos
                             </Button>
                           </div>
                         )
@@ -2538,13 +2538,15 @@ export default function Feed() {
               <p className="text-sm text-muted-foreground mb-4">
                 Apareça mais e tenha acesso a recursos exclusivos.
               </p>
-              <Button asChild className="w-full bg-gold text-black hover:bg-gold/90">
-                <Link to="/subscriptions">Ver Planos</Link>
+              <Button className="w-full bg-gold text-black hover:bg-gold/90" onClick={() => setPaywallOpen(true)}>
+                Ver Planos
               </Button>
             </Card>
           )}
         </div>
       </div>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

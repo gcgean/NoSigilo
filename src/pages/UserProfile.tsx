@@ -22,6 +22,7 @@ import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -474,6 +475,7 @@ export default function UserProfile() {
   const [isLoadingPrivate, setIsLoadingPrivate] = useState(false);
   const [isRequesting, setIsRequesting] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
   const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
@@ -715,8 +717,7 @@ export default function UserProfile() {
   
   const startChat = async () => {
     if (!premiumAccess) {
-      toast({ title: 'Plano necessário', description: 'Renove seu plano para conversar e navegar pelos perfis.', variant: 'destructive' });
-      navigate('/subscriptions');
+      setPaywallOpen(true);
       return;
     }
     if (!userId) return;
@@ -916,7 +917,7 @@ export default function UserProfile() {
       <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
         <button
           type="button"
-          onClick={() => navigate('/subscriptions')}
+          onClick={() => setPaywallOpen(true)}
           className="glass w-full rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-left transition-colors hover:bg-destructive/10"
         >
           <div className="flex items-center gap-3 mb-3">
@@ -925,6 +926,8 @@ export default function UserProfile() {
           </div>
           <p className="text-muted-foreground">Renove seu plano para navegar pelos perfis, ver o Match e responder no chat.</p>
         </button>
+
+        <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       </div>
     );
   }
@@ -1469,6 +1472,8 @@ export default function UserProfile() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

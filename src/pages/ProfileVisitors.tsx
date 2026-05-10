@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Clock3, Crown, Eye, User, Users } from 'lucide-react';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -29,6 +30,7 @@ export default function ProfileVisitors() {
   const navigate = useNavigate();
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const isPremium = hasPremiumAccess(user);
   const totalVisits = useMemo(
     () => visitors.reduce((acc, item) => acc + Number(item.visitsCount || 1), 0),
@@ -74,11 +76,9 @@ export default function ProfileVisitors() {
           <p className="text-muted-foreground mb-6">
             Assine o Premium para ver a lista completa de pessoas que visitaram seu perfil recentemente.
           </p>
-          <NavLink to="/subscriptions">
-            <Button className="bg-gold text-black hover:bg-gold/90 font-bold px-8">
-              Ver Planos Premium
-            </Button>
-          </NavLink>
+          <Button className="bg-gold text-black hover:bg-gold/90 font-bold px-8" onClick={() => setPaywallOpen(true)}>
+            Ver Planos Premium
+          </Button>
         </Card>
       </div>
     );
@@ -171,6 +171,8 @@ export default function ProfileVisitors() {
           Total de visitas registradas no período exibido: {totalVisits}
         </p>
       ) : null}
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }
