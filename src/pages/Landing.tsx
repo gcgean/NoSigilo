@@ -436,7 +436,7 @@ function StatsBar({ totalUsers, onlineNow }: { totalUsers: number; onlineNow: nu
           <div className="text-center">
             <div className="flex items-center gap-2 justify-center">
               <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <p className="text-3xl font-bold text-foreground">{online.value.toLocaleString('pt-BR')}</p>
+              <p ref={online.ref} className="text-3xl font-bold text-foreground">{online.value.toLocaleString('pt-BR')}</p>
             </div>
             <p className="text-sm text-muted-foreground mt-1">online agora</p>
           </div>

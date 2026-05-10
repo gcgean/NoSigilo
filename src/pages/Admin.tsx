@@ -1638,17 +1638,17 @@ export default function Admin() {
 // ─── Referrals Tab ─────────────────────────────────────────────────────────
 
 type ReferralStats = {
-  statusCounts: { pending: number; validated: number; failed: number; expired: number; total: number };
-  tierStats: Array<{ tier: number; count: number; reward_type: string; days: number; badgeCode: string }>;
-  topInviters: Array<{ inviterId: string; name: string; email: string | null; count: number }>;
-  recentRewards: Array<{ inviterId: string; name: string; rewardedAt: string; rewardType: string; daysGranted: number; tierLabel: string }>;
-  badgeCounts: { ambassador: number; ambassador_gold: number; ambassador_elite: number };
+  statusCounts: Record<string, number>;
+  tierStats: Array<{ rewardType: string; count: number; totalDays: number }>;
+  topInviters: Array<{ userId: string; name: string; avatar: string | null; validatedCount: number }>;
+  recentRewards: Array<{ id: string; inviterUserId: string; inviterName: string; inviterAvatar: string | null; rewardType: string; validInvitesCount: number; premiumDaysGranted: number; grantedAt: string }>;
+  badgeCounts: Record<string, number>;
 };
 
-const TIER_META: Record<number, { label: string; icon: typeof Award; color: string }> = {
-  1: { label: 'Embaixador (3 indicações)', icon: Award, color: 'text-amber-600' },
-  2: { label: 'Embaixador Gold (10 indicações)', icon: Trophy, color: 'text-yellow-500' },
-  3: { label: 'Embaixador Elite (30 indicações)', icon: Gift, color: 'text-purple-500' },
+const TIER_META: Record<string, { label: string; icon: typeof Award; color: string }> = {
+  ambassador: { label: 'Embaixador (3 indicações)', icon: Award, color: 'text-amber-600' },
+  ambassador_gold: { label: 'Embaixador Gold (10 indicações)', icon: Trophy, color: 'text-yellow-500' },
+  ambassador_elite: { label: 'Embaixador Elite (30 indicações)', icon: Gift, color: 'text-purple-500' },
 };
 
 function formatDateShort(iso: string) {
@@ -1696,11 +1696,11 @@ function AdminReferralsTab() {
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { key: 'total', label: 'Total', value: statusCounts.total, color: 'text-foreground', bg: 'bg-secondary/50' },
-            { key: 'pending', label: 'Pendentes', value: statusCounts.pending, color: 'text-amber-600', bg: 'bg-amber-500/10' },
-            { key: 'validated', label: 'Validadas', value: statusCounts.validated, color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
-            { key: 'failed', label: 'Falhas', value: statusCounts.failed, color: 'text-destructive', bg: 'bg-destructive/10' },
-            { key: 'expired', label: 'Expiradas', value: statusCounts.expired, color: 'text-muted-foreground', bg: 'bg-muted/50' },
+            { key: 'total', label: 'Total', value: Object.values(statusCounts).reduce((a, b) => a + b, 0), color: 'text-foreground', bg: 'bg-secondary/50' },
+            { key: 'pending', label: 'Pendentes', value: statusCounts['pending'] ?? 0, color: 'text-amber-600', bg: 'bg-amber-500/10' },
+            { key: 'validated', label: 'Validadas', value: statusCounts['validated'] ?? 0, color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
+            { key: 'failed', label: 'Falhas', value: statusCounts['failed'] ?? 0, color: 'text-destructive', bg: 'bg-destructive/10' },
+            { key: 'expired', label: 'Expiradas', value: statusCounts['expired'] ?? 0, color: 'text-muted-foreground', bg: 'bg-muted/50' },
           ].map((item) => (
             <div key={item.key} className={`rounded-xl p-4 ${item.bg} flex flex-col gap-1`}>
               <span className="text-xs text-muted-foreground">{item.label}</span>
@@ -1719,15 +1719,15 @@ function AdminReferralsTab() {
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-amber-500/10 p-4 flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Embaixador</span>
-            <span className="text-2xl font-bold text-amber-600">{badgeCounts.ambassador}</span>
+            <span className="text-2xl font-bold text-amber-600">{badgeCounts['ambassador'] ?? 0}</span>
           </div>
           <div className="rounded-xl bg-yellow-500/10 p-4 flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Gold</span>
-            <span className="text-2xl font-bold text-yellow-500">{badgeCounts.ambassador_gold}</span>
+            <span className="text-2xl font-bold text-yellow-500">{badgeCounts['ambassador_gold'] ?? 0}</span>
           </div>
           <div className="rounded-xl bg-purple-500/10 p-4 flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Elite</span>
-            <span className="text-2xl font-bold text-purple-500">{badgeCounts.ambassador_elite}</span>
+            <span className="text-2xl font-bold text-purple-500">{badgeCounts['ambassador_elite'] ?? 0}</span>
           </div>
         </div>
       </div>
@@ -1743,15 +1743,15 @@ function AdminReferralsTab() {
         ) : (
           <div className="space-y-3">
             {tierStats.map((tier) => {
-              const meta = TIER_META[tier.tier] ?? { label: `Tier ${tier.tier}`, icon: Gift, color: 'text-primary' };
+              const meta = TIER_META[tier.rewardType] ?? { label: tier.rewardType, icon: Gift, color: 'text-primary' };
               const MetaIcon = meta.icon;
               return (
-                <div key={tier.tier} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
+                <div key={tier.rewardType} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
                   <div className="flex items-center gap-3">
                     <MetaIcon className={`w-5 h-5 ${meta.color}`} />
                     <div>
                       <p className="text-sm font-medium">{meta.label}</p>
-                      <p className="text-xs text-muted-foreground">+{tier.days} dias de premium</p>
+                      <p className="text-xs text-muted-foreground">+{tier.totalDays} dias distribuídos</p>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
@@ -1764,7 +1764,7 @@ function AdminReferralsTab() {
             <div className="mt-2 flex items-center justify-between rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
               <span className="text-sm font-medium text-primary">Total de dias premium distribuídos</span>
               <span className="text-lg font-bold text-primary">
-                {tierStats.reduce((acc, t) => acc + t.count * t.days, 0)}
+                {tierStats.reduce((acc, t) => acc + t.totalDays, 0)}
               </span>
             </div>
           </div>
@@ -1786,19 +1786,17 @@ function AdminReferralsTab() {
                 <tr className="border-b text-muted-foreground">
                   <th className="pb-2 text-left font-medium">#</th>
                   <th className="pb-2 text-left font-medium">Nome</th>
-                  <th className="pb-2 text-left font-medium hidden sm:table-cell">E-mail</th>
                   <th className="pb-2 text-right font-medium">Validadas</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {topInviters.map((inviter, index) => (
-                  <tr key={inviter.inviterId} className="hover:bg-secondary/30 transition-colors">
+                  <tr key={inviter.userId} className="hover:bg-secondary/30 transition-colors">
                     <td className="py-2.5 pr-3 font-bold text-muted-foreground">{index + 1}</td>
                     <td className="py-2.5 font-medium">{inviter.name}</td>
-                    <td className="py-2.5 text-muted-foreground hidden sm:table-cell">{inviter.email ?? '—'}</td>
                     <td className="py-2.5 text-right">
                       <span className="inline-flex items-center justify-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
-                        {inviter.count}
+                        {inviter.validatedCount}
                       </span>
                     </td>
                   </tr>
@@ -1824,18 +1822,18 @@ function AdminReferralsTab() {
           <p className="text-sm text-muted-foreground">Nenhuma recompensa concedida ainda.</p>
         ) : (
           <div className="space-y-2">
-            {recentRewards.map((reward, index) => (
-              <div key={`${reward.inviterId}-${reward.rewardType}-${index}`} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
+            {recentRewards.map((reward) => (
+              <div key={reward.id} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
                 <div className="min-w-0">
-                  <p className="font-medium truncate">{reward.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatDateShort(reward.rewardedAt)}</p>
+                  <p className="font-medium truncate">{reward.inviterName}</p>
+                  <p className="text-xs text-muted-foreground">{formatDateShort(reward.grantedAt)}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-600">
                     <Gift className="w-3 h-3" />
-                    +{reward.daysGranted}d
+                    +{reward.premiumDaysGranted}d
                   </span>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{reward.tierLabel}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{TIER_META[reward.rewardType]?.label ?? reward.rewardType}</p>
                 </div>
               </div>
             ))}

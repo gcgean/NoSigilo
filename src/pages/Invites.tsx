@@ -89,7 +89,10 @@ export default function Invites() {
   const handleCreateInvite = async () => {
     try {
       const created = await invitesService.create();
-      if (created?.url && navigator?.clipboard?.writeText) {
+      if (created?.token && navigator?.clipboard?.writeText) {
+        const inviteUrl = `${window.location.origin}/invite/${encodeURIComponent(String(created.token))}`;
+        await navigator.clipboard.writeText(inviteUrl);
+      } else if (created?.url && navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(String(created.url));
       }
       toast({
@@ -108,7 +111,7 @@ export default function Invites() {
 
   const handleCopyInvite = async (invite: InviteItem) => {
     try {
-      const url = `${window.location.origin}/register?invite=${encodeURIComponent(invite.token)}`;
+      const url = `${window.location.origin}/invite/${encodeURIComponent(invite.token)}`;
       await navigator.clipboard.writeText(url);
       toast({ title: 'Link copiado', description: 'Envie esse link apenas para quem você realmente deseja indicar.' });
     } catch {

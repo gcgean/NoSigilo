@@ -2157,7 +2157,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       token,
       status: 'created',
       createdAt: now,
-      url: `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/register?invite=${encodeURIComponent(token)}`,
+      url: `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/invite/${encodeURIComponent(token)}`,
     });
   });
 

@@ -24,6 +24,7 @@ import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import Guidelines from "./pages/Guidelines";
 import DevTest from "./pages/DevTest";
+import InviteLanding from "./pages/InviteLanding";
 
 // Protected Pages
 import Feed from "./pages/Feed";
@@ -68,6 +69,8 @@ const App = () => (
                     <Route path="/pending-approval" element={<PendingApproval />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/plans" element={<Navigate to="/subscriptions" replace />} />
+                    <Route path="/convites" element={<Navigate to="/invites" replace />} />
+                    <Route path="/invite/:token" element={<InviteLanding />} />
                     <Route path="/terms" element={<Terms />} />
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/guidelines" element={<Guidelines />} />
@@ -89,6 +92,7 @@ const App = () => (
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/events" element={<Events />} />
                       <Route path="/invites" element={<Invites />} />
+                      <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />
