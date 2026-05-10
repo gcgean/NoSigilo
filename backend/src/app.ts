@@ -3384,6 +3384,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           dataJson: { requestId: String(existing.id), requesterId, requesterName: requester?.name ? String(requester.name) : null },
         }
       );
+      await sendPushToUser(
+        { db, env },
+        {
+          userId: ownerId,
+          payload: {
+            title: 'Pedido de fotos privadas',
+            body: `${requester?.name ? String(requester.name) : 'Alguém'} pediu acesso às suas fotos privadas.`,
+            url: '/notifications',
+            tag: `private_photos.request:${requesterId}`,
+            data: { requesterId },
+          },
+        }
+      );
       res.json({ id: String(existing.id), status: 'pending' });
       return;
     }
@@ -3402,6 +3415,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         title: 'Solicitação para ver fotos privadas',
         description: `${requester?.name ? String(requester.name) : 'Alguém'} pediu acesso às suas fotos privadas.`,
         dataJson: { requestId: id, requesterId, requesterName: requester?.name ? String(requester.name) : null },
+      }
+    );
+    await sendPushToUser(
+      { db, env },
+      {
+        userId: ownerId,
+        payload: {
+          title: 'Pedido de fotos privadas',
+          body: `${requester?.name ? String(requester.name) : 'Alguém'} pediu acesso às suas fotos privadas.`,
+          url: '/notifications',
+          tag: `private_photos.request:${requesterId}`,
+          data: { requesterId },
+        },
       }
     );
     res.json({ id, status: 'pending' });
@@ -3491,6 +3517,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         title: 'Acesso às fotos privadas',
         description: `${owner?.name ? String(owner.name) : 'O usuário'} autorizou você a ver as fotos privadas.`,
         dataJson: { ownerId: req.auth!.userId, ownerName: owner?.name ? String(owner.name) : null },
+      }
+    );
+    await sendPushToUser(
+      { db, env },
+      {
+        userId: String(row.requester_user_id),
+        payload: {
+          title: 'Acesso às fotos privadas aprovado',
+          body: `${owner?.name ? String(owner.name) : 'O usuário'} autorizou você a ver as fotos privadas.`,
+          url: '/notifications',
+          tag: `private_photos.approved:${req.auth!.userId}`,
+          data: { ownerId: req.auth!.userId },
+        },
       }
     );
     res.json({ ok: true });
@@ -3894,6 +3933,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           title: 'Você recebeu um match',
           description: `${actorName} deu match com você.`,
           dataJson: { actorId: myId, actorName },
+        }
+      );
+      await sendPushToUser(
+        { db, env },
+        {
+          userId: targetUserId,
+          payload: {
+            title: 'Você recebeu um match',
+            body: `${actorName} deu match com você.`,
+            url: '/match',
+            tag: `profile.liked:${myId}`,
+            data: { actorId: myId, actorName },
+          },
         }
       );
 
@@ -5232,6 +5284,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             dataJson: { postId: parsed.data.targetId, actorId: req.auth!.userId, actorName },
           }
         );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: ownerId,
+            payload: {
+              title: 'Curtiram sua publicação',
+              body: `${actorName} curtiu sua publicação.`,
+              url: '/feed',
+              tag: `post.liked:${parsed.data.targetId}`,
+              data: { postId: parsed.data.targetId, actorId: req.auth!.userId },
+            },
+          }
+        );
       }
     } else if (parsed.data.targetType === 'user') {
       const target = (await queryOne(db, 'SELECT id FROM users WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
@@ -5249,6 +5314,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             dataJson: { actorId: req.auth!.userId, actorName },
           }
         );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: targetUserId,
+            payload: {
+              title: 'Seu perfil foi favoritado',
+              body: `${actorName} favoritou seu perfil.`,
+              url: '/match',
+              tag: `profile.favorited:${req.auth!.userId}`,
+              data: { actorId: req.auth!.userId },
+            },
+          }
+        );
       }
     } else if (parsed.data.targetType === 'experience') {
       const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
@@ -5264,6 +5342,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             title: 'Curtiram seu conto',
             description: `${actorName} curtiu seu conto.`,
             dataJson: { experienceId: parsed.data.targetId, actorId: req.auth!.userId, actorName },
+          }
+        );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: ownerId,
+            payload: {
+              title: 'Curtiram seu conto',
+              body: `${actorName} curtiu seu conto.`,
+              url: '/feed',
+              tag: `experience.liked:${parsed.data.targetId}`,
+              data: { experienceId: parsed.data.targetId, actorId: req.auth!.userId },
+            },
           }
         );
       }
@@ -5358,6 +5449,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             dataJson: { postId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId, actorName, content: parsed.data.content, createdAt },
           }
         );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: ownerId,
+            payload: {
+              title: 'Novo comentário',
+              body: `${actorName} comentou: ${preview}`,
+              url: '/feed',
+              tag: `post.commented:${parsed.data.targetId}`,
+              data: { postId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId },
+            },
+          }
+        );
       }
     } else if (parsed.data.targetType === 'experience') {
       const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
@@ -5374,6 +5478,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             title: 'Novo comentário no seu conto',
             description: `${actorName} comentou: ${preview}`,
             dataJson: { experienceId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId, actorName, content: parsed.data.content, createdAt },
+          }
+        );
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: ownerId,
+            payload: {
+              title: 'Novo comentário no seu conto',
+              body: `${actorName} comentou: ${preview}`,
+              url: '/feed',
+              tag: `experience.commented:${parsed.data.targetId}`,
+              data: { experienceId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId },
+            },
           }
         );
       }
@@ -6343,6 +6460,19 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           description: `${userRow.name} convidou você para um evento em ${payload.location}.`,
           dataJson: { eventId: id }
         });
+        await sendPushToUser(
+          { db, env },
+          {
+            userId: String(targetUser.id),
+            payload: {
+              title: `Novo evento: ${payload.title}`,
+              body: `${userRow.name} convidou você para um evento em ${payload.location}.`,
+              url: '/events',
+              tag: `event_invitation:${id}`,
+              data: { eventId: id },
+            },
+          }
+        );
 
         // 2. Create Chat Message (Mensagem)
         // Check if conversation exists or create one
