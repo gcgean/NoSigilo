@@ -26,5 +26,7 @@ export function getNotificationHref(notification: any): string {
   if (type === 'radar.received' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
   if (type === 'radar.contacted' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
 
+  if (type === 'referral.reward') return '/invites';
+
   return '/notifications';
 }

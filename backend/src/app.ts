@@ -98,6 +98,7 @@ export type PublicUser = {
   billingAddressCity?: string | null;
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
+  ambassadorBadges?: string[] | null;
   distanceKm?: number | null;
 };
 
@@ -1161,6 +1162,9 @@ function rowToPublicUser(
           billingAddressState: row.billing_address_state ?? null,
         }
       : {}),
+    ambassadorBadges: row.ambassador_badges_csv
+      ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
+      : null,
     invitedBy:
       row.invited_by_user_id && row.inviter_name
         ? {
@@ -1175,7 +1179,14 @@ function rowToPublicUser(
 async function getUserWithSponsorById(db: DbHandle, userId: string) {
   return queryOne(
     db,
-    `SELECT u.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+    `SELECT u.*,
+            inviter.name AS inviter_name, inviter.avatar AS inviter_avatar,
+            (SELECT GROUP_CONCAT(b.badge_type, ',')
+               FROM user_badges b
+               WHERE b.user_id = u.id
+                 AND b.badge_type IN ('ambassador','ambassador_gold','ambassador_elite')
+               ORDER BY b.earned_at ASC
+            ) AS ambassador_badges_csv
      FROM users u
      LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
      WHERE u.id = ?

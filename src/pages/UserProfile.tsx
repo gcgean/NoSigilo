@@ -958,6 +958,21 @@ export default function UserProfile() {
                   Perfil Novo
                 </Badge>
               )}
+              {profile?.ambassadorBadges?.includes('ambassador_elite') && (
+                <Badge className="bg-purple-500/15 text-purple-500 border border-purple-500/30 gap-1">
+                  🏅 Embaixador(a) Elite
+                </Badge>
+              )}
+              {!profile?.ambassadorBadges?.includes('ambassador_elite') && profile?.ambassadorBadges?.includes('ambassador_gold') && (
+                <Badge className="bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 gap-1">
+                  🥇 Embaixador(a) Gold
+                </Badge>
+              )}
+              {!profile?.ambassadorBadges?.includes('ambassador_gold') && !profile?.ambassadorBadges?.includes('ambassador_elite') && profile?.ambassadorBadges?.includes('ambassador') && (
+                <Badge className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 gap-1">
+                  🤝 Embaixador(a)
+                </Badge>
+              )}
             </div>
             
             <div className="flex flex-col gap-1 text-muted-foreground mb-4">

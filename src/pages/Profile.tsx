@@ -814,6 +814,21 @@ export default function Profile() {
                   Premium
                 </Badge>
               )}
+              {user?.ambassadorBadges?.includes('ambassador_elite') && (
+                <Badge className="bg-purple-500/15 text-purple-500 border border-purple-500/30 gap-1">
+                  🏅 Embaixador(a) Elite
+                </Badge>
+              )}
+              {!user?.ambassadorBadges?.includes('ambassador_elite') && user?.ambassadorBadges?.includes('ambassador_gold') && (
+                <Badge className="bg-yellow-500/15 text-yellow-600 border border-yellow-500/30 gap-1">
+                  🥇 Embaixador(a) Gold
+                </Badge>
+              )}
+              {!user?.ambassadorBadges?.includes('ambassador_gold') && !user?.ambassadorBadges?.includes('ambassador_elite') && user?.ambassadorBadges?.includes('ambassador') && (
+                <Badge className="bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 gap-1">
+                  🤝 Embaixador(a)
+                </Badge>
+              )}
             </div>
             
             <div className="flex items-center justify-center sm:justify-start gap-1 text-muted-foreground mb-3">

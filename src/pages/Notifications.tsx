@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Bell, Check, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
+import { Award, Bell, Check, Gift, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { chatService, invitesService, notificationsService, privatePhotosService } from '@/services/api';
@@ -187,8 +187,11 @@ export default function Notifications() {
             const isInvitePending = notification.type === 'invite.pending';
             const hasInlineActions = isPrivateRequest || isInvitePending;
             
+            const isReferralReward = notification.type === 'referral.reward';
+
             const Icon = (() => {
               const type = notification.type;
+              if (type === 'referral.reward') return Gift;
               if (type.includes('liked')) return Heart;
               if (type.includes('commented')) return MessageCircle;
               if (type.includes('testimonial')) return Star;
@@ -204,6 +207,7 @@ export default function Notifications() {
                 className={cn(
                   'glass rounded-xl p-4 flex items-start gap-4 hover:bg-secondary/50 transition-colors',
                   !notification.isRead && 'bg-primary/5 border-primary/20',
+                  isReferralReward && 'border-emerald-400/40 bg-emerald-500/5 hover:bg-emerald-500/10',
                   focusedId === notification.id && 'ring-2 ring-primary/40'
                 )}
                 onClick={() => {
@@ -213,16 +217,26 @@ export default function Notifications() {
                 role="button"
                 tabIndex={0}
               >
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                  <Icon className="w-5 h-5 text-primary" />
+                <div className={cn(
+                  'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
+                  isReferralReward ? 'bg-emerald-500/15' : 'bg-primary/10'
+                )}>
+                  <Icon className={cn('w-5 h-5', isReferralReward ? 'text-emerald-500' : 'text-primary')} />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <p className={cn('mb-1', !notification.isRead && 'font-medium')}>{notification.title}</p>
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <p className={cn(!notification.isRead && 'font-medium')}>{notification.title}</p>
+                    {isReferralReward && (
+                      <span className="text-xs rounded-full bg-emerald-500/15 text-emerald-600 px-2 py-0.5 font-medium shrink-0">
+                        Recompensa
+                      </span>
+                    )}
+                  </div>
                   {notification.description ? <p className="text-sm text-muted-foreground">{notification.description}</p> : null}
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-muted-foreground">{timeAgo(notification.createdAt)}</span>
-                    {!notification.isRead ? <span className="w-2 h-2 rounded-full bg-primary" /> : null}
+                    {!notification.isRead ? <span className={cn('w-2 h-2 rounded-full', isReferralReward ? 'bg-emerald-500' : 'bg-primary')} /> : null}
                   </div>
 
                   {isPrivateRequest && (

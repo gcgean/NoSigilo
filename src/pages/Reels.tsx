@@ -8,6 +8,7 @@ import { feedService, interactionsService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -82,6 +83,7 @@ export default function Reels() {
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [hasLockedVideos, setHasLockedVideos] = useState(false);
   const [reelsPage, setReelsPage] = useState(1);
   const [hasMoreReels, setHasMoreReels] = useState(true);
@@ -616,7 +618,7 @@ export default function Reels() {
             <Button
               type="button"
               className="mt-5 w-full gap-2 bg-gradient-primary text-white hover:opacity-90"
-              onClick={() => navigate('/subscriptions')}
+              onClick={() => setPaywallOpen(true)}
             >
               <Crown className="h-4 w-4" />
               Ver planos
@@ -950,6 +952,8 @@ export default function Reels() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

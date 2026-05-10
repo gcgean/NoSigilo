@@ -53,6 +53,7 @@ export interface User {
   billingAddressCity?: string | null;
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
+  ambassadorBadges?: string[] | null;
 }
 
 interface AuthContextType {
