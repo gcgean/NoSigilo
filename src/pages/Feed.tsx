@@ -12,6 +12,7 @@ import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/
 import { cn } from '@/lib/utils';
 import { experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -768,17 +769,41 @@ export default function Feed() {
           }
         }
       }
+      await reload();
       if (completedFirstPostStep) {
         toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
       } else if (wasReelsOnly) {
-        toast({ title: 'Vídeo publicado', description: 'Seu vídeo aparecerá somente em Vídeos Curtos, não no feed.' });
+        toast({
+          title: 'Vídeo publicado',
+          description: 'Seu vídeo aparecerá somente em Vídeos Curtos, não no feed.',
+          action: (
+            <ToastAction altText="Ver publicação" onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              const el = document.querySelector('[data-post-card]');
+              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}>
+              Ver
+            </ToastAction>
+          ),
+        });
       } else {
-        toast({ title: 'Publicado', description: 'Seu post foi publicado.' });
+        toast({
+          title: 'Publicado',
+          description: 'Seu post foi publicado.',
+          action: (
+            <ToastAction altText="Ver publicação" onClick={() => {
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              const el = document.querySelector('[data-post-card]');
+              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}>
+              Ver
+            </ToastAction>
+          ),
+        });
       }
       if (firstAccessPostMode) {
         navigate('/feed', { replace: true });
       }
-      await reload();
     } catch (e: any) {
       toast({ title: 'Erro ao publicar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -805,8 +830,19 @@ export default function Feed() {
       setExperienceTitle('');
       setExperienceDescription('');
       setExpAttachments([]);
-      toast({ title: 'Experiência publicada', description: 'Seu conto já está visível na aba Experiências.' });
       await reloadExperiences();
+      toast({
+        title: 'Experiência publicada',
+        description: 'Seu conto já está visível na aba Experiências.',
+        action: (
+          <ToastAction altText="Ver experiência" onClick={() => {
+            const el = document.querySelector('[data-experience-card]');
+            el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }}>
+            Ver
+          </ToastAction>
+        ),
+      });
     } catch (e: any) {
       toast({ title: 'Erro ao publicar experiência', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -1664,7 +1700,7 @@ export default function Feed() {
               ) : null}
               {!isLoadingExperiences &&
                 allExperiences.map((experience) => (
-                  <Card key={experience.id} className="overflow-hidden glass">
+                  <Card key={experience.id} data-experience-card className="overflow-hidden glass">
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link
                         to={getUserProfileHref(experience.author.id, user?.id, '/feed')}
@@ -1909,7 +1945,7 @@ export default function Feed() {
                 </div>
               </Card>
             ) : (
-            <Card key={item.post.id} id={`post-${item.post.id}`} className="overflow-hidden glass">
+            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card className="overflow-hidden glass">
               {/* Post Header */}
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link

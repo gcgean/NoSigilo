@@ -212,11 +212,15 @@ export default function Chat() {
 
       if (selectedChat) {
         // Conversation open → fixed + visual-viewport tracking.
-        // On iPhone Safari the visible viewport can become narrower than the
-        // layout viewport while typing, so we pin to the visual viewport width.
+        // NOTE: position:fixed on modern mobile browsers is relative to the
+        // VISUAL viewport, not the layout viewport. So we must NOT add vTop to
+        // the top value — that would double-offset the container when the browser
+        // scrolls the page to keep the focused input visible (keyboard open).
+        // vLeft/vWidth are still needed for rare cases of horizontal visual
+        // viewport offset (e.g. some iOS Safari versions).
         setMobileStyle({
           position: 'fixed',
-          top: vTop + headerPx,
+          top: headerPx,
           left: vLeft,
           width: Math.max(vWidth, 280),
           maxWidth: '100vw',
