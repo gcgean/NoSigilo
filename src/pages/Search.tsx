@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +61,7 @@ export default function SearchPage() {
   const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
   const [isLocating, setIsLocating] = useState(false);
+  const [sort, setSort] = useState<'nearby' | 'active' | 'new'>('nearby');
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -78,8 +79,9 @@ export default function SearchPage() {
       ageRange: ageRange !== 'all' ? ageRange : undefined,
       genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
       radar: radar !== 'all' ? radar : undefined,
+      sort,
     }),
-    [search, city, ageRange, selectedGenders, radar]
+    [search, city, ageRange, selectedGenders, radar, sort]
   );
 
   const applyLikedFilters = useCallback(
@@ -198,7 +200,7 @@ export default function SearchPage() {
   useEffect(() => {
     void fetchFirstPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ageRange, radar, selectedGenders, onlyLiked]);
+  }, [ageRange, radar, selectedGenders, onlyLiked, sort]);
 
   // ── Update filtered liked when raw list changes ────────────────────────────
   useEffect(() => {
@@ -214,6 +216,32 @@ export default function SearchPage() {
 
   const displayResults = onlyLiked ? filteredLiked : results;
   const isEmpty        = !isLoading && displayResults.length === 0;
+
+  const hasDistanceData = displayResults.some((p) => typeof p.distanceKm === 'number');
+
+  type ProfileGroup = { label: string; profiles: any[] };
+  const groupedResults: ProfileGroup[] = (() => {
+    if (!hasDistanceData || onlyLiked || sort !== 'nearby') return [];
+    const city_: any[]    = [];
+    const near: any[]     = [];
+    const distant: any[]  = [];
+    const unknown: any[]  = [];
+    for (const p of displayResults) {
+      const d = p.distanceKm;
+      if (typeof d !== 'number') { unknown.push(p); continue; }
+      if (d <= 5)  city_.push(p);
+      else if (d <= 50) near.push(p);
+      else distant.push(p);
+    }
+    const groups: ProfileGroup[] = [];
+    if (city_.length)    groups.push({ label: 'Na sua cidade', profiles: city_ });
+    if (near.length)     groups.push({ label: 'Até 50 km',     profiles: near });
+    if (distant.length)  groups.push({ label: 'Mais distantes', profiles: distant });
+    if (unknown.length)  groups.push({ label: 'Outros',         profiles: unknown });
+    return groups;
+  })();
+
+  const useGroups = groupedResults.length > 0;
 
   const handleUseDeviceRadar = async () => {
     if (!navigator.geolocation) {
@@ -252,6 +280,67 @@ export default function SearchPage() {
     } finally {
       setIsLocating(false);
     }
+  };
+
+  const ProfileCard = ({ profile }: { profile: any }) => {
+    const age = calculateAge(profile.birthDate);
+    const avatarUrl = profile.mainMediaUrl ? resolveServerUrl(profile.mainMediaUrl) : undefined;
+    const distanceLabel = formatDistanceKm(profile.distanceKm);
+    return (
+      <NavLink
+        to={getUserProfileHref(profile.id, undefined, '/search')}
+        className="group relative min-w-0 cursor-pointer overflow-hidden rounded-2xl transition-all hover:shadow-glow"
+      >
+        <div className="aspect-[4/5] w-full min-[420px]:aspect-[3/4]">
+          <UserAvatar
+            user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
+            className="w-full h-full rounded-none"
+            indicatorClassName="hidden"
+          />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+        <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
+          {distanceLabel ? (
+            <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/45 px-2 text-[10px] font-medium text-white backdrop-blur-md">
+              {distanceLabel}
+            </Badge>
+          ) : null}
+          {profile.isOnline ? (
+            <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background" title="Online agora" />
+          ) : profile.lastSeenAt ? (
+            <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md">
+              {format(new Date(profile.lastSeenAt), 'HH:mm', { locale: ptBR })}
+            </Badge>
+          ) : null}
+        </div>
+        {profile.isVerified && (
+          <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
+            <Sparkles className="h-3 w-3" />
+          </Badge>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+          <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
+            {profile.name}{age ? `, ${age}` : ''}
+          </h3>
+          {distanceLabel ? (
+            <div className="truncate text-xs text-white/85 sm:text-sm">{distanceLabel}</div>
+          ) : null}
+          {formatProfileIdentityLine(profile) ? (
+            <div className="truncate text-xs text-white/70 sm:text-sm">{formatProfileIdentityLine(profile)}</div>
+          ) : (
+            <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
+              <MapPin className="h-3 w-3" />
+              <span className="truncate">{profile.city || '—'}</span>
+            </div>
+          )}
+        </div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
+            <Heart className="w-6 h-6" />
+          </Button>
+        </div>
+      </NavLink>
+    );
   };
 
   return (
@@ -306,6 +395,48 @@ export default function SearchPage() {
           </Button>
         </div>
       </div>
+
+      {/* Quick distance + sort bar */}
+      {!onlyLiked && (
+        <div className="mb-4 flex flex-col gap-2 sm:mb-5">
+          {/* Distance quick buttons */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setRadar(v)}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  radar === v
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          {/* Sort buttons */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            {([['nearby','Próximos'],['active','Ativos'],['new','Novos']] as const).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setSort(v)}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  sort === v
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters Panel */}
       {showFilters && (
@@ -413,95 +544,24 @@ export default function SearchPage() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 md:gap-4">
-            {displayResults.map((profile) => {
-              const age = calculateAge(profile.birthDate);
-              const avatarUrl = profile.mainMediaUrl
-                ? resolveServerUrl(profile.mainMediaUrl)
-                : undefined;
-              const distanceLabel = formatDistanceKm(profile.distanceKm);
-
-              return (
-                <NavLink
-                  key={profile.id}
-                  to={getUserProfileHref(profile.id, undefined, '/search')}
-                  className="group relative min-w-0 cursor-pointer overflow-hidden rounded-2xl transition-all hover:shadow-glow"
-                >
-                  <div className="aspect-[4/5] w-full min-[420px]:aspect-[3/4]">
-                    <UserAvatar
-                      user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
-                      className="w-full h-full rounded-none"
-                      indicatorClassName="hidden"
-                    />
-                  </div>
-
-                  {/* Gradient Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-
-                  {/* Online Indicator / Last Seen */}
-                  <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
-                    {distanceLabel ? (
-                      <Badge
-                        variant="secondary"
-                        className="h-5 rounded-full border-none bg-black/45 px-2 text-[10px] font-medium text-white backdrop-blur-md"
-                      >
-                        {distanceLabel}
-                      </Badge>
-                    ) : null}
-                    {profile.isOnline ? (
-                      <span
-                        className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background"
-                        title="Online agora"
-                      />
-                    ) : profile.lastSeenAt ? (
-                      <Badge
-                        variant="secondary"
-                        className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md"
-                      >
-                        {format(new Date(profile.lastSeenAt), 'HH:mm', { locale: ptBR })}
-                      </Badge>
-                    ) : null}
-                  </div>
-
-                  {/* Verified badge */}
-                  {profile.isVerified && (
-                    <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
-                      <Sparkles className="h-3 w-3" />
-                    </Badge>
-                  )}
-
-                  {/* Info */}
-                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
-                    <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
-                      {profile.name}{age ? `, ${age}` : ''}
-                    </h3>
-                    {distanceLabel ? (
-                      <div className="truncate text-xs text-white/85 sm:text-sm">
-                        {distanceLabel}
-                      </div>
-                    ) : null}
-                    {formatProfileIdentityLine(profile) ? (
-                      <div className="truncate text-xs text-white/70 sm:text-sm">
-                        {formatProfileIdentityLine(profile)}
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
-                        <MapPin className="h-3 w-3" />
-                        <span className="truncate">{profile.city || '—'}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Hover action */}
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-                    <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
-                      <Heart className="w-6 h-6" />
-                    </Button>
-                  </div>
-                </NavLink>
-              );
-            })}
-          </div>
+          {useGroups ? (
+            groupedResults.map((group) => (
+              <div key={group.label} className="mb-6">
+                <div className="mb-3 flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">{group.label}</span>
+                  <span className="text-xs text-muted-foreground">({group.profiles.length})</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+                  {group.profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} />)}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 md:gap-4">
+              {displayResults.map((profile) => <ProfileCard key={profile.id} profile={profile} />)}
+            </div>
+          )}
 
           {/* Infinite scroll sentinel */}
           {!onlyLiked && (

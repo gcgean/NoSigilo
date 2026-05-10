@@ -725,7 +725,11 @@ export default function UserProfile() {
       const res = await chatService.createConversation(userId);
       const conversationId = res?.id ? String(res.id) : '';
       if (!conversationId) throw new Error('Falha ao iniciar conversa');
-      navigate('/chat', { state: { conversationId } });
+      const firstName = String(profile?.name || '').split(' ')[0];
+      const draftMessage = distanceLabel
+        ? `Oi, ${firstName}! Vi seu perfil e você está a ${distanceLabel} de mim. Posso conversar? 😊`
+        : `Oi, ${firstName}! Vi seu perfil aqui no NoSigilo. Posso conversar? 😊`;
+      navigate('/chat', { state: { conversationId, draftMessage } });
     } catch {
       toast({ title: 'Não foi possível iniciar o chat', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -1106,21 +1110,27 @@ export default function UserProfile() {
             <ImageIcon className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Públicas ({publicPhotosCount})</span>
           </TabsTrigger>
-          <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
-            <Lock className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Privadas ({privatePhotosCount})</span>
-          </TabsTrigger>
-          <TabsTrigger value="videos" className="flex-1 gap-1.5 text-xs sm:text-sm">
-            <Video className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Vídeos ({activeTab === 'videos' ? userVideos.length : videosCount})</span>
-          </TabsTrigger>
-          <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
-            <Star className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Depoimentos ({testimonialsCount})</span>
-          </TabsTrigger>
+          {(isSelf || privatePhotosCount > 0) && (
+            <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
+              <Lock className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Privadas {privatePhotosCount > 0 ? `(${privatePhotosCount})` : ''}</span>
+            </TabsTrigger>
+          )}
+          {(isSelf || videosCount > 0) && (
+            <TabsTrigger value="videos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+              <Video className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Vídeos {videosCount > 0 ? `(${activeTab === 'videos' ? userVideos.length : videosCount})` : ''}</span>
+            </TabsTrigger>
+          )}
+          {(isSelf || testimonialsCount > 0) && (
+            <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
+              <Star className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Depoimentos {testimonialsCount > 0 ? `(${testimonialsCount})` : ''}</span>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="experiences" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <BookOpen className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Experiências ({activeTab === 'experiences' ? userExperiences.length : ''})</span>
+            <span className="truncate">Experiências {userExperiences.length > 0 ? `(${userExperiences.length})` : ''}</span>
           </TabsTrigger>
         </TabsList>
 

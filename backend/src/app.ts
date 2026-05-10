@@ -3055,6 +3055,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const ageRange = req.query.ageRange ? String(req.query.ageRange).trim() : 'all';
     const genders  = req.query.genders  ? String(req.query.genders).split(',').map((g) => g.trim()).filter(Boolean) : [];
     const radarKm  = req.query.radar    ? Number(req.query.radar)           : null;
+    const sort     = ['active', 'new', 'nearby'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'nearby';
 
     const params: any[] = [];
     const conditions: string[] = [
@@ -3113,26 +3114,32 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const whereClause = conditions.join(' AND ');
     const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
 
-    // Ordering: online first → last_seen_at DESC (recently seen first) → created_at DESC (newest accounts)
-    // Use a JS-generated ISO threshold so the same SQL works in both SQLite and PostgreSQL.
-    const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     const distanceOrderBy =
       viewerLat !== null && viewerLon !== null
-        ? `
-      CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
-      ABS(u.lat - ${viewerLat}) + ABS(u.lon - ${viewerLon}) ASC,
-    `
+        ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
+      ABS(u.lat - ${viewerLat}) + ABS(u.lon - ${viewerLon}) ASC,`
         : '';
-    const orderBy = `
-      CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
-      ${distanceOrderBy}
-      CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
-      u.last_seen_at DESC,
-      u.created_at DESC
-    `;
+
+    let orderBy: string;
+    if (sort === 'new') {
+      orderBy = 'u.created_at DESC';
+    } else if (sort === 'active') {
+      orderBy = `CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC, u.last_seen_at DESC, u.created_at DESC`;
+    } else {
+      // 'nearby' — online first, then distance, then last_seen, then newest
+      const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      params.push(onlineThresholdIso);
+      orderBy = `
+        CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
+        ${distanceOrderBy}
+        CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
+        u.last_seen_at DESC,
+        u.created_at DESC
+      `;
+    }
 
     // Fetch limit+1 to know if there are more pages
-    params.push(onlineThresholdIso, limit + 1, offset);
+    params.push(limit + 1, offset);
     const rows = await queryAll(
       db,
       `SELECT u.*,

@@ -416,6 +416,8 @@ export default function Chat() {
     const conversationId = stateConversationId || queryConversationId;
     if (!conversationId) return;
     setSelectedChat(conversationId);
+    const draft = (location.state as any)?.draftMessage;
+    if (draft && typeof draft === 'string') setMessage(draft);
   }, [location.state, location.search]);
 
   useEffect(() => {

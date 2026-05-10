@@ -444,6 +444,7 @@ export const usersService = {
     ageRange?: string;
     genders?: string;
     radar?: string;
+    sort?: string;
   }) => {
     const response = await apiClient.get('/users', { params });
     return response.data as { users: any[]; hasMore: boolean; page: number };
