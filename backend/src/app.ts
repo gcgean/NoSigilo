@@ -7677,8 +7677,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
       const rows = (await db.queryAll(
         `SELECT u.id, u.name, u.email, u.avatar, u.created_at, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.visited_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_user_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
                 (SELECT COUNT(*) FROM messages m
                   JOIN conversations c ON c.id = m.conversation_id
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
@@ -7686,7 +7686,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                     AND m.is_read = 0) AS unread_messages
          FROM users u
          ${where}
-         ORDER BY u.last_seen_at ASC NULLS FIRST, u.created_at DESC
+         ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 0 ELSE 1 END ASC, u.last_seen_at ASC, u.created_at DESC
          LIMIT ? OFFSET ?`,
         [...params, limit, offset]
       )) as any[];
@@ -7732,8 +7732,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const placeholders = userIds.map(() => '?').join(',');
       const users = (await db.queryAll(
         `SELECT u.id, u.name, u.email, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.visited_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_user_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
                 (SELECT COUNT(*) FROM messages m
                   JOIN conversations c ON c.id = m.conversation_id
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
