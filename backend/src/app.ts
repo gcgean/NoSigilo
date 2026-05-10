@@ -903,6 +903,43 @@ function sendLocalFile(req: express.Request, res: express.Response, options: { f
   createReadStream(options.filePath, { start, end: safeEnd }).pipe(res);
 }
 
+const BADGE_THRESHOLDS = {
+  veteran:      { days: 90 },
+  photographer: { photos: 5 },
+  popular:      { likes: 10 },
+  active:       { days: 7 },
+  connected:    { convs: 3 },
+} as const;
+
+function computeBadges(row: any): string[] {
+  const badges: string[] = [];
+  const now = Date.now();
+
+  const createdAt = row.created_at ? new Date(String(row.created_at)).getTime() : null;
+  if (createdAt && (now - createdAt) > BADGE_THRESHOLDS.veteran.days * 86400000) {
+    badges.push('veteran');
+  }
+
+  if (Number(row.photos_count || 0) >= BADGE_THRESHOLDS.photographer.photos) {
+    badges.push('photographer');
+  }
+
+  if (Number(row.likes_received || 0) >= BADGE_THRESHOLDS.popular.likes) {
+    badges.push('popular');
+  }
+
+  const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : null;
+  if (lastSeen && (now - lastSeen) < BADGE_THRESHOLDS.active.days * 86400000) {
+    badges.push('active');
+  }
+
+  if (Number(row.conversations_count || 0) >= BADGE_THRESHOLDS.connected.convs) {
+    badges.push('connected');
+  }
+
+  return badges;
+}
+
 function rowToPublicUser(
   row: any,
   isOnline?: boolean,
@@ -3218,6 +3255,21 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     );
   });
 
+  app.get('/api/users/:userId/badges', requireAuth(env, db), async (req, res) => {
+    const userId = String(req.params.userId || '');
+    const row = (await queryOne(
+      db,
+      `SELECT u.created_at, u.last_seen_at,
+        (SELECT COUNT(*) FROM media m WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')) as photos_count,
+        (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id) as likes_received,
+        (SELECT COUNT(*) FROM conversations c WHERE (c.user_a_id = u.id OR c.user_b_id = u.id) AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)) as conversations_count
+       FROM users u WHERE u.id = ? LIMIT 1`,
+      [userId]
+    )) as any;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ badges: computeBadges(row) });
+  });
+
   app.get('/api/users/:userId/photos', requireAuth(env, db), async (req, res) => {
     const ownerId = String(req.params.userId || '');
     const viewerId = req.auth!.userId;
@@ -3852,7 +3904,18 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           SELECT COUNT(*)
           FROM media m
           WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'video/%' AND (m.source IS NULL OR m.source != 'chat')
-        ) as videos_count
+        ) as videos_count,
+        (
+          SELECT COUNT(*)
+          FROM likes l2
+          WHERE l2.target_type = 'user' AND l2.target_id = u.id
+        ) as likes_received,
+        (
+          SELECT COUNT(*)
+          FROM conversations c
+          WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
+            AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)
+        ) as conversations_count
       FROM users u
       WHERE ${whereClause}
       ORDER BY 
@@ -3878,6 +3941,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           ...u,
           mainMediaUrl: mainUrl,
           mediaSummary: { photosCount, videosCount },
+          badges: computeBadges(r),
         };
       })
     );
