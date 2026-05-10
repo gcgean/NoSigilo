@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -32,6 +32,17 @@ type PrivatePhotoAccessItem = {
   requester: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
 const PROFILE_NOTIFICATIONS_PAGE_SIZE = 3;
+
+const COMPLETENESS_FIELDS: Array<{ key: string; label: string; getValue: (u: { name?: string; avatar?: string; bio?: string | null; city?: string | null; birthDate?: string | null; gender?: string | null; maritalStatus?: string | null; lookingFor?: string[] | null }) => string | null | undefined }> = [
+  { key: 'name',          label: 'Nome',               getValue: (u) => u.name },
+  { key: 'avatar',        label: 'Foto de perfil',      getValue: (u) => u.avatar },
+  { key: 'bio',           label: 'Sobre mim',           getValue: (u) => u.bio },
+  { key: 'city',          label: 'Cidade',              getValue: (u) => u.city },
+  { key: 'birthDate',     label: 'Data de nascimento',  getValue: (u) => u.birthDate },
+  { key: 'gender',        label: 'Gênero',              getValue: (u) => u.gender },
+  { key: 'maritalStatus', label: 'Estado civil',        getValue: (u) => u.maritalStatus },
+  { key: 'lookingFor',    label: 'O que procuro',       getValue: (u) => u.lookingFor?.length ? u.lookingFor[0] : null },
+];
 
 function resolveMediaUrl(url: string) {
   if (!url) return url;
@@ -339,6 +350,17 @@ export default function Profile() {
   );
 
   const unreadNotificationsRemaining = Math.max(0, unreadNotifications.length - visibleUnreadNotifications.length);
+
+  const profileCompleteness = useMemo(() => {
+    if (!user) return { percent: 0, filledCount: 0, total: COMPLETENESS_FIELDS.length, fields: [], meetsThreshold: false };
+    const fields = COMPLETENESS_FIELDS.map((f) => {
+      const val = f.getValue(user);
+      return { key: f.key, label: f.label, filled: Boolean(val && String(val).trim() !== '') };
+    });
+    const filledCount = fields.filter((f) => f.filled).length;
+    const percent = Math.round((filledCount / fields.length) * 100);
+    return { percent, filledCount, total: fields.length, fields, meetsThreshold: filledCount >= 4 };
+  }, [user]);
 
   useEffect(() => {
     if (unreadNotifications.length === 0) {
@@ -964,6 +986,53 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Profile Completeness Widget */}
+      {profileCompleteness.percent < 100 ? (
+        <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-primary" />
+              Completude do Perfil
+            </h2>
+            <span className={cn('text-sm font-bold tabular-nums', profileCompleteness.meetsThreshold ? 'text-emerald-600' : 'text-amber-600')}>
+              {profileCompleteness.percent}%
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-2 w-full rounded-full bg-secondary mb-1 overflow-hidden">
+            <div
+              className={cn('h-full rounded-full transition-all duration-500', profileCompleteness.meetsThreshold ? 'bg-emerald-500' : 'bg-amber-500')}
+              style={{ width: `${profileCompleteness.percent}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            {profileCompleteness.meetsThreshold
+              ? `Perfil apto para validar indicações (${profileCompleteness.filledCount} de ${profileCompleteness.total} campos preenchidos).`
+              : `Preencha pelo menos 4 campos para validar suas indicações (${profileCompleteness.filledCount} de ${profileCompleteness.total} preenchidos).`}
+          </p>
+
+          {/* Field checklist */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4">
+            {profileCompleteness.fields.map((f) => (
+              <div key={f.key} className="flex items-center gap-2 text-sm min-w-0">
+                {f.filled
+                  ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  : <Circle className="w-4 h-4 text-muted-foreground/40 shrink-0" />}
+                <span className={cn('truncate', f.filled ? 'text-foreground' : 'text-muted-foreground')}>{f.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <NavLink to="/settings">
+            <Button size="sm" variant="outline" className="gap-2">
+              <Edit2 className="w-4 h-4" />
+              Completar perfil
+            </Button>
+          </NavLink>
+        </div>
+      ) : null}
 
       {user?.invitedBy ? (
         <div className="glass rounded-2xl p-4 sm:p-5 mb-6">
