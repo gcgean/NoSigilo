@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
-  Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet
+  Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
+  Gift, Award, Trophy, UserCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -968,6 +969,10 @@ export default function Admin() {
             <Lightbulb className="w-4 h-4" />
             Sugestões
           </TabsTrigger>
+          <TabsTrigger value="referrals" className="gap-2">
+            <Gift className="w-4 h-4" />
+            Indicações
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="photos">
@@ -1621,7 +1626,222 @@ export default function Admin() {
         <TabsContent value="suggestions">
           <AdminSuggestionsTab />
         </TabsContent>
+
+        <TabsContent value="referrals">
+          <AdminReferralsTab />
+        </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// ─── Referrals Tab ─────────────────────────────────────────────────────────
+
+type ReferralStats = {
+  statusCounts: { pending: number; validated: number; failed: number; expired: number; total: number };
+  tierStats: Array<{ tier: number; count: number; reward_type: string; days: number; badgeCode: string }>;
+  topInviters: Array<{ inviterId: string; name: string; email: string | null; count: number }>;
+  recentRewards: Array<{ inviterId: string; name: string; rewardedAt: string; rewardType: string; daysGranted: number; tierLabel: string }>;
+  badgeCounts: { ambassador: number; ambassador_gold: number; ambassador_elite: number };
+};
+
+const TIER_META: Record<number, { label: string; icon: typeof Award; color: string }> = {
+  1: { label: 'Embaixador (3 indicações)', icon: Award, color: 'text-amber-600' },
+  2: { label: 'Embaixador Gold (10 indicações)', icon: Trophy, color: 'text-yellow-500' },
+  3: { label: 'Embaixador Elite (30 indicações)', icon: Gift, color: 'text-purple-500' },
+};
+
+function formatDateShort(iso: string) {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
+}
+
+function AdminReferralsTab() {
+  const { toast } = useToast();
+  const [stats, setStats] = useState<ReferralStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const load = async () => {
+    setIsLoading(true);
+    try {
+      const data = await adminService.getReferralStats();
+      setStats(data as ReferralStats);
+    } catch {
+      toast({ title: 'Erro ao carregar stats de indicações', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (isLoading) {
+    return <div className="py-16 text-center text-muted-foreground">Carregando estatísticas de indicações...</div>;
+  }
+
+  if (!stats) {
+    return <div className="py-16 text-center text-muted-foreground">Não foi possível carregar os dados.</div>;
+  }
+
+  const { statusCounts, tierStats, topInviters, recentRewards, badgeCounts } = stats;
+
+  return (
+    <div className="space-y-6">
+      {/* Status Counts */}
+      <div className="glass rounded-xl p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <UserCheck className="w-4 h-4 text-primary" />
+          Status das indicações
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {[
+            { key: 'total', label: 'Total', value: statusCounts.total, color: 'text-foreground', bg: 'bg-secondary/50' },
+            { key: 'pending', label: 'Pendentes', value: statusCounts.pending, color: 'text-amber-600', bg: 'bg-amber-500/10' },
+            { key: 'validated', label: 'Validadas', value: statusCounts.validated, color: 'text-emerald-600', bg: 'bg-emerald-500/10' },
+            { key: 'failed', label: 'Falhas', value: statusCounts.failed, color: 'text-destructive', bg: 'bg-destructive/10' },
+            { key: 'expired', label: 'Expiradas', value: statusCounts.expired, color: 'text-muted-foreground', bg: 'bg-muted/50' },
+          ].map((item) => (
+            <div key={item.key} className={`rounded-xl p-4 ${item.bg} flex flex-col gap-1`}>
+              <span className="text-xs text-muted-foreground">{item.label}</span>
+              <span className={`text-2xl font-bold ${item.color}`}>{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Ambassador Badge Counts */}
+      <div className="glass rounded-xl p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <Award className="w-4 h-4 text-amber-500" />
+          Badges concedidos
+        </h3>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl bg-amber-500/10 p-4 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Embaixador</span>
+            <span className="text-2xl font-bold text-amber-600">{badgeCounts.ambassador}</span>
+          </div>
+          <div className="rounded-xl bg-yellow-500/10 p-4 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Gold</span>
+            <span className="text-2xl font-bold text-yellow-500">{badgeCounts.ambassador_gold}</span>
+          </div>
+          <div className="rounded-xl bg-purple-500/10 p-4 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Elite</span>
+            <span className="text-2xl font-bold text-purple-500">{badgeCounts.ambassador_elite}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Tier Stats */}
+      <div className="glass rounded-xl p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <Trophy className="w-4 h-4 text-yellow-500" />
+          Recompensas por tier
+        </h3>
+        {tierStats.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma recompensa concedida ainda.</p>
+        ) : (
+          <div className="space-y-3">
+            {tierStats.map((tier) => {
+              const meta = TIER_META[tier.tier] ?? { label: `Tier ${tier.tier}`, icon: Gift, color: 'text-primary' };
+              const MetaIcon = meta.icon;
+              return (
+                <div key={tier.tier} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <MetaIcon className={`w-5 h-5 ${meta.color}`} />
+                    <div>
+                      <p className="text-sm font-medium">{meta.label}</p>
+                      <p className="text-xs text-muted-foreground">+{tier.days} dias de premium</p>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-lg font-bold">{tier.count}</p>
+                    <p className="text-xs text-muted-foreground">recompensas</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="mt-2 flex items-center justify-between rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
+              <span className="text-sm font-medium text-primary">Total de dias premium distribuídos</span>
+              <span className="text-lg font-bold text-primary">
+                {tierStats.reduce((acc, t) => acc + t.count * t.days, 0)}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Top Inviters Leaderboard */}
+      <div className="glass rounded-xl p-6">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-primary" />
+          Top indicadores (top 20)
+        </h3>
+        {topInviters.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum indicador registrado.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground">
+                  <th className="pb-2 text-left font-medium">#</th>
+                  <th className="pb-2 text-left font-medium">Nome</th>
+                  <th className="pb-2 text-left font-medium hidden sm:table-cell">E-mail</th>
+                  <th className="pb-2 text-right font-medium">Validadas</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {topInviters.map((inviter, index) => (
+                  <tr key={inviter.inviterId} className="hover:bg-secondary/30 transition-colors">
+                    <td className="py-2.5 pr-3 font-bold text-muted-foreground">{index + 1}</td>
+                    <td className="py-2.5 font-medium">{inviter.name}</td>
+                    <td className="py-2.5 text-muted-foreground hidden sm:table-cell">{inviter.email ?? '—'}</td>
+                    <td className="py-2.5 text-right">
+                      <span className="inline-flex items-center justify-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-bold text-emerald-600">
+                        {inviter.count}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Rewards */}
+      <div className="glass rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold flex items-center gap-2">
+            <Gift className="w-4 h-4 text-emerald-500" />
+            Recompensas recentes (últimas 30)
+          </h3>
+          <Button size="sm" variant="outline" onClick={() => void load()}>
+            Atualizar
+          </Button>
+        </div>
+        {recentRewards.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma recompensa concedida ainda.</p>
+        ) : (
+          <div className="space-y-2">
+            {recentRewards.map((reward, index) => (
+              <div key={`${reward.inviterId}-${reward.rewardType}-${index}`} className="flex items-center justify-between gap-4 rounded-xl bg-secondary/30 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{reward.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatDateShort(reward.rewardedAt)}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-600">
+                    <Gift className="w-3 h-3" />
+                    +{reward.daysGranted}d
+                  </span>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{reward.tierLabel}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

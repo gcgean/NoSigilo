@@ -771,6 +771,17 @@ export const adminService = {
     const response = await apiClient.put(`/admin/reports/${reportId}/resolve`);
     return response.data;
   },
+
+  getReferralStats: async (): Promise<{
+    statusCounts: Record<string, number>;
+    tierStats: { rewardType: string; count: number; totalDays: number }[];
+    topInviters: { userId: string; name: string; avatar: string | null; validatedCount: number }[];
+    recentRewards: { id: string; inviterUserId: string; inviterName: string; inviterAvatar: string | null; rewardType: string; validInvitesCount: number; premiumDaysGranted: number; grantedAt: string }[];
+    badgeCounts: Record<string, number>;
+  }> => {
+    const response = await apiClient.get('/admin/referral-stats');
+    return response.data;
+  },
 };
 
 export const suggestionsService = {

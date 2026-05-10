@@ -7548,6 +7548,103 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
+  // ─── Admin: Referral Stats ────────────────────────────────────────────────
+  app.get('/api/admin/referral-stats', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      // Overall counts by validation status
+      const statusCounts = (await queryAll(
+        db,
+        `SELECT validation_status, COUNT(*) AS cnt
+         FROM invite_link_entries
+         GROUP BY validation_status`,
+        []
+      )) as any[];
+
+      // Tier reward grants summary
+      const tierStats = (await queryAll(
+        db,
+        `SELECT reward_type, COUNT(*) AS cnt, SUM(premium_days_granted) AS total_days
+         FROM referral_rewards
+         GROUP BY reward_type
+         ORDER BY valid_invites_count ASC`,
+        []
+      )) as any[];
+
+      // Top 20 inviters by validated count
+      const topInviters = (await queryAll(
+        db,
+        `SELECT il.inviter_user_id,
+                u.name AS inviter_name,
+                u.avatar AS inviter_avatar,
+                COUNT(*) AS validated_count
+         FROM invite_link_entries ile
+         JOIN invite_links il ON il.id = ile.invite_link_id
+         JOIN users u ON u.id = il.inviter_user_id
+         WHERE ile.validation_status = 'validated'
+         GROUP BY il.inviter_user_id
+         ORDER BY validated_count DESC
+         LIMIT 20`,
+        []
+      )) as any[];
+
+      // Recent 30 reward grants
+      const recentRewards = (await queryAll(
+        db,
+        `SELECT rr.*, u.name AS inviter_name, u.avatar AS inviter_avatar
+         FROM referral_rewards rr
+         JOIN users u ON u.id = rr.inviter_user_id
+         ORDER BY rr.granted_at DESC
+         LIMIT 30`,
+        []
+      )) as any[];
+
+      // Total ambassador badges by type
+      const badgeCounts = (await queryAll(
+        db,
+        `SELECT badge_type, COUNT(*) AS cnt
+         FROM user_badges
+         WHERE badge_type IN ('ambassador','ambassador_gold','ambassador_elite')
+         GROUP BY badge_type`,
+        []
+      )) as any[];
+
+      res.json({
+        statusCounts: statusCounts.reduce((acc: Record<string, number>, r: any) => {
+          acc[String(r.validation_status)] = Number(r.cnt);
+          return acc;
+        }, {}),
+        tierStats: tierStats.map((r: any) => ({
+          rewardType: String(r.reward_type),
+          count: Number(r.cnt),
+          totalDays: Number(r.total_days ?? 0),
+        })),
+        topInviters: topInviters.map((r: any) => ({
+          userId: String(r.inviter_user_id),
+          name: String(r.inviter_name),
+          avatar: r.inviter_avatar ? String(r.inviter_avatar) : null,
+          validatedCount: Number(r.validated_count),
+        })),
+        recentRewards: recentRewards.map((r: any) => ({
+          id: String(r.id),
+          inviterUserId: String(r.inviter_user_id),
+          inviterName: String(r.inviter_name),
+          inviterAvatar: r.inviter_avatar ? String(r.inviter_avatar) : null,
+          rewardType: String(r.reward_type),
+          validInvitesCount: Number(r.valid_invites_count),
+          premiumDaysGranted: Number(r.premium_days_granted),
+          grantedAt: String(r.granted_at),
+        })),
+        badgeCounts: badgeCounts.reduce((acc: Record<string, number>, r: any) => {
+          acc[String(r.badge_type)] = Number(r.cnt);
+          return acc;
+        }, {}),
+      });
+    } catch (err) {
+      console.error('[admin/referral-stats]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', path: req.path });
   });

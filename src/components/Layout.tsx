@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
-  Home, 
-  Heart, 
-  MessageCircle, 
-  User, 
-  Bell, 
+  Home,
+  Heart,
+  MessageCircle,
+  User,
+  Bell,
   Search,
   Clapperboard,
   LogOut,
@@ -22,7 +22,8 @@ import {
   Camera,
   Send,
   PartyPopper,
-  X
+  X,
+  Gift
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -677,20 +678,31 @@ export default function Layout() {
           <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsMaximized) && 'max-w-none h-full')}>
             {!isMobileChatRoute && accessBanner ? (
               <div className="mb-4">
-                <NavLink
-                  to={accessBanner.href}
+                <div
                   className={cn(
-                    'flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-white shadow-[0_14px_40px_rgba(91,33,182,0.18)] transition hover:opacity-95',
+                    'flex w-full flex-col gap-3 rounded-2xl px-4 py-3 text-white shadow-[0_14px_40px_rgba(91,33,182,0.18)] sm:flex-row sm:items-center sm:justify-between',
                     accessBanner.tone === 'trial'
                       ? 'bg-[linear-gradient(90deg,hsl(273_51%_43%),hsl(267_48%_41%))]'
                       : 'bg-[linear-gradient(90deg,hsl(355_78%_56%),hsl(8_84%_58%))]'
                   )}
                 >
                   <span className="min-w-0 text-sm sm:text-base">{accessBanner.message}</span>
-                  <span className="shrink-0 text-sm font-semibold uppercase tracking-[0.08em] underline underline-offset-4">
-                    {accessBanner.cta}
-                  </span>
-                </NavLink>
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    <NavLink
+                      to="/subscriptions"
+                      className="rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-white/25"
+                    >
+                      {accessBanner.cta}
+                    </NavLink>
+                    <NavLink
+                      to="/invites"
+                      className="flex items-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 transition hover:bg-white/20"
+                    >
+                      <Gift className="h-3.5 w-3.5" />
+                      Convidar 3 amigos
+                    </NavLink>
+                  </div>
+                </div>
               </div>
             ) : null}
             {!isMobileChatRoute && showPwaInstallPrompt ? (
