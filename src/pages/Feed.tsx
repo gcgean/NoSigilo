@@ -20,6 +20,7 @@ import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import ProfileCompletionBanner from '@/components/ProfileCompletionBanner';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import {
   COMMENT_ACTION_BUTTON_BASE,
@@ -1260,6 +1261,20 @@ export default function Feed() {
           </Card>
         </div>
       ) : null}
+      {user && !firstAccessPostMode && (
+        <ProfileCompletionBanner
+          profile={{
+            avatar: user.avatar ?? null,
+            bio: user.bio ?? null,
+            city: user.city ?? null,
+            birthDate: user.birthDate ?? null,
+            gender: user.gender ?? null,
+            lookingFor: user.lookingFor?.length ? user.lookingFor[0] : null,
+            maritalStatus: user.maritalStatus ?? null,
+          }}
+        />
+      )}
+
       {/* Composer */}
       {feedFilter === 'experiences' ? (
         <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">

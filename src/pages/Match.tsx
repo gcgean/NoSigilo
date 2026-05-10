@@ -17,23 +17,7 @@ import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
-import { User as UserType } from '@/contexts/AuthContext';
-
-function calcProfileCompletion(user: UserType | null) {
-  if (!user) return { percent: 0, missing: [] as string[] };
-  const checks: Array<{ label: string; weight: number; ok: boolean }> = [
-    { label: 'Foto de perfil', weight: 20, ok: !!user.avatar },
-    { label: 'Bio', weight: 15, ok: !!user.bio },
-    { label: 'Cidade', weight: 15, ok: !!user.city },
-    { label: 'Data de nascimento', weight: 15, ok: !!user.birthDate },
-    { label: 'Gênero', weight: 15, ok: !!user.gender },
-    { label: 'O que você busca', weight: 10, ok: Array.isArray(user.lookingFor) && user.lookingFor.length > 0 },
-    { label: 'Estado civil', weight: 10, ok: !!user.maritalStatus },
-  ];
-  const percent = checks.reduce((sum, c) => sum + (c.ok ? c.weight : 0), 0);
-  const missing = checks.filter((c) => !c.ok).map((c) => c.label);
-  return { percent, missing };
-}
+import { calcProfileCompletion } from '@/utils/profileCompletion';
 
 type MatchProfile = {
   id: string;
@@ -100,7 +84,15 @@ export default function Match() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
-  const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion(user), [user]);
+  const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
+    avatar: user?.avatar ?? null,
+    bio: user?.bio ?? null,
+    city: user?.city ?? null,
+    birthDate: user?.birthDate ?? null,
+    gender: user?.gender ?? null,
+    lookingFor: user?.lookingFor?.length ? user.lookingFor[0] : null,
+    maritalStatus: user?.maritalStatus ?? null,
+  }), [user]);
 
   const redirectToPlans = () => {
     toast({
@@ -474,9 +466,9 @@ export default function Match() {
                 {profileMissing.length > 0 && (
                   <div className="mt-3 space-y-1.5 text-left">
                     {profileMissing.slice(0, 3).map((item) => (
-                      <div key={item} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div key={item.label} className="flex items-center gap-2 text-xs text-muted-foreground">
                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                        {item}
+                        {item.label}
                       </div>
                     ))}
                   </div>
