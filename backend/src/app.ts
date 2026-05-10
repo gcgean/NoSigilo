@@ -2889,12 +2889,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/profile/visits', requireAuth(env, db), async (req, res) => {
-    const user = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const isPremium = !!user?.is_premium;
-    const trialEnds = user?.trial_ends_at ? new Date(user.trial_ends_at).getTime() : 0;
-    const hasTrial = trialEnds > Date.now();
-
-    if (!isPremium && !hasTrial) {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
