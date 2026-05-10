@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -7641,6 +7641,143 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       });
     } catch (err) {
       console.error('[admin/referral-stats]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ─── Reengagement: list inactive users ─────────────────────────────────────
+  app.get('/api/admin/reengagement/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
+      const dateTo   = typeof req.query.dateTo   === 'string' ? req.query.dateTo.trim()   : '';
+      const page     = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+      const limit    = 50;
+      const offset   = (page - 1) * limit;
+
+      // Build WHERE clauses for last_seen_at range
+      const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
+      const params: unknown[] = [];
+
+      if (dateFrom) {
+        conditions.push("(u.last_seen_at IS NULL OR u.last_seen_at >= ?)");
+        params.push(dateFrom);
+      }
+      if (dateTo) {
+        conditions.push("(u.last_seen_at IS NULL OR u.last_seen_at <= ?)");
+        params.push(dateTo + 'T23:59:59');
+      }
+
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const countRow = (await db.queryOne(
+        `SELECT COUNT(*) AS cnt FROM users u ${where}`,
+        params
+      )) as any;
+      const total = Number(countRow?.cnt ?? 0);
+
+      const rows = (await db.queryAll(
+        `SELECT u.id, u.name, u.email, u.avatar, u.created_at, u.last_seen_at,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.visited_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_user_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM messages m
+                  JOIN conversations c ON c.id = m.conversation_id
+                  WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
+                    AND m.sender_id != u.id
+                    AND m.is_read = 0) AS unread_messages
+         FROM users u
+         ${where}
+         ORDER BY u.last_seen_at ASC NULLS FIRST, u.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [...params, limit, offset]
+      )) as any[];
+
+      res.json({
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        users: rows.map((r: any) => ({
+          id: String(r.id),
+          name: String(r.name || ''),
+          email: String(r.email || ''),
+          avatar: r.avatar ?? null,
+          createdAt: r.created_at ?? null,
+          lastSeenAt: r.last_seen_at ?? null,
+          stats: {
+            visits: Number(r.visits_since ?? 0),
+            likes: Number(r.likes_since ?? 0),
+            messages: Number(r.unread_messages ?? 0),
+            matches: 0,
+          },
+        })),
+      });
+    } catch (err) {
+      console.error('[admin/reengagement/users]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ─── Reengagement: send email batch ────────────────────────────────────────
+  app.post('/api/admin/reengagement/send', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const { userIds } = req.body as { userIds?: unknown };
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400).json({ error: 'invalid_input', message: 'userIds must be a non-empty array' });
+        return;
+      }
+      if (userIds.length > 200) {
+        res.status(400).json({ error: 'too_many', message: 'Maximum 200 users per batch' });
+        return;
+      }
+
+      const placeholders = userIds.map(() => '?').join(',');
+      const users = (await db.queryAll(
+        `SELECT u.id, u.name, u.email, u.last_seen_at,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.visited_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_user_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM messages m
+                  JOIN conversations c ON c.id = m.conversation_id
+                  WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
+                    AND m.sender_id != u.id
+                    AND m.is_read = 0) AS unread_messages
+         FROM users u WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
+        userIds
+      )) as any[];
+
+      const results: { userId: string; email: string; status: 'sent' | 'skipped' | 'error'; error?: string }[] = [];
+
+      for (const user of users) {
+        try {
+          const result = await sendReengagementEmail(
+            {
+              apiKey: env.RESEND_API_KEY,
+              fromEmail: env.RESEND_FROM_EMAIL,
+              appName: 'NoSigilo',
+              siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net',
+            },
+            {
+              to: String(user.email),
+              userName: String(user.name || 'usuário'),
+              stats: {
+                visits: Number(user.visits_since ?? 0),
+                likes: Number(user.likes_since ?? 0),
+                messages: Number(user.unread_messages ?? 0),
+                matches: 0,
+              },
+            }
+          );
+          results.push({ userId: String(user.id), email: String(user.email), status: result.skipped ? 'skipped' : 'sent' });
+        } catch (err: any) {
+          results.push({ userId: String(user.id), email: String(user.email), status: 'error', error: String(err?.message ?? err) });
+        }
+        // Small delay to avoid rate-limiting (Resend allows ~10 req/s)
+        await new Promise((r) => setTimeout(r, 120));
+      }
+
+      const sent = results.filter((r) => r.status === 'sent').length;
+      const errors = results.filter((r) => r.status === 'error').length;
+      res.json({ sent, errors, skipped: results.filter((r) => r.status === 'skipped').length, results });
+    } catch (err) {
+      console.error('[admin/reengagement/send]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

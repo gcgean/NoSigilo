@@ -792,6 +792,34 @@ export const adminService = {
     const response = await apiClient.get('/admin/referral-stats');
     return response.data;
   },
+
+  getReengagementUsers: async (params: { dateFrom?: string; dateTo?: string; page?: number }): Promise<{
+    total: number;
+    page: number;
+    pages: number;
+    users: Array<{
+      id: string;
+      name: string;
+      email: string;
+      avatar: string | null;
+      createdAt: string | null;
+      lastSeenAt: string | null;
+      stats: { visits: number; likes: number; messages: number; matches: number };
+    }>;
+  }> => {
+    const response = await apiClient.get('/admin/reengagement/users', { params });
+    return response.data;
+  },
+
+  sendReengagementEmails: async (userIds: string[]): Promise<{
+    sent: number;
+    errors: number;
+    skipped: number;
+    results: Array<{ userId: string; email: string; status: 'sent' | 'skipped' | 'error'; error?: string }>;
+  }> => {
+    const response = await apiClient.post('/admin/reengagement/send', { userIds });
+    return response.data;
+  },
 };
 
 export const suggestionsService = {

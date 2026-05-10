@@ -3,7 +3,7 @@ import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
-  Gift, Award, Trophy, UserCheck
+  Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { adminService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { cn } from '@/lib/utils';
 
 type AdminPhoto = {
   id: string;
@@ -973,6 +974,10 @@ export default function Admin() {
             <Gift className="w-4 h-4" />
             Indicações
           </TabsTrigger>
+          <TabsTrigger value="reengagement" className="gap-2">
+            <Mail className="w-4 h-4" />
+            Reengajamento
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="photos">
@@ -1630,6 +1635,10 @@ export default function Admin() {
         <TabsContent value="referrals">
           <AdminReferralsTab />
         </TabsContent>
+
+        <TabsContent value="reengagement">
+          <AdminReengagementTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
@@ -1840,6 +1849,289 @@ function AdminReferralsTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Reengagement Tab ─────────────────────────────────────────────────────────
+
+type ReengagementUser = {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  createdAt: string | null;
+  lastSeenAt: string | null;
+  stats: { visits: number; likes: number; messages: number; matches: number };
+};
+
+function formatLastSeen(iso: string | null) {
+  if (!iso) return 'Nunca acessou';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+  if (diffDays === 0) return 'Hoje';
+  if (diffDays === 1) return 'Ontem';
+  if (diffDays < 30) return `${diffDays} dias atrás`;
+  if (diffDays < 365) return `${Math.floor(diffDays / 30)} ${Math.floor(diffDays / 30) === 1 ? 'mês' : 'meses'} atrás`;
+  return `${Math.floor(diffDays / 365)} ${Math.floor(diffDays / 365) === 1 ? 'ano' : 'anos'} atrás`;
+}
+
+function AdminReengagementTab() {
+  const { toast } = useToast();
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<{ total: number; pages: number; users: ReengagementUser[] } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSending, setIsSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
+
+  const load = async (p = page) => {
+    setIsLoading(true);
+    setSelectedIds(new Set());
+    setSendResult(null);
+    try {
+      const res = await adminService.getReengagementUsers({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, page: p });
+      setData(res);
+      setPage(p);
+    } catch {
+      toast({ title: 'Erro ao carregar usuários', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleAll = () => {
+    if (!data) return;
+    if (selectedIds.size === data.users.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(data.users.map((u) => u.id)));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSend = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Enviar e-mail de reengajamento para ${selectedIds.size} usuário(s)?`)) return;
+    setIsSending(true);
+    setSendResult(null);
+    try {
+      const result = await adminService.sendReengagementEmails([...selectedIds]);
+      setSendResult({ sent: result.sent, errors: result.errors, skipped: result.skipped });
+      toast({
+        title: `${result.sent} e-mail(s) enviado(s)`,
+        description: result.errors > 0 ? `${result.errors} erro(s) encontrado(s).` : 'Envio concluído com sucesso.',
+        variant: result.errors > 0 ? 'destructive' : 'default',
+      });
+      setSelectedIds(new Set());
+    } catch {
+      toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Info header */}
+      <div className="glass rounded-xl p-6">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Mail className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-base mb-1">E-mail de reengajamento</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Filtre usuários pelo último acesso, selecione os que deseja reconquistar e envie um e-mail persuasivo com as notificações pendentes deles. O e-mail inclui link direto para <strong>nosigilo.net</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="glass rounded-xl p-6">
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Filtrar por último acesso</h4>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted-foreground font-medium">De</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs text-muted-foreground font-medium">Até</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <Button onClick={() => load(1)} disabled={isLoading} className="h-9">
+            {isLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
+            Buscar
+          </Button>
+          {(dateFrom || dateTo) && (
+            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Result */}
+      {data && (
+        <div className="glass rounded-xl overflow-hidden">
+          {/* Toolbar */}
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border/50">
+            <div className="flex items-center gap-3">
+              <button onClick={toggleAll} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                {selectedIds.size === data.users.length && data.users.length > 0
+                  ? <CheckSquare className="w-4 h-4 text-primary" />
+                  : <Square className="w-4 h-4" />
+                }
+                {selectedIds.size > 0 ? `${selectedIds.size} selecionado(s)` : 'Selecionar todos'}
+              </button>
+              <span className="text-xs text-muted-foreground">| {data.total} usuário(s) encontrado(s)</span>
+            </div>
+            <Button
+              onClick={handleSend}
+              disabled={selectedIds.size === 0 || isSending}
+              size="sm"
+              className="gap-2"
+            >
+              {isSending
+                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                : <Send className="w-4 h-4" />
+              }
+              {isSending ? 'Enviando...' : `Enviar e-mail (${selectedIds.size})`}
+            </Button>
+          </div>
+
+          {/* Send result banner */}
+          {sendResult && (
+            <div className={`flex items-center gap-3 px-6 py-3 text-sm border-b ${sendResult.errors > 0 ? 'bg-destructive/10 border-destructive/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+              {sendResult.errors > 0
+                ? <AlertCircle className="w-4 h-4 text-destructive shrink-0" />
+                : <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              }
+              <span>
+                <strong>{sendResult.sent}</strong> enviado(s)
+                {sendResult.errors > 0 && <>, <strong>{sendResult.errors}</strong> erro(s)</>}
+                {sendResult.skipped > 0 && <>, <strong>{sendResult.skipped}</strong> pulado(s) (sem config. de e-mail)</>}
+              </span>
+            </div>
+          )}
+
+          {/* User list */}
+          {isLoading ? (
+            <div className="p-12 text-center text-muted-foreground text-sm">
+              <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-3" />
+              Carregando...
+            </div>
+          ) : data.users.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground text-sm">
+              Nenhum usuário encontrado com esses filtros.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/50">
+              {data.users.map((user) => (
+                <div
+                  key={user.id}
+                  onClick={() => toggleOne(user.id)}
+                  className={cn(
+                    'flex items-center gap-4 px-6 py-3.5 cursor-pointer hover:bg-secondary/30 transition-colors',
+                    selectedIds.has(user.id) && 'bg-primary/5'
+                  )}
+                >
+                  {/* Checkbox */}
+                  <div className="shrink-0">
+                    {selectedIds.has(user.id)
+                      ? <CheckSquare className="w-5 h-5 text-primary" />
+                      : <Square className="w-5 h-5 text-muted-foreground" />
+                    }
+                  </div>
+
+                  {/* Avatar */}
+                  <Avatar className="w-9 h-9 shrink-0">
+                    <AvatarImage src={user.avatar ?? undefined} />
+                    <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                      {user.name.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{user.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  </div>
+
+                  {/* Last seen */}
+                  <div className="text-right shrink-0 hidden sm:block">
+                    <p className="text-xs font-medium">{formatLastSeen(user.lastSeenAt)}</p>
+                    <p className="text-[11px] text-muted-foreground">último acesso</p>
+                  </div>
+
+                  {/* Notification stats */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {user.stats.visits > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-600">
+                        👁 {user.stats.visits}
+                      </span>
+                    )}
+                    {user.stats.likes > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-pink-500/10 px-2 py-0.5 text-[11px] font-medium text-pink-600">
+                        💜 {user.stats.likes}
+                      </span>
+                    )}
+                    {user.stats.messages > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
+                        💬 {user.stats.messages}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {data.pages > 1 && (
+            <div className="flex items-center justify-center gap-2 px-6 py-4 border-t border-border/50">
+              <Button variant="outline" size="sm" disabled={page <= 1 || isLoading} onClick={() => load(page - 1)}>
+                Anterior
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Página {page} de {data.pages}
+              </span>
+              <Button variant="outline" size="sm" disabled={page >= data.pages || isLoading} onClick={() => load(page + 1)}>
+                Próxima
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!data && !isLoading && (
+        <div className="glass rounded-xl p-12 text-center text-muted-foreground text-sm">
+          <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
+          <p>Use os filtros acima e clique em <strong>Buscar</strong> para listar usuários inativos.</p>
+        </div>
+      )}
     </div>
   );
 }
