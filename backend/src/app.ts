@@ -1934,6 +1934,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ subscriptionsEnabled });
   });
 
+  app.get('/api/app/stats', async (_req, res) => {
+    try {
+      const totalRow = await queryOne(db, `SELECT COUNT(*) as c FROM users WHERE is_banned = 0 AND deactivated_by_admin = 0`, []);
+      const onlineNow = presence?.countOnline ? Number(presence.countOnline()) : 0;
+      res.json({
+        totalUsers: Number((totalRow as any)?.c || 0),
+        onlineNow,
+      });
+    } catch {
+      res.json({ totalUsers: 0, onlineNow: 0 });
+    }
+  });
+
   app.post('/api/analytics/visit', async (req, res) => {
     try {
       const schema = z.object({

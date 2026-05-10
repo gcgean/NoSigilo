@@ -10,6 +10,11 @@ export const appService = {
     return response.data;
   },
 
+  getStats: async (): Promise<{ totalUsers: number; onlineNow: number }> => {
+    const response = await apiClient.get('/app/stats');
+    return response.data;
+  },
+
   trackVisit: async (payload: {
     path?: string;
     title?: string;
