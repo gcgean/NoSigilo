@@ -20,6 +20,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
@@ -137,6 +138,7 @@ export default function Chat() {
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
   const [highlightColorDraft, setHighlightColorDraft] = useState<'rose' | 'amber' | 'violet' | 'sky'>('rose');
@@ -302,12 +304,7 @@ export default function Chat() {
   }, [selectedChat, isMobileViewport]);
 
   const redirectToPlans = () => {
-    toast({
-      title: 'Plano necessário',
-      description: 'Renove seu plano para responder e desbloquear o conteúdo do chat.',
-      variant: 'destructive',
-    });
-    navigate('/subscriptions');
+    setPaywallOpen(true);
   };
 
   const goToUserProfile = (userId?: string) => {
@@ -1560,6 +1557,8 @@ export default function Chat() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

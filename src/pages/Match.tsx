@@ -15,6 +15,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
 import { calcProfileCompletion } from '@/utils/profileCompletion';
@@ -92,6 +93,7 @@ export default function Match() {
   const [hasSwipedAny, setHasSwipedAny] = useState(() => sessionStorage.getItem('nosigilo_match_swiped') === '1');
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushLoading, setPushLoading] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
   const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
     avatar: user?.avatar ?? null,
@@ -104,12 +106,7 @@ export default function Match() {
   }), [user]);
 
   const redirectToPlans = () => {
-    toast({
-      title: 'Plano necessário',
-      description: 'Renove seu plano para usar Match e navegar pelos perfis.',
-      variant: 'destructive',
-    });
-    navigate('/subscriptions');
+    setPaywallOpen(true);
   };
 
   useEffect(() => {
@@ -688,6 +685,8 @@ export default function Match() {
       </div>
 
       <p className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

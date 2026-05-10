@@ -538,6 +538,28 @@ export const invitesService = {
     const response = await apiClient.post(`/invites/${inviteId}/revoke`);
     return response.data;
   },
+
+  getRewardProgress: async (): Promise<{
+    validatedCount: number;
+    nextTier: { count: number; days: number; rewardType: string; label: string } | null;
+    tiers: { count: number; days: number; rewardType: string; label: string; reached: boolean; granted: boolean }[];
+    rewards: { rewardType: string; validInvitesCount: number; premiumDaysGranted: number; grantedAt: string }[];
+    badges: { badgeType: string; earnedAt: string }[];
+    recentEntries: {
+      id: string;
+      validationStatus: string;
+      validatedAt: string | null;
+      failedReason: string | null;
+      actionsBitmask: number;
+      validationDeadline: string | null;
+      createdAt: string;
+      inviteeName: string | null;
+      inviteeAvatar: string | null;
+    }[];
+  }> => {
+    const response = await apiClient.get('/invites/reward-progress');
+    return response.data;
+  },
 };
 
 export const testimonialsService = {

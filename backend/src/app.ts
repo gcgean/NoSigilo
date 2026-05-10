@@ -380,6 +380,142 @@ async function userHasPremiumAccess(db: DbHandle, userId: string) {
   return hasPremiumAccess(row, subscriptionsEnabled);
 }
 
+// ─── Referral Reward System ────────────────────────────────────────────────
+// Validation tiers: invitee must complete ≥2 actions within 7 days of signup
+// Bit-mask: bit0 = profile≥50%  |  bit1 = sent_message  |  bit2 = liked_profile
+const REFERRAL_VALIDATION_DAYS = 7;
+const REFERRAL_MIN_ACTIONS = 2; // popcount(bitmask) must be >= 2
+const REFERRAL_TIERS = [
+  { count: 3,  days: 30,  rewardType: 'ambassador',       badgeType: 'ambassador',       label: 'Embaixador(a)' },
+  { count: 10, days: 90,  rewardType: 'ambassador_gold',  badgeType: 'ambassador_gold',  label: 'Embaixador(a) Gold' },
+  { count: 30, days: 365, rewardType: 'ambassador_elite', badgeType: 'ambassador_elite', label: 'Embaixador(a) Elite' },
+];
+
+function popcount(n: number) {
+  let count = 0;
+  let v = n >>> 0;
+  while (v) { count += v & 1; v >>= 1; }
+  return count;
+}
+
+async function grantPremiumDays(db: DbHandle, userId: string, days: number) {
+  const row = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const currentEndsTs = row?.trial_ends_at ? new Date(String(row.trial_ends_at)).getTime() : 0;
+  const base = Math.max(currentEndsTs, Date.now());
+  const newEndsAt = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+  await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [newEndsAt, userId]);
+}
+
+async function grantBadge(db: DbHandle, userId: string, badgeType: string) {
+  await run(
+    db,
+    'INSERT OR IGNORE INTO user_badges (id, user_id, badge_type, earned_at) VALUES (?, ?, ?, ?)',
+    [randomUUID(), userId, badgeType, nowIso()]
+  );
+}
+
+async function countValidatedReferrals(db: DbHandle, inviterUserId: string): Promise<number> {
+  const row = (await queryOne(
+    db,
+    `SELECT COUNT(*) as c
+     FROM invite_link_entries e
+     JOIN invite_links l ON l.id = e.invite_link_id
+     WHERE l.inviter_user_id = ?
+       AND e.validation_status = 'validated'`,
+    [inviterUserId]
+  )) as any;
+  return Number(row?.c ?? 0);
+}
+
+async function checkAndGrantReferralRewards(
+  db: DbHandle,
+  io: any,
+  inviterUserId: string
+) {
+  const validatedCount = await countValidatedReferrals(db, inviterUserId);
+  for (const tier of REFERRAL_TIERS) {
+    if (validatedCount < tier.count) continue;
+    // Check if reward already granted
+    const existing = await queryOne(
+      db,
+      'SELECT id FROM referral_rewards WHERE inviter_user_id = ? AND reward_type = ? LIMIT 1',
+      [inviterUserId, tier.rewardType]
+    );
+    if (existing) continue;
+    // Grant reward
+    await grantPremiumDays(db, inviterUserId, tier.days);
+    await grantBadge(db, inviterUserId, tier.badgeType);
+    await run(
+      db,
+      'INSERT INTO referral_rewards (id, inviter_user_id, reward_type, valid_invites_count, premium_days_granted, granted_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), inviterUserId, tier.rewardType, validatedCount, tier.days, nowIso()]
+    );
+    await createNotification(
+      { db, io },
+      {
+        userId: inviterUserId,
+        type: 'referral.reward',
+        title: `Você é ${tier.label}! 🏅`,
+        description: `Seus ${tier.count} convites foram validados. Você ganhou ${tier.days} dias de acesso premium.`,
+        dataJson: { rewardType: tier.rewardType, premiumDays: tier.days, validatedCount },
+      }
+    );
+  }
+}
+
+async function markInviteeAction(
+  db: DbHandle,
+  io: any,
+  inviteeUserId: string,
+  actionBit: number // 1 = profile, 2 = message, 4 = like
+) {
+  // Find pending entry for this invitee
+  const entry = (await queryOne(
+    db,
+    `SELECT e.id, e.actions_bitmask, e.validation_status, e.validation_deadline, l.inviter_user_id
+     FROM invite_link_entries e
+     JOIN invite_links l ON l.id = e.invite_link_id
+     WHERE e.invitee_user_id = ?
+       AND e.validation_status = 'pending'
+     LIMIT 1`,
+    [inviteeUserId]
+  )) as any;
+  if (!entry) return; // Not an invitee or already validated/failed
+
+  const now = Date.now();
+  const deadline = entry.validation_deadline ? new Date(String(entry.validation_deadline)).getTime() : 0;
+
+  // Check if deadline has passed
+  if (deadline && now > deadline) {
+    await run(
+      db,
+      `UPDATE invite_link_entries SET validation_status = 'expired', failed_reason = 'deadline_passed' WHERE id = ?`,
+      [entry.id]
+    );
+    return;
+  }
+
+  const newMask = (Number(entry.actions_bitmask) | actionBit) >>> 0;
+  if (newMask === Number(entry.actions_bitmask)) return; // No change
+
+  const isValidated = popcount(newMask) >= REFERRAL_MIN_ACTIONS;
+
+  await run(
+    db,
+    `UPDATE invite_link_entries
+     SET actions_bitmask = ?,
+         validation_status = ?,
+         validated_at = ?
+     WHERE id = ?`,
+    [newMask, isValidated ? 'validated' : 'pending', isValidated ? nowIso() : null, entry.id]
+  );
+
+  if (isValidated) {
+    await checkAndGrantReferralRewards(db, io, String(entry.inviter_user_id));
+  }
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 export async function ensureAdministrativeAccess(db: DbHandle) {
   if (ADMIN_EMAILS.size === 0) return;
   const emails = Array.from(ADMIN_EMAILS);
@@ -1664,6 +1800,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const createdAt = nowIso();
     const trialEndsAt = addDaysIso(createdAt, env.TRIAL_DAYS);
     const id = randomUUID();
+    const registrationIpHash = hashRequestIp(env, getRequestIp(req));
 
     await run(
       db,
@@ -1672,8 +1809,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id, email, password_hash, name, avatar, bio, status, city, state, birth_date, gender, marital_status,
         sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes, drinks, profession, zodiac_sign,
         looking_for_json, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at,
-        invited_by_user_id, invite_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invited_by_user_id, invite_status, registration_ip_hash
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         id,
@@ -1707,13 +1844,41 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         trialEndsAt,
         invite ? String(invite.inviter_user_id) : null,
         'approved',
+        registrationIpHash,
       ]
     );
     if (invite) {
+      // Compute validation deadline (REFERRAL_VALIDATION_DAYS days from signup)
+      const validationDeadline = addDaysIso(createdAt, REFERRAL_VALIDATION_DAYS);
+      // Check if same IP as inviter (soft flag, not a hard block)
+      const inviterRow = (await queryOne(
+        db,
+        'SELECT registration_ip_hash FROM users WHERE id = ? LIMIT 1',
+        [String(invite.inviter_user_id)]
+      )) as any;
+      const sameIpAsInviter =
+        registrationIpHash &&
+        inviterRow?.registration_ip_hash &&
+        registrationIpHash === String(inviterRow.registration_ip_hash);
+
       await run(
         db,
-        'INSERT INTO invite_link_entries (id, invite_link_id, invitee_user_id, invitee_email, created_at) VALUES (?, ?, ?, ?, ?)',
-        [randomUUID(), String(invite.id), id, email, createdAt]
+        `INSERT INTO invite_link_entries
+           (id, invite_link_id, invitee_user_id, invitee_email, created_at,
+            validation_status, invitee_ip_hash, validation_deadline, actions_bitmask, failed_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          String(invite.id),
+          id,
+          email,
+          createdAt,
+          sameIpAsInviter ? 'failed' : 'pending',
+          registrationIpHash,
+          sameIpAsInviter ? null : validationDeadline,
+          0,
+          sameIpAsInviter ? 'same_ip_as_inviter' : null,
+        ]
       );
       await run(
         db,
@@ -1861,7 +2026,89 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json(rows.map(rowToInvite));
   });
 
+  app.get('/api/invites/reward-progress', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+
+    // Count validated referrals
+    const validatedCount = await countValidatedReferrals(db, userId);
+
+    // Determine next tier
+    const nextTier = REFERRAL_TIERS.find((t) => validatedCount < t.count) ?? null;
+
+    // Tiers already granted
+    const rewardRows = (await queryAll(
+      db,
+      'SELECT reward_type, valid_invites_count, premium_days_granted, granted_at FROM referral_rewards WHERE inviter_user_id = ? ORDER BY valid_invites_count ASC',
+      [userId]
+    )) as any[];
+
+    // Earned badges of ambassador types
+    const badgeRows = (await queryAll(
+      db,
+      `SELECT badge_type, earned_at FROM user_badges WHERE user_id = ? AND badge_type IN ('ambassador','ambassador_gold','ambassador_elite') ORDER BY earned_at ASC`,
+      [userId]
+    )) as any[];
+
+    // Recent invite entries with their validation status (last 20)
+    const entryRows = (await queryAll(
+      db,
+      `SELECT ile.id, ile.invite_link_id, ile.validation_status, ile.validated_at, ile.failed_reason,
+              ile.actions_bitmask, ile.validation_deadline, ile.created_at,
+              u.name AS invitee_name, u.avatar AS invitee_avatar
+       FROM invite_link_entries ile
+       JOIN invite_links il ON il.id = ile.invite_link_id
+       LEFT JOIN users u ON u.id = ile.invitee_user_id
+       WHERE il.inviter_user_id = ?
+       ORDER BY ile.created_at DESC
+       LIMIT 20`,
+      [userId]
+    )) as any[];
+
+    res.json({
+      validatedCount,
+      nextTier: nextTier
+        ? { count: nextTier.count, days: nextTier.days, rewardType: nextTier.rewardType, label: nextTier.label }
+        : null,
+      tiers: REFERRAL_TIERS.map((t) => ({
+        count: t.count,
+        days: t.days,
+        rewardType: t.rewardType,
+        label: t.label,
+        reached: validatedCount >= t.count,
+        granted: rewardRows.some((r) => String(r.reward_type) === t.rewardType),
+      })),
+      rewards: rewardRows.map((r) => ({
+        rewardType: String(r.reward_type),
+        validInvitesCount: Number(r.valid_invites_count),
+        premiumDaysGranted: Number(r.premium_days_granted),
+        grantedAt: String(r.granted_at),
+      })),
+      badges: badgeRows.map((b) => ({ badgeType: String(b.badge_type), earnedAt: String(b.earned_at) })),
+      recentEntries: entryRows.map((e) => ({
+        id: String(e.id),
+        validationStatus: String(e.validation_status ?? 'pending'),
+        validatedAt: e.validated_at ? String(e.validated_at) : null,
+        failedReason: e.failed_reason ? String(e.failed_reason) : null,
+        actionsBitmask: Number(e.actions_bitmask ?? 0),
+        validationDeadline: e.validation_deadline ? String(e.validation_deadline) : null,
+        createdAt: String(e.created_at ?? ''),
+        inviteeName: e.invitee_name ? String(e.invitee_name) : null,
+        inviteeAvatar: e.invitee_avatar ? String(e.invitee_avatar) : null,
+      })),
+    });
+  });
+
   app.post('/api/invites', requireAuth(env, db), async (req, res) => {
+    // Limit to 5 active (unused) invites per user
+    const activeCount = (await queryOne(
+      db,
+      `SELECT COUNT(*) AS cnt FROM invite_links WHERE inviter_user_id = ? AND status = 'created'`,
+      [req.auth!.userId]
+    )) as any;
+    if ((activeCount?.cnt ?? 0) >= 5) {
+      res.status(429).json({ error: 'too_many_active_invites', limit: 5 });
+      return;
+    }
     const now = nowIso();
     const id = randomUUID();
     const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
@@ -1934,10 +2181,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ subscriptionsEnabled });
   });
 
-  app.get('/api/app/stats', async (_req, res) => {
+  app.get('/api/app/stats', async (req, res) => {
     try {
       const totalRow = await queryOne(db, `SELECT COUNT(*) as c FROM users WHERE is_banned = 0 AND deactivated_by_admin = 0`, []);
-      const onlineNow = presence?.countOnline ? Number(presence.countOnline()) : 0;
+      const presenceSvc = req.app.get('presence');
+      const onlineNow = presenceSvc?.countOnline ? Number(presenceSvc.countOnline()) : 0;
       res.json({
         totalUsers: Number((totalRow as any)?.c || 0),
         onlineNow,
@@ -2847,6 +3095,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       values.push(req.auth!.userId);
       await run(db, `UPDATE users SET ${setParts.join(', ')} WHERE id = ?`, values);
       await persist();
+
+      // Referral action tracking: bit0 = profile ≥50% complete
+      try {
+        const ioSvc = req.app.get('io') as SocketIOServer | undefined;
+        const pu = (await queryOne(
+          db,
+          'SELECT name, avatar, bio, city, birth_date, gender, marital_status, looking_for_json FROM users WHERE id = ? LIMIT 1',
+          [req.auth!.userId]
+        )) as any;
+        const filledFields = [pu?.name, pu?.avatar, pu?.bio, pu?.city, pu?.birth_date, pu?.gender, pu?.marital_status, pu?.looking_for_json].filter(
+          (v) => v !== null && v !== undefined && String(v).trim() !== ''
+        ).length;
+        if (filledFields >= 4) {
+          void markInviteeAction(db, ioSvc, req.auth!.userId, 0b001).catch(() => {});
+        }
+      } catch {}
     }
 
     const row = await getUserWithSponsorById(db, req.auth!.userId);
@@ -5305,6 +5569,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         },
       }
     );
+    // Referral action tracking: bit1 = sent_message
+    void markInviteeAction(db, io, req.auth!.userId, 0b010).catch(() => {});
     res.json({ id });
   });
 
@@ -5406,6 +5672,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             },
           }
         );
+        // Referral action tracking: bit2 = liked_profile
+        void markInviteeAction(db, io, req.auth!.userId, 0b100).catch(() => {});
       }
     } else if (parsed.data.targetType === 'experience') {
       const experience = (await queryOne(db, 'SELECT id, user_id FROM experiences WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
