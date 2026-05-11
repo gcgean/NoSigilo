@@ -3315,9 +3315,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     await db.run(
-      `INSERT OR IGNORE INTO blocks (blocker_user_id, blocked_user_id) VALUES (?, ?)`,
-      [blockerId, targetId]
+      `INSERT OR IGNORE INTO blocks (id, blocker_user_id, blocked_user_id, created_at) VALUES (?, ?, ?, ?)`,
+      [randomUUID(), blockerId, targetId, new Date().toISOString()]
     );
+    await persist();
     res.json({ success: true, blocked: true });
   });
 
@@ -3328,6 +3329,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `DELETE FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?`,
       [blockerId, targetId]
     );
+    await persist();
     res.json({ success: true, blocked: false });
   });
 

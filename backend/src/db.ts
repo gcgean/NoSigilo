@@ -72,6 +72,13 @@ function sqljsRun(db: SqlJsDb, sql: string, params: unknown[] = []) {
 }
 
 function toPgSql(sql: string) {
+  // SQLite-specific syntax → PostgreSQL equivalents
+  let conflictSuffix = '';
+  if (/INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql)) {
+    sql = sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO');
+    conflictSuffix = ' ON CONFLICT DO NOTHING';
+  }
+
   let out = '';
   let idx = 1;
   let inSingle = false;
@@ -96,7 +103,7 @@ function toPgSql(sql: string) {
     }
     out += ch;
   }
-  return out;
+  return out + conflictSuffix;
 }
 
 async function applyPgMigrations(options: { pool: Pool; migrationsDir: string }) {
