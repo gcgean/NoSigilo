@@ -7564,10 +7564,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       // Tier reward grants summary
       const tierStats = (await queryAll(
         db,
-        `SELECT reward_type, COUNT(*) AS cnt, SUM(premium_days_granted) AS total_days
+        `SELECT reward_type, COUNT(*) AS cnt, SUM(premium_days_granted) AS total_days,
+                MIN(valid_invites_count) AS min_invites
          FROM referral_rewards
          GROUP BY reward_type
-         ORDER BY valid_invites_count ASC`,
+         ORDER BY min_invites ASC`,
         []
       )) as any[];
 
@@ -7582,7 +7583,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
          JOIN invite_links il ON il.id = ile.invite_link_id
          JOIN users u ON u.id = il.inviter_user_id
          WHERE ile.validation_status = 'validated'
-         GROUP BY il.inviter_user_id
+         GROUP BY il.inviter_user_id, u.name, u.avatar
          ORDER BY validated_count DESC
          LIMIT 20`,
         []
