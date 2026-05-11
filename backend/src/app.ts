@@ -7655,16 +7655,26 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const limit    = 50;
       const offset   = (page - 1) * limit;
 
+      // PostgreSQL: last_seen_at is TIMESTAMPTZ but sv/l created_at are TEXT (ISO).
+      // Convert last_seen_at to ISO text for consistent TEXT comparisons.
+      const sinceExpr = db.mode === 'pg'
+        ? `TO_CHAR(COALESCE(u.last_seen_at, u.created_at::TIMESTAMPTZ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+        : `COALESCE(u.last_seen_at, u.created_at)`;
+
       // Build WHERE clauses for last_seen_at range
       const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
       const params: unknown[] = [];
 
       if (dateFrom) {
-        conditions.push("(u.last_seen_at IS NULL OR u.last_seen_at >= ?)");
+        conditions.push(db.mode === 'pg'
+          ? "(u.last_seen_at IS NULL OR u.last_seen_at >= ?::TIMESTAMPTZ)"
+          : "(u.last_seen_at IS NULL OR u.last_seen_at >= ?)");
         params.push(dateFrom);
       }
       if (dateTo) {
-        conditions.push("(u.last_seen_at IS NULL OR u.last_seen_at <= ?)");
+        conditions.push(db.mode === 'pg'
+          ? "(u.last_seen_at IS NULL OR u.last_seen_at <= ?::TIMESTAMPTZ)"
+          : "(u.last_seen_at IS NULL OR u.last_seen_at <= ?)");
         params.push(dateTo + 'T23:59:59');
       }
 
@@ -7678,8 +7688,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
       const rows = (await db.queryAll(
         `SELECT u.id, u.name, u.email, u.avatar, u.created_at, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > ${sinceExpr}) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > ${sinceExpr}) AS likes_since,
                 (SELECT COUNT(*) FROM messages m
                   JOIN conversations c ON c.id = m.conversation_id
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
@@ -7731,10 +7741,14 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       }
 
       const placeholders = userIds.map(() => '?').join(',');
+      // PostgreSQL: last_seen_at is TIMESTAMPTZ but sv/l created_at are TEXT (ISO).
+      const sinceExpr = db.mode === 'pg'
+        ? `TO_CHAR(COALESCE(u.last_seen_at, u.created_at::TIMESTAMPTZ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+        : `COALESCE(u.last_seen_at, u.created_at)`;
       const users = (await db.queryAll(
         `SELECT u.id, u.name, u.email, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > COALESCE(u.last_seen_at, u.created_at)) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > COALESCE(u.last_seen_at, u.created_at)) AS likes_since,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > ${sinceExpr}) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > ${sinceExpr}) AS likes_since,
                 (SELECT COUNT(*) FROM messages m
                   JOIN conversations c ON c.id = m.conversation_id
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
