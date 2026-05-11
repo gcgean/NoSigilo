@@ -20,6 +20,7 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
+import { PostMediaCarousel } from '@/components/PostMediaCarousel';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import ProfileCompletionBanner from '@/components/ProfileCompletionBanner';
@@ -2039,55 +2040,15 @@ export default function Feed() {
 
               {/* Post Media */}
               {item.post.media?.length > 0 && (
-                <div className="space-y-2 px-3 pb-3 sm:px-4">
-                  {item.post.media.map((m) => (
-                    <div key={m.id} className="relative rounded-lg overflow-hidden">
-                      {String(m.mimeType || '').startsWith('video/') ? (
-                        premiumAccess ? (
-                          <div className="w-full" style={aspectStyleForKey(m.id)}>
-                            <VideoWithPreview
-                              src={resolveMediaUrl(m.url)}
-                              className="h-full w-full bg-black object-contain sm:object-cover"
-                              controls
-                              muted
-                              playsInline
-                              preload="auto"
-                              onLoadedMetadata={(e) => setAspectForKey(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)}
-                              onMouseEnter={(e) => {
-                                const v = e.currentTarget;
-                                v.muted = true;
-                                void v.play().catch(() => {});
-                              }}
-                              onMouseLeave={(e) => {
-                                const v = e.currentTarget;
-                                v.pause();
-                                try {
-                                  v.currentTime = 0;
-                                } catch {}
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-full bg-secondary/30 border flex flex-col items-center justify-center gap-3" style={aspectStyleForKey(m.id)}>
-                            <Lock className="w-6 h-6 text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">Vídeos disponíveis apenas para Premium</p>
-                            <Button size="sm" className="bg-gradient-primary hover:opacity-90 gap-2" onClick={() => setPaywallOpen(true)}>
-                              <Crown className="w-4 h-4" /> Ver planos
-                            </Button>
-                          </div>
-                        )
-                      ) : (
-                        <div className="w-full" style={aspectStyleForKey(m.id)}>
-                          <img
-                            src={resolveMediaUrl(m.url)}
-                            alt=""
-                            className="h-full w-full bg-black object-contain sm:object-cover"
-                            onLoad={(e) => setAspectForKey(m.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div className="px-3 pb-3 sm:px-4">
+                  <PostMediaCarousel
+                    media={item.post.media}
+                    resolveUrl={resolveMediaUrl}
+                    aspectStyle={aspectStyleForKey}
+                    onAspectLoaded={setAspectForKey}
+                    premiumAccess={premiumAccess}
+                    onPremiumGate={() => setPaywallOpen(true)}
+                  />
                 </div>
               )}
 
