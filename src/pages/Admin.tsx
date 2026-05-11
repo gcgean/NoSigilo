@@ -1862,7 +1862,20 @@ type ReengagementUser = {
   avatar: string | null;
   createdAt: string | null;
   lastSeenAt: string | null;
+  lastEmailSentAt: string | null;
+  lastEmailStatus: string | null;
+  emailSendCount: number;
   stats: { visits: number; likes: number; messages: number; matches: number };
+};
+
+type ReengagementMetrics = {
+  totalEmailed: number;
+  totalSends: number;
+  successfulSends: number;
+  failedSends: number;
+  returnedCount: number;
+  returnRate: number;
+  recentBatches: Array<{ batchAt: string; total: number; sent: number; errors: number }>;
 };
 
 function formatLastSeen(iso: string | null) {
@@ -1883,12 +1896,30 @@ function AdminReengagementTab() {
   const [dateTo, setDateTo] = useState('');
   const [search, setSearch] = useState('');
   const [withPhoto, setWithPhoto] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; pages: number; users: ReengagementUser[] } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
+  const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+
+  const loadMetrics = async () => {
+    setMetricsLoading(true);
+    try {
+      const m = await adminService.getReengagementMetrics();
+      setMetrics(m);
+    } catch {
+      // silently fail — metrics panel is optional
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
+  // Load metrics on mount
+  useEffect(() => { loadMetrics(); }, []);
 
   const load = async (p = page) => {
     setIsLoading(true);
@@ -1900,6 +1931,7 @@ function AdminReengagementTab() {
         dateTo: dateTo || undefined,
         search: search || undefined,
         withPhoto: withPhoto || undefined,
+        emailSent: emailSent || undefined,
         page: p,
       });
       setData(res);
@@ -1943,6 +1975,7 @@ function AdminReengagementTab() {
         variant: result.errors > 0 ? 'destructive' : 'default',
       });
       setSelectedIds(new Set());
+      loadMetrics(); // refresh return-rate metrics after send
     } catch {
       toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
     } finally {
@@ -1966,6 +1999,59 @@ function AdminReengagementTab() {
           </div>
         </div>
       </div>
+
+      {/* Metrics panel */}
+      {(metrics || metricsLoading) && (
+        <div className="glass rounded-xl p-5">
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Taxa de retorno dos e-mails</h4>
+          {metricsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Calculando...</div>
+          ) : metrics && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                <div className="bg-secondary/40 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold">{metrics.totalEmailed}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Usuários contatados</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-emerald-600">{metrics.returnedCount}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Voltaram ao site</p>
+                </div>
+                <div className={cn("rounded-lg p-3 text-center", metrics.returnRate >= 30 ? "bg-emerald-500/15" : metrics.returnRate >= 10 ? "bg-amber-500/15" : "bg-secondary/40")}>
+                  <p className={cn("text-2xl font-bold", metrics.returnRate >= 30 ? "text-emerald-600" : metrics.returnRate >= 10 ? "text-amber-600" : "text-muted-foreground")}>
+                    {metrics.returnRate}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Taxa de retorno</p>
+                </div>
+                <div className="bg-secondary/40 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold">{metrics.successfulSends}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">E-mails enviados</p>
+                  {metrics.failedSends > 0 && <p className="text-[11px] text-destructive mt-0.5">{metrics.failedSends} erro(s)</p>}
+                </div>
+              </div>
+              {metrics.recentBatches.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Últimos envios</p>
+                  <div className="space-y-1">
+                    {metrics.recentBatches.map((b) => (
+                      <div key={b.batchAt} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-md bg-secondary/30">
+                        <span className="text-muted-foreground">{new Date(b.batchAt).toLocaleString('pt-BR')}</span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-emerald-600 font-medium">{b.sent} enviado(s)</span>
+                          {b.errors > 0 && <span className="text-destructive font-medium">{b.errors} erro(s)</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {metrics.totalEmailed === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhum e-mail enviado ainda. Envie o primeiro lote e volte aqui para ver a taxa de retorno.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="glass rounded-xl p-6">
@@ -2009,12 +2095,21 @@ function AdminReengagementTab() {
             />
             <span className="text-sm text-muted-foreground whitespace-nowrap">Somente com foto</span>
           </label>
+          <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
+            <input
+              type="checkbox"
+              checked={emailSent}
+              onChange={(e) => setEmailSent(e.target.checked)}
+              className="w-4 h-4 accent-primary rounded"
+            />
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Já recebeu e-mail</span>
+          </label>
           <Button onClick={() => load(1)} disabled={isLoading} className="h-9">
             {isLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
             Buscar
           </Button>
-          {(dateFrom || dateTo || search || withPhoto) && (
-            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setSearch(''); setWithPhoto(false); }}>
+          {(dateFrom || dateTo || search || withPhoto || emailSent) && (
+            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setSearch(''); setWithPhoto(false); setEmailSent(false); }}>
               Limpar filtros
             </Button>
           )}
@@ -2113,6 +2208,26 @@ function AdminReengagementTab() {
                     <p className="text-xs font-medium">{formatLastSeen(user.lastSeenAt)}</p>
                     <p className="text-[11px] text-muted-foreground">último acesso</p>
                   </div>
+
+                  {/* Email status */}
+                  {user.lastEmailSentAt ? (
+                    <div className="text-right shrink-0 hidden md:block">
+                      <span className={cn(
+                        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                        user.lastEmailStatus === 'sent'
+                          ? 'bg-emerald-500/10 text-emerald-700'
+                          : 'bg-destructive/10 text-destructive'
+                      )}>
+                        {user.lastEmailStatus === 'sent' ? '✓' : '✕'} {user.lastEmailStatus === 'sent' ? 'Enviado' : 'Falhou'}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {formatLastSeen(user.lastEmailSentAt)}
+                        {user.emailSendCount > 1 && ` · ${user.emailSendCount}x`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="shrink-0 hidden md:block w-16" />
+                  )}
 
                   {/* Notification stats */}
                   <div className="flex items-center gap-2 shrink-0">

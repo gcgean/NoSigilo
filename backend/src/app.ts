@@ -7648,13 +7648,91 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   // ─── Reengagement: list inactive users ─────────────────────────────────────
+  // ─── Reengagement: return-rate metrics ────────────────────────────────────
+  app.get('/api/admin/reengagement/metrics', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      // Total unique users who received at least one successful email
+      const totalsRow = (await db.queryOne(
+        `SELECT COUNT(DISTINCT user_id) AS total_emailed,
+                COUNT(*) AS total_sends,
+                COUNT(CASE WHEN status = 'sent' THEN 1 END) AS successful_sends,
+                COUNT(CASE WHEN status = 'error' THEN 1 END) AS failed_sends
+         FROM reengagement_emails`,
+        []
+      )) as any;
+
+      // Per user: last successful send date — then check if they came back via site_visits
+      const perUser = (await db.queryAll(
+        `SELECT re.user_id, MAX(re.sent_at) AS last_sent_at
+         FROM reengagement_emails re
+         WHERE re.status = 'sent'
+         GROUP BY re.user_id`,
+        []
+      )) as any[];
+
+      let returnedCount = 0;
+      // For each emailed user check if site_visits has a row after last_sent_at
+      if (perUser.length > 0) {
+        const returnChecks = (await db.queryAll(
+          `SELECT DISTINCT sv.user_id
+           FROM site_visits sv
+           WHERE sv.user_id IN (${perUser.map(() => '?').join(',')})`,
+          perUser.map((r: any) => String(r.user_id))
+        )) as any[];
+        const visitedSet = new Set(returnChecks.map((r: any) => String(r.user_id)));
+        for (const row of perUser) {
+          const visits = (await db.queryAll(
+            `SELECT 1 FROM site_visits WHERE user_id = ? AND created_at > ? LIMIT 1`,
+            [String(row.user_id), String(row.last_sent_at)]
+          )) as any[];
+          if (visits.length > 0) returnedCount++;
+        }
+      }
+
+      const totalEmailed = Number(totalsRow?.total_emailed ?? 0);
+      const returnRate = totalEmailed > 0 ? Math.round((returnedCount / totalEmailed) * 100) : 0;
+
+      // Last 10 batches (group by minute to approximate batch)
+      const recentBatches = (await db.queryAll(
+        `SELECT SUBSTR(sent_at, 1, 16) AS batch_minute,
+                COUNT(*) AS total,
+                COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sent,
+                COUNT(CASE WHEN status = 'error' THEN 1 END) AS errors
+         FROM reengagement_emails
+         GROUP BY SUBSTR(sent_at, 1, 16)
+         ORDER BY batch_minute DESC
+         LIMIT 10`,
+        []
+      )) as any[];
+
+      res.json({
+        totalEmailed,
+        totalSends: Number(totalsRow?.total_sends ?? 0),
+        successfulSends: Number(totalsRow?.successful_sends ?? 0),
+        failedSends: Number(totalsRow?.failed_sends ?? 0),
+        returnedCount,
+        returnRate,
+        recentBatches: recentBatches.map((r: any) => ({
+          batchAt: String(r.batch_minute) + ':00',
+          total: Number(r.total),
+          sent: Number(r.sent),
+          errors: Number(r.errors),
+        })),
+      });
+    } catch (err) {
+      console.error('[admin/reengagement/metrics]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   app.get('/api/admin/reengagement/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
-      const dateFrom   = typeof req.query.dateFrom   === 'string' ? req.query.dateFrom.trim()   : '';
-      const dateTo     = typeof req.query.dateTo     === 'string' ? req.query.dateTo.trim()     : '';
-      const search     = typeof req.query.search     === 'string' ? req.query.search.trim()     : '';
-      const withPhoto  = req.query.withPhoto === '1' || req.query.withPhoto === 'true';
-      const page       = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+      const dateFrom    = typeof req.query.dateFrom   === 'string' ? req.query.dateFrom.trim()   : '';
+      const dateTo      = typeof req.query.dateTo     === 'string' ? req.query.dateTo.trim()     : '';
+      const search      = typeof req.query.search     === 'string' ? req.query.search.trim()     : '';
+      const withPhoto   = req.query.withPhoto  === '1' || req.query.withPhoto  === 'true';
+      const emailSent   = req.query.emailSent  === '1' || req.query.emailSent  === 'true';
+      const page        = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
       const limit    = 50;
       const offset   = (page - 1) * limit;
 
@@ -7670,6 +7748,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
       if (withPhoto) {
         conditions.push("u.avatar IS NOT NULL AND u.avatar != ''");
+      }
+      if (emailSent) {
+        conditions.push("EXISTS (SELECT 1 FROM reengagement_emails re WHERE re.user_id = u.id AND re.status = 'sent')");
       }
       if (search) {
         conditions.push("(LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)");
@@ -7705,7 +7786,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                   JOIN conversations c ON c.id = m.conversation_id
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
                     AND m.sender_id != u.id
-                    AND m.is_read = 0) AS unread_messages
+                    AND m.is_read = 0) AS unread_messages,
+                (SELECT sent_at FROM reengagement_emails re WHERE re.user_id = u.id ORDER BY re.sent_at DESC LIMIT 1) AS last_email_sent_at,
+                (SELECT status  FROM reengagement_emails re WHERE re.user_id = u.id ORDER BY re.sent_at DESC LIMIT 1) AS last_email_status,
+                (SELECT COUNT(*) FROM reengagement_emails re WHERE re.user_id = u.id AND re.status = 'sent') AS email_send_count
          FROM users u
          ${where}
          ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 0 ELSE 1 END ASC, u.last_seen_at ASC, u.created_at DESC
@@ -7724,6 +7808,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           avatar: r.avatar ?? null,
           createdAt: r.created_at ?? null,
           lastSeenAt: r.last_seen_at ?? null,
+          lastEmailSentAt: r.last_email_sent_at ?? null,
+          lastEmailStatus: r.last_email_status ?? null,
+          emailSendCount: Number(r.email_send_count ?? 0),
           stats: {
             visits: Number(r.visits_since ?? 0),
             likes: Number(r.likes_since ?? 0),
@@ -7770,8 +7857,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       )) as any[];
 
       const results: { userId: string; email: string; status: 'sent' | 'skipped' | 'error'; error?: string }[] = [];
+      const nowBatch = nowIso();
 
       for (const user of users) {
+        let status: 'sent' | 'skipped' | 'error' = 'error';
+        let errorMsg: string | null = null;
         try {
           const result = await sendReengagementEmail(
             {
@@ -7791,13 +7881,23 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
               },
             }
           );
-          results.push({ userId: String(user.id), email: String(user.email), status: result.skipped ? 'skipped' : 'sent' });
+          status = result.skipped ? 'skipped' : 'sent';
         } catch (err: any) {
-          results.push({ userId: String(user.id), email: String(user.email), status: 'error', error: String(err?.message ?? err) });
+          status = 'error';
+          errorMsg = String(err?.message ?? err);
+        }
+        results.push({ userId: String(user.id), email: String(user.email), status, ...(errorMsg ? { error: errorMsg } : {}) });
+        // Record the send attempt (skip 'skipped' — no email config, not a real attempt)
+        if (status !== 'skipped') {
+          await db.run(
+            `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
+            [randomUUID(), String(user.id), nowBatch, status, errorMsg]
+          );
         }
         // Small delay to avoid rate-limiting (Resend allows ~10 req/s)
         await new Promise((r) => setTimeout(r, 120));
       }
+      await persist();
 
       const sent = results.filter((r) => r.status === 'sent').length;
       const errors = results.filter((r) => r.status === 'error').length;

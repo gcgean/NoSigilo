@@ -793,7 +793,7 @@ export const adminService = {
     return response.data;
   },
 
-  getReengagementUsers: async (params: { dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; page?: number }): Promise<{
+  getReengagementUsers: async (params: { dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; emailSent?: boolean; page?: number }): Promise<{
     total: number;
     page: number;
     pages: number;
@@ -804,10 +804,26 @@ export const adminService = {
       avatar: string | null;
       createdAt: string | null;
       lastSeenAt: string | null;
+      lastEmailSentAt: string | null;
+      lastEmailStatus: string | null;
+      emailSendCount: number;
       stats: { visits: number; likes: number; messages: number; matches: number };
     }>;
   }> => {
     const response = await apiClient.get('/admin/reengagement/users', { params });
+    return response.data;
+  },
+
+  getReengagementMetrics: async (): Promise<{
+    totalEmailed: number;
+    totalSends: number;
+    successfulSends: number;
+    failedSends: number;
+    returnedCount: number;
+    returnRate: number;
+    recentBatches: Array<{ batchAt: string; total: number; sent: number; errors: number }>;
+  }> => {
+    const response = await apiClient.get('/admin/reengagement/metrics');
     return response.data;
   },
 
