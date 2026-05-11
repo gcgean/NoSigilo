@@ -7652,6 +7652,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     try {
       const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
       const dateTo   = typeof req.query.dateTo   === 'string' ? req.query.dateTo.trim()   : '';
+      const search   = typeof req.query.search   === 'string' ? req.query.search.trim()   : '';
       const page     = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
       const limit    = 50;
       const offset   = (page - 1) * limit;
@@ -7662,10 +7663,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         ? `TO_CHAR(COALESCE(u.last_seen_at, u.created_at::TIMESTAMPTZ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
         : `COALESCE(u.last_seen_at, u.created_at)`;
 
-      // Build WHERE clauses for last_seen_at range
+      // Build WHERE clauses
       const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
       const params: unknown[] = [];
 
+      if (search) {
+        conditions.push("(LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)");
+        const like = `%${search.toLowerCase()}%`;
+        params.push(like, like);
+      }
       if (dateFrom) {
         conditions.push(db.mode === 'pg'
           ? "(u.last_seen_at IS NULL OR u.last_seen_at >= ?::TIMESTAMPTZ)"

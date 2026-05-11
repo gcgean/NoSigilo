@@ -1881,6 +1881,7 @@ function AdminReengagementTab() {
   const { toast } = useToast();
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; pages: number; users: ReengagementUser[] } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1893,7 +1894,12 @@ function AdminReengagementTab() {
     setSelectedIds(new Set());
     setSendResult(null);
     try {
-      const res = await adminService.getReengagementUsers({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined, page: p });
+      const res = await adminService.getReengagementUsers({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: search || undefined,
+        page: p,
+      });
       setData(res);
       setPage(p);
     } catch {
@@ -1961,10 +1967,21 @@ function AdminReengagementTab() {
 
       {/* Filters */}
       <div className="glass rounded-xl p-6">
-        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Filtrar por último acesso</h4>
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Filtros</h4>
         <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[200px]">
+            <label className="text-xs text-muted-foreground font-medium">E-mail ou nome</label>
+            <input
+              type="text"
+              placeholder="Buscar por e-mail ou nome..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load(1)}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground font-medium">De</label>
+            <label className="text-xs text-muted-foreground font-medium">Último acesso de</label>
             <input
               type="date"
               value={dateFrom}
@@ -1985,8 +2002,8 @@ function AdminReengagementTab() {
             {isLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
             Buscar
           </Button>
-          {(dateFrom || dateTo) && (
-            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); }}>
+          {(dateFrom || dateTo || search) && (
+            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setSearch(''); }}>
               Limpar filtros
             </Button>
           )}
