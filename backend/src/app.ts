@@ -7862,6 +7862,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       for (const user of users) {
         let status: 'sent' | 'skipped' | 'error' = 'error';
         let errorMsg: string | null = null;
+
+        // 1) Try to send — failure here must NOT stop the loop
         try {
           const result = await sendReengagementEmail(
             {
@@ -7886,18 +7888,25 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           status = 'error';
           errorMsg = String(err?.message ?? err);
         }
+
         results.push({ userId: String(user.id), email: String(user.email), status, ...(errorMsg ? { error: errorMsg } : {}) });
-        // Record the send attempt (skip 'skipped' — no email config, not a real attempt)
+
+        // 2) Record in DB — failure here must also NOT stop the loop
         if (status !== 'skipped') {
-          await db.run(
-            `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
-            [randomUUID(), String(user.id), nowBatch, status, errorMsg]
-          );
+          try {
+            await db.run(
+              `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
+              [randomUUID(), String(user.id), nowBatch, status, errorMsg]
+            );
+          } catch (dbErr) {
+            console.error('[reengagement/send] failed to record send for', user.id, dbErr);
+          }
         }
+
         // Small delay to avoid rate-limiting (Resend allows ~10 req/s)
         await new Promise((r) => setTimeout(r, 120));
       }
-      await persist();
+      try { await persist(); } catch { /* non-fatal */ }
 
       const sent = results.filter((r) => r.status === 'sent').length;
       const errors = results.filter((r) => r.status === 'error').length;
