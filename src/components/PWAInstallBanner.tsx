@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Share, Plus, Download, Smartphone } from 'lucide-react';
+import { X, Share, Plus, Download } from 'lucide-react';
 import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { cn } from '@/lib/utils';
 
@@ -52,9 +52,11 @@ export function PWAInstallBanner() {
           <div className="p-5 pr-10">
             {/* Header */}
             <div className="mb-3 flex items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary">
-                <Smartphone className="h-6 w-6 text-white" />
-              </div>
+              <img
+                src="/icon-192.svg"
+                alt="NoSigilo"
+                className="h-12 w-12 shrink-0 rounded-2xl shadow-md"
+              />
               <div>
                 <p className="font-bold text-gray-900 leading-tight">Instale o NoSigilo</p>
                 <p className="text-sm text-gray-500">Acesso rápido na tela inicial</p>
