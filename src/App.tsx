@@ -45,6 +45,7 @@ import Admin from "./pages/Admin";
 import UserProfile from "./pages/UserProfile";
 
 import NotFound from "./pages/NotFound";
+import { PWAInstallBanner } from "./components/PWAInstallBanner";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ const App = () => (
               <FriendsProvider>
                 <Toaster />
                 <Sonner />
+                <PWAInstallBanner />
                 <BrowserRouter>
                   <SiteVisitTracker />
                   <Routes>
