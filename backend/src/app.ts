@@ -1185,7 +1185,6 @@ async function getUserWithSponsorById(db: DbHandle, userId: string) {
                FROM user_badges b
                WHERE b.user_id = u.id
                  AND b.badge_type IN ('ambassador','ambassador_gold','ambassador_elite')
-               ORDER BY b.earned_at ASC
             ) AS ambassador_badges_csv
      FROM users u
      LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id

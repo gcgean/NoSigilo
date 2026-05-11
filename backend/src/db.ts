@@ -73,11 +73,16 @@ function sqljsRun(db: SqlJsDb, sql: string, params: unknown[] = []) {
 
 function toPgSql(sql: string) {
   // SQLite-specific syntax → PostgreSQL equivalents
+
+  // INSERT OR IGNORE INTO → INSERT INTO ... ON CONFLICT DO NOTHING
   let conflictSuffix = '';
   if (/INSERT\s+OR\s+IGNORE\s+INTO/i.test(sql)) {
     sql = sql.replace(/INSERT\s+OR\s+IGNORE\s+INTO/i, 'INSERT INTO');
     conflictSuffix = ' ON CONFLICT DO NOTHING';
   }
+
+  // GROUP_CONCAT(expr, sep) → STRING_AGG(expr, sep)
+  sql = sql.replace(/GROUP_CONCAT\s*\(/gi, 'STRING_AGG(');
 
   let out = '';
   let idx = 1;
