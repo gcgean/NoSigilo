@@ -793,7 +793,7 @@ export const adminService = {
     return response.data;
   },
 
-  getReengagementUsers: async (params: { dateFrom?: string; dateTo?: string; search?: string; page?: number }): Promise<{
+  getReengagementUsers: async (params: { dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; page?: number }): Promise<{
     total: number;
     page: number;
     pages: number;

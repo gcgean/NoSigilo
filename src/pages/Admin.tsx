@@ -1882,6 +1882,7 @@ function AdminReengagementTab() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [search, setSearch] = useState('');
+  const [withPhoto, setWithPhoto] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; pages: number; users: ReengagementUser[] } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -1898,6 +1899,7 @@ function AdminReengagementTab() {
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         search: search || undefined,
+        withPhoto: withPhoto || undefined,
         page: p,
       });
       setData(res);
@@ -1998,12 +2000,21 @@ function AdminReengagementTab() {
               className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
           </div>
+          <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
+            <input
+              type="checkbox"
+              checked={withPhoto}
+              onChange={(e) => setWithPhoto(e.target.checked)}
+              className="w-4 h-4 accent-primary rounded"
+            />
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Somente com foto</span>
+          </label>
           <Button onClick={() => load(1)} disabled={isLoading} className="h-9">
             {isLoading ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Search className="w-4 h-4 mr-2" />}
             Buscar
           </Button>
-          {(dateFrom || dateTo || search) && (
-            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setSearch(''); }}>
+          {(dateFrom || dateTo || search || withPhoto) && (
+            <Button variant="ghost" className="h-9 text-muted-foreground" onClick={() => { setDateFrom(''); setDateTo(''); setSearch(''); setWithPhoto(false); }}>
               Limpar filtros
             </Button>
           )}

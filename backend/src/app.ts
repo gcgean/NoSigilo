@@ -7650,10 +7650,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   // ─── Reengagement: list inactive users ─────────────────────────────────────
   app.get('/api/admin/reengagement/users', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
-      const dateFrom = typeof req.query.dateFrom === 'string' ? req.query.dateFrom.trim() : '';
-      const dateTo   = typeof req.query.dateTo   === 'string' ? req.query.dateTo.trim()   : '';
-      const search   = typeof req.query.search   === 'string' ? req.query.search.trim()   : '';
-      const page     = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
+      const dateFrom   = typeof req.query.dateFrom   === 'string' ? req.query.dateFrom.trim()   : '';
+      const dateTo     = typeof req.query.dateTo     === 'string' ? req.query.dateTo.trim()     : '';
+      const search     = typeof req.query.search     === 'string' ? req.query.search.trim()     : '';
+      const withPhoto  = req.query.withPhoto === '1' || req.query.withPhoto === 'true';
+      const page       = Math.max(1, parseInt(String(req.query.page ?? '1'), 10));
       const limit    = 50;
       const offset   = (page - 1) * limit;
 
@@ -7667,6 +7668,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
       const params: unknown[] = [];
 
+      if (withPhoto) {
+        conditions.push("u.avatar IS NOT NULL AND u.avatar != ''");
+      }
       if (search) {
         conditions.push("(LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)");
         const like = `%${search.toLowerCase()}%`;
