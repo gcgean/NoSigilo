@@ -7197,12 +7197,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         ? new Date(Date.now() - cityUsersPeriodDays * 24 * 60 * 60 * 1000).toISOString()
         : null;
       const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const sevenDaysAgoIso  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
+      const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows] = await Promise.all([
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
@@ -7306,6 +7307,48 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
            GROUP BY device_label
            ORDER BY c DESC`
         ),
+        // Acessos por hora do dia (últimos 7 dias)
+        queryAll(
+          db,
+          `SELECT CAST(SUBSTR(created_at, 12, 2) AS INTEGER) AS hour, COUNT(*) AS c
+           FROM site_visits
+           WHERE created_at >= ?
+           GROUP BY SUBSTR(created_at, 12, 2)
+           ORDER BY hour ASC`,
+          [sevenDaysAgoIso]
+        ),
+        // Novos cadastros por dia (últimos 30 dias)
+        queryAll(
+          db,
+          `SELECT SUBSTR(created_at, 1, 10) AS day, COUNT(*) AS c
+           FROM users
+           WHERE created_at >= ? AND (is_admin = 0 OR is_admin IS NULL)
+           GROUP BY SUBSTR(created_at, 1, 10)
+           ORDER BY day ASC`,
+          [thirtyDaysAgoIso]
+        ),
+        // Crescimento de cidades: compara últimos 7 dias vs 7 dias anteriores
+        queryAll(
+          db,
+          `SELECT city_label,
+                  SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS period_a,
+                  SUM(CASE WHEN created_at < ? AND created_at >= ? THEN 1 ELSE 0 END) AS period_b
+           FROM (
+             SELECT created_at,
+                    CASE
+                      WHEN TRIM(COALESCE(city, '')) = '' THEN 'Não informado'
+                      WHEN TRIM(COALESCE(state, '')) = '' THEN TRIM(COALESCE(city, ''))
+                      ELSE TRIM(COALESCE(city, '')) || ', ' || UPPER(TRIM(COALESCE(state, '')))
+                    END AS city_label
+             FROM users
+             WHERE created_at >= ? AND (is_admin = 0 OR is_admin IS NULL)
+           ) sub
+           WHERE city_label != 'Não informado'
+           GROUP BY city_label
+           ORDER BY (period_a + period_b) DESC
+           LIMIT 30`,
+          [sevenDaysAgoIso, sevenDaysAgoIso, fourteenDaysAgoIso, fourteenDaysAgoIso]
+        ),
       ]);
 
       const history = rows.map((row: any) => ({
@@ -7406,6 +7449,25 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         byCountry: groupCounts(history.map((item) => item.country), 'Desconhecido'),
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),
         history,
+        byHour: Array.from({ length: 24 }, (_, h) => {
+          const row = (hourlyRows as any[]).find((r: any) => Number(r.hour) === h);
+          return { hour: h, count: row ? Number(row.c || 0) : 0 };
+        }),
+        newUsersByDay: (newUsersByDayRows as any[]).map((row: any) => ({
+          label: String(row.day || ''),
+          count: Number(row.c || 0),
+        })),
+        growingCities: (cityGrowthRows as any[]).map((row: any) => {
+          const a = Number(row.period_a || 0); // last 7d
+          const b = Number(row.period_b || 0); // prev 7d
+          const growth = b > 0 ? Math.round(((a - b) / b) * 100) : (a > 0 ? 100 : 0);
+          return {
+            label: String(row.city_label || ''),
+            periodA: a,
+            periodB: b,
+            growth,
+          };
+        }).sort((x: any, y: any) => y.growth - x.growth),
       });
     } catch (err) {
       console.error('[admin/analytics/visits]', err);

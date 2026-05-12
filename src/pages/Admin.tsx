@@ -148,6 +148,8 @@ type TopAccessUser = {
   lastAccessAt: string | null;
 };
 
+type GrowingCity = { label: string; periodA: number; periodB: number; growth: number };
+
 type VisitAnalytics = {
   total: number;
   today: number;
@@ -166,6 +168,9 @@ type VisitAnalytics = {
   byCountry: VisitBreakdown[];
   byPage: VisitBreakdown[];
   history: VisitHistoryItem[];
+  byHour: Array<{ hour: number; count: number }>;
+  newUsersByDay: VisitBreakdown[];
+  growingCities: GrowingCity[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -197,6 +202,9 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   byCountry: [],
   byPage: [],
   history: [],
+  byHour: [],
+  newUsersByDay: [],
+  growingCities: [],
 };
 
 function parseDate(value?: string | null) {
@@ -1306,78 +1314,171 @@ export default function Admin() {
 
         <TabsContent value="visits">
           <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Globe2 className="w-5 h-5 text-primary" />
+            {/* ── KPI row ── */}
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+              {[
+                { icon: Globe2,           color: 'text-primary',        bg: 'bg-primary/10',       value: visitAnalytics.total.toLocaleString('pt-BR'),       label: 'Total de visitas' },
+                { icon: MousePointerClick,color: 'text-amber-500',      bg: 'bg-amber-500/10',     value: visitAnalytics.today.toLocaleString('pt-BR'),       label: 'Últimas 24h' },
+                { icon: TrendingUp,       color: 'text-emerald-600',    bg: 'bg-emerald-500/10',   value: visitAnalytics.last7Days.toLocaleString('pt-BR'),   label: 'Últimos 7 dias' },
+                { icon: Users,            color: 'text-blue-600',       bg: 'bg-blue-500/10',      value: visitAnalytics.uniqueToday.toLocaleString('pt-BR'), label: 'Únicos (24h)' },
+                { icon: Users,            color: 'text-emerald-600',    bg: 'bg-emerald-500/15',   value: visitAnalytics.onlineNow.toString(),                label: 'Online agora' },
+                { icon: TrendingUp,       color: 'text-purple-600',     bg: 'bg-purple-500/10',    value: visitAnalytics.byDay.length.toString(),             label: 'Dias c/ dados (30d)' },
+              ].map(({ icon: Icon, color, bg, value, label }) => (
+                <Card key={label} className="p-4 glass">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
+                      <Icon className={`w-4 h-4 ${color}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xl font-bold leading-tight">{value}</p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">{label}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.total}</p>
-                    <p className="text-xs text-muted-foreground">Total de visitas</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-warning/20 flex items-center justify-center">
-                    <MousePointerClick className="w-5 h-5 text-warning" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.today}</p>
-                    <p className="text-xs text-muted-foreground">Últimas 24 horas</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-success" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.last7Days}</p>
-                    <p className="text-xs text-muted-foreground">Últimos 7 dias</p>
-                  </div>
-                </div>
-              </Card>
+                </Card>
+              ))}
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                    <Users className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.onlineNow}</p>
-                    <p className="text-xs text-muted-foreground">Online simultâneos (agora)</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                    <Globe2 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.uniqueToday}</p>
-                    <p className="text-xs text-muted-foreground">Visitantes únicos (24h)</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-5 glass">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{visitAnalytics.byDay.length}</p>
-                    <p className="text-xs text-muted-foreground">Dias com dados (30d)</p>
-                  </div>
-                </div>
-              </Card>
+            {/* ── Acessos por dia + Novos usuários por dia (bar charts) ── */}
+            <div className="grid gap-4 xl:grid-cols-2">
+              {/* Visits by day */}
+              {(() => {
+                const items = [...visitAnalytics.byDay].reverse();
+                const max = Math.max(1, ...items.map(d => d.count));
+                return (
+                  <Card className="p-5 glass">
+                    <h3 className="font-semibold mb-1">Acessos por dia</h3>
+                    <p className="text-xs text-muted-foreground mb-4">Últimos 30 dias</p>
+                    {items.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sem dados por dia ainda.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {items.map((d) => (
+                          <div key={d.label} className="flex items-center gap-2 text-xs">
+                            <span className="w-20 shrink-0 text-muted-foreground tabular-nums">{d.label.slice(5)}</span>
+                            <div className="flex-1 h-5 bg-secondary/40 rounded overflow-hidden">
+                              <div
+                                className="h-full bg-primary/70 rounded transition-all"
+                                style={{ width: `${(d.count / max) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-8 text-right shrink-0 font-medium tabular-nums">{d.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })()}
+
+              {/* New users by day */}
+              {(() => {
+                const items = visitAnalytics.newUsersByDay;
+                const max = Math.max(1, ...items.map(d => d.count));
+                return (
+                  <Card className="p-5 glass">
+                    <h3 className="font-semibold mb-1">Novos cadastros por dia</h3>
+                    <p className="text-xs text-muted-foreground mb-4">Últimos 30 dias</p>
+                    {items.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Sem dados de cadastro ainda.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {items.map((d) => (
+                          <div key={d.label} className="flex items-center gap-2 text-xs">
+                            <span className="w-20 shrink-0 text-muted-foreground tabular-nums">{d.label.slice(5)}</span>
+                            <div className="flex-1 h-5 bg-secondary/40 rounded overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500/70 rounded transition-all"
+                                style={{ width: `${(d.count / max) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-8 text-right shrink-0 font-medium tabular-nums">{d.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                );
+              })()}
             </div>
 
+            {/* ── Cidades em crescimento ── */}
+            <Card className="p-5 glass">
+              <div className="flex items-start justify-between gap-4 mb-1">
+                <div>
+                  <h3 className="font-semibold">Cidades em crescimento 🔥</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Comparativo de novos usuários: últimos 7 dias vs 7 dias anteriores. Invista nas cidades com maior crescimento.
+                  </p>
+                </div>
+              </div>
+              {visitAnalytics.growingCities.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-4">Sem dados de crescimento ainda — necessário pelo menos 14 dias de cadastros.</p>
+              ) : (
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {visitAnalytics.growingCities.slice(0, 15).map((city, i) => {
+                    const isHot    = city.growth >= 50;
+                    const isUp     = city.growth > 0;
+                    const isStable = city.growth === 0;
+                    const isDown   = city.growth < 0;
+                    const bgClass  = isHot ? 'bg-orange-500/10 border-orange-400/30' : isUp ? 'bg-emerald-500/10 border-emerald-400/30' : isDown ? 'bg-red-500/10 border-red-400/20' : 'bg-secondary/40 border-transparent';
+                    const textClass= isHot ? 'text-orange-600' : isUp ? 'text-emerald-600' : isDown ? 'text-red-500' : 'text-muted-foreground';
+                    const arrow    = isHot ? '🔥' : isUp ? '↑' : isDown ? '↓' : '→';
+                    return (
+                      <div key={city.label} className={`rounded-xl border p-3 ${bgClass}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
+                            <p className="font-medium text-sm truncate">{city.label}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              <span className="font-medium">{city.periodA}</span> novos (7d) &nbsp;·&nbsp; antes: {city.periodB}
+                            </p>
+                          </div>
+                          <div className={`text-right shrink-0 ${textClass}`}>
+                            <p className="text-lg font-bold leading-none">{arrow} {Math.abs(city.growth)}%</p>
+                            <p className="text-[10px] mt-1 text-muted-foreground">crescimento</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* ── Tráfego por hora do dia ── */}
+            {visitAnalytics.byHour.length > 0 && (
+              <Card className="p-5 glass">
+                <h3 className="font-semibold mb-1">Tráfego por hora do dia</h3>
+                <p className="text-xs text-muted-foreground mb-4">Últimos 7 dias — identifique os horários de pico para campanhas</p>
+                {(() => {
+                  const max = Math.max(1, ...visitAnalytics.byHour.map(h => h.count));
+                  return (
+                    <div className="flex items-end gap-0.5 h-24">
+                      {visitAnalytics.byHour.map((h) => {
+                        const pct = (h.count / max) * 100;
+                        const isPeak = h.count === max;
+                        return (
+                          <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                              {h.hour}h: {h.count}
+                            </div>
+                            <div
+                              className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
+                              style={{ height: `${Math.max(2, pct)}%` }}
+                            />
+                            <span className="text-[9px] text-muted-foreground tabular-nums">
+                              {h.hour % 6 === 0 ? `${h.hour}h` : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </Card>
+            )}
+
+            {/* ── Origem / País / Páginas / Dispositivo ── */}
             <div className="grid gap-4 xl:grid-cols-4 xl:gap-6">
               <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Origem das visitas</h3>
@@ -1457,23 +1558,8 @@ export default function Admin() {
               </Card>
             </div>
 
+            {/* ── Região / Cidade de acesso / Ranking cadastros ── */}
             <div className="grid gap-4 xl:grid-cols-3 xl:gap-6">
-              <Card className="p-4 glass sm:p-6">
-                <h3 className="mb-4 font-semibold">Acessos por dia (últimos 30)</h3>
-                <div className="space-y-2">
-                  {visitAnalytics.byDay.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Sem dados por dia ainda.</p>
-                  ) : (
-                    visitAnalytics.byDay.map((entry) => (
-                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="min-w-0 truncate">{entry.label}</span>
-                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </Card>
-
               <Card className="p-4 glass sm:p-6">
                 <h3 className="mb-4 font-semibold">Acessos por região</h3>
                 <div className="space-y-2">
@@ -1508,7 +1594,6 @@ export default function Admin() {
                   )}
                 </div>
               </Card>
-            </div>
 
             <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
               <Card className="p-4 glass sm:p-6">
