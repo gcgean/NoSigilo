@@ -7308,44 +7308,47 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
            ORDER BY c DESC`
         ),
         // Acessos por hora do dia (últimos 7 dias)
+        // SUBSTR pos 12 = hour in ISO '2024-01-15T10:30:00Z'
         queryAll(
           db,
-          `SELECT CAST(SUBSTR(created_at, 12, 2) AS INTEGER) AS hour, COUNT(*) AS c
-           FROM site_visits
-           WHERE created_at >= ?
-           GROUP BY SUBSTR(created_at, 12, 2)
-           ORDER BY hour ASC`,
+          `SELECT CAST(SUBSTR(sv.created_at, 12, 2) AS INTEGER) AS hour_num,
+                  COUNT(*) AS c
+           FROM site_visits sv
+           WHERE sv.created_at >= ?
+           GROUP BY SUBSTR(sv.created_at, 12, 2)
+           ORDER BY 1 ASC`,
           [sevenDaysAgoIso]
         ),
         // Novos cadastros por dia (últimos 30 dias)
         queryAll(
           db,
-          `SELECT SUBSTR(created_at, 1, 10) AS day, COUNT(*) AS c
-           FROM users
-           WHERE created_at >= ? AND (is_admin = 0 OR is_admin IS NULL)
-           GROUP BY SUBSTR(created_at, 1, 10)
-           ORDER BY day ASC`,
+          `SELECT SUBSTR(u.created_at, 1, 10) AS reg_day, COUNT(*) AS c
+           FROM users u
+           WHERE u.created_at >= ? AND (u.is_admin = 0 OR u.is_admin IS NULL)
+           GROUP BY SUBSTR(u.created_at, 1, 10)
+           ORDER BY 1 ASC`,
           [thirtyDaysAgoIso]
         ),
         // Crescimento de cidades: compara últimos 7 dias vs 7 dias anteriores
+        // ORDER BY column position to avoid PostgreSQL alias-in-expression restriction
         queryAll(
           db,
           `SELECT city_label,
                   SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS period_a,
                   SUM(CASE WHEN created_at < ? AND created_at >= ? THEN 1 ELSE 0 END) AS period_b
            FROM (
-             SELECT created_at,
+             SELECT u.created_at,
                     CASE
-                      WHEN TRIM(COALESCE(city, '')) = '' THEN 'Não informado'
-                      WHEN TRIM(COALESCE(state, '')) = '' THEN TRIM(COALESCE(city, ''))
-                      ELSE TRIM(COALESCE(city, '')) || ', ' || UPPER(TRIM(COALESCE(state, '')))
+                      WHEN TRIM(COALESCE(u.city, '')) = '' THEN 'Não informado'
+                      WHEN TRIM(COALESCE(u.state, '')) = '' THEN TRIM(COALESCE(u.city, ''))
+                      ELSE TRIM(COALESCE(u.city, '')) || ', ' || UPPER(TRIM(COALESCE(u.state, '')))
                     END AS city_label
-             FROM users
-             WHERE created_at >= ? AND (is_admin = 0 OR is_admin IS NULL)
+             FROM users u
+             WHERE u.created_at >= ? AND (u.is_admin = 0 OR u.is_admin IS NULL)
            ) sub
            WHERE city_label != 'Não informado'
            GROUP BY city_label
-           ORDER BY (period_a + period_b) DESC
+           ORDER BY 2 DESC
            LIMIT 30`,
           [sevenDaysAgoIso, sevenDaysAgoIso, fourteenDaysAgoIso, fourteenDaysAgoIso]
         ),
@@ -7450,11 +7453,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),
         history,
         byHour: Array.from({ length: 24 }, (_, h) => {
-          const row = (hourlyRows as any[]).find((r: any) => Number(r.hour) === h);
+          const row = (hourlyRows as any[]).find((r: any) => Number(r.hour_num) === h);
           return { hour: h, count: row ? Number(row.c || 0) : 0 };
         }),
         newUsersByDay: (newUsersByDayRows as any[]).map((row: any) => ({
-          label: String(row.day || ''),
+          label: String(row.reg_day || ''),
           count: Number(row.c || 0),
         })),
         growingCities: (cityGrowthRows as any[]).map((row: any) => {
