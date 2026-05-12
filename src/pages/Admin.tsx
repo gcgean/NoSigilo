@@ -1594,6 +1594,7 @@ export default function Admin() {
                   )}
                 </div>
               </Card>
+            </div>
 
             <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
               <Card className="p-4 glass sm:p-6">
