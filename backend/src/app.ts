@@ -2461,7 +2461,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${reelsOnlyFilter}
        ORDER BY p.created_at DESC
        LIMIT ? OFFSET 0`,
-      [...genderParams, req.auth!.userId, req.auth!.userId, fetchLimit]
+      [req.auth!.userId, req.auth!.userId, ...genderParams, fetchLimit]
     );
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
