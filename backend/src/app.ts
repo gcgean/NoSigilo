@@ -2132,16 +2132,6 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/invites', requireAuth(env, db), async (req, res) => {
-    // Limit to 5 active (unused) invites per user
-    const activeCount = (await queryOne(
-      db,
-      `SELECT COUNT(*) AS cnt FROM invite_links WHERE inviter_user_id = ? AND status = 'created'`,
-      [req.auth!.userId]
-    )) as any;
-    if ((activeCount?.cnt ?? 0) >= 5) {
-      res.status(429).json({ error: 'too_many_active_invites', limit: 5 });
-      return;
-    }
     const now = nowIso();
     const id = randomUUID();
     const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
