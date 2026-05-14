@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Bell, Heart, Lock, MessageCircle, Radio, ShieldCheck, Sparkles, UserPlus } from 'lucide-react';
+import { Crown, Flame, Gift, Heart, Lock, MessageCircle, ShieldCheck, Sparkles, Star, UserPlus, Users, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -41,18 +41,105 @@ function MiniCard({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
+function WelcomeInvitePreview() {
+  const [pulse, setPulse] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setPulse((p) => (p + 1) % 3), 1200);
+    return () => clearInterval(t);
+  }, []);
+
+  const nodes = [
+    { label: 'Você', angle: 0, dist: 0, main: true },
+    { label: 'Ana', angle: 0, dist: 72 },
+    { label: 'Carlos', angle: 72, dist: 72 },
+    { label: 'Julia', angle: 144, dist: 72 },
+    { label: 'Rafael', angle: 216, dist: 72 },
+    { label: 'Bia', angle: 288, dist: 72 },
+  ];
+
+  return (
+    <div className="space-y-3">
+      {/* Network visualization */}
+      <div className="relative flex h-44 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-rose-950/60 via-primary/20 to-orange-950/40">
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 260 176" fill="none">
+          {nodes.slice(1).map((node, i) => {
+            const rad = (node.angle * Math.PI) / 180;
+            const x2 = 130 + Math.cos(rad) * node.dist;
+            const y2 = 88 + Math.sin(rad) * node.dist;
+            return (
+              <line
+                key={i}
+                x1="130" y1="88"
+                x2={x2} y2={y2}
+                stroke="rgba(236,72,153,0.35)"
+                strokeWidth="1.5"
+                strokeDasharray="4 3"
+                className={cn('transition-all duration-700', i === pulse && 'stroke-primary')}
+              />
+            );
+          })}
+          {nodes.map((node, i) => {
+            const rad = (node.angle * Math.PI) / 180;
+            const cx = 130 + Math.cos(rad) * node.dist;
+            const cy = 88 + Math.sin(rad) * node.dist;
+            const isActive = node.main || (i - 1) === pulse;
+            return (
+              <g key={i}>
+                <circle
+                  cx={cx} cy={cy}
+                  r={node.main ? 20 : 14}
+                  fill={node.main ? 'rgba(236,72,153,0.9)' : 'rgba(30,10,20,0.8)'}
+                  stroke={isActive ? '#ec4899' : 'rgba(236,72,153,0.25)'}
+                  strokeWidth={isActive ? 2 : 1}
+                />
+                {node.main && (
+                  <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
+                    Você
+                  </text>
+                )}
+                {!node.main && (
+                  <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.75)" fontSize="7.5">
+                    {node.label}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+        <div className="absolute bottom-2 right-3 rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-medium text-rose-300 backdrop-blur">
+          ✦ Rede crescendo agora
+        </div>
+      </div>
+
+      {/* Invite link preview */}
+      <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5">
+        <Gift className="h-4 w-4 shrink-0 text-primary" />
+        <span className="flex-1 truncate font-mono text-[11px] text-muted-foreground">nosigilo.com/invite/<span className="text-primary font-semibold">seu-link-único</span></span>
+        <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Copiar</span>
+      </div>
+
+      {/* Benefits */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { icon: Crown, label: 'Você escolhe quem entra', color: 'text-amber-400' },
+          { icon: Zap, label: 'Convite exclusivo & pessoal', color: 'text-primary' },
+          { icon: Star, label: 'Fortalece sua reputação', color: 'text-orange-400' },
+        ].map(({ icon: Icon, label, color }) => (
+          <div key={label} className="flex flex-col items-center gap-1.5 rounded-xl border bg-secondary/20 p-2.5 text-center">
+            <Icon className={cn('h-4 w-4', color)} />
+            <span className="text-[10px] leading-tight text-muted-foreground">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TutorialPreview({ stepId }: { stepId: string }) {
   switch (stepId) {
     case 'welcome':
-      return (
-        <PreviewShell>
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-gradient-primary px-4 py-3 text-sm font-semibold text-white">Rede +18 por convite</div>
-            <MiniCard title="Privacidade no seu controle" subtitle="Fotos privadas, aprovação e revogação" />
-            <MiniCard title="Ambiente adulto e discreto" subtitle="Consentimento e segurança em primeiro lugar" />
-          </div>
-        </PreviewShell>
-      );
+      return <WelcomeInvitePreview />;
     case 'discover':
       return (
         <PreviewShell>
@@ -124,11 +211,13 @@ export default function FirstAccessTutorial() {
     () => [
       {
         id: 'welcome',
-        title: 'Bem-vindo ao NoSigilo',
+        title: 'Você chegou. Agora expanda o círculo.',
         description:
-          'Aqui a entrada é por convite, o ambiente é adulto e você mantém o controle da sua privacidade desde o começo.',
+          'Você foi convidado por alguém de confiança — isso já te coloca num grupo seleto. Agora é a sua vez: cada pessoa que você trouxer fortalece a rede e aumenta sua reputação aqui dentro.',
         accent: 'from-rose-500/20 via-primary/20 to-orange-400/20',
-        icon: ShieldCheck,
+        route: '/invites',
+        cta: '🎁 Gerar meus convites',
+        icon: Users,
         preview: <TutorialPreview stepId="welcome" />,
       },
       {
@@ -223,16 +312,27 @@ export default function FirstAccessTutorial() {
     goNext();
   };
 
+  const isWelcome = step.id === 'welcome';
+
   return (
     <Dialog open={open} onOpenChange={(next) => (!next ? finishTutorial() : setOpen(true))}>
       <DialogContent className="max-h-[92dvh] max-w-lg overflow-hidden border-primary/20 p-0 sm:max-w-2xl">
         <div className="relative">
           <div className={cn('absolute inset-0 bg-gradient-to-br', step.accent)} />
           <div className="relative flex max-h-[92dvh] flex-col overflow-hidden p-4 sm:p-6">
+
+            {/* Header */}
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0 space-y-2">
-                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/70 px-3 py-1 text-xs font-medium text-primary backdrop-blur">
-                  Passo {stepIndex + 1} de {steps.length}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/70 px-3 py-1 text-xs font-medium text-primary backdrop-blur">
+                    Passo {stepIndex + 1} de {steps.length}
+                  </div>
+                  {isWelcome && (
+                    <div className="inline-flex animate-pulse items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-1 text-[10px] font-semibold text-rose-400">
+                      <Flame className="h-3 w-3" /> Exclusivo por convite
+                    </div>
+                  )}
                 </div>
                 <h2 className="text-xl font-bold leading-tight sm:text-2xl">{step.title}</h2>
               </div>
@@ -241,33 +341,70 @@ export default function FirstAccessTutorial() {
               </Button>
             </div>
 
+            {/* Progress bar */}
             <div className="mb-4 h-2 overflow-hidden rounded-full bg-secondary/70">
               <div className="h-full rounded-full bg-gradient-primary transition-all duration-300" style={{ width: `${progress}%` }} />
             </div>
 
+            {/* Content */}
             <div className="overflow-y-auto pr-1">
               <div className="space-y-4">
-                <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                {isWelcome ? (
+                  <div className="space-y-3">
+                    <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                    {/* Social proof strip */}
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { icon: Users, text: 'Rede cresce por indicação', color: 'text-primary' },
+                        { icon: ShieldCheck, text: 'Você garante a qualidade', color: 'text-emerald-400' },
+                        { icon: Sparkles, text: 'Seu nome fica associado', color: 'text-amber-400' },
+                      ].map(({ icon: Icon, text, color }) => (
+                        <span key={text} className={cn('inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium backdrop-blur', color)}>
+                          <Icon className="h-3 w-3" /> {text}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                )}
                 {step.preview}
               </div>
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 border-t border-white/40 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={goPrev} disabled={stepIndex === 0}>
-                  Voltar
-                </Button>
-                <Button variant="ghost" onClick={goNext}>
-                  {stepIndex === steps.length - 1 ? 'Finalizar' : 'Próximo'}
-                </Button>
-              </div>
-
-              {step.route ? (
-                <Button className="bg-gradient-primary hover:opacity-90" onClick={handleVisitRoute}>
-                  {step.cta || 'Abrir área'}
-                </Button>
-              ) : null}
+            {/* Footer */}
+            <div className={cn('mt-5 border-t border-white/40 pt-4', isWelcome ? 'flex flex-col gap-3' : 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between')}>
+              {isWelcome ? (
+                <>
+                  <Button
+                    className="w-full bg-gradient-primary py-5 text-base font-bold hover:opacity-90"
+                    onClick={handleVisitRoute}
+                  >
+                    🎁 Gerar meus convites agora
+                  </Button>
+                  <Button variant="ghost" className="w-full text-muted-foreground" onClick={goNext}>
+                    Explorar a plataforma primeiro →
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={goPrev} disabled={stepIndex === 0}>
+                      Voltar
+                    </Button>
+                    <Button variant="ghost" onClick={goNext}>
+                      {stepIndex === steps.length - 1 ? 'Finalizar' : 'Próximo'}
+                    </Button>
+                  </div>
+                  {step.route ? (
+                    <Button className="bg-gradient-primary hover:opacity-90" onClick={handleVisitRoute}>
+                      {step.cta || 'Abrir área'}
+                    </Button>
+                  ) : null}
+                </>
+              )}
             </div>
+
           </div>
         </div>
       </DialogContent>
