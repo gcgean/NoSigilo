@@ -176,16 +176,20 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms, onGoToInv
           <p className="text-xs text-muted-foreground">O link já está na sua área de transferência</p>
         </div>
 
-        {/* Link box */}
-        <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5">
-          <Gift className="h-4 w-4 shrink-0 text-primary" />
-          <span className="flex-1 truncate font-mono text-[11px] text-primary">{generatedLink}</span>
+        {/* Link box — mostra só o path, botão copiar em destaque */}
+        <div className="overflow-hidden rounded-xl border border-primary/30 bg-primary/5">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <Gift className="h-4 w-4 shrink-0 text-primary" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] text-primary">
+              {generatedLink.replace(/^https?:\/\//, '')}
+            </span>
+          </div>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/25"
+            className="flex w-full items-center justify-center gap-2 border-t border-primary/20 bg-primary/10 py-2 text-xs font-semibold text-primary transition hover:bg-primary/20"
           >
-            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-            {copied ? 'Copiado!' : 'Copiar'}
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? '✓ Link copiado!' : 'Copiar link'}
           </button>
         </div>
 
@@ -209,13 +213,13 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms, onGoToInv
         </div>
 
         {/* Next tier teaser */}
-        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-3">
-          <p className="mb-1.5 text-center text-[11px] font-semibold text-amber-300">
-            🥉 Convide mais <span className="font-bold">2 pessoas</span> e desbloqueie:
+        <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-3">
+          <p className="mb-1.5 text-center text-xs font-semibold text-foreground">
+            🥉 Convide mais <span className="text-primary font-bold">2 pessoas</span> e desbloqueie:
           </p>
           <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
             {['30 dias Premium grátis', 'Perfil em destaque', 'Título Embaixador(a)'].map((b) => (
-              <span key={b} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <span key={b} className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <span className="text-emerald-400">✓</span> {b}
               </span>
             ))}
