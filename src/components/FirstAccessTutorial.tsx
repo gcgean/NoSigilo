@@ -43,9 +43,36 @@ function MiniCard({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 const INVITE_TIERS = [
-  { count: 3,  label: 'Embaixador(a)',      icon: '🥉', days: 30,  color: 'from-orange-400/20 to-amber-300/10',   text: 'text-orange-400',  border: 'border-orange-400/30' },
-  { count: 10, label: 'Embaixador(a) Gold', icon: '🥇', days: 90,  color: 'from-yellow-400/20 to-amber-400/10',   text: 'text-yellow-400',  border: 'border-yellow-400/30' },
-  { count: 30, label: 'Embaixador(a) Elite',icon: '👑', days: 365, color: 'from-violet-400/20 to-fuchsia-400/10', text: 'text-violet-400',  border: 'border-violet-400/30' },
+  {
+    count: 3,
+    label: 'Embaixador(a)',
+    icon: '🥉',
+    days: 30,
+    color: 'from-orange-400/20 to-amber-300/10',
+    text: 'text-orange-400',
+    border: 'border-orange-400/30',
+    perks: ['30 dias Premium grátis', 'Perfil em destaque no feed', 'Título no perfil'],
+  },
+  {
+    count: 10,
+    label: 'Embaixador(a) Gold',
+    icon: '🥇',
+    days: 90,
+    color: 'from-yellow-400/20 to-amber-400/10',
+    text: 'text-yellow-400',
+    border: 'border-yellow-400/30',
+    perks: ['90 dias Premium grátis', 'Visibilidade 2× maior', 'Título Gold no perfil'],
+  },
+  {
+    count: 30,
+    label: 'Embaixador(a) Elite',
+    icon: '👑',
+    days: 365,
+    color: 'from-violet-400/20 to-fuchsia-400/10',
+    text: 'text-violet-400',
+    border: 'border-violet-400/30',
+    perks: ['365 dias Premium grátis', 'Topo das sugestões', 'Título Elite exclusivo'],
+  },
 ];
 
 type WelcomeStep = 'idle' | 'generating' | 'success' | 'error';
@@ -182,10 +209,17 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms, onGoToInv
         </div>
 
         {/* Next tier teaser */}
-        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5 text-center">
-          <p className="text-[11px] text-amber-300">
-            🥉 Convide mais <span className="font-bold">2 pessoas</span> para se tornar <span className="font-bold">Embaixador(a)</span> e ganhar <span className="font-bold">30 dias Premium</span>
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-3">
+          <p className="mb-1.5 text-center text-[11px] font-semibold text-amber-300">
+            🥉 Convide mais <span className="font-bold">2 pessoas</span> e desbloqueie:
           </p>
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1">
+            {['30 dias Premium grátis', 'Perfil em destaque', 'Título Embaixador(a)'].map((b) => (
+              <span key={b} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="text-emerald-400">✓</span> {b}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -240,10 +274,17 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms, onGoToInv
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Recompensas por convite</p>
         <div className="grid grid-cols-3 gap-1.5">
           {INVITE_TIERS.map((tier) => (
-            <div key={tier.label} className={cn('flex flex-col items-center gap-1 rounded-xl border bg-gradient-to-br p-2 text-center', tier.color, tier.border)}>
-              <span className="text-lg leading-none">{tier.icon}</span>
+            <div key={tier.label} className={cn('flex flex-col items-center gap-1.5 rounded-xl border bg-gradient-to-br p-2.5 text-center', tier.color, tier.border)}>
+              <span className="text-xl leading-none">{tier.icon}</span>
               <span className={cn('text-[9px] font-bold leading-tight', tier.text)}>{tier.count} convites</span>
-              <span className="text-[9px] leading-tight text-muted-foreground">{tier.days}d Premium grátis</span>
+              <div className="w-full space-y-0.5">
+                {tier.perks.map((perk) => (
+                  <div key={perk} className="flex items-center gap-1">
+                    <span className="text-[8px] text-emerald-400">✓</span>
+                    <span className="text-[8px] leading-tight text-muted-foreground">{perk}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
