@@ -221,7 +221,10 @@ export default function Feed() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushSupported, setPushSupported] = useState(true);
   const [pushLoading, setPushLoading] = useState(false);
-  const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem('nosigilo:notif-banner-dismissed') === '1');
+  const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem('nosigilo:notif-banner-date') === today;
+  });
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [photoReactionCounts, setPhotoReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
@@ -274,8 +277,14 @@ export default function Feed() {
     getPushActivationState().then((s) => {
       setPushEnabled(s.enabled);
       setPushSupported(s.supported);
+      // Se ambas as opções já estiverem ativas, marca o dia como visto automaticamente
+      const hasTg = !!(user as any)?.telegramChatId;
+      if (s.enabled && hasTg) {
+        localStorage.setItem('nosigilo:notif-banner-date', new Date().toISOString().slice(0, 10));
+        setNotifBannerDismissed(true);
+      }
     }).catch(() => setPushSupported(false));
-  }, []);
+  }, [user]);
 
   const visiblePosts = useMemo(() => {
     if (feedFilter !== 'favorites') return allPosts;
@@ -1339,7 +1348,7 @@ export default function Feed() {
           <button
             type="button"
             className="absolute right-3 top-3 rounded-full p-1 text-muted-foreground hover:text-foreground"
-            onClick={() => { localStorage.setItem('nosigilo:notif-banner-dismissed', '1'); setNotifBannerDismissed(true); }}
+            onClick={() => { localStorage.setItem('nosigilo:notif-banner-date', new Date().toISOString().slice(0, 10)); setNotifBannerDismissed(true); }}
           >
             <X className="h-3.5 w-3.5" />
           </button>

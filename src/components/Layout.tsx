@@ -71,8 +71,7 @@ const extraNavItems = [
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
 ];
 
-const PWA_INSTALL_DISMISS_KEY = 'nosigilo:pwa-install-dismissed-at';
-const PWA_INSTALL_DISMISS_DAYS = 7;
+const PWA_INSTALL_DISMISS_KEY = 'nosigilo:pwa-install-dismissed-date';
 
 function parseValidDate(value?: string | null) {
   const time = value ? new Date(value).getTime() : NaN;
@@ -436,10 +435,8 @@ export default function Layout() {
       setShowPwaInstallPrompt(false);
       return;
     }
-    const lastDismissRaw = localStorage.getItem(PWA_INSTALL_DISMISS_KEY);
-    const lastDismiss = lastDismissRaw ? Number(lastDismissRaw) : 0;
-    const dismissWindowMs = PWA_INSTALL_DISMISS_DAYS * 24 * 60 * 60 * 1000;
-    if (lastDismiss && Date.now() - lastDismiss < dismissWindowMs) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(PWA_INSTALL_DISMISS_KEY) === today) {
       setShowPwaInstallPrompt(false);
       return;
     }
@@ -447,7 +444,7 @@ export default function Layout() {
   }, [isMobile, location.pathname]);
 
   const dismissPwaInstallPrompt = () => {
-    localStorage.setItem(PWA_INSTALL_DISMISS_KEY, String(Date.now()));
+    localStorage.setItem(PWA_INSTALL_DISMISS_KEY, new Date().toISOString().slice(0, 10));
     setShowPwaInstallPrompt(false);
   };
 
