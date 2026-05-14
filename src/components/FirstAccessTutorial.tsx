@@ -48,10 +48,10 @@ const INVITE_TIERS = [
   { count: 30, label: 'Embaixador(a) Elite',icon: '👑', days: 365, color: 'from-violet-400/20 to-fuchsia-400/10', text: 'text-violet-400',  border: 'border-violet-400/30' },
 ];
 
-type WelcomeStep = 'idle' | 'generating' | 'success';
+type WelcomeStep = 'idle' | 'generating' | 'success' | 'error';
 
 interface WelcomeInvitePreviewProps {
-  onGenerate: () => Promise<string | null>;
+  onGenerate: () => Promise<{ url: string } | { errorCode: string } | null>;
   onSendWhatsApp: (link: string) => void;
   onSendSms: (link: string) => void;
 }
@@ -60,6 +60,7 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: Welcome
   const [pulse, setPulse] = useState(0);
   const [step, setStep] = useState<WelcomeStep>('idle');
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -78,13 +79,21 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: Welcome
 
   const handleGenerate = async () => {
     setStep('generating');
-    const link = await onGenerate();
-    if (link) {
-      setGeneratedLink(link);
-      await navigator.clipboard.writeText(link).catch(() => {});
+    const result = await onGenerate();
+    if (result && 'url' in result) {
+      setGeneratedLink(result.url);
+      await navigator.clipboard.writeText(result.url).catch(() => {});
       setStep('success');
+    } else if (result && 'errorCode' in result) {
+      if (result.errorCode === 'too_many_active_invites') {
+        setErrorMsg('Você já tem 5 convites ativos. Acesse a página de convites para gerenciá-los.');
+      } else {
+        setErrorMsg('Não foi possível gerar o convite. Tente novamente.');
+      }
+      setStep('error');
     } else {
-      setStep('idle');
+      setErrorMsg('Não foi possível gerar o convite. Tente novamente.');
+      setStep('error');
     }
   };
 
@@ -94,6 +103,25 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: Welcome
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // ── ERROR SCREEN ───────────────────────────────────────────────────────────
+  if (step === 'error') {
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 py-6 text-center">
+          <span className="text-3xl">⚠️</span>
+          <p className="text-sm font-semibold text-rose-400">Ops! Algo deu errado</p>
+          <p className="px-4 text-xs text-muted-foreground">{errorMsg}</p>
+        </div>
+        <button
+          onClick={() => setStep('idle')}
+          className="w-full rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/20"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
 
   // ── SUCCESS SCREEN ─────────────────────────────────────────────────────────
   if (step === 'success' && generatedLink) {
@@ -296,14 +324,15 @@ export default function FirstAccessTutorial() {
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
 
-  const handleGenerateInvite = async (): Promise<string | null> => {
+  const handleGenerateInvite = async (): Promise<{ url: string } | { errorCode: string } | null> => {
     try {
       const data = await invitesService.create();
-      const token: string = data?.token ?? '';
-      if (!token) return null;
-      return `${window.location.origin}/invite/${token}`;
-    } catch {
-      return null;
+      const url: string = data?.url ?? (data?.token ? `${window.location.origin}/invite/${data.token}` : '');
+      if (!url) return { errorCode: 'unknown' };
+      return { url };
+    } catch (err: any) {
+      const code = err?.response?.data?.error ?? 'unknown';
+      return { errorCode: code };
     }
   };
 
