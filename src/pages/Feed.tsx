@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -23,8 +23,8 @@ import VideoWithPreview from '@/components/VideoWithPreview';
 import { PostMediaCarousel } from '@/components/PostMediaCarousel';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
-import ProfileCompletionBanner from '@/components/ProfileCompletionBanner';
 import EventPromoCard from '@/components/EventPromoCard';
+import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import {
   COMMENT_ACTION_BUTTON_BASE,
@@ -218,6 +218,11 @@ export default function Feed() {
   const [editCommentDraftById, setEditCommentDraftById] = useState<Record<string, string>>({});
   const [replyingToByPostId, setReplyingToByPostId] = useState<Record<string, Comment | null>>({});
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSupported, setPushSupported] = useState(true);
+  const [pushLoading, setPushLoading] = useState(false);
+  const [notifBannerDismissed, setNotifBannerDismissed] = useState(() => localStorage.getItem('nosigilo:notif-banner-dismissed') === '1');
+  const [telegramLoading, setTelegramLoading] = useState(false);
   const [photoReactionCounts, setPhotoReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
   const [isLoadingPhotoReactions, setIsLoadingPhotoReactions] = useState<Record<string, boolean>>({});
@@ -264,6 +269,13 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
+
+  useEffect(() => {
+    getPushActivationState().then((s) => {
+      setPushEnabled(s.enabled);
+      setPushSupported(s.supported);
+    }).catch(() => setPushSupported(false));
+  }, []);
 
   const visiblePosts = useMemo(() => {
     if (feedFilter !== 'favorites') return allPosts;
@@ -1322,18 +1334,94 @@ export default function Feed() {
         <EventPromoCard userId={user.id} />
       )}
 
-      {user && !firstAccessPostMode && (
-        <ProfileCompletionBanner
-          profile={{
-            avatar: user.avatar ?? null,
-            bio: user.bio ?? null,
-            city: user.city ?? null,
-            birthDate: user.birthDate ?? null,
-            gender: user.gender ?? null,
-            lookingFor: user.lookingFor?.length ? user.lookingFor[0] : null,
-            maritalStatus: user.maritalStatus ?? null,
-          }}
-        />
+      {user && !firstAccessPostMode && !notifBannerDismissed && (!pushEnabled || !(user as any).telegramChatId) && (
+        <Card className="relative mb-4 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-rose-500/5 p-4 sm:mb-6">
+          <button
+            type="button"
+            className="absolute right-3 top-3 rounded-full p-1 text-muted-foreground hover:text-foreground"
+            onClick={() => { localStorage.setItem('nosigilo:notif-banner-dismissed', '1'); setNotifBannerDismissed(true); }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+
+          <div className="mb-3 flex items-center gap-2">
+            <Bell className="h-4 w-4 text-primary" />
+            <p className="text-sm font-semibold">Fique por dentro de tudo</p>
+          </div>
+          <p className="mb-4 text-xs text-muted-foreground">
+            Ative as notificações para não perder radares, matches e mensagens importantes.
+          </p>
+
+          <div className="space-y-2">
+            {/* Push notifications */}
+            {pushSupported && !pushEnabled && (
+              <button
+                type="button"
+                disabled={pushLoading}
+                onClick={async () => {
+                  setPushLoading(true);
+                  try {
+                    await enablePushNotifications();
+                    const s = await getPushActivationState();
+                    setPushEnabled(s.enabled);
+                    toast({ title: '🔔 Notificações ativadas!' });
+                  } catch {
+                    toast({ title: 'Não foi possível ativar', variant: 'destructive' });
+                  } finally {
+                    setPushLoading(false);
+                  }
+                }}
+                className="flex w-full items-center gap-3 rounded-xl border border-primary/25 bg-primary/10 px-4 py-3 text-left transition hover:bg-primary/20"
+              >
+                <Bell className="h-5 w-5 shrink-0 text-primary" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Notificações do app</p>
+                  <p className="text-xs text-muted-foreground">Matches, mensagens e radares em tempo real</p>
+                </div>
+                <span className="rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-white">Ativar</span>
+              </button>
+            )}
+            {pushEnabled && (
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
+                <Bell className="h-5 w-5 shrink-0 text-emerald-500" />
+                <p className="text-sm font-medium text-emerald-500">Notificações do app ativas ✓</p>
+              </div>
+            )}
+
+            {/* Telegram */}
+            {!(user as any).telegramChatId ? (
+              <button
+                type="button"
+                disabled={telegramLoading}
+                onClick={async () => {
+                  setTelegramLoading(true);
+                  try {
+                    const { url } = await profileService.generateTelegramLink();
+                    window.open(url, '_blank');
+                    toast({ title: '✈️ Abrindo Telegram...', description: 'Clique em Iniciar no bot para conectar.' });
+                  } catch {
+                    toast({ title: 'Erro ao gerar link', variant: 'destructive' });
+                  } finally {
+                    setTelegramLoading(false);
+                  }
+                }}
+                className="flex w-full items-center gap-3 rounded-xl border border-[#229ED9]/25 bg-[#229ED9]/10 px-4 py-3 text-left transition hover:bg-[#229ED9]/20"
+              >
+                <span className="text-xl leading-none">✈️</span>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground">Conectar Telegram</p>
+                  <p className="text-xs text-muted-foreground">Radares e matches diretamente no seu Telegram</p>
+                </div>
+                <span className="rounded-full bg-[#229ED9] px-2.5 py-0.5 text-[10px] font-bold text-white">Conectar</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
+                <span className="text-xl leading-none">✈️</span>
+                <p className="text-sm font-medium text-emerald-500">Telegram conectado ✓</p>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       {/* Composer */}
