@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Crown, Flame, Gift, Heart, Lock, MessageCircle, ShieldCheck, Sparkles, Star, UserPlus, Users, Zap } from 'lucide-react';
+import { Check, CheckCircle2, Copy, Crown, ExternalLink, Flame, Gift, Heart, Lock, MessageCircle, Send, ShieldCheck, Sparkles, Star, UserPlus, Users, Zap } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { invitesService } from '@/services/api';
 
 type TutorialStep = {
   id: string;
@@ -41,97 +42,187 @@ function MiniCard({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
-function WelcomeInvitePreview() {
+const INVITE_TIERS = [
+  { count: 3,  label: 'Embaixador(a)',      icon: '🥉', days: 30,  color: 'from-orange-400/20 to-amber-300/10',   text: 'text-orange-400',  border: 'border-orange-400/30' },
+  { count: 10, label: 'Embaixador(a) Gold', icon: '🥇', days: 90,  color: 'from-yellow-400/20 to-amber-400/10',   text: 'text-yellow-400',  border: 'border-yellow-400/30' },
+  { count: 30, label: 'Embaixador(a) Elite',icon: '👑', days: 365, color: 'from-violet-400/20 to-fuchsia-400/10', text: 'text-violet-400',  border: 'border-violet-400/30' },
+];
+
+type WelcomeStep = 'idle' | 'generating' | 'success';
+
+interface WelcomeInvitePreviewProps {
+  onGenerate: () => Promise<string | null>;
+  onSendWhatsApp: (link: string) => void;
+  onSendSms: (link: string) => void;
+}
+
+function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: WelcomeInvitePreviewProps) {
   const [pulse, setPulse] = useState(0);
+  const [step, setStep] = useState<WelcomeStep>('idle');
+  const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const t = setInterval(() => setPulse((p) => (p + 1) % 3), 1200);
+    const t = setInterval(() => setPulse((p) => (p + 1) % 5), 900);
     return () => clearInterval(t);
   }, []);
 
   const nodes = [
-    { label: 'Você', angle: 0, dist: 0, main: true },
-    { label: 'Ana', angle: 0, dist: 72 },
-    { label: 'Carlos', angle: 72, dist: 72 },
-    { label: 'Julia', angle: 144, dist: 72 },
-    { label: 'Rafael', angle: 216, dist: 72 },
-    { label: 'Bia', angle: 288, dist: 72 },
+    { label: 'Você', angle: 0,   dist: 0,  main: true },
+    { label: 'Ana',    angle: 0,   dist: 70 },
+    { label: 'Carlos', angle: 72,  dist: 70 },
+    { label: 'Julia',  angle: 144, dist: 70 },
+    { label: 'Rafael', angle: 216, dist: 70 },
+    { label: 'Bia',    angle: 288, dist: 70 },
   ];
 
+  const handleGenerate = async () => {
+    setStep('generating');
+    const link = await onGenerate();
+    if (link) {
+      setGeneratedLink(link);
+      await navigator.clipboard.writeText(link).catch(() => {});
+      setStep('success');
+    } else {
+      setStep('idle');
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!generatedLink) return;
+    await navigator.clipboard.writeText(generatedLink).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── SUCCESS SCREEN ─────────────────────────────────────────────────────────
+  if (step === 'success' && generatedLink) {
+    return (
+      <div className="space-y-4">
+        {/* Confetti-like success header */}
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-gradient-to-br from-emerald-500/15 to-primary/10 py-5 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/20 text-3xl">
+            🎉
+          </div>
+          <p className="text-base font-bold text-emerald-400">Convite gerado e copiado!</p>
+          <p className="text-xs text-muted-foreground">O link já está na sua área de transferência</p>
+        </div>
+
+        {/* Link box */}
+        <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5">
+          <Gift className="h-4 w-4 shrink-0 text-primary" />
+          <span className="flex-1 truncate font-mono text-[11px] text-primary">{generatedLink}</span>
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1 rounded-md bg-primary/15 px-2 py-1 text-[10px] font-semibold text-primary transition hover:bg-primary/25"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            {copied ? 'Copiado!' : 'Copiar'}
+          </button>
+        </div>
+
+        {/* Send options */}
+        <div>
+          <p className="mb-2 text-center text-xs font-medium text-muted-foreground">Deseja enviar para alguém agora?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onSendWhatsApp(generatedLink)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 py-3 text-xs font-semibold text-emerald-400 transition hover:bg-emerald-500/20"
+            >
+              <span className="text-base">💬</span> WhatsApp
+            </button>
+            <button
+              onClick={() => onSendSms(generatedLink)}
+              className="flex items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 py-3 text-xs font-semibold text-primary transition hover:bg-primary/20"
+            >
+              <Send className="h-3.5 w-3.5" /> SMS / Outro app
+            </button>
+          </div>
+        </div>
+
+        {/* Next tier teaser */}
+        <div className="rounded-xl border border-amber-400/20 bg-amber-400/5 px-3 py-2.5 text-center">
+          <p className="text-[11px] text-amber-300">
+            🥉 Convide mais <span className="font-bold">2 pessoas</span> para se tornar <span className="font-bold">Embaixador(a)</span> e ganhar <span className="font-bold">30 dias Premium</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── IDLE / GENERATING SCREEN ────────────────────────────────────────────────
   return (
     <div className="space-y-3">
-      {/* Network visualization */}
-      <div className="relative flex h-44 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-rose-950/60 via-primary/20 to-orange-950/40">
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 260 176" fill="none">
+      {/* Network animation */}
+      <div className="relative flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-rose-950/60 via-primary/20 to-orange-950/40">
+        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 260 144" fill="none">
           {nodes.slice(1).map((node, i) => {
             const rad = (node.angle * Math.PI) / 180;
             const x2 = 130 + Math.cos(rad) * node.dist;
-            const y2 = 88 + Math.sin(rad) * node.dist;
+            const y2 = 72 + Math.sin(rad) * node.dist;
             return (
-              <line
-                key={i}
-                x1="130" y1="88"
-                x2={x2} y2={y2}
-                stroke="rgba(236,72,153,0.35)"
-                strokeWidth="1.5"
+              <line key={i} x1="130" y1="72" x2={x2} y2={y2}
+                stroke={i === pulse ? '#ec4899' : 'rgba(236,72,153,0.25)'}
+                strokeWidth={i === pulse ? 2 : 1.5}
                 strokeDasharray="4 3"
-                className={cn('transition-all duration-700', i === pulse && 'stroke-primary')}
+                className="transition-all duration-500"
               />
             );
           })}
           {nodes.map((node, i) => {
             const rad = (node.angle * Math.PI) / 180;
             const cx = 130 + Math.cos(rad) * node.dist;
-            const cy = 88 + Math.sin(rad) * node.dist;
+            const cy = 72 + Math.sin(rad) * node.dist;
             const isActive = node.main || (i - 1) === pulse;
             return (
               <g key={i}>
-                <circle
-                  cx={cx} cy={cy}
-                  r={node.main ? 20 : 14}
-                  fill={node.main ? 'rgba(236,72,153,0.9)' : 'rgba(30,10,20,0.8)'}
-                  stroke={isActive ? '#ec4899' : 'rgba(236,72,153,0.25)'}
+                <circle cx={cx} cy={cy} r={node.main ? 18 : 13}
+                  fill={node.main ? 'rgba(236,72,153,0.9)' : 'rgba(20,5,15,0.85)'}
+                  stroke={isActive ? '#ec4899' : 'rgba(236,72,153,0.2)'}
                   strokeWidth={isActive ? 2 : 1}
                 />
-                {node.main && (
-                  <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fill="white" fontSize="9" fontWeight="bold">
-                    Você
-                  </text>
-                )}
-                {!node.main && (
-                  <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.75)" fontSize="7.5">
-                    {node.label}
-                  </text>
-                )}
+                <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
+                  fill={node.main ? 'white' : 'rgba(255,255,255,0.7)'} fontSize={node.main ? '8' : '7'} fontWeight={node.main ? 'bold' : 'normal'}>
+                  {node.label}
+                </text>
               </g>
             );
           })}
         </svg>
-        <div className="absolute bottom-2 right-3 rounded-full bg-black/50 px-2.5 py-1 text-[10px] font-medium text-rose-300 backdrop-blur">
+        <div className="absolute bottom-2 right-3 rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-medium text-rose-300 backdrop-blur">
           ✦ Rede crescendo agora
         </div>
       </div>
 
-      {/* Invite link preview */}
-      <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5">
-        <Gift className="h-4 w-4 shrink-0 text-primary" />
-        <span className="flex-1 truncate font-mono text-[11px] text-muted-foreground">nosigilo.com/invite/<span className="text-primary font-semibold">seu-link-único</span></span>
-        <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">Copiar</span>
+      {/* Reward tiers */}
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Recompensas por convite</p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {INVITE_TIERS.map((tier) => (
+            <div key={tier.label} className={cn('flex flex-col items-center gap-1 rounded-xl border bg-gradient-to-br p-2 text-center', tier.color, tier.border)}>
+              <span className="text-lg leading-none">{tier.icon}</span>
+              <span className={cn('text-[9px] font-bold leading-tight', tier.text)}>{tier.count} convites</span>
+              <span className="text-[9px] leading-tight text-muted-foreground">{tier.days}d Premium grátis</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Benefits */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { icon: Crown, label: 'Você escolhe quem entra', color: 'text-amber-400' },
-          { icon: Zap, label: 'Convite exclusivo & pessoal', color: 'text-primary' },
-          { icon: Star, label: 'Fortalece sua reputação', color: 'text-orange-400' },
-        ].map(({ icon: Icon, label, color }) => (
-          <div key={label} className="flex flex-col items-center gap-1.5 rounded-xl border bg-secondary/20 p-2.5 text-center">
-            <Icon className={cn('h-4 w-4', color)} />
-            <span className="text-[10px] leading-tight text-muted-foreground">{label}</span>
-          </div>
-        ))}
-      </div>
+      {/* Generate CTA inside preview */}
+      <button
+        disabled={step === 'generating'}
+        onClick={handleGenerate}
+        className="w-full rounded-xl bg-gradient-to-r from-primary to-rose-500 py-3 text-sm font-bold text-white shadow-lg transition hover:opacity-90 disabled:opacity-60"
+      >
+        {step === 'generating' ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            Gerando seu convite...
+          </span>
+        ) : (
+          '🎁 Gerar e copiar meu link de convite'
+        )}
+      </button>
     </div>
   );
 }
@@ -139,7 +230,7 @@ function WelcomeInvitePreview() {
 function TutorialPreview({ stepId }: { stepId: string }) {
   switch (stepId) {
     case 'welcome':
-      return <WelcomeInvitePreview />;
+      return null; // rendered separately with callbacks in parent
     case 'discover':
       return (
         <PreviewShell>
@@ -204,6 +295,27 @@ export default function FirstAccessTutorial() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+
+  const handleGenerateInvite = async (): Promise<string | null> => {
+    try {
+      const data = await invitesService.create();
+      const token: string = data?.token ?? '';
+      if (!token) return null;
+      return `${window.location.origin}/invite/${token}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleSendWhatsApp = (link: string) => {
+    const text = encodeURIComponent(`Ei! Te convido para o NoSigilo — uma rede adulta e discreta, só por convite. Acessa aqui: ${link}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  const handleSendSms = (link: string) => {
+    const text = encodeURIComponent(`Te convido para o NoSigilo: ${link}`);
+    window.open(`sms:?body=${text}`, '_blank');
+  };
 
   const steps: TutorialStep[] = useMemo(
     () => [
@@ -344,42 +456,26 @@ export default function FirstAccessTutorial() {
             <div className="overflow-y-auto pr-1">
               <div className="space-y-4">
                 {isWelcome ? (
-                  <div className="space-y-3">
-                    <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
-                    {/* Social proof strip */}
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { icon: Users, text: 'Rede cresce por indicação', color: 'text-primary' },
-                        { icon: ShieldCheck, text: 'Você garante a qualidade', color: 'text-emerald-400' },
-                        { icon: Sparkles, text: 'Seu nome fica associado', color: 'text-amber-400' },
-                      ].map(({ icon: Icon, text, color }) => (
-                        <span key={text} className={cn('inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium backdrop-blur', color)}>
-                          <Icon className="h-3 w-3" /> {text}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                  <WelcomeInvitePreview
+                    onGenerate={handleGenerateInvite}
+                    onSendWhatsApp={handleSendWhatsApp}
+                    onSendSms={handleSendSms}
+                  />
                 ) : (
-                  <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                  <>
+                    <p className="text-sm leading-7 text-muted-foreground sm:text-base">{step.description}</p>
+                    {step.preview}
+                  </>
                 )}
-                {step.preview}
               </div>
             </div>
 
             {/* Footer */}
             <div className={cn('mt-5 border-t border-white/40 pt-4', isWelcome ? 'flex flex-col gap-3' : 'flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between')}>
               {isWelcome ? (
-                <>
-                  <Button
-                    className="w-full bg-gradient-primary py-5 text-base font-bold hover:opacity-90"
-                    onClick={handleVisitRoute}
-                  >
-                    🎁 Gerar meus convites agora
-                  </Button>
-                  <Button variant="ghost" className="w-full text-muted-foreground" onClick={goNext}>
-                    Explorar a plataforma primeiro →
-                  </Button>
-                </>
+                <Button variant="ghost" className="w-full text-xs text-muted-foreground" onClick={goNext}>
+                  Explorar a plataforma primeiro →
+                </Button>
               ) : (
                 <>
                   <div className="flex gap-2">
