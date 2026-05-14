@@ -43,6 +43,8 @@ type Env = {
   VAPID_PUBLIC_KEY?: string;
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_BOT_USERNAME?: string;
 };
 
 export type PublicUser = {
@@ -99,6 +101,7 @@ export type PublicUser = {
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
+  telegramChatId?: string | null;
   distanceKm?: number | null;
 };
 
@@ -790,6 +793,25 @@ async function sendPushToUser(
   return sentCount;
 }
 
+async function sendTelegramToUser(
+  options: { db: DbHandle; env: Env },
+  data: { userId: string; text: string }
+) {
+  if (!options.env.TELEGRAM_BOT_TOKEN) return;
+  const row = (await queryOne(options.db, 'SELECT telegram_chat_id FROM users WHERE id = ?', [data.userId])) as any;
+  const chatId = row?.telegram_chat_id;
+  if (!chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: data.text, parse_mode: 'HTML' }),
+    });
+  } catch (err) {
+    console.error('Telegram send error:', err);
+  }
+}
+
 function replaceFileExtension(filename: string, nextExtension: string) {
   const ext = path.extname(filename);
   if (!ext) return `${filename}${nextExtension}`;
@@ -1162,6 +1184,7 @@ function rowToPublicUser(
           billingAddressState: row.billing_address_state ?? null,
         }
       : {}),
+    telegramChatId: options?.showEmail ? (row.telegram_chat_id ?? null) : null,
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
       : null,
@@ -2058,6 +2081,78 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const rows = await getInvitesWithEntriesByInviter(db, req.auth!.userId);
     res.json(rows.map(rowToInvite));
   });
+
+  // ── TELEGRAM INTEGRATION ────────────────────────────────────────────────────
+
+  // Generate a deep-link token for the user to connect their Telegram
+  app.post('/api/profile/telegram/link', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const token = randomUUID().replace(/-/g, '');
+    await run(db, 'UPDATE users SET telegram_link_token = ? WHERE id = ?', [token, userId]);
+    await persist();
+    const botUsername = String(env.TELEGRAM_BOT_USERNAME || 'botnosigilo');
+    res.json({ url: `https://t.me/${botUsername}?start=${token}` });
+  });
+
+  // Disconnect Telegram
+  app.delete('/api/profile/telegram', requireAuth(env, db), async (req, res) => {
+    await run(db, 'UPDATE users SET telegram_chat_id = NULL, telegram_link_token = NULL WHERE id = ?', [req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Telegram bot webhook — receives messages from Telegram
+  app.post('/api/telegram/webhook', async (req, res) => {
+    res.json({ ok: true }); // always respond fast
+    try {
+      const update = req.body as any;
+      const message = update?.message;
+      if (!message) return;
+      const chatId = String(message.chat?.id || '');
+      const text = String(message.text || '').trim();
+      if (!chatId) return;
+
+      // /start <token> — link this chat_id to the user account
+      const startMatch = text.match(/^\/start\s+([a-f0-9]{32})$/i);
+      if (startMatch) {
+        const token = startMatch[1];
+        const row = (await queryOne(db, 'SELECT id, name FROM users WHERE telegram_link_token = ? LIMIT 1', [token])) as any;
+        if (!row) return;
+        await run(db, 'UPDATE users SET telegram_chat_id = ?, telegram_link_token = NULL WHERE id = ?', [chatId, String(row.id)]);
+        await persist();
+        const name = row.name ? String(row.name) : 'você';
+        if (env.TELEGRAM_BOT_TOKEN) {
+          await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              parse_mode: 'HTML',
+              text: `✅ <b>Telegram conectado!</b>\n\nOlá, ${name}! Agora você vai receber notificações do NoSigilo aqui:\n\n📡 Radares próximos a você\n💞 Matches mútuos\n\nPara desconectar, acesse Configurações → Notificações no app.`,
+            }),
+          });
+        }
+        return;
+      }
+
+      // Unknown message — send a friendly reply
+      if (env.TELEGRAM_BOT_TOKEN) {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            parse_mode: 'HTML',
+            text: `Para conectar sua conta NoSigilo, acesse <b>Configurações → Notificações</b> no app e clique em <b>Conectar Telegram</b>.`,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('Telegram webhook error:', err);
+    }
+  });
+
+  // ── END TELEGRAM ─────────────────────────────────────────────────────────────
 
   app.get('/api/invites/reward-progress', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
@@ -4401,6 +4496,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             },
           }
         );
+        const chatUrl = `${String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '')}/chat?conversationId=${encodeURIComponent(conversationId)}`;
+        await sendTelegramToUser({ db, env }, {
+          userId: myId,
+          text: `💞 <b>Match confirmado!</b>\nVocê e <b>${targetName}</b> se curtiram mutuamente.\n\n👉 <a href="${chatUrl}">Abrir conversa</a>`,
+        });
+        await sendTelegramToUser({ db, env }, {
+          userId: targetUserId,
+          text: `💞 <b>Match confirmado!</b>\nVocê e <b>${actorName}</b> se curtiram mutuamente.\n\n👉 <a href="${chatUrl}">Abrir conversa</a>`,
+        });
       }
     }
     await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
@@ -4725,6 +4829,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           },
         }
       );
+      const actorLabelTg = parsed.data.isAnonymous ? 'Alguém' : String(me.name || 'Alguém');
+      const tgRadarText = distanceKm !== null
+        ? `📡 <b>Radar ativo!</b>\n${actorLabelTg} está a ${distanceKm} km de você e quer encontrar alguém com o seu perfil.\n\n👉 <a href="${String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '')}/radar">Ver radar</a>`
+        : `📡 <b>Radar ativo!</b>\n${actorLabelTg} ativou o radar na sua região.\n\n👉 <a href="${String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '')}/radar">Ver radar</a>`;
+      await sendTelegramToUser({ db, env }, { userId: String(candidate.id), text: tgRadarText });
     }
     await persist();
 

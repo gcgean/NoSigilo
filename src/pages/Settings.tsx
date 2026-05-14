@@ -109,6 +109,9 @@ export default function Settings() {
     push: true,
   });
 
+  const hasTelegram = !!(user as any)?.telegramChatId;
+  const [telegramLoading, setTelegramLoading] = useState(false);
+
   useEffect(() => {
     setNotifications((prev) => ({
       ...prev,
@@ -844,6 +847,70 @@ export default function Settings() {
                 onCheckedChange={(v) => setNotifications({ ...notifications, push: v })}
                 disabled={isLoadingPushState}
               />
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#229ED9]/15 text-xl">
+                    ✈️
+                  </div>
+                  <div>
+                    <p className="font-medium">Telegram</p>
+                    <p className="text-sm text-muted-foreground">
+                      Receba notificações de radar e matches direto no seu Telegram
+                    </p>
+                    {hasTelegram && (
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
+                        ✓ Conectado
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="shrink-0">
+                  {hasTelegram ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={telegramLoading}
+                      onClick={async () => {
+                        setTelegramLoading(true);
+                        try {
+                          await profileService.disconnectTelegram();
+                          updateUser({ ...(user as any), telegramChatId: null });
+                          toast({ title: 'Telegram desconectado' });
+                        } catch {
+                          toast({ title: 'Erro ao desconectar', variant: 'destructive' });
+                        } finally {
+                          setTelegramLoading(false);
+                        }
+                      }}
+                    >
+                      Desconectar
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="bg-[#229ED9] hover:bg-[#1a8bc4] text-white"
+                      disabled={telegramLoading}
+                      onClick={async () => {
+                        setTelegramLoading(true);
+                        try {
+                          const { url } = await profileService.generateTelegramLink();
+                          window.open(url, '_blank');
+                          toast({ title: 'Abrindo Telegram...', description: 'Clique em Iniciar no bot para conectar sua conta.' });
+                        } catch {
+                          toast({ title: 'Erro ao gerar link', variant: 'destructive' });
+                        } finally {
+                          setTelegramLoading(false);
+                        }
+                      }}
+                    >
+                      Conectar Telegram
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

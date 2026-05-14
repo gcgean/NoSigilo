@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_link_token TEXT;

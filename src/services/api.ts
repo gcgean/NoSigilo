@@ -155,6 +155,16 @@ export const profileService = {
     return response.data;
   },
 
+  generateTelegramLink: async (): Promise<{ url: string }> => {
+    const response = await apiClient.post('/profile/telegram/link');
+    return response.data;
+  },
+
+  disconnectTelegram: async () => {
+    const response = await apiClient.delete('/profile/telegram');
+    return response.data;
+  },
+
   getVisits: async () => {
     const response = await apiClient.get('/profile/visits');
     return response.data;
