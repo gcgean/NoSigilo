@@ -205,8 +205,6 @@ export default function FirstAccessTutorial() {
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
 
-  const storageKey = useMemo(() => `nosigilo:first-access-tour:${user?.id || 'anon'}`, [user?.id]);
-
   const steps: TutorialStep[] = useMemo(
     () => [
       {
@@ -270,12 +268,9 @@ export default function FirstAccessTutorial() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const seen = localStorage.getItem(storageKey);
-    if (!seen) {
-      setOpen(true);
-      setStepIndex(0);
-    }
-  }, [storageKey, user?.id]);
+    setOpen(true);
+    setStepIndex(0);
+  }, [user?.id]);
 
   useEffect(() => {
     const handler = () => {
@@ -290,7 +285,6 @@ export default function FirstAccessTutorial() {
   const progress = ((stepIndex + 1) / steps.length) * 100;
 
   const finishTutorial = () => {
-    localStorage.setItem(storageKey, 'seen');
     setOpen(false);
   };
 
