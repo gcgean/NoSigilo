@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
+import { authService, experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1425,6 +1425,20 @@ export default function Feed() {
                     const { url } = await profileService.generateTelegramLink();
                     window.open(url, '_blank');
                     toast({ title: '✈️ Abrindo Telegram...', description: 'Clique em Iniciar no bot para conectar.' });
+                    // Detect connection when user returns to tab
+                    const onVisible = async () => {
+                      if (document.hidden) return;
+                      document.removeEventListener('visibilitychange', onVisible);
+                      try {
+                        const me = await authService.getMe();
+                        if (me?.telegramChatId) {
+                          updateUser({ telegramChatId: me.telegramChatId });
+                          toast({ title: '✅ Telegram conectado!', description: 'Você receberá notificações de match e radar direto no Telegram.' });
+                        }
+                      } catch {}
+                    };
+                    document.addEventListener('visibilitychange', onVisible);
+                    setTimeout(() => document.removeEventListener('visibilitychange', onVisible), 5 * 60 * 1000);
                   } catch {
                     toast({ title: 'Erro ao gerar link', variant: 'destructive' });
                   } finally {

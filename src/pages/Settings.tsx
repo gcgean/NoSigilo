@@ -15,7 +15,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { feedService, profileService, suggestionsService } from '@/services/api';
+import { authService, feedService, profileService, suggestionsService } from '@/services/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -899,6 +899,20 @@ export default function Settings() {
                           const { url } = await profileService.generateTelegramLink();
                           window.open(url, '_blank');
                           toast({ title: 'Abrindo Telegram...', description: 'Clique em Iniciar no bot para conectar sua conta.' });
+                          // Detecta conexão quando o usuário volta para a aba
+                          const onVisible = async () => {
+                            if (document.hidden) return;
+                            document.removeEventListener('visibilitychange', onVisible);
+                            try {
+                              const me = await authService.getMe();
+                              if (me?.telegramChatId) {
+                                updateUser({ telegramChatId: me.telegramChatId });
+                                toast({ title: '✅ Telegram conectado!', description: 'Você receberá notificações de match e radar direto no Telegram.' });
+                              }
+                            } catch {}
+                          };
+                          document.addEventListener('visibilitychange', onVisible);
+                          setTimeout(() => document.removeEventListener('visibilitychange', onVisible), 5 * 60 * 1000);
                         } catch {
                           toast({ title: 'Erro ao gerar link', variant: 'destructive' });
                         } finally {
