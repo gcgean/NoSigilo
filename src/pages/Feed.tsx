@@ -379,6 +379,23 @@ export default function Feed() {
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
     formatProfileIdentityLine(profile);
 
+  // Gender badge: label + Tailwind color classes per profile type
+  const getProfileTypeBadge = (gender?: string | null): { label: string; cls: string; emoji: string } | null => {
+    if (!gender) return null;
+    const g = gender.trim();
+    const l = g.toLowerCase();
+    if (l.startsWith('casal (ele/ela') || l === 'casal hetero') return { label: 'Casal Hetero', cls: 'bg-purple-500/12 text-purple-600 border-purple-400/30', emoji: '👫' };
+    if (l.startsWith('casal (ele/ele') || l === 'casal masculino') return { label: 'Casal Masc.', cls: 'bg-blue-500/12 text-blue-600 border-blue-400/30', emoji: '👬' };
+    if (l.startsWith('casal (ela/ela') || l === 'casal feminino') return { label: 'Casal Fem.', cls: 'bg-pink-500/12 text-pink-600 border-pink-400/30', emoji: '👭' };
+    if (l.startsWith('cas') || l === 'couple') return { label: 'Casal', cls: 'bg-violet-500/12 text-violet-600 border-violet-400/30', emoji: '👫' };
+    if (l.startsWith('mul') || l === 'woman' || l === 'female') return { label: 'Mulher', cls: 'bg-rose-500/12 text-rose-600 border-rose-400/30', emoji: '👩' };
+    if (l.startsWith('hom') || l === 'man' || l === 'male') return { label: 'Homem', cls: 'bg-sky-500/12 text-sky-700 border-sky-400/30', emoji: '👨' };
+    if (l.startsWith('transex') || l === 'trans') return { label: 'Trans', cls: 'bg-teal-500/12 text-teal-600 border-teal-400/30', emoji: '🏳️‍⚧️' };
+    if (l.startsWith('cross') || l === 'cd') return { label: 'CD', cls: 'bg-amber-500/12 text-amber-700 border-amber-400/30', emoji: '✨' };
+    if (l.startsWith('travest')) return { label: 'Travesti', cls: 'bg-fuchsia-500/12 text-fuchsia-600 border-fuchsia-400/30', emoji: '🌈' };
+    return null;
+  };
+
   useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
@@ -2076,11 +2093,18 @@ export default function Feed() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{item.post.author.name}</span>
-                      {item.post.feedContext?.label ? (
-                        <Badge variant="outline" className="max-w-[11rem] truncate border-primary/20 bg-primary/5 text-[11px] font-medium text-primary">
-                          {item.post.feedContext.label}
-                        </Badge>
-                      ) : null}
+                      {(() => {
+                        const badge = getProfileTypeBadge(item.post.author.gender);
+                        return badge ? (
+                          <Badge variant="outline" className={cn('shrink-0 border text-[10px] font-semibold px-1.5 py-0 leading-5', badge.cls)}>
+                            {badge.emoji} {badge.label}
+                          </Badge>
+                        ) : item.post.feedContext?.label ? (
+                          <Badge variant="outline" className="max-w-[11rem] truncate border-primary/20 bg-primary/5 text-[11px] font-medium text-primary">
+                            {item.post.feedContext.label}
+                          </Badge>
+                        ) : null;
+                      })()}
                     </div>
                     {getIdentityLine(item.post.author) ? (
                       <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.post.author)}</div>
@@ -2242,6 +2266,24 @@ export default function Feed() {
                   </button>
                 )}
               </div>
+
+              {/* CTA — Ver perfil (mental trigger: drives profile visits) */}
+              {item.post.author.id !== user?.id && (
+                <Link
+                  to={getUserProfileHref(item.post.author.id, user?.id, '/feed')}
+                  className="flex items-center justify-between border-t px-3 py-2.5 sm:px-4 transition-colors hover:bg-primary/5 group"
+                >
+                  <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
+                    {(() => {
+                      const badge = getProfileTypeBadge(item.post.author.gender);
+                      const name = item.post.author.name?.split(' ')[0] || 'esse perfil';
+                      if (badge) return `${badge.emoji} Ver o perfil de ${name}`;
+                      return `Ver o perfil de ${name}`;
+                    })()}
+                  </span>
+                  <span className="text-[11px] font-semibold text-primary group-hover:translate-x-0.5 transition-transform">Ver perfil →</span>
+                </Link>
+              )}
 
               {openCommentsPostId === item.post.id && (
                 <div className="space-y-3 border-t p-3 sm:p-4">

@@ -2411,33 +2411,51 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
     const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(280, offset + limit + 120);
 
-    // Build gender preference filter — only apply when user has explicit preferences set
-    const GENDER_MAP: Record<string, string[]> = {
-      'homem':   ['homem', 'Homem', 'man', 'male'],
-      'mulher':  ['mulher', 'Mulher', 'woman', 'female'],
-      'casal':   ['casal', 'Casal', 'couple'],
-      'outro':   ['outro', 'Outro', 'other', 'non-binary', 'Não-binário'],
-    };
-    const normalizeGender = (g: string) => {
-      const l = g.toLowerCase().trim();
-      if (l.startsWith('hom') || l === 'man' || l === 'male') return 'homem';
-      if (l.startsWith('mul') || l === 'woman' || l === 'female') return 'mulher';
-      if (l.startsWith('cas') || l === 'couple') return 'casal';
-      return 'outro';
-    };
+    // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
     const genderParams: string[] = [];
     if (viewerLookingFor.length > 0 && !viewerIsAdmin) {
-      // Collect all raw gender strings that match the user's looking_for
-      const allowedRaw: string[] = [];
+      const subConds: string[] = [];
+      let wantsCasal = false;
+      const exactSet = new Set<string>();
+
       for (const pref of viewerLookingFor) {
-        const norm = normalizeGender(pref);
-        allowedRaw.push(...(GENDER_MAP[norm] ?? [norm]));
+        const l = pref.toLowerCase().trim();
+        if (l.startsWith('hom') || l === 'man' || l === 'male') {
+          // Any variation of "Homem"
+          ['Homem', 'homem', 'man', 'male'].forEach((v) => exactSet.add(v));
+        } else if (l.startsWith('mul') || l === 'woman' || l === 'female') {
+          // Any variation of "Mulher"
+          ['Mulher', 'mulher', 'woman', 'female'].forEach((v) => exactSet.add(v));
+        } else if (l.startsWith('cas') || l === 'couple') {
+          // All casal types: "Casal (Ele/Ela)", "Casal (Ele/Ele)", "Casal (Ela/Ela)", etc.
+          wantsCasal = true;
+        } else {
+          // Specific values stored as-is: Transexual, Crossdresser (CD), Travesti
+          exactSet.add(pref);
+          // Also lowercase variant
+          exactSet.add(l);
+        }
       }
-      // Also always include posts where gender is NULL (profiles without gender set)
-      const placeholders = allowedRaw.map(() => '?').join(', ');
-      genderFilter = `AND (u.gender IS NULL OR u.gender = '' OR u.gender IN (${placeholders}))`;
-      genderParams.push(...allowedRaw);
+
+      const deduped = [...exactSet];
+      if (deduped.length > 0) {
+        const placeholders = deduped.map(() => '?').join(', ');
+        subConds.push(`u.gender IN (${placeholders})`);
+        genderParams.push(...deduped);
+      }
+      if (wantsCasal) {
+        // LIKE covers all: "Casal (Ele/Ela)", "Casal (Ele/Ele)", "Casal (Ela/Ela)", "casal", etc.
+        subConds.push(`u.gender LIKE ?`);
+        genderParams.push('Casal%');
+        subConds.push(`u.gender LIKE ?`);
+        genderParams.push('casal%');
+      }
+
+      if (subConds.length > 0) {
+        // Always include profiles that haven't set a gender (don't exclude them)
+        genderFilter = `AND (u.gender IS NULL OR u.gender = '' OR ${subConds.join(' OR ')})`;
+      }
     }
 
     const rows = await queryAll(
