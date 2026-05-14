@@ -2409,30 +2409,59 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const reelsOnlyFilter = includeReelsOnly
       ? 'AND p.is_reels_only = 1'
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(220, offset + limit + 80);
+    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(280, offset + limit + 120);
+
+    // Build gender preference filter — only apply when user has explicit preferences set
+    const GENDER_MAP: Record<string, string[]> = {
+      'homem':   ['homem', 'Homem', 'man', 'male'],
+      'mulher':  ['mulher', 'Mulher', 'woman', 'female'],
+      'casal':   ['casal', 'Casal', 'couple'],
+      'outro':   ['outro', 'Outro', 'other', 'non-binary', 'Não-binário'],
+    };
+    const normalizeGender = (g: string) => {
+      const l = g.toLowerCase().trim();
+      if (l.startsWith('hom') || l === 'man' || l === 'male') return 'homem';
+      if (l.startsWith('mul') || l === 'woman' || l === 'female') return 'mulher';
+      if (l.startsWith('cas') || l === 'couple') return 'casal';
+      return 'outro';
+    };
+    let genderFilter = '';
+    const genderParams: string[] = [];
+    if (viewerLookingFor.length > 0 && !viewerIsAdmin) {
+      // Collect all raw gender strings that match the user's looking_for
+      const allowedRaw: string[] = [];
+      for (const pref of viewerLookingFor) {
+        const norm = normalizeGender(pref);
+        allowedRaw.push(...(GENDER_MAP[norm] ?? [norm]));
+      }
+      // Also always include posts where gender is NULL (profiles without gender set)
+      const placeholders = allowedRaw.map(() => '?').join(', ');
+      genderFilter = `AND (u.gender IS NULL OR u.gender = '' OR u.gender IN (${placeholders}))`;
+      genderParams.push(...allowedRaw);
+    }
+
     const rows = await queryAll(
       db,
-      `
-      SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
         u.id as author_id, u.name as author_name, u.avatar as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state,
         u.lat as author_lat, u.lon as author_lon
-      FROM posts p
-      JOIN users u ON u.id = p.user_id
-      WHERE 1=1
-        AND (u.is_banned = 0 OR u.is_banned IS NULL)
-        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-        ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
-        AND NOT EXISTS (
-          SELECT 1 FROM blocks b
-          WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
-             OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
-        )
-        ${reelsOnlyFilter}
-      ORDER BY p.created_at DESC
-      LIMIT ? OFFSET 0
-    `,
-      [req.auth!.userId, req.auth!.userId, fetchLimit]
+       FROM posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE 1=1
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+         ${genderFilter}
+         ${reelsOnlyFilter}
+       ORDER BY p.created_at DESC
+       LIMIT ? OFFSET 0`,
+      [...genderParams, req.auth!.userId, req.auth!.userId, fetchLimit]
     );
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
@@ -2636,35 +2665,50 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
             let distanceScore = 0;
             if (distanceKm !== null) {
-              if (distanceKm <= 5) distanceScore = 38;
-              else if (distanceKm <= 15) distanceScore = 30;
-              else if (distanceKm <= 40) distanceScore = 22;
-              else if (distanceKm <= 100) distanceScore = 12;
-              else distanceScore = Math.max(2, 10 - Math.floor(distanceKm / 80));
+              if (distanceKm <= 5) distanceScore = 50;
+              else if (distanceKm <= 15) distanceScore = 40;
+              else if (distanceKm <= 40) distanceScore = 28;
+              else if (distanceKm <= 100) distanceScore = 16;
+              else distanceScore = Math.max(2, 12 - Math.floor(distanceKm / 80));
             } else if (sameCity) {
-              distanceScore = 18;
+              distanceScore = 24;
             } else if (sameState) {
-              distanceScore = 8;
+              distanceScore = 10;
             }
 
+            // Affinity: strong boost for profiles user already engaged with
             const affinityScore =
-              (conversationAuthorIds.has(authorId) ? 26 : 0) +
-              (userLikedAuthorIds.has(authorId) ? 24 : 0) +
-              (friendAuthorIds.has(authorId) ? 16 : 0) +
-              (visitedAuthorIds.has(authorId) ? 8 : 0) +
-              Math.min((likedAuthorPostCount.get(authorId) ?? 0) * 6, 18) +
-              Math.min((commentedAuthorPostCount.get(authorId) ?? 0) * 8, 16);
+              (conversationAuthorIds.has(authorId) ? 40 : 0) +
+              (userLikedAuthorIds.has(authorId) ? 35 : 0) +
+              (friendAuthorIds.has(authorId) ? 22 : 0) +
+              (visitedAuthorIds.has(authorId) ? 12 : 0) +
+              Math.min((likedAuthorPostCount.get(authorId) ?? 0) * 8, 24) +
+              Math.min((commentedAuthorPostCount.get(authorId) ?? 0) * 10, 20);
 
             const localPopularityScore =
-              (sameCity ? 10 : sameState ? 4 : 0) +
-              Math.min(todayPosts * 7, 21) +
-              Math.min(recentAuthorEngagement * 2, 16);
+              (sameCity ? 14 : sameState ? 6 : 0) +
+              Math.min(todayPosts * 8, 24) +
+              Math.min(recentAuthorEngagement * 3, 18);
 
-            const postEngagementScore = Math.min(postLikes * 1.2, 12) + Math.min(postComments * 1.6, 12);
-            const mediaScore = String(row.media_ids_json || '').trim() ? 5 : 0;
-            const recencyScore = Math.max(0, 52 - recencyHours) * 1.4;
-            const interestScore = matchesInterest ? 16 : -6;
-            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore;
+            // Engagement: comments are more valuable than likes (signal of real interest)
+            const postEngagementScore = Math.min(postLikes * 1.5, 18) + Math.min(postComments * 3, 20);
+
+            // Media is essential for engagement — strong boost, penalize text-only
+            const mediaScore = hasMedia ? 22 : -8;
+
+            // Recency: 72h window with steeper decay after 24h
+            const recencyScore = recencyHours <= 24
+              ? Math.max(0, 60 - recencyHours * 1.2)
+              : Math.max(0, 32 - (recencyHours - 24) * 0.8);
+
+            // Interest: already filtered at SQL level if preferences set, this is bonus
+            const interestScore = matchesInterest ? 20 : (viewerLookingFor.length > 0 ? -30 : 0);
+
+            // Diversity penalty: down-rank if user already sees many posts from same author
+            const authorPostsSeen = rows.filter((r: any) => String(r.author_id) === authorId).length;
+            const diversityPenalty = authorPostsSeen > 2 ? (authorPostsSeen - 2) * -8 : 0;
+
+            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + diversityPenalty;
 
             let reason: 'nearby' | 'affinity' | 'popular_local' | 'recent' = 'recent';
             let label = 'Novo agora';
