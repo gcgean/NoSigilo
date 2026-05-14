@@ -2134,7 +2134,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.post('/api/invites', requireAuth(env, db), async (req, res) => {
     const now = nowIso();
     const id = randomUUID();
-    const token = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, '');
+    const token = Array.from({ length: 10 }, () => 'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]).join('');
     await run(
       db,
       'INSERT INTO invite_links (id, inviter_user_id, invite_token, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -2146,7 +2146,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       token,
       status: 'created',
       createdAt: now,
-      url: `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/invite/${encodeURIComponent(token)}`,
+      url: `${String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '')}/invite/${encodeURIComponent(token)}`,
     });
   });
 
