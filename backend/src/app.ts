@@ -2090,7 +2090,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const token = randomUUID().replace(/-/g, '');
     await run(db, 'UPDATE users SET telegram_link_token = ? WHERE id = ?', [token, userId]);
     await persist();
-    const botUsername = String(env.TELEGRAM_BOT_USERNAME || 'botnosigilo');
+    const botUsername = String(env.TELEGRAM_BOT_USERNAME || 'NosigiloNetBot');
     res.json({ url: `https://t.me/${botUsername}?start=${token}` });
   });
 
