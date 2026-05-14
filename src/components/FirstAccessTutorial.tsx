@@ -54,9 +54,10 @@ interface WelcomeInvitePreviewProps {
   onGenerate: () => Promise<{ url: string } | { errorCode: string } | null>;
   onSendWhatsApp: (link: string) => void;
   onSendSms: (link: string) => void;
+  onGoToInvites: () => void;
 }
 
-function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: WelcomeInvitePreviewProps) {
+function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms, onGoToInvites }: WelcomeInvitePreviewProps) {
   const [pulse, setPulse] = useState(0);
   const [step, setStep] = useState<WelcomeStep>('idle');
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
@@ -106,19 +107,31 @@ function WelcomeInvitePreview({ onGenerate, onSendWhatsApp, onSendSms }: Welcome
 
   // ── ERROR SCREEN ───────────────────────────────────────────────────────────
   if (step === 'error') {
+    const isTooMany = errorMsg.includes('5 convites ativos');
     return (
       <div className="space-y-4">
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/10 py-6 text-center">
-          <span className="text-3xl">⚠️</span>
-          <p className="text-sm font-semibold text-rose-400">Ops! Algo deu errado</p>
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/5 py-6 text-center">
+          <span className="text-3xl">{isTooMany ? '🔗' : '⚠️'}</span>
+          <p className="text-sm font-semibold text-amber-400">
+            {isTooMany ? 'Você já tem convites ativos!' : 'Ops! Algo deu errado'}
+          </p>
           <p className="px-4 text-xs text-muted-foreground">{errorMsg}</p>
         </div>
-        <button
-          onClick={() => setStep('idle')}
-          className="w-full rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/20"
-        >
-          Tentar novamente
-        </button>
+        {isTooMany ? (
+          <button
+            onClick={onGoToInvites}
+            className="w-full rounded-xl bg-gradient-to-r from-primary to-rose-500 py-3 text-sm font-bold text-white shadow transition hover:opacity-90"
+          >
+            🔗 Ver meus convites ativos
+          </button>
+        ) : (
+          <button
+            onClick={() => setStep('idle')}
+            className="w-full rounded-xl border border-primary/30 bg-primary/10 py-2.5 text-sm font-semibold text-primary transition hover:bg-primary/20"
+          >
+            Tentar novamente
+          </button>
+        )}
       </div>
     );
   }
@@ -489,6 +502,7 @@ export default function FirstAccessTutorial() {
                     onGenerate={handleGenerateInvite}
                     onSendWhatsApp={handleSendWhatsApp}
                     onSendSms={handleSendSms}
+                    onGoToInvites={() => { finishTutorial(); navigate('/invites'); }}
                   />
                 ) : (
                   <>
