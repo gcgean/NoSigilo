@@ -5896,21 +5896,36 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ targetType: z.enum(['post', 'user', 'photo', 'experience']), targetId: z.string().min(1), content: z.string().min(1).max(2000) });
+    const schema = z.object({
+      targetType: z.enum(['post', 'user', 'photo', 'experience']),
+      targetId: z.string().min(1),
+      content: z.string().min(1).max(2000),
+      parentCommentId: z.string().optional(),
+    });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
+    // Validate parent comment exists and belongs to same target
+    if (parsed.data.parentCommentId) {
+      const parent = (await queryOne(db, 'SELECT id, target_id FROM comments WHERE id = ? AND parent_comment_id IS NULL LIMIT 1', [parsed.data.parentCommentId])) as any;
+      if (!parent || String(parent.target_id) !== parsed.data.targetId) {
+        res.status(400).json({ error: 'invalid_parent_comment' });
+        return;
+      }
+    }
     const id = randomUUID();
     const createdAt = nowIso();
-    await run(db, 'INSERT INTO comments (id, user_id, target_type, target_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    const parentId = parsed.data.parentCommentId ?? null;
+    await run(db, 'INSERT INTO comments (id, user_id, target_type, target_id, content, created_at, parent_comment_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       parsed.data.targetType,
       parsed.data.targetId,
       parsed.data.content,
       createdAt,
+      parentId,
     ]);
     await persist();
     if (parsed.data.targetType === 'post') {
@@ -5976,7 +5991,34 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         );
       }
     }
-    res.json({ id });
+    // Notify parent comment author when someone replies
+    if (parentId) {
+      const parentComment = (await queryOne(db, 'SELECT user_id FROM comments WHERE id = ? LIMIT 1', [parentId])) as any;
+      const parentOwnerId = parentComment?.user_id ? String(parentComment.user_id) : null;
+      if (parentOwnerId && parentOwnerId !== req.auth!.userId) {
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        const preview = String(parsed.data.content).slice(0, 140);
+        await createNotification({ db, io }, {
+          userId: parentOwnerId,
+          type: 'comment.replied',
+          title: 'Responderam seu comentário',
+          description: `${actorName} respondeu: ${preview}`,
+          dataJson: { postId: parsed.data.targetId, commentId: id, parentCommentId: parentId, actorId: req.auth!.userId, actorName },
+        });
+        await sendPushToUser({ db, env }, {
+          userId: parentOwnerId,
+          payload: {
+            title: 'Responderam seu comentário',
+            body: `${actorName}: ${preview}`,
+            url: '/feed',
+            tag: `comment.replied:${id}`,
+            data: { commentId: id, actorId: req.auth!.userId },
+          },
+        });
+      }
+    }
+    res.json({ id, parentCommentId: parentId });
   });
 
   app.put('/api/comments/:commentId', requireAuth(env, db), async (req, res) => {
@@ -6084,33 +6126,42 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const limit = parsed.data.limit ?? 50;
     const rows = await queryAll(
       db,
-      `
-      SELECT c.id, c.content, c.created_at,
+      `SELECT c.id, c.content, c.created_at, c.parent_comment_id,
         u.id as user_id, u.name as user_name, u.avatar as user_avatar,
         u.gender as user_gender, u.city as user_city, u.state as user_state
-      FROM comments c
-      JOIN users u ON u.id = c.user_id
-      WHERE c.target_type = ? AND c.target_id = ?
-      ORDER BY c.created_at ASC
-      LIMIT ?
-    `,
+       FROM comments c
+       JOIN users u ON u.id = c.user_id
+       WHERE c.target_type = ? AND c.target_id = ?
+       ORDER BY c.created_at ASC
+       LIMIT ?`,
       [parsed.data.targetType, parsed.data.targetId, limit]
     );
-    res.json(
-      rows.map((r: any) => ({
-        id: r.id,
-        content: r.content,
-        createdAt: r.created_at,
-        user: {
-          id: r.user_id,
-          name: r.user_name,
-          avatar: r.user_avatar,
-          gender: r.user_gender ?? null,
-          city: r.user_city ?? null,
-          state: r.user_state ?? null,
-        },
-      }))
-    );
+
+    const toComment = (r: any) => ({
+      id: String(r.id),
+      content: String(r.content),
+      createdAt: String(r.created_at),
+      parentCommentId: r.parent_comment_id ? String(r.parent_comment_id) : null,
+      user: {
+        id: String(r.user_id),
+        name: String(r.user_name),
+        avatar: r.user_avatar ?? null,
+        gender: r.user_gender ?? null,
+        city: r.user_city ?? null,
+        state: r.user_state ?? null,
+      },
+    });
+
+    // Build nested structure: top-level comments with replies array
+    const allComments = (rows as any[]).map(toComment);
+    const topLevel = allComments.filter((c) => !c.parentCommentId);
+    const repliesMap: Record<string, typeof allComments> = {};
+    allComments.filter((c) => c.parentCommentId).forEach((c) => {
+      if (!repliesMap[c.parentCommentId!]) repliesMap[c.parentCommentId!] = [];
+      repliesMap[c.parentCommentId!].push(c);
+    });
+
+    res.json(topLevel.map((c) => ({ ...c, replies: repliesMap[c.id] ?? [] })));
   });
 
   app.post('/api/testimonials', requireAuth(env, db), async (req, res) => {

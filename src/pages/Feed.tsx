@@ -94,6 +94,8 @@ type Comment = {
   id: string;
   content: string;
   createdAt: string;
+  parentCommentId?: string | null;
+  replies?: Comment[];
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
 };
 
@@ -214,6 +216,7 @@ export default function Feed() {
   const [commentDraftByPostId, setCommentDraftByPostId] = useState<Record<string, string>>({});
   const [editingCommentByPostId, setEditingCommentByPostId] = useState<Record<string, string | null>>({});
   const [editCommentDraftById, setEditCommentDraftById] = useState<Record<string, string>>({});
+  const [replyingToByPostId, setReplyingToByPostId] = useState<Record<string, Comment | null>>({});
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [photoReactionCounts, setPhotoReactionCounts] = useState<Record<string, Record<PhotoReaction, number>>>({});
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
@@ -1208,12 +1211,16 @@ export default function Feed() {
   const sendComment = async (postId: string) => {
     const draft = (commentDraftByPostId[postId] || '').trim();
     if (!draft) return;
+    const replyingTo = replyingToByPostId[postId] ?? null;
     setCommentDraftByPostId((prev) => ({ ...prev, [postId]: '' }));
+    setReplyingToByPostId((prev) => ({ ...prev, [postId]: null }));
     try {
-      await interactionsService.comment('post', postId, draft);
+      await interactionsService.comment('post', postId, draft, replyingTo?.id);
       const list = await interactionsService.getComments('post', postId);
       setCommentsByPostId((prev) => ({ ...prev, [postId]: Array.isArray(list) ? list : [] }));
-      setAllPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, commentsCount: p.commentsCount + 1 } : p)));
+      if (!replyingTo) {
+        setAllPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, commentsCount: p.commentsCount + 1 } : p)));
+      }
     } catch {
       toast({ title: 'Erro ao comentar', description: 'Tente novamente.', variant: 'destructive' });
       setCommentDraftByPostId((prev) => ({ ...prev, [postId]: draft }));
@@ -2145,82 +2152,84 @@ export default function Feed() {
                   {!isLoadingComments && (
                     <div className="space-y-3">
                       {(commentsByPostId[item.post.id] || []).map((c) => (
-                        <div key={c.id} className="flex items-start gap-3">
-                          <Link
-                            to={getUserProfileHref(c.user.id, user?.id, '/feed')}
-                            className="hover:opacity-90 transition-opacity"
-                          >
-                            <Avatar className="w-8 h-8">
-                              <AvatarImage src={c.user.avatar ? resolveServerUrl(c.user.avatar) : undefined} />
-                              <AvatarFallback>{String(c.user.name || 'U')[0]}</AvatarFallback>
-                            </Avatar>
-                          </Link>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <Link
-                                to={getUserProfileHref(c.user.id, user?.id, '/feed')}
-                                className="text-sm font-medium hover:underline"
-                              >
-                                {c.user.name}
-                              </Link>
-                              <span className="text-xs text-muted-foreground">{formatWhen(c.createdAt)}</span>
-                              {String(c.user.id) === String(user?.id || '') ? (
+                        <div key={c.id}>
+                          {/* Top-level comment */}
+                          <div className="flex items-start gap-3">
+                            <Link to={getUserProfileHref(c.user.id, user?.id, '/feed')} className="hover:opacity-90 transition-opacity">
+                              <Avatar className="w-8 h-8">
+                                <AvatarImage src={c.user.avatar ? resolveServerUrl(c.user.avatar) : undefined} />
+                                <AvatarFallback>{String(c.user.name || 'U')[0]}</AvatarFallback>
+                              </Avatar>
+                            </Link>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <Link to={getUserProfileHref(c.user.id, user?.id, '/feed')} className="text-sm font-medium hover:underline">
+                                  {c.user.name}
+                                </Link>
+                                <span className="text-xs text-muted-foreground">{formatWhen(c.createdAt)}</span>
                                 <div className="ml-auto flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
-                                    onClick={() => startEditingComment(item.post.id, c)}
-                                  >
-                                    Editar
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
-                                    onClick={() => void deleteComment(item.post.id, c.id)}
-                                  >
-                                    Excluir
-                                  </button>
+                                  {/* Reply button — visible for all except own comment */}
+                                  {String(c.user.id) !== String(user?.id || '') && (
+                                    <button
+                                      type="button"
+                                      className="text-[11px] text-primary hover:underline"
+                                      onClick={() => {
+                                        setReplyingToByPostId((prev) => ({
+                                          ...prev,
+                                          [item.post.id]: prev[item.post.id]?.id === c.id ? null : c,
+                                        }));
+                                        setCommentDraftByPostId((prev) => ({ ...prev, [item.post.id]: '' }));
+                                      }}
+                                    >
+                                      {replyingToByPostId[item.post.id]?.id === c.id ? '↩ Cancelar' : '↩ Responder'}
+                                    </button>
+                                  )}
+                                  {String(c.user.id) === String(user?.id || '') && (
+                                    <>
+                                      <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`} onClick={() => startEditingComment(item.post.id, c)}>Editar</button>
+                                      <button type="button" className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, c.id)}>Excluir</button>
+                                    </>
+                                  )}
                                 </div>
-                              ) : null}
-                            </div>
-                            {getIdentityLine(c.user) ? (
-                              <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div>
-                            ) : null}
-                            {editingCommentByPostId[item.post.id] === c.id ? (
-                              <div className="mt-1 flex items-center gap-2">
-                                <Input
-                                  value={editCommentDraftById[c.id] || ''}
-                                  onChange={(e) =>
-                                    setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))
-                                  }
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') void saveEditedComment(item.post.id, c.id);
-                                  }}
-                                  className={COMMENT_INLINE_INPUT_CLASS}
-                                />
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className={COMMENT_SAVE_BUTTON_CLASS}
-                                  onClick={() => void saveEditedComment(item.post.id, c.id)}
-                                  disabled={!(editCommentDraftById[c.id] || '').trim()}
-                                >
-                                  Salvar
-                                </Button>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="outline"
-                                  className={COMMENT_CANCEL_BUTTON_CLASS}
-                                  onClick={() => cancelEditingComment(item.post.id)}
-                                >
-                                  Cancelar
-                                </Button>
                               </div>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">{c.content}</p>
-                            )}
+                              {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div> : null}
+                              {editingCommentByPostId[item.post.id] === c.id ? (
+                                <div className="mt-1 flex items-center gap-2">
+                                  <Input value={editCommentDraftById[c.id] || ''} onChange={(e) => setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void saveEditedComment(item.post.id, c.id); }} className={COMMENT_INLINE_INPUT_CLASS} />
+                                  <Button type="button" size="sm" className={COMMENT_SAVE_BUTTON_CLASS} onClick={() => void saveEditedComment(item.post.id, c.id)} disabled={!(editCommentDraftById[c.id] || '').trim()}>Salvar</Button>
+                                  <Button type="button" size="sm" variant="outline" className={COMMENT_CANCEL_BUTTON_CLASS} onClick={() => cancelEditingComment(item.post.id)}>Cancelar</Button>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">{c.content}</p>
+                              )}
+                            </div>
                           </div>
+
+                          {/* Replies */}
+                          {(c.replies ?? []).length > 0 && (
+                            <div className="ml-11 mt-2 space-y-2 border-l-2 border-primary/20 pl-3">
+                              {(c.replies ?? []).map((r) => (
+                                <div key={r.id} className="flex items-start gap-2">
+                                  <Link to={getUserProfileHref(r.user.id, user?.id, '/feed')} className="hover:opacity-90 transition-opacity">
+                                    <Avatar className="w-6 h-6">
+                                      <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
+                                      <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
+                                    </Avatar>
+                                  </Link>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <Link to={getUserProfileHref(r.user.id, user?.id, '/feed')} className="text-xs font-medium hover:underline">{r.user.name}</Link>
+                                      <span className="text-[10px] text-muted-foreground">{formatWhen(r.createdAt)}</span>
+                                      {String(r.user.id) === String(user?.id || '') && (
+                                        <button type="button" className={`ml-auto ${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, r.id)}>Excluir</button>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">{r.content}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                       {(commentsByPostId[item.post.id] || []).length === 0 && (
@@ -2229,14 +2238,20 @@ export default function Feed() {
                     </div>
                   )}
 
+                  {/* Reply context banner */}
+                  {replyingToByPostId[item.post.id] && (
+                    <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">
+                      <span>↩ Respondendo <strong>{replyingToByPostId[item.post.id]?.user.name}</strong></span>
+                      <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => setReplyingToByPostId((prev) => ({ ...prev, [item.post.id]: null }))}>✕</button>
+                    </div>
+                  )}
+
                   <div className="flex gap-2">
                     <Input
-                      placeholder="Escreva um comentário..."
+                      placeholder={replyingToByPostId[item.post.id] ? `Responder ${replyingToByPostId[item.post.id]?.user.name}...` : 'Escreva um comentário...'}
                       value={commentDraftByPostId[item.post.id] || ''}
                       onChange={(e) => setCommentDraftByPostId((prev) => ({ ...prev, [item.post.id]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void sendComment(item.post.id);
-                      }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(item.post.id); }}
                     />
                     <Button type="button" onClick={() => void sendComment(item.post.id)} disabled={!(commentDraftByPostId[item.post.id] || '').trim()}>
                       Enviar
@@ -2244,12 +2259,7 @@ export default function Feed() {
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {COMMENT_QUICK_EMOJIS.map((emoji) => (
-                      <button
-                        key={`${item.post.id}-emoji-${emoji}`}
-                        type="button"
-                        onClick={() => appendEmojiToCommentDraft(item.post.id, emoji)}
-                        className={COMMENT_EMOJI_CHIP_CLASS}
-                      >
+                      <button key={`${item.post.id}-emoji-${emoji}`} type="button" onClick={() => appendEmojiToCommentDraft(item.post.id, emoji)} className={COMMENT_EMOJI_CHIP_CLASS}>
                         {emoji}
                       </button>
                     ))}

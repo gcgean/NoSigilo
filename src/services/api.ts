@@ -372,8 +372,8 @@ export const interactionsService = {
     return response.data;
   },
 
-  comment: async (targetType: string, targetId: string, content: string) => {
-    const response = await apiClient.post('/comments', { targetType, targetId, content });
+  comment: async (targetType: string, targetId: string, content: string, parentCommentId?: string) => {
+    const response = await apiClient.post('/comments', { targetType, targetId, content, ...(parentCommentId ? { parentCommentId } : {}) });
     return response.data;
   },
 
