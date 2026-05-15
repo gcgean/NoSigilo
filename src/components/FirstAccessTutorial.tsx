@@ -467,6 +467,10 @@ export default function FirstAccessTutorial() {
 
   useEffect(() => {
     if (!user?.id) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const key = `nosigilo:welcome-tutorial-date:${user.id}`;
+    if (localStorage.getItem(key) === today) return; // já foi exibido hoje
+    localStorage.setItem(key, today);
     setOpen(true);
     setStepIndex(0);
   }, [user?.id]);
