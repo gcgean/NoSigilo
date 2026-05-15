@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  User, Lock, Bell, Eye, Shield, Globe, Moon, LogOut,
+  User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
   ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
 import { authService, feedService, profileService, suggestionsService } from '@/services/api';
@@ -44,6 +45,7 @@ function resolveMediaUrl(url: string) {
 
 export default function Settings() {
   const { user, updateUser, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -818,6 +820,48 @@ export default function Settings() {
                 checked={notifications.visits}
                 onCheckedChange={(v) => setNotifications({ ...notifications, visits: v })}
               />
+            </div>
+          </div>
+
+          {/* Appearance */}
+          <div className="glass rounded-xl p-6 space-y-4">
+            <h3 className="font-semibold">Aparência</h3>
+            <p className="text-sm text-muted-foreground">Escolha como o NoSigilo aparece para você.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setTheme('light')}
+                className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all ${
+                  theme === 'light'
+                    ? 'border-primary bg-primary/10 shadow-sm'
+                    : 'border-border hover:border-primary/40'
+                }`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                  <Sun className="h-5 w-5 text-amber-500" />
+                </div>
+                <span className="text-sm font-medium">Claro</span>
+                {theme === 'light' && (
+                  <span className="text-[10px] font-semibold text-primary">Ativo</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTheme('dark')}
+                className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all ${
+                  theme === 'dark'
+                    ? 'border-primary bg-primary/10 shadow-sm'
+                    : 'border-border hover:border-primary/40'
+                }`}
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800">
+                  <Moon className="h-5 w-5 text-slate-300" />
+                </div>
+                <span className="text-sm font-medium">Escuro</span>
+                {theme === 'dark' && (
+                  <span className="text-[10px] font-semibold text-primary">Ativo</span>
+                )}
+              </button>
             </div>
           </div>
 

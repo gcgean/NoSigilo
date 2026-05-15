@@ -23,7 +23,9 @@ import {
   Send,
   PartyPopper,
   X,
-  Gift
+  Gift,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -38,6 +40,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { syncPushSubscription } from '@/utils/pushNotifications';
 
@@ -102,6 +105,7 @@ function formatDetailedRemainingTime(targetMs: number, nowMs: number) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -498,6 +502,20 @@ export default function Layout() {
                 ) : null}
               </Button>
             </NavLink>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full sm:h-10 sm:w-10"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+              title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+            >
+              {theme === 'dark'
+                ? <Sun className="h-4.5 w-4.5 sm:h-5 sm:w-5 text-amber-400" />
+                : <Moon className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+              }
+            </Button>
 
             <HelpButton buttonClassName="h-9 w-9 rounded-full sm:h-10 sm:w-10" iconClassName="h-4.5 w-4.5 sm:h-5 sm:w-5" />
 
