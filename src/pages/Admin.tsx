@@ -2022,8 +2022,9 @@ function AdminReengagementTab() {
       });
       setData(res);
       setPage(p);
-    } catch {
-      toast({ title: 'Erro ao carregar usuários', variant: 'destructive' });
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.data?.error || err?.message || '';
+      toast({ title: 'Erro ao carregar usuários', description: detail || undefined, variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

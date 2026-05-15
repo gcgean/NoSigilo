@@ -8013,10 +8013,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const limit    = 50;
       const offset   = (page - 1) * limit;
 
-      // PostgreSQL: last_seen_at is TIMESTAMPTZ but sv/l created_at are TEXT (ISO).
-      // Convert last_seen_at to ISO text for consistent TEXT comparisons.
+      // PostgreSQL: last_seen_at is TIMESTAMPTZ but created_at/sv.created_at are TEXT (ISO).
+      // Convert last_seen_at → TEXT so all comparisons stay in TEXT domain (no risky casts).
       const sinceExpr = db.mode === 'pg'
-        ? `TO_CHAR(COALESCE(u.last_seen_at, u.created_at::TIMESTAMPTZ) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+        ? `COALESCE(TO_CHAR(u.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), u.created_at)`
         : `COALESCE(u.last_seen_at, u.created_at)`;
 
       // Build WHERE clauses
@@ -8096,9 +8096,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           },
         })),
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('[admin/reengagement/users]', err);
-      res.status(500).json({ error: 'internal' });
+      res.status(500).json({ error: 'internal', detail: String(err?.message ?? err) });
     }
   });
 
