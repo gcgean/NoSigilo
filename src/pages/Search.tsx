@@ -310,7 +310,7 @@ export default function SearchPage() {
       .finally(() => { if (!cancelled) setIsLoadingFallback(false); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, isLoading, prefsReady, onlyLiked]);
+  }, [results, isLoading, prefsReady, onlyLiked, isFallback]);
 
   // ── UI helpers ─────────────────────────────────────────────────────────────
   const handleGenderToggle = (gender: string) => {
