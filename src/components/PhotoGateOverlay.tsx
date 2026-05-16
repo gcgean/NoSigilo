@@ -8,7 +8,6 @@ import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 
 const EXEMPT_PATHS = ['/profile', '/settings', '/subscriptions', '/plans'];
-
 export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
@@ -205,7 +204,6 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
                 accept="image/*"
                 className="hidden"
                 onChange={onInputChange}
-                capture="user"
               />
 
               {/* Actions */}
@@ -220,14 +218,6 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
                     {isUploading ? 'Enviando...' : 'Adicionar foto aqui'}
                   </Button>
                 )}
-                <Button
-                  variant="ghost"
-                  className="w-full text-muted-foreground text-sm"
-                  onClick={() => navigate('/profile')}
-                >
-                  Ou acesse o menu Perfil para adicionar
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Button>
               </div>
             </div>
           </div>
