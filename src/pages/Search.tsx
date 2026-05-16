@@ -465,7 +465,7 @@ export default function SearchPage() {
           )}
           {isAvailableNow && (
             <Badge className="h-5 w-fit gap-0.5 rounded-full bg-emerald-500 px-2 text-[10px] font-bold text-white animate-pulse">
-              <Zap className="h-3 w-3" /> Hoje
+              <Zap className="h-3 w-3" /> Disponível hoje
             </Badge>
           )}
           {isAvailableWeek && (
