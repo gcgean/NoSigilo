@@ -74,8 +74,10 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
     { icon: Zap,   value: '100%', label: 'necessário para aparecer na busca' },
   ];
 
+  // z-[35] fica ABAIXO do header (z-40) e do nav inferior (z-40):
+  // usuário navega normalmente pelo header/nav mas não interage com o conteúdo bloqueado.
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col">
+    <div className="fixed inset-x-0 top-14 sm:top-16 bottom-0 z-[35] flex flex-col">
       {/* Blurred frosted background */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
 
@@ -215,15 +217,15 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
                     disabled={isUploading}
                   >
                     <Camera className="mr-2 h-5 w-5" />
-                    {isUploading ? 'Enviando...' : 'Adicionar foto de perfil'}
+                    {isUploading ? 'Enviando...' : 'Adicionar foto aqui'}
                   </Button>
                 )}
                 <Button
                   variant="ghost"
-                  className="w-full text-muted-foreground"
+                  className="w-full text-muted-foreground text-sm"
                   onClick={() => navigate('/profile')}
                 >
-                  Ir para meu perfil
+                  Ou acesse o menu Perfil para adicionar
                   <ArrowRight className="ml-1.5 h-4 w-4" />
                 </Button>
               </div>
@@ -231,7 +233,7 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
           </div>
 
           <p className="mt-4 text-center text-xs text-muted-foreground/60">
-            Sua foto é necessária para garantir a qualidade e segurança da comunidade.
+            Use o menu acima para navegar até Perfil ou Configurações e adicionar sua foto.
           </p>
         </div>
       </div>

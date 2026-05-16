@@ -145,6 +145,7 @@ export default function Chat() {
   const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
   const [highlightColorDraft, setHighlightColorDraft] = useState<'rose' | 'amber' | 'violet' | 'sky'>('rose');
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // for auto-scroll-to-bottom
@@ -437,6 +438,7 @@ export default function Chat() {
     if (USE_MOCKS) return;
     if (!selectedChat || !user?.id) return;
     setMessageSearch('');
+    setShowMessageSearch(false);
     
     // Reset unread count locally
     setConversations(prev => prev.map(c => 
@@ -1031,6 +1033,12 @@ export default function Chat() {
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
                   </DropdownMenuItem>
+                  {isMobileViewport && (
+                    <DropdownMenuItem onClick={() => setShowMessageSearch((v) => !v)}>
+                      <Search className="w-4 h-4 mr-2" />
+                      {showMessageSearch ? 'Fechar busca' : 'Buscar na conversa'}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={openHighlightDialog}>
                     <Pin className="w-4 h-4 mr-2" />
                     {activeConversation?.isHighlighted ? 'Editar destaque' : 'Destacar conversa'}
@@ -1053,17 +1061,30 @@ export default function Chat() {
             </div>
           </div>
 
-          <div className="shrink-0 border-b bg-background px-2.5 py-2 md:px-4">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar nesta conversa..."
-                value={messageSearch}
-                onChange={(e) => setMessageSearch(e.target.value)}
-                className="h-9 pl-9"
-              />
+          {/* Search bar — always visible on desktop, toggle-controlled on mobile */}
+          {(!isMobileViewport || showMessageSearch) && (
+            <div className="shrink-0 border-b bg-background px-2.5 py-2 md:px-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar nesta conversa..."
+                  value={messageSearch}
+                  onChange={(e) => setMessageSearch(e.target.value)}
+                  className="h-9 pl-9 pr-9"
+                  autoFocus={isMobileViewport && showMessageSearch}
+                />
+                {isMobileViewport && messageSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setMessageSearch(''); setShowMessageSearch(false); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Messages – native scrollable div; ref used for scroll-to-bottom */}
           <div
@@ -1110,9 +1131,9 @@ export default function Chat() {
                       isMutualMatchMessage ? 'justify-center' : isMine ? 'justify-end' : 'justify-start',
                     )}
                   >
-                    {/* Small avatar beside received messages */}
+                    {/* Small avatar beside received messages — hidden on very small screens to maximise message width */}
                     {!isMine && !isMutualMatchMessage && (
-                      <div className="shrink-0 mb-0.5">
+                      <div className="hidden min-[380px]:block shrink-0 mb-0.5">
                         <UserAvatar user={activeConversation?.user} className="h-7 w-7" />
                       </div>
                     )}
@@ -1122,7 +1143,7 @@ export default function Chat() {
                         isMutualMatchMessage
                           ? 'max-w-[92%] rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-center shadow-sm sm:max-w-[80%] md:max-w-[70%]'
                           : cn(
-                              'max-w-[84%] rounded-2xl px-3 py-2.5 sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2',
+                              'max-w-[88%] rounded-2xl px-3 py-2.5 min-[380px]:max-w-[84%] sm:max-w-[76%] md:max-w-[65%] md:px-4 md:py-2',
                               isMine
                                 ? 'bg-gradient-primary text-primary-foreground rounded-br-sm'
                                 : 'bg-secondary rounded-bl-sm'
@@ -1394,7 +1415,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[48px] w-0 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[48px] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
