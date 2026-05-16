@@ -12,6 +12,13 @@ export interface User {
   state?: string;
   birthDate?: string;
   partnerBirthDate?: string;
+  partnerName?: string;
+  partnerSexualOrientation?: string;
+  partnerEthnicity?: string;
+  partnerHair?: string;
+  partnerEyes?: string;
+  partnerHeight?: string;
+  partnerBodyType?: string;
   gender?: string;
   maritalStatus?: string;
   sexualOrientation?: string;
@@ -334,6 +341,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'state',
           'birthDate',
           'partnerBirthDate',
+          'partnerName',
+          'partnerSexualOrientation',
+          'partnerEthnicity',
+          'partnerHair',
+          'partnerEyes',
+          'partnerHeight',
+          'partnerBodyType',
           'gender',
           'maritalStatus',
           'sexualOrientation',

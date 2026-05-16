@@ -56,11 +56,20 @@ export default function Settings() {
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [profilePerson, setProfilePerson] = useState<1 | 2>(1);
+
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
     birthDate: user?.birthDate || '',
     partnerBirthDate: user?.partnerBirthDate || '',
+    partnerName: user?.partnerName || '',
+    partnerSexualOrientation: user?.partnerSexualOrientation || '',
+    partnerEthnicity: user?.partnerEthnicity || '',
+    partnerHair: user?.partnerHair || '',
+    partnerEyes: user?.partnerEyes || '',
+    partnerHeight: user?.partnerHeight || '',
+    partnerBodyType: user?.partnerBodyType || '',
     gender: user?.gender || '',
     maritalStatus: user?.maritalStatus || '',
     sexualOrientation: user?.sexualOrientation || '',
@@ -529,184 +538,267 @@ export default function Settings() {
           {profileSubTab === 'pessoal' && (
             <div className="glass rounded-xl p-6 space-y-5">
 
+              {/* Toggle Pessoa 1 / Pessoa 2 (só para casais) */}
+              {isCoupleProfile && (
+                <div className="flex rounded-xl overflow-hidden border border-border">
+                  {([1, 2] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setProfilePerson(p)}
+                      className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${
+                        profilePerson === p
+                          ? 'bg-primary text-white'
+                          : 'bg-background text-muted-foreground hover:bg-muted'
+                      }`}
+                    >
+                      {p === 1
+                        ? (profile.name || 'Pessoa 1')
+                        : (profile.partnerName || 'Pessoa 2')}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Nascimento */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Nascimento</h3>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="birthDate">{isCoupleProfile ? 'Nascimento — pessoa 1' : 'Data de nascimento'}</Label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="birthDate"
-                        type="date"
-                        value={profile.birthDate}
-                        onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })}
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                  {isCoupleProfile && (
+                  {(!isCoupleProfile || profilePerson === 1) && (
                     <div className="space-y-2">
-                      <Label htmlFor="partnerBirthDate">Nascimento — pessoa 2</Label>
+                      <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — ${profile.name || 'Pessoa 1'}` : 'Data de nascimento'}</Label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
-                          id="partnerBirthDate"
+                          id="birthDate"
                           type="date"
-                          value={profile.partnerBirthDate}
-                          onChange={(e) => setProfile({ ...profile, partnerBirthDate: e.target.value })}
+                          value={profile.birthDate}
+                          onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })}
                           className="pl-9"
                         />
                       </div>
                     </div>
+                  )}
+                  {isCoupleProfile && profilePerson === 2 && (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="partnerName">Nome</Label>
+                        <Input
+                          id="partnerName"
+                          value={profile.partnerName}
+                          onChange={(e) => setProfile({ ...profile, partnerName: e.target.value })}
+                          placeholder="Nome da pessoa 2"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="partnerBirthDate">Data de nascimento</Label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input
+                            id="partnerBirthDate"
+                            type="date"
+                            value={profile.partnerBirthDate}
+                            onChange={(e) => setProfile({ ...profile, partnerBirthDate: e.target.value })}
+                            className="pl-9"
+                          />
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
 
               <div className="border-t" />
 
-              {/* Características */}
+              {/* Características físicas — Pessoa 1 ou 2 */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Características físicas</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Orientação Sexual</Label>
-                    <Select value={profile.sexualOrientation} onValueChange={(v) => setProfile({ ...profile, sexualOrientation: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Heterossexual">Heterossexual</SelectItem>
-                        <SelectItem value="Homossexual">Homossexual</SelectItem>
-                        <SelectItem value="Bissexual">Bissexual</SelectItem>
-                        <SelectItem value="Pansexual">Pansexual</SelectItem>
-                        <SelectItem value="Assexual">Assexual</SelectItem>
-                      </SelectContent>
-                    </Select>
+                {(!isCoupleProfile || profilePerson === 1) ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Orientação Sexual</Label>
+                      <Select value={profile.sexualOrientation} onValueChange={(v) => setProfile({ ...profile, sexualOrientation: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Heterossexual">Heterossexual</SelectItem>
+                          <SelectItem value="Homossexual">Homossexual</SelectItem>
+                          <SelectItem value="Bissexual">Bissexual</SelectItem>
+                          <SelectItem value="Pansexual">Pansexual</SelectItem>
+                          <SelectItem value="Assexual">Assexual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Etnia</Label>
+                      <Select value={profile.ethnicity} onValueChange={(v) => setProfile({ ...profile, ethnicity: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Branco">Branco</SelectItem>
+                          <SelectItem value="Pardo">Pardo</SelectItem>
+                          <SelectItem value="Preto">Preto</SelectItem>
+                          <SelectItem value="Indígena">Indígena</SelectItem>
+                          <SelectItem value="Amarelo">Amarelo</SelectItem>
+                          <SelectItem value="Prefiro não informar">Prefiro não informar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cabelos</Label>
+                      <Select value={profile.hair} onValueChange={(v) => setProfile({ ...profile, hair: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Pretos (lisos)','Pretos (cacheados)','Castanhos (lisos)','Castanhos (cacheados)','Loiros','Ruivos','Grisalhos','Careca'].map((h) => (
+                            <SelectItem key={h} value={h}>{h}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Olhos</Label>
+                      <Select value={profile.eyes} onValueChange={(v) => setProfile({ ...profile, eyes: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Castanhos','Azuis','Verdes','Pretos','Mel'].map((e) => (
+                            <SelectItem key={e} value={e}>{e}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Altura</Label>
+                      <Input value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} placeholder="Ex.: 1,78 m" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Corpo</Label>
+                      <Select value={profile.bodyType} onValueChange={(v) => setProfile({ ...profile, bodyType: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Atlético(a)','Magro(a)','Normal','Acima do peso','Plus size'].map((b) => (
+                            <SelectItem key={b} value={b}>{b}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label>Etnia</Label>
-                    <Select value={profile.ethnicity} onValueChange={(v) => setProfile({ ...profile, ethnicity: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Branco">Branco</SelectItem>
-                        <SelectItem value="Pardo">Pardo</SelectItem>
-                        <SelectItem value="Preto">Preto</SelectItem>
-                        <SelectItem value="Indígena">Indígena</SelectItem>
-                        <SelectItem value="Amarelo">Amarelo</SelectItem>
-                        <SelectItem value="Prefiro não informar">Prefiro não informar</SelectItem>
-                      </SelectContent>
-                    </Select>
+                ) : (
+                  /* Pessoa 2 */
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Orientação Sexual</Label>
+                      <Select value={profile.partnerSexualOrientation} onValueChange={(v) => setProfile({ ...profile, partnerSexualOrientation: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Heterossexual">Heterossexual</SelectItem>
+                          <SelectItem value="Homossexual">Homossexual</SelectItem>
+                          <SelectItem value="Bissexual">Bissexual</SelectItem>
+                          <SelectItem value="Pansexual">Pansexual</SelectItem>
+                          <SelectItem value="Assexual">Assexual</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Etnia</Label>
+                      <Select value={profile.partnerEthnicity} onValueChange={(v) => setProfile({ ...profile, partnerEthnicity: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Branco">Branco</SelectItem>
+                          <SelectItem value="Pardo">Pardo</SelectItem>
+                          <SelectItem value="Preto">Preto</SelectItem>
+                          <SelectItem value="Indígena">Indígena</SelectItem>
+                          <SelectItem value="Amarelo">Amarelo</SelectItem>
+                          <SelectItem value="Prefiro não informar">Prefiro não informar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cabelos</Label>
+                      <Select value={profile.partnerHair} onValueChange={(v) => setProfile({ ...profile, partnerHair: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Pretos (lisos)','Pretos (cacheados)','Castanhos (lisos)','Castanhos (cacheados)','Loiros','Ruivos','Grisalhos','Careca'].map((h) => (
+                            <SelectItem key={h} value={h}>{h}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Olhos</Label>
+                      <Select value={profile.partnerEyes} onValueChange={(v) => setProfile({ ...profile, partnerEyes: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Castanhos','Azuis','Verdes','Pretos','Mel'].map((e) => (
+                            <SelectItem key={e} value={e}>{e}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Altura</Label>
+                      <Input value={profile.partnerHeight} onChange={(e) => setProfile({ ...profile, partnerHeight: e.target.value })} placeholder="Ex.: 1,65 m" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Corpo</Label>
+                      <Select value={profile.partnerBodyType} onValueChange={(v) => setProfile({ ...profile, partnerBodyType: v })}>
+                        <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                        <SelectContent>
+                          {['Atlético(a)','Magro(a)','Normal','Acima do peso','Plus size'].map((b) => (
+                            <SelectItem key={b} value={b}>{b}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label>Cabelos</Label>
-                    <Select value={profile.hair} onValueChange={(v) => setProfile({ ...profile, hair: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Pretos (lisos)">Pretos (lisos)</SelectItem>
-                        <SelectItem value="Pretos (cacheados)">Pretos (cacheados)</SelectItem>
-                        <SelectItem value="Castanhos (lisos)">Castanhos (lisos)</SelectItem>
-                        <SelectItem value="Castanhos (cacheados)">Castanhos (cacheados)</SelectItem>
-                        <SelectItem value="Loiros">Loiros</SelectItem>
-                        <SelectItem value="Ruivos">Ruivos</SelectItem>
-                        <SelectItem value="Grisalhos">Grisalhos</SelectItem>
-                        <SelectItem value="Careca">Careca</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Olhos</Label>
-                    <Select value={profile.eyes} onValueChange={(v) => setProfile({ ...profile, eyes: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Castanhos">Castanhos</SelectItem>
-                        <SelectItem value="Azuis">Azuis</SelectItem>
-                        <SelectItem value="Verdes">Verdes</SelectItem>
-                        <SelectItem value="Pretos">Pretos</SelectItem>
-                        <SelectItem value="Mel">Mel</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Altura</Label>
-                    <Input
-                      value={profile.height}
-                      onChange={(e) => setProfile({ ...profile, height: e.target.value })}
-                      placeholder="Ex.: 1,78 m"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Corpo</Label>
-                    <Select value={profile.bodyType} onValueChange={(v) => setProfile({ ...profile, bodyType: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Atlético(a)">Atlético(a)</SelectItem>
-                        <SelectItem value="Magro(a)">Magro(a)</SelectItem>
-                        <SelectItem value="Normal">Normal</SelectItem>
-                        <SelectItem value="Acima do peso">Acima do peso</SelectItem>
-                        <SelectItem value="Plus size">Plus size</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                )}
               </div>
 
-              <div className="border-t" />
-
-              {/* Estilo de vida */}
-              <div>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Estilo de vida</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Profissão</Label>
-                    <Input
-                      value={profile.profession}
-                      onChange={(e) => setProfile({ ...profile, profession: e.target.value })}
-                      placeholder="Ex.: Empresário(a), Estudante..."
-                    />
+              {/* Estilo de vida — só na Pessoa 1 */}
+              {(!isCoupleProfile || profilePerson === 1) && (
+                <>
+                  <div className="border-t" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Estilo de vida</h3>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Profissão</Label>
+                        <Input value={profile.profession} onChange={(e) => setProfile({ ...profile, profession: e.target.value })} placeholder="Ex.: Empresário(a), Estudante..." />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Signo</Label>
+                        <Select value={profile.zodiacSign} onValueChange={(v) => setProfile({ ...profile, zodiacSign: v })}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            {['Áries','Touro','Gêmeos','Câncer','Leão','Virgem','Libra','Escorpião','Sagitário','Capricórnio','Aquário','Peixes'].map((s) => (
+                              <SelectItem key={s} value={s}>{s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fuma</Label>
+                        <Select value={profile.smokes} onValueChange={(v) => setProfile({ ...profile, smokes: v })}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Não">Não</SelectItem>
+                            <SelectItem value="Socialmente">Socialmente</SelectItem>
+                            <SelectItem value="Sim">Sim</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Bebe</Label>
+                        <Select value={profile.drinks} onValueChange={(v) => setProfile({ ...profile, drinks: v })}>
+                          <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Não">Não</SelectItem>
+                            <SelectItem value="Socialmente">Socialmente</SelectItem>
+                            <SelectItem value="Sim">Sim</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label>Signo</Label>
-                    <Select value={profile.zodiacSign} onValueChange={(v) => setProfile({ ...profile, zodiacSign: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        {['Áries','Touro','Gêmeos','Câncer','Leão','Virgem','Libra','Escorpião','Sagitário','Capricórnio','Aquário','Peixes'].map((s) => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Fuma</Label>
-                    <Select value={profile.smokes} onValueChange={(v) => setProfile({ ...profile, smokes: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Não">Não</SelectItem>
-                        <SelectItem value="Socialmente">Socialmente</SelectItem>
-                        <SelectItem value="Sim">Sim</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Bebe</Label>
-                    <Select value={profile.drinks} onValueChange={(v) => setProfile({ ...profile, drinks: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Não">Não</SelectItem>
-                        <SelectItem value="Socialmente">Socialmente</SelectItem>
-                        <SelectItem value="Sim">Sim</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
               <Button onClick={handleSaveProfile} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90" disabled={isLoading}>
                 {isLoading ? 'Salvando...' : 'Salvar Alterações'}
