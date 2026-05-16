@@ -32,12 +32,14 @@ const genderOptions = [
 
 // Intention options — must match keys used in Profile settings
 export const INTENTION_OPTIONS: Array<{ value: string; emoji: string; label: string }> = [
-  { value: 'swing',    emoji: '👫',  label: 'Swing completo' },
-  { value: 'soft',     emoji: '💋',  label: 'Soft swing' },
-  { value: 'voyeur',   emoji: '👁️',  label: 'Voyeur / exib.' },
-  { value: 'online',   emoji: '💬',  label: 'Online / sexting' },
-  { value: 'amizade',  emoji: '🤝',  label: 'Amizade liberal' },
-  { value: 'festa',    emoji: '🎉',  label: 'Festa / evento' },
+  { value: 'troca_casal',      emoji: '👫',  label: 'Troca de casal' },
+  { value: 'menage_m_sem_bi',  emoji: '👨‍👨‍👦',  label: 'Ménage masc. sem bi' },
+  { value: 'menage_m_com_bi',  emoji: '♾️',  label: 'Ménage masc. com bi' },
+  { value: 'mesmo_ambiente',   emoji: '🛏️',  label: 'Sexo no mesmo ambiente' },
+  { value: 'sexo_grupo',       emoji: '👥',  label: 'Sexo em grupo' },
+  { value: 'menage_f_sem_bi',  emoji: '👩‍👩‍👦',  label: 'Ménage fem. sem bi' },
+  { value: 'menage_f_com_bi',  emoji: '🌈',  label: 'Ménage fem. com bi' },
+  { value: 'exibicionismo',    emoji: '👁️',  label: 'Exibicionismo' },
 ];
 
 const PAGE_SIZE = 24;
