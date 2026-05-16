@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -995,6 +996,44 @@ export default function Profile() {
           </div>
         </div>
       </div>
+
+      {/* Objetivos e Fetiches */}
+      {(() => {
+        const intentions: string[] = Array.isArray((user as any)?.intentions) ? (user as any).intentions : [];
+        const fetiches: string[] = Array.isArray((user as any)?.fetiches) ? (user as any).fetiches : [];
+        if (intentions.length === 0 && fetiches.length === 0) return null;
+        return (
+          <div className="space-y-3 mb-6">
+            {intentions.length > 0 && (
+              <div className="glass rounded-2xl px-4 py-3.5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Objetivos</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {intentions.map((val) => {
+                    const opt = INTENTION_OPTIONS.find((o) => o.value === val);
+                    return (
+                      <span key={val} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                        {opt ? `${opt.emoji} ${opt.label}` : val}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {fetiches.length > 0 && (
+              <div className="glass rounded-2xl px-4 py-3.5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Fetiches</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {fetiches.map((f) => (
+                    <span key={f} className="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-foreground">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Profile Completeness Widget */}
       {profileCompleteness.percent < 100 ? (
