@@ -192,7 +192,8 @@ export default function Chat() {
   // position:fixed and re-compute its top/height from visualViewport every time
   // the viewport resizes or scrolls (i.e., every time the keyboard
   // appears/disappears). This keeps the chat panel pixel-perfect within the
-  // visible screen area regardless of keyboard state.
+  // visible screen area regardless of keyboard state. See the selectedChat
+  // branch comments below for a full explanation of the iOS Safari quirk and fix.
   //
   // For the conversation list (no selected chat) we keep the CSS-calc approach
   // because the user isn't typing and keyboard interactions there are brief.
@@ -211,26 +212,36 @@ export default function Chat() {
     const update = () => {
       const viewport = window.visualViewport;
       const vh = viewport ? viewport.height : window.innerHeight;
-      const vTop = viewport ? Math.round(viewport.offsetTop) : 0;
       const vLeft = viewport ? Math.round(viewport.offsetLeft) : 0;
       const vWidth = viewport ? Math.round(viewport.width) : window.innerWidth;
 
       if (selectedChat) {
-        // Conversation open → fixed + visual-viewport tracking.
-        // NOTE: position:fixed on modern mobile browsers is relative to the
-        // VISUAL viewport, not the layout viewport. So we must NOT add vTop to
-        // the top value — that would double-offset the container when the browser
-        // scrolls the page to keep the focused input visible (keyboard open).
-        // vLeft/vWidth are still needed for rare cases of horizontal visual
-        // viewport offset (e.g. some iOS Safari versions).
+        // Conversation open → full-screen fixed panel, keyboard-aware.
+        //
+        // iOS Safari problem with the previous approach (top: headerPx, height: vh - headerPx):
+        //   position:fixed on iOS is relative to the LAYOUT viewport, not the visual
+        //   viewport. When the keyboard opens, iOS internally scrolls the page to keep
+        //   the focused input visible. That scroll shifts the layout viewport origin,
+        //   so our `top: 56px` container ends up rendered at the wrong position —
+        //   input bar appears at the top, messages area appears mostly off-screen.
+        //
+        // Fix: anchor to top:0 / bottom:0 (always covers full screen height in the
+        //   layout viewport), then use paddingBottom equal to the keyboard height so
+        //   the *content* stays above the keyboard. zIndex:60 covers the Layout header
+        //   (z-40) for a true full-screen chat experience on mobile.
+        //   paddingTop:env(safe-area-inset-top) protects content from the notch/island.
+        const kbHeight = Math.max(0, window.innerHeight - Math.round(vh));
         setMobileStyle({
           position: 'fixed',
-          top: headerPx,
+          top: 0,
+          bottom: 0,
           left: vLeft,
           width: Math.max(vWidth, 280),
           maxWidth: '100vw',
-          height: Math.max(Math.floor(vh) - headerPx, 200), // 200 px minimum so it never collapses
-          zIndex: 30,
+          paddingTop: 'env(safe-area-inset-top)',
+          paddingBottom: kbHeight,
+          boxSizing: 'border-box',
+          zIndex: 60,
           overflowX: 'hidden',
         });
       } else {
