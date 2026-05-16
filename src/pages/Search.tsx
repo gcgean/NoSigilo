@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -861,11 +861,8 @@ export default function SearchPage() {
         <div className="mb-4 flex flex-col gap-2 sm:mb-5">
 
           {/* Distance quick buttons */}
-          <div className="relative">
-            <div
-              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
-            >
+          <div className="relative overflow-hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
                 <button
@@ -881,18 +878,15 @@ export default function SearchPage() {
                   {l}
                 </button>
               ))}
-              {/* right-side spacer so last chip is fully visible */}
-              <span className="shrink-0 w-4" aria-hidden />
+              {/* right-side spacer so last chip clears the fade */}
+              <span className="shrink-0 w-8" aria-hidden />
             </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
           </div>
 
           {/* Sort buttons */}
-          <div className="relative">
-            <div
-              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
-            >
+          <div className="relative overflow-hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               {([
                 ['nearby',    'Próximos'],
@@ -915,17 +909,14 @@ export default function SearchPage() {
                   {l}
                 </button>
               ))}
-              <span className="shrink-0 w-4" aria-hidden />
+              <span className="shrink-0 w-8" aria-hidden />
             </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
           </div>
 
           {/* Intention filter pills */}
-          <div className="relative">
-            <div
-              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
-            >
+          <div className="relative overflow-hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
               <button
                 type="button"
@@ -952,9 +943,9 @@ export default function SearchPage() {
                   {opt.emoji} {opt.label}
                 </button>
               ))}
-              <span className="shrink-0 w-4" aria-hidden />
+              <span className="shrink-0 w-8" aria-hidden />
             </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
           </div>
 
         </div>
