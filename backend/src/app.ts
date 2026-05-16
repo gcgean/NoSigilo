@@ -2433,9 +2433,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const reelsOnlyFilter = includeReelsOnly
       ? 'AND p.is_reels_only = 1'
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    // Fetch extra candidates to compensate for seenIds exclusion and ensure enough fresh posts
-    const extraForSeen = Math.min(seenIdsSet.size, 200);
-    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(500, offset + limit + 150 + extraForSeen);
+    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(400, offset + limit + 150);
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';

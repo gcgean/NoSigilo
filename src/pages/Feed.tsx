@@ -359,7 +359,7 @@ export default function Feed() {
     try {
       const params: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (km !== null) params.maxDistanceKm = km;
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 200).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
       if (seenIds) params.seenIds = seenIds;
       const feed = await feedService.getFeed(params);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
@@ -542,7 +542,8 @@ export default function Feed() {
         !radarHighlightsCacheRef.current || Date.now() - radarHighlightsCacheRef.current.fetchedAt > RADAR_HIGHLIGHTS_CACHE_TTL_MS;
       const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 300).join(',');
+      // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
       const [feed, radarData] = await Promise.all([
         feedService.getFeed(feedParams),
@@ -711,7 +712,7 @@ export default function Feed() {
     setIsLoadingMore(true);
     try {
       // Pass currently-seen post IDs so backend can exclude them (cross-page deduplication)
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 200).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
       const feed = await feedService.getFeed(moreParams);
