@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,7 @@ type FeedPost = {
   likedByMe: boolean;
   reactions?: { type: string; count: number }[];
   feedContext?: FeedContext | null;
+  distanceKm?: number | null;
 };
 
 type FeedExperience = {
@@ -157,6 +158,8 @@ function formatRemainingRadarTime(iso: string) {
 
 const FEED_SESSION_AUTHOR_COUNTS_KEY = 'nosigilo:feed-session-author-counts';
 const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
+const NEARBY_OPTIONS = [10, 25, 50] as const;
+type NearbyOption = typeof NEARBY_OPTIONS[number];
 
 function readFeedSessionAuthorCounts() {
   if (typeof window === 'undefined') return {} as Record<string, number>;
@@ -272,6 +275,35 @@ export default function Feed() {
   useEffect(() => {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
+
+  // Proximity filter: null = todos, number = raio em km
+  const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(null);
+
+  const handleNearbyRadius = (km: NearbyOption) => {
+    const next = nearbyRadius === km ? null : km;
+    setNearbyRadius(next);
+    void triggerNearbyReload(next);
+  };
+
+  const triggerNearbyReload = async (km: NearbyOption | null) => {
+    setIsLoading(true);
+    try {
+      const params: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
+      if (km !== null) params.maxDistanceKm = km;
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 200).join(',');
+      if (seenIds) params.seenIds = seenIds;
+      const feed = await feedService.getFeed(params);
+      setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
+      setAllPosts(Array.isArray(feed?.posts) ? feed.posts : []);
+      setFeedInsights(feed?.insights ?? null);
+      setPage(1);
+      setHasMore(!!feed?.hasMore);
+    } catch {
+      toast({ title: 'Erro ao filtrar por proximidade', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     getPushActivationState().then((s) => {
@@ -438,8 +470,10 @@ export default function Feed() {
     try {
       const shouldRefreshRadarHighlights =
         !radarHighlightsCacheRef.current || Date.now() - radarHighlightsCacheRef.current.fetchedAt > RADAR_HIGHLIGHTS_CACHE_TTL_MS;
+      const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
+      if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
       const [feed, radarData] = await Promise.all([
-        feedService.getFeed({ page: 1, limit: 20 }),
+        feedService.getFeed(feedParams),
         shouldRefreshRadarHighlights
           ? radarService.getHighlights().catch(() => ({ highlights: [] }))
           : Promise.resolve({ highlights: radarHighlightsCacheRef.current?.items ?? [] }),
@@ -606,7 +640,9 @@ export default function Feed() {
     try {
       // Pass currently-seen post IDs so backend can exclude them (cross-page deduplication)
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 200).join(',');
-      const feed = await feedService.getFeed({ page: nextPage, limit: 20, seenIds: seenIds || undefined });
+      const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
+      if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
+      const feed = await feedService.getFeed(moreParams);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];
       if (nextPage === 1) setFeedInsights(feed?.insights ?? null);
@@ -1767,11 +1803,59 @@ export default function Feed() {
               {feedFilter === 'favorites' && favorites.length === 0 ? (
                 <span className="ml-1 text-sm text-muted-foreground">Adicione curtidos para filtrar.</span>
               ) : null}
+              {/* Proximity filter pills — only when user has location */}
+              {user?.lat && feedFilter !== 'experiences' ? (
+                <>
+                  <div className="h-4 w-px shrink-0 bg-border/60" />
+                  <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  {NEARBY_OPTIONS.map((km) => (
+                    <Button
+                      key={km}
+                      type="button"
+                      size="sm"
+                      variant={nearbyRadius === km ? 'default' : 'ghost'}
+                      className={cn(
+                        'shrink-0 px-2.5 text-xs',
+                        nearbyRadius === km
+                          ? 'bg-emerald-500 text-white hover:bg-emerald-600 border-0'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                      onClick={() => handleNearbyRadius(km)}
+                    >
+                      {km} km
+                    </Button>
+                  ))}
+                </>
+              ) : null}
                 </>
               ) : null}
             </div>
           </Card>
-          {feedFilter === 'all' && feedInsightsSummary ? (
+          {/* Proximity active banner */}
+          {feedFilter !== 'experiences' && nearbyRadius !== null ? (
+            <Card className="overflow-hidden border-emerald-400/25 bg-gradient-to-r from-emerald-50/70 via-background to-teal-50/50 p-4 glass dark:from-emerald-950/30 dark:to-teal-950/20">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg">📍</span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      Pessoas a até {nearbyRadius} km de você
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Toque em qualquer perfil para iniciar uma conversa e marcar um encontro.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}
+                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors underline"
+                >
+                  Ver todos
+                </button>
+              </div>
+            </Card>
+          ) : null}
+          {feedFilter === 'all' && nearbyRadius === null && feedInsightsSummary ? (
             <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -2086,6 +2170,25 @@ export default function Feed() {
               description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
             />
           ) : null}
+          {feedFilter !== 'experiences' && !isLoading && nearbyRadius !== null && allPosts.length === 0 ? (
+            <Card className="overflow-hidden p-8 glass text-center space-y-3">
+              <div className="text-4xl">📍</div>
+              <p className="font-semibold text-foreground">Ninguém perto de você por enquanto</p>
+              <p className="text-sm text-muted-foreground">
+                Não encontramos publicações de pessoas a até {nearbyRadius} km. Tente ampliar o raio ou voltar mais tarde.
+              </p>
+              <div className="flex justify-center gap-2 pt-1">
+                {NEARBY_OPTIONS.filter((km) => km > nearbyRadius).slice(0, 1).map((km) => (
+                  <Button key={km} size="sm" variant="outline" onClick={() => handleNearbyRadius(km)}>
+                    Ampliar para {km} km
+                  </Button>
+                ))}
+                <Button size="sm" variant="ghost" onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}>
+                  Ver todos
+                </Button>
+              </div>
+            </Card>
+          ) : null}
           {feedFilter !== 'experiences' && !isLoading && feedDisplayItems.map((item) => (
             item.type === 'section' ? (
               <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
@@ -2301,21 +2404,39 @@ export default function Feed() {
                 )}
               </div>
 
-              {/* CTA — Ver perfil (mental trigger: drives profile visits) */}
+              {/* CTA — Ver perfil / Chamar para encontro */}
               {item.post.author.id !== user?.id && (
                 <Link
                   to={getUserProfileHref(item.post.author.id, user?.id, '/feed')}
-                  className="flex items-center justify-between border-t px-3 py-2.5 sm:px-4 transition-colors hover:bg-primary/5 group"
+                  className={cn(
+                    'flex items-center justify-between border-t px-3 py-2.5 sm:px-4 transition-colors group',
+                    nearbyRadius !== null && item.post.distanceKm !== null && item.post.distanceKm !== undefined
+                      ? 'hover:bg-emerald-50/60 dark:hover:bg-emerald-950/30'
+                      : 'hover:bg-primary/5'
+                  )}
                 >
                   <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">
                     {(() => {
                       const badge = getProfileTypeBadge(item.post.author.gender);
                       const name = item.post.author.name?.split(' ')[0] || 'esse perfil';
+                      const d = item.post.distanceKm;
+                      if (nearbyRadius !== null && d !== null && d !== undefined) {
+                        return `📍 ${d} km — toque para chamar ${name} para um encontro`;
+                      }
                       if (badge) return `${badge.emoji} Ver o perfil de ${name}`;
                       return `Ver o perfil de ${name}`;
                     })()}
                   </span>
-                  <span className="text-[11px] font-semibold text-primary group-hover:translate-x-0.5 transition-transform">Ver perfil →</span>
+                  <span className={cn(
+                    'text-[11px] font-semibold group-hover:translate-x-0.5 transition-transform shrink-0',
+                    nearbyRadius !== null && item.post.distanceKm !== null && item.post.distanceKm !== undefined
+                      ? 'text-emerald-600'
+                      : 'text-primary'
+                  )}>
+                    {nearbyRadius !== null && item.post.distanceKm !== null && item.post.distanceKm !== undefined
+                      ? 'Chamar →'
+                      : 'Ver perfil →'}
+                  </span>
                 </Link>
               )}
 

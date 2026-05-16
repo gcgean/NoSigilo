@@ -55,6 +55,8 @@ export interface User {
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
   telegramChatId?: string | null;
+  lat?: number | null;
+  lon?: number | null;
 }
 
 interface AuthContextType {

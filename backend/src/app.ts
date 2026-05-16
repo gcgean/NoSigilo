@@ -1125,7 +1125,7 @@ function computeBadges(row: any): string[] {
 function rowToPublicUser(
   row: any,
   isOnline?: boolean,
-  options?: { showEmail?: boolean; subscriptionsEnabled?: boolean }
+  options?: { showEmail?: boolean; subscriptionsEnabled?: boolean; showLocation?: boolean }
 ): PublicUser {
   const lookingFor = safeJsonParse(row.looking_for_json);
   return {
@@ -1185,6 +1185,8 @@ function rowToPublicUser(
         }
       : {}),
     telegramChatId: options?.showEmail ? (row.telegram_chat_id ?? null) : null,
+    lat: options?.showLocation ? (row.lat != null ? Number(row.lat) : null) : undefined,
+    lon: options?.showLocation ? (row.lon != null ? Number(row.lon) : null) : undefined,
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
       : null,
@@ -2282,6 +2284,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), {
       showEmail: true,
       subscriptionsEnabled,
+      showLocation: true,
     }));
   });
 
@@ -2488,6 +2491,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
+    const distanceKmByPostId = new Map<string, number | null>();
+    const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
     let feedInsights = {
       nearbyActiveCount: 0,
       nearbyRadiusKm: null as number | null,
@@ -2678,6 +2683,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               viewerLat !== null && viewerLon !== null && authorLat !== null && authorLon !== null
                 ? roundDistanceKm(haversineKm({ lat: viewerLat, lon: viewerLon }, { lat: authorLat, lon: authorLon }))
                 : null;
+            // Store distance for response payload and proximity filtering
+            distanceKmByPostId.set(postId, distanceKm);
             const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '');
             const sameState = !!viewerState && viewerState === normalizeRadarText(row.author_state || '');
             const matchesInterest = matchesLookingFor(viewerLookingFor, row.author_gender);
@@ -2812,10 +2819,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           return diversified.map((item) => item.row);
         })();
 
+    // Proximity filter: only keep posts within maxDistanceKm radius (when set)
+    const proximityRows = maxDistanceKm !== null && viewerLat !== null && viewerLon !== null
+      ? orderedRows.filter((r: any) => {
+          const d = distanceKmByPostId.get(String(r.id));
+          return d !== null && d !== undefined && d <= maxDistanceKm;
+        })
+      : orderedRows;
+
     // Exclude posts already shown to the client (cross-page deduplication)
     const freshRows = seenIdsSet.size > 0
-      ? orderedRows.filter((r: any) => !seenIdsSet.has(String(r.id)))
-      : orderedRows;
+      ? proximityRows.filter((r: any) => !seenIdsSet.has(String(r.id)))
+      : proximityRows;
 
     const slice = freshRows.slice(0, limit);
     const postIds = slice.map((r: any) => String(r.id));
@@ -2916,6 +2931,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         likedByMe: likedByMeSet.has(String(r.id)),
         reactions: reactionsByPostId.get(String(r.id)) ?? [],
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
+        distanceKm: distanceKmByPostId.get(String(r.id)) ?? null,
       })),
       hasMore: includeReelsOnly ? orderedRows.length > offset + limit : freshRows.length > limit,
       insights: includeReelsOnly ? null : feedInsights,

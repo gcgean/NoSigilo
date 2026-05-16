@@ -94,7 +94,7 @@ export const authService = {
 
 // Feed Service
 export const feedService = {
-  getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string }) => {
+  getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number }) => {
     if (USE_MOCKS) {
       return { posts: [], hasMore: false, insights: null };
     }
