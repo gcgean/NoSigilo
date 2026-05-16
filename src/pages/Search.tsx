@@ -244,7 +244,7 @@ export default function SearchPage() {
           // Apply saved prefs as initial filter state
           if (prefs.profileTypes?.length > 0) setSelectedGenders(prefs.profileTypes);
           if (prefs.maxDistance) setRadar(String(prefs.maxDistance));
-          if (prefs.intentions?.length > 0) setSelectedIntention(prefs.intentions[0] ?? '');
+          // Intention defaults to "Tudo" — user picks manually per session
           if (prefs.availabilityFilter === 'available') {
             setAvailableOnly(true);
             setSort('available');
