@@ -1201,7 +1201,7 @@ function rowToPublicUser(
       const s = row.availability_status ?? null;
       const until = row.availability_until ? new Date(row.availability_until).getTime() : null;
       if (!s || (until !== null && until < Date.now())) return null;
-      return s as 'now' | 'week';
+      return s as 'now' | 'week' | 'month' | 'online_only' | 'not_looking';
     })(),
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
@@ -3429,7 +3429,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         zodiacSign: z.string().max(50).optional().nullable(),
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         intentions: z.array(z.string().max(50)).max(10).optional().nullable(),
-        availabilityStatus: z.enum(['now', 'week']).optional().nullable(),
+        availabilityStatus: z.enum(['now', 'week', 'month', 'online_only', 'not_looking']).optional().nullable(),
         meetingTagline: z.string().max(100).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
@@ -3510,12 +3510,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const status = data.availabilityStatus ?? null;
       setParts.push('availability_status = ?');
       values.push(status);
-      // Set expiry: 'now' → 24h, 'week' → 7 days, null → clear
+      // Set expiry: 'now' → 24h, 'week' → 7 days, 'month' → 30 days, 'online_only'/'not_looking' → no expiry, null → clear
       const expiry = status === 'now'
         ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
         : status === 'week'
           ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-          : null;
+          : status === 'month'
+            ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+            : null; // 'online_only', 'not_looking', null → no expiry / clear
       setParts.push('availability_until = ?');
       values.push(expiry);
     }
@@ -3545,6 +3547,60 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
     res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), { showEmail: true }));
+  });
+
+  // ── Search preferences ────────────────────────────────────────────────────
+
+  app.get('/api/users/search-preferences', requireAuth(env, db), async (req, res) => {
+    const row = await queryOne(db, 'SELECT * FROM user_search_preferences WHERE user_id = ?', [req.auth!.userId]) as any;
+    if (!row) {
+      res.json(null);
+      return;
+    }
+    res.json({
+      profileTypes: safeJsonParse(row.profile_types_json) ?? [],
+      maxDistance: row.max_distance ?? null,
+      intentions: safeJsonParse(row.intentions_json) ?? [],
+      availabilityFilter: row.availability_filter ?? null,
+      updatedAt: row.updated_at,
+    });
+  });
+
+  app.put('/api/users/search-preferences', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      profileTypes: z.array(z.string().max(60)).max(20).optional().nullable(),
+      maxDistance: z.number().int().min(1).max(5000).optional().nullable(),
+      intentions: z.array(z.string().max(50)).max(10).optional().nullable(),
+      availabilityFilter: z.enum(['any', 'available']).optional().nullable(),
+    }).strict();
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const { profileTypes, maxDistance, intentions, availabilityFilter } = parsed.data;
+    const now = nowIso();
+    await run(
+      db,
+      `INSERT INTO user_search_preferences (user_id, profile_types_json, max_distance, intentions_json, availability_filter, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         profile_types_json  = excluded.profile_types_json,
+         max_distance        = excluded.max_distance,
+         intentions_json     = excluded.intentions_json,
+         availability_filter = excluded.availability_filter,
+         updated_at          = excluded.updated_at`,
+      [
+        req.auth!.userId,
+        profileTypes != null ? JSON.stringify(profileTypes) : null,
+        maxDistance ?? null,
+        intentions != null ? JSON.stringify(intentions) : null,
+        availabilityFilter ?? null,
+        now,
+      ]
+    );
+    await persist();
+    res.json({ success: true });
   });
 
   // Deactivate profile
@@ -3807,7 +3863,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
     if (availableOnly) {
       const nowIso = new Date().toISOString();
-      conditions.push(`(u.availability_status IS NOT NULL AND (u.availability_until IS NULL OR u.availability_until > ?))`);
+      conditions.push(`(u.availability_status IS NOT NULL AND u.availability_status != 'not_looking' AND (u.availability_until IS NULL OR u.availability_until > ?))`);
       params.push(nowIso);
     }
 
@@ -3842,19 +3898,20 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     } else if (sort === 'active') {
       orderBy = `CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC, u.last_seen_at DESC, u.created_at DESC`;
     } else if (sort === 'available') {
-      // Available NOW first, then WEEK, then others; within each group by distance
+      // NOW first, then WEEK, then MONTH, then ONLINE_ONLY, then others; within group by distance
       const nowIso2 = new Date().toISOString();
-      params.push(nowIso2);
+      params.push(nowIso2, nowIso2, nowIso2, nowIso2);
       orderBy = `
         CASE
-          WHEN u.availability_status = 'now' AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 0
-          WHEN u.availability_status = 'week' AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 1
-          ELSE 2
+          WHEN u.availability_status = 'now'         AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 0
+          WHEN u.availability_status = 'week'        AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 1
+          WHEN u.availability_status = 'month'       AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 2
+          WHEN u.availability_status = 'online_only' AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 3
+          ELSE 4
         END ASC,
         ${distanceOrderBy}
         u.last_seen_at DESC
       `;
-      params.push(nowIso2);
     } else {
       // 'nearby' — online first, then distance, then last_seen, then newest
       const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();

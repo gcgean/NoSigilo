@@ -529,6 +529,27 @@ export const usersService = {
     return response.data as { posts: Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>; hasMore: boolean };
   },
 
+  getSearchPreferences: async () => {
+    const response = await apiClient.get('/users/search-preferences');
+    return response.data as {
+      profileTypes: string[];
+      maxDistance: number | null;
+      intentions: string[];
+      availabilityFilter: 'any' | 'available' | null;
+      updatedAt: string;
+    } | null;
+  },
+
+  saveSearchPreferences: async (prefs: {
+    profileTypes?: string[] | null;
+    maxDistance?: number | null;
+    intentions?: string[] | null;
+    availabilityFilter?: 'any' | 'available' | null;
+  }) => {
+    const response = await apiClient.put('/users/search-preferences', prefs);
+    return response.data as { success: boolean };
+  },
+
   getBlockStatus: async (userId: string) => {
     const response = await apiClient.get(`/users/${userId}/block`);
     return response.data as { blocked: boolean; blockedByMe: boolean; blockedByThem: boolean };

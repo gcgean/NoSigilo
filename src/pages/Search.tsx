@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Camera, Zap } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -54,7 +53,6 @@ function formatDistanceKm(distanceKm: unknown) {
 export default function SearchPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -81,6 +79,24 @@ export default function SearchPage() {
   // New: availability + intention
   const [availableOnly, setAvailableOnly] = useState(false);
   const [selectedIntention, setSelectedIntention] = useState('');
+
+  // ── Search preferences (saved defaults) ───────────────────────────────────
+  type SavedPrefs = {
+    profileTypes: string[];
+    maxDistance: number | null;
+    intentions: string[];
+    availabilityFilter: 'any' | 'available' | null;
+    updatedAt: string;
+  };
+  const [savedPrefs, setSavedPrefs] = useState<SavedPrefs | null | undefined>(undefined); // undefined = still loading
+  const [prefsReady, setPrefsReady] = useState(false); // true once we know prefs (or they failed)
+  const [showWizard, setShowWizard] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [wizardData, setWizardData] = useState<{
+    profileTypes: string[];
+    maxDistance: number | null;
+    intentions: string[];
+  }>({ profileTypes: [], maxDistance: null, intentions: [] });
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -207,8 +223,33 @@ export default function SearchPage() {
       .catch(() => setLikedProfiles([]));
   }, []);
 
+  // ── Load search preferences + apply as defaults ────────────────────────────
+  useEffect(() => {
+    usersService.getSearchPreferences()
+      .then((prefs) => {
+        setSavedPrefs(prefs);
+        if (prefs === null) {
+          // No prefs yet → show first-time wizard
+          setShowWizard(true);
+        } else {
+          // Apply saved prefs as initial filter state
+          if (prefs.profileTypes?.length > 0) setSelectedGenders(prefs.profileTypes);
+          if (prefs.maxDistance) setRadar(String(prefs.maxDistance));
+          if (prefs.intentions?.length > 0) setSelectedIntention(prefs.intentions[0] ?? '');
+          if (prefs.availabilityFilter === 'available') {
+            setAvailableOnly(true);
+            setSort('available');
+          }
+        }
+      })
+      .catch(() => setSavedPrefs(null))
+      .finally(() => setPrefsReady(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── React to filter changes (debounce text, immediate for dropdowns) ───────
   useEffect(() => {
+    if (!prefsReady) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void fetchFirstPage();
@@ -216,12 +257,13 @@ export default function SearchPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [search, city]);
+  }, [search, city, prefsReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!prefsReady) return;
     void fetchFirstPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ageRange, radar, selectedGenders, onlyLiked, sort, availableOnly, selectedIntention]);
+  }, [ageRange, radar, selectedGenders, onlyLiked, sort, availableOnly, selectedIntention, prefsReady]);
 
   // ── Update filtered liked when raw list changes ────────────────────────────
   useEffect(() => {
@@ -236,7 +278,7 @@ export default function SearchPage() {
   };
 
   const displayResults = onlyLiked ? filteredLiked : results;
-  const isEmpty        = !isLoading && displayResults.length === 0;
+  const isEmpty        = prefsReady && !isLoading && displayResults.length === 0;
 
   const hasDistanceData = displayResults.some((p) => typeof p.distanceKm === 'number');
 
@@ -308,9 +350,12 @@ export default function SearchPage() {
     const age = calculateAge(profile.birthDate);
     const avatarUrl = profile.mainMediaUrl ? resolveServerUrl(profile.mainMediaUrl) : undefined;
     const distanceLabel = formatDistanceKm(profile.distanceKm);
-    const isAvailableNow  = profile.availabilityStatus === 'now';
-    const isAvailableWeek = profile.availabilityStatus === 'week';
-    const isAvailable = isAvailableNow || isAvailableWeek;
+    const availStatus = profile.availabilityStatus as string | null;
+    const isAvailableNow     = availStatus === 'now';
+    const isAvailableWeek    = availStatus === 'week';
+    const isAvailableMonth   = availStatus === 'month';
+    const isOnlineOnly       = availStatus === 'online_only';
+    const isNotLooking       = availStatus === 'not_looking';
     const intentions: string[] = Array.isArray(profile.intentions) ? profile.intentions : [];
     const tagline: string | null = profile.meetingTagline ?? null;
 
@@ -358,9 +403,24 @@ export default function SearchPage() {
               <Zap className="h-3 w-3" /> Hoje
             </Badge>
           )}
-          {isAvailableWeek && !isAvailableNow && (
+          {isAvailableWeek && (
             <Badge className="h-5 w-fit gap-0.5 rounded-full bg-orange-500/90 px-2 text-[10px] font-semibold text-white">
               <Zap className="h-3 w-3" /> Esta semana
+            </Badge>
+          )}
+          {isAvailableMonth && (
+            <Badge className="h-5 w-fit gap-0.5 rounded-full bg-violet-500/90 px-2 text-[10px] font-semibold text-white">
+              📅 Este mês
+            </Badge>
+          )}
+          {isOnlineOnly && (
+            <Badge className="h-5 w-fit gap-0.5 rounded-full bg-sky-500/90 px-2 text-[10px] font-semibold text-white">
+              💬 Online
+            </Badge>
+          )}
+          {isNotLooking && (
+            <Badge className="h-5 w-fit gap-0.5 rounded-full bg-zinc-500/80 px-2 text-[10px] font-medium text-white">
+              🔒
             </Badge>
           )}
         </div>
@@ -416,33 +476,261 @@ export default function SearchPage() {
     );
   };
 
-  // Gate: user must have a profile photo to use Search
-  if (!user?.avatar) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center gap-6 max-w-sm mx-auto">
-        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-          <Camera className="w-10 h-10 text-primary" />
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-xl font-bold">Foto necessária para Buscar</h2>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            Para aparecer nos resultados de busca e ver outros perfis, você precisa de uma foto de perfil.
-          </p>
-        </div>
-        <Button className="w-full" onClick={() => navigate('/profile')}>
-          Adicionar foto de perfil
-        </Button>
-      </div>
-    );
-  }
+  // ── Save wizard preferences ────────────────────────────────────────────────
+  const handleSaveWizard = async () => {
+    const prefs = {
+      profileTypes: wizardData.profileTypes,
+      maxDistance: wizardData.maxDistance,
+      intentions: wizardData.intentions,
+      availabilityFilter: null as 'any' | 'available' | null,
+    };
+    try {
+      await usersService.saveSearchPreferences(prefs);
+      setSavedPrefs({ ...prefs, updatedAt: new Date().toISOString() });
+      // Apply to active filters
+      if (prefs.profileTypes.length > 0) setSelectedGenders(prefs.profileTypes);
+      if (prefs.maxDistance) setRadar(String(prefs.maxDistance));
+      if (prefs.intentions.length > 0) setSelectedIntention(prefs.intentions[0] ?? '');
+    } catch {
+      // Save failed silently, just close wizard
+    }
+    setShowWizard(false);
+  };
+
+  // ── "Mostrando:" label for active defaults ─────────────────────────────────
+  const hasActiveDefaults = savedPrefs && (
+    (savedPrefs.profileTypes?.length > 0) ||
+    savedPrefs.maxDistance != null ||
+    (savedPrefs.intentions?.length > 0) ||
+    savedPrefs.availabilityFilter === 'available'
+  );
+
+  const defaultsLabel = (() => {
+    if (!savedPrefs) return null;
+    const parts: string[] = [];
+    if (savedPrefs.profileTypes?.length > 0) {
+      // Abbreviate e.g. "Casal (Ele/Ela), Mulher" → "Casais · Mulher"
+      const typeLabels = savedPrefs.profileTypes.map((t) => {
+        if (t.startsWith('Casal')) return 'Casais';
+        return t;
+      });
+      parts.push([...new Set(typeLabels)].slice(0, 2).join(' · '));
+    }
+    if (savedPrefs.maxDistance) parts.push(`até ${savedPrefs.maxDistance} km`);
+    if (savedPrefs.intentions?.length > 0) {
+      const intentLabels = savedPrefs.intentions
+        .map((v) => INTENTION_OPTIONS.find((o) => o.value === v)?.label ?? v)
+        .slice(0, 2);
+      parts.push(intentLabels.join(' · '));
+    }
+    if (savedPrefs.availabilityFilter === 'available') parts.push('Disponíveis');
+    return parts.join(' · ') || null;
+  })();
 
   return (
     <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden pb-24 md:pb-0">
+
+      {/* ── First-time search onboarding wizard ────────────────────────────── */}
+      {showWizard && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-0 sm:px-4">
+          <div className="w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl bg-background shadow-2xl overflow-hidden">
+            {/* Progress bar */}
+            <div className="h-1 bg-muted">
+              <div
+                className="h-full bg-gradient-to-r from-primary to-violet-500 transition-all duration-300"
+                style={{ width: `${(wizardStep / 3) * 100}%` }}
+              />
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Step label */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Passo {wizardStep} de 3
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowWizard(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  Pular
+                </button>
+              </div>
+
+              {/* Step 1: Profile types */}
+              {wizardStep === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold">Quem você quer encontrar?</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Selecione os perfis que mais combinam com você. Pode escolher vários.</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {genderOptions.map((opt) => {
+                      const selected = wizardData.profileTypes.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setWizardData((d) => ({
+                            ...d,
+                            profileTypes: selected
+                              ? d.profileTypes.filter((v) => v !== opt.value)
+                              : [...d.profileTypes, opt.value],
+                          }))}
+                          className={cn(
+                            'flex items-center justify-between rounded-xl border px-4 py-3 text-sm text-left transition-colors',
+                            selected
+                              ? 'border-primary bg-primary/8 text-foreground font-medium'
+                              : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                          )}
+                        >
+                          <span>{opt.label}</span>
+                          {selected && <Check className="h-4 w-4 text-primary shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Distance */}
+              {wizardStep === 2 && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold">Qual o raio máximo?</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Distância padrão para exibir perfis na busca.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {([
+                      [null,  'Qualquer distância'],
+                      [10,   '10 km'],
+                      [25,   '25 km'],
+                      [50,   '50 km'],
+                      [100,  '100 km'],
+                      [500,  '500 km'],
+                    ] as const).map(([val, label]) => {
+                      const selected = wizardData.maxDistance === val;
+                      return (
+                        <button
+                          key={String(val)}
+                          type="button"
+                          onClick={() => setWizardData((d) => ({ ...d, maxDistance: val ?? null }))}
+                          className={cn(
+                            'flex items-center justify-between rounded-xl border px-4 py-3 text-sm transition-colors',
+                            selected
+                              ? 'border-primary bg-primary/8 font-semibold text-foreground'
+                              : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                          )}
+                        >
+                          <span>{label}</span>
+                          {selected && <Check className="h-4 w-4 text-primary shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Intentions */}
+              {wizardStep === 3 && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold">O que você busca?</h2>
+                    <p className="text-sm text-muted-foreground mt-1">Escolha as intenções que mais te interessam.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {INTENTION_OPTIONS.map((opt) => {
+                      const selected = wizardData.intentions.includes(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setWizardData((d) => ({
+                            ...d,
+                            intentions: selected
+                              ? d.intentions.filter((v) => v !== opt.value)
+                              : [...d.intentions, opt.value],
+                          }))}
+                          className={cn(
+                            'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm transition-colors',
+                            selected
+                              ? 'border-primary bg-primary/8 font-medium text-foreground'
+                              : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                          )}
+                        >
+                          <span className="text-base">{opt.emoji}</span>
+                          <span className="flex-1 text-left text-xs leading-snug">{opt.label}</span>
+                          {selected && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Navigation buttons */}
+              <div className="flex gap-3 pt-1">
+                {wizardStep > 1 && (
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setWizardStep((s) => (s - 1) as 1 | 2 | 3)}
+                  >
+                    Voltar
+                  </Button>
+                )}
+                {wizardStep < 3 ? (
+                  <Button
+                    className="flex-1 bg-gradient-to-r from-primary to-violet-500"
+                    onClick={() => setWizardStep((s) => (s + 1) as 2 | 3)}
+                  >
+                    Próximo <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    className="flex-1 bg-gradient-to-r from-primary to-violet-500"
+                    onClick={() => void handleSaveWizard()}
+                  >
+                    Salvar preferências
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-4 sm:mb-5">
         <h1 className="mb-1 text-[1.8rem] font-bold sm:mb-1.5 sm:text-2xl">Buscar</h1>
         <p className="text-[0.98rem] leading-6 text-muted-foreground sm:text-base">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
+
+      {/* ── "Mostrando:" active defaults bar ──────────────────────────────── */}
+      {hasActiveDefaults && defaultsLabel && !showWizard && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+          <p className="text-xs text-foreground/80 flex-1 min-w-0 truncate">
+            <span className="text-muted-foreground">Mostrando: </span>
+            <span className="font-medium">{defaultsLabel}</span>
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setWizardStep(1);
+              setWizardData({
+                profileTypes: savedPrefs?.profileTypes ?? [],
+                maxDistance: savedPrefs?.maxDistance ?? null,
+                intentions: savedPrefs?.intentions ?? [],
+              });
+              setShowWizard(true);
+            }}
+            className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+          >
+            <Pencil className="h-3 w-3" /> Editar padrão
+          </button>
+        </div>
+      )}
 
       {/* ⚡ Encontro Hoje mode banner */}
       <button
@@ -467,8 +755,8 @@ export default function SearchPage() {
             </p>
             <p className="text-xs opacity-70 leading-tight mt-0.5">
               {availableOnly
-                ? 'Exibindo apenas perfis disponíveis para encontro agora ou esta semana'
-                : 'Ver apenas quem está disponível para um encontro real agora'}
+                ? 'Exibindo apenas perfis com disponibilidade ativa (hoje, semana, mês ou online)'
+                : 'Ver apenas quem está disponível para um encontro real'}
             </p>
           </div>
         </div>
@@ -695,7 +983,7 @@ export default function SearchPage() {
         <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-2.5">
           <Zap className="h-4 w-4 shrink-0 text-emerald-500" />
           <p className="text-sm text-emerald-600 dark:text-emerald-400">
-            <span className="font-semibold">{displayResults.length} perfil{displayResults.length !== 1 ? 'is' : ''}</span> disponíve{displayResults.length !== 1 ? 'is' : 'l'} para encontro
+            <span className="font-semibold">{displayResults.length} perfil{displayResults.length !== 1 ? 'is' : ''}</span> com disponibilidade ativa
           </p>
           <button
             type="button"
@@ -708,7 +996,7 @@ export default function SearchPage() {
       )}
 
       {/* Results Grid */}
-      {isLoading ? (
+      {(!prefsReady || isLoading) ? (
         <MobileState
           loading
           title="Buscando perfis"

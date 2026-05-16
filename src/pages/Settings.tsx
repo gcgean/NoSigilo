@@ -78,7 +78,7 @@ export default function Settings() {
     state: user?.state || '',
     lookingFor: (user?.lookingFor || []) as string[],
     intentions: ((user as any)?.intentions || []) as string[],
-    availabilityStatus: ((user as any)?.availabilityStatus || '') as '' | 'now' | 'week',
+    availabilityStatus: ((user as any)?.availabilityStatus || '') as '' | 'now' | 'week' | 'month' | 'online_only' | 'not_looking',
     meetingTagline: ((user as any)?.meetingTagline || '') as string,
   });
 
@@ -676,9 +676,12 @@ export default function Settings() {
               </p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {([
-                  { value: '', label: 'Não definida', emoji: '—', hint: 'Não aparece em filtros especiais' },
-                  { value: 'now', label: 'Disponível hoje', emoji: '⚡', hint: 'Badge verde pulsante · expira em 24h' },
-                  { value: 'week', label: 'Esta semana', emoji: '🗓️', hint: 'Badge laranja · expira em 7 dias' },
+                  { value: '',           label: 'Não definida',      emoji: '—',  hint: 'Não aparece em filtros especiais' },
+                  { value: 'now',        label: 'Disponível hoje',   emoji: '⚡', hint: 'Badge verde pulsante · expira em 24h' },
+                  { value: 'week',       label: 'Esta semana',       emoji: '📅', hint: 'Badge laranja · expira em 7 dias' },
+                  { value: 'month',      label: 'Este mês',          emoji: '🗓️', hint: 'Badge roxo · expira em 30 dias' },
+                  { value: 'online_only', label: 'Só online',        emoji: '💬', hint: 'Disponível apenas online / sexting' },
+                  { value: 'not_looking', label: 'Não estou buscando', emoji: '🔒', hint: 'Sinaliza que não quer encontros no momento' },
                 ] as const).map((opt) => (
                   <label key={opt.value} className={`flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors ${profile.availabilityStatus === opt.value ? 'border-primary bg-primary/8' : 'border-border hover:border-primary/30'}`}>
                     <input
@@ -696,7 +699,7 @@ export default function Settings() {
                   </label>
                 ))}
               </div>
-              {profile.availabilityStatus && (
+              {profile.availabilityStatus && profile.availabilityStatus !== 'not_looking' && (
                 <div className="space-y-1.5">
                   <Label htmlFor="meetingTagline" className="text-xs font-medium">Seu convite (aparece nos cards da busca)</Label>
                   <Input

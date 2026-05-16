@@ -39,6 +39,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
+import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -862,6 +863,7 @@ export default function Layout() {
               </div>
             ) : null}
             <Outlet />
+            <PhotoGateOverlay pathname={location.pathname} />
           </div>
         </main>
       </div>

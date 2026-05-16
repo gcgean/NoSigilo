@@ -78,7 +78,7 @@ export default function Register() {
       .getSuggestions({ lookingFor: formData.lookingFor, city: formData.city || undefined, state: formData.state || undefined })
       .then((data) => {
         if (cancelled) return;
-        setSuggestions(Array.isArray(data) ? data : []);
+        setSuggestions(Array.isArray(data) ? data.filter((u: any) => u.avatar) : []);
       })
       .catch(() => {
         if (cancelled) return;
