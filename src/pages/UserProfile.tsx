@@ -1008,6 +1008,23 @@ export default function UserProfile() {
                   Online agora
                 </div>
               )}
+              {(profile as any)?.availabilityStatus && (profile as any).availabilityStatus !== 'not_looking' && (() => {
+                const s = (profile as any).availabilityStatus as string;
+                const map: Record<string, { label: string; cls: string; emoji: string }> = {
+                  now:         { label: 'Disponível hoje',  cls: 'text-emerald-500', emoji: '⚡' },
+                  week:        { label: 'Esta semana',      cls: 'text-orange-500',  emoji: '⚡' },
+                  month:       { label: 'Este mês',         cls: 'text-violet-500',  emoji: '📅' },
+                  online_only: { label: 'Só online',        cls: 'text-sky-500',     emoji: '💬' },
+                };
+                const m = map[s];
+                if (!m) return null;
+                return (
+                  <div className={`text-xs font-semibold flex items-center justify-center sm:justify-start gap-1 ${m.cls}`}>
+                    <span>{m.emoji}</span>
+                    {m.label}
+                  </div>
+                );
+              })()}
             </div>
 
             {profile?.bio ? (

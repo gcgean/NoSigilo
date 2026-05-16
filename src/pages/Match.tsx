@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -37,6 +37,7 @@ type MatchProfile = {
   mediaSummary?: { photosCount: number; videosCount: number };
   createdAt?: string | null;
   badges?: string[];
+  availabilityStatus?: string | null;
 };
 
 const BADGE_META: Record<string, { emoji: string; label: string }> = {
@@ -534,7 +535,7 @@ export default function Match() {
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
 
-            <div className="absolute left-3 top-3 flex gap-1.5 sm:left-4 sm:top-4 sm:gap-2">
+            <div className="absolute left-3 top-3 flex flex-col gap-1 sm:left-4 sm:top-4">
               {currentProfile.isVerified && (
                 <Badge className="h-5 rounded-full bg-success px-2 text-[10px] font-medium text-white gap-1">
                   <Sparkles className="h-3 w-3" /> Verificado
@@ -548,6 +549,26 @@ export default function Match() {
               {isNewProfile && (
                 <Badge variant="secondary" className="h-5 rounded-full border-blue-500/30 bg-blue-500/20 px-2 text-[10px] font-medium text-blue-400 gap-1">
                   Perfil Novo
+                </Badge>
+              )}
+              {currentProfile.availabilityStatus === 'now' && (
+                <Badge className="h-5 w-fit gap-0.5 rounded-full bg-emerald-500 px-2 text-[10px] font-bold text-white animate-pulse">
+                  <Zap className="h-3 w-3" /> Hoje
+                </Badge>
+              )}
+              {currentProfile.availabilityStatus === 'week' && (
+                <Badge className="h-5 w-fit gap-0.5 rounded-full bg-orange-500/90 px-2 text-[10px] font-semibold text-white">
+                  <Zap className="h-3 w-3" /> Esta semana
+                </Badge>
+              )}
+              {currentProfile.availabilityStatus === 'month' && (
+                <Badge className="h-5 w-fit gap-0.5 rounded-full bg-violet-500/90 px-2 text-[10px] font-semibold text-white">
+                  📅 Este mês
+                </Badge>
+              )}
+              {currentProfile.availabilityStatus === 'online_only' && (
+                <Badge className="h-5 w-fit gap-0.5 rounded-full bg-sky-500/90 px-2 text-[10px] font-semibold text-white">
+                  💬 Online
                 </Badge>
               )}
             </div>
