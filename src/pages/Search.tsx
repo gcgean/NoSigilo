@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Camera } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Camera, Zap } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -30,6 +31,16 @@ const genderOptions = [
   { value: 'Travesti', label: 'Travesti' },
 ];
 
+// Intention options — must match keys used in Profile settings
+export const INTENTION_OPTIONS: Array<{ value: string; emoji: string; label: string }> = [
+  { value: 'swing',    emoji: '👫',  label: 'Swing completo' },
+  { value: 'soft',     emoji: '💋',  label: 'Soft swing' },
+  { value: 'voyeur',   emoji: '👁️',  label: 'Voyeur / exib.' },
+  { value: 'online',   emoji: '💬',  label: 'Online / sexting' },
+  { value: 'amizade',  emoji: '🤝',  label: 'Amizade liberal' },
+  { value: 'festa',    emoji: '🎉',  label: 'Festa / evento' },
+];
+
 const PAGE_SIZE = 24;
 
 function formatDistanceKm(distanceKm: unknown) {
@@ -37,7 +48,7 @@ function formatDistanceKm(distanceKm: unknown) {
   return `${distanceKm.toLocaleString('pt-BR', {
     minimumFractionDigits: distanceKm < 10 && !Number.isInteger(distanceKm) ? 1 : 0,
     maximumFractionDigits: distanceKm < 10 ? 1 : 0,
-  })} km de você`;
+  })} km`;
 }
 
 export default function SearchPage() {
@@ -65,7 +76,11 @@ export default function SearchPage() {
   const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
   const [isLocating, setIsLocating] = useState(false);
-  const [sort, setSort] = useState<'nearby' | 'active' | 'new'>('nearby');
+  const [sort, setSort] = useState<'nearby' | 'active' | 'new' | 'available'>('nearby');
+
+  // New: availability + intention
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const [selectedIntention, setSelectedIntention] = useState('');
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -84,8 +99,10 @@ export default function SearchPage() {
       genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
       radar: radar !== 'all' ? radar : undefined,
       sort,
+      availableOnly: availableOnly || undefined,
+      intention: selectedIntention || undefined,
     }),
-    [search, city, ageRange, selectedGenders, radar, sort]
+    [search, city, ageRange, selectedGenders, radar, sort, availableOnly, selectedIntention]
   );
 
   const applyLikedFilters = useCallback(
@@ -204,7 +221,7 @@ export default function SearchPage() {
   useEffect(() => {
     void fetchFirstPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ageRange, radar, selectedGenders, onlyLiked, sort]);
+  }, [ageRange, radar, selectedGenders, onlyLiked, sort, availableOnly, selectedIntention]);
 
   // ── Update filtered liked when raw list changes ────────────────────────────
   useEffect(() => {
@@ -225,7 +242,7 @@ export default function SearchPage() {
 
   type ProfileGroup = { label: string; profiles: any[] };
   const groupedResults: ProfileGroup[] = (() => {
-    if (!hasDistanceData || onlyLiked || sort !== 'nearby') return [];
+    if (!hasDistanceData || onlyLiked || sort !== 'nearby' || availableOnly) return [];
     const city_: any[]    = [];
     const near: any[]     = [];
     const distant: any[]  = [];
@@ -286,10 +303,17 @@ export default function SearchPage() {
     }
   };
 
+  // ── Profile Card ───────────────────────────────────────────────────────────
   const ProfileCard = ({ profile }: { profile: any }) => {
     const age = calculateAge(profile.birthDate);
     const avatarUrl = profile.mainMediaUrl ? resolveServerUrl(profile.mainMediaUrl) : undefined;
     const distanceLabel = formatDistanceKm(profile.distanceKm);
+    const isAvailableNow  = profile.availabilityStatus === 'now';
+    const isAvailableWeek = profile.availabilityStatus === 'week';
+    const isAvailable = isAvailableNow || isAvailableWeek;
+    const intentions: string[] = Array.isArray(profile.intentions) ? profile.intentions : [];
+    const tagline: string | null = profile.meetingTagline ?? null;
+
     return (
       <NavLink
         to={getUserProfileHref(profile.id, undefined, '/search')}
@@ -302,7 +326,11 @@ export default function SearchPage() {
             indicatorClassName="hidden"
           />
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+        {/* Gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+
+        {/* Top-right: distance + online */}
         <div className="absolute right-2.5 top-2.5 flex items-center gap-1.5 sm:right-3 sm:top-3 sm:gap-2">
           {distanceLabel ? (
             <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/45 px-2 text-[10px] font-medium text-white backdrop-blur-md">
@@ -317,27 +345,68 @@ export default function SearchPage() {
             </Badge>
           ) : null}
         </div>
-        {profile.isVerified && (
-          <Badge className="absolute left-2.5 top-2.5 h-5 gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white sm:left-3 sm:top-3">
-            <Sparkles className="h-3 w-3" />
-          </Badge>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
-          <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-lg">
+
+        {/* Top-left: verified + availability badge */}
+        <div className="absolute left-2.5 top-2.5 flex flex-col gap-1 sm:left-3 sm:top-3">
+          {profile.isVerified && (
+            <Badge className="h-5 w-fit gap-1 rounded-full bg-success/90 px-2 text-[10px] font-medium text-white">
+              <Sparkles className="h-3 w-3" />
+            </Badge>
+          )}
+          {isAvailableNow && (
+            <Badge className="h-5 w-fit gap-0.5 rounded-full bg-emerald-500 px-2 text-[10px] font-bold text-white animate-pulse">
+              <Zap className="h-3 w-3" /> Hoje
+            </Badge>
+          )}
+          {isAvailableWeek && !isAvailableNow && (
+            <Badge className="h-5 w-fit gap-0.5 rounded-full bg-orange-500/90 px-2 text-[10px] font-semibold text-white">
+              <Zap className="h-3 w-3" /> Esta semana
+            </Badge>
+          )}
+        </div>
+
+        {/* Bottom info */}
+        <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-3.5">
+          <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-base">
             {profile.name}{age ? `, ${age}` : ''}
           </h3>
           {distanceLabel ? (
-            <div className="truncate text-xs text-white/85 sm:text-sm">{distanceLabel}</div>
+            <div className="truncate text-xs text-white/80">{distanceLabel} de você</div>
           ) : null}
           {formatProfileIdentityLine(profile) ? (
-            <div className="truncate text-xs text-white/70 sm:text-sm">{formatProfileIdentityLine(profile)}</div>
+            <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(profile)}</div>
           ) : (
-            <div className="flex items-center gap-1 text-xs text-white/70 sm:text-sm">
-              <MapPin className="h-3 w-3" />
+            <div className="flex items-center gap-1 text-xs text-white/65">
+              <MapPin className="h-3 w-3 shrink-0" />
               <span className="truncate">{profile.city || '—'}</span>
             </div>
           )}
+
+          {/* Tagline */}
+          {tagline ? (
+            <p className="mt-1 line-clamp-1 text-[11px] italic text-white/70">"{tagline}"</p>
+          ) : null}
+
+          {/* Intention icons */}
+          {intentions.length > 0 && (
+            <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+              {intentions.slice(0, 4).map((intent) => {
+                const opt = INTENTION_OPTIONS.find((o) => o.value === intent);
+                return opt ? (
+                  <span
+                    key={intent}
+                    title={opt.label}
+                    className="rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] backdrop-blur-sm"
+                  >
+                    {opt.emoji}
+                  </span>
+                ) : null;
+              })}
+            </div>
+          )}
         </div>
+
+        {/* Hover overlay */}
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
           <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
             <Heart className="w-6 h-6" />
@@ -370,13 +439,49 @@ export default function SearchPage() {
   return (
     <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden pb-24 md:pb-0">
       {/* Header */}
-      <div className="mb-4 sm:mb-6">
-        <h1 className="mb-1.5 text-[1.8rem] font-bold sm:mb-2 sm:text-2xl">Buscar</h1>
+      <div className="mb-4 sm:mb-5">
+        <h1 className="mb-1 text-[1.8rem] font-bold sm:mb-1.5 sm:text-2xl">Buscar</h1>
         <p className="text-[0.98rem] leading-6 text-muted-foreground sm:text-base">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
 
+      {/* ⚡ Encontro Hoje mode banner */}
+      <button
+        type="button"
+        onClick={() => {
+          setAvailableOnly((v) => !v);
+          if (!availableOnly) setSort('available');
+          else setSort('nearby');
+        }}
+        className={cn(
+          'mb-4 w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all',
+          availableOnly
+            ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500'
+            : 'border-border bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+        )}
+      >
+        <div className="flex items-center gap-2.5">
+          <Zap className={cn('h-5 w-5 shrink-0', availableOnly && 'animate-pulse')} />
+          <div>
+            <p className="text-sm font-bold leading-tight">
+              {availableOnly ? '⚡ Modo Encontro Hoje ativo' : '⚡ Modo Encontro Hoje'}
+            </p>
+            <p className="text-xs opacity-70 leading-tight mt-0.5">
+              {availableOnly
+                ? 'Exibindo apenas perfis disponíveis para encontro agora ou esta semana'
+                : 'Ver apenas quem está disponível para um encontro real agora'}
+            </p>
+          </div>
+        </div>
+        <div className={cn(
+          'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+          availableOnly ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
+        )}>
+          {availableOnly ? 'Ativo' : 'Ativar'}
+        </div>
+      </button>
+
       {/* Search & Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:mb-6">
+      <div className="mb-4 flex flex-col gap-3 sm:mb-5">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -444,18 +549,54 @@ export default function SearchPage() {
           {/* Sort buttons */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
             <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {([['nearby','Próximos'],['active','Ativos'],['new','Novos']] as const).map(([v, l]) => (
+            {([
+              ['nearby',    'Próximos'],
+              ['active',    'Ativos'],
+              ['new',       'Novos'],
+              ['available', '⚡ Disponíveis'],
+            ] as const).map(([v, l]) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setSort(v)}
                 className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   sort === v
-                    ? 'border-primary bg-primary text-white'
+                    ? v === 'available'
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : 'border-primary bg-primary text-white'
                     : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
                 }`}
               >
                 {l}
+              </button>
+            ))}
+          </div>
+          {/* Intention filter pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
+            <button
+              type="button"
+              onClick={() => setSelectedIntention('')}
+              className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                selectedIntention === ''
+                  ? 'border-primary bg-primary text-white'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+              }`}
+            >
+              Tudo
+            </button>
+            {INTENTION_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSelectedIntention((v) => v === opt.value ? '' : opt.value)}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors gap-1 inline-flex items-center ${
+                  selectedIntention === opt.value
+                    ? 'border-primary bg-primary text-white'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                }`}
+              >
+                {opt.emoji} {opt.label}
               </button>
             ))}
           </div>
@@ -549,6 +690,23 @@ export default function SearchPage() {
         </div>
       )}
 
+      {/* "Encontro Hoje" active info bar */}
+      {availableOnly && !isLoading && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-2.5">
+          <Zap className="h-4 w-4 shrink-0 text-emerald-500" />
+          <p className="text-sm text-emerald-600 dark:text-emerald-400">
+            <span className="font-semibold">{displayResults.length} perfil{displayResults.length !== 1 ? 'is' : ''}</span> disponíve{displayResults.length !== 1 ? 'is' : 'l'} para encontro
+          </p>
+          <button
+            type="button"
+            onClick={() => { setAvailableOnly(false); setSort('nearby'); }}
+            className="ml-auto text-xs text-emerald-600/70 hover:text-emerald-600 underline"
+          >
+            Ver todos
+          </button>
+        </div>
+      )}
+
       {/* Results Grid */}
       {isLoading ? (
         <MobileState
@@ -559,11 +717,13 @@ export default function SearchPage() {
       ) : isEmpty ? (
         <MobileState
           icon={Search}
-          title={onlyLiked ? 'Nenhum curtido encontrado' : 'Nenhum perfil encontrado'}
+          title={onlyLiked ? 'Nenhum curtido encontrado' : availableOnly ? 'Nenhum perfil disponível agora' : 'Nenhum perfil encontrado'}
           description={
             onlyLiked
               ? 'Ajuste a busca ou os filtros para localizar alguém da sua lista de curtidos.'
-              : 'Tente ampliar os filtros para aparecerem mais perfis.'
+              : availableOnly
+                ? 'Não há perfis com disponibilidade ativa na sua região. Tente ampliar o raio ou desativar o filtro.'
+                : 'Tente ampliar os filtros para aparecerem mais perfis.'
           }
         />
       ) : (

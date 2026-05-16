@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap
 } from 'lucide-react';
+import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -76,6 +77,9 @@ export default function Settings() {
     city: user?.city || '',
     state: user?.state || '',
     lookingFor: (user?.lookingFor || []) as string[],
+    intentions: ((user as any)?.intentions || []) as string[],
+    availabilityStatus: ((user as any)?.availabilityStatus || '') as '' | 'now' | 'week',
+    meetingTagline: ((user as any)?.meetingTagline || '') as string,
   });
 
   const audienceOptions = useMemo(
@@ -144,7 +148,13 @@ export default function Settings() {
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
-      updateUser({ ...(profile as any), allowMessages: privacy.allowMessages });
+      updateUser({
+        ...(profile as any),
+        allowMessages: privacy.allowMessages,
+        // Normalize empty string → null for backend enum validation
+        availabilityStatus: profile.availabilityStatus || null,
+        meetingTagline: profile.meetingTagline.trim() || null,
+      });
       toast({ title: 'Perfil atualizado com sucesso!' });
     } catch {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
@@ -655,6 +665,85 @@ export default function Settings() {
               </div>
             </div>
 
+            {/* ── Disponibilidade para encontro ── */}
+            <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/3 p-4">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                <Label className="text-sm font-semibold">Disponibilidade para encontro</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aparece com badge ⚡ nos cards da busca e no modo "Encontro Hoje". Expira automaticamente.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {([
+                  { value: '', label: 'Não definida', emoji: '—', hint: 'Não aparece em filtros especiais' },
+                  { value: 'now', label: 'Disponível hoje', emoji: '⚡', hint: 'Badge verde pulsante · expira em 24h' },
+                  { value: 'week', label: 'Esta semana', emoji: '🗓️', hint: 'Badge laranja · expira em 7 dias' },
+                ] as const).map((opt) => (
+                  <label key={opt.value} className={`flex items-start gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors ${profile.availabilityStatus === opt.value ? 'border-primary bg-primary/8' : 'border-border hover:border-primary/30'}`}>
+                    <input
+                      type="radio"
+                      name="availabilityStatus"
+                      value={opt.value}
+                      checked={profile.availabilityStatus === opt.value}
+                      onChange={() => setProfile({ ...profile, availabilityStatus: opt.value })}
+                      className="mt-0.5 accent-primary"
+                    />
+                    <div>
+                      <p className="text-sm font-medium">{opt.emoji} {opt.label}</p>
+                      <p className="text-xs text-muted-foreground">{opt.hint}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {profile.availabilityStatus && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="meetingTagline" className="text-xs font-medium">Seu convite (aparece nos cards da busca)</Label>
+                  <Input
+                    id="meetingTagline"
+                    value={profile.meetingTagline}
+                    onChange={(e) => setProfile({ ...profile, meetingTagline: e.target.value.slice(0, 100) })}
+                    placeholder='Ex.: "Buscamos casal para soft swing em Fortaleza 😈"'
+                    maxLength={100}
+                  />
+                  <p className="text-right text-xs text-muted-foreground">{profile.meetingTagline.length}/100</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Intenções / O que buscamos ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">O que vocês buscam</Label>
+                <span className="text-xs text-muted-foreground">{profile.intentions.length} selecionado(s)</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aparece como ícones nos cards e permite filtros específicos na busca. Marque tudo que se aplica.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {INTENTION_OPTIONS.map((opt) => {
+                  const checked = profile.intentions.includes(opt.value);
+                  return (
+                    <label key={opt.value} className={`flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors ${checked ? 'border-primary bg-primary/8' : 'border-border hover:border-primary/30'}`}>
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(v) => {
+                          const next = !!v;
+                          setProfile((prev) => ({
+                            ...prev,
+                            intentions: next
+                              ? Array.from(new Set([...prev.intentions, opt.value]))
+                              : prev.intentions.filter((x) => x !== opt.value),
+                          }));
+                        }}
+                      />
+                      <span className="text-sm">{opt.emoji} {opt.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="bio">Descrição</Label>
               <Textarea
@@ -666,8 +755,8 @@ export default function Settings() {
               />
             </div>
 
-            <Button 
-              onClick={handleSaveProfile} 
+            <Button
+              onClick={handleSaveProfile}
               className="w-full sm:w-auto bg-gradient-primary hover:opacity-90"
               disabled={isLoading}
             >

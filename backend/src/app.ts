@@ -1193,6 +1193,16 @@ function rowToPublicUser(
     telegramChatId: options?.showEmail ? (row.telegram_chat_id ?? null) : null,
     lat: options?.showLocation ? (row.lat != null ? Number(row.lat) : null) : undefined,
     lon: options?.showLocation ? (row.lon != null ? Number(row.lon) : null) : undefined,
+    intentions: (() => {
+      try { const v = safeJsonParse(row.intentions_json); return Array.isArray(v) ? v : []; } catch { return []; }
+    })(),
+    meetingTagline: row.meeting_tagline ?? null,
+    availabilityStatus: (() => {
+      const s = row.availability_status ?? null;
+      const until = row.availability_until ? new Date(row.availability_until).getTime() : null;
+      if (!s || (until !== null && until < Date.now())) return null;
+      return s as 'now' | 'week';
+    })(),
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
       : null,
@@ -3418,6 +3428,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         profession: z.string().max(100).optional().nullable(),
         zodiacSign: z.string().max(50).optional().nullable(),
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
+        intentions: z.array(z.string().max(50)).max(10).optional().nullable(),
+        availabilityStatus: z.enum(['now', 'week']).optional().nullable(),
+        meetingTagline: z.string().max(100).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
@@ -3463,6 +3476,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       drinks: 'drinks',
       profession: 'profession',
       zodiacSign: 'zodiac_sign',
+      meetingTagline: 'meeting_tagline',
       allowMessages: 'allow_messages',
       notificationVisits: 'notification_visits',
       billingDocument: 'billing_document',
@@ -3487,6 +3501,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if ('lookingFor' in data) {
       setParts.push('looking_for_json = ?');
       values.push(data.lookingFor ? JSON.stringify(data.lookingFor) : null);
+    }
+    if ('intentions' in data) {
+      setParts.push('intentions_json = ?');
+      values.push(data.intentions ? JSON.stringify(data.intentions) : null);
+    }
+    if ('availabilityStatus' in data) {
+      const status = data.availabilityStatus ?? null;
+      setParts.push('availability_status = ?');
+      values.push(status);
+      // Set expiry: 'now' → 24h, 'week' → 7 days, null → clear
+      const expiry = status === 'now'
+        ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        : status === 'week'
+          ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+          : null;
+      setParts.push('availability_until = ?');
+      values.push(expiry);
     }
 
     if (setParts.length > 0) {
@@ -3726,8 +3757,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const city     = req.query.city     ? String(req.query.city).trim()     : '';
     const ageRange = req.query.ageRange ? String(req.query.ageRange).trim() : 'all';
     const genders  = req.query.genders  ? String(req.query.genders).split(',').map((g) => g.trim()).filter(Boolean) : [];
-    const radarKm  = req.query.radar    ? Number(req.query.radar)           : null;
-    const sort     = ['active', 'new', 'nearby'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'nearby';
+    const radarKm      = req.query.radar       ? Number(req.query.radar)           : null;
+    const sort         = ['active', 'new', 'nearby', 'available'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'nearby';
+    const availableOnly = req.query.availableOnly === 'true' || req.query.availableOnly === '1';
+    const intentionFilter = req.query.intention ? String(req.query.intention).trim() : '';
 
     const params: any[] = [];
     const conditions: string[] = [
@@ -3772,6 +3805,17 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       params.push(minBirth, maxBirth);
     }
 
+    if (availableOnly) {
+      const nowIso = new Date().toISOString();
+      conditions.push(`(u.availability_status IS NOT NULL AND (u.availability_until IS NULL OR u.availability_until > ?))`);
+      params.push(nowIso);
+    }
+
+    if (intentionFilter) {
+      conditions.push(`(u.intentions_json IS NOT NULL AND u.intentions_json LIKE ?)`);
+      params.push(`%${intentionFilter}%`);
+    }
+
     let viewerLat: number | null = viewerRow?.lat != null ? Number(viewerRow.lat) : null;
     let viewerLon: number | null = viewerRow?.lon != null ? Number(viewerRow.lon) : null;
     if (radarKm !== null) {
@@ -3797,6 +3841,20 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       orderBy = 'u.created_at DESC';
     } else if (sort === 'active') {
       orderBy = `CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC, u.last_seen_at DESC, u.created_at DESC`;
+    } else if (sort === 'available') {
+      // Available NOW first, then WEEK, then others; within each group by distance
+      const nowIso2 = new Date().toISOString();
+      params.push(nowIso2);
+      orderBy = `
+        CASE
+          WHEN u.availability_status = 'now' AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 0
+          WHEN u.availability_status = 'week' AND (u.availability_until IS NULL OR u.availability_until > ?) THEN 1
+          ELSE 2
+        END ASC,
+        ${distanceOrderBy}
+        u.last_seen_at DESC
+      `;
+      params.push(nowIso2);
     } else {
       // 'nearby' — online first, then distance, then last_seen, then newest
       const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
