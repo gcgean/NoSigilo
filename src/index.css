@@ -166,6 +166,27 @@ html, body {
   50% { opacity: 0.7; }
 }
 
+/* ── Content protection ──────────────────────────────────────────────────── */
+
+/* Remove download button from native video controls */
+video::-webkit-media-controls-download-button {
+  display: none !important;
+}
+video::-webkit-media-controls-enclosure {
+  overflow: hidden;
+}
+
+/* Prevent long-press "Save image" on iOS/Android for all media */
+img, video {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+/* Prevent drag-to-desktop on images */
+img {
+  user-drag: none;
+}
+
 @keyframes liked-filter-pulse {
   0%, 100% {
     box-shadow: 0 0 0 1px hsl(340 85% 62% / 0.45), 0 0 14px hsl(340 85% 62% / 0.18);

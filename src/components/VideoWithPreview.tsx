@@ -116,6 +116,9 @@ export default function VideoWithPreview({ className, src, poster, ...props }: V
       src={normalizedSrc}
       poster={poster || generatedPoster || '/placeholder.svg'}
       className={cn('bg-black/70', className)}
+      controlsList="nodownload noremoteplayback"
+      disablePictureInPicture
+      onContextMenu={(e) => e.preventDefault()}
     />
   );
 }

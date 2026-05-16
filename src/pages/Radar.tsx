@@ -31,6 +31,7 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
 type RadarDelivery = {
   deliveredAt: string;
@@ -146,6 +147,7 @@ function audienceLabel(targets: string[]) {
 export default function Radar() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { registerActivity } = useActivityTracker();
   const navigate = useNavigate();
   const radarAllowed = hasPremiumAccess(user);
 
@@ -274,6 +276,7 @@ export default function Radar() {
         isAnonymous,
         showOnlyOnline,
       });
+      registerActivity('radar');
       toast({
         title: 'Radar ativado',
         description: `Seu aviso ja foi publicado para ${city}, ${state}.`,

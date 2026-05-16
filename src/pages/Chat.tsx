@@ -22,6 +22,7 @@ import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
@@ -121,6 +122,7 @@ export default function Chat() {
   const navigate = useNavigate();
   const { emit, on, off, isConnected } = useSocket();
   const { toast } = useToast();
+  const { registerActivity } = useActivityTracker();
   const location = useLocation();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null);
@@ -667,10 +669,11 @@ export default function Chat() {
       });
       
       if (sent?.id) {
-        setMessages(prev => prev.map(m => 
+        setMessages(prev => prev.map(m =>
           m.clientId === clientId ? { ...m, id: String(sent.id), isSending: false, isDelivered: true } : m
         ));
         setIsViewOnceEnabled(false);
+        registerActivity('message');
       }
     } catch {
       setMessages(prev => prev.filter(m => m.clientId !== clientId));

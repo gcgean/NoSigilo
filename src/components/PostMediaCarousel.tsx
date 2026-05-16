@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Crown, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoWithPreview from './VideoWithPreview';
 import { Button } from './ui/button';
+import MediaWatermark from './MediaWatermark';
 
 export interface PostMediaItem {
   id: string;
@@ -18,6 +19,9 @@ interface PostMediaCarouselProps {
   aspectStyle?: (id: string) => React.CSSProperties;
   premiumAccess?: boolean;
   onPremiumGate?: () => void;
+  /** Viewer info for watermark overlay */
+  viewerUserId?: string | null;
+  viewerUserName?: string | null;
 }
 
 export function PostMediaCarousel({
@@ -27,6 +31,8 @@ export function PostMediaCarousel({
   aspectStyle,
   premiumAccess = false,
   onPremiumGate,
+  viewerUserId,
+  viewerUserName,
 }: PostMediaCarouselProps) {
   const [index, setIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -42,6 +48,7 @@ export function PostMediaCarousel({
       </div>
     );
   }
+
 
   const prev = () => setIndex((i) => (i - 1 + media.length) % media.length);
   const next = () => setIndex((i) => (i + 1) % media.length);
@@ -82,7 +89,7 @@ export function PostMediaCarousel({
         );
       }
       return (
-        <div className="w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
+        <div className="relative w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
           <VideoWithPreview
             src={resolveUrl(m.url)}
             className="h-full w-full bg-black object-contain sm:object-cover"
@@ -94,20 +101,25 @@ export function PostMediaCarousel({
               onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
             }
           />
+          <MediaWatermark userId={viewerUserId} userName={viewerUserName} />
         </div>
       );
     }
 
     return (
-      <div className="w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
+      <div className="relative w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
         <img
           src={resolveUrl(m.url)}
           alt=""
-          className="h-full w-full bg-black object-contain sm:object-cover"
+          draggable={false}
+          className="h-full w-full bg-black object-contain sm:object-cover select-none"
+          style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
+          onContextMenu={(e) => e.preventDefault()}
           onLoad={(e) =>
             onAspectLoaded?.(m.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
           }
         />
+        <MediaWatermark userId={viewerUserId} userName={viewerUserName} />
       </div>
     );
   }

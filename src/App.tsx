@@ -9,6 +9,7 @@ import { AgeGateProvider } from "@/contexts/AgeGateContext";
 import { SocketProvider } from "@/contexts/SocketContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { FriendsProvider } from "@/contexts/FriendsContext";
+import { ActivityTrackerProvider } from "@/contexts/ActivityTrackerContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import SiteVisitTracker from "@/components/SiteVisitTracker";
@@ -58,6 +59,7 @@ const App = () => (
           <SocketProvider>
             <FavoritesProvider>
               <FriendsProvider>
+                <ActivityTrackerProvider>
                 <Toaster />
                 <Sonner />
                 <BrowserRouter>
@@ -104,6 +106,7 @@ const App = () => (
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </BrowserRouter>
+                </ActivityTrackerProvider>
               </FriendsProvider>
             </FavoritesProvider>
           </SocketProvider>

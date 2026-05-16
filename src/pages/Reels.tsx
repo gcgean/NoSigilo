@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { feedService, interactionsService } from '@/services/api';
+import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
@@ -13,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
+import MediaWatermark from '@/components/MediaWatermark';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   COMMENT_ACTION_BUTTON_BASE,
@@ -78,6 +80,8 @@ export default function Reels() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { registerActivity } = useActivityTracker();
+  const reelCompleteCountRef = useRef(0);
   const isMobile = useIsMobile();
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
@@ -377,13 +381,15 @@ export default function Reels() {
   }, [orderedReels, scrollTo]);
 
   const handleVideoEnded = useCallback((idx: number) => {
+    reelCompleteCountRef.current += 1;
+    if (reelCompleteCountRef.current === 3) registerActivity('reel');
     const next = idx + 1;
     if (next < orderedReels.length) {
       scrollTo(next);
     } else {
       restartFromBeginning();
     }
-  }, [orderedReels.length, restartFromBeginning, scrollTo]);
+  }, [orderedReels.length, registerActivity, restartFromBeginning, scrollTo]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -693,7 +699,11 @@ export default function Reels() {
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
             onClick={() => handleVideoAreaClick(reel.id)}
+            controlsList="nodownload noremoteplayback"
+            disablePictureInPicture
+            onContextMenu={(e) => e.preventDefault()}
           />
+          <MediaWatermark userId={user?.id} userName={user?.name} />
 
           {/* Dark gradient overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />

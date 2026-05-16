@@ -1050,6 +1050,12 @@ function sendLocalFile(req: express.Request, res: express.Response, options: { f
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Accept-Ranges', 'bytes');
+  // Prevent browser from offering "Save as" / download for media files
+  res.setHeader('Content-Disposition', 'inline');
+  // Prevent caching of sensitive media in downstream proxies
+  if (mimeType && (mimeType.startsWith('video/') || mimeType.startsWith('image/'))) {
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+  }
 
   if (!range) {
     res.status(200);
@@ -3201,6 +3207,185 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       visits: Number(visitsCount?.c || 0),
       matches: Number(matchesCount?.c || 0)
     });
+  });
+
+  // ── Social Pulse ─────────────────────────────────────────────────────────
+  // Returns today's profile activity stats for the "curiosity gap" card on feed.
+  // Non-premium users see counts but not identities (drives upgrade).
+  app.get('/api/feed/social-pulse', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [userId]);
+    const isPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
+
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayStr = todayStart.toISOString();
+
+    // Profile likes received today
+    const likesToday = await queryOne(
+      db,
+      `SELECT COUNT(DISTINCT user_id) as c FROM likes
+       WHERE target_type = 'user' AND target_id = ? AND created_at >= ?`,
+      [userId, todayStr]
+    );
+
+    // Profile visits received today
+    const visitorsToday = await queryOne(
+      db,
+      `SELECT COUNT(DISTINCT visitor_user_id) as c FROM profile_visits
+       WHERE visited_user_id = ? AND created_at >= ?`,
+      [userId, todayStr]
+    );
+
+    // Mutual likes (matches) — total, not just today
+    const mutualLikes = await queryOne(
+      db,
+      `SELECT COUNT(*) as c FROM likes a
+       JOIN likes b ON b.user_id = a.target_id AND b.target_id = a.user_id AND b.target_type = 'user'
+       WHERE a.user_id = ? AND a.target_type = 'user'`,
+      [userId]
+    );
+
+    // Unread notifications count
+    const unreadNotifs = await queryOne(
+      db,
+      `SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0`,
+      [userId]
+    );
+
+    // Last 3 visitors today (only returned for premium — non-premium gets null)
+    let recentVisitors: Array<{ id: string; name: string; avatar: string | null }> | null = null;
+    if (isPremium) {
+      const rows = await queryAll(
+        db,
+        `SELECT u.id, u.name, u.avatar FROM profile_visits pv
+         JOIN users u ON u.id = pv.visitor_user_id
+         WHERE pv.visited_user_id = ? AND pv.created_at >= ?
+           AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         ORDER BY pv.created_at DESC LIMIT 3`,
+        [userId, todayStr]
+      );
+      recentVisitors = (rows as any[]).map((r) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ?? null,
+      }));
+    }
+
+    res.json({
+      likesToday: Number(likesToday?.c || 0),
+      visitorsToday: Number(visitorsToday?.c || 0),
+      mutualLikes: Number(mutualLikes?.c || 0),
+      unreadNotifs: Number(unreadNotifs?.c || 0),
+      recentVisitors, // null for non-premium (curiosity gap)
+      isPremium,
+    });
+  });
+
+  // ── Daily Streak — helper ─────────────────────────────────────────────────
+  // Shared streak-update logic used by register-activity.
+  async function applyStreakAction(
+    userId: string,
+    todayLocal: string // "YYYY-MM-DD" in user's local calendar day
+  ): Promise<{ streak: number; maxStreak: number; streakRegistered: boolean; alreadyDoneToday: boolean; streakBroken: boolean }> {
+    const userRow = await queryOne(
+      db,
+      'SELECT login_streak, login_streak_updated_date, login_streak_max FROM users WHERE id = ?',
+      [userId]
+    ) as any;
+    if (!userRow) return { streak: 0, maxStreak: 0, streakRegistered: false, alreadyDoneToday: false, streakBroken: false };
+
+    const lastDate: string | null = userRow.login_streak_updated_date ?? null;
+    const currentStreak = Number(userRow.login_streak || 0);
+    const maxStreak = Number(userRow.login_streak_max || 0);
+
+    // Already registered an activity today — idempotent
+    if (lastDate === todayLocal) {
+      return { streak: currentStreak, maxStreak, streakRegistered: false, alreadyDoneToday: true, streakBroken: false };
+    }
+
+    let newStreak: number;
+    let streakBroken = false;
+
+    if (!lastDate) {
+      newStreak = 1;
+    } else {
+      const lastMs = new Date(lastDate + 'T00:00:00Z').getTime();
+      const todayMs = new Date(todayLocal + 'T00:00:00Z').getTime();
+      const diffDays = Math.round((todayMs - lastMs) / 86_400_000);
+      if (diffDays === 1) {
+        newStreak = currentStreak + 1;
+      } else {
+        streakBroken = currentStreak >= 3;
+        newStreak = 1;
+      }
+    }
+
+    const newMax = Math.max(newStreak, maxStreak);
+    await db.run(
+      'UPDATE users SET login_streak = ?, login_streak_updated_date = ?, login_streak_max = ?, last_seen_at = ? WHERE id = ?',
+      [newStreak, todayLocal, newMax, new Date().toISOString(), userId]
+    );
+
+    // Milestone in-app notification
+    const milestones: Record<number, string> = {
+      3:  '3 dias seguidos! Você está pegando o ritmo 🔥',
+      7:  'Uma semana de sequência! Você está dominando 🔥🔥',
+      14: '14 dias consecutivos! Você é um regular VIP 🏆',
+      30: '30 dias! Mês inteiro — incrível 🏅',
+      60: '60 dias de sequência! Você é lendário 👑',
+    };
+    if (milestones[newStreak]) {
+      const notifId = `streak-${userId}-${newStreak}-${todayLocal}`;
+      await db.run(
+        `INSERT OR IGNORE INTO notifications (id, user_id, type, title, description, is_read, created_at)
+         VALUES (?, ?, 'daily.streak.milestone', 'Nova sequência!', ?, 0, ?)`,
+        [notifId, userId, milestones[newStreak], new Date().toISOString()]
+      );
+    }
+
+    return { streak: newStreak, maxStreak: newMax, streakRegistered: true, alreadyDoneToday: false, streakBroken };
+  }
+
+  // ── GET streak info (read-only, called on app load) ───────────────────────
+  app.post('/api/users/daily-checkin', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    // Login alone does NOT count as a qualifying action — just read and return.
+    await db.run('UPDATE users SET last_seen_at = ? WHERE id = ?', [new Date().toISOString(), userId]);
+    const userRow = await queryOne(
+      db,
+      'SELECT login_streak, login_streak_updated_date, login_streak_max FROM users WHERE id = ?',
+      [userId]
+    ) as any;
+    const streak = Number(userRow?.login_streak || 0);
+    const maxStreak = Number(userRow?.login_streak_max || 0);
+    const lastDate = userRow?.login_streak_updated_date ?? null;
+    // Detect broken streak (hasn't acted in 2+ days) for display purposes
+    let streakBroken = false;
+    if (lastDate && streak >= 3) {
+      const lastMs = new Date(lastDate + 'T00:00:00Z').getTime();
+      const diffDays = Math.round((Date.now() - lastMs) / 86_400_000);
+      if (diffDays >= 2) streakBroken = true;
+    }
+    res.json({ streak, maxStreak, isNewDay: false, streakBroken, todayUtc: new Date().toISOString().slice(0, 10) });
+  });
+
+  // ── POST register-activity (qualifying action → updates streak) ───────────
+  // Called client-side whenever a qualifying action is performed.
+  // Actions: like | comment | message | post | radar | match_view | reel | chat_start | event_confirm | invite
+  // timezoneOffsetMinutes: client's UTC offset (e.g. -180 for BRT)
+  app.post('/api/users/register-activity', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const action = typeof req.body?.action === 'string' ? req.body.action : 'unknown';
+    const tzOffset = typeof req.body?.timezoneOffsetMinutes === 'number' ? req.body.timezoneOffsetMinutes : 0;
+
+    // Compute "today" in user's local timezone
+    const nowLocal = new Date(Date.now() - tzOffset * 60_000);
+    const todayLocal = nowLocal.toISOString().slice(0, 10);
+
+    const result = await applyStreakAction(userId, todayLocal);
+    res.json({ ...result, action, todayLocal });
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {

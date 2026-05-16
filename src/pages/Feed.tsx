@@ -26,6 +26,10 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import SocialPulseCard from '@/components/SocialPulseCard';
+import StreakBadge from '@/components/StreakBadge';
+import { useDailyCheckin } from '@/hooks/useDailyCheckin';
+import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -98,6 +102,45 @@ type Comment = {
   parentCommentId?: string | null;
   replies?: Comment[];
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
+};
+
+// Experience-specific contextual reactions (reuse existing PhotoReaction IDs → no backend changes)
+const EXP_REACTIONS: Array<{ id: PhotoReaction; emoji: string; label: string }> = [
+  { id: 'devil',  emoji: '😈', label: 'Quero detalhes' },
+  { id: 'heart',  emoji: '💜', label: 'Me identifico' },
+  { id: 'fire',   emoji: '🔥', label: 'Ficamos com tesão' },
+  { id: 'wow',    emoji: '👏', label: 'Corajosos!' },
+];
+const EXP_REACTION_EMOJI: Record<string, string> = Object.fromEntries(EXP_REACTIONS.map((r) => [r.id, r.emoji]));
+
+// Writing templates for the experience composer
+const EXP_TEMPLATES: Array<{ emoji: string; label: string; title: string; body: string }> = [
+  {
+    emoji: '🌙',
+    label: 'Primeiro encontro',
+    title: 'Nosso primeiro encontro no swing',
+    body: 'Foi nossa primeira vez. A gente estava nervoso, mas quando chegamos ao local tudo mudou...\n\n',
+  },
+  {
+    emoji: '📖',
+    label: 'Conto erótico',
+    title: '',
+    body: 'Era uma noite diferente. Recebemos uma mensagem de um casal que nos chamou atenção e...\n\n',
+  },
+  {
+    emoji: '⚡',
+    label: 'Relato rápido',
+    title: 'Rolou ontem!',
+    body: 'Sem spoilers, mas foi incrível. Resumindo: encontramos um casal em [cidade], a vibe estava perfeita e...\n\nQuem quiser detalhes, chama no chat 😈',
+  },
+];
+
+// Weekly theme — update this object each week
+const WEEKLY_THEME = {
+  emoji: '🔥',
+  theme: 'Primeiro encontro fora da rotina',
+  description: 'Conte como foi. Os 3 relatos mais curtidos ganham destaque no feed por 48h.',
+  deadline: 'Até domingo',
 };
 
 type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
@@ -183,11 +226,14 @@ export default function Feed() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const streakState = useDailyCheckin(!!user?.id);
+  const { registerActivity } = useActivityTracker();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
   const premiumAccess = hasPremiumAccess(user);
   const [postContent, setPostContent] = useState('');
   const [experienceTitle, setExperienceTitle] = useState('');
   const [experienceDescription, setExperienceDescription] = useState('');
+  const [expTemplatesOpen, setExpTemplatesOpen] = useState(false);
   const [reelsOnly, setReelsOnly] = useState(false);
   const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -834,6 +880,7 @@ export default function Feed() {
       const hasVideo = attachments.some((a) => a.file.type.startsWith('video/'));
       const wasReelsOnly = hasVideo && reelsOnly;
       await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
+      registerActivity('post');
       setPostContent('');
       setReelsOnly(false);
       for (const a of attachmentsRef.current) URL.revokeObjectURL(a.url);
@@ -1046,6 +1093,7 @@ export default function Feed() {
     setCommentDraftByExpId((prev) => ({ ...prev, [expId]: '' }));
     try {
       await interactionsService.comment('experience', expId, draft);
+      registerActivity('comment');
       const list = await interactionsService.getComments('experience', expId);
       setCommentsByExpId((prev) => ({ ...prev, [expId]: Array.isArray(list) ? list : [] }));
       setAllExperiences((prev) => prev.map((e) => e.id === expId ? { ...e, commentsCount: e.commentsCount + 1 } : e));
@@ -1116,6 +1164,7 @@ export default function Feed() {
     try {
       if (nextLiked) {
         await interactionsService.like('post', post.id);
+        registerActivity('like');
       } else {
         await interactionsService.unlike('post', post.id);
       }
@@ -1292,6 +1341,7 @@ export default function Feed() {
     setReplyingToByPostId((prev) => ({ ...prev, [postId]: null }));
     try {
       await interactionsService.comment('post', postId, draft, replyingTo?.id);
+      registerActivity('comment');
       const list = await interactionsService.getComments('post', postId);
       setCommentsByPostId((prev) => ({ ...prev, [postId]: Array.isArray(list) ? list : [] }));
       if (!replyingTo) {
@@ -1506,15 +1556,52 @@ export default function Feed() {
       {feedFilter === 'experiences' ? (
         <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
           <div className="space-y-3">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-foreground">Compartilhe sua história 😈</p>
+              <button
+                type="button"
+                onClick={() => setExpTemplatesOpen((v) => !v)}
+                className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
+              </button>
+            </div>
+
+            {/* Writing templates */}
+            {expTemplatesOpen && (
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Escolha um modelo para começar</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {EXP_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.label}
+                      type="button"
+                      onClick={() => {
+                        setExperienceTitle(tpl.title);
+                        setExperienceDescription(tpl.body);
+                        setExpTemplatesOpen(false);
+                      }}
+                      className="flex flex-col items-start gap-1 rounded-lg border border-primary/20 bg-background p-3 text-left text-sm hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                    >
+                      <span className="text-lg leading-none">{tpl.emoji}</span>
+                      <span className="font-semibold text-foreground">{tpl.label}</span>
+                      <span className="line-clamp-2 text-xs text-muted-foreground">{tpl.body.slice(0, 60)}…</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Input
-              placeholder="Título do conto (opcional)"
+              placeholder="Título do conto (ex.: Nossa noite mais quente 🔥)"
               value={experienceTitle}
               onChange={(e) => setExperienceTitle(e.target.value)}
               maxLength={120}
             />
             <div className="relative">
               <Textarea
-                placeholder="Descreva sua experiência..."
+                placeholder={"Conta pra gente… o que rolou? 😈\nPode escrever à vontade — aqui é lugar seguro."}
                 value={experienceDescription}
                 onChange={(e) => setExperienceDescription(e.target.value)}
                 className="min-h-[160px] resize-y rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[140px] sm:rounded-md sm:border-input sm:text-sm"
@@ -1542,7 +1629,7 @@ export default function Feed() {
                 ))}
               </div>
             )}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Image className="w-4 h-4" />
                 <span className="text-sm">Foto</span>
@@ -1574,10 +1661,21 @@ export default function Feed() {
       ) : (
       <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
         <div className="flex min-w-0 gap-3 sm:gap-4">
-          <Avatar className="h-10 w-10 shrink-0">
-            <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
-            <AvatarFallback>{String(user?.name || 'U')[0]}</AvatarFallback>
-          </Avatar>
+          <div className="relative shrink-0">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
+              <AvatarFallback>{String(user?.name || 'U')[0]}</AvatarFallback>
+            </Avatar>
+            {/* Streak badge overlaid on avatar */}
+            {streakState.streak >= 2 && (
+              <span
+                title={`${streakState.streak} dias seguidos`}
+                className="absolute -bottom-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-orange-500 px-0.5 text-[9px] font-bold text-white ring-2 ring-background"
+              >
+                🔥{streakState.streak}
+              </span>
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <Textarea
               ref={composerRef}
@@ -1746,10 +1844,10 @@ export default function Feed() {
                 type="button"
                 size="sm"
                 variant={feedFilter === 'experiences' ? 'secondary' : 'ghost'}
-                className="shrink-0"
+                className="shrink-0 gap-1.5"
                 onClick={() => setFeedFilter('experiences')}
               >
-                Experiências
+                ✍️ Experiências
               </Button>
               {feedFilter === 'experiences' ? (
                 <Button
@@ -1841,6 +1939,11 @@ export default function Feed() {
               </div>
             ) : null}
           </Card>
+          {/* Social Pulse — variable reward curiosity gap card */}
+          {feedFilter === 'all' && nearbyRadius === null ? (
+            <SocialPulseCard enabled={!!user?.id} />
+          ) : null}
+
           {/* Proximity active banner */}
           {feedFilter !== 'experiences' && nearbyRadius !== null ? (
             <Card className="overflow-hidden border-emerald-400/25 bg-gradient-to-r from-emerald-50/70 via-background to-teal-50/50 p-4 glass dark:from-emerald-950/30 dark:to-teal-950/20">
@@ -1929,6 +2032,25 @@ export default function Feed() {
           ) : null}
           {feedFilter === 'experiences' ? (
             <>
+              {/* Weekly theme challenge card */}
+              <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/8 via-background to-pink-500/6 p-4 glass">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-lg leading-none">{WEEKLY_THEME.emoji}</span>
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-primary/70">Tema da semana</span>
+                    </div>
+                    <p className="text-sm font-bold text-foreground">{WEEKLY_THEME.theme}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{WEEKLY_THEME.description}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-primary text-[10px]">
+                      {WEEKLY_THEME.deadline}
+                    </Badge>
+                  </div>
+                </div>
+              </Card>
+
               {isLoadingExperiences ? (
                 <MobileState
                   loading
@@ -2037,11 +2159,17 @@ export default function Feed() {
                             )}
                           >
                             <Heart className={cn('w-5 h-5', experience.likedByMe && 'fill-current')} />
+                            <span className="hidden text-[10px] font-medium text-muted-foreground/60 sm:inline">
+                              {myExpReactions[experience.id]
+                                ? EXP_REACTION_EMOJI[myExpReactions[experience.id]!]
+                                : '· segure'}
+                            </span>
                           </button>
                           {openReactionPickerExpId === experience.id ? (
-                            <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
-                              <div className="flex flex-wrap items-center gap-2">
-                                {PHOTO_REACTIONS.map((item) => {
+                            <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[240px] rounded-xl border border-white/10 bg-black/90 p-3 shadow-xl backdrop-blur-sm">
+                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">Como você reagiu?</p>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {EXP_REACTIONS.map((item) => {
                                   const counts = expReactionCounts[experience.id] || EMPTY_REACTION_COUNTS;
                                   const mine = myExpReactions[experience.id] || null;
                                   return (
@@ -2049,16 +2177,19 @@ export default function Feed() {
                                       key={`exp-${experience.id}-${item.id}`}
                                       type="button"
                                       className={cn(
-                                        'rounded-full border px-2.5 py-1 text-xs text-white transition-colors',
+                                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-white transition-colors',
                                         mine === item.id
-                                          ? 'border-primary bg-primary/25'
+                                          ? 'border-primary bg-primary/30'
                                           : 'border-white/15 bg-white/5 hover:bg-white/10'
                                       )}
                                       onClick={() => void reactToExp(experience.id, item.id)}
                                       disabled={!!isLoadingExpReactions[experience.id]}
                                     >
-                                      <span className="mr-1">{item.emoji}</span>
-                                      <span>{counts[item.id] || 0}</span>
+                                      <span>{item.emoji}</span>
+                                      <span className="text-white/80">{item.label}</span>
+                                      {(counts[item.id] || 0) > 0 && (
+                                        <span className="ml-auto font-bold text-white/60">{counts[item.id]}</span>
+                                      )}
                                     </button>
                                   );
                                 })}
@@ -2094,7 +2225,7 @@ export default function Feed() {
                                   className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[11px] ring-2 ring-background"
                                   style={{ marginLeft: i > 0 ? '-6px' : 0, zIndex: 3 - i }}
                                 >
-                                  {REACTION_EMOJI[type] ?? '💜'}
+                                  {EXP_REACTION_EMOJI[type] ?? REACTION_EMOJI[type] ?? '💜'}
                                 </span>
                               ));
                             })()}
@@ -2319,6 +2450,8 @@ export default function Feed() {
                     onAspectLoaded={setAspectForKey}
                     premiumAccess={premiumAccess}
                     onPremiumGate={() => setPaywallOpen(true)}
+                    viewerUserId={user?.id}
+                    viewerUserName={user?.name}
                   />
                 </div>
               )}

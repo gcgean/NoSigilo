@@ -119,6 +119,43 @@ export const feedService = {
     const response = await apiClient.get('/photos/recent');
     return response.data;
   },
+
+  getSocialPulse: async () => {
+    const response = await apiClient.get('/feed/social-pulse');
+    return response.data as {
+      likesToday: number;
+      visitorsToday: number;
+      mutualLikes: number;
+      unreadNotifs: number;
+      recentVisitors: Array<{ id: string; name: string; avatar: string | null }> | null;
+      isPremium: boolean;
+    };
+  },
+
+  dailyCheckin: async () => {
+    const response = await apiClient.post('/users/daily-checkin');
+    return response.data as {
+      streak: number;
+      maxStreak: number;
+      isNewDay: boolean;
+      streakBroken: boolean;
+      todayUtc: string;
+    };
+  },
+
+  registerActivity: async (action: string) => {
+    const timezoneOffsetMinutes = new Date().getTimezoneOffset(); // negative for UTC+
+    const response = await apiClient.post('/users/register-activity', { action, timezoneOffsetMinutes });
+    return response.data as {
+      streak: number;
+      maxStreak: number;
+      streakRegistered: boolean;
+      alreadyDoneToday: boolean;
+      streakBroken: boolean;
+      action: string;
+      todayLocal: string;
+    };
+  },
 };
 
 export const experienceService = {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
 import { calcProfileCompletion } from '@/utils/profileCompletion';
+import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
 type MatchProfile = {
   id: string;
@@ -70,6 +71,8 @@ export default function Match() {
   const { addFavorite } = useFavorites();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { registerActivity } = useActivityTracker();
+  const profileViewCountRef = useRef(0);
   
   const [profiles, setProfiles] = useState<MatchProfile[]>(() => {
     try {
@@ -214,6 +217,8 @@ export default function Match() {
     const swipedProfileId = currentProfile?.id ? String(currentProfile.id) : null;
     setHasSwipedAny(true);
     sessionStorage.setItem('nosigilo_match_swiped', '1');
+    profileViewCountRef.current += 1;
+    if (profileViewCountRef.current === 5) registerActivity('match_view');
     setSwipeDirection(direction);
     window.setTimeout(() => {
       setSwipeDirection(null);
