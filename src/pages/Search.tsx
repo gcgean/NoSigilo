@@ -109,6 +109,10 @@ export default function SearchPage() {
   // Debounce ref for text inputs
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Ref for the filters panel (click-outside detection)
+  const filtersPanelRef = useRef<HTMLDivElement | null>(null);
+  const filtersButtonRef = useRef<HTMLButtonElement | null>(null);
+
   // ── helpers ────────────────────────────────────────────────────────────────
   const buildParams = useCallback(
     (p: number) => ({
@@ -262,7 +266,7 @@ export default function SearchPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [search, city, prefsReady]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, city]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!prefsReady) return;
@@ -274,6 +278,21 @@ export default function SearchPage() {
   useEffect(() => {
     if (onlyLiked) setFilteredLiked(applyLikedFilters(likedProfiles));
   }, [likedProfiles, onlyLiked, applyLikedFilters]);
+
+  // ── Click-outside to close filters panel ─────────────────────────────────
+  useEffect(() => {
+    if (!showFilters) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        filtersPanelRef.current?.contains(target) ||
+        filtersButtonRef.current?.contains(target)
+      ) return;
+      setShowFilters(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFilters]);
 
   // ── Fallback search: when filters return 0 results, show all profiles ───────
   // Resets whenever any filter changes (so the fallback doesn't linger).
@@ -308,7 +327,8 @@ export default function SearchPage() {
       })
       .catch(() => { if (!cancelled) setFallbackResults([]); })
       .finally(() => { if (!cancelled) setIsLoadingFallback(false); });
-    return () => { cancelled = true; };
+    // Always reset isLoadingFallback when interrupted — prevents infinite spinner
+    return () => { cancelled = true; setIsLoadingFallback(false); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, isLoading, prefsReady, onlyLiked, isFallback]);
 
@@ -819,6 +839,12 @@ export default function SearchPage() {
             placeholder="Buscar por nome ou cidade..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                void fetchFirstPage();
+              }
+            }}
             className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
           />
         </div>
@@ -846,6 +872,7 @@ export default function SearchPage() {
             </span>
           </Button>
           <Button
+            ref={filtersButtonRef}
             variant={showFilters ? 'default' : 'outline'}
             onClick={() => setShowFilters(!showFilters)}
             className="h-11 w-full justify-center rounded-xl gap-2 px-4 text-sm font-medium sm:self-auto"
@@ -953,7 +980,7 @@ export default function SearchPage() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="glass mb-4 animate-slide-up space-y-5 rounded-xl p-4 sm:mb-6 sm:p-6 sm:space-y-6">
+        <div ref={filtersPanelRef} className="glass mb-4 animate-slide-up space-y-5 rounded-xl p-4 sm:mb-6 sm:p-6 sm:space-y-6">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
             <div>
               <label className="text-sm font-medium mb-2 block">Idade</label>
