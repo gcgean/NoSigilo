@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -97,6 +97,11 @@ export default function SearchPage() {
     maxDistance: number | null;
     intentions: string[];
   }>({ profileTypes: [], maxDistance: null, intentions: [] });
+
+  // Fallback results: shown when active filters return 0 profiles
+  const [fallbackResults, setFallbackResults] = useState<any[]>([]);
+  const [isFallback, setIsFallback] = useState(false);
+  const [isLoadingFallback, setIsLoadingFallback] = useState(false);
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -270,6 +275,43 @@ export default function SearchPage() {
     if (onlyLiked) setFilteredLiked(applyLikedFilters(likedProfiles));
   }, [likedProfiles, onlyLiked, applyLikedFilters]);
 
+  // ── Fallback search: when filters return 0 results, show all profiles ───────
+  // Resets whenever any filter changes (so the fallback doesn't linger).
+  useEffect(() => {
+    setIsFallback(false);
+    setFallbackResults([]);
+  }, [search, city, ageRange, selectedGenders, radar, sort, availableOnly, selectedIntention, onlyLiked]);
+
+  useEffect(() => {
+    // Only trigger when we genuinely have 0 results (not still loading, not liked mode)
+    const hasActiveFilters =
+      selectedGenders.length > 0 ||
+      radar !== 'all' ||
+      availableOnly ||
+      !!selectedIntention ||
+      ageRange !== 'all' ||
+      !!search.trim() ||
+      !!city.trim();
+
+    if (!prefsReady || isLoading || !hasActiveFilters || onlyLiked) return;
+    if (results.length > 0) return; // already has results, no fallback needed
+    if (isFallback || isLoadingFallback) return; // already running
+
+    let cancelled = false;
+    setIsLoadingFallback(true);
+    usersService
+      .searchUsers({ page: 1, limit: PAGE_SIZE, sort: 'nearby' })
+      .then((data) => {
+        if (cancelled) return;
+        setFallbackResults(data.users || []);
+        setIsFallback(true);
+      })
+      .catch(() => { if (!cancelled) setFallbackResults([]); })
+      .finally(() => { if (!cancelled) setIsLoadingFallback(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, isLoading, prefsReady, onlyLiked]);
+
   // ── UI helpers ─────────────────────────────────────────────────────────────
   const handleGenderToggle = (gender: string) => {
     setSelectedGenders((prev) =>
@@ -278,7 +320,8 @@ export default function SearchPage() {
   };
 
   const displayResults = onlyLiked ? filteredLiked : results;
-  const isEmpty        = prefsReady && !isLoading && displayResults.length === 0;
+  // isEmpty = truly no results and no fallback is covering for us
+  const isEmpty = prefsReady && !isLoading && !isLoadingFallback && displayResults.length === 0 && !isFallback;
 
   const hasDistanceData = displayResults.some((p) => typeof p.distanceKm === 'number');
 
@@ -528,7 +571,7 @@ export default function SearchPage() {
   })();
 
   return (
-    <div className="mx-auto w-full max-w-4xl min-w-0 overflow-x-hidden pb-24 md:pb-0">
+    <div className="mx-auto w-full max-w-4xl min-w-0">
 
       {/* ── First-time search onboarding wizard ────────────────────────────── */}
       {showWizard && (
@@ -816,78 +859,104 @@ export default function SearchPage() {
       {/* Quick distance + sort bar */}
       {!onlyLiked && (
         <div className="mb-4 flex flex-col gap-2 sm:mb-5">
+
           {/* Distance quick buttons */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setRadar(v)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  radar === v
-                    ? 'border-primary bg-primary text-white'
-                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                }`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-          {/* Sort buttons */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            {([
-              ['nearby',    'Próximos'],
-              ['active',    'Ativos'],
-              ['new',       'Novos'],
-              ['available', '⚡ Disponíveis'],
-            ] as const).map(([v, l]) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setSort(v)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  sort === v
-                    ? v === 'available'
-                      ? 'border-emerald-500 bg-emerald-500 text-white'
-                      : 'border-primary bg-primary text-white'
-                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                }`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-          {/* Intention filter pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-            <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
-            <button
-              type="button"
-              onClick={() => setSelectedIntention('')}
-              className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                selectedIntention === ''
-                  ? 'border-primary bg-primary text-white'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-              }`}
+          <div className="relative">
+            <div
+              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
             >
-              Tudo
-            </button>
-            {INTENTION_OPTIONS.map((opt) => (
+              <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setRadar(v)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    radar === v
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+              {/* right-side spacer so last chip is fully visible */}
+              <span className="shrink-0 w-4" aria-hidden />
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          </div>
+
+          {/* Sort buttons */}
+          <div className="relative">
+            <div
+              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {([
+                ['nearby',    'Próximos'],
+                ['active',    'Ativos'],
+                ['new',       'Novos'],
+                ['available', '⚡ Disponíveis'],
+              ] as const).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setSort(v)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    sort === v
+                      ? v === 'available'
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-primary bg-primary text-white'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+              <span className="shrink-0 w-4" aria-hidden />
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
+          </div>
+
+          {/* Intention filter pills */}
+          <div className="relative">
+            <div
+              className="flex items-center gap-1.5 overflow-x-auto pb-0.5"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as CSSProperties}
+            >
+              <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
               <button
-                key={opt.value}
                 type="button"
-                onClick={() => setSelectedIntention((v) => v === opt.value ? '' : opt.value)}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors gap-1 inline-flex items-center ${
-                  selectedIntention === opt.value
+                onClick={() => setSelectedIntention('')}
+                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  selectedIntention === ''
                     ? 'border-primary bg-primary text-white'
                     : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
                 }`}
               >
-                {opt.emoji} {opt.label}
+                Tudo
               </button>
-            ))}
+              {INTENTION_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSelectedIntention((v) => v === opt.value ? '' : opt.value)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors gap-1 inline-flex items-center ${
+                    selectedIntention === opt.value
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                  }`}
+                >
+                  {opt.emoji} {opt.label}
+                </button>
+              ))}
+              <span className="shrink-0 w-4" aria-hidden />
+            </div>
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent" />
           </div>
+
         </div>
       )}
 
@@ -996,11 +1065,11 @@ export default function SearchPage() {
       )}
 
       {/* Results Grid */}
-      {(!prefsReady || isLoading) ? (
+      {(!prefsReady || isLoading || isLoadingFallback) ? (
         <MobileState
           loading
-          title="Buscando perfis"
-          description="Refinando os resultados com os filtros que você escolheu."
+          title={isLoadingFallback ? 'Ampliando a busca...' : 'Buscando perfis'}
+          description={isLoadingFallback ? 'Sem resultados com esses filtros. Buscando todos os perfis.' : 'Refinando os resultados com os filtros que você escolheu.'}
         />
       ) : isEmpty ? (
         <MobileState
@@ -1016,7 +1085,39 @@ export default function SearchPage() {
         />
       ) : (
         <>
-          {useGroups ? (
+          {/* ── Fallback banner: shown when active filters returned 0 results ── */}
+          {isFallback && fallbackResults.length > 0 && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3">
+              <span className="mt-0.5 text-base leading-none">🔍</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground leading-snug">
+                  Sem perfis com esses filtros
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Mostrando todos os perfis da plataforma. Ajuste os filtros para refinar.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedGenders([]);
+                  setRadar('all');
+                  setAvailableOnly(false);
+                  setSelectedIntention('');
+                  setAgeRange('all');
+                  setSearch('');
+                  setCity('');
+                  setSort('nearby');
+                }}
+                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+              >
+                Limpar filtros
+              </button>
+            </div>
+          )}
+
+          {/* ── Results grid (normal or fallback) ────────────────────────────── */}
+          {useGroups && !isFallback ? (
             groupedResults.map((group) => (
               <div key={group.label} className="mb-6">
                 <div className="mb-3 flex items-center gap-2">
@@ -1031,7 +1132,9 @@ export default function SearchPage() {
             ))
           ) : (
             <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 md:gap-4">
-              {displayResults.map((profile) => <ProfileCard key={profile.id} profile={profile} />)}
+              {(isFallback ? fallbackResults : displayResults).map((profile) => (
+                <ProfileCard key={profile.id} profile={profile} />
+              ))}
             </div>
           )}
 
