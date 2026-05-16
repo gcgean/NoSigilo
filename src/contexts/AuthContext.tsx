@@ -33,6 +33,9 @@ export interface User {
   zodiacSign?: string;
   lookingFor?: string[];
   fetiches?: string[];
+  intentions?: string[];
+  availabilityStatus?: 'now' | 'week' | 'month' | 'online_only' | 'not_looking' | null;
+  meetingTagline?: string | null;
   isVerified?: boolean;
   isPremium?: boolean;
   isAdmin?: boolean;
@@ -363,6 +366,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'zodiacSign',
           'lookingFor',
           'fetiches',
+          'intentions',
+          'availabilityStatus',
+          'meetingTagline',
           'allowMessages',
           'notificationVisits',
           'billingDocument',
