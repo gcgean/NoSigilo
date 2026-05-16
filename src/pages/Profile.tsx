@@ -288,6 +288,9 @@ export default function Profile() {
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
+  // Track whether the first photo load has completed so subsequent reloads
+  // (after upload / delete / toggle) happen silently — no blinking "Carregando..."
+  const photosInitialLoadDone = useRef(false);
   const firstAccessPhotoMode = searchParams.get('firstAccess') === 'photo';
 
   useEffect(() => {
@@ -371,7 +374,12 @@ export default function Profile() {
   }, [unreadNotifications.length]);
 
   const loadPhotos = async () => {
-    setIsLoadingPhotos(true);
+    // Only show the loading skeleton on the very first fetch.
+    // Subsequent calls (after upload/delete/toggle) update silently so the
+    // grid never blanks out and flickers (the "piscando" bug).
+    if (!photosInitialLoadDone.current) {
+      setIsLoadingPhotos(true);
+    }
     try {
       const list = await feedService.getRecentPhotos();
       setPhotos(
@@ -389,6 +397,7 @@ export default function Profile() {
       setPhotos([]);
     } finally {
       setIsLoadingPhotos(false);
+      photosInitialLoadDone.current = true;
     }
   };
 
@@ -1284,16 +1293,18 @@ export default function Profile() {
               />
             ))}
             
-            {/* Add Photo Button */}
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-              className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-8 h-8" />
-              <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar'}</span>
-            </button>
+            {/* Add Photo Button — hidden while initial load is in progress */}
+            {!isLoadingPhotos && (
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-8 h-8" />
+                <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar'}</span>
+              </button>
+            )}
           </div>
           <input
             ref={fileInputRef}
@@ -1421,15 +1432,17 @@ export default function Profile() {
               />
             ))}
 
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={() => privateFileInputRef.current?.click()}
-              className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Plus className="w-8 h-8" />
-              <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar privada'}</span>
-            </button>
+            {!isLoadingPhotos && (
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => privateFileInputRef.current?.click()}
+                className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-8 h-8" />
+                <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar privada'}</span>
+              </button>
+            )}
           </div>
           <input
             ref={privateFileInputRef}

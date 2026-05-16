@@ -231,6 +231,14 @@ export default function Chat() {
         //   (z-40) for a true full-screen chat experience on mobile.
         //   paddingTop:env(safe-area-inset-top) protects content from the notch/island.
         const kbHeight = Math.max(0, window.innerHeight - Math.round(vh));
+        // When the keyboard is open kbHeight pushes content above it.
+        // When the keyboard is closed kbHeight ≈ 0, but we still need to keep
+        // the input bar above the iPhone home indicator (~34 px on modern iPhones).
+        // Using env(safe-area-inset-bottom) for this avoids double-counting
+        // because iOS includes the home-indicator zone inside the keyboard footprint
+        // when kbHeight is calculated, so the two branches are mutually exclusive.
+        const bottomPad: React.CSSProperties['paddingBottom'] =
+          kbHeight > 0 ? kbHeight : 'env(safe-area-inset-bottom, 0px)';
         setMobileStyle({
           position: 'fixed',
           top: 0,
@@ -239,7 +247,7 @@ export default function Chat() {
           width: Math.max(vWidth, 280),
           maxWidth: '100vw',
           paddingTop: 'env(safe-area-inset-top)',
-          paddingBottom: kbHeight,
+          paddingBottom: bottomPad,
           boxSizing: 'border-box',
           zIndex: 60,
           overflowX: 'hidden',
@@ -981,7 +989,15 @@ export default function Chat() {
                 variant="ghost"
                 size="icon"
                 className="h-8.5 w-8.5 shrink-0 rounded-full md:hidden"
-                onClick={() => setSelectedChat(null)}
+                onClick={() => {
+                  // Dismiss the keyboard BEFORE clearing selectedChat so iOS
+                  // doesn't trigger a simultaneous keyboard-close + layout-change
+                  // that can swallow the state update and appear to "do nothing".
+                  if (document.activeElement instanceof HTMLElement) {
+                    document.activeElement.blur();
+                  }
+                  setSelectedChat(null);
+                }}
               >
                 <ArrowLeft className="w-4.5 h-4.5" />
               </Button>
