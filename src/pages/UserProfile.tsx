@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1119,44 +1119,6 @@ export default function UserProfile() {
         targetName={String(profile?.name || '')}
       />
 
-      {/* Objetivos e Fetiches */}
-      {(() => {
-        const intentions: string[] = Array.isArray((profile as any)?.intentions) ? (profile as any).intentions : [];
-        const fetiches: string[] = Array.isArray((profile as any)?.fetiches) ? (profile as any).fetiches : [];
-        if (intentions.length === 0 && fetiches.length === 0) return null;
-        return (
-          <div className="mb-4 space-y-3">
-            {intentions.length > 0 && (
-              <div className="glass rounded-xl px-4 py-3.5">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Objetivos</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {intentions.map((val) => {
-                    const opt = INTENTION_OPTIONS.find((o) => o.value === val);
-                    return (
-                      <span key={val} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                        {opt ? `${opt.emoji} ${opt.label}` : val}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {fetiches.length > 0 && (
-              <div className="glass rounded-xl px-4 py-3.5">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Fetiches</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {fetiches.map((f) => (
-                    <span key={f} className="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-foreground">
-                      {f}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="w-full mb-4 flex flex-wrap gap-1 h-auto p-1">
           <TabsTrigger value="public" className="flex-1 gap-1.5 text-xs sm:text-sm">
@@ -1185,6 +1147,24 @@ export default function UserProfile() {
             <BookOpen className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Experiências {userExperiences.length > 0 ? `(${userExperiences.length})` : ''}</span>
           </TabsTrigger>
+          {(() => {
+            const intentions: string[] = Array.isArray((profile as any)?.intentions) ? (profile as any).intentions : [];
+            return intentions.length > 0 || isSelf ? (
+              <TabsTrigger value="objetivos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+                <Target className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Objetivos</span>
+              </TabsTrigger>
+            ) : null;
+          })()}
+          {(() => {
+            const fetiches: string[] = Array.isArray((profile as any)?.fetiches) ? (profile as any).fetiches : [];
+            return fetiches.length > 0 || isSelf ? (
+              <TabsTrigger value="fetiches" className="flex-1 gap-1.5 text-xs sm:text-sm">
+                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Fetiches</span>
+              </TabsTrigger>
+            ) : null;
+          })()}
         </TabsList>
 
         <TabsContent value="public">
@@ -1451,6 +1431,58 @@ export default function UserProfile() {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="objetivos">
+          {(() => {
+            const intentions: string[] = Array.isArray((profile as any)?.intentions) ? (profile as any).intentions : [];
+            if (intentions.length === 0) return (
+              <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+                <Target className="w-10 h-10 opacity-40" />
+                <p className="text-sm">Nenhum objetivo definido ainda.</p>
+                {isSelf && <a href="/settings" className="text-xs text-primary underline">Definir em Configurações</a>}
+              </div>
+            );
+            return (
+              <div className="glass rounded-xl p-5">
+                <div className="flex flex-wrap gap-2">
+                  {intentions.map((val) => {
+                    const opt = INTENTION_OPTIONS.find((o) => o.value === val);
+                    return (
+                      <span key={val} className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                        {opt ? `${opt.emoji} ${opt.label}` : val}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </TabsContent>
+
+        <TabsContent value="fetiches">
+          {(() => {
+            const fetiches: string[] = Array.isArray((profile as any)?.fetiches) ? (profile as any).fetiches : [];
+            if (fetiches.length === 0) return (
+              <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
+                <Flame className="w-10 h-10 opacity-40" />
+                <p className="text-sm">Nenhum fetiche definido ainda.</p>
+                {isSelf && <a href="/settings" className="text-xs text-primary underline">Definir em Configurações</a>}
+              </div>
+            );
+            return (
+              <div className="glass rounded-xl p-5">
+                <div className="flex flex-wrap gap-2">
+                  {fetiches.map((f) => (
+                    <span key={f} className="inline-flex items-center rounded-full border border-border bg-muted/60 px-3 py-1.5 text-sm font-medium text-foreground">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </TabsContent>
+
       </Tabs>
 
       <Dialog
