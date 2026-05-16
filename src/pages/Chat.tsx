@@ -58,15 +58,26 @@ function generateIceBreakers(
   myCity: string | undefined,
 ): string[] {
   const first = partnerName.split(' ')[0];
+  const spicy = [
+    `Oi ${first}! Vi seu perfil e fiquei bem curioso(a)... posso te fazer algumas perguntas? 😏`,
+    `${first}, seu perfil me deixou com bastante vontade de te conhecer melhor 🔥`,
+    `Oi ${first}! Direto ao ponto: gostei muito do que vi e quero saber se a química existe 😈`,
+    `${first}, tenho algumas fantasias que adoraria compartilhar com alguém como você… topa? 🌶️`,
+    `Oi ${first}! Você parece exatamente o tipo de pessoa que eu estava procurando 😍`,
+    `${first}, o que você estaria disposto(a) a experimentar com alguém novo? Pergunto por curiosidade 😏`,
+  ];
   const suggestions: string[] = [];
   if (partnerCity && myCity && partnerCity.toLowerCase() === myCity.toLowerCase()) {
-    suggestions.push(`Oi ${first}! Você também é de ${partnerCity}? Que coincidência 😄`);
+    suggestions.push(`Oi ${first}! Somos da mesma cidade — acho que o destino quis que nos encontrássemos 😏`);
   } else if (partnerCity) {
-    suggestions.push(`Oi ${first}! Como é morar em ${partnerCity}? 😊`);
+    suggestions.push(`Oi ${first}! ${partnerCity} deve ser uma cidade boa para quem curte aventuras 🔥`);
   }
-  suggestions.push(`Oi ${first}! Vi seu perfil e quis mandar um oi 👋`);
-  suggestions.push(`${first}, se pudesse fazer qualquer coisa neste fim de semana, o que seria? 😄`);
-  suggestions.push(`Oi ${first}! O que você mais gosta de fazer quando quer relaxar?`);
+  // fill remaining slots with spicy suggestions (shuffled)
+  const shuffled = spicy.sort(() => Math.random() - 0.5);
+  for (const s of shuffled) {
+    if (suggestions.length >= 4) break;
+    suggestions.push(s);
+  }
   return suggestions.slice(0, 4);
 }
 
