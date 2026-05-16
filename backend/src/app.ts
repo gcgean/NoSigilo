@@ -4579,6 +4579,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const state = req.query.state ? String(req.query.state) : null;
     const lookingFor = parseAudiencePreferences(req.query.lookingFor ? String(req.query.lookingFor) : '');
 
+    // Priority order: same city > same state > verified > has avatar > recently active
+    const qualityOrder = [
+      'CASE WHEN avatar_url IS NOT NULL AND avatar_url <> \'\' THEN 0 ELSE 1 END',
+      'CASE WHEN is_verified = 1 THEN 0 ELSE 1 END',
+      'CASE WHEN last_seen_at IS NOT NULL THEN 0 ELSE 1 END',
+    ];
+
     let rows: any[] = [];
     if (lookingFor.length > 0) {
       const placeholders = lookingFor.map(() => '?').join(', ');
@@ -4587,27 +4594,28 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const audiencePriority = buildAudiencePriorityOrder('gender', lookingFor);
       orderParts.push(...audiencePriority.orderParts);
       params.push(...audiencePriority.params);
-      if (state) {
-        orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
-        params.push(state);
-      }
       if (city) {
         orderParts.push('CASE WHEN city = ? THEN 0 ELSE 1 END');
         params.push(city);
       }
-      const orderBy = orderParts.length > 0 ? `${orderParts.join(', ')}, created_at DESC` : 'created_at DESC';
+      if (state) {
+        orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
+        params.push(state);
+      }
+      orderParts.push(...qualityOrder);
+      const orderBy = `${orderParts.join(', ')}, last_seen_at DESC NULLS LAST`;
       rows = await queryAll(
         db,
-        `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 12`,
+        `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 18`,
         params
       );
     }
 
     if (rows.length === 0) {
-      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) ORDER BY ${baseAudienceRankingSql('gender')}, created_at DESC LIMIT 12`);
+      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND avatar_url IS NOT NULL AND avatar_url <> '' ORDER BY ${baseAudienceRankingSql('gender')}, is_verified DESC, last_seen_at DESC NULLS LAST LIMIT 18`);
     }
 
-    res.json(rows.map((row) => rowToPublicUser(row)));
+    res.json(rows.filter((r: any) => r.avatar_url).slice(0, 6).map((row: any) => rowToPublicUser(row)));
   });
 
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
