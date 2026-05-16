@@ -1803,33 +1803,43 @@ export default function Feed() {
               {feedFilter === 'favorites' && favorites.length === 0 ? (
                 <span className="ml-1 text-sm text-muted-foreground">Adicione curtidos para filtrar.</span>
               ) : null}
-              {/* Proximity filter pills — only when user has location */}
-              {user?.lat && feedFilter !== 'experiences' ? (
-                <>
-                  <div className="h-4 w-px shrink-0 bg-border/60" />
-                  <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  {NEARBY_OPTIONS.map((km) => (
-                    <Button
-                      key={km}
-                      type="button"
-                      size="sm"
-                      variant={nearbyRadius === km ? 'default' : 'ghost'}
-                      className={cn(
-                        'shrink-0 px-2.5 text-xs',
-                        nearbyRadius === km
-                          ? 'bg-emerald-500 text-white hover:bg-emerald-600 border-0'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                      onClick={() => handleNearbyRadius(km)}
-                    >
-                      {km} km
-                    </Button>
-                  ))}
-                </>
-              ) : null}
                 </>
               ) : null}
             </div>
+
+            {/* Proximity filter row — segunda linha, só quando tem localização e não está em Experiências */}
+            {user?.lat && feedFilter !== 'experiences' ? (
+              <div className="mt-2.5 pt-2.5 border-t border-border/40 flex items-center gap-2">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                <span className="text-xs text-muted-foreground font-medium shrink-0">Perto de mim:</span>
+                <div className="flex items-center gap-1.5">
+                  {NEARBY_OPTIONS.map((km) => (
+                    <button
+                      key={km}
+                      type="button"
+                      onClick={() => handleNearbyRadius(km)}
+                      className={cn(
+                        'rounded-full px-3 py-1 text-xs font-semibold transition-all',
+                        nearbyRadius === km
+                          ? 'bg-emerald-500 text-white shadow-sm'
+                          : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
+                      )}
+                    >
+                      {km} km
+                    </button>
+                  ))}
+                  {nearbyRadius !== null && (
+                    <button
+                      type="button"
+                      onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}
+                      className="ml-1 rounded-full px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      ✕ limpar
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </Card>
           {/* Proximity active banner */}
           {feedFilter !== 'experiences' && nearbyRadius !== null ? (
