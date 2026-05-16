@@ -2406,6 +2406,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
+    // seenIds: comma-separated post IDs already shown to the client — exclude from current page
+    const seenIdsRaw = typeof req.query.seenIds === 'string' ? req.query.seenIds.trim() : '';
+    const seenIdsSet = new Set<string>(
+      seenIdsRaw ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+    );
     const reelsOnlyFilter = includeReelsOnly
       ? 'AND p.is_reels_only = 1'
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
@@ -2722,11 +2727,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             // Interest: already filtered at SQL level if preferences set, this is bonus
             const interestScore = matchesInterest ? 20 : (viewerLookingFor.length > 0 ? -30 : 0);
 
-            // Diversity penalty: down-rank if user already sees many posts from same author
-            const authorPostsSeen = rows.filter((r: any) => String(r.author_id) === authorId).length;
-            const diversityPenalty = authorPostsSeen > 2 ? (authorPostsSeen - 2) * -8 : 0;
+            // Variable reward jitter: small random delta keeps feed unpredictable (dopamine loop)
+            const jitter = (Math.random() * 6) - 3; // ±3 points
 
-            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + diversityPenalty;
+            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + jitter;
 
             let reason: 'nearby' | 'affinity' | 'popular_local' | 'recent' = 'recent';
             let label = 'Novo agora';
@@ -2762,17 +2766,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             return b.createdAtMs - a.createdAtMs;
           });
 
-          const diversified: typeof ranked = [];
-          const remaining = [...ranked];
-          let lastAuthorId: string | null = null;
-          let repeatedCount = 0;
+          // Hard author cap: each author may appear at most 2 times per page to prevent repetition
+          const MAX_POSTS_PER_AUTHOR = 2;
+          const authorPageCount = new Map<string, number>();
+          const cappedRanked = ranked.filter((item) => {
+            const count = authorPageCount.get(item.authorId) ?? 0;
+            if (count >= MAX_POSTS_PER_AUTHOR) return false;
+            authorPageCount.set(item.authorId, count + 1);
+            return true;
+          });
+
+          const diversified: typeof cappedRanked = [];
+          const remaining = [...cappedRanked];
+          // Track recent author window (last 3 positions) to ensure no author repeats within 3 slots
+          const recentAuthors: string[] = [];
           while (remaining.length > 0) {
             let bestIndex = 0;
             let bestAdjustedScore = -Infinity;
             for (let i = 0; i < remaining.length; i += 1) {
               const candidate = remaining[i];
-              const repeatPenalty = candidate.authorId === lastAuthorId ? 22 + repeatedCount * 12 : 0;
-              const adjustedScore = candidate.score - repeatPenalty;
+              // Penalize if author appeared in last 3 posts
+              const recentIdx = recentAuthors.lastIndexOf(candidate.authorId);
+              const gapPenalty = recentIdx >= 0 ? (30 + (recentAuthors.length - 1 - recentIdx) * 15) : 0;
+              const adjustedScore = candidate.score - gapPenalty;
               if (adjustedScore > bestAdjustedScore) {
                 bestAdjustedScore = adjustedScore;
                 bestIndex = i;
@@ -2781,12 +2797,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             const [picked] = remaining.splice(bestIndex, 1);
             if (!picked) break;
             diversified.push(picked);
-            if (picked.authorId === lastAuthorId) {
-              repeatedCount += 1;
-            } else {
-              lastAuthorId = picked.authorId;
-              repeatedCount = 1;
-            }
+            recentAuthors.push(picked.authorId);
+            if (recentAuthors.length > 3) recentAuthors.shift();
             feedContextByPostId.set(String(picked.row.id), { reason: picked.reason, label: picked.label });
           }
 
@@ -2800,7 +2812,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           return diversified.map((item) => item.row);
         })();
 
-    const slice = orderedRows.slice(offset, offset + limit);
+    // Exclude posts already shown to the client (cross-page deduplication)
+    const freshRows = seenIdsSet.size > 0
+      ? orderedRows.filter((r: any) => !seenIdsSet.has(String(r.id)))
+      : orderedRows;
+
+    const slice = freshRows.slice(0, limit);
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -2900,7 +2917,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         reactions: reactionsByPostId.get(String(r.id)) ?? [],
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
       })),
-      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : rows.length > offset + limit,
+      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : freshRows.length > limit,
       insights: includeReelsOnly ? null : feedInsights,
     });
   });

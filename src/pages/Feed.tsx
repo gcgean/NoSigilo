@@ -357,8 +357,8 @@ export default function Feed() {
       items.push({
         type: 'section',
         id: 'feed-section-exploration',
-        title: 'Descobrir novos perfis',
-        description: 'Um bloco controlado para abrir espaço para pessoas novas antes de repetir os mesmos perfis.',
+        title: '✨ Novidades na sua região',
+        description: 'Perfis que você ainda não viu — pode ser alguém especial por perto.',
       });
       items.push(...exploration.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
     }
@@ -367,8 +367,8 @@ export default function Feed() {
       items.push({
         type: 'section',
         id: 'feed-section-continue',
-        title: 'Continuando o feed',
-        description: 'Agora entram mais publicações das suas conexões e dos perfis que continuam quentes.',
+        title: '🔥 Em alta agora',
+        description: 'Mais publicações de pessoas ativas — atualize o feed para ver as mais recentes.',
       });
       items.push(...remaining.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post })));
     }
@@ -604,7 +604,9 @@ export default function Feed() {
     const nextPage = pageRef.current + 1;
     setIsLoadingMore(true);
     try {
-      const feed = await feedService.getFeed({ page: nextPage, limit: 20 });
+      // Pass currently-seen post IDs so backend can exclude them (cross-page deduplication)
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 200).join(',');
+      const feed = await feedService.getFeed({ page: nextPage, limit: 20, seenIds: seenIds || undefined });
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];
       if (nextPage === 1) setFeedInsights(feed?.insights ?? null);
@@ -2086,12 +2088,14 @@ export default function Feed() {
           ) : null}
           {feedFilter !== 'experiences' && !isLoading && feedDisplayItems.map((item) => (
             item.type === 'section' ? (
-              <Card key={item.id} className="overflow-hidden border-primary/10 bg-gradient-to-r from-background via-primary/5 to-pink-500/5 p-4 glass">
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm font-semibold text-foreground">{item.title}</p>
-                  <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
+              <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+                <div className="flex flex-col items-center gap-0.5 text-center">
+                  <span className="text-xs font-bold tracking-wide text-primary uppercase">{item.title}</span>
+                  <span className="text-[11px] text-muted-foreground max-w-[240px] leading-tight">{item.description}</span>
                 </div>
-              </Card>
+                <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+              </div>
             ) : (
             <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card className="overflow-hidden glass">
               {/* Post Header */}
@@ -2105,19 +2109,31 @@ export default function Feed() {
                     <AvatarFallback>{String(item.post.author.name || 'U')[0]}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{item.post.author.name}</span>
                       {(() => {
                         const badge = getProfileTypeBadge(item.post.author.gender);
-                        return badge ? (
-                          <Badge variant="outline" className={cn('shrink-0 border text-[10px] font-semibold px-1.5 py-0 leading-5', badge.cls)}>
-                            {badge.emoji} {badge.label}
-                          </Badge>
-                        ) : item.post.feedContext?.label ? (
-                          <Badge variant="outline" className="max-w-[11rem] truncate border-primary/20 bg-primary/5 text-[11px] font-medium text-primary">
-                            {item.post.feedContext.label}
-                          </Badge>
-                        ) : null;
+                        const ctx = item.post.feedContext;
+                        const isVeryRecent = Date.now() - new Date(item.post.createdAt).getTime() < 2 * 60 * 60 * 1000;
+                        return (
+                          <>
+                            {badge && (
+                              <Badge variant="outline" className={cn('shrink-0 border text-[10px] font-semibold px-1.5 py-0 leading-5', badge.cls)}>
+                                {badge.emoji} {badge.label}
+                              </Badge>
+                            )}
+                            {ctx?.label && ctx.label !== 'Novo agora' && (
+                              <Badge variant="outline" className="shrink-0 max-w-[10rem] truncate border-primary/20 bg-primary/5 text-[10px] font-medium text-primary">
+                                {ctx.reason === 'nearby' ? '📍' : ctx.reason === 'affinity' ? '💬' : ctx.reason === 'popular_local' ? '🔥' : ''} {ctx.label}
+                              </Badge>
+                            )}
+                            {isVeryRecent && (
+                              <Badge variant="outline" className="shrink-0 border-emerald-400/30 bg-emerald-500/10 text-[10px] font-bold text-emerald-600 px-1.5 py-0 leading-5 animate-pulse-slow">
+                                NOVO
+                              </Badge>
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                     {getIdentityLine(item.post.author) ? (
@@ -2276,7 +2292,11 @@ export default function Feed() {
                         </span>
                       ))}
                     </div>
-                    <span className="text-sm font-medium text-muted-foreground">{item.post.likesCount}</span>
+                    <span className="text-sm font-medium text-muted-foreground">
+                      {item.post.likesCount >= 10 ? (
+                        <span className="text-primary font-semibold">🔥 {item.post.likesCount}</span>
+                      ) : item.post.likesCount}
+                    </span>
                   </button>
                 )}
               </div>
