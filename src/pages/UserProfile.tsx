@@ -726,11 +726,7 @@ export default function UserProfile() {
       const res = await chatService.createConversation(userId);
       const conversationId = res?.id ? String(res.id) : '';
       if (!conversationId) throw new Error('Falha ao iniciar conversa');
-      const firstName = String(profile?.name || '').split(' ')[0];
-      const draftMessage = distanceLabel
-        ? `Oi, ${firstName}! Vi seu perfil e você está a ${distanceLabel} de mim. Posso conversar? 😊`
-        : `Oi, ${firstName}! Vi seu perfil aqui no NoSigilo. Posso conversar? 😊`;
-      navigate('/chat', { state: { conversationId, draftMessage } });
+      navigate('/chat', { state: { conversationId } });
     } catch {
       toast({ title: 'Não foi possível iniciar o chat', description: 'Tente novamente.', variant: 'destructive' });
     } finally {

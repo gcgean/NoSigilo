@@ -200,9 +200,32 @@ function formatRemainingRadarTime(iso: string) {
 }
 
 const FEED_SESSION_AUTHOR_COUNTS_KEY = 'nosigilo:feed-session-author-counts';
+const FEED_SESSION_SEEN_IDS_KEY = 'nosigilo:feed-session-seen-ids';
 const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
 const NEARBY_OPTIONS = [10, 25, 50] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
+
+/** Persist seen post IDs across Feed re-mounts within the same session */
+function readFeedSeenIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.sessionStorage.getItem(FEED_SESSION_SEEN_IDS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set((arr as unknown[]).filter((x): x is string => typeof x === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFeedSeenIds(ids: Set<string>) {
+  try {
+    // Keep only the 400 most-recent IDs to avoid unbounded growth
+    const arr = Array.from(ids).slice(-400);
+    window.sessionStorage.setItem(FEED_SESSION_SEEN_IDS_KEY, JSON.stringify(arr));
+  } catch {}
+}
 
 function readFeedSessionAuthorCounts() {
   if (typeof window === 'undefined') return {} as Record<string, number>;
@@ -256,7 +279,7 @@ export default function Feed() {
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const isLoadingMoreRef = useRef(false);
-  const trackedFeedPostIdsRef = useRef<Set<string>>(new Set());
+  const trackedFeedPostIdsRef = useRef<Set<string>>(readFeedSeenIds());
   const feedSessionAuthorCountsRef = useRef<Record<string, number>>(readFeedSessionAuthorCounts());
   const radarHighlightsCacheRef = useRef<{ fetchedAt: number; items: RadarHighlight[] } | null>(null);
 
@@ -509,6 +532,7 @@ export default function Feed() {
     try {
       window.sessionStorage.setItem(FEED_SESSION_AUTHOR_COUNTS_KEY, JSON.stringify(nextCounts));
     } catch {}
+    saveFeedSeenIds(trackedFeedPostIdsRef.current);
   }, [allPosts]);
 
   const reload = async () => {
@@ -518,6 +542,8 @@ export default function Feed() {
         !radarHighlightsCacheRef.current || Date.now() - radarHighlightsCacheRef.current.fetchedAt > RADAR_HIGHLIGHTS_CACHE_TTL_MS;
       const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(0, 300).join(',');
+      if (seenIds) feedParams.seenIds = seenIds;
       const [feed, radarData] = await Promise.all([
         feedService.getFeed(feedParams),
         shouldRefreshRadarHighlights

@@ -861,7 +861,7 @@ export default function SearchPage() {
         <div className="mb-4 flex flex-col gap-2 sm:mb-5">
 
           {/* Distance quick buttons */}
-          <div className="relative overflow-hidden">
+          <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
@@ -885,7 +885,7 @@ export default function SearchPage() {
           </div>
 
           {/* Sort buttons */}
-          <div className="relative overflow-hidden">
+          <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               {([
@@ -915,7 +915,7 @@ export default function SearchPage() {
           </div>
 
           {/* Intention filter pills */}
-          <div className="relative overflow-hidden">
+          <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
               <button

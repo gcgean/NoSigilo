@@ -2433,7 +2433,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const reelsOnlyFilter = includeReelsOnly
       ? 'AND p.is_reels_only = 1'
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(280, offset + limit + 120);
+    // Fetch extra candidates to compensate for seenIds exclusion and ensure enough fresh posts
+    const extraForSeen = Math.min(seenIdsSet.size, 200);
+    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(500, offset + limit + 150 + extraForSeen);
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
@@ -2750,8 +2752,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             // Interest: already filtered at SQL level if preferences set, this is bonus
             const interestScore = matchesInterest ? 20 : (viewerLookingFor.length > 0 ? -30 : 0);
 
-            // Variable reward jitter: small random delta keeps feed unpredictable (dopamine loop)
-            const jitter = (Math.random() * 6) - 3; // ±3 points
+            // Variable reward jitter: keeps feed unpredictable so users see fresh content on each visit
+            const jitter = (Math.random() * 30) - 15; // ±15 points
 
             const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + jitter;
 
