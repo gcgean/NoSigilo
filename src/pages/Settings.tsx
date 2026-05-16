@@ -88,9 +88,18 @@ export default function Settings() {
     state: user?.state || '',
     lookingFor: (user?.lookingFor || []) as string[],
     intentions: ((user as any)?.intentions || []) as string[],
+    fetiches: ((user as any)?.fetiches || []) as string[],
     availabilityStatus: ((user as any)?.availabilityStatus || '') as '' | 'now' | 'week' | 'month' | 'online_only' | 'not_looking',
     meetingTagline: ((user as any)?.meetingTagline || '') as string,
   });
+
+  const FETICHE_OPTIONS = [
+    'Sexo anal', 'Dotado', 'Cuckold', 'Voyerismo', 'Orgia', 'Gang Bang',
+    'Sexting', 'Podolatria', 'Inversão', 'Dogging', 'Dupla penetração',
+    'Sexo virtual', 'Fisting', 'Dominação', 'Submissão', 'Bondage',
+    'Sadismo', 'Masoquismo', 'BBW', 'Pregnofilia', 'Bukkake',
+    'Beijo grego', 'Golden shower',
+  ];
 
   const audienceOptions = useMemo(
     () => [
@@ -837,6 +846,38 @@ export default function Settings() {
                           <span className="text-sm font-medium">{option.label}</span>
                           <p className="text-xs text-muted-foreground">{option.hint}</p>
                         </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Fetiches */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Fetiches</h3>
+                  <span className="text-xs text-muted-foreground">{profile.fetiches.length} selecionado(s)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {FETICHE_OPTIONS.map((fetiche) => {
+                    const checked = profile.fetiches.includes(fetiche);
+                    return (
+                      <label key={fetiche} className={`flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors ${checked ? 'border-primary bg-primary/8' : 'border-border hover:border-primary/30'}`}>
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(v) => {
+                            const next = !!v;
+                            setProfile((prev) => ({
+                              ...prev,
+                              fetiches: next
+                                ? Array.from(new Set([...prev.fetiches, fetiche]))
+                                : prev.fetiches.filter((x) => x !== fetiche),
+                            }));
+                          }}
+                        />
+                        <span className="text-sm">{fetiche}</span>
                       </label>
                     );
                   })}

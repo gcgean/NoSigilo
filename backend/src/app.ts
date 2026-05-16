@@ -1203,6 +1203,9 @@ function rowToPublicUser(
     intentions: (() => {
       try { const v = safeJsonParse(row.intentions_json); return Array.isArray(v) ? v : []; } catch { return []; }
     })(),
+    fetiches: (() => {
+      try { const v = safeJsonParse(row.fetiches_json); return Array.isArray(v) ? v : []; } catch { return []; }
+    })(),
     meetingTagline: row.meeting_tagline ?? null,
     availabilityStatus: (() => {
       const s = row.availability_status ?? null;
@@ -3436,6 +3439,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         zodiacSign: z.string().max(50).optional().nullable(),
         lookingFor: z.array(z.string().max(50)).max(10).optional().nullable(),
         intentions: z.array(z.string().max(50)).max(10).optional().nullable(),
+        fetiches: z.array(z.string().max(50)).max(30).optional().nullable(),
         availabilityStatus: z.enum(['now', 'week', 'month', 'online_only', 'not_looking']).optional().nullable(),
         meetingTagline: z.string().max(100).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
@@ -3519,6 +3523,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if ('intentions' in data) {
       setParts.push('intentions_json = ?');
       values.push(data.intentions ? JSON.stringify(data.intentions) : null);
+    }
+    if ('fetiches' in data) {
+      setParts.push('fetiches_json = ?');
+      values.push(data.fetiches ? JSON.stringify(data.fetiches) : null);
     }
     if ('availabilityStatus' in data) {
       const status = data.availabilityStatus ?? null;

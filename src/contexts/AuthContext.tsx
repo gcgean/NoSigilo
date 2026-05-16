@@ -32,6 +32,7 @@ export interface User {
   profession?: string;
   zodiacSign?: string;
   lookingFor?: string[];
+  fetiches?: string[];
   isVerified?: boolean;
   isPremium?: boolean;
   isAdmin?: boolean;
@@ -361,6 +362,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'profession',
           'zodiacSign',
           'lookingFor',
+          'fetiches',
           'allowMessages',
           'notificationVisits',
           'billingDocument',
