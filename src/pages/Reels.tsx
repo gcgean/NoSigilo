@@ -14,7 +14,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
-import MediaWatermark from '@/components/MediaWatermark';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   COMMENT_ACTION_BUTTON_BASE,
@@ -703,8 +702,6 @@ export default function Reels() {
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
           />
-          <MediaWatermark userId={user?.id} userName={user?.name} />
-
           {/* Dark gradient overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 

@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight, Crown, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoWithPreview from './VideoWithPreview';
 import { Button } from './ui/button';
-import MediaWatermark from './MediaWatermark';
 
 export interface PostMediaItem {
   id: string;
@@ -19,9 +18,6 @@ interface PostMediaCarouselProps {
   aspectStyle?: (id: string) => React.CSSProperties;
   premiumAccess?: boolean;
   onPremiumGate?: () => void;
-  /** Viewer info for watermark overlay */
-  viewerUserId?: string | null;
-  viewerUserName?: string | null;
 }
 
 export function PostMediaCarousel({
@@ -31,8 +27,6 @@ export function PostMediaCarousel({
   aspectStyle,
   premiumAccess = false,
   onPremiumGate,
-  viewerUserId,
-  viewerUserName,
 }: PostMediaCarouselProps) {
   const [index, setIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -101,7 +95,6 @@ export function PostMediaCarousel({
               onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
             }
           />
-          <MediaWatermark userId={viewerUserId} userName={viewerUserName} />
         </div>
       );
     }
@@ -119,7 +112,6 @@ export function PostMediaCarousel({
             onAspectLoaded?.(m.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
           }
         />
-        <MediaWatermark userId={viewerUserId} userName={viewerUserName} />
       </div>
     );
   }

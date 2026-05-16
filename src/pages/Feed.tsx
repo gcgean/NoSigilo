@@ -2450,8 +2450,6 @@ export default function Feed() {
                     onAspectLoaded={setAspectForKey}
                     premiumAccess={premiumAccess}
                     onPremiumGate={() => setPaywallOpen(true)}
-                    viewerUserId={user?.id}
-                    viewerUserName={user?.name}
                   />
                 </div>
               )}
