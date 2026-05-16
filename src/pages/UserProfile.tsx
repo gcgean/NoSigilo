@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
+import { INTENTION_OPTIONS } from '@/pages/Search';
 import { useToast } from '@/hooks/use-toast';
 import { calculateAge } from '@/utils/age';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
@@ -1117,6 +1118,44 @@ export default function UserProfile() {
         targetId={String(userId)}
         targetName={String(profile?.name || '')}
       />
+
+      {/* Objetivos e Fetiches */}
+      {(() => {
+        const intentions: string[] = Array.isArray((profile as any)?.intentions) ? (profile as any).intentions : [];
+        const fetiches: string[] = Array.isArray((profile as any)?.fetiches) ? (profile as any).fetiches : [];
+        if (intentions.length === 0 && fetiches.length === 0) return null;
+        return (
+          <div className="mb-4 space-y-3">
+            {intentions.length > 0 && (
+              <div className="glass rounded-xl px-4 py-3.5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Objetivos</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {intentions.map((val) => {
+                    const opt = INTENTION_OPTIONS.find((o) => o.value === val);
+                    return (
+                      <span key={val} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                        {opt ? `${opt.emoji} ${opt.label}` : val}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {fetiches.length > 0 && (
+              <div className="glass rounded-xl px-4 py-3.5">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Fetiches</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {fetiches.map((f) => (
+                    <span key={f} className="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-foreground">
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="w-full mb-4 flex flex-wrap gap-1 h-auto p-1">
