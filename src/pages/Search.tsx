@@ -593,7 +593,7 @@ export default function SearchPage() {
   })();
 
   return (
-    <div className="mx-auto w-full max-w-4xl min-w-0">
+    <div className="mx-auto w-full max-w-4xl lg:max-w-6xl min-w-0">
 
       {/* ── First-time search onboarding wizard ────────────────────────────── */}
       {showWizard && (
@@ -1145,13 +1145,13 @@ export default function SearchPage() {
                   <span className="text-sm font-semibold text-foreground">{group.label}</span>
                   <span className="text-xs text-muted-foreground">({group.profiles.length})</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
                   {group.profiles.map((profile) => <ProfileCard key={profile.id} profile={profile} />)}
                 </div>
               </div>
             ))
           ) : (
-            <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 md:gap-4">
+            <div className="grid grid-cols-2 gap-3 pb-2 md:grid-cols-3 lg:grid-cols-4 md:gap-4">
               {(isFallback ? fallbackResults : displayResults).map((profile) => (
                 <ProfileCard key={profile.id} profile={profile} />
               ))}

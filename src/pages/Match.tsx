@@ -322,7 +322,7 @@ export default function Match() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0">
+    <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0 lg:max-w-[560px]">
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>

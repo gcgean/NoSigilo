@@ -850,7 +850,7 @@ export default function UserProfile() {
     // Blocked by them OR we blocked them — show appropriate message
     if (blockStatus?.blockedByThem) {
       return (
-        <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+        <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
           <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
             <Ban className="w-8 h-8 text-destructive" />
           </div>
@@ -874,7 +874,7 @@ export default function UserProfile() {
     }
     if (blockStatus?.blockedByMe) {
       return (
-        <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
+        <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden flex flex-col items-center justify-center gap-4 py-16 text-center px-4">
           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
             <Ban className="w-8 h-8 text-muted-foreground" />
           </div>
@@ -911,7 +911,7 @@ export default function UserProfile() {
 
   if (!isSelf && !premiumAccess) {
     return (
-      <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
+      <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
         <button
           type="button"
           onClick={() => setPaywallOpen(true)}
@@ -930,7 +930,7 @@ export default function UserProfile() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto w-full min-w-0 overflow-x-hidden">
+    <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
       <div className="glass rounded-2xl p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-center gap-6 min-w-0">
           <div className="relative">
@@ -1185,7 +1185,7 @@ export default function UserProfile() {
         </TabsList>
 
         <TabsContent value="public">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
             {publicPhotos.map((photo, index) => (
               <PhotoItem key={photo.id} photos={publicPhotos} initialIndex={index} currentUserId={me?.id} />
             ))}
@@ -1195,7 +1195,7 @@ export default function UserProfile() {
 
         <TabsContent value="private">
           {access?.status === 'approved' ? (
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
               {isLoadingPrivate && <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingPrivate &&
                 privatePhotos.map((photo, index) => (

@@ -172,7 +172,7 @@ export default function Login() {
       </div>
 
       {/* Right Side - Visual */}
-      <div className="hidden lg:flex flex-1 bg-gradient-hero relative overflow-hidden">
+      <div className="hidden md:flex flex-1 bg-gradient-hero relative overflow-hidden">
         <div className="absolute inset-0">
           <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-primary/30 rounded-full blur-3xl animate-float" />
           <div className="absolute bottom-1/4 right-1/3 w-72 h-72 bg-rose/20 rounded-full blur-3xl animate-float" style={{ animationDelay: '-3s' }} />
