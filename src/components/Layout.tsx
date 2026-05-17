@@ -41,6 +41,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
+import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -866,6 +867,7 @@ export default function Layout() {
             <Outlet />
             <PhotoGateOverlay pathname={location.pathname} />
             <DailyAvailabilityModal />
+            <WeekendAdventureModal />
           </div>
         </main>
       </div>

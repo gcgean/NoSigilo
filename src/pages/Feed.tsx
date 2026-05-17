@@ -319,9 +319,11 @@ export default function Feed() {
   const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
   const [allExperiences, setAllExperiences] = useState<FeedExperience[]>([]);
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
-  const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
+  const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string; isVideo?: boolean }>>([]);
   const [expPhotoIndex, setExpPhotoIndex] = useState<Record<string, number>>({});
   const expFileInputRef = useRef<HTMLInputElement | null>(null);
+  const expVideoInputRef = useRef<HTMLInputElement | null>(null);
+  const expFormRef = useRef<HTMLDivElement | null>(null);
   const [openCommentsExpId, setOpenCommentsExpId] = useState<string | null>(null);
   const [commentsByExpId, setCommentsByExpId] = useState<Record<string, Comment[]>>({});
   const [commentDraftByExpId, setCommentDraftByExpId] = useState<Record<string, string>>({});
@@ -590,6 +592,15 @@ export default function Feed() {
   useEffect(() => {
     void reload();
     void reloadExperiences();
+    // Check if coming from WeekendAdventureModal — scroll to experience form
+    try {
+      if (localStorage.getItem('nosigilo:open_experience_form') === '1') {
+        localStorage.removeItem('nosigilo:open_experience_form');
+        window.setTimeout(() => {
+          expFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 350);
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -1581,7 +1592,7 @@ export default function Feed() {
 
       {/* Composer */}
       {feedFilter === 'experiences' ? (
-        <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
+        <Card ref={expFormRef} className="mb-4 glass p-3 sm:mb-6 sm:p-4">
           <div className="space-y-3">
             {/* Header */}
             <div className="flex items-center justify-between">
@@ -1638,12 +1649,16 @@ export default function Feed() {
                 {experienceDescription.trim().length}/20 mín.
               </span>
             </div>
-            {/* Photo previews */}
+            {/* Photo/Video previews */}
             {expAttachments.length > 0 && (
               <div className="flex gap-2 flex-wrap">
                 {expAttachments.map((a, i) => (
                   <div key={a.id} className="relative w-20 h-20">
-                    <img src={a.url} className="w-20 h-20 rounded-lg object-cover" />
+                    {a.isVideo ? (
+                      <video src={a.url} className="w-20 h-20 rounded-lg object-cover" muted />
+                    ) : (
+                      <img src={a.url} className="w-20 h-20 rounded-lg object-cover" />
+                    )}
                     <button
                       type="button"
                       className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white text-xs"
@@ -1657,22 +1672,41 @@ export default function Feed() {
               </div>
             )}
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <Image className="w-4 h-4" />
-                <span className="text-sm">Foto</span>
-                <input
-                  ref={expFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []).slice(0, 10 - expAttachments.length);
-                    setExpAttachments((p) => [...p, ...files.map((f) => ({ id: `${f.name}-${Math.random()}`, file: f, url: URL.createObjectURL(f) }))]);
-                    if (expFileInputRef.current) expFileInputRef.current.value = '';
-                  }}
-                />
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <Image className="w-4 h-4" />
+                  <span className="text-sm">Foto</span>
+                  <input
+                    ref={expFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).slice(0, 10 - expAttachments.length);
+                      setExpAttachments((p) => [...p, ...files.map((f) => ({ id: `${f.name}-${Math.random()}`, file: f, url: URL.createObjectURL(f), isVideo: false }))]);
+                      if (expFileInputRef.current) expFileInputRef.current.value = '';
+                    }}
+                  />
+                </label>
+                <label className="cursor-pointer flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  <Video className="w-4 h-4" />
+                  <span className="text-sm">Vídeo</span>
+                  <input
+                    ref={expVideoInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && expAttachments.length < 10) {
+                        setExpAttachments((p) => [...p, { id: `${file.name}-${Math.random()}`, file, url: URL.createObjectURL(file), isVideo: true }]);
+                      }
+                      if (expVideoInputRef.current) expVideoInputRef.current.value = '';
+                    }}
+                  />
+                </label>
+              </div>
               <Button
                 size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
