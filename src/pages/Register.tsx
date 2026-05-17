@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, MapPin, Locate, Check, Users } from 'lucide-react';
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
@@ -503,6 +504,21 @@ export default function Register() {
                   <p className="mt-0.5 text-sm text-muted-foreground">
                     E-mail e senha são privados — nunca aparecem no perfil.
                   </p>
+                </div>
+
+                {/* Google Sign-In — fastest path */}
+                <GoogleSignInButton
+                  label="Cadastrar com Google"
+                  gender={formData.gender}
+                  name={formData.name}
+                  city={formData.city}
+                  state={formData.state}
+                />
+
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">ou cadastre com e-mail</span>
+                  <div className="h-px flex-1 bg-border" />
                 </div>
 
                 {/* Email */}

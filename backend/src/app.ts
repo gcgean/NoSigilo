@@ -45,6 +45,9 @@ type Env = {
   VAPID_SUBJECT?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_BOT_USERNAME?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_CALLBACK_URL?: string;
 };
 
 export type PublicUser = {
@@ -2030,6 +2033,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(403).json({ error: 'account_deactivated_by_admin' });
       return;
     }
+    if (!row.password_hash) {
+      // Google-only account — cannot log in with password
+      res.status(401).json({ error: 'use_google_login' });
+      return;
+    }
     const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
     if (!ok) {
       res.status(401).json({ error: 'invalid_credentials' });
@@ -2319,8 +2327,209 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ token: issueToken(env, { id: String(row.id), isAdmin: !!row.is_admin }) });
   });
 
-  app.get('/api/auth/google', (_req, res) => {
-    res.status(501).json({ error: 'not_implemented' });
+  // ── Google OAuth helpers ────────────────────────────────────────────────────
+  function googleCallbackUrl(req: any): string {
+    return env.GOOGLE_CALLBACK_URL ||
+      `${String(req.protocol)}://${String(req.get('host'))}/api/auth/google/callback`;
+  }
+
+  function googleDefaultLookingFor(gender: string): string[] {
+    if (gender === 'Mulher') return ['Casal (Ele/Ela)', 'Homem'];
+    if (gender === 'Homem')  return ['Casal (Ele/Ela)', 'Mulher'];
+    if (gender.startsWith('Casal'))
+      return ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'];
+    return ['Mulher', 'Homem', 'Casal (Ele/Ela)'];
+  }
+
+  async function uniqueGoogleName(baseName: string): Promise<string> {
+    const base = String(baseName).trim().slice(0, 30);
+    let existing = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?)', [base]);
+    if (!existing) return base;
+    for (let i = 2; i <= 99; i++) {
+      const candidate = `${base}${i}`;
+      existing = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?)', [candidate]);
+      if (!existing) return candidate;
+    }
+    return `${base}_${Date.now()}`.slice(0, 30);
+  }
+
+  // GET /api/auth/google — redirect to Google consent screen
+  app.get('/api/auth/google', (req, res) => {
+    const clientId = env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      res.status(503).json({ error: 'google_oauth_not_configured' });
+      return;
+    }
+    // Encode optional registration hints in a short-lived signed state JWT
+    const statePayload: Record<string, string> = { nonce: randomUUID() };
+    if (typeof req.query.gender === 'string' && req.query.gender) statePayload.gender = req.query.gender;
+    if (typeof req.query.name   === 'string' && req.query.name)   statePayload.name   = req.query.name;
+    if (typeof req.query.city   === 'string' && req.query.city)   statePayload.city   = req.query.city;
+    if (typeof req.query.state  === 'string' && req.query.state)  statePayload.state  = req.query.state;
+    const state = jwt.sign(statePayload, env.JWT_SECRET, { expiresIn: '10m' });
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: googleCallbackUrl(req),
+      response_type: 'code',
+      scope: 'openid email profile',
+      state,
+      access_type: 'online',
+      prompt: 'select_account',
+    });
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  });
+
+  // GET /api/auth/google/callback — exchange code, find/create user, issue JWT
+  app.get('/api/auth/google/callback', async (req, res) => {
+    const frontendOrigin = String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '');
+    const clientId     = env.GOOGLE_CLIENT_ID;
+    const clientSecret = env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      res.redirect(`${frontendOrigin}/login?error=oauth_not_configured`);
+      return;
+    }
+
+    const code     = typeof req.query.code  === 'string' ? req.query.code  : null;
+    const stateStr = typeof req.query.state === 'string' ? req.query.state : null;
+
+    if (!code) {
+      res.redirect(`${frontendOrigin}/login?error=oauth_cancelled`);
+      return;
+    }
+
+    // Verify CSRF state
+    let stateClaims: Record<string, string> = {};
+    if (stateStr) {
+      try {
+        stateClaims = jwt.verify(stateStr, env.JWT_SECRET) as Record<string, string>;
+      } catch {
+        res.redirect(`${frontendOrigin}/login?error=invalid_state`);
+        return;
+      }
+    }
+
+    try {
+      // Exchange code for Google access token
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: googleCallbackUrl(req),
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+      const tokenData = (await tokenRes.json()) as any;
+      if (!tokenData.access_token) {
+        res.redirect(`${frontendOrigin}/login?error=token_exchange_failed`);
+        return;
+      }
+
+      // Fetch Google user info
+      const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${String(tokenData.access_token)}` },
+      });
+      const googleUser = (await infoRes.json()) as any;
+      const googleId    = String(googleUser.sub || '');
+      const googleEmail = googleUser.email ? String(googleUser.email).toLowerCase() : null;
+      const googleName  = googleUser.name ? String(googleUser.name) : googleEmail?.split('@')[0] ?? 'Usuário';
+
+      if (!googleId) {
+        res.redirect(`${frontendOrigin}/login?error=google_user_missing`);
+        return;
+      }
+
+      // ── Find existing user ───────────────────────────────────────────────
+      let userRow = (await queryOne(
+        db, 'SELECT * FROM users WHERE google_id = ? LIMIT 1', [googleId]
+      )) as any;
+
+      if (!userRow && googleEmail) {
+        // Try linking by email (existing email+password user)
+        userRow = (await queryOne(
+          db, 'SELECT * FROM users WHERE email = ? LIMIT 1', [googleEmail]
+        )) as any;
+        if (userRow) {
+          await run(db, 'UPDATE users SET google_id = ? WHERE id = ?', [googleId, String(userRow.id)]);
+          await persist();
+        }
+      }
+
+      // ── Check banned/deactivated before issuing token ────────────────────
+      if (userRow) {
+        if (userRow.is_banned) {
+          res.redirect(`${frontendOrigin}/login?error=account_banned`);
+          return;
+        }
+        if (userRow.deactivated_by_admin) {
+          res.redirect(`${frontendOrigin}/login?error=account_deactivated`);
+          return;
+        }
+        // Auto-reactivate self-deactivated account
+        if (userRow.is_deactivated && !userRow.deactivated_by_admin) {
+          await run(db, 'UPDATE users SET is_deactivated = 0, deactivated_at = NULL, deactivated_by = NULL WHERE id = ?', [String(userRow.id)]);
+          await persist();
+        }
+      }
+
+      // ── Create new user if not found ─────────────────────────────────────
+      let isNewUser = false;
+      if (!userRow) {
+        isNewUser = true;
+        const createdAt         = nowIso();
+        const trialEndsAt       = addDaysIso(createdAt, env.TRIAL_DAYS);
+        const id                = randomUUID();
+        const registrationIpHash = hashRequestIp(env, getRequestIp(req));
+
+        // Use hints from state (chosen by user in Register step 1) or fall back to Google data
+        const gender = stateClaims.gender || null;
+        const name   = stateClaims.name
+          ? await uniqueGoogleName(stateClaims.name)
+          : await uniqueGoogleName(googleName);
+        const city   = stateClaims.city  || null;
+        const state  = stateClaims.state || null;
+        const email  = googleEmail || `google_${googleId}@nosigilo.internal`;
+
+        await run(
+          db,
+          `INSERT INTO users (
+             id, email, password_hash, name, avatar, bio, status, city, state, birth_date, gender,
+             marital_status, sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes,
+             drinks, profession, zodiac_sign, looking_for_json, is_verified, is_premium, is_admin,
+             created_at, trial_started_at, trial_ends_at, invited_by_user_id, invite_status,
+             registration_ip_hash, google_id
+           ) VALUES (?, ?, NULL, ?, ?, NULL, NULL, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL,
+                     NULL, NULL, NULL, NULL, NULL, NULL, ?, 0, 0, ?, ?, ?, ?, NULL, 'approved', ?, ?)`,
+          [
+            id, email, name, '',
+            city, state, gender,
+            gender ? JSON.stringify(googleDefaultLookingFor(gender)) : null,
+            isAdministrativeEmail(email) ? 1 : 0,
+            createdAt, createdAt, trialEndsAt,
+            registrationIpHash, googleId,
+          ]
+        );
+        await persist();
+        userRow = (await queryOne(db, 'SELECT * FROM users WHERE id = ? LIMIT 1', [id])) as any;
+      }
+
+      // ── Issue JWT and redirect to frontend ───────────────────────────────
+      const presence            = req.app.get('presence');
+      const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+      const userWithSponsor     = await getUserWithSponsorById(db, String(userRow.id));
+      const user                = rowToPublicUser(userWithSponsor, presence?.isOnline(String(userRow.id)), {
+        showEmail: true,
+        subscriptionsEnabled,
+      });
+      const token = issueToken(env, { id: user.id, isAdmin: user.isAdmin });
+      const suffix = isNewUser ? '&new=1' : '';
+      res.redirect(`${frontendOrigin}/auth/callback?token=${encodeURIComponent(token)}${suffix}`);
+    } catch (err) {
+      console.error('[Google OAuth] callback error:', err);
+      res.redirect(`${frontendOrigin}/login?error=oauth_error`);
+    }
   });
 
   app.get('/api/app/settings', async (_req, res) => {

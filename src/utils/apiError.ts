@@ -14,6 +14,8 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'Conta desativada', description: 'Sua conta foi desativada pela administração da plataforma.' };
     case 'invalid_credentials':
       return { title: 'Erro ao entrar', description: 'E-mail ou senha incorretos.' };
+    case 'use_google_login':
+      return { title: 'Use o login com Google', description: 'Esta conta foi criada via Google. Clique em "Entrar com Google" para acessar.' };
     case 'email_in_use':
       return { title: 'E-mail já em uso', description: 'Use outro e-mail ou faça login.' };
     case 'name_in_use':

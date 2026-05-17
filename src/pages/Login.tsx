@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import BrandLogo from '@/components/BrandLogo';
 import { getLastAuthRoute } from '@/utils/sessionNavigation';
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -85,6 +86,16 @@ export default function Login() {
             <div>
               <h1 className="text-2xl font-bold">Bem-vindo de volta</h1>
               <p className="text-muted-foreground">Entre na sua conta</p>
+            </div>
+          </div>
+
+          {/* Google Sign-In */}
+          <div className="mb-6 space-y-4">
+            <GoogleSignInButton label="Entrar com Google" />
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">ou entre com e-mail</span>
+              <div className="h-px flex-1 bg-border" />
             </div>
           </div>
 
