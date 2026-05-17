@@ -592,16 +592,19 @@ export default function Feed() {
   useEffect(() => {
     void reload();
     void reloadExperiences();
-    // Check if coming from WeekendAdventureModal — scroll to experience form
-    try {
-      if (localStorage.getItem('nosigilo:open_experience_form') === '1') {
-        localStorage.removeItem('nosigilo:open_experience_form');
-        window.setTimeout(() => {
-          expFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 350);
-      }
-    } catch {}
   }, []);
+
+  // Open experience form when coming from WeekendAdventureModal (works even if already on /feed)
+  useEffect(() => {
+    if ((location.state as any)?.openExperienceForm) {
+      setFeedFilter('experiences');
+      // Clear state so back-navigation doesn't re-trigger
+      window.history.replaceState({}, '');
+      window.setTimeout(() => {
+        expFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 400);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     if (!firstAccessPostMode) return;

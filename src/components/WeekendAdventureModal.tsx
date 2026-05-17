@@ -31,12 +31,8 @@ export default function WeekendAdventureModal() {
   const handleShare = () => {
     dismiss();
     setVisible(false);
-    // Pre-select the Experiences tab so Feed auto-shows the form
-    try {
-      localStorage.setItem('nosigilo_feed_filter', 'experiences');
-      localStorage.setItem('nosigilo:open_experience_form', '1');
-    } catch {}
-    navigate('/feed');
+    // Pass state so Feed.tsx opens the experience form even if already mounted
+    navigate('/feed', { state: { openExperienceForm: true } });
   };
 
   const handleSkip = () => {
