@@ -123,6 +123,7 @@ export default function Settings() {
     showLastSeen: true,
     showDistance: false,
     allowMessages: (user?.allowMessages || 'everyone') as any,
+    blockOutsidePrefs: !!((user as any)?.blockOutsidePrefs),
   });
 
   const [notifications, setNotifications] = useState({
@@ -170,6 +171,7 @@ export default function Settings() {
       updateUser({
         ...(profile as any),
         allowMessages: privacy.allowMessages,
+        blockOutsidePrefs: privacy.blockOutsidePrefs,
         // Normalize empty string → null for backend enum validation
         availabilityStatus: profile.availabilityStatus || null,
         meetingTagline: profile.meetingTagline.trim() || null,
@@ -1026,8 +1028,8 @@ export default function Settings() {
 
           <div className="glass rounded-xl p-6 space-y-4">
             <h3 className="font-semibold">Quem pode enviar mensagens</h3>
-            <Select 
-              value={privacy.allowMessages} 
+            <Select
+              value={privacy.allowMessages}
               onValueChange={(v) => setPrivacy({ ...privacy, allowMessages: v })}
             >
               <SelectTrigger>
@@ -1040,6 +1042,26 @@ export default function Settings() {
                 <SelectItem value="nobody">Ninguém</SelectItem>
               </SelectContent>
             </Select>
+
+            <div className="flex items-start justify-between gap-4 pt-2 border-t border-border/50">
+              <div>
+                <p className="font-medium">Bloquear fora do meu interesse</p>
+                <p className="text-sm text-muted-foreground">
+                  Somente perfis do tipo que você busca podem enviar mensagens.
+                  Baseado em "Perfis que você quer encontrar".
+                </p>
+              </div>
+              <Switch
+                checked={privacy.blockOutsidePrefs}
+                onCheckedChange={(v) => setPrivacy({ ...privacy, blockOutsidePrefs: v })}
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button onClick={handleSaveProfile} disabled={isLoading}>
+              {isLoading ? 'Salvando...' : 'Salvar privacidade'}
+            </Button>
           </div>
         </TabsContent>
 

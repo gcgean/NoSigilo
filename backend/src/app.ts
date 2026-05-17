@@ -1000,10 +1000,19 @@ async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: str
   // Block check — if either party has blocked the other, no messages allowed
   const blocked = await isUserBlocked(options, { viewerId: data.fromUserId, targetId: data.toUserId });
   if (blocked) return false;
-  const row = (await queryOne(options.db, 'SELECT allow_messages FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
+  const row = (await queryOne(options.db, 'SELECT allow_messages, block_outside_prefs, looking_for_json FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
   const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
-  if (setting === 'everyone') return true;
   if (setting === 'nobody') return false;
+  // Check block_outside_prefs: if enabled, sender's gender must be in recipient's looking_for list
+  if (row?.block_outside_prefs) {
+    const lookingFor: string[] = safeJsonParse(row.looking_for_json) ?? [];
+    if (lookingFor.length > 0) {
+      const sender = (await queryOne(options.db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [data.fromUserId])) as any;
+      const senderGender = sender?.gender ? String(sender.gender) : '';
+      if (senderGender && !lookingFor.includes(senderGender)) return false;
+    }
+  }
+  if (setting === 'everyone') return true;
   if (setting === 'friends') {
     const friend = (await queryOne(
       options.db,
@@ -1174,6 +1183,7 @@ function rowToPublicUser(
     trialStartedAt: row.trial_started_at ?? null,
     trialEndsAt: row.trial_ends_at ?? null,
     allowMessages: row.allow_messages ?? null,
+    blockOutsidePrefs: !!row.block_outside_prefs,
     createdAt: row.created_at ?? null,
     lastSeenAt: row.last_seen_at ?? null,
     isOnline: isOnline ?? false,
@@ -3652,6 +3662,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         availabilityStatus: z.enum(['now', 'week', 'month', 'online_only', 'not_looking']).optional().nullable(),
         meetingTagline: z.string().max(100).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
+        blockOutsidePrefs: z.boolean().optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
         billingLegalName: z.string().max(120).optional().nullable(),
@@ -3705,6 +3716,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       zodiacSign: 'zodiac_sign',
       meetingTagline: 'meeting_tagline',
       allowMessages: 'allow_messages',
+      blockOutsidePrefs: 'block_outside_prefs',
       notificationVisits: 'notification_visits',
       billingDocument: 'billing_document',
       billingLegalName: 'billing_legal_name',

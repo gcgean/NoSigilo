@@ -42,6 +42,7 @@ export interface User {
   trialStartedAt?: string | null;
   trialEndsAt?: string | null;
   allowMessages?: 'everyone' | 'matches' | 'friends' | 'nobody';
+  blockOutsidePrefs?: boolean;
   lastSeenAt?: string | null;
   isOnline?: boolean;
   invitationStatus?: string | null;
@@ -370,6 +371,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'availabilityStatus',
           'meetingTagline',
           'allowMessages',
+          'blockOutsidePrefs',
           'notificationVisits',
           'billingDocument',
           'billingLegalName',
