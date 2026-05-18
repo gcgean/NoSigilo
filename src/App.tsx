@@ -39,6 +39,7 @@ import Search from "./pages/Search";
 import Reels from "./pages/Reels";
 import Notifications from "./pages/Notifications";
 import FriendRequests from "./pages/FriendRequests";
+import Friends from "./pages/Friends";
 import Favorites from "./pages/Favorites";
 import Events from "./pages/Events";
 import Invites from "./pages/Invites";
@@ -94,6 +95,7 @@ const App = () => (
                       <Route path="/reels" element={<Reels />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
+                      <Route path="/friends" element={<Friends />} />
                       <Route path="/events" element={<Events />} />
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />

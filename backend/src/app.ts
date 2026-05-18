@@ -5065,6 +5065,22 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       )) as any;
 
       if (reciprocalLike?.id) {
+        // Auto-create friendship on mutual like (if not already friends)
+        const existingFriendship = (await queryOne(
+          db,
+          `SELECT id FROM friend_requests
+           WHERE ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))
+           LIMIT 1`,
+          [myId, targetUserId, targetUserId, myId]
+        )) as any;
+        if (!existingFriendship) {
+          await run(db, 'INSERT INTO friend_requests (id, from_user_id, to_user_id, status, created_at) VALUES (?, ?, ?, ?, ?)', [
+            randomUUID(), myId, targetUserId, 'accepted', nowIso(),
+          ]);
+        } else if (String(existingFriendship.status) === 'pending') {
+          await run(db, 'UPDATE friend_requests SET status = ? WHERE id = ?', ['accepted', existingFriendship.id]);
+        }
+
         const conversationId = await ensureConversationBetweenUsers(db, myId, targetUserId);
         const matchMessageId = randomUUID();
         const matchCreatedAt = nowIso();
@@ -6931,7 +6947,16 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       `
       SELECT fr.id, fr.created_at,
         CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END as friend_id,
-        u.name as friend_name, u.avatar as friend_avatar, u.gender as friend_gender, u.city as friend_city, u.state as friend_state
+        u.name as friend_name, u.avatar as friend_avatar, u.gender as friend_gender,
+        u.city as friend_city, u.state as friend_state,
+        u.birth_date as friend_birth_date,
+        u.availability_status as friend_availability_status,
+        u.last_seen_at as friend_last_seen_at,
+        u.is_verified as friend_is_verified,
+        u.sexual_orientation as friend_sexual_orientation,
+        u.marital_status as friend_marital_status,
+        u.intentions_json as friend_intentions_json,
+        u.meeting_tagline as friend_meeting_tagline
       FROM friend_requests fr
       JOIN users u ON u.id = (CASE WHEN fr.from_user_id = ? THEN fr.to_user_id ELSE fr.from_user_id END)
       WHERE (fr.from_user_id = ? OR fr.to_user_id = ?) AND fr.status = 'accepted'
@@ -6941,6 +6966,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
 
+    const nowMs = Date.now();
     res.json({
       incoming: incoming.map((r: any) => ({
         id: r.id,
@@ -6968,15 +6994,28 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           state: r.to_state ?? null,
         },
       })),
-      friends: friends.map((r: any) => ({
-        id: r.friend_id,
-        name: r.friend_name,
-        avatar: r.friend_avatar,
-        gender: r.friend_gender ?? null,
-        city: r.friend_city ?? null,
-        state: r.friend_state ?? null,
-        createdAt: r.created_at,
-      })),
+      friends: friends.map((r: any) => {
+        const lastSeen = r.friend_last_seen_at ? new Date(r.friend_last_seen_at).getTime() : null;
+        const isOnline = lastSeen ? nowMs - lastSeen < 5 * 60 * 1000 : false;
+        return {
+          id: r.friend_id,
+          name: r.friend_name,
+          avatar: r.friend_avatar,
+          gender: r.friend_gender ?? null,
+          city: r.friend_city ?? null,
+          state: r.friend_state ?? null,
+          birthDate: r.friend_birth_date ?? null,
+          availabilityStatus: r.friend_availability_status ?? null,
+          lastSeenAt: r.friend_last_seen_at ?? null,
+          isOnline,
+          isVerified: !!r.friend_is_verified,
+          sexualOrientation: r.friend_sexual_orientation ?? null,
+          maritalStatus: r.friend_marital_status ?? null,
+          intentions: safeJsonParse(r.friend_intentions_json) ?? [],
+          meetingTagline: r.friend_meeting_tagline ?? null,
+          createdAt: r.created_at,
+        };
+      }),
     });
   });
 
@@ -7045,6 +7084,25 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
     await run(db, 'UPDATE friend_requests SET status = ? WHERE id = ?', [parsed.data.accept ? 'accepted' : 'declined', requestId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Remove a friend (delete the accepted friend_request in either direction)
+  app.delete('/api/friends/:userId', requireAuth(env, db), async (req, res) => {
+    const myId = req.auth!.userId;
+    const targetId = req.params.userId;
+    if (!targetId || targetId === myId) {
+      res.status(400).json({ error: 'invalid_target' });
+      return;
+    }
+    await run(
+      db,
+      `DELETE FROM friend_requests
+       WHERE status = 'accepted'
+         AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))`,
+      [myId, targetId, targetId, myId]
+    );
     await persist();
     res.json({ ok: true });
   });

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
+import {
   Home,
   Heart,
   MessageCircle,
@@ -17,6 +17,7 @@ import {
   Crown,
   Radio,
   UserPlus,
+  Users,
   CheckCircle2,
   Circle,
   Camera,
@@ -57,6 +58,7 @@ const navItems = [
   { path: '/match', icon: Heart, label: 'Match' },
   { path: '/radar', icon: Radio, label: 'Radar' },
   { path: '/chat', icon: MessageCircle, label: 'Chat' },
+  { path: '/friends', icon: Users, label: 'Amigos' },
   { path: '/profile', icon: User, label: 'Perfil' },
 ];
 
@@ -70,6 +72,7 @@ const mobileNavItems = [
 
 const extraNavItems = [
   { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
+  { path: '/friends', icon: Users, label: 'Amigos' },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
   { path: '/events', icon: Calendar, label: 'Eventos' },

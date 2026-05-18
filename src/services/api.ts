@@ -446,6 +446,11 @@ export const friendsService = {
     const response = await apiClient.post(`/friends/${requestId}/respond`, { accept });
     return response.data;
   },
+
+  removeFriend: async (userId: string) => {
+    const response = await apiClient.delete(`/friends/${encodeURIComponent(userId)}`);
+    return response.data;
+  },
 };
 
 // Notifications Service
