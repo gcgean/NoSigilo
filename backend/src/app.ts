@@ -371,6 +371,19 @@ async function getSubscriptionsEnabled(db: DbHandle) {
   return raw === null ? true : raw !== '0';
 }
 
+/**
+ * Returns true if billing/subscriptions are enabled for this specific user.
+ * A user is allowed if the global flag is ON, OR if their email is listed in
+ * BILLING_TEST_EMAILS (comma-separated env var) — useful for testing before
+ * enabling payments for everyone.
+ */
+function isBillingEnabledForUser(globalEnabled: boolean, userEmail: string, billingTestEmails: string): boolean {
+  if (globalEnabled) return true;
+  if (!billingTestEmails) return false;
+  const whitelist = billingTestEmails.split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  return whitelist.includes(userEmail.trim().toLowerCase());
+}
+
 function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true) {
   if (!subscriptionsEnabled) return true;
   if (!userRow) return false;
@@ -7318,9 +7331,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
-  app.get('/api/subscriptions/plans', requireAuth(env, db), async (_req, res) => {
+  app.get('/api/subscriptions/plans', requireAuth(env, db), async (req, res) => {
     try {
-      const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+      const globalEnabled = await getSubscriptionsEnabled(db);
+      const userRow = (await queryOne(db, 'SELECT email FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+      const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String(userRow?.email || ''), env.BILLING_TEST_EMAILS);
       if (!subscriptionsEnabled) {
         res.json([]);
         return;
@@ -7354,12 +7369,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/subscriptions/status', requireAuth(env, db), async (req, res) => {
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const globalEnabled = await getSubscriptionsEnabled(db);
     const row = (await queryOne(
       db,
-      'SELECT id, hub_customer_id, hub_product_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, hub_customer_id, hub_product_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
+    const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String(row?.email || ''), env.BILLING_TEST_EMAILS);
     if (!row) {
       res.status(404).json({ error: 'not_found' });
       return;
@@ -7406,7 +7422,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
     const planId = parsed.data.planId;
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const globalEnabled = await getSubscriptionsEnabled(db);
+    const checkoutUserRow = (await queryOne(db, 'SELECT email FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String(checkoutUserRow?.email || ''), env.BILLING_TEST_EMAILS);
     if (!subscriptionsEnabled) {
       res.status(409).json({
         error: 'subscriptions_disabled',
