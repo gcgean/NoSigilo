@@ -2032,7 +2032,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     const userRow = await getUserWithSponsorById(db, id);
     const presence = req.app.get('presence');
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const globalEnabledReg = await getSubscriptionsEnabled(db);
+    const subscriptionsEnabled = isBillingEnabledForUser(globalEnabledReg, String((userRow as any)?.email || ''), env.BILLING_TEST_EMAILS);
     const user = rowToPublicUser(userRow, presence?.isOnline(id), {
       showEmail: true,
       subscriptionsEnabled,
@@ -2115,7 +2116,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     const hydratedRow = await getUserWithSponsorById(db, String(row.id));
     const presence = req.app.get('presence');
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const globalEnabled = await getSubscriptionsEnabled(db);
+    const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String(row.email || ''), env.BILLING_TEST_EMAILS);
     const user = rowToPublicUser(hydratedRow || row, presence?.isOnline(String(row.id)), {
       showEmail: true,
       subscriptionsEnabled,
@@ -2359,8 +2361,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.get('/api/auth/me', requireAuth(env, db), async (req, res) => {
     const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
-    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    res.json(rowToPublicUser(row, presence?.isOnline(String(row.id)), {
+    const globalEnabled = await getSubscriptionsEnabled(db);
+    const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String((row as any)?.email || ''), env.BILLING_TEST_EMAILS);
+    res.json(rowToPublicUser(row, presence?.isOnline(String((row as any)?.id)), {
       showEmail: true,
       subscriptionsEnabled,
       showLocation: true,
