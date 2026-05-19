@@ -2094,7 +2094,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       );
       await persist();
     }
-    if (shouldUseHubBilling(env)) {
+    // Skip HubBilling sync for billing-test whitelist users so manual DB overrides persist
+    const isTestUser = isBillingEnabledForUser(false, String(row.email || ''), env.BILLING_TEST_EMAILS)
+      && !await getSubscriptionsEnabled(db);
+    if (shouldUseHubBilling(env) && !isTestUser) {
       try {
         const hubResult = String(row.hub_customer_id || '').trim()
           ? await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id))
@@ -7400,7 +7403,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    if (!shouldUseHubBilling(env) || !row.hub_customer_id) {
+    // For billing-test whitelist users (when subscriptions are globally disabled),
+    // skip HubBilling re-sync so manual DB overrides (is_premium=0) are preserved for testing.
+    const isTestUser = !globalEnabled && isBillingEnabledForUser(false, String(row?.email || ''), env.BILLING_TEST_EMAILS);
+    if (!shouldUseHubBilling(env) || !row.hub_customer_id || isTestUser) {
       res.json({
         customerId: row.hub_customer_id ?? null,
         productId: row.hub_product_id ?? null,
