@@ -201,7 +201,10 @@ export default function Subscriptions() {
   const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
   const [isSavingBilling, setIsSavingBilling] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
-  const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
+  // Always read from API — never rely on stale cache (per-user whitelist may differ from global flag)
+  // null = aguardando API (não mostra nada), true/false = resposta da API
+  const [subscriptionsEnabled, setSubscriptionsEnabled] = useState<boolean | null>(null);
+
   const [referralValidated, setReferralValidated] = useState<number | null>(null);
 
   useEffect(() => {
@@ -233,7 +236,10 @@ export default function Subscriptions() {
           const status = statusData.value;
           setHubBanner(status?.banner ?? null);
           if (typeof status?.subscriptionsEnabled === 'boolean') {
+            setSubscriptionsEnabled(status.subscriptionsEnabled);
             updateUser({ subscriptionsEnabled: status.subscriptionsEnabled });
+          } else {
+            setSubscriptionsEnabled(true);
           }
 
           const normalizedAccessStatus = String(status?.accessStatus || '').toLowerCase();
@@ -476,7 +482,7 @@ export default function Subscriptions() {
           <Crown className="w-3 h-3 mr-1" /> Assinatura
         </Badge>
         <h1 className="text-3xl font-bold">Planos</h1>
-        {!subscriptionsEnabled ? (
+        {subscriptionsEnabled === false ? (
           <p className="mt-2 text-sm text-muted-foreground">
             As assinaturas estão desativadas no momento. O acesso premium está liberado globalmente até essa função ser ativada.
           </p>
@@ -493,7 +499,7 @@ export default function Subscriptions() {
       </div>
 
       {/* Referral free-premium callout — shown when user doesn't have premium */}
-      {subscriptionsEnabled && !user?.isPremium && referralValidated !== null && (
+      {subscriptionsEnabled === true && !user?.isPremium && referralValidated !== null && (
         <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-5">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1.5">
@@ -538,7 +544,7 @@ export default function Subscriptions() {
 
       {!isLoading && (
         <div className="space-y-8">
-          {!subscriptionsEnabled && (
+          {subscriptionsEnabled === false && (
             <Card className="border-emerald-300/60 bg-emerald-50/80 p-6">
               <Badge className="mb-3 bg-emerald-600 text-white">Assinaturas desativadas</Badge>
               <h2 className="text-2xl font-semibold text-emerald-800">Acesso livre no momento</h2>
@@ -549,7 +555,7 @@ export default function Subscriptions() {
             </Card>
           )}
 
-          {subscriptionsEnabled && checkoutResult && (
+          {subscriptionsEnabled === true && checkoutResult && (
             <Card className={cn('p-5', checkoutStatusUi.cardClassName)}>
               <div className="flex flex-wrap items-center gap-3 mb-4">
                 <Badge className={checkoutStatusUi.badgeClassName}>{checkoutStatusUi.badgeLabel}</Badge>
@@ -619,7 +625,7 @@ export default function Subscriptions() {
             ))}
           </div>
 
-          {subscriptionsEnabled && (
+          {subscriptionsEnabled === true && (
           <div className="grid md:grid-cols-2 gap-6">
             {plans.map((plan) => {
               const highlighted = plan.price > 0;
