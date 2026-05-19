@@ -72,7 +72,6 @@ const mobileNavItems = [
 
 const extraNavItems = [
   { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
-  { path: '/friends', icon: Users, label: 'Amigos' },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
