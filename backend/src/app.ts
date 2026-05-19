@@ -48,6 +48,7 @@ type Env = {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_CALLBACK_URL?: string;
+  BILLING_TEST_EMAILS: string;
 };
 
 export type PublicUser = {
@@ -106,6 +107,20 @@ export type PublicUser = {
   ambassadorBadges?: string[] | null;
   telegramChatId?: string | null;
   distanceKm?: number | null;
+  lat?: number | null;
+  lon?: number | null;
+  intentions?: string[];
+  fetiches?: string[];
+  meetingTagline?: string | null;
+  availabilityStatus?: string | null;
+  blockOutsidePrefs?: boolean;
+  partnerName?: string | null;
+  partnerSexualOrientation?: string | null;
+  partnerEthnicity?: string | null;
+  partnerHair?: string | null;
+  partnerEyes?: string | null;
+  partnerHeight?: string | null;
+  partnerBodyType?: string | null;
 };
 
 type InviteRow = {
@@ -384,8 +399,13 @@ function isBillingEnabledForUser(globalEnabled: boolean, userEmail: string, bill
   return whitelist.includes(userEmail.trim().toLowerCase());
 }
 
-function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true) {
-  if (!subscriptionsEnabled) return true;
+function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true, billingTestEmails: string = '') {
+  // If this user is in the billing-test whitelist, enforce premium gating for them
+  // even when subscriptions are globally disabled — so they can test the full payment flow.
+  const effectiveEnabled = (billingTestEmails && userRow?.email)
+    ? isBillingEnabledForUser(subscriptionsEnabled, String(userRow.email || ''), billingTestEmails)
+    : subscriptionsEnabled;
+  if (!effectiveEnabled) return true;
   if (!userRow) return false;
   if (userRow.is_premium) return true;
   const ends = userRow.trial_ends_at ? new Date(String(userRow.trial_ends_at)) : null;
@@ -393,11 +413,10 @@ function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true) {
   return false;
 }
 
-async function userHasPremiumAccess(db: DbHandle, userId: string) {
+async function userHasPremiumAccess(db: DbHandle, userId: string, billingTestEmails: string = '') {
   const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-  if (!subscriptionsEnabled) return true;
-  const row = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-  return hasPremiumAccess(row, subscriptionsEnabled);
+  const row = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  return hasPremiumAccess(row, subscriptionsEnabled, billingTestEmails);
 }
 
 // ─── Referral Reward System ────────────────────────────────────────────────
@@ -2652,10 +2671,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
       db,
-      'SELECT is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state FROM users WHERE id = ?',
+      'SELECT email, is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state FROM users WHERE id = ?',
       [req.auth!.userId]
     );
-    const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
+    const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
     const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
     const viewerLookingForRaw = safeJsonParse((viewerRow as any)?.looking_for_json);
     const viewerLookingFor = Array.isArray(viewerLookingForRaw) ? (viewerLookingForRaw as string[]) : [];
@@ -3467,8 +3486,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/feed/social-pulse', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewerRow = await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [userId]);
-    const isPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled);
+    const viewerRow = await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [userId]);
+    const isPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     const todayStart = new Date();
     todayStart.setUTCHours(0, 0, 0, 0);
@@ -5292,10 +5311,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(
       db,
-      'SELECT id, name, gender, city, state, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, name, gender, city, state, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
-    if (!hasPremiumAccess(me, subscriptionsEnabled)) {
+    if (!hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -5745,7 +5764,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const hottestZone = [...heatmapZones].sort((a, b) => b.count - a.count)[0];
 
     res.json({
-      canCreate: hasPremiumAccess(me, subscriptionsEnabled),
+      canCreate: hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS),
       usage: {
         dailyLimit: 1,
         dailyUsed: Number(dailyUsedRow?.c || 0),
@@ -6131,8 +6150,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewer = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled);
+    const viewer = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     // Mark messages as read
     await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [conversationId, req.auth!.userId]);
@@ -7197,8 +7216,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
   app.get('/api/notifications', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const me = (await queryOne(db, 'SELECT is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const isPremium = hasPremiumAccess(me, subscriptionsEnabled);
+    const me = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const isPremium = hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     const rows = await queryAll(db, 'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.auth!.userId]);
     res.json(
@@ -7638,8 +7657,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   app.post('/api/events', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const userRow = (await queryOne(db, 'SELECT name, is_premium, trial_ends_at, lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    if (!hasPremiumAccess(userRow, subscriptionsEnabled)) {
+    const userRow = (await queryOne(db, 'SELECT email, name, is_premium, trial_ends_at, lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    if (!hasPremiumAccess(userRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }

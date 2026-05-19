@@ -18,7 +18,7 @@ async function main() {
 
   await seedBrazilianCities(db);
   if (env.SEED_DEMO) {
-    await seedDemo(db, { FRONTEND_ORIGIN: env.FRONTEND_ORIGIN, JWT_SECRET: env.JWT_SECRET, TRIAL_DAYS: env.TRIAL_DAYS });
+    await seedDemo(db, env);
   }
   await ensureAdministrativeAccess(db);
 

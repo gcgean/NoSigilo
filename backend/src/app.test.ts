@@ -30,6 +30,7 @@ async function createTestCtx(): Promise<Ctx> {
       RESEND_API_KEY: '',
       RESEND_FROM_EMAIL: '',
       APP_NAME: 'NoSigilo Test',
+      BILLING_TEST_EMAILS: '',
     },
   });
   const cleanup = async () => {
