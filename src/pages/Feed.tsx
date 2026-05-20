@@ -381,8 +381,8 @@ export default function Feed() {
       setPushEnabled(s.enabled);
       setPushSupported(s.supported);
       // Se ambas as opções já estiverem ativas, marca o dia como visto automaticamente
-      const hasTg = !!(user as any)?.telegramChatId;
-      if (s.enabled && hasTg) {
+      // Telegram hidden — banner auto-dismisses when push is enabled
+      if (s.enabled) {
         localStorage.setItem('nosigilo:notif-banner-date', new Date().toISOString().slice(0, 10));
         setNotifBannerDismissed(true);
       }
@@ -1489,7 +1489,7 @@ export default function Feed() {
         <EventPromoCard userId={user.id} />
       )}
 
-      {user && !firstAccessPostMode && !notifBannerDismissed && (!pushEnabled || !(user as any).telegramChatId) && (
+      {user && !firstAccessPostMode && !notifBannerDismissed && !pushEnabled && (
         <Card className="relative mb-4 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-rose-500/5 p-4 sm:mb-6">
           <button
             type="button"
@@ -1543,52 +1543,7 @@ export default function Feed() {
               </div>
             )}
 
-            {/* Telegram */}
-            {!(user as any).telegramChatId ? (
-              <button
-                type="button"
-                disabled={telegramLoading}
-                onClick={async () => {
-                  setTelegramLoading(true);
-                  try {
-                    const { url } = await profileService.generateTelegramLink();
-                    window.open(url, '_blank');
-                    toast({ title: '✈️ Abrindo Telegram...', description: 'Clique em Iniciar no bot para conectar.' });
-                    // Detect connection when user returns to tab
-                    const onVisible = async () => {
-                      if (document.hidden) return;
-                      document.removeEventListener('visibilitychange', onVisible);
-                      try {
-                        const me = await authService.getMe();
-                        if (me?.telegramChatId) {
-                          updateUser({ telegramChatId: me.telegramChatId });
-                          toast({ title: '✅ Telegram conectado!', description: 'Você receberá notificações de match e radar direto no Telegram.' });
-                        }
-                      } catch {}
-                    };
-                    document.addEventListener('visibilitychange', onVisible);
-                    setTimeout(() => document.removeEventListener('visibilitychange', onVisible), 5 * 60 * 1000);
-                  } catch {
-                    toast({ title: 'Erro ao gerar link', variant: 'destructive' });
-                  } finally {
-                    setTelegramLoading(false);
-                  }
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border border-[#229ED9]/25 bg-[#229ED9]/10 px-4 py-3 text-left transition hover:bg-[#229ED9]/20"
-              >
-                <span className="text-xl leading-none">✈️</span>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">Conectar Telegram</p>
-                  <p className="text-xs text-muted-foreground">Radares e matches diretamente no seu Telegram</p>
-                </div>
-                <span className="rounded-full bg-[#229ED9] px-2.5 py-0.5 text-[10px] font-bold text-white">Conectar</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
-                <span className="text-xl leading-none">✈️</span>
-                <p className="text-sm font-medium text-emerald-500">Telegram conectado ✓</p>
-              </div>
-            )}
+            {/* Telegram — hidden for now */}
           </div>
         </Card>
       )}
