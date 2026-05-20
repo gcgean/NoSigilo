@@ -328,7 +328,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
                   {/* Billing fields */}
                   <div className="space-y-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="sb-name">Nome completo do titular</Label>
+                      <Label htmlFor="sb-name">Nome completo</Label>
                       <Input
                         id="sb-name"
                         placeholder="Como no documento"

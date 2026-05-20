@@ -418,7 +418,7 @@ export default function Subscriptions() {
               {/* Billing fields */}
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="billingLegalName">Nome completo do titular</Label>
+                  <Label htmlFor="billingLegalName">Nome completo</Label>
                   <Input
                     id="billingLegalName"
                     placeholder="Como no documento"
