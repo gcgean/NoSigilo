@@ -37,6 +37,7 @@ import ProfileVisitors from "./pages/ProfileVisitors";
 import Chat from "./pages/Chat";
 import Search from "./pages/Search";
 import Reels from "./pages/Reels";
+import SearchVideos from "./pages/SearchVideos";
 import Notifications from "./pages/Notifications";
 import FriendRequests from "./pages/FriendRequests";
 import Friends from "./pages/Friends";
@@ -93,6 +94,7 @@ const App = () => (
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/search" element={<Search />} />
                       <Route path="/reels" element={<Reels />} />
+                      <Route path="/videos" element={<SearchVideos />} />
                       <Route path="/notifications" element={<Notifications />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/friends" element={<Friends />} />

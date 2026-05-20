@@ -3221,6 +3221,148 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // ── Video search (browse reels like profile search) ───────────────────────
+  app.get('/api/videos/search', requireAuth(env, db), async (req, res) => {
+    const myId = req.auth!.userId;
+    const viewerRow = await queryOne(db, 'SELECT id, lat, lon FROM users WHERE id = ? LIMIT 1', [myId]) as any;
+    const viewerLat = typeof viewerRow?.lat === 'number' ? viewerRow.lat : null;
+    const viewerLon = typeof viewerRow?.lon === 'number' ? viewerRow.lon : null;
+
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(40, Math.max(1, Number(req.query.limit || 24)));
+    const offset = (page - 1) * limit;
+
+    const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
+    const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
+    const filterMaxKm  = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
+
+    const params: (string | number)[] = [myId, myId];
+    let whereExtra = '';
+
+    if (filterGender) {
+      if (filterGender.toLowerCase().startsWith('casal') || filterGender.toLowerCase() === 'couple') {
+        whereExtra += ' AND (u.gender LIKE ? OR u.gender LIKE ?)';
+        params.push('Casal%', 'casal%');
+      } else {
+        whereExtra += ' AND u.gender = ?';
+        params.push(filterGender);
+      }
+    }
+
+    if (filterCity) {
+      whereExtra += ' AND (LOWER(u.city) LIKE ? OR LOWER(u.state) LIKE ?)';
+      params.push(`%${filterCity}%`, `%${filterCity}%`);
+    }
+
+    params.push(limit + 1, offset);
+
+    const rows = await queryAll(
+      db,
+      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+              u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+              u.gender as author_gender, u.city as author_city, u.state as author_state,
+              u.lat as author_lat, u.lon as author_lon
+       FROM posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.is_reels_only = 1
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+         ${whereExtra}
+       ORDER BY p.created_at DESC
+       LIMIT ? OFFSET ?`,
+      params
+    ) as any[];
+
+    const slice = rows.slice(0, limit);
+    const hasMore = rows.length > limit;
+
+    // Load video media for each post
+    const mediaIdSet = new Set<string>();
+    const mediaIdsByPostId = new Map<string, string[]>();
+    for (const r of slice) {
+      const ids = Array.isArray(safeJsonParse(r.media_ids_json)) ? (safeJsonParse(r.media_ids_json) as any[]) : [];
+      const list = ids.filter((x: any) => typeof x === 'string') as string[];
+      mediaIdsByPostId.set(String(r.post_id), list);
+      for (const mid of list) mediaIdSet.add(mid);
+    }
+
+    const mediaById = new Map<string, { id: string; url: string; mimeType: string }>();
+    if (mediaIdSet.size > 0) {
+      const mediaIds = Array.from(mediaIdSet);
+      const placeholders = mediaIds.map(() => '?').join(', ');
+      const mediaRows = await queryAll(
+        db,
+        `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${placeholders})`,
+        mediaIds
+      ) as any[];
+      for (const mr of mediaRows) {
+        const mimeType = String(mr.mime_type || '');
+        if (mimeType.startsWith('video/')) {
+          mediaById.set(String(mr.id), { id: String(mr.id), url: `/uploads/${mr.filename}`, mimeType });
+        }
+      }
+    }
+
+    // Likes counts
+    const postIds = slice.map((r: any) => String(r.post_id));
+    const likesCountByPostId = new Map<string, number>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const likeCounts = await queryAll(
+        db,
+        `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
+        postIds
+      ) as any[];
+      for (const lr of likeCounts) likesCountByPostId.set(String(lr.target_id), Number(lr.c || 0));
+    }
+
+    // Build result entries (one per video media item), with distance calc + filter
+    const videos: any[] = [];
+    for (const r of slice) {
+      const videoMedia = (mediaIdsByPostId.get(String(r.post_id)) ?? [])
+        .map((mid) => mediaById.get(mid))
+        .filter(Boolean) as { id: string; url: string; mimeType: string }[];
+
+      if (videoMedia.length === 0) continue;
+
+      const aLat = typeof r.author_lat === 'number' ? r.author_lat : null;
+      const aLon = typeof r.author_lon === 'number' ? r.author_lon : null;
+      const distanceKm =
+        viewerLat !== null && viewerLon !== null && aLat !== null && aLon !== null
+          ? roundDistanceKm(haversineKm({ lat: viewerLat, lon: viewerLon }, { lat: aLat, lon: aLon }))
+          : null;
+
+      if (filterMaxKm !== null && (distanceKm === null || distanceKm > filterMaxKm)) continue;
+
+      for (const media of videoMedia) {
+        videos.push({
+          mediaId: media.id,
+          postId: String(r.post_id),
+          videoUrl: media.url,
+          content: String(r.content || ''),
+          createdAt: String(r.created_at || ''),
+          likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
+          distanceKm,
+          author: {
+            id: String(r.author_id),
+            name: String(r.author_name || ''),
+            avatar: r.author_avatar ?? null,
+            gender: r.author_gender ?? null,
+            city: r.author_city ?? null,
+            state: r.author_state ?? null,
+          },
+        });
+      }
+    }
+
+    res.json({ videos, hasMore });
+  });
+
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       content: z.string().max(5000).optional(),

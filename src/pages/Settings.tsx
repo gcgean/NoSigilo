@@ -127,7 +127,7 @@ export default function Settings() {
     profilePublic: true,
     showOnline: true,
     showLastSeen: true,
-    showDistance: false,
+    showDistance: true,
     allowMessages: (user?.allowMessages || 'everyone') as any,
     blockOutsidePrefs: !!((user as any)?.blockOutsidePrefs),
   });

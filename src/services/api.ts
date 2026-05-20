@@ -93,6 +93,38 @@ export const authService = {
 };
 
 // Feed Service
+export const videoSearchService = {
+  search: async (params?: {
+    page?: number;
+    limit?: number;
+    gender?: string;
+    city?: string;
+    maxDistanceKm?: number;
+  }): Promise<{
+    videos: Array<{
+      mediaId: string;
+      postId: string;
+      videoUrl: string;
+      content: string;
+      createdAt: string;
+      likesCount: number;
+      distanceKm: number | null;
+      author: {
+        id: string;
+        name: string;
+        avatar: string | null;
+        gender: string | null;
+        city: string | null;
+        state: string | null;
+      };
+    }>;
+    hasMore: boolean;
+  }> => {
+    const response = await apiClient.get('/videos/search', { params });
+    return response.data;
+  },
+};
+
 export const feedService = {
   getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number }) => {
     if (USE_MOCKS) {

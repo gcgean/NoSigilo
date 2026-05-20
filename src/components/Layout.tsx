@@ -76,6 +76,7 @@ const extraNavItems = [
   { path: '/invites', icon: UserPlus, label: 'Gerar/Gerenciar convites', highlight: true },
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
+  { path: '/videos', icon: Search, label: 'Buscar Vídeos' },
   { path: '/events', icon: Calendar, label: 'Eventos' },
   { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
