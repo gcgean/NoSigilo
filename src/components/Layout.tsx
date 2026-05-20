@@ -44,6 +44,7 @@ import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
+import InviteModal from '@/components/InviteModal';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -157,6 +158,7 @@ export default function Layout() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
   const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
@@ -717,13 +719,14 @@ export default function Layout() {
                     >
                       {accessBanner.cta}
                     </button>
-                    <NavLink
-                      to="/invites"
+                    <button
+                      type="button"
+                      onClick={() => setShowInviteModal(true)}
                       className="flex items-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 transition hover:bg-white/20"
                     >
                       <Gift className="h-3.5 w-3.5" />
                       Convidar 3 amigos
-                    </NavLink>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -874,6 +877,7 @@ export default function Layout() {
             <DailyAvailabilityModal />
             <WeekendAdventureModal />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
+            <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
           </div>
         </main>
       </div>
