@@ -1931,6 +1931,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const trialEndsAt = addDaysIso(createdAt, env.TRIAL_DAYS);
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
+    const passwordHash = await bcrypt.hash(parsed.data.password, 10);
 
     await run(
       db,
@@ -1945,7 +1946,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       [
         id,
         email,
-        bcrypt.hashSync(parsed.data.password, 10),
+        passwordHash,
         parsed.data.name,
         '',
         null,
