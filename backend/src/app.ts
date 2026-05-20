@@ -1751,7 +1751,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const code = generateVerificationCode();
     const createdAt = nowIso();
     const expiresAt = addMinutesIso(createdAt, 15);
-    const codeHash = bcrypt.hashSync(code, 10);
+    const codeHash = await bcrypt.hash(code, 10);
 
     if (process.env.NODE_ENV === 'production' && (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL)) {
       res.status(500).json({ error: 'email_send_failed' });
@@ -1832,7 +1832,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
-    const passwordHash = bcrypt.hashSync(parsed.data.newPassword, 10);
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
     const consumedAt = nowIso();
     await run(db, 'UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, String(resetRow.user_id)]);
     await run(db, 'UPDATE password_reset_codes SET consumed_at = ? WHERE user_id = ? AND consumed_at IS NULL', [consumedAt, String(resetRow.user_id)]);
