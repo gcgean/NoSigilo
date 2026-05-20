@@ -400,7 +400,7 @@ export default function SearchVideos() {
       )}
 
       {/* Paywall modal */}
-      <ReferralPaywallModal open={paywallOpen} onOpenChange={setPaywallOpen} />
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

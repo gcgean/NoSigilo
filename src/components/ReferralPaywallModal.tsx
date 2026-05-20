@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Crown, Gift, Star, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { invitesService } from '@/services/api';
-import { useToast } from '@/hooks/use-toast';
+import SubscribeModal from '@/components/SubscribeModal';
+import InviteModal from '@/components/InviteModal';
 
 interface Props {
   open: boolean;
@@ -14,9 +14,9 @@ interface Props {
 const AMBASSADOR_TIER = { count: 3, days: 30 };
 
 export default function ReferralPaywallModal({ open, onClose }: Props) {
-  const navigate = useNavigate();
-  const { toast } = useToast();
   const [validatedCount, setValidatedCount] = useState<number | null>(null);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -28,12 +28,12 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
 
   const handleGoPlans = () => {
     onClose();
-    navigate('/subscriptions');
+    setShowSubscribeModal(true);
   };
 
   const handleGoInvites = () => {
     onClose();
-    navigate('/invites');
+    setShowInviteModal(true);
   };
 
   const progress = validatedCount ?? 0;
@@ -42,6 +42,9 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
   const remaining = Math.max(0, target - progress);
 
   return (
+    <>
+    <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
+    <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md w-full p-0 overflow-hidden rounded-2xl border-0">
         {/* Header gradient */}
@@ -143,5 +146,6 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
