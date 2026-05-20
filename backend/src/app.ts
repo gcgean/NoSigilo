@@ -5058,6 +5058,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       targetUserId,
     ])) as any;
 
+    let isMutualMatch = false;
+    let matchConversationId: string | undefined;
+
     if (!existing?.id) {
       await run(db, 'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)', [
         randomUUID(),
@@ -5103,6 +5106,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       )) as any;
 
       if (reciprocalLike?.id) {
+        isMutualMatch = true;
         // Auto-create friendship on mutual like (if not already friends)
         const existingFriendship = (await queryOne(
           db,
@@ -5120,6 +5124,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         }
 
         const conversationId = await ensureConversationBetweenUsers(db, myId, targetUserId);
+        matchConversationId = conversationId;
         const matchMessageId = randomUUID();
         const matchCreatedAt = nowIso();
         const matchMessage = 'Vocês se curtiram mutuamente. Agora podem conversar por aqui.';
@@ -5210,7 +5215,32 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
     await persist();
 
-    res.json({ ok: true });
+    res.json({ ok: true, mutual: isMutualMatch, conversationId: matchConversationId });
+  });
+
+  // Check if current user has liked a specific profile
+  app.get('/api/match/like-status', requireAuth(env, db), async (req, res) => {
+    const targetId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+    if (!targetId) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const myId = req.auth!.userId;
+    const liked = await queryOne(
+      db,
+      `SELECT id FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id = ? LIMIT 1`,
+      [myId, targetId]
+    );
+    // Also check for mutual friendship
+    const friendship = await queryOne(
+      db,
+      `SELECT id FROM friend_requests
+       WHERE status = 'accepted'
+         AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?))
+       LIMIT 1`,
+      [myId, targetId, targetId, myId]
+    );
+    res.json({ liked: !!liked, isFriend: !!friendship });
   });
 
   app.post('/api/match/pass', requireAuth(env, db), async (req, res) => {

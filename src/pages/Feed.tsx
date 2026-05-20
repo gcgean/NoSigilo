@@ -1958,9 +1958,11 @@ export default function Feed() {
               </div>
             ) : null}
           </Card>
-          {/* Social Pulse — variable reward curiosity gap card */}
+          {/* Social Pulse — variable reward curiosity gap card (mobile only; moves to sidebar on desktop) */}
           {feedFilter === 'all' && nearbyRadius === null ? (
-            <SocialPulseCard enabled={!!user?.id} />
+            <div className="md:hidden">
+              <SocialPulseCard enabled={!!user?.id} />
+            </div>
           ) : null}
 
           {/* Proximity active banner */}
@@ -1988,7 +1990,7 @@ export default function Feed() {
             </Card>
           ) : null}
           {feedFilter === 'all' && nearbyRadius === null && feedInsightsSummary ? (
-            <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
+            <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass md:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">Mais chance de encontrar algo agora</p>
@@ -2001,7 +2003,7 @@ export default function Feed() {
             </Card>
           ) : null}
           {feedFilter === 'all' && radarHighlights.length > 0 ? (
-            <Card className="overflow-hidden border-rose-200/50 bg-gradient-to-r from-rose-50/80 via-background to-orange-50/70 p-4 glass">
+            <Card className="overflow-hidden border-rose-200/50 bg-gradient-to-r from-rose-50/80 via-background to-orange-50/70 p-4 glass md:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -2739,7 +2741,117 @@ export default function Feed() {
           {feedFilter !== 'experiences' ? <div ref={loadMoreRef} /> : null}
         </div>
 
-        <input
+        {/* ── Sidebar — desktop only (col 3 of the grid) ────────────────── */}
+        <div className="hidden md:flex md:flex-col md:gap-4 md:sticky md:top-4 md:self-start">
+          {/* Social Pulse */}
+          {feedFilter === 'all' && nearbyRadius === null ? (
+            <SocialPulseCard enabled={!!user?.id} />
+          ) : null}
+
+          {/* Feed Insights */}
+          {feedFilter === 'all' && nearbyRadius === null && feedInsightsSummary ? (
+            <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">Mais chance agora</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{feedInsightsSummary}</p>
+                </div>
+                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-primary text-[10px]">
+                  Ao vivo
+                </Badge>
+              </div>
+            </Card>
+          ) : null}
+
+          {/* Radar Highlights */}
+          {feedFilter === 'all' && radarHighlights.length > 0 ? (
+            <Card className="overflow-hidden border-rose-200/50 bg-gradient-to-r from-rose-50/80 via-background to-orange-50/70 p-4 glass">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Radio className="h-4 w-4 text-rose-500" />
+                    <p className="text-sm font-semibold text-foreground">Radares perto de você</p>
+                  </div>
+                </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0 text-xs px-2 h-7" onClick={() => navigate('/radar')}>
+                  Ver radar
+                </Button>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {radarHighlights.slice(0, 2).map((item) => (
+                  <button
+                    key={`sb2-${item.id}`}
+                    type="button"
+                    onClick={() => navigate('/radar')}
+                    className="rounded-xl border border-rose-200/60 bg-white/85 p-2.5 text-left transition-colors hover:border-rose-300 hover:bg-white"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-xs font-semibold text-foreground">{item.sender.name}</span>
+                          {typeof item.distanceKm === 'number' ? (
+                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] font-medium text-rose-600 px-1.5 py-0">
+                              {item.distanceKm} km
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground">{item.message}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-rose-600">
+                        <TimerReset className="h-3 w-3" />
+                        <span>{formatRemainingRadarTime(item.expiresAt)}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
+          {/* Premium upgrade */}
+          {!premiumAccess && (
+            <Card className="p-4 bg-gradient-to-br from-gold/20 to-primary/20 border-gold/30">
+              <Badge className="bg-gold text-black mb-3">Premium</Badge>
+              <h3 className="font-semibold mb-2">Destaque seu perfil</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Apareça mais e tenha acesso a recursos exclusivos.
+              </p>
+              <Button className="w-full bg-gold text-black hover:bg-gold/90" onClick={() => setPaywallOpen(true)}>
+                Ver Planos
+              </Button>
+            </Card>
+          )}
+
+          {/* Quick nav — always visible on desktop */}
+          <Card className="p-4 glass border-border/50">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Explorar</p>
+            <nav className="flex flex-col gap-1">
+              {[
+                { path: '/match',   emoji: '💜', label: 'Match' },
+                { path: '/radar',   emoji: '📡', label: 'Radar' },
+                { path: '/search',  emoji: '🔍', label: 'Buscar' },
+                { path: '/friends', emoji: '🤝', label: 'Amigos' },
+                { path: '/reels',   emoji: '🎬', label: 'Rap (Vídeos)' },
+                { path: '/events',  emoji: '🎉', label: 'Eventos' },
+              ].map(({ path, emoji, label }) => (
+                <button
+                  key={path}
+                  type="button"
+                  onClick={() => navigate(path)}
+                  className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground text-left"
+                >
+                  <span className="text-base leading-none">{emoji}</span>
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </Card>
+        </div>
+
+      </div>{/* ── end grid ─────────────────────────────────────────────────── */}
+
+      {/* Non-grid elements (dialogs, hidden inputs) — must live OUTSIDE the grid */}
+      <input
           ref={profilePhotoInputRef}
           type="file"
           accept="image/*"
@@ -2976,23 +3088,6 @@ export default function Feed() {
             </Dialog>
           );
         })()}
-
-        {/* Sidebar */}
-        <div className="hidden md:block space-y-6">
-          {!premiumAccess && (
-            <Card className="p-4 bg-gradient-to-br from-gold/20 to-primary/20 border-gold/30">
-              <Badge className="bg-gold text-black mb-3">Premium</Badge>
-              <h3 className="font-semibold mb-2">Destaque seu perfil</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Apareça mais e tenha acesso a recursos exclusivos.
-              </p>
-              <Button className="w-full bg-gold text-black hover:bg-gold/90" onClick={() => setPaywallOpen(true)}>
-                Ver Planos
-              </Button>
-            </Card>
-          )}
-        </div>
-      </div>
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>

@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService } from '@/services/api';
+import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { calculateAge } from '@/utils/age';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { useAuth } from '@/contexts/AuthContext';
@@ -497,6 +498,11 @@ export default function UserProfile() {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const lastRegisteredVisitRef = useRef<string | null>(null);
 
+  // Profile like
+  const [profileLiked, setProfileLiked] = useState(false);
+  const [profileIsFriend, setProfileIsFriend] = useState(false);
+  const [isLikingProfile, setIsLikingProfile] = useState(false);
+
   const isSelf = !!me?.id && !!userId && me.id === userId;
   const premiumAccess = hasPremiumAccess(me);
 
@@ -571,6 +577,13 @@ export default function UserProfile() {
           lastRegisteredVisitRef.current = userId;
           void locationService.registerVisit(userId).catch(() => {});
         }
+
+        // Load like / friendship status (non-blocking)
+        void matchService.getLikeStatus(userId).then((s) => {
+          if (cancelled) return;
+          setProfileLiked(s.liked);
+          setProfileIsFriend(s.isFriend);
+        }).catch(() => {});
       } catch {
         if (cancelled) return;
         setProfile(null);
@@ -732,6 +745,46 @@ export default function UserProfile() {
       toast({ title: 'Não foi possível iniciar o chat', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsStartingChat(false);
+    }
+  };
+
+  const handleLikeProfile = async () => {
+    if (!userId) return;
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    if (isLikingProfile) return;
+    setIsLikingProfile(true);
+    try {
+      const res = await matchService.like(userId);
+      setProfileLiked(true);
+      if (res?.mutual) {
+        setProfileIsFriend(true);
+        const convId = res.conversationId as string | undefined;
+        toast({
+          title: '💞 É um match!',
+          description: `Você e ${profile?.name ?? 'esse usuário'} se curtiram mutuamente. Agora vocês são amigos!`,
+          action: (
+            <ToastAction
+              altText="Abrir chat"
+              onClick={() => {
+                if (convId) navigate(`/chat?conversationId=${encodeURIComponent(convId)}`);
+                else navigate('/chat');
+              }}
+            >
+              Abrir chat
+            </ToastAction>
+          ),
+        });
+      } else {
+        toast({ title: '💜 Curtida enviada!', description: `${profile?.name ?? 'Esse usuário'} foi notificado(a).` });
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        setPaywallOpen(true);
+      } else {
+        toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
+      }
+    } finally {
+      setIsLikingProfile(false);
     }
   };
 
@@ -1067,6 +1120,30 @@ export default function UserProfile() {
               >
                 {String(profile?.allowMessages || 'everyone') === 'nobody' ? 'Mensagens desativadas' : isStartingChat ? 'Abrindo...' : 'Mandar mensagem'}
               </Button>
+
+              {/* Like profile button */}
+              <Button
+                variant={profileLiked ? 'default' : 'outline'}
+                size="sm"
+                disabled={isLikingProfile || profileLiked}
+                onClick={() => void handleLikeProfile()}
+                className={cn(
+                  'gap-1.5 transition-all',
+                  profileLiked
+                    ? 'bg-pink-500/20 text-pink-500 border-pink-400/40 hover:bg-pink-500/20 hover:text-pink-500'
+                    : 'border-pink-400/40 text-pink-500 hover:bg-pink-500/10 hover:border-pink-400/60'
+                )}
+              >
+                <Heart className={cn('w-3.5 h-3.5', profileLiked && 'fill-current')} />
+                {profileIsFriend
+                  ? 'Amigos ✓'
+                  : profileLiked
+                  ? 'Curtido ✓'
+                  : isLikingProfile
+                  ? 'Curtindo...'
+                  : 'Curtir perfil'}
+              </Button>
+
               <Button
                 variant="outline"
                 size="sm"

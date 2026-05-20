@@ -287,6 +287,11 @@ export const matchService = {
     return response.data;
   },
 
+  getLikeStatus: async (userId: string): Promise<{ liked: boolean; isFriend: boolean }> => {
+    const response = await apiClient.get('/match/like-status', { params: { userId } });
+    return response.data;
+  },
+
   getSuggestions: async () => {
     const response = await apiClient.get('/match/suggestions');
     return response.data;
