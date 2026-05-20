@@ -564,8 +564,8 @@ export default function Layout() {
               </NavLink>
             )}
 
-            {/* Buscar Vídeos — mobile-only header icon */}
-            <NavLink to="/videos" className="shrink-0 md:hidden" aria-label="Buscar Vídeos">
+            {/* Rap (player) — mobile-only header icon */}
+            <NavLink to="/reels" className="shrink-0 md:hidden" aria-label="Rap">
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
                 <Clapperboard className="h-4.5 w-4.5" />
               </Button>
@@ -965,7 +965,7 @@ export default function Layout() {
             );
           })}
           <NavLink
-            to="/reels"
+            to="/videos"
             className={({ isActive }) => cn(
               "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
               isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
