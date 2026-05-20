@@ -149,9 +149,10 @@ export default function SearchVideos() {
     return () => obs.disconnect();
   }, [fetchNextPage, hasMore, isLoadingMore, isLoading]);
 
-  // Hover: play / pause video preview
+  // Hover: play / pause video preview (apenas premium assiste o preview no hover)
   const handleMouseEnter = (mediaId: string) => {
     setHoveredId(mediaId);
+    if (!premiumAccess) return; // não-premium: mostra overlay mas não toca
     const vid = videoRefs.current[mediaId];
     if (vid) {
       vid.currentTime = 0;
@@ -304,7 +305,7 @@ export default function SearchVideos() {
               onMouseEnter={() => handleMouseEnter(item.mediaId)}
               onMouseLeave={() => handleMouseLeave(item.mediaId)}
             >
-              {/* Video element — shows first frame as thumbnail, plays on hover */}
+              {/* Video element — thumbnail visível para todos, hover play apenas para premium */}
               <video
                 ref={(node) => { videoRefs.current[item.mediaId] = node; }}
                 src={resolveServerUrl(item.videoUrl)}
@@ -321,23 +322,22 @@ export default function SearchVideos() {
               {/* Gradient overlay */}
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
 
-              {/* Premium blur overlay for non-subscribers */}
+              {/* Lock badge — non-premium: small indicator top-right, not blocking thumbnail */}
               {!premiumAccess && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-                  <div className="flex flex-col items-center gap-1.5 px-2 text-center">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 border border-primary/30">
-                      <Play className="h-4 w-4 text-primary" />
-                    </div>
-                    <p className="text-[11px] font-semibold text-white/90 leading-tight">Assine para assistir</p>
-                  </div>
+                <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
+                  <Play className="h-3 w-3 text-primary" />
+                  <span className="text-[10px] font-semibold text-white">Premium</span>
                 </div>
               )}
 
-              {/* Play indicator on hover (premium only) */}
-              {premiumAccess && hoveredId !== item.mediaId && (
+              {/* Play indicator on hover */}
+              {hoveredId !== item.mediaId && (
                 <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
-                    <Play className="h-5 w-5 fill-white" />
+                    {premiumAccess
+                      ? <Play className="h-5 w-5 fill-white" />
+                      : <Play className="h-5 w-5 text-primary" />
+                    }
                   </div>
                 </div>
               )}

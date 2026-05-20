@@ -5162,11 +5162,18 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         const mainUrl = r.main_filename ? `/uploads/${String(r.main_filename)}` : null;
         const photosCount = Number(r.photos_count || 0);
         const videosCount = Number(r.videos_count || 0);
+        const rLat = r.lat != null ? Number(r.lat) : null;
+        const rLon = r.lon != null ? Number(r.lon) : null;
+        const distanceKm =
+          myLat !== null && myLon !== null && rLat !== null && rLon !== null
+            ? roundDistanceKm(haversineKm({ lat: myLat, lon: myLon }, { lat: rLat, lon: rLon }))
+            : null;
         return {
           ...u,
           mainMediaUrl: mainUrl,
           mediaSummary: { photosCount, videosCount },
           badges: computeBadges(r),
+          distanceKm,
         };
       })
     );

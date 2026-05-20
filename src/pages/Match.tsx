@@ -38,6 +38,7 @@ type MatchProfile = {
   createdAt?: string | null;
   badges?: string[];
   availabilityStatus?: string | null;
+  distanceKm?: number | null;
 };
 
 const BADGE_META: Record<string, { emoji: string; label: string }> = {
@@ -592,13 +593,19 @@ export default function Match() {
                       {age !== null ? `, ${age}` : ''}
                     </button>
                     {identityLine ? (
-                      <div className="mb-3 text-[0.95rem] font-normal text-white/75 sm:text-sm">{identityLine}</div>
-                    ) : (
-                      <div className="flex items-center gap-1 text-[0.98rem] sm:text-sm text-white/75 mb-3 font-normal">
-                        <MapPin className="w-4 h-4" />
-                        <span className="truncate">{cityLine || '—'}</span>
-                      </div>
-                    )}
+                      <div className="mb-1 text-[0.95rem] font-normal text-white/75 sm:text-sm">{identityLine}</div>
+                    ) : null}
+                    <div className="flex items-center gap-1.5 text-[0.95rem] sm:text-sm text-white/70 mb-3 font-normal">
+                      <MapPin className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">{cityLine || '—'}</span>
+                      {currentProfile.distanceKm != null && (
+                        <span className="shrink-0 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
+                          {currentProfile.distanceKm < 1
+                            ? '< 1 km'
+                            : `${currentProfile.distanceKm.toLocaleString('pt-BR', { maximumFractionDigits: currentProfile.distanceKm < 10 ? 1 : 0 })} km`}
+                        </span>
+                      )}
+                    </div>
                     <p className="mb-3 line-clamp-2 text-[0.95rem] font-normal text-white/80 sm:text-sm">{currentProfile.bio || ''}</p>
 
                     {currentProfile.badges && currentProfile.badges.length > 0 && (
