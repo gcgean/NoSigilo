@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
@@ -48,11 +48,17 @@ export default function Settings() {
   const { user, updateUser, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+  const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingPushState, setIsLoadingPushState] = useState(true);
-  const [profileSubTab, setProfileSubTab] = useState<'geral' | 'pessoal' | 'interesses'>('geral');
+  const initialSubTab = (() => {
+    const tab = new URLSearchParams(location.search).get('tab');
+    if (tab === 'interesses' || tab === 'pessoal') return tab;
+    return 'geral';
+  })();
+  const [profileSubTab, setProfileSubTab] = useState<'geral' | 'pessoal' | 'interesses'>(initialSubTab);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 

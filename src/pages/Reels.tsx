@@ -12,6 +12,7 @@ import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasPremiumAccess } from '@/utils/premium';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -82,6 +83,7 @@ export default function Reels() {
   const { registerActivity } = useActivityTracker();
   const reelCompleteCountRef = useRef(0);
   const isMobile = useIsMobile();
+  const premiumAccess = hasPremiumAccess(user);
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
@@ -692,18 +694,42 @@ export default function Reels() {
             ref={(node) => { videoRefs.current[reel.id] = node; }}
             src={reel.url}
             className="h-full w-full object-cover"
+            style={{ filter: !premiumAccess ? 'blur(14px)' : undefined }}
             playsInline
             loop={false}
             muted={mutedById[reel.id] ?? true}
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
-            onClick={() => handleVideoAreaClick(reel.id)}
+            onClick={() => !premiumAccess ? setPaywallOpen(true) : handleVideoAreaClick(reel.id)}
             controlsList="nodownload noremoteplayback"
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
           />
           {/* Dark gradient overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+
+          {/* Premium gate overlay */}
+          {!premiumAccess && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-4 px-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-primary/30 bg-primary/20 backdrop-blur-md">
+                  <Lock className="h-7 w-7 text-primary" />
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-white">Conteúdo Premium</p>
+                  <p className="mt-1 text-sm text-white/70">Assine para assistir os vídeos do Rap</p>
+                </div>
+                <Button
+                  type="button"
+                  className="gap-2 bg-gradient-to-r from-primary to-purple-500 text-white hover:opacity-90"
+                  onClick={() => setPaywallOpen(true)}
+                >
+                  <Crown className="h-4 w-4" />
+                  Assine agora
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Right side actions */}
           <div className="absolute bottom-36 right-2.5 flex flex-col items-center gap-3 sm:right-3 md:top-1/2 md:bottom-auto md:-translate-y-1/2 md:gap-4">

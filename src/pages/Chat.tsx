@@ -1203,6 +1203,27 @@ export default function Chat() {
                           <Lock className="w-4 h-4" />
                           <p>Assine para ver esta mensagem</p>
                         </button>
+                      ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
+                        /* Premium gate — blur incoming messages for non-subscribers */
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2.5 text-left"
+                          onClick={redirectToPlans}
+                        >
+                          <Lock className="w-4 h-4 shrink-0 text-muted-foreground/80" />
+                          <div className="min-w-0 flex-1">
+                            {/* Blurred placeholder lines simulating hidden text */}
+                            <div className="space-y-1.5 select-none pointer-events-none">
+                              <div className="h-3.5 w-36 max-w-full rounded bg-muted-foreground/25 blur-[3px]" />
+                              {(msg.content?.length ?? 0) > 40 && (
+                                <div className="h-3.5 w-24 rounded bg-muted-foreground/20 blur-[3px]" />
+                              )}
+                            </div>
+                            <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground/80">
+                              Assine para ler a mensagem
+                            </p>
+                          </div>
+                        </button>
                       ) : (
                         <div className="flex flex-col gap-2">
                           {isMutualMatchMessage && (
@@ -1335,8 +1356,8 @@ export default function Chat() {
                 className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
               >
                 <div>
-                  <p className="font-medium text-destructive">Respostas bloqueadas</p>
-                  <p className="text-sm text-muted-foreground">Renove seu plano para responder e liberar todas as mensagens.</p>
+                  <p className="font-medium text-destructive">Acesso bloqueado</p>
+                  <p className="text-sm text-muted-foreground">Assine para ler e responder todas as mensagens.</p>
                 </div>
                 <Lock className="h-4 w-4 text-destructive" />
               </button>

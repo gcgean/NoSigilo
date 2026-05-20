@@ -82,6 +82,7 @@ const extraNavItems = [
 ];
 
 const PWA_INSTALL_DISMISS_KEY = 'nosigilo:pwa-install-dismissed-date';
+const INTERESTS_NUDGE_DISMISS_KEY = 'nosigilo:interests-nudge-dismissed-date';
 
 function parseValidDate(value?: string | null) {
   const time = value ? new Date(value).getTime() : NaN;
@@ -157,6 +158,10 @@ export default function Layout() {
   }, [isMobileChatRoute, isMobileReelsRoute, location.pathname]);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
+  const [interestsNudgeDismissed, setInterestsNudgeDismissed] = useState(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    return localStorage.getItem(INTERESTS_NUDGE_DISMISS_KEY) === today;
+  });
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
@@ -461,6 +466,18 @@ export default function Layout() {
     setShowPwaInstallPrompt(false);
   };
 
+  const dismissInterestsNudge = () => {
+    localStorage.setItem(INTERESTS_NUDGE_DISMISS_KEY, new Date().toISOString().slice(0, 10));
+    setInterestsNudgeDismissed(true);
+  };
+
+  const hasEmptyInterests =
+    !interestsNudgeDismissed &&
+    !!user &&
+    !user.lookingFor?.length &&
+    !user.fetiches?.length &&
+    !user.intentions?.length;
+
   const handlePwaInstall = async () => {
     if (deferredInstallPrompt) {
       try {
@@ -747,6 +764,34 @@ export default function Layout() {
                       </Button>
                       <Button type="button" size="sm" className="bg-gradient-primary hover:opacity-90" onClick={() => void handlePwaInstall()}>
                         Instalar app
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {!isMobileChatRoute && hasEmptyInterests ? (
+              <div className="mb-4">
+                <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-amber-500">✨ Complete seu perfil</p>
+                      <p className="text-sm text-muted-foreground">
+                        Preencha seus interesses e fetiches para aparecer nos resultados certos e encontrar perfis compatíveis.
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={dismissInterestsNudge}>
+                        Agora não
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="bg-amber-500 text-white hover:bg-amber-600"
+                        onClick={() => { navigate('/settings?tab=interesses'); dismissInterestsNudge(); }}
+                      >
+                        Preencher interesses
                       </Button>
                     </div>
                   </div>
