@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -78,6 +78,8 @@ function formatWhen(iso: string) {
 export default function Reels() {
   const REELS_PAGE_SIZE = 40;
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const targetReelId = searchParams.get('reelId') ?? null;
   const { user } = useAuth();
   const { toast } = useToast();
   const { registerActivity } = useActivityTracker();
@@ -319,6 +321,24 @@ export default function Reels() {
       setCurrentIndex(0);
     }
   }, [orderedReels, playingId]);
+
+  // Scroll to a specific reel when navigated from video search (?reelId=xxx)
+  const didScrollToTargetRef = useRef(false);
+  useEffect(() => {
+    if (!targetReelId || didScrollToTargetRef.current || isLoading) return;
+    const idx = orderedReels.findIndex((r) => r.id === targetReelId);
+    if (idx === -1) return;
+    didScrollToTargetRef.current = true;
+    // Small delay so the DOM elements are rendered
+    setTimeout(() => {
+      const el = itemRefs.current[targetReelId];
+      if (el) {
+        el.scrollIntoView({ behavior: 'auto', block: 'start' });
+        setCurrentIndex(idx);
+        setPlayingId(targetReelId);
+      }
+    }, 120);
+  }, [targetReelId, orderedReels, isLoading]);
 
   // IntersectionObserver: play/pause on visibility + track current index
   useEffect(() => {
@@ -657,6 +677,17 @@ export default function Reels() {
         WebkitOverflowScrolling: 'touch',
       } as React.CSSProperties}
     >
+      {/* Buscar Vídeos — floating button (mobile only) */}
+      <button
+        type="button"
+        onClick={() => navigate('/videos')}
+        className="fixed right-3 z-50 flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-sm transition hover:bg-black/70 md:hidden"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 3.75rem)' }}
+      >
+        <Search className="h-3.5 w-3.5" />
+        Buscar vídeos
+      </button>
+
       {/* Navigation arrows (desktop) */}
       {currentIndex > 0 && (
         <button

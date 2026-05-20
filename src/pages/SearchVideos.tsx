@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { videoSearchService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
-import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import MobileState from '@/components/MobileState';
@@ -287,7 +286,7 @@ export default function SearchVideos() {
       {/* Empty state */}
       {!isLoading && videos.length === 0 && (
         <MobileState
-          icon={<Clapperboard className="h-10 w-10 text-muted-foreground/50" />}
+          icon={Clapperboard}
           title="Nenhum vídeo encontrado"
           description="Tente ajustar os filtros ou remover a cidade para ver mais resultados."
         />

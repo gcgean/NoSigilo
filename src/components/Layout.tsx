@@ -564,6 +564,13 @@ export default function Layout() {
               </NavLink>
             )}
 
+            {/* Buscar Vídeos — mobile-only header icon */}
+            <NavLink to="/videos" className="shrink-0 md:hidden" aria-label="Buscar Vídeos">
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+                <Clapperboard className="h-4.5 w-4.5" />
+              </Button>
+            </NavLink>
+
             {subscriptionsEnabled ? (
               <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
                 <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Ver planos">

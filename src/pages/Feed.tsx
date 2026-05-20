@@ -2832,6 +2832,7 @@ export default function Feed() {
                 { path: '/search',  emoji: '🔍', label: 'Buscar' },
                 { path: '/friends', emoji: '🤝', label: 'Amigos' },
                 { path: '/reels',   emoji: '🎬', label: 'Rap (Vídeos)' },
+                { path: '/videos',  emoji: '🔎', label: 'Buscar Vídeos' },
                 { path: '/events',  emoji: '🎉', label: 'Eventos' },
               ].map(({ path, emoji, label }) => (
                 <button
