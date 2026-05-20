@@ -1872,6 +1872,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   app.post('/api/auth/register', authRateLimiter, async (req, res) => {
+    try {
     const schema = z.object({
       email: z.string().email(),
       password: z.string().min(6),
@@ -2031,6 +2032,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     const userRow = await getUserWithSponsorById(db, id);
+    if (!userRow) {
+      console.error('[register] getUserWithSponsorById returned null for newly created user id:', id);
+      res.status(500).json({ error: 'server_error' });
+      return;
+    }
     const presence = req.app.get('presence');
     const globalEnabledReg = await getSubscriptionsEnabled(db);
     const subscriptionsEnabled = isBillingEnabledForUser(globalEnabledReg, String((userRow as any)?.email || ''), env.BILLING_TEST_EMAILS);
@@ -2045,6 +2051,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       inviteId: invite ? String(invite.id) : null,
       inviter: invite ? { id: String(invite.inviter_user_id), name: String(invite.inviter_name || ''), avatar: invite.inviter_avatar ?? null } : null,
     });
+    } catch (err) {
+      console.error('[register] unexpected error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'server_error' });
+      }
+    }
   });
 
   app.post('/api/auth/login', authRateLimiter, async (req, res) => {
