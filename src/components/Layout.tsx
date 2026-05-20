@@ -43,6 +43,7 @@ import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
+import SubscribeModal from '@/components/SubscribeModal';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -155,6 +156,7 @@ export default function Layout() {
   }, [isMobileChatRoute, isMobileReelsRoute, location.pathname]);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
   const licenseEnds = parseValidDate(user?.hubLicenseEndAt);
@@ -708,12 +710,13 @@ export default function Layout() {
                 >
                   <span className="min-w-0 text-sm sm:text-base">{accessBanner.message}</span>
                   <div className="flex shrink-0 flex-wrap items-center gap-2">
-                    <NavLink
-                      to="/subscriptions"
+                    <button
+                      type="button"
+                      onClick={() => setShowSubscribeModal(true)}
                       className="rounded-lg border border-white/40 bg-white/15 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-white/25"
                     >
                       {accessBanner.cta}
-                    </NavLink>
+                    </button>
                     <NavLink
                       to="/invites"
                       className="flex items-center gap-1.5 rounded-lg border border-white/40 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/90 transition hover:bg-white/20"
@@ -870,6 +873,7 @@ export default function Layout() {
             <PhotoGateOverlay pathname={location.pathname} />
             <DailyAvailabilityModal />
             <WeekendAdventureModal />
+            <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
           </div>
         </main>
       </div>
