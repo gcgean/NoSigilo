@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw } from 'lucide-react';
+import { Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { subscriptionsService, authService, invitesService } from '@/services/api';
@@ -39,86 +38,14 @@ type CheckoutPayload = {
   dueDate?: string | null;
 };
 
-type SubscriptionStatus = {
-  customerId?: string | null;
-  productId?: string | null;
-  accessStatus?: string | null;
-  reason?: string | null;
-  banner?: string | null;
-  licenseEndAt?: string | null;
-  trialStartedAt?: string | null;
-  trialEndAt?: string | null;
-  canAccess?: boolean;
-};
-
-type BillingForm = {
-  billingLegalName: string;
-  billingDocument: string;
-  billingPersonType: 'PF' | 'PJ';
-  billingPhone: string;
-  billingAddressZip: string;
-  billingAddressStreet: string;
-  billingAddressNumber: string;
-  billingAddressDistrict: string;
-  billingAddressComplement: string;
-  billingAddressCity: string;
-  billingAddressState: string;
-};
-
-const BILLING_REQUIRED_FIELDS: Array<{ key: keyof BillingForm; label: string }> = [
-  { key: 'billingLegalName', label: 'Nome do titular' },
-  { key: 'billingDocument', label: 'CPF/CNPJ' },
-];
-
-function daysLeft(trialEndsAt?: string | null) {
-  if (!trialEndsAt) return null;
-  const end = new Date(trialEndsAt).getTime();
-  if (Number.isNaN(end)) return null;
-  const diff = end - Date.now();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
-}
-
-function buildBillingForm(user: ReturnType<typeof useAuth>['user']): BillingForm {
-  return {
-    billingLegalName: '',
-    billingDocument: '',
-    billingPersonType: user?.billingPersonType || 'PF',
-    billingPhone: user?.billingPhone || '',
-    billingAddressZip: user?.billingAddressZip || '',
-    billingAddressStreet: user?.billingAddressStreet || '',
-    billingAddressNumber: user?.billingAddressNumber || '',
-    billingAddressDistrict: user?.billingAddressDistrict || '',
-    billingAddressComplement: user?.billingAddressComplement || '',
-    billingAddressCity: user?.billingAddressCity || user?.city || '',
-    billingAddressState: user?.billingAddressState || user?.state || '',
-  };
-}
-
-function getMissingBillingFields(form: BillingForm) {
-  return BILLING_REQUIRED_FIELDS.filter(({ key }) => !String(form[key] || '').trim());
-}
-
 function normalizePixQrCode(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return null;
-
-  if (/^data:image\//i.test(raw)) {
-    return raw.replace(/\s+/g, '');
-  }
-
-  if (/^https?:\/\//i.test(raw)) {
-    return raw;
-  }
-
-  if (/^<svg[\s\S]*<\/svg>$/i.test(raw)) {
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(raw)}`;
-  }
-
+  if (/^data:image\//i.test(raw)) return raw.replace(/\s+/g, '');
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^<svg[\s\S]*<\/svg>$/i.test(raw)) return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(raw)}`;
   const compact = raw.replace(/\s+/g, '');
-  if (/^[A-Za-z0-9+/=]+$/.test(compact)) {
-    return `data:image/png;base64,${compact}`;
-  }
-
+  if (/^[A-Za-z0-9+/=]+$/.test(compact)) return `data:image/png;base64,${compact}`;
   return raw;
 }
 
@@ -127,93 +54,51 @@ function getCheckoutErrorMessage(error: any) {
   if (typeof data === 'string' && data.trim()) {
     const raw = data.trim();
     if (/<!DOCTYPE html/i.test(raw) || /<html[\s>]/i.test(raw)) {
-      if (/502/i.test(raw) || /bad gateway/i.test(raw)) {
-        return 'O servidor retornou 502 Bad Gateway ao iniciar a assinatura.';
-      }
-      if (/cloudflare/i.test(raw)) {
-        return 'O servidor retornou uma página de erro intermediária ao iniciar a assinatura.';
-      }
-      return 'O servidor retornou uma resposta HTML inesperada ao iniciar a assinatura.';
+      if (/502/i.test(raw) || /bad gateway/i.test(raw)) return 'O servidor retornou 502 Bad Gateway ao iniciar a assinatura.';
+      return 'O servidor retornou uma resposta inesperada ao iniciar a assinatura.';
     }
     return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
   if (typeof data?.message === 'string' && data.message.trim()) return data.message;
   if (typeof data?.error === 'string' && data.error.trim()) return data.error;
-  if (Array.isArray(data?.details) && data.details.length > 0) {
-    return data.details.join(' | ');
-  }
   if (typeof error?.message === 'string' && error.message.trim()) return error.message;
   return 'Tente novamente em instantes.';
 }
 
-function normalizeCheckoutStatus(status?: string | null) {
-  const value = String(status || 'pending').toLowerCase();
-
-  if (value === 'paid') {
-    return {
-      key: value,
-      label: 'Pago',
-      badgeLabel: 'Pagamento confirmado',
-      badgeClassName: 'bg-emerald-600 text-white shadow-[0_10px_24px_rgba(16,185,129,0.28)]',
-      textClassName: 'text-emerald-700',
-      cardClassName: 'border-emerald-300/70 bg-emerald-50/60 shadow-[0_20px_60px_rgba(16,185,129,0.12)]',
-      title: 'Pagamento aprovado',
-      description: 'Seu pagamento foi reconhecido com sucesso. Sua assinatura está sendo liberada.',
-    };
-  }
-
-  if (value === 'pending') {
-    return {
-      key: value,
-      label: 'Aguardando pagamento',
-      badgeLabel: 'Checkout gerado',
-      badgeClassName: 'bg-gradient-primary',
-      textClassName: 'text-muted-foreground',
-      cardClassName: 'border-primary/30 bg-primary/5',
-      title: 'Pague com PIX',
-      description: 'Use o QR Code ou copie o código PIX para concluir sua assinatura.',
-    };
-  }
-
-  return {
-    key: value,
-    label: value,
-    badgeLabel: 'Checkout gerado',
-    badgeClassName: 'bg-secondary text-secondary-foreground',
-    textClassName: 'text-foreground',
-    cardClassName: 'border-primary/30 bg-primary/5',
-    title: 'Checkout gerado',
-    description: 'Acompanhe o status da sua cobrança abaixo.',
-  };
-}
+const premiumBenefits = [
+  { icon: Radar, title: 'Radar Premium', desc: 'Avise quem está na cidade e receba alertas compatíveis' },
+  { icon: Video, title: 'Vídeos', desc: 'Assista e publique vídeos com mais liberdade' },
+  { icon: Calendar, title: 'Eventos', desc: 'Crie eventos e alcance mais pessoas' },
+  { icon: Lock, title: 'Privacidade+', desc: 'Mais controle, mais alcance e recursos exclusivos' },
+] as const;
 
 export default function Subscriptions() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const pixCardRef = useRef<HTMLDivElement>(null);
+
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCheckingOut, setIsCheckingOut] = useState<string | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutResult, setCheckoutResult] = useState<CheckoutPayload | null>(null);
-  const [hubBanner, setHubBanner] = useState<string | null>(user?.hubBanner ?? null);
-  const [billingDialogOpen, setBillingDialogOpen] = useState(false);
-  const [billingForm, setBillingForm] = useState<BillingForm>(() => buildBillingForm(user));
-  const [billingPlanId, setBillingPlanId] = useState<string | null>(null);
-  const [isSavingBilling, setIsSavingBilling] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
-  // Always read from API — never rely on stale cache (per-user whitelist may differ from global flag)
-  // null = aguardando API (não mostra nada), true/false = resposta da API
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState<boolean | null>(null);
-
   const [referralValidated, setReferralValidated] = useState<number | null>(null);
+  const [hubBanner, setHubBanner] = useState<string | null>(user?.hubBanner ?? null);
 
-  useEffect(() => {
-    invitesService
-      .getRewardProgress()
-      .then((d) => setReferralValidated(d.validatedCount))
-      .catch(() => setReferralValidated(0));
-  }, []);
+  // Billing form (inline, no dialog)
+  const [billingLegalName, setBillingLegalName] = useState('');
+  const [billingDocument, setBillingDocument] = useState('');
 
+  const isPaid = String(checkoutResult?.status || '').toLowerCase() === 'paid';
+  const isPending = String(checkoutResult?.status || '').toLowerCase() === 'pending';
+  const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
+  const hasPixCode = !!(checkoutResult?.pixCode || checkoutResult?.pixPayload);
+  const pixCodeValue = checkoutResult?.pixCode || checkoutResult?.pixPayload || '';
+
+  // Load plans and status
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -223,13 +108,15 @@ export default function Subscriptions() {
           subscriptionsService.getPlans(),
           subscriptionsService.getStatus(),
         ]);
-
         if (cancelled) return;
 
         if (plansData.status === 'fulfilled') {
-          setPlans(Array.isArray(plansData.value) ? plansData.value : []);
-        } else {
-          setPlans([]);
+          const allPlans = Array.isArray(plansData.value) ? plansData.value : [];
+          setPlans(allPlans);
+          // Auto-select recommended plan (longest interval or first paid)
+          const paid = allPlans.filter((p) => p.price > 0);
+          const recommended = paid.find((p) => (p.intervalCount || 1) >= 12) || paid[0];
+          if (recommended) setSelectedPlanId(recommended.id);
         }
 
         if (statusData.status === 'fulfilled') {
@@ -241,22 +128,13 @@ export default function Subscriptions() {
           } else {
             setSubscriptionsEnabled(true);
           }
-
           const normalizedAccessStatus = String(status?.accessStatus || '').toLowerCase();
           const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true;
-
           if (hasActiveAccess) {
             const me = await authService.getMe();
             if (!cancelled) {
               updateUser(me);
-              setCheckoutResult((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      status: 'paid',
-                    }
-                  : prev
-              );
+              setCheckoutResult((prev) => prev ? { ...prev, status: 'paid' } : prev);
             }
           }
         }
@@ -265,419 +143,354 @@ export default function Subscriptions() {
       }
     }
     void load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
+  // Referral progress
   useEffect(() => {
-    if (!checkoutResult || String(checkoutResult.status || '').toLowerCase() !== 'pending') {
-      return;
-    }
+    invitesService.getRewardProgress()
+      .then((d) => setReferralValidated(d.validatedCount))
+      .catch(() => setReferralValidated(0));
+  }, []);
 
-    const intervalId = window.setInterval(() => {
-      void refreshPaymentStatus(true);
-    }, 5000);
-
-    return () => window.clearInterval(intervalId);
-  }, [checkoutResult]);
-
+  // Poll payment status every 5s while pending
   useEffect(() => {
-    if (!checkoutResult || String(checkoutResult.status || '').toLowerCase() !== 'pending') {
-      return;
+    if (!isPending) return;
+    const id = window.setInterval(() => void refreshPaymentStatus(true), 5000);
+    return () => window.clearInterval(id);
+  }, [isPending]);
+
+  // Re-check on tab focus while pending
+  useEffect(() => {
+    if (!isPending) return;
+    const handler = () => { if (document.visibilityState === 'visible') void refreshPaymentStatus(true); };
+    window.addEventListener('focus', handler);
+    document.addEventListener('visibilitychange', handler);
+    return () => { window.removeEventListener('focus', handler); document.removeEventListener('visibilitychange', handler); };
+  }, [isPending]);
+
+  // Scroll to PIX card after checkout
+  useEffect(() => {
+    if (checkoutResult) {
+      setTimeout(() => pixCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
     }
-
-    const handleVisibilityOrFocus = () => {
-      if (document.visibilityState === 'visible') {
-        void refreshPaymentStatus(true);
-      }
-    };
-
-    window.addEventListener('focus', handleVisibilityOrFocus);
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-
-    return () => {
-      window.removeEventListener('focus', handleVisibilityOrFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
-    };
-  }, [checkoutResult]);
-
-  const left = daysLeft(user?.trialEndsAt ?? null);
-  const trialExpired = left !== null && left <= 0 && !user?.isPremium;
-  const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
-  const checkoutStatusUi = normalizeCheckoutStatus(checkoutResult?.status);
-
-  const premiumBenefits = [
-    { icon: Radar, title: 'Radar Premium', desc: 'Radar completo e prioridade para conexões compatíveis' },
-    { icon: Video, title: 'Vídeos', desc: 'Assistir e postar vídeos com mais liberdade' },
-    { icon: Calendar, title: 'Eventos', desc: 'Criar eventos e alcançar mais pessoas' },
-    { icon: Lock, title: 'Recursos Premium', desc: 'Mais privacidade, mais alcance e recursos exclusivos' },
-  ] as const;
+  }, [!!checkoutResult]);
 
   const refreshPaymentStatus = async (silent = false) => {
     try {
       setIsRefreshingStatus(true);
-      const status: SubscriptionStatus = await subscriptionsService.getStatus();
+      const status = await subscriptionsService.getStatus();
       setHubBanner(status?.banner ?? null);
-
       const me = await authService.getMe();
       updateUser(me);
-
       const normalizedAccessStatus = String(status?.accessStatus || me?.hubAccessStatus || '').toLowerCase();
-      const hasActiveAccess =
-        normalizedAccessStatus === 'licensed' ||
-        status?.canAccess === true ||
-        !!me?.isPremium;
-
+      const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true || !!me?.isPremium;
       if (hasActiveAccess) {
-        setCheckoutResult((prev) =>
-          prev
-            ? {
-                ...prev,
-                status: 'paid',
-              }
-            : prev
-        );
-
-        if (!silent) {
-          toast({
-            title: 'Pagamento confirmado',
-            description: 'Sua assinatura foi ativada com sucesso.',
-          });
-        }
-        return;
+        setCheckoutResult((prev) => prev ? { ...prev, status: 'paid' } : prev);
+        if (!silent) toast({ title: 'Pagamento confirmado! 🎉', description: 'Sua assinatura foi ativada com sucesso.' });
+      } else if (!silent) {
+        toast({ title: 'Pagamento ainda pendente', description: 'Ainda não recebemos a confirmação. Tente novamente.' });
       }
-
-      if (!silent) {
-        toast({
-          title: 'Pagamento ainda pendente',
-          description: status?.banner || 'Ainda não recebemos a confirmação do pagamento. Tente novamente em instantes.',
-        });
-      }
-    } catch (error: any) {
-      if (!silent) {
-        toast({
-          title: 'Falha ao atualizar status',
-          description: error?.response?.data?.message || 'Não foi possível consultar o pagamento agora.',
-          variant: 'destructive',
-        });
-      }
+    } catch {
+      if (!silent) toast({ title: 'Falha ao atualizar status', variant: 'destructive' });
     } finally {
       setIsRefreshingStatus(false);
     }
   };
 
-  const performCheckout = async (planId: string, billingData?: Pick<BillingForm, 'billingLegalName' | 'billingDocument' | 'billingPersonType'>) => {
-    try {
-      setIsCheckingOut(planId);
-      setCheckoutResult(null);
-      const result = await subscriptionsService.checkout(planId, 'PIX', billingData);
-      if (result?.checkout) {
-        setCheckoutResult(result.checkout);
-      }
-      const me = await authService.getMe();
-      updateUser(me);
-      toast({
-        title: 'Cobrança gerada',
-        description: result?.checkout?.pixCode ? 'Seu PIX já está pronto para pagamento.' : 'Seu checkout foi gerado com sucesso.',
-      });
-    } catch (error: any) {
-      if (error?.response?.data?.error === 'billing_data_required') {
-        setBillingPlanId(planId);
-        setBillingDialogOpen(true);
-        toast({
-          title: 'Complete seus dados de cobranca',
-          description: Array.isArray(error?.response?.data?.missingFields)
-            ? `Faltam: ${error.response.data.missingFields.join(', ')}.`
-            : 'Preencha seus dados de cobranca para gerar o PIX.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      if (error?.response?.data?.error === 'subscriptions_disabled') {
-        updateUser({ subscriptionsEnabled: false });
-      }
-      toast({
-        title: 'Falha ao iniciar assinatura',
-        description: getCheckoutErrorMessage(error),
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCheckingOut(null);
-    }
-  };
-
-  const handleCheckout = async (planId: string) => {
-    setBillingPlanId(planId);
-    setBillingForm(buildBillingForm(user));
-    setBillingDialogOpen(true);
-  };
-
-  const handleSaveBillingAndCheckout = async () => {
-    const missing = getMissingBillingFields(billingForm);
-    if (missing.length > 0) {
-      toast({
-        title: 'Dados incompletos',
-        description: `Preencha: ${missing.map((item) => item.label).join(', ')}.`,
-        variant: 'destructive',
-      });
+  const handleGeneratePix = async () => {
+    if (!selectedPlanId) return;
+    if (!billingLegalName.trim() || !billingDocument.trim()) {
+      toast({ title: 'Preencha nome e CPF/CNPJ', variant: 'destructive' });
       return;
     }
-
+    setIsCheckingOut(true);
+    setCheckoutResult(null);
     try {
-      setIsSavingBilling(true);
-      setBillingDialogOpen(false);
-      if (billingPlanId) {
-        await performCheckout(billingPlanId, {
-          billingLegalName: billingForm.billingLegalName.trim(),
-          billingDocument: billingForm.billingDocument.trim(),
-          billingPersonType: billingForm.billingPersonType,
-        });
-      }
+      const result = await subscriptionsService.checkout(selectedPlanId, 'PIX', {
+        billingLegalName: billingLegalName.trim(),
+        billingDocument: billingDocument.trim(),
+        billingPersonType: 'PF',
+      });
+      if (result?.checkout) setCheckoutResult(result.checkout);
+      const me = await authService.getMe();
+      updateUser(me);
+      toast({ title: 'PIX gerado!', description: 'Escaneie o QR Code ou copie o código.' });
+    } catch (error: any) {
+      if (error?.response?.data?.error === 'subscriptions_disabled') updateUser({ subscriptionsEnabled: false });
+      toast({ title: 'Falha ao gerar PIX', description: getCheckoutErrorMessage(error), variant: 'destructive' });
     } finally {
-      setIsSavingBilling(false);
+      setIsCheckingOut(false);
     }
   };
 
   const copyPix = async () => {
-    if (!checkoutResult?.pixCode && !checkoutResult?.pixPayload) return;
-    const value = checkoutResult.pixCode || checkoutResult.pixPayload || '';
-    await navigator.clipboard.writeText(value);
-    toast({ title: 'PIX copiado', description: 'Cole o código no app do seu banco.' });
+    await navigator.clipboard.writeText(pixCodeValue);
+    toast({ title: '✅ PIX copiado!', description: 'Cole o código no app do seu banco para pagar.' });
   };
 
-  return (
-    <div className="max-w-5xl mx-auto w-full">
-      <Dialog open={billingDialogOpen} onOpenChange={setBillingDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Complete seus dados de cobranca</DialogTitle>
-            <DialogDescription>
-              Para gerar o PIX, informe o nome do titular e o CPF/CNPJ que serao usados no pagamento.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="billingLegalName">Nome do titular</Label>
-              <Input id="billingLegalName" value={billingForm.billingLegalName} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingLegalName: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="billingDocument">CPF/CNPJ do titular</Label>
-              <Input id="billingDocument" value={billingForm.billingDocument} onChange={(e) => setBillingForm((prev) => ({ ...prev, billingDocument: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBillingDialogOpen(false)} disabled={isSavingBilling}>
-              Agora nao
-            </Button>
-            <Button onClick={handleSaveBillingAndCheckout} disabled={isSavingBilling}>
-              {isSavingBilling ? 'Gerando...' : 'Gerar PIX'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+  const selectedPlan = plans.find((p) => p.id === selectedPlanId);
+  const paidPlans = plans.filter((p) => p.price > 0);
 
-      <div className="mb-8">
-        <Badge className="bg-gradient-primary mb-4">
-          <Crown className="w-3 h-3 mr-1" /> Assinatura
+  // ── Premium already active ──────────────────────────────────────────────
+  if (!isLoading && user?.isPremium) {
+    return (
+      <div className="max-w-lg mx-auto w-full py-12 text-center space-y-4">
+        <div className="flex justify-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gold/15 text-5xl">👑</div>
+        </div>
+        <h1 className="text-2xl font-bold">Você já é Premium!</h1>
+        <p className="text-muted-foreground text-sm">
+          Aproveite todos os recursos exclusivos do NoSigilo.
+          {user.hubLicenseEndAt && (
+            <> Assinatura ativa até <strong>{new Date(user.hubLicenseEndAt).toLocaleDateString('pt-BR')}</strong>.</>
+          )}
+        </p>
+        <Button onClick={() => navigate('/feed')} className="gap-2 bg-gradient-primary">
+          Ir para o Feed <ArrowRight className="w-4 h-4" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto w-full space-y-6 pb-10">
+
+      {/* Header */}
+      <div className="text-center space-y-2 pt-2">
+        <Badge className="bg-gradient-primary gap-1">
+          <Crown className="w-3 h-3" /> Premium
         </Badge>
-        <h1 className="text-3xl font-bold">Planos</h1>
-        {subscriptionsEnabled === false ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            As assinaturas estão desativadas no momento. O acesso premium está liberado globalmente até essa função ser ativada.
-          </p>
-        ) : left !== null && !user?.isPremium && (
-          <p className={cn('mt-2 text-sm', trialExpired ? 'text-destructive' : 'text-muted-foreground')}>
-            {trialExpired ? 'Seu teste grátis expirou. Assine para continuar.' : `Teste grátis: ${left} dia(s) restantes`}
-          </p>
-        )}
-        {hubBanner && (
-          <div className="mt-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-foreground">
-            {hubBanner}
-          </div>
-        )}
+        <h1 className="text-2xl font-bold">Assine o NoSigilo Premium</h1>
+        <p className="text-sm text-muted-foreground">Desbloqueie radar, vídeos, eventos e muito mais</p>
       </div>
 
-      {/* Referral free-premium callout — shown when user doesn't have premium */}
-      {subscriptionsEnabled === true && !user?.isPremium && referralValidated !== null && (
-        <div className="mb-6 rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Gift className="w-5 h-5 text-emerald-500 shrink-0" />
-                <span className="font-semibold text-foreground">Opção gratuita: convide 3 amigos</span>
-                <span className="text-xs rounded-full bg-emerald-500/15 text-emerald-600 px-2 py-0.5 font-medium">Grátis</span>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Indique 3 pessoas que se ativem na plataforma e ganhe <span className="font-semibold text-foreground">30 dias de Premium</span> sem pagar nada.
-              </p>
-              {/* Progress */}
-              <div className="flex items-center gap-2 mt-2">
-                <div className="flex-1 h-2 rounded-full bg-secondary overflow-hidden max-w-[180px]">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
-                    style={{ width: `${Math.min(100, Math.round((referralValidated / 3) * 100))}%` }}
-                  />
-                </div>
-                <span className="text-xs text-muted-foreground shrink-0">
-                  <span className="font-semibold text-foreground">{referralValidated}</span>/3 validados
-                </span>
-                {referralValidated >= 3 && (
-                  <span className="text-xs text-emerald-600 font-semibold">Meta atingida! 🎉</span>
-                )}
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              className="gap-2 border-emerald-400/40 text-emerald-600 hover:bg-emerald-500/10 shrink-0"
-              onClick={() => navigate('/invites')}
-            >
-              <Users className="w-4 h-4" />
-              {referralValidated >= 3 ? 'Resgatar recompensa' : `Convidar (faltam ${3 - referralValidated})`}
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Button>
-          </div>
+      {/* Banner */}
+      {hubBanner && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">{hubBanner}</div>
+      )}
+
+      {isLoading && (
+        <div className="flex justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       )}
 
-      {isLoading && <p className="text-muted-foreground">Carregando...</p>}
+      {!isLoading && subscriptionsEnabled === false && (
+        <Card className="border-emerald-300/60 bg-emerald-50/80 p-6 text-center">
+          <Badge className="mb-3 bg-emerald-600 text-white">Acesso livre</Badge>
+          <p className="text-sm text-emerald-700">As assinaturas estão desativadas no momento. Todos têm acesso premium gratuito.</p>
+        </Card>
+      )}
 
-      {!isLoading && (
-        <div className="space-y-8">
-          {subscriptionsEnabled === false && (
-            <Card className="border-emerald-300/60 bg-emerald-50/80 p-6">
-              <Badge className="mb-3 bg-emerald-600 text-white">Assinaturas desativadas</Badge>
-              <h2 className="text-2xl font-semibold text-emerald-800">Acesso livre no momento</h2>
-              <p className="mt-2 text-sm text-emerald-700">
-                O painel administrativo deixou a função de assinatura desligada. Quando ela for ativada novamente,
-                esta área voltará a exibir os planos e o checkout PIX.
-              </p>
-            </Card>
-          )}
-
-          {subscriptionsEnabled === true && checkoutResult && (
-            <Card className={cn('p-5', checkoutStatusUi.cardClassName)}>
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                <Badge className={checkoutStatusUi.badgeClassName}>{checkoutStatusUi.badgeLabel}</Badge>
-                <span className={cn('text-sm font-medium', checkoutStatusUi.textClassName)}>
-                  Status: <strong>{checkoutStatusUi.label}</strong>
-                </span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-                <div className="space-y-3">
-                  <h3 className={cn('text-lg font-semibold', checkoutStatusUi.key === 'paid' && 'text-emerald-700')}>
-                    {checkoutStatusUi.title}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {checkoutStatusUi.description}
-                  </p>
-                  {(checkoutResult.pixCode || checkoutResult.pixPayload) && (
-                    <div className="rounded-xl border bg-background p-3 text-sm break-all">
-                      {checkoutResult.pixCode || checkoutResult.pixPayload}
+      {!isLoading && subscriptionsEnabled === true && (
+        <>
+          {/* ── PIX Card (shown after generating) ────────────────────────── */}
+          {checkoutResult && (
+            <div ref={pixCardRef}>
+              <Card className={cn(
+                'p-5 border-2',
+                isPaid ? 'border-emerald-400/60 bg-emerald-50/60' : 'border-primary/30 bg-primary/5'
+              )}>
+                {isPaid ? (
+                  <div className="flex flex-col items-center gap-3 py-4 text-center">
+                    <CheckCircle2 className="w-16 h-16 text-emerald-500" />
+                    <div>
+                      <h2 className="text-xl font-bold text-emerald-700">Pagamento confirmado! 🎉</h2>
+                      <p className="text-sm text-muted-foreground mt-1">Sua assinatura está sendo ativada. Atualize a página em instantes.</p>
                     </div>
-                  )}
-                  <div className="flex flex-wrap gap-3">
-                    {(checkoutResult.pixCode || checkoutResult.pixPayload) && (
-                      <Button onClick={copyPix} className="gap-2">
-                        <Copy className="w-4 h-4" /> Copiar PIX
-                      </Button>
-                    )}
-                    <Button variant="outline" onClick={() => void refreshPaymentStatus()} disabled={isRefreshingStatus} className="gap-2">
-                      <RefreshCw className={cn('w-4 h-4', isRefreshingStatus && 'animate-spin')} />{' '}
-                      {isRefreshingStatus ? 'Atualizando...' : 'Atualizar status do pagamento'}
+                    <Button onClick={() => void refreshPaymentStatus()} disabled={isRefreshingStatus} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                      <RefreshCw className={cn('w-4 h-4', isRefreshingStatus && 'animate-spin')} />
+                      Ativar minha conta
                     </Button>
-                    {checkoutResult.checkoutUrl && (
-                      <Button variant="outline" asChild>
-                        <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="gap-2">
-                          <ExternalLink className="w-4 h-4" /> Abrir checkout
-                        </a>
-                      </Button>
-                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Badge className="bg-gradient-primary">Pague com PIX</Badge>
+                      <span className="text-sm text-muted-foreground">Aprovação em segundos</span>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+                      {/* Left: code + buttons */}
+                      <div className="space-y-3">
+                        {hasPixCode && (
+                          <div className="rounded-xl border bg-background p-3 text-xs break-all leading-relaxed max-h-28 overflow-y-auto">
+                            {pixCodeValue}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          {hasPixCode && (
+                            <Button onClick={copyPix} className="gap-2 bg-gradient-primary flex-1 sm:flex-none">
+                              <Copy className="w-4 h-4" /> Copiar código PIX
+                            </Button>
+                          )}
+                          <Button variant="outline" onClick={() => void refreshPaymentStatus()} disabled={isRefreshingStatus} className="gap-2 flex-1 sm:flex-none">
+                            <RefreshCw className={cn('w-4 h-4', isRefreshingStatus && 'animate-spin')} />
+                            {isRefreshingStatus ? 'Verificando...' : 'Já paguei'}
+                          </Button>
+                        </div>
+                        {checkoutResult.checkoutUrl && (
+                          <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+                            <ExternalLink className="w-3 h-3" /> Abrir página de checkout
+                          </a>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Abra o app do seu banco → Pix → Pagar → Cole o código ou escaneie o QR Code.
+                        </p>
+                      </div>
+
+                      {/* Right: QR Code */}
+                      <div className="flex items-center justify-center sm:justify-end">
+                        {qrImageSrc ? (
+                          <img src={qrImageSrc} alt="QR Code PIX" className="w-40 h-40 rounded-xl border bg-white object-contain p-1" />
+                        ) : (
+                          <div className="w-40 h-40 rounded-xl border bg-background flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                            <QrCode className="w-10 h-10" />
+                            <span className="text-xs text-center">QR indisponível</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* ── Checkout form ────────────────────────────────────────────── */}
+          {!checkoutResult && (
+            <Card className="p-6 border-2 border-primary/20 space-y-5">
+              <div className="space-y-1">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-gold" /> Gerar PIX de pagamento
+                </h2>
+                <p className="text-sm text-muted-foreground">Escolha o plano, preencha seus dados e gere o PIX. Aprovação imediata.</p>
+              </div>
+
+              {/* Plan selector */}
+              {paidPlans.length > 1 && (
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${paidPlans.length}, 1fr)` }}>
+                  {paidPlans.map((plan) => {
+                    const isRec = (plan.intervalCount || 1) >= 12;
+                    const sel = selectedPlanId === plan.id;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => setSelectedPlanId(plan.id)}
+                        className={cn(
+                          'relative rounded-2xl border-2 p-4 text-left transition-all',
+                          sel ? 'border-primary bg-primary/10 shadow-glow' : 'border-border hover:border-primary/50 bg-background'
+                        )}
+                      >
+                        {isRec && (
+                          <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-gradient-to-r from-rose-500 to-primary px-2.5 py-0.5 text-[10px] font-bold text-white whitespace-nowrap">
+                            Melhor valor
+                          </span>
+                        )}
+                        <p className="font-semibold text-sm">{plan.name}</p>
+                        <p className="text-2xl font-bold mt-1">
+                          R$ {plan.price.toFixed(2).replace('.', ',')}
+                          <span className="text-xs font-normal text-muted-foreground">/{plan.interval}</span>
+                        </p>
+                        {sel && <div className="absolute top-3 right-3 h-2 w-2 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Single plan display */}
+              {paidPlans.length === 1 && selectedPlan && (
+                <div className="flex items-center justify-between rounded-2xl border-2 border-primary bg-primary/10 px-5 py-4">
+                  <div>
+                    <p className="font-semibold">{selectedPlan.name}</p>
+                    <p className="text-xs text-muted-foreground">{selectedPlan.description || 'Acesso premium completo'}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold">R$ {selectedPlan.price.toFixed(2).replace('.', ',')}</p>
+                    <p className="text-xs text-muted-foreground">/{selectedPlan.interval}</p>
                   </div>
                 </div>
-                  <div className="rounded-2xl border bg-background/70 p-4 flex items-center justify-center min-h-52">
-                    {qrImageSrc ? (
-                      <img src={qrImageSrc} alt="QR Code PIX" className="max-h-48 w-auto object-contain" />
-                    ) : (
-                    <div className="text-center text-muted-foreground">
-                      <QrCode className="w-10 h-10 mx-auto mb-2" />
-                      QR Code indisponível neste checkout
-                    </div>
-                  )}
+              )}
+
+              {/* Billing fields */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="billingLegalName">Nome completo do titular</Label>
+                  <Input
+                    id="billingLegalName"
+                    placeholder="Como no documento"
+                    value={billingLegalName}
+                    onChange={(e) => setBillingLegalName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="billingDocument">CPF ou CNPJ</Label>
+                  <Input
+                    id="billingDocument"
+                    placeholder="000.000.000-00"
+                    value={billingDocument}
+                    onChange={(e) => setBillingDocument(e.target.value)}
+                  />
                 </div>
               </div>
+
+              {/* Generate PIX button */}
+              <Button
+                className="w-full py-6 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 shadow-glow gap-2"
+                disabled={isCheckingOut || !selectedPlanId || !billingLegalName.trim() || !billingDocument.trim()}
+                onClick={() => void handleGeneratePix()}
+              >
+                {isCheckingOut ? (
+                  <><RefreshCw className="w-5 h-5 animate-spin" /> Gerando PIX...</>
+                ) : (
+                  <><QrCode className="w-5 h-5" /> Gerar PIX agora</>
+                )}
+              </Button>
             </Card>
           )}
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* New checkout button (after PIX generated) */}
+          {checkoutResult && !isPaid && (
+            <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setCheckoutResult(null)}>
+              Trocar plano ou gerar novo PIX
+            </Button>
+          )}
+
+          {/* Benefits */}
+          <div className="grid grid-cols-2 gap-3">
             {premiumBenefits.map((b) => (
-              <Card key={b.title} className="p-4 glass">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <b.icon className="w-5 h-5 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold">{b.title}</p>
-                    <p className="text-sm text-muted-foreground">{b.desc}</p>
-                  </div>
+              <div key={b.title} className="flex items-start gap-3 rounded-2xl border bg-card p-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <b.icon className="w-4 h-4 text-primary" />
                 </div>
-              </Card>
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm">{b.title}</p>
+                  <p className="text-xs text-muted-foreground leading-snug">{b.desc}</p>
+                </div>
+              </div>
             ))}
           </div>
 
-          {subscriptionsEnabled === true && (
-          <div className="grid md:grid-cols-2 gap-6">
-            {plans.map((plan) => {
-              const highlighted = plan.price > 0;
-              const isRecommended = (plan.intervalCount || 1) >= 12;
-              const icon = plan.price <= 0 ? (
-                <Zap className="w-5 h-5 text-muted-foreground" />
-              ) : (
-                <Star className="w-5 h-5 text-gold" />
-              );
-              return (
-                <Card
-                  key={plan.id}
-                  className={cn(
-                    'p-6 relative overflow-hidden transition-all hover:-translate-y-1',
-                    highlighted ? 'border-2 border-primary shadow-glow bg-gradient-to-b from-primary/10 to-transparent' : 'glass'
-                  )}
-                >
-                  {isRecommended && (
-                    <div className="absolute top-0 right-0 bg-gradient-primary text-primary-foreground text-xs px-3 py-1 rounded-bl-lg font-medium">
-                      Recomendado
-                    </div>
-                  )}
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      {icon}
-                      <h3 className="text-xl font-bold">{plan.name}</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{plan.description || 'Plano oficial do Hub Billing'}</p>
-                  </div>
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold">R$ {plan.price.toFixed(2).replace('.', ',')}</span>
-                    <span className="text-muted-foreground">/{plan.interval}</span>
-                  </div>
-                  {!!plan.perks?.length && (
-                    <div className="mb-5 text-sm text-muted-foreground">
-                      {plan.perks.slice(0, 4).join(' • ')}
-                    </div>
-                  )}
-                  <Button
-                    className={cn('w-full', highlighted ? 'bg-gradient-primary hover:opacity-90 shadow-glow' : '')}
-                    variant={highlighted ? 'default' : 'outline'}
-                    disabled={isCheckingOut !== null}
-                    onClick={() => handleCheckout(plan.id)}
-                  >
-                    {isCheckingOut === plan.id ? 'Gerando PIX...' : plan.price <= 0 ? 'Plano atual' : 'Assinar com PIX'}
-                  </Button>
-                </Card>
-              );
-            })}
-          </div>
+          {/* Referral alternative */}
+          {referralValidated !== null && (
+            <div className="rounded-2xl border border-emerald-400/30 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 p-4 flex items-center gap-4">
+              <Gift className="w-8 h-8 text-emerald-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm">Prefere de graça? Convide 3 amigos</p>
+                <p className="text-xs text-muted-foreground">
+                  {referralValidated >= 3 ? '🎉 Meta atingida! Resgate seu prêmio.' : `${referralValidated}/3 validados — faltam ${3 - referralValidated}`}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" className="shrink-0 border-emerald-400/40 text-emerald-600 hover:bg-emerald-500/10" onClick={() => navigate('/invites')}>
+                <Users className="w-3.5 h-3.5 mr-1" />
+                {referralValidated >= 3 ? 'Resgatar' : 'Convidar'}
+              </Button>
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
