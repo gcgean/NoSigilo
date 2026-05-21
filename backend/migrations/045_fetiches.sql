@@ -1,1 +1,1 @@
-ALTER TABLE users ADD COLUMN IF NOT EXISTS fetiches_json TEXT;
+ALTER TABLE users ADD COLUMN fetiches_json TEXT;

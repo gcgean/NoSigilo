@@ -126,19 +126,16 @@ async function applyPgMigrations(options: { pool: Pool; migrationsDir: string })
   }
 }
 
-export async function initDb(options: {
-  databaseFile: string;
-  migrationsDir: string;
-  databaseUrl?: string;
-  pgMigrationsDir?: string;
-}): Promise<DbHandle> {
-  const databaseUrl = options.databaseUrl;
-  if (databaseUrl) {
+async function tryInitPostgres(databaseUrl: string, migrationsDir: string): Promise<DbHandle | null> {
+  const MAX_ATTEMPTS = 10;
+  const RETRY_DELAY_MS = 3000;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const pool = new Pool({ connectionString: databaseUrl });
       await pool.query('SELECT 1');
-      const migrationsDir = options.pgMigrationsDir ? absolutePath(options.pgMigrationsDir) : absolutePath(options.migrationsDir);
       await applyPgMigrations({ pool, migrationsDir });
+      console.log(`[db] PostgreSQL connected and migrations applied (attempt ${attempt})`);
       return {
         mode: 'pg',
         exec: async (sql: string) => {
@@ -161,8 +158,29 @@ export async function initDb(options: {
         },
       };
     } catch (err) {
-      console.error('Failed to initialize PostgreSQL, falling back to SQLite:', err);
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn(`[db] PostgreSQL not ready (attempt ${attempt}/${MAX_ATTEMPTS}), retrying in ${RETRY_DELAY_MS}ms...`, (err as Error).message);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      } else {
+        console.error('[db] Failed to connect to PostgreSQL after all attempts:', err);
+      }
     }
+  }
+  return null;
+}
+
+export async function initDb(options: {
+  databaseFile: string;
+  migrationsDir: string;
+  databaseUrl?: string;
+  pgMigrationsDir?: string;
+}): Promise<DbHandle> {
+  const databaseUrl = options.databaseUrl;
+  if (databaseUrl) {
+    const migrationsDir = options.pgMigrationsDir ? absolutePath(options.pgMigrationsDir) : absolutePath(options.migrationsDir);
+    const pgDb = await tryInitPostgres(databaseUrl, migrationsDir);
+    if (pgDb) return pgDb;
+    console.warn('[db] PostgreSQL unavailable — falling back to SQLite (data will not persist to PG)');
   }
 
   const SQL = await initSqlJs({
