@@ -2122,7 +2122,21 @@ export function createApp(options: { db: DbHandle; env: Env }) {
               document: row.billing_document ?? null,
               personType: row.billing_person_type ?? null,
             });
-        await syncHubAccessForUser(db, String(row.id), hubResult);
+        // Guard: don't downgrade a currently-active premium user to blocked/no_license
+        // unless their license has explicitly expired. This protects against transient
+        // HubBilling glitches revoking access on new-device logins.
+        const wasPremium = Number(row.is_premium || 0) === 1;
+        const hubBlocking = hubResult.accessStatus !== 'licensed' && hubResult.accessStatus !== 'trial';
+        const licenseEndAt = hubResult.licenseEndAt ? new Date(hubResult.licenseEndAt).getTime() : null;
+        const licenseExpired = licenseEndAt !== null && licenseEndAt < Date.now();
+        if (wasPremium && hubBlocking && !licenseExpired) {
+          // Preserve premium access — log warning but don't revoke
+          console.warn(`[login] HubBilling returned '${hubResult.accessStatus}' for premium user ${row.id} (license not yet expired) — preserving is_premium=1`);
+          // Still sync non-premium fields (customer/product IDs, banner, etc.) but force licensed state
+          await syncHubAccessForUser(db, String(row.id), { ...hubResult, accessStatus: 'licensed' });
+        } else {
+          await syncHubAccessForUser(db, String(row.id), hubResult);
+        }
         await persist();
       } catch (error) {
         console.error('Hub Billing resolveAccess failed on login:', error);
@@ -7558,7 +7572,17 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         res.json([]);
         return;
       }
-      const rawPlans = shouldUseHubBilling(env) ? await listHubPlans(getHubConfig(env)) : fallbackSubscriptionPlans();
+      let rawPlans: any[];
+      if (shouldUseHubBilling(env)) {
+        try {
+          rawPlans = await listHubPlans(getHubConfig(env));
+        } catch (hubError) {
+          console.warn('[subscriptions/plans] HubBilling unavailable, using fallback plans:', (hubError as Error).message);
+          rawPlans = fallbackSubscriptionPlans();
+        }
+      } else {
+        rawPlans = fallbackSubscriptionPlans();
+      }
       const plans = rawPlans
         .filter((plan: any) => plan.isActive !== false && String(plan.status || 'active') === 'active')
         .map((plan: any) => ({
@@ -7578,7 +7602,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       res.json(plans);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
-      res.status(502).json({ error: 'hub_billing_unavailable' });
+      res.status(500).json({ error: 'plans_unavailable' });
     }
   });
 
