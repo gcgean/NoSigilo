@@ -3269,6 +3269,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
     const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
     const filterMaxKm  = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
+    const sortParam    = ['recent', 'liked', 'commented'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
 
     const params: (string | number)[] = [myId, myId];
     let whereExtra = '';
@@ -3290,6 +3291,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     params.push(limit + 1, offset);
 
+    let orderByClause: string;
+    if (sortParam === 'liked') {
+      orderByClause = '(SELECT COUNT(*) FROM likes WHERE target_type = \'post\' AND target_id = p.id) DESC, p.created_at DESC';
+    } else if (sortParam === 'commented') {
+      orderByClause = '(SELECT COUNT(*) FROM comments WHERE target_type = \'post\' AND target_id = p.id) DESC, p.created_at DESC';
+    } else {
+      orderByClause = 'p.created_at DESC';
+    }
+
     const rows = await queryAll(
       db,
       `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
@@ -3307,7 +3317,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
          )
          ${whereExtra}
-       ORDER BY p.created_at DESC
+       ORDER BY ${orderByClause}
        LIMIT ? OFFSET ?`,
       params
     ) as any[];
@@ -3345,14 +3355,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Likes counts
     const postIds = slice.map((r: any) => String(r.post_id));
     const likesCountByPostId = new Map<string, number>();
+    const commentsCountByPostId = new Map<string, number>();
     if (postIds.length > 0) {
       const placeholders = postIds.map(() => '?').join(', ');
-      const likeCounts = await queryAll(
-        db,
-        `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
-        postIds
-      ) as any[];
+      const [likeCounts, commentCounts] = await Promise.all([
+        queryAll(
+          db,
+          `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
+          postIds
+        ) as Promise<any[]>,
+        queryAll(
+          db,
+          `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
+          postIds
+        ) as Promise<any[]>,
+      ]);
       for (const lr of likeCounts) likesCountByPostId.set(String(lr.target_id), Number(lr.c || 0));
+      for (const cr of commentCounts) commentsCountByPostId.set(String(cr.target_id), Number(cr.c || 0));
     }
 
     // Build result entries (one per video media item), with distance calc + filter
@@ -3381,6 +3400,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           content: String(r.content || ''),
           createdAt: String(r.created_at || ''),
           likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
+          commentsCount: commentsCountByPostId.get(String(r.post_id)) ?? 0,
           distanceKm,
           author: {
             id: String(r.author_id),

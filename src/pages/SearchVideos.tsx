@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clapperboard, SlidersHorizontal, MapPin, Heart, Play, X, Search } from 'lucide-react';
+import { Clapperboard, SlidersHorizontal, MapPin, Heart, Play, X, Search, Clock, MessageCircle, Flame } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,6 +33,8 @@ const distanceOptions = [
   { value: '250', label: 'Até 250 km' },
 ];
 
+type SortOption = 'recent' | 'liked' | 'commented';
+
 type VideoItem = {
   mediaId: string;
   postId: string;
@@ -40,6 +42,7 @@ type VideoItem = {
   content: string;
   createdAt: string;
   likesCount: number;
+  commentsCount: number;
   distanceKm: number | null;
   author: {
     id: string;
@@ -50,6 +53,12 @@ type VideoItem = {
     state: string | null;
   };
 };
+
+const sortOptions: { value: SortOption; label: string; icon: React.ElementType }[] = [
+  { value: 'recent',    label: 'Recentes',    icon: Clock },
+  { value: 'liked',     label: 'Mais curtidos', icon: Flame },
+  { value: 'commented', label: 'Mais comentados', icon: MessageCircle },
+];
 
 function formatDistanceKm(d: number | null) {
   if (d === null || !Number.isFinite(d) || d < 0) return null;
@@ -69,6 +78,7 @@ export default function SearchVideos() {
   const [cityFilter, setCityFilter]         = useState('');
   const [genderFilter, setGenderFilter]     = useState('all');
   const [distanceFilter, setDistanceFilter] = useState('all');
+  const [sortFilter, setSortFilter]         = useState<SortOption>('recent');
   const [showFilters, setShowFilters]       = useState(false);
 
   // Results
@@ -91,7 +101,8 @@ export default function SearchVideos() {
     gender:         genderFilter !== 'all' ? genderFilter : undefined,
     city:           cityFilter.trim() || undefined,
     maxDistanceKm:  distanceFilter !== 'all' ? Number(distanceFilter) : undefined,
-  }), [genderFilter, cityFilter, distanceFilter]);
+    sort:           sortFilter !== 'recent' ? sortFilter : undefined,
+  }), [genderFilter, cityFilter, distanceFilter, sortFilter]);
 
   const fetchFirstPage = useCallback(async () => {
     setIsLoading(true);
@@ -222,6 +233,26 @@ export default function SearchVideos() {
           </Button>
         </div>
 
+        {/* Sort pills */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+          {sortOptions.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setSortFilter(value)}
+              className={cn(
+                'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                sortFilter === value
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Expanded filters */}
         {showFilters && (
           <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/50 bg-muted/30 p-4 sm:grid-cols-2">
@@ -264,7 +295,7 @@ export default function SearchVideos() {
                   variant="ghost"
                   size="sm"
                   className="h-8 gap-1.5 text-muted-foreground"
-                  onClick={() => { setCityFilter(''); setGenderFilter('all'); setDistanceFilter('all'); }}
+                  onClick={() => { setCityFilter(''); setGenderFilter('all'); setDistanceFilter('all'); setSortFilter('recent'); }}
                 >
                   <X className="h-3.5 w-3.5" />
                   Limpar filtros
@@ -374,6 +405,12 @@ export default function SearchVideos() {
                     <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
                       <Heart className="h-2.5 w-2.5 fill-rose-400 text-rose-400" />
                       {item.likesCount}
+                    </Badge>
+                  )}
+                  {item.commentsCount > 0 && (
+                    <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
+                      <MessageCircle className="h-2.5 w-2.5 text-sky-300" />
+                      {item.commentsCount}
                     </Badge>
                   )}
                   {item.author.city && (
