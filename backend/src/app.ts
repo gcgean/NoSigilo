@@ -8265,15 +8265,39 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/admin/finance/summary', requireAuth(env, db), requireAdmin(), async (_req, res) => {
-    const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const subscribersRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE is_premium = 1')) as any;
-    const newTodayRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE created_at >= ?', [oneDayAgoIso])) as any;
-    res.json({
-      revenue: 0,
-      subscribers: Number(subscribersRow?.c || 0),
-      newToday: Number(newTodayRow?.c || 0),
-      churnRate: 0,
-    });
+    try {
+      const oneDayAgoIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const [subscribersRow, newTodayRow, licensedRow] = await Promise.all([
+        queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE is_premium = 1') as Promise<any>,
+        queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE created_at >= ?', [oneDayAgoIso]) as Promise<any>,
+        queryOne(db, "SELECT COUNT(*) as c FROM users WHERE hub_access_status = 'licensed'") as Promise<any>,
+      ]);
+
+      let revenue = 0;
+      if (shouldUseHubBilling(env)) {
+        try {
+          const hubConfig = getHubConfig(env);
+          const plans = await listHubPlans(hubConfig);
+          const activePlan = plans.find((p) => p.isActive && p.status === 'active') ?? plans[0];
+          if (activePlan) {
+            const licensedCount = Number(licensedRow?.c || 0);
+            revenue = (activePlan.amount / 100) * licensedCount;
+          }
+        } catch (hubErr) {
+          console.warn('[admin/finance/summary] Could not fetch hub plans:', (hubErr as Error).message);
+        }
+      }
+
+      res.json({
+        revenue,
+        subscribers: Number(subscribersRow?.c || 0),
+        newToday: Number(newTodayRow?.c || 0),
+        churnRate: 0,
+      });
+    } catch (error) {
+      console.error('[admin/finance/summary]', error);
+      res.status(500).json({ error: 'finance_summary_unavailable' });
+    }
   });
 
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
