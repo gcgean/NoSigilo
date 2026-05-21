@@ -2114,14 +2114,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       && !await getSubscriptionsEnabled(db);
     if (shouldUseHubBilling(env) && !isTestUser) {
       try {
-        const hubResult = String(row.hub_customer_id || '').trim()
-          ? await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id))
-          : await resolveHubAccess(getHubConfig(env), {
-              email: String(row.email),
-              name: String(row.name),
-              document: row.billing_document ?? null,
-              personType: row.billing_person_type ?? null,
-            });
+        const hubLoginTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('HubBilling timeout')), 8000)
+        );
+        const hubResult = await Promise.race([
+          String(row.hub_customer_id || '').trim()
+            ? getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id))
+            : resolveHubAccess(getHubConfig(env), {
+                email: String(row.email),
+                name: String(row.name),
+                document: row.billing_document ?? null,
+                personType: row.billing_person_type ?? null,
+              }),
+          hubLoginTimeout,
+        ]);
         // Guard: don't downgrade a currently-active premium user to blocked/no_license
         // unless their license has explicitly expired. This protects against transient
         // HubBilling glitches revoking access on new-device logins.
@@ -7575,7 +7581,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       let rawPlans: any[];
       if (shouldUseHubBilling(env)) {
         try {
-          rawPlans = await listHubPlans(getHubConfig(env));
+          const plansTimeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('HubBilling timeout')), 5000)
+          );
+          rawPlans = await Promise.race([listHubPlans(getHubConfig(env)), plansTimeout]);
         } catch (hubError) {
           console.warn('[subscriptions/plans] HubBilling unavailable, using fallback plans:', (hubError as Error).message);
           rawPlans = fallbackSubscriptionPlans();
@@ -8301,7 +8310,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       if (shouldUseHubBilling(env)) {
         try {
           const hubConfig = getHubConfig(env);
-          const plans = await listHubPlans(hubConfig);
+          const timeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('HubBilling timeout')), 5000)
+          );
+          const plans = await Promise.race([listHubPlans(hubConfig), timeout]);
           const activePlan = plans.find((p) => p.isActive && p.status === 'active') ?? plans[0];
           if (activePlan) {
             const licensedCount = Number(licensedRow?.c || 0);
