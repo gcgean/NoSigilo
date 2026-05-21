@@ -324,7 +324,13 @@ export default function Register() {
         title: 'Erro ao criar conta',
         description: 'Tente novamente mais tarde.',
       });
-      toast({ title: info.title, description: info.description, variant: 'destructive' });
+      // Exibe o erro técnico real se o backend enviar campo debug
+      const debugMsg = (error as any)?.response?.data?.debug;
+      toast({
+        title: info.title,
+        description: debugMsg ? `[DEBUG] ${debugMsg}` : info.description,
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }

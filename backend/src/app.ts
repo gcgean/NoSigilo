@@ -2055,7 +2055,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     } catch (err) {
       console.error('[register] unexpected error:', err);
       if (!res.headersSent) {
-        res.status(500).json({ error: 'server_error' });
+        const message = err instanceof Error ? err.message : String(err);
+        res.status(500).json({ error: 'server_error', debug: message });
       }
     }
   });
