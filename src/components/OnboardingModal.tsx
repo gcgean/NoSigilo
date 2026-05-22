@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Sparkles, CalendarDays, Heart, Zap, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { profileService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { INTENTION_OPTIONS } from '@/pages/Search';
 
 const STORAGE_KEY = 'nosigilo:onboarding-done';
 
@@ -28,20 +27,21 @@ const AUDIENCE_OPTIONS = [
   { value: 'Travesti',          label: 'Travesti',           emoji: '🌟' },
 ];
 
+const MONTHS = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
 function needsOnboarding(user: any): boolean {
   if (!user) return false;
   if (user.isAdmin) return false;
-  const missingBirthDate = !user.birthDate;
-  const missingFetiches  = !user.fetiches || user.fetiches.length === 0;
-  const missingLookingFor = !user.lookingFor || user.lookingFor.length === 0;
-  return missingBirthDate || missingFetiches || missingLookingFor;
+  return !user.birthDate || !user.fetiches?.length || !user.lookingFor?.length;
 }
 
 function isCoupleProfile(gender?: string | null) {
   return String(gender || '').trim().startsWith('Casal');
 }
 
-/** Extrai os dois labels de um perfil casal, ex: "Casal (Ele/Ela)" → ["Ele","Ela"] */
 function getCoupleLabels(gender?: string | null): [string, string] {
   const match = String(gender || '').match(/Casal\s*\(([^/]+)\/([^)]+)\)/);
   if (!match) return ['Pessoa 1', 'Pessoa 2'];
@@ -51,32 +51,125 @@ function getCoupleLabels(gender?: string | null): [string, string] {
   return [p1, p2];
 }
 
+/** Converte "YYYY-MM-DD" → { day, month, year } strings */
+function parseDateParts(iso: string) {
+  if (!iso) return { day: '', month: '', year: '' };
+  const [y, m, d] = iso.split('-');
+  return { day: d || '', month: m || '', year: y || '' };
+}
+
+/** Combina partes em "YYYY-MM-DD" ou '' se incompleto */
+function buildIso(day: string, month: string, year: string) {
+  if (!day || !month || !year) return '';
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+}
+
+// ── Picker de data com 3 selects ──────────────────────────────────────
+function BirthDatePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (iso: string) => void;
+}) {
+  const parts = parseDateParts(value);
+  const [day,   setDay]   = useState(parts.day);
+  const [month, setMonth] = useState(parts.month);
+  const [year,  setYear]  = useState(parts.year);
+
+  const maxYear = new Date().getFullYear() - 18;
+  const years   = Array.from({ length: maxYear - 1939 }, (_, i) => maxYear - i);
+
+  const daysInMonth = month && year
+    ? new Date(Number(year), Number(month), 0).getDate()
+    : 31;
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+  // Quando muda mês/ano e o dia escolhido é inválido, reseta o dia
+  const handleMonth = (m: string) => {
+    setMonth(m);
+    if (day && m && year) {
+      const max = new Date(Number(year), Number(m), 0).getDate();
+      if (Number(day) > max) setDay('');
+    }
+  };
+
+  useEffect(() => {
+    onChange(buildIso(day, month, year));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day, month, year]);
+
+  const sel = 'flex-1 h-11 rounded-lg border border-input bg-background px-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary text-center';
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium">{label}</label>
+      <div className="flex gap-2">
+        <select
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          className={sel}
+          aria-label="Dia"
+        >
+          <option value="">Dia</option>
+          {days.map((d) => (
+            <option key={d} value={String(d).padStart(2, '0')}>{d}</option>
+          ))}
+        </select>
+
+        <select
+          value={month}
+          onChange={(e) => handleMonth(e.target.value)}
+          className={cn(sel, 'flex-[2]')}
+          aria-label="Mês"
+        >
+          <option value="">Mês</option>
+          {MONTHS.map((m, i) => (
+            <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>
+          ))}
+        </select>
+
+        <select
+          value={year}
+          onChange={(e) => setYear(e.target.value)}
+          className={cn(sel, 'flex-[1.4]')}
+          aria-label="Ano"
+        >
+          <option value="">Ano</option>
+          {years.map((y) => (
+            <option key={y} value={String(y)}>{y}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ── Modal principal ───────────────────────────────────────────────────
 export default function OnboardingModal() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
 
   const [visible, setVisible] = useState(false);
-  const [step, setStep] = useState(0);
-  const [saving, setSaving] = useState(false);
+  const [step,    setStep]    = useState(0);
+  const [saving,  setSaving]  = useState(false);
 
   const isCouple = isCoupleProfile(user?.gender);
   const [coupleLabel1, coupleLabel2] = getCoupleLabels(user?.gender);
 
-  // Local state for the 3 steps
-  const [birthDate, setBirthDate]           = useState(user?.birthDate || '');
+  const [birthDate,        setBirthDate]        = useState(user?.birthDate || '');
   const [partnerBirthDate, setPartnerBirthDate] = useState((user as any)?.partnerBirthDate || '');
-  const [lookingFor, setLookingFor]         = useState<string[]>(user?.lookingFor || []);
-  const [fetiches, setFetiches]             = useState<string[]>((user as any)?.fetiches || []);
+  const [lookingFor,       setLookingFor]       = useState<string[]>(user?.lookingFor || []);
+  const [fetiches,         setFetiches]         = useState<string[]>((user as any)?.fetiches || []);
 
   useEffect(() => {
     if (!user) return;
     try {
-      const done = localStorage.getItem(STORAGE_KEY);
-      if (done === user.id) return; // already completed for this account
+      if (localStorage.getItem(STORAGE_KEY) === user.id) return;
     } catch {}
-    if (needsOnboarding(user)) {
-      setVisible(true);
-    }
+    if (needsOnboarding(user)) setVisible(true);
   }, [user?.id]);
 
   // Limpa travas de scroll/pointer-events deixadas por Radix Dialog após navegação SPA
@@ -89,7 +182,6 @@ export default function OnboardingModal() {
       document.body.removeAttribute('data-scroll-locked');
     };
     cleanup();
-    // Aplica novamente após 100ms caso algum componente sobrescreva logo após mount
     const t = setTimeout(cleanup, 100);
     return () => clearTimeout(t);
   }, [visible]);
@@ -103,26 +195,20 @@ export default function OnboardingModal() {
 
   const totalSteps = 3;
 
-  const toggleLookingFor = (val: string) => {
-    setLookingFor((prev) =>
-      prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-    );
-  };
+  const toggleLookingFor = (val: string) =>
+    setLookingFor((prev) => prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]);
 
-  const toggleFetiche = (val: string) => {
-    setFetiches((prev) =>
-      prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]
-    );
-  };
+  const toggleFetiche = (val: string) =>
+    setFetiches((prev) => prev.includes(val) ? prev.filter((x) => x !== val) : [...prev, val]);
 
   const handleFinish = async () => {
     setSaving(true);
     try {
       const payload: any = {};
-      if (birthDate) payload.birthDate = birthDate;
-      if (isCouple && partnerBirthDate) payload.partnerBirthDate = partnerBirthDate;
-      if (lookingFor.length > 0) payload.lookingFor = lookingFor;
-      if (fetiches.length > 0) payload.fetiches = fetiches;
+      if (birthDate)                      payload.birthDate        = birthDate;
+      if (isCouple && partnerBirthDate)   payload.partnerBirthDate = partnerBirthDate;
+      if (lookingFor.length > 0)          payload.lookingFor       = lookingFor;
+      if (fetiches.length > 0)            payload.fetiches         = fetiches;
 
       if (Object.keys(payload).length > 0) {
         await profileService.updateProfile(payload);
@@ -137,12 +223,15 @@ export default function OnboardingModal() {
     }
   };
 
-  const canAdvanceStep0 = !!birthDate || (!isCouple);
+  // Step 0: requer data da pessoa 1; casal também pode avançar sem data (opcional)
+  const canAdvanceStep0 = !!birthDate;
   const canAdvanceStep1 = lookingFor.length > 0;
-  const canFinish       = fetiches.length > 0;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80" style={{ WebkitOverflowScrolling: 'auto' }}>
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80"
+      style={{ WebkitOverflowScrolling: 'auto' }}
+    >
       <div className="w-full max-w-md rounded-3xl border border-primary/20 bg-background shadow-2xl overflow-hidden">
         {/* Gradient top bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-primary via-violet-500 to-rose-500" />
@@ -178,30 +267,17 @@ export default function OnboardingModal() {
               </div>
 
               <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">
-                    {isCouple ? `Nascimento — ${coupleLabel1}` : 'Data de nascimento'}
-                  </label>
-                  <input
-                    type="date"
-                    value={birthDate}
-                    onChange={(e) => setBirthDate(e.target.value)}
-                    max={new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                    className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  />
-                </div>
-
+                <BirthDatePicker
+                  label={isCouple ? `Nascimento — ${coupleLabel1}` : 'Data de nascimento'}
+                  value={birthDate}
+                  onChange={setBirthDate}
+                />
                 {isCouple && (
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Nascimento — {coupleLabel2}</label>
-                    <input
-                      type="date"
-                      value={partnerBirthDate}
-                      onChange={(e) => setPartnerBirthDate(e.target.value)}
-                      max={new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                      className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    />
-                  </div>
+                  <BirthDatePicker
+                    label={`Nascimento — ${coupleLabel2}`}
+                    value={partnerBirthDate}
+                    onChange={setPartnerBirthDate}
+                  />
                 )}
               </div>
             </div>
@@ -313,7 +389,7 @@ export default function OnboardingModal() {
                 size="sm"
                 className="gap-1 bg-gradient-to-r from-primary to-violet-600"
                 onClick={() => setStep((s) => s + 1)}
-                disabled={step === 0 && !canAdvanceStep0 || step === 1 && !canAdvanceStep1}
+                disabled={(step === 0 && !canAdvanceStep0) || (step === 1 && !canAdvanceStep1)}
               >
                 Próximo <ChevronRight className="h-4 w-4" />
               </Button>
