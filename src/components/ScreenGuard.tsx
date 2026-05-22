@@ -130,21 +130,6 @@ export default function ScreenGuard() {
     return () => document.getElementById('screen-guard-css')?.remove();
   }, []);
 
-  // 4. Tiled watermark overlay (fixed, pointer-events:none so UI is unaffected)
-  return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9998,
-        pointerEvents: 'none',
-        userSelect: 'none',
-        backgroundImage: watermarkBg,
-        backgroundRepeat: 'repeat',
-        backgroundSize: '320px 180px',
-        mixBlendMode: 'screen',
-      }}
-    />
-  );
+  // Watermark removed — keyboard/right-click/print protections above remain active
+  return null;
 }
