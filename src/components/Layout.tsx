@@ -41,6 +41,7 @@ import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
+import ScreenGuard from '@/components/ScreenGuard';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
@@ -927,6 +928,7 @@ export default function Layout() {
             ) : null}
             <Outlet />
             <PhotoGateOverlay pathname={location.pathname} />
+            <ScreenGuard />
             <DailyAvailabilityModal />
             <WeekendAdventureModal />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
