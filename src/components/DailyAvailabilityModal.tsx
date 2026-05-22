@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,20 @@ export default function DailyAvailabilityModal() {
   const { user, updateUser } = useAuth();
   const [visible, setVisible] = useState(() => shouldShow(user));
   const [saving, setSaving] = useState(false);
+
+  // Limpa travas de scroll/pointer-events deixadas por Radix Dialog após navegação SPA
+  useEffect(() => {
+    if (!visible) return;
+    const cleanup = () => {
+      document.body.style.overflow = '';
+      document.body.style.pointerEvents = '';
+      document.documentElement.style.overflow = '';
+      document.body.removeAttribute('data-scroll-locked');
+    };
+    cleanup();
+    const t = setTimeout(cleanup, 100);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   if (!visible) return null;
 

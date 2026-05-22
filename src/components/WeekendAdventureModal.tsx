@@ -41,7 +41,7 @@ export default function WeekendAdventureModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9997] flex items-center justify-center p-4 bg-black/80" style={{ WebkitOverflowScrolling: 'auto' }}>
       <div className="w-full max-w-sm rounded-3xl border border-primary/20 bg-background shadow-2xl animate-fade-in">
         {/* Top gradient strip */}
         <div className="h-1.5 w-full rounded-t-3xl bg-gradient-to-r from-rose-500 via-primary to-violet-500" />

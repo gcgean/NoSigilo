@@ -930,13 +930,13 @@ export default function Layout() {
             <Outlet />
             <PhotoGateOverlay pathname={location.pathname} />
             <ScreenGuard />
-            <WeekendAdventureModal />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
           </div>
         </main>
       </div>
 
+      <WeekendAdventureModal />
       <DailyAvailabilityModal />
       <OnboardingModal />
       <nav className={cn(

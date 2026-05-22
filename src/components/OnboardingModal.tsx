@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronRight, ChevronLeft, Sparkles, CalendarDays, Heart, Zap, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -78,6 +78,21 @@ export default function OnboardingModal() {
       setVisible(true);
     }
   }, [user?.id]);
+
+  // Limpa travas de scroll/pointer-events deixadas por Radix Dialog após navegação SPA
+  useEffect(() => {
+    if (!visible) return;
+    const cleanup = () => {
+      document.body.style.overflow = '';
+      document.body.style.pointerEvents = '';
+      document.documentElement.style.overflow = '';
+      document.body.removeAttribute('data-scroll-locked');
+    };
+    cleanup();
+    // Aplica novamente após 100ms caso algum componente sobrescreva logo após mount
+    const t = setTimeout(cleanup, 100);
+    return () => clearTimeout(t);
+  }, [visible]);
 
   if (!visible || !user) return null;
 
