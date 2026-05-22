@@ -41,6 +41,16 @@ function isCoupleProfile(gender?: string | null) {
   return String(gender || '').trim().startsWith('Casal');
 }
 
+/** Extrai os dois labels de um perfil casal, ex: "Casal (Ele/Ela)" → ["Ele","Ela"] */
+function getCoupleLabels(gender?: string | null): [string, string] {
+  const match = String(gender || '').match(/Casal\s*\(([^/]+)\/([^)]+)\)/);
+  if (!match) return ['Pessoa 1', 'Pessoa 2'];
+  const p1 = match[1].trim();
+  const p2 = match[2].trim();
+  if (p1 === p2) return [`${p1} (1)`, `${p2} (2)`];
+  return [p1, p2];
+}
+
 export default function OnboardingModal() {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
@@ -50,6 +60,7 @@ export default function OnboardingModal() {
   const [saving, setSaving] = useState(false);
 
   const isCouple = isCoupleProfile(user?.gender);
+  const [coupleLabel1, coupleLabel2] = getCoupleLabels(user?.gender);
 
   // Local state for the 3 steps
   const [birthDate, setBirthDate]           = useState(user?.birthDate || '');
@@ -116,7 +127,7 @@ export default function OnboardingModal() {
   const canFinish       = fetiches.length > 0;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80" style={{ WebkitOverflowScrolling: 'auto' }}>
       <div className="w-full max-w-md rounded-3xl border border-primary/20 bg-background shadow-2xl overflow-hidden">
         {/* Gradient top bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-primary via-violet-500 to-rose-500" />
@@ -154,7 +165,7 @@ export default function OnboardingModal() {
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">
-                    {isCouple ? 'Nascimento — Pessoa 1' : 'Data de nascimento'}
+                    {isCouple ? `Nascimento — ${coupleLabel1}` : 'Data de nascimento'}
                   </label>
                   <input
                     type="date"
@@ -167,7 +178,7 @@ export default function OnboardingModal() {
 
                 {isCouple && (
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Nascimento — Pessoa 2</label>
+                    <label className="text-sm font-medium">Nascimento — {coupleLabel2}</label>
                     <input
                       type="date"
                       value={partnerBirthDate}
