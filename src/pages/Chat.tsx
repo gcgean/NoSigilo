@@ -1616,28 +1616,28 @@ export default function Chat() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!viewingPhoto} onOpenChange={(open) => !open && setViewingPhoto(null)}>
-        <DialogContent className="max-w-4xl p-0 border-none bg-transparent shadow-none flex items-center justify-center">
-          <DialogTitle className="sr-only">Visualizar Foto</DialogTitle>
-          {viewingPhoto && (
-            <div className="relative group">
-              <img 
-                src={viewingPhoto} 
-                alt="Visualização" 
-                className="max-h-[90vh] max-w-full object-contain rounded-lg"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-2 right-2 text-white hover:bg-white/20"
-                onClick={() => setViewingPhoto(null)}
-              >
-                <X className="w-6 h-6" />
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Photo lightbox — custom overlay (avoids Radix Dialog scroll-lock bug on mobile) */}
+      {viewingPhoto && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90"
+          onClick={() => setViewingPhoto(null)}
+        >
+          <img
+            src={viewingPhoto}
+            alt="Visualização"
+            className="max-h-[90vh] max-w-[95vw] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            aria-label="Fechar"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+            onClick={() => setViewingPhoto(null)}
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
