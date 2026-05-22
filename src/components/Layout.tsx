@@ -42,6 +42,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import ScreenGuard from '@/components/ScreenGuard';
+import OnboardingModal from '@/components/OnboardingModal';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
@@ -929,6 +930,7 @@ export default function Layout() {
             <Outlet />
             <PhotoGateOverlay pathname={location.pathname} />
             <ScreenGuard />
+            <OnboardingModal />
             <DailyAvailabilityModal />
             <WeekendAdventureModal />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />

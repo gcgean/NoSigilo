@@ -2788,7 +2788,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
         u.id as author_id, u.name as author_name, u.avatar as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state,
-        u.lat as author_lat, u.lon as author_lon
+        u.lat as author_lat, u.lon as author_lon,
+        u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date
        FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE 1=1
@@ -3240,6 +3241,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           gender: r.author_gender ?? null,
           city: r.author_city ?? null,
           state: r.author_state ?? null,
+          birthDate: r.author_birth_date ?? null,
+          partnerBirthDate: r.author_partner_birth_date ?? null,
         },
         mediaIds: mediaIdsByPostId.get(String(r.id)) ?? [],
         media: (mediaIdsByPostId.get(String(r.id)) ?? []).map((mid) => mediaById.get(mid)).filter(Boolean),

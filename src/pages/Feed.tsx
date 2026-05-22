@@ -26,6 +26,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import SocialPulseCard from '@/components/SocialPulseCard';
 import StreakBadge from '@/components/StreakBadge';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
@@ -72,7 +73,7 @@ type FeedPost = {
   id: string;
   content: string;
   createdAt: string;
-  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null };
   mediaIds: string[];
   media: FeedMedia[];
   likesCount: number;
@@ -89,7 +90,7 @@ type FeedExperience = {
   description: string;
   createdAt: string;
   media?: Array<{ id: string; url: string; mimeType: string }>;
-  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null };
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null };
   likesCount: number;
   commentsCount: number;
   likedByMe: boolean;
@@ -2375,7 +2376,10 @@ export default function Feed() {
                   </Avatar>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{item.post.author.name}</span>
+                      <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">
+                        {item.post.author.name}
+                        {(() => { const a = buildProfileAgeLabel(item.post.author); return a ? <span className="font-normal text-muted-foreground">, {a}</span> : null; })()}
+                      </span>
                       {(() => {
                         const badge = getProfileTypeBadge(item.post.author.gender);
                         const ctx = item.post.feedContext;
