@@ -930,7 +930,6 @@ export default function Layout() {
             <Outlet />
             <PhotoGateOverlay pathname={location.pathname} />
             <ScreenGuard />
-            <DailyAvailabilityModal />
             <WeekendAdventureModal />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
@@ -938,6 +937,7 @@ export default function Layout() {
         </main>
       </div>
 
+      <DailyAvailabilityModal />
       <OnboardingModal />
       <nav className={cn(
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
