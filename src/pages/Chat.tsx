@@ -151,6 +151,9 @@ export default function Chat() {
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
+  // Long-press menu na lista de conversas
+  const [convListMenu, setConvListMenu] = useState<{ id: string; name: string } | null>(null);
+  const convLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
@@ -753,6 +756,31 @@ export default function Chat() {
     }
   };
 
+  // Long-press handlers para a lista de conversas
+  const startConvLongPress = (conv: Conversation) => {
+    convLongPressTimer.current = setTimeout(() => {
+      setConvListMenu({ id: conv.id, name: conv.user.name });
+    }, 500);
+  };
+  const cancelConvLongPress = () => {
+    if (convLongPressTimer.current) {
+      clearTimeout(convLongPressTimer.current);
+      convLongPressTimer.current = null;
+    }
+  };
+
+  const handleDeleteConvFromList = async (convId: string) => {
+    setConvListMenu(null);
+    try {
+      await chatService.deleteConversation(convId);
+      setConversations(prev => prev.filter(c => c.id !== convId));
+      if (selectedChat === convId) { setSelectedChat(null); setMessages([]); }
+      toast({ title: 'Conversa apagada' });
+    } catch {
+      toast({ title: 'Erro ao apagar conversa', variant: 'destructive' });
+    }
+  };
+
   const openHighlightDialog = () => {
     if (!selectedConversation) return;
     setHighlightNoteDraft(selectedConversation.highlightNote || '');
@@ -928,12 +956,16 @@ export default function Chat() {
             return (
               <div
               key={conversation.id}
-              onClick={() => setSelectedChat(conversation.id)}
+              onClick={() => { cancelConvLongPress(); setSelectedChat(conversation.id); }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setSelectedChat(conversation.id);
-              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(conversation.id); }}
+              onTouchStart={() => startConvLongPress(conversation)}
+              onTouchEnd={cancelConvLongPress}
+              onTouchMove={cancelConvLongPress}
+              onMouseDown={() => startConvLongPress(conversation)}
+              onMouseUp={cancelConvLongPress}
+              onMouseLeave={cancelConvLongPress}
               className={cn(
                 "w-full border-b p-3 flex items-center gap-3 hover:bg-secondary/50 transition-colors sm:p-4",
                 selectedChat === conversation.id && "bg-secondary",
@@ -1561,19 +1593,63 @@ export default function Chat() {
         );
       })()}
 
-      {/* Delete conversation confirmation */}
-      <Dialog open={confirmDeleteConv} onOpenChange={setConfirmDeleteConv}>
-        <DialogContent>
-          <DialogTitle>Apagar conversa?</DialogTitle>
-          <DialogDescription>
-            Esta ação não pode ser desfeita. Todas as mensagens desta conversa serão removidas para você.
-          </DialogDescription>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmDeleteConv(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={() => void handleDeleteConversation()}>Apagar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete conversation confirmation — overlay customizado (sem Radix Dialog para evitar freeze mobile) */}
+      {confirmDeleteConv && (
+        <div
+          className="fixed inset-0 z-[9990] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setConfirmDeleteConv(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-2xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              <h3 className="text-base font-semibold">Apagar conversa?</h3>
+              <p className="text-sm text-muted-foreground">
+                Esta ação não pode ser desfeita. Todas as mensagens serão removidas para você.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setConfirmDeleteConv(false)}>Cancelar</Button>
+              <Button variant="destructive" onClick={() => void handleDeleteConversation()}>Apagar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Long-press menu na lista de conversas */}
+      {convListMenu && (
+        <div
+          className="fixed inset-0 z-[9990] flex items-end justify-center bg-black/60 p-4"
+          onClick={() => setConvListMenu(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-background shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b">
+              <p className="font-semibold truncate">{convListMenu.name}</p>
+              <p className="text-xs text-muted-foreground">Selecione uma ação</p>
+            </div>
+            <button
+              type="button"
+              className="w-full flex items-center gap-3 px-5 py-4 text-left text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={() => void handleDeleteConvFromList(convListMenu.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+              <span className="text-sm font-medium">Apagar conversa</span>
+            </button>
+            <button
+              type="button"
+              className="w-full flex items-center gap-3 px-5 py-4 text-left text-muted-foreground hover:bg-secondary transition-colors border-t"
+              onClick={() => setConvListMenu(null)}
+            >
+              <X className="h-4 w-4" />
+              <span className="text-sm font-medium">Cancelar</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={highlightDialogOpen} onOpenChange={setHighlightDialogOpen}>
         <DialogContent>
