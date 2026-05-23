@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clapperboard, SlidersHorizontal, MapPin, Heart, Play, X, Search, Clock, MessageCircle, Flame } from 'lucide-react';
+import {
+  Clapperboard, SlidersHorizontal, MapPin, Heart, Play,
+  X, Search, Clock, MessageCircle, Flame,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,14 +17,14 @@ import MobileState from '@/components/MobileState';
 import { cn } from '@/lib/utils';
 
 const genderOptions = [
-  { value: 'Mulher',          label: 'Mulher solteira' },
-  { value: 'Homem',           label: 'Homem solteiro' },
-  { value: 'Casal (Ele/Ela)', label: 'Casal (Ele/Ela)' },
-  { value: 'Casal (Ele/Ele)', label: 'Casal (Ele/Ele)' },
-  { value: 'Casal (Ela/Ela)', label: 'Casal (Ela/Ela)' },
-  { value: 'Transexual',      label: 'Pessoa trans' },
+  { value: 'Mulher',            label: 'Mulher solteira' },
+  { value: 'Homem',             label: 'Homem solteiro' },
+  { value: 'Casal (Ele/Ela)',   label: 'Casal (Ele/Ela)' },
+  { value: 'Casal (Ele/Ele)',   label: 'Casal (Ele/Ele)' },
+  { value: 'Casal (Ela/Ela)',   label: 'Casal (Ela/Ela)' },
+  { value: 'Transexual',        label: 'Pessoa trans' },
   { value: 'Crossdresser (CD)', label: 'Crossdresser (CD)' },
-  { value: 'Travesti',        label: 'Travesti' },
+  { value: 'Travesti',          label: 'Travesti' },
 ];
 
 const distanceOptions = [
@@ -55,9 +58,9 @@ type VideoItem = {
 };
 
 const sortOptions: { value: SortOption; label: string; icon: React.ElementType }[] = [
-  { value: 'recent',    label: 'Recentes',    icon: Clock },
-  { value: 'liked',     label: 'Mais curtidos', icon: Flame },
-  { value: 'commented', label: 'Mais comentados', icon: MessageCircle },
+  { value: 'recent',    label: 'Recentes',       icon: Clock },
+  { value: 'liked',     label: 'Mais curtidos',  icon: Flame },
+  { value: 'commented', label: 'Mais comentados',icon: MessageCircle },
 ];
 
 function formatDistanceKm(d: number | null) {
@@ -68,36 +71,207 @@ function formatDistanceKm(d: number | null) {
 
 const PAGE_SIZE = 24;
 
+// ─── VideoCard com lazy-load + canvas thumbnail ───────────────────────────────
+function VideoCard({
+  item,
+  premiumAccess,
+  onClick,
+}: {
+  item: VideoItem;
+  premiumAccess: boolean;
+  onClick: () => void;
+}) {
+  const cardRef    = useRef<HTMLButtonElement>(null);
+  const videoRef   = useRef<HTMLVideoElement>(null);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+
+  const [shouldLoad,  setShouldLoad]  = useState(false); // lazy: src só definido quando perto
+  const [thumbDone,   setThumbDone]   = useState(false); // canvas com 1º frame capturado
+  const [isHovering,  setIsHovering]  = useState(false); // hover desktop
+
+  // 1. IntersectionObserver — carrega o src só quando o card chega perto do viewport
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setShouldLoad(true); obs.disconnect(); } },
+      { rootMargin: '400px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  // 2. Captura o 1º frame no canvas assim que o vídeo sofreu seek
+  const captureFrame = useCallback(() => {
+    const vid    = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!vid || !canvas || thumbDone) return;
+    canvas.width  = vid.videoWidth  || 360;
+    canvas.height = vid.videoHeight || 640;
+    canvas.getContext('2d')?.drawImage(vid, 0, 0, canvas.width, canvas.height);
+    setThumbDone(true);
+  }, [thumbDone]);
+
+  // 3. Quando metadados chegam, faz seek para 0.1 s para garantir que um frame está disponível
+  const handleLoadedMetadata = useCallback(() => {
+    const vid = videoRef.current;
+    if (vid && !thumbDone) vid.currentTime = 0.1;
+  }, [thumbDone]);
+
+  // 4. Hover (desktop / premium): toca o vídeo; ao sair volta ao canvas
+  const handleMouseEnter = () => {
+    if (!premiumAccess) return;
+    setIsHovering(true);
+    const vid = videoRef.current;
+    if (vid) { vid.currentTime = 0; void vid.play().catch(() => {}); }
+  };
+  const handleMouseLeave = () => {
+    setIsHovering(false);
+    const vid = videoRef.current;
+    if (vid) { vid.pause(); vid.currentTime = 0; }
+  };
+
+  return (
+    <button
+      ref={cardRef}
+      type="button"
+      className="group relative aspect-[9/16] overflow-hidden rounded-xl bg-muted text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      onClick={onClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Skeleton enquanto o thumb não está pronto */}
+      {!thumbDone && (
+        <div className="absolute inset-0 animate-pulse bg-neutral-800" />
+      )}
+
+      {/* Canvas — exibido como thumbnail estático (não consome banda extra) */}
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 h-full w-full transition-opacity duration-200"
+        style={{
+          objectFit: 'cover',
+          opacity: thumbDone && !isHovering ? 1 : 0,
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Elemento de vídeo — carregado apenas quando próximo ao viewport */}
+      {shouldLoad && (
+        <video
+          ref={videoRef}
+          src={resolveServerUrl(item.videoUrl)}
+          className="h-full w-full object-cover transition-opacity duration-200"
+          style={{ opacity: isHovering || !thumbDone ? 1 : 0 }}
+          muted
+          playsInline
+          preload="metadata"
+          loop
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
+          onLoadedMetadata={handleLoadedMetadata}
+          onSeeked={captureFrame}
+          onContextMenu={(e) => e.preventDefault()}
+        />
+      )}
+
+      {/* Gradient overlay */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+
+      {/* Badge premium */}
+      {!premiumAccess && (
+        <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
+          <Play className="h-3 w-3 text-primary" />
+          <span className="text-[10px] font-semibold text-white">Premium</span>
+        </div>
+      )}
+
+      {/* Play icon no hover */}
+      {!isHovering && (
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
+            <Play className={cn('h-5 w-5', premiumAccess ? 'fill-white' : 'text-primary')} />
+          </div>
+        </div>
+      )}
+
+      {/* Info bottom */}
+      <div className="absolute bottom-0 left-0 right-0 p-2.5">
+        <div className="flex items-center gap-1.5 mb-1">
+          {item.author.avatar ? (
+            <img
+              src={resolveServerUrl(item.author.avatar)}
+              alt={item.author.name}
+              className="h-6 w-6 rounded-full object-cover ring-1 ring-white/30"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold text-white ring-1 ring-white/30">
+              {item.author.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-white">
+            {item.author.name}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {item.distanceKm !== null && (
+            <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
+              <MapPin className="h-2.5 w-2.5" />
+              {formatDistanceKm(item.distanceKm)}
+            </Badge>
+          )}
+          {item.likesCount > 0 && (
+            <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
+              <Heart className="h-2.5 w-2.5 fill-rose-400 text-rose-400" />
+              {item.likesCount}
+            </Badge>
+          )}
+          {item.commentsCount > 0 && (
+            <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
+              <MessageCircle className="h-2.5 w-2.5 text-sky-300" />
+              {item.commentsCount}
+            </Badge>
+          )}
+          {item.author.city && (
+            <Badge className="hidden gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0 sm:flex">
+              {item.author.city}{item.author.state ? `, ${item.author.state}` : ''}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Página principal ─────────────────────────────────────────────────────────
+const PAGE_SIZE_CONST = PAGE_SIZE;
+
 export default function SearchVideos() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const premiumAccess = hasPremiumAccess(user);
   const [paywallOpen, setPaywallOpen] = useState(false);
 
-  // Filters
-  const [cityFilter, setCityFilter]         = useState('');
-  const [genderFilter, setGenderFilter]     = useState('all');
+  const [cityFilter,     setCityFilter]     = useState('');
+  const [genderFilter,   setGenderFilter]   = useState('all');
   const [distanceFilter, setDistanceFilter] = useState('all');
-  const [sortFilter, setSortFilter]         = useState<SortOption>('recent');
-  const [showFilters, setShowFilters]       = useState(false);
+  const [sortFilter,     setSortFilter]     = useState<SortOption>('recent');
+  const [showFilters,    setShowFilters]    = useState(false);
 
-  // Results
-  const [videos, setVideos]           = useState<VideoItem[]>([]);
-  const [page, setPage]               = useState(1);
-  const [hasMore, setHasMore]         = useState(false);
-  const [isLoading, setIsLoading]     = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  // Hovering thumbnail
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const [videos,         setVideos]         = useState<VideoItem[]>([]);
+  const [page,           setPage]           = useState(1);
+  const [hasMore,        setHasMore]        = useState(false);
+  const [isLoading,      setIsLoading]      = useState(false);
+  const [isLoadingMore,  setIsLoadingMore]  = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const buildParams = useCallback((p: number) => ({
-    page: p,
-    limit: PAGE_SIZE,
+    page:           p,
+    limit:          PAGE_SIZE_CONST,
     gender:         genderFilter !== 'all' ? genderFilter : undefined,
     city:           cityFilter.trim() || undefined,
     maxDistanceKm:  distanceFilter !== 'all' ? Number(distanceFilter) : undefined,
@@ -133,21 +307,17 @@ export default function SearchVideos() {
       });
       setHasMore(data.hasMore);
       setPage(nextPage);
-    } catch {
-      // ignore
-    } finally {
+    } catch { /* ignore */ } finally {
       setIsLoadingMore(false);
     }
   }, [isLoadingMore, hasMore, page, buildParams]);
 
-  // Debounced search on filter change
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { void fetchFirstPage(); }, 350);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [fetchFirstPage]);
 
-  // Infinite scroll sentinel
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -159,25 +329,6 @@ export default function SearchVideos() {
     obs.observe(el);
     return () => obs.disconnect();
   }, [fetchNextPage, hasMore, isLoadingMore, isLoading]);
-
-  // Hover: play / pause video preview (apenas premium assiste o preview no hover)
-  const handleMouseEnter = (mediaId: string) => {
-    setHoveredId(mediaId);
-    if (!premiumAccess) return; // não-premium: mostra overlay mas não toca
-    const vid = videoRefs.current[mediaId];
-    if (vid) {
-      vid.currentTime = 0;
-      void vid.play().catch(() => {});
-    }
-  };
-  const handleMouseLeave = (mediaId: string) => {
-    setHoveredId(null);
-    const vid = videoRefs.current[mediaId];
-    if (vid) {
-      vid.pause();
-      vid.currentTime = 0;
-    }
-  };
 
   const handleVideoClick = (item: VideoItem) => {
     if (!premiumAccess) { setPaywallOpen(true); return; }
@@ -206,7 +357,6 @@ export default function SearchVideos() {
       {/* Filter bar */}
       <div className="mb-5 space-y-3">
         <div className="flex gap-2">
-          {/* City search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -216,7 +366,6 @@ export default function SearchVideos() {
               className="pl-9"
             />
           </div>
-          {/* Toggle filters */}
           <Button
             type="button"
             variant="outline"
@@ -256,13 +405,10 @@ export default function SearchVideos() {
         {/* Expanded filters */}
         {showFilters && (
           <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/50 bg-muted/30 p-4 sm:grid-cols-2">
-            {/* Gender */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Tipo de perfil</p>
               <Select value={genderFilter} onValueChange={setGenderFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos os perfis" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Todos os perfis" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os perfis</SelectItem>
                   {genderOptions.map((g) => (
@@ -272,13 +418,10 @@ export default function SearchVideos() {
               </Select>
             </div>
 
-            {/* Distance */}
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Distância máxima</p>
               <Select value={distanceFilter} onValueChange={setDistanceFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {distanceOptions.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
@@ -287,7 +430,6 @@ export default function SearchVideos() {
               </Select>
             </div>
 
-            {/* Clear filters */}
             {activeFilterCount > 0 && (
               <div className="sm:col-span-2">
                 <Button
@@ -295,10 +437,14 @@ export default function SearchVideos() {
                   variant="ghost"
                   size="sm"
                   className="h-8 gap-1.5 text-muted-foreground"
-                  onClick={() => { setCityFilter(''); setGenderFilter('all'); setDistanceFilter('all'); setSortFilter('recent'); }}
+                  onClick={() => {
+                    setCityFilter('');
+                    setGenderFilter('all');
+                    setDistanceFilter('all');
+                    setSortFilter('recent');
+                  }}
                 >
-                  <X className="h-3.5 w-3.5" />
-                  Limpar filtros
+                  <X className="h-3.5 w-3.5" /> Limpar filtros
                 </Button>
               </div>
             )}
@@ -328,100 +474,12 @@ export default function SearchVideos() {
       {!isLoading && videos.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
           {videos.map((item) => (
-            <button
+            <VideoCard
               key={item.mediaId}
-              type="button"
-              className="group relative aspect-[9/16] overflow-hidden rounded-xl bg-black text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              item={item}
+              premiumAccess={premiumAccess}
               onClick={() => handleVideoClick(item)}
-              onMouseEnter={() => handleMouseEnter(item.mediaId)}
-              onMouseLeave={() => handleMouseLeave(item.mediaId)}
-            >
-              {/* Video element — thumbnail visível para todos, hover play apenas para premium */}
-              <video
-                ref={(node) => { videoRefs.current[item.mediaId] = node; }}
-                src={resolveServerUrl(item.videoUrl)}
-                className="h-full w-full object-cover"
-                muted
-                playsInline
-                preload="metadata"
-                loop
-                controlsList="nodownload noremoteplayback"
-                disablePictureInPicture
-                onContextMenu={(e) => e.preventDefault()}
-              />
-
-              {/* Gradient overlay */}
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
-
-              {/* Lock badge — non-premium: small indicator top-right, not blocking thumbnail */}
-              {!premiumAccess && (
-                <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
-                  <Play className="h-3 w-3 text-primary" />
-                  <span className="text-[10px] font-semibold text-white">Premium</span>
-                </div>
-              )}
-
-              {/* Play indicator on hover */}
-              {hoveredId !== item.mediaId && (
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
-                    {premiumAccess
-                      ? <Play className="h-5 w-5 fill-white" />
-                      : <Play className="h-5 w-5 text-primary" />
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* Bottom info */}
-              <div className="absolute bottom-0 left-0 right-0 p-2.5">
-                {/* Author row */}
-                <div className="flex items-center gap-1.5 mb-1">
-                  {item.author.avatar ? (
-                    <img
-                      src={resolveServerUrl(item.author.avatar)}
-                      alt={item.author.name}
-                      className="h-6 w-6 rounded-full object-cover ring-1 ring-white/30"
-                    />
-                  ) : (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-[10px] font-bold text-white ring-1 ring-white/30">
-                      {item.author.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-white">
-                    {item.author.name}
-                  </p>
-                </div>
-
-                {/* Badges row */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {item.distanceKm !== null && (
-                    <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-                      <MapPin className="h-2.5 w-2.5" />
-                      {formatDistanceKm(item.distanceKm)}
-                    </Badge>
-                  )}
-                  {item.likesCount > 0 && (
-                    <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-                      <Heart className="h-2.5 w-2.5 fill-rose-400 text-rose-400" />
-                      {item.likesCount}
-                    </Badge>
-                  )}
-                  {item.commentsCount > 0 && (
-                    <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-                      <MessageCircle className="h-2.5 w-2.5 text-sky-300" />
-                      {item.commentsCount}
-                    </Badge>
-                  )}
-                  {item.author.city && (
-                    <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0 hidden sm:flex">
-                      {item.author.city}
-                      {item.author.state ? `, ${item.author.state}` : ''}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </button>
+            />
           ))}
         </div>
       )}
@@ -429,14 +487,12 @@ export default function SearchVideos() {
       {/* Infinite scroll sentinel */}
       <div ref={sentinelRef} className="h-4" />
 
-      {/* Load more indicator */}
       {isLoadingMore && (
         <div className="flex justify-center py-6">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       )}
 
-      {/* Paywall modal */}
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
