@@ -388,14 +388,16 @@ export default function Stories() {
   const navigate  = useNavigate();
   const isPremium = hasPremiumAccess(user);
 
-  const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined);
+  const [myStories,    setMyStories]    = useState<MyStory[]>([]);
+  const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined); // compat
   const [feed,         setFeed]         = useState<FeedStory[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [uploading,    setUploading]    = useState(false);
   const [viewerIdx,    setViewerIdx]    = useState<number | null>(null);
-  const [previewOwn,   setPreviewOwn]   = useState(false);
+  const [previewIdx,   setPreviewIdx]   = useState<number | null>(null); // preview own stories
+  const [statsStoryId, setStatsStoryId] = useState<string | null>(null);
   const [statsOpen,    setStatsOpen]    = useState(false);
-  const [deleting,     setDeleting]     = useState(false);
+  const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
 
   const fileRef    = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -407,8 +409,14 @@ export default function Stories() {
       storiesService.getMyStory(),
       storiesService.getFeed(),
     ]);
-    if (mineRes.status === 'fulfilled') setMyStory(mineRes.value.story);
-    else setMyStory(null);
+    if (mineRes.status === 'fulfilled') {
+      const list = (mineRes.value as any).stories ?? (mineRes.value.story ? [mineRes.value.story] : []);
+      setMyStories(list);
+      setMyStory(mineRes.value.story ?? null);
+    } else {
+      setMyStories([]);
+      setMyStory(null);
+    }
     if (feedRes.status === 'fulfilled') setFeed(feedRes.value.stories);
     else toast({ title: 'Erro ao carregar stories', variant: 'destructive' });
     setLoading(false);
@@ -438,24 +446,32 @@ export default function Stories() {
       await storiesService.create(String(media.id));
       toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
       await load();
-    } catch {
-      toast({ title: 'Erro ao publicar story', variant: 'destructive' });
+    } catch (err) {
+      handleUploadError(err);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!myStory) return;
-    setDeleting(true);
+  const handleDelete = async (storyId: string) => {
+    setDeleting(storyId);
     try {
-      await storiesService.remove(myStory.id);
-      setMyStory(null);
+      await storiesService.remove(storyId);
       toast({ title: 'Story removido' });
+      await load();
     } catch {
       toast({ title: 'Erro ao remover', variant: 'destructive' });
     } finally {
-      setDeleting(false);
+      setDeleting(null);
+    }
+  };
+
+  const handleUploadError = (err: unknown) => {
+    const msg = (err as any)?.response?.data?.message ?? '';
+    if (msg.includes('max_stories') || msg.includes('10 stories')) {
+      toast({ title: 'Limite atingido', description: 'Você já tem 10 stories ativos. Apague um antes de postar.', variant: 'destructive' });
+    } else {
+      toast({ title: 'Erro ao publicar story', variant: 'destructive' });
     }
   };
 
@@ -482,70 +498,82 @@ export default function Stories() {
 
       {/* ── Meu Story ─────────────────────────────── */}
       <section>
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Meu Story</h2>
-
-        {myStory ? (
-          /* Story ativo */
-          <div className="flex items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-            <button
-              type="button"
-              className="relative shrink-0"
-              onClick={() => setStatsOpen(true)}
-            >
-              <div className="h-16 w-16 rounded-full overflow-hidden ring-2 ring-primary ring-offset-2 ring-offset-background">
-                {myStory.mimeType.startsWith('video/') ? (
-                  <video src={resolveServerUrl(myStory.mediaUrl)} className="h-full w-full object-cover" muted playsInline />
-                ) : (
-                  <img src={resolveServerUrl(myStory.mediaUrl)} alt="Meu story" className="h-full w-full object-cover" />
-                )}
-              </div>
-              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-white">
-                <Eye className="h-3 w-3" />
-              </div>
-            </button>
-
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm">Story ativo</p>
-              <div className="flex items-center gap-3 mt-1 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setPreviewOwn(true)}
-                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  Visualizar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatsOpen(true)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  {myStory.viewCount} views
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStatsOpen(true)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  <MessageCircle className="h-3.5 w-3.5" />
-                  {myStory.commentCount} comentários
-                </button>
-              </div>
-              <p className="flex items-center gap-1 text-xs text-muted-foreground/60 mt-1">
-                <Clock className="h-3 w-3" />
-                {timeLeft(myStory.expiresAt)}
-              </p>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+            Meus Stories {myStories.length > 0 && <span className="text-primary ml-1">{myStories.length}</span>}
+          </h2>
+          {/* Botões de adicionar sempre visíveis */}
+          {myStories.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-40">
+                <Camera className="h-3.5 w-3.5" /> Câmera
+              </button>
+              <button type="button" disabled={uploading} onClick={() => galleryRef.current?.click()}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                <ImageIcon className="h-3.5 w-3.5" /> Galeria
+              </button>
+              <button type="button" disabled={uploading} onClick={() => videoRef.current?.click()}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                <Camera className="h-3.5 w-3.5" /> Vídeo
+              </button>
+              {uploading && <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />}
             </div>
+          )}
+        </div>
 
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={() => void handleDelete()}
-              className="shrink-0 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+        {myStories.length > 0 ? (
+          /* Stories ativos — grid de thumbnails */
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {myStories.map((s, i) => (
+              <div key={s.id} className="relative group">
+                {/* Thumbnail clicável para preview */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewIdx(i)}
+                  className="relative w-full aspect-[9/16] overflow-hidden rounded-xl bg-black block"
+                >
+                  {s.mimeType.startsWith('video/') ? (
+                    <video src={resolveServerUrl(s.mediaUrl)} className="h-full w-full object-cover" muted playsInline />
+                  ) : (
+                    <img src={resolveServerUrl(s.mediaUrl)} alt="Story" className="h-full w-full object-cover" />
+                  )}
+                  {/* Overlay com stats */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-2">
+                    <span className="flex items-center gap-0.5 text-[10px] text-white/80">
+                      <Eye className="h-3 w-3" />{s.viewCount}
+                    </span>
+                    <span className="flex items-center gap-0.5 text-[10px] text-white/80">
+                      <MessageCircle className="h-3 w-3" />{s.commentCount}
+                    </span>
+                    <span className="ml-auto text-[9px] text-white/60 truncate">{timeLeft(s.expiresAt)}</span>
+                  </div>
+                </button>
+                {/* Ações: stats + apagar */}
+                <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => { setStatsStoryId(s.id); setStatsOpen(true); }}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    title="Estatísticas"
+                  >
+                    <Eye className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting === s.id}
+                    onClick={() => void handleDelete(s.id)}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500/80 disabled:opacity-40"
+                    title="Apagar"
+                  >
+                    {deleting === s.id
+                      ? <div className="h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" />
+                      : <Trash2 className="h-3 w-3" />}
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           /* Criar story */
@@ -562,47 +590,23 @@ export default function Stories() {
               </p>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2"
-                disabled={uploading}
-                onClick={() => fileRef.current?.click()}
-              >
-                <Camera className="h-4 w-4" />
-                Câmera
+              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => fileRef.current?.click()}>
+                <Camera className="h-4 w-4" /> Câmera
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-2"
-                disabled={uploading}
-                onClick={() => galleryRef.current?.click()}
-              >
-                <ImageIcon className="h-4 w-4" />
-                Galeria
+              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => galleryRef.current?.click()}>
+                <ImageIcon className="h-4 w-4" /> Galeria
               </Button>
-              <Button
-                size="sm"
-                className="gap-2 bg-gradient-to-r from-primary to-violet-600"
-                disabled={uploading}
-                onClick={() => videoRef.current?.click()}
-              >
-                {uploading ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                ) : (
-                  <Camera className="h-4 w-4" />
-                )}
+              <Button size="sm" className="gap-2 bg-gradient-to-r from-primary to-violet-600" disabled={uploading} onClick={() => videoRef.current?.click()}>
+                {uploading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Camera className="h-4 w-4" />}
                 {uploading ? 'Enviando...' : 'Vídeo'}
               </Button>
             </div>
-            {/* capture=environment abre a câmera diretamente */}
-            <input ref={fileRef}    type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
-            {/* galeria de fotos sem capture */}
-            <input ref={galleryRef} type="file" accept="image/*"                       className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
-            <input ref={videoRef}   type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
           </div>
         )}
+        {/* Inputs de arquivo (sempre presentes) */}
+        <input ref={fileRef}    type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
+        <input ref={galleryRef} type="file" accept="image/*"                       className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
+        <input ref={videoRef}   type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
       </section>
 
       {/* ── Stories de interesse ───────────────────── */}
@@ -668,53 +672,64 @@ export default function Stories() {
         )}
       </section>
 
-      {/* Preview do próprio story */}
-      {previewOwn && myStory && (
-        <div className="fixed inset-0 z-[9995] flex flex-col bg-black">
-          {/* Barra de progresso única */}
-          <div className="flex gap-1 px-3 pt-3 pb-2">
-            <div className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
-              <div className="h-full bg-white w-full" />
+      {/* Preview dos próprios stories */}
+      {previewIdx !== null && myStories.length > 0 && (() => {
+        const s = myStories[previewIdx];
+        if (!s) return null;
+        const goOwn = (delta: number) => {
+          const next = previewIdx + delta;
+          if (next < 0 || next >= myStories.length) setPreviewIdx(null);
+          else setPreviewIdx(next);
+        };
+        return (
+          <div className="fixed inset-0 z-[9995] flex flex-col bg-black">
+            {/* Barras de progresso */}
+            <div className="flex gap-1 px-3 pt-3 pb-2">
+              {myStories.map((_, i) => (
+                <div key={i} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
+                  <div className="h-full bg-white" style={{ width: i < previewIdx ? '100%' : i === previewIdx ? '100%' : '0%' }} />
+                </div>
+              ))}
             </div>
-          </div>
-          {/* Header */}
-          <div className="flex items-center gap-3 px-3 pb-2">
-            {user?.avatar ? (
-              <img src={resolveServerUrl(user.avatar)} alt={user.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-white/60" />
-            ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white font-bold text-sm ring-2 ring-white/60">
-                {user?.name?.charAt(0) ?? '?'}
+            {/* Header */}
+            <div className="flex items-center gap-3 px-3 pb-2">
+              {user?.avatar ? (
+                <img src={resolveServerUrl(user.avatar)} alt={user?.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-white/60" />
+              ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white font-bold text-sm">
+                  {user?.name?.charAt(0) ?? '?'}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
+                <p className="text-xs text-white/60">{timeLeft(s.expiresAt)}</p>
               </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
-              <p className="text-xs text-white/60">{timeLeft(myStory.expiresAt)}</p>
+              <button type="button" onClick={() => setPreviewIdx(null)} className="text-white/80 hover:text-white p-1">
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <button type="button" onClick={() => setPreviewOwn(false)} className="text-white/80 hover:text-white p-1">
-              <X className="h-5 w-5" />
-            </button>
+            {/* Mídia */}
+            <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+              {s.mimeType.startsWith('video/') ? (
+                <video key={s.id} src={resolveServerUrl(s.mediaUrl)} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => goOwn(1)} />
+              ) : (
+                <img key={s.id} src={resolveServerUrl(s.mediaUrl)} alt="" className="h-full w-full object-cover" />
+              )}
+              <button type="button" className="absolute left-0 top-0 h-full w-1/3" onClick={() => goOwn(-1)} />
+              <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={() => goOwn(1)} />
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-center gap-6 border-t border-white/10 bg-black/80 px-4 py-3">
+              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80 hover:text-white">
+                <Eye className="h-4 w-4" /> {s.viewCount} visualizações
+              </button>
+              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80 hover:text-white">
+                <MessageCircle className="h-4 w-4" /> {s.commentCount} comentários
+              </button>
+            </div>
           </div>
-          {/* Mídia */}
-          <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-            {myStory.mimeType.startsWith('video/') ? (
-              <video key={myStory.id} src={resolveServerUrl(myStory.mediaUrl)} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => setPreviewOwn(false)} />
-            ) : (
-              <img key={myStory.id} src={resolveServerUrl(myStory.mediaUrl)} alt="" className="h-full w-full object-cover" />
-            )}
-            {/* Fechar ao tocar */}
-            <button type="button" className="absolute inset-0 w-full h-full" onClick={() => setPreviewOwn(false)} aria-label="Fechar preview" />
-          </div>
-          {/* Footer info */}
-          <div className="flex items-center justify-center gap-6 border-t border-white/10 bg-black/80 px-4 py-3">
-            <button type="button" onClick={() => { setPreviewOwn(false); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80">
-              <Eye className="h-4 w-4" /> {myStory.viewCount} visualizações
-            </button>
-            <button type="button" onClick={() => { setPreviewOwn(false); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80">
-              <MessageCircle className="h-4 w-4" /> {myStory.commentCount} comentários
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Viewer fullscreen */}
       {viewerIdx !== null && (
@@ -728,12 +743,12 @@ export default function Stories() {
       )}
 
       {/* Stats modal */}
-      {statsOpen && myStory && (
+      {statsOpen && (statsStoryId ?? myStory?.id) && (
         <StatsModal
-          storyId={myStory.id}
+          storyId={(statsStoryId ?? myStory?.id)!}
           isPremium={isPremium}
-          onClose={() => setStatsOpen(false)}
-          onUpgrade={() => { setStatsOpen(false); navigate('/subscriptions'); }}
+          onClose={() => { setStatsOpen(false); setStatsStoryId(null); }}
+          onUpgrade={() => { setStatsOpen(false); setStatsStoryId(null); navigate('/subscriptions'); }}
         />
       )}
     </div>

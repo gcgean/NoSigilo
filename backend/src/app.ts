@@ -3264,36 +3264,38 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     return new Date(new Date(createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
 
-  // GET /api/stories/me — meu story ativo
+  // GET /api/stories/me — meus stories ativos (múltiplos)
   app.get('/api/stories/me', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
-    const story = (await queryOne(
+    const rows = (await queryAll(
       db,
       `SELECT s.id, s.media_id, s.created_at, s.expires_at,
               m.filename, m.mime_type
        FROM stories s
        JOIN media m ON m.id = s.media_id
        WHERE s.user_id = ? AND s.expires_at > ?
-       ORDER BY s.created_at DESC LIMIT 1`,
+       ORDER BY s.created_at ASC`,
       [userId, now]
-    )) as any;
-    if (!story) { res.json({ story: null }); return; }
-    const [viewCount, commentCount] = await Promise.all([
-      queryOne(db, 'SELECT COUNT(*) as c FROM story_views WHERE story_id = ?', [story.id]) as Promise<any>,
-      queryOne(db, 'SELECT COUNT(*) as c FROM story_comments WHERE story_id = ?', [story.id]) as Promise<any>,
-    ]);
-    res.json({
-      story: {
-        id: String(story.id),
-        mediaUrl: `/uploads/${story.filename}`,
-        mimeType: String(story.mime_type || ''),
-        createdAt: String(story.created_at),
-        expiresAt: String(story.expires_at),
+    )) as any[];
+    // Compatibilidade: manter campo `story` apontando para o mais recente
+    if (rows.length === 0) { res.json({ story: null, stories: [] }); return; }
+    const storiesWithStats = await Promise.all(rows.map(async (s) => {
+      const [viewCount, commentCount] = await Promise.all([
+        queryOne(db, 'SELECT COUNT(*) as c FROM story_views WHERE story_id = ?', [s.id]) as Promise<any>,
+        queryOne(db, 'SELECT COUNT(*) as c FROM story_comments WHERE story_id = ?', [s.id]) as Promise<any>,
+      ]);
+      return {
+        id: String(s.id),
+        mediaUrl: `/uploads/${s.filename}`,
+        mimeType: String(s.mime_type || ''),
+        createdAt: String(s.created_at),
+        expiresAt: String(s.expires_at),
         viewCount: Number(viewCount?.c || 0),
         commentCount: Number(commentCount?.c || 0),
-      },
-    });
+      };
+    }));
+    res.json({ story: storiesWithStats[storiesWithStats.length - 1], stories: storiesWithStats });
   });
 
   // GET /api/stories — feed de stories de perfis compatíveis (interesse mútuo)
@@ -3398,13 +3400,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const media = (await queryOne(db, 'SELECT id, user_id, filename FROM media WHERE id = ? AND user_id = ?', [mediaId, userId])) as any;
     if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
 
-    // Só 1 story ativo por vez — apaga o anterior
+    // Limite máximo de 10 stories ativos por usuário
     const now = new Date().toISOString();
-    const existing = (await queryAll(db, 'SELECT id FROM stories WHERE user_id = ? AND expires_at > ?', [userId, now])) as any[];
-    for (const old of existing) {
-      await run(db, 'DELETE FROM story_views WHERE story_id = ?', [old.id]);
-      await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [old.id]);
-      await run(db, 'DELETE FROM stories WHERE id = ?', [old.id]);
+    const activeCount = (await queryOne(db, 'SELECT COUNT(*) as c FROM stories WHERE user_id = ? AND expires_at > ?', [userId, now])) as any;
+    if (Number(activeCount?.c || 0) >= 10) {
+      res.status(400).json({ error: 'max_stories_reached', message: 'Você já tem 10 stories ativos. Apague um antes de postar.' });
+      return;
     }
 
     const id = randomUUID();
