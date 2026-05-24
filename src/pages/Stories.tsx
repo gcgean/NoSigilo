@@ -62,6 +62,7 @@ function StoryViewer({
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const navigate  = useNavigate();
   const [idx, setIdx]           = useState(startIndex);
   const [progress, setProgress] = useState(0);
   const [comment, setComment]   = useState('');
@@ -173,60 +174,89 @@ function StoryViewer({
           />
         )}
 
-        {/* Profile info overlay (bottom of media, not own story) */}
-        {story.author.id !== myUserId && (
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 pb-4 pt-10 pointer-events-none">
-            {/* Name + age + distance */}
-            <div className="flex items-baseline gap-2 flex-wrap">
-              <span className="text-base font-bold text-white">{story.author.name}</span>
-              {story.author.age != null && (
-                <span className="text-sm text-white/90">{story.author.age} anos</span>
-              )}
-              {story.author.partnerAge != null && (
-                <span className="text-sm text-white/90">& {story.author.partnerAge} anos</span>
-              )}
-              {story.author.distanceKm != null && (
-                <span className="text-xs text-white/70 ml-auto">{story.author.distanceKm < 1 ? '< 1 km' : `${story.author.distanceKm} km`}</span>
-              )}
-            </div>
-            {/* City/State */}
-            {(story.author.city || story.author.state) && (
-              <p className="text-xs text-white/70 mt-0.5">
-                {[story.author.city, story.author.state].filter(Boolean).join(', ')}
-              </p>
-            )}
-            {/* Intentions */}
-            {story.author.intentions.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {story.author.intentions.slice(0, 3).map((i) => (
-                  <span key={i} className="rounded-full bg-primary/70 px-2 py-0.5 text-[10px] text-white font-medium">{i}</span>
-                ))}
-              </div>
-            )}
-            {/* Fetiches */}
-            {story.author.fetiches.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                {story.author.fetiches.slice(0, 4).map((f) => (
-                  <span key={f} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] text-white/90">{f}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Navigation tap zones */}
+        {/* Navigation tap zones — só na metade superior para não bloquear os botões */}
         <button
           type="button"
-          className="absolute left-0 top-0 h-full w-1/3"
+          className="absolute left-0 top-0 h-3/5 w-1/3 z-10"
           onClick={() => go(-1)}
           aria-label="Anterior"
         />
         <button
           type="button"
-          className="absolute right-0 top-0 h-full w-1/3"
+          className="absolute right-0 top-0 h-3/5 w-1/3 z-10"
           onClick={() => go(1)}
           aria-label="Próximo"
         />
+
+        {/* Profile info overlay estilo Match — não own story */}
+        {story.author.id !== myUserId && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-16">
+            {/* Linha 1: Nome + idade */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-lg font-bold text-white leading-tight">
+                {story.author.name}
+                {story.author.age != null && `, ${story.author.age}`}
+                {story.author.partnerAge != null && ` & ${story.author.partnerAge}`}
+              </span>
+            </div>
+
+            {/* Linha 2: Gênero - Cidade/Estado */}
+            {(story.author.gender || story.author.city) && (
+              <p className="text-sm text-white/80 mt-0.5">
+                {[story.author.gender, [story.author.city, story.author.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+              </p>
+            )}
+
+            {/* Linha 3: Pin + cidade + distância (igual Match) */}
+            {(story.author.city || story.author.distanceKm != null) && (
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {story.author.city && (
+                  <span className="flex items-center gap-1 text-xs text-white/70">
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                    {[story.author.city, story.author.state].filter(Boolean).join(', ')}
+                  </span>
+                )}
+                {story.author.distanceKm != null && (
+                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs text-white font-medium">
+                    {story.author.distanceKm < 1 ? '< 1 km' : `${story.author.distanceKm} km`}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Fetiches + intenções */}
+            {(story.author.intentions.length > 0 || story.author.fetiches.length > 0) && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {story.author.intentions.slice(0, 2).map((i) => (
+                  <span key={i} className="rounded-full bg-primary/80 px-2 py-0.5 text-[10px] text-white font-medium">{i}</span>
+                ))}
+                {story.author.fetiches.slice(0, 3).map((f) => (
+                  <span key={f} className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] text-white/90">{f}</span>
+                ))}
+              </div>
+            )}
+
+            {/* Botões Ver Perfil + Mandar msg (igual Match) */}
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => { onClose(); navigate(`/users/${story.author.id}`); }}
+                className="flex items-center gap-1.5 rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 active:scale-95 transition-all"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Ver Perfil
+              </button>
+              <button
+                type="button"
+                onClick={() => { onClose(); navigate(`/chat?userId=${story.author.id}`); }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 active:scale-95 transition-all"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Mandar msg
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Comment bar (not own story) */}
