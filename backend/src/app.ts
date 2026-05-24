@@ -3301,15 +3301,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
 
-    const me = (await queryOne(db, 'SELECT gender, looking_for_json FROM users WHERE id = ?', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
+    const myLat = me?.lat != null ? Number(me.lat) : null;
+    const myLon = me?.lon != null ? Number(me.lon) : null;
 
     // Busca stories ativos de outros usuários
     const rows = (await queryAll(
       db,
       `SELECT s.id, s.user_id, s.media_id, s.created_at, s.expires_at,
               m.filename, m.mime_type,
-              u.name, u.gender,
+              u.name, u.gender, u.birth_date, u.partner_birth_date,
+              u.city, u.state, u.bio,
+              u.fetiches_json, u.intentions_json,
+              u.lat, u.lon,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename
        FROM stories s
        JOIN media m ON m.id = s.media_id
@@ -3338,21 +3343,49 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       viewedSet = new Set(viewed.map((v: any) => String(v.story_id)));
     }
 
+    const calcAge = (birthDateStr: string | null) => {
+      if (!birthDateStr) return null;
+      const birth = new Date(birthDateStr);
+      if (isNaN(birth.getTime())) return null;
+      const today = new Date();
+      let age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+      return age;
+    };
+
     res.json({
-      stories: filtered.map((r: any) => ({
-        id: String(r.id),
-        mediaUrl: `/uploads/${r.filename}`,
-        mimeType: String(r.mime_type || ''),
-        createdAt: String(r.created_at),
-        expiresAt: String(r.expires_at),
-        viewed: viewedSet.has(String(r.id)),
-        author: {
-          id: String(r.user_id),
-          name: String(r.name),
-          gender: r.gender ? String(r.gender) : null,
-          avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
-        },
-      })),
+      stories: filtered.map((r: any) => {
+        let distanceKm: number | null = null;
+        if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
+          distanceKm = roundDistanceKm(haversineKm(
+            { lat: myLat, lon: myLon },
+            { lat: Number(r.lat), lon: Number(r.lon) }
+          ));
+        }
+        return {
+          id: String(r.id),
+          mediaUrl: `/uploads/${r.filename}`,
+          mimeType: String(r.mime_type || ''),
+          createdAt: String(r.created_at),
+          expiresAt: String(r.expires_at),
+          viewed: viewedSet.has(String(r.id)),
+          author: {
+            id: String(r.user_id),
+            name: String(r.name),
+            gender: r.gender ? String(r.gender) : null,
+            avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+            age: calcAge(r.birth_date),
+            partnerAge: calcAge(r.partner_birth_date),
+            city: r.city ? String(r.city) : null,
+            state: r.state ? String(r.state) : null,
+            bio: r.bio ? String(r.bio) : null,
+            fetiches: (safeJsonParse(r.fetiches_json) as string[] | null) ?? [],
+            intentions: (safeJsonParse(r.intentions_json) as string[] | null) ?? [],
+            distanceKm,
+          },
+        };
+      }),
     });
   });
 

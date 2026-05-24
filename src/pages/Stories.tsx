@@ -22,7 +22,13 @@ type MyStory = {
 type FeedStory = {
   id: string; mediaUrl: string; mimeType: string;
   createdAt: string; expiresAt: string; viewed: boolean;
-  author: { id: string; name: string; gender: string | null; avatar: string | null };
+  author: {
+    id: string; name: string; gender: string | null; avatar: string | null;
+    age: number | null; partnerAge: number | null;
+    city: string | null; state: string | null; bio: string | null;
+    fetiches: string[]; intentions: string[];
+    distanceKm: number | null;
+  };
 };
 
 type Viewer   = { id: string; name: string; avatar: string | null; viewedAt: string };
@@ -165,6 +171,47 @@ function StoryViewer({
             alt=""
             className="h-full w-full object-cover"
           />
+        )}
+
+        {/* Profile info overlay (bottom of media, not own story) */}
+        {story.author.id !== myUserId && (
+          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 pb-4 pt-10 pointer-events-none">
+            {/* Name + age + distance */}
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <span className="text-base font-bold text-white">{story.author.name}</span>
+              {story.author.age != null && (
+                <span className="text-sm text-white/90">{story.author.age} anos</span>
+              )}
+              {story.author.partnerAge != null && (
+                <span className="text-sm text-white/90">& {story.author.partnerAge} anos</span>
+              )}
+              {story.author.distanceKm != null && (
+                <span className="text-xs text-white/70 ml-auto">{story.author.distanceKm < 1 ? '< 1 km' : `${story.author.distanceKm} km`}</span>
+              )}
+            </div>
+            {/* City/State */}
+            {(story.author.city || story.author.state) && (
+              <p className="text-xs text-white/70 mt-0.5">
+                {[story.author.city, story.author.state].filter(Boolean).join(', ')}
+              </p>
+            )}
+            {/* Intentions */}
+            {story.author.intentions.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {story.author.intentions.slice(0, 3).map((i) => (
+                  <span key={i} className="rounded-full bg-primary/70 px-2 py-0.5 text-[10px] text-white font-medium">{i}</span>
+                ))}
+              </div>
+            )}
+            {/* Fetiches */}
+            {story.author.fetiches.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {story.author.fetiches.slice(0, 4).map((f) => (
+                  <span key={f} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] text-white/90">{f}</span>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Navigation tap zones */}
