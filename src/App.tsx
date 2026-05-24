@@ -32,6 +32,7 @@ import InviteLanding from "./pages/InviteLanding";
 import Feed from "./pages/Feed";
 import Match from "./pages/Match";
 import Radar from "./pages/Radar";
+import Stories from "./pages/Stories";
 import Profile from "./pages/Profile";
 import ProfileVisitors from "./pages/ProfileVisitors";
 import Chat from "./pages/Chat";
@@ -88,6 +89,7 @@ const App = () => (
                       <Route path="/feed" element={<Feed />} />
                       <Route path="/match" element={<Match />} />
                       <Route path="/radar" element={<Radar />} />
+                      <Route path="/stories" element={<Stories />} />
                       <Route path="/profile" element={<Profile />} />
                       <Route path="/profile/visitors" element={<ProfileVisitors />} />
                       <Route path="/users/:userId" element={<UserProfile />} />

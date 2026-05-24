@@ -960,3 +960,39 @@ export const suggestionsService = {
     return response.data;
   },
 };
+
+
+export const storiesService = {
+  getMyStory: async () => {
+    const res = await apiClient.get('/stories/me');
+    return res.data as { story: null | { id: string; mediaUrl: string; mimeType: string; createdAt: string; expiresAt: string; viewCount: number; commentCount: number } };
+  },
+  getFeed: async () => {
+    const res = await apiClient.get('/stories');
+    return res.data as { stories: Array<{ id: string; mediaUrl: string; mimeType: string; createdAt: string; expiresAt: string; viewed: boolean; author: { id: string; name: string; gender: string | null; avatar: string | null } }> };
+  },
+  create: async (mediaId: string) => {
+    const res = await apiClient.post('/stories', { mediaId });
+    return res.data as { id: string; expiresAt: string };
+  },
+  remove: async (id: string) => {
+    const res = await apiClient.delete(`/stories/${id}`);
+    return res.data;
+  },
+  view: async (id: string) => {
+    const res = await apiClient.post(`/stories/${id}/view`, {});
+    return res.data;
+  },
+  getViewers: async (id: string) => {
+    const res = await apiClient.get(`/stories/${id}/viewers`);
+    return res.data as { viewers: Array<{ id: string; name: string; avatar: string | null; viewedAt: string }> };
+  },
+  addComment: async (id: string, text: string) => {
+    const res = await apiClient.post(`/stories/${id}/comments`, { text });
+    return res.data;
+  },
+  getComments: async (id: string) => {
+    const res = await apiClient.get(`/stories/${id}/comments`);
+    return res.data as { comments: Array<{ id: string; text: string; createdAt: string; commenter: { id: string; name: string; avatar: string | null } }> };
+  },
+};

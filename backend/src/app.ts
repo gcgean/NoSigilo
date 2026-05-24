@@ -3258,6 +3258,246 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // ── Stories ───────────────────────────────────────────────────────────────
+
+  function storyExpiresAt(createdAt: string): string {
+    return new Date(new Date(createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  // GET /api/stories/me — meu story ativo
+  app.get('/api/stories/me', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const now = new Date().toISOString();
+    const story = (await queryOne(
+      db,
+      `SELECT s.id, s.media_id, s.created_at, s.expires_at,
+              m.filename, m.mime_type
+       FROM stories s
+       JOIN media m ON m.id = s.media_id
+       WHERE s.user_id = ? AND s.expires_at > ?
+       ORDER BY s.created_at DESC LIMIT 1`,
+      [userId, now]
+    )) as any;
+    if (!story) { res.json({ story: null }); return; }
+    const [viewCount, commentCount] = await Promise.all([
+      queryOne(db, 'SELECT COUNT(*) as c FROM story_views WHERE story_id = ?', [story.id]) as Promise<any>,
+      queryOne(db, 'SELECT COUNT(*) as c FROM story_comments WHERE story_id = ?', [story.id]) as Promise<any>,
+    ]);
+    res.json({
+      story: {
+        id: String(story.id),
+        mediaUrl: `/uploads/${story.filename}`,
+        mimeType: String(story.mime_type || ''),
+        createdAt: String(story.created_at),
+        expiresAt: String(story.expires_at),
+        viewCount: Number(viewCount?.c || 0),
+        commentCount: Number(commentCount?.c || 0),
+      },
+    });
+  });
+
+  // GET /api/stories — feed de stories de perfis compatíveis (interesse mútuo)
+  app.get('/api/stories', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const now = new Date().toISOString();
+
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json FROM users WHERE id = ?', [userId])) as any;
+    const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
+
+    // Busca stories ativos de outros usuários
+    const rows = (await queryAll(
+      db,
+      `SELECT s.id, s.user_id, s.media_id, s.created_at, s.expires_at,
+              m.filename, m.mime_type,
+              u.name, u.gender,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename
+       FROM stories s
+       JOIN media m ON m.id = s.media_id
+       JOIN users u ON u.id = s.user_id
+       WHERE s.expires_at > ? AND s.user_id != ?
+       ORDER BY s.created_at DESC`,
+      [now, userId]
+    )) as any[];
+
+    // Filtra por compatibilidade de interesse
+    const filtered = rows.filter((r: any) => {
+      if (myLookingFor.length === 0) return true;
+      return matchesLookingFor(myLookingFor, r.gender);
+    });
+
+    // Marca quais já foram vistos pelo usuário
+    const storyIds = filtered.map((r: any) => String(r.id));
+    let viewedSet = new Set<string>();
+    if (storyIds.length > 0) {
+      const ph = storyIds.map(() => '?').join(',');
+      const viewed = (await queryAll(
+        db,
+        `SELECT story_id FROM story_views WHERE viewer_id = ? AND story_id IN (${ph})`,
+        [userId, ...storyIds]
+      )) as any[];
+      viewedSet = new Set(viewed.map((v: any) => String(v.story_id)));
+    }
+
+    res.json({
+      stories: filtered.map((r: any) => ({
+        id: String(r.id),
+        mediaUrl: `/uploads/${r.filename}`,
+        mimeType: String(r.mime_type || ''),
+        createdAt: String(r.created_at),
+        expiresAt: String(r.expires_at),
+        viewed: viewedSet.has(String(r.id)),
+        author: {
+          id: String(r.user_id),
+          name: String(r.name),
+          gender: r.gender ? String(r.gender) : null,
+          avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        },
+      })),
+    });
+  });
+
+  // POST /api/stories — criar story a partir de media_id já uploaded
+  app.post('/api/stories', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const { mediaId } = req.body as { mediaId?: string };
+    if (!mediaId) { res.status(400).json({ error: 'mediaId_required' }); return; }
+
+    const media = (await queryOne(db, 'SELECT id, user_id, filename FROM media WHERE id = ? AND user_id = ?', [mediaId, userId])) as any;
+    if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
+
+    // Só 1 story ativo por vez — apaga o anterior
+    const now = new Date().toISOString();
+    const existing = (await queryAll(db, 'SELECT id FROM stories WHERE user_id = ? AND expires_at > ?', [userId, now])) as any[];
+    for (const old of existing) {
+      await run(db, 'DELETE FROM story_views WHERE story_id = ?', [old.id]);
+      await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [old.id]);
+      await run(db, 'DELETE FROM stories WHERE id = ?', [old.id]);
+    }
+
+    const id = randomUUID();
+    const expiresAt = storyExpiresAt(now);
+    await run(db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [id, userId, mediaId, now, expiresAt]);
+    await persist();
+    res.json({ id, expiresAt });
+  });
+
+  // DELETE /api/stories/:id — apagar próprio story
+  app.delete('/api/stories/:id', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const storyId = req.params.id;
+    const story = (await queryOne(db, 'SELECT id FROM stories WHERE id = ? AND user_id = ?', [storyId, userId])) as any;
+    if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'DELETE FROM story_views WHERE story_id = ?', [storyId]);
+    await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [storyId]);
+    await run(db, 'DELETE FROM stories WHERE id = ?', [storyId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // POST /api/stories/:id/view — registrar visualização
+  app.post('/api/stories/:id/view', requireAuth(env, db), async (req, res) => {
+    const viewerId = req.auth!.userId;
+    const storyId = req.params.id;
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story || story.user_id === viewerId) { res.json({ ok: true }); return; }
+    const existing = (await queryOne(db, 'SELECT id FROM story_views WHERE story_id = ? AND viewer_id = ?', [storyId, viewerId])) as any;
+    if (!existing) {
+      await run(db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), storyId, viewerId, new Date().toISOString()]);
+      await persist();
+    }
+    res.json({ ok: true });
+  });
+
+  // GET /api/stories/:id/viewers — quem viu (apenas premium, apenas dono do story)
+  app.get('/api/stories/:id/viewers', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const storyId = req.params.id;
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story || story.user_id !== userId) { res.status(403).json({ error: 'forbidden' }); return; }
+    const user = (await queryOne(db, 'SELECT is_premium, hub_access_status FROM users WHERE id = ?', [userId])) as any;
+    const isPremium = Number(user?.is_premium || 0) === 1 || user?.hub_access_status === 'trial';
+    if (!isPremium) { res.status(403).json({ error: 'premium_required' }); return; }
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
+              sv.viewed_at
+       FROM story_views sv
+       JOIN users u ON u.id = sv.viewer_id
+       WHERE sv.story_id = ?
+       ORDER BY sv.viewed_at DESC`,
+      [storyId]
+    )) as any[];
+    res.json({
+      viewers: rows.map((r: any) => ({
+        id: String(r.id),
+        name: String(r.name),
+        avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        viewedAt: String(r.viewed_at),
+      })),
+    });
+  });
+
+  // POST /api/stories/:id/comments — comentar em story (privado, só o autor vê)
+  app.post('/api/stories/:id/comments', requireAuth(env, db), async (req, res) => {
+    const commenterId = req.auth!.userId;
+    const storyId = req.params.id;
+    const { text } = req.body as { text?: string };
+    if (!text?.trim()) { res.status(400).json({ error: 'text_required' }); return; }
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    await run(db, 'INSERT INTO story_comments (id, story_id, commenter_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, storyId, commenterId, text.trim(), now]);
+    await persist();
+    // Notifica o dono do story
+    if (story.user_id !== commenterId) {
+      const commenter = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [commenterId])) as any;
+      await createNotification(db, {
+        userId: String(story.user_id),
+        type: 'story.comment',
+        title: 'Comentário no seu story',
+        description: `${commenter?.name || 'Alguém'} comentou no seu story`,
+        url: '/stories',
+      });
+    }
+    res.json({ id, ok: true });
+  });
+
+  // GET /api/stories/:id/comments — ver comentários (apenas premium, apenas dono)
+  app.get('/api/stories/:id/comments', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const storyId = req.params.id;
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story || story.user_id !== userId) { res.status(403).json({ error: 'forbidden' }); return; }
+    const user = (await queryOne(db, 'SELECT is_premium, hub_access_status FROM users WHERE id = ?', [userId])) as any;
+    const isPremium = Number(user?.is_premium || 0) === 1 || user?.hub_access_status === 'trial';
+    if (!isPremium) { res.status(403).json({ error: 'premium_required' }); return; }
+    const rows = (await queryAll(
+      db,
+      `SELECT sc.id, sc.text, sc.created_at,
+              u.id as commenter_id, u.name as commenter_name,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename
+       FROM story_comments sc
+       JOIN users u ON u.id = sc.commenter_id
+       WHERE sc.story_id = ?
+       ORDER BY sc.created_at DESC`,
+      [storyId]
+    )) as any[];
+    res.json({
+      comments: rows.map((r: any) => ({
+        id: String(r.id),
+        text: String(r.text),
+        createdAt: String(r.created_at),
+        commenter: {
+          id: String(r.commenter_id),
+          name: String(r.commenter_name),
+          avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        },
+      })),
+    });
+  });
+
   // ── Video search (browse reels like profile search) ───────────────────────
   app.get('/api/videos/search', requireAuth(env, db), async (req, res) => {
     const myId = req.auth!.userId;

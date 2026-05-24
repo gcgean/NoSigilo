@@ -16,6 +16,7 @@ import {
   Star,
   Crown,
   Radio,
+  Sparkles,
   UserPlus,
   Users,
   CheckCircle2,
@@ -67,11 +68,11 @@ const navItems = [
 ];
 
 const mobileNavItems = [
-  { path: '/feed', icon: Home, label: 'Feed' },
-  { path: '/match', icon: Heart, label: 'Match' },
-  { path: '/radar', icon: Radio, label: 'Radar' },
-  { path: '/chat', icon: MessageCircle, label: 'Chat' },
-  { path: '/search', icon: Search, label: 'Buscar' },
+  { path: '/feed',    icon: Home,         label: 'Feed' },
+  { path: '/match',   icon: Heart,        label: 'Match' },
+  { path: '/stories', icon: Sparkles,     label: 'Stories' },
+  { path: '/chat',    icon: MessageCircle,label: 'Chat' },
+  { path: '/search',  icon: Search,       label: 'Buscar' },
 ];
 
 const extraNavItems = [
