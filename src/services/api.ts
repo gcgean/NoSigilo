@@ -995,4 +995,8 @@ export const storiesService = {
     const res = await apiClient.get(`/stories/${id}/comments`);
     return res.data as { comments: Array<{ id: string; text: string; createdAt: string; commenter: { id: string; name: string; avatar: string | null } }> };
   },
+  like: async (id: string) => {
+    const res = await apiClient.post(`/stories/${id}/like`, {});
+    return res.data as { liked: boolean; likeCount: number };
+  },
 };

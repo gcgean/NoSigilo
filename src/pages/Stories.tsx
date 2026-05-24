@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Camera, Eye, MessageCircle, Trash2, X, Send, ChevronLeft,
-  ChevronRight, Lock, Crown, Sparkles, Clock, ImageIcon,
+  Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
+  Lock, Crown, Sparkles, ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,12 +16,13 @@ import { useNavigate } from 'react-router-dom';
 type MyStory = {
   id: string; mediaUrl: string; mimeType: string;
   createdAt: string; expiresAt: string;
-  viewCount: number; commentCount: number;
+  viewCount: number; commentCount: number; likeCount: number;
 };
 
 type FeedStory = {
   id: string; mediaUrl: string; mimeType: string;
   createdAt: string; expiresAt: string; viewed: boolean;
+  likeCount: number; likedByMe: boolean;
   author: {
     id: string; name: string; gender: string | null; avatar: string | null;
     age: number | null; partnerAge: number | null;
@@ -67,10 +68,20 @@ function StoryViewer({
   const [progress, setProgress] = useState(0);
   const [comment, setComment]   = useState('');
   const [sending, setSending]   = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [liked, setLiked]       = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
+  const [likeAnim, setLikeAnim] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const DURATION = 5000;
 
   const story = stories[idx];
+
+  // Sincroniza like ao trocar de story
+  useEffect(() => {
+    setLiked(story.likedByMe ?? false);
+    setLikeCount(story.likeCount ?? 0);
+  }, [story.id]);
 
   const go = useCallback((delta: number) => {
     const next = idx + delta;
@@ -98,16 +109,38 @@ function StoryViewer({
   }, [story.id]);
 
   const handleSendComment = async () => {
-    if (!comment.trim()) return;
+    if (!comment.trim() || sending) return;
     setSending(true);
     try {
       await storiesService.addComment(story.id, comment.trim());
+      // Efeito de apagar: fade-out → limpa → fade-in
+      setClearing(true);
+      await new Promise((r) => setTimeout(r, 220));
       setComment('');
-      toast({ title: 'Comentário enviado', description: 'Só o autor do story verá.' });
+      setClearing(false);
+      toast({ title: 'Comentário enviado ✓', description: 'Só o autor do story verá.' });
     } catch {
       toast({ title: 'Erro ao enviar', variant: 'destructive' });
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleLike = async () => {
+    // Otimista
+    const newLiked = !liked;
+    setLiked(newLiked);
+    setLikeCount((c) => c + (newLiked ? 1 : -1));
+    setLikeAnim(true);
+    setTimeout(() => setLikeAnim(false), 400);
+    try {
+      const res = await storiesService.like(story.id);
+      setLiked(res.liked);
+      setLikeCount(res.likeCount);
+    } catch {
+      // Reverte em caso de erro
+      setLiked(!newLiked);
+      setLikeCount((c) => c + (newLiked ? -1 : 1));
     }
   };
 
@@ -259,23 +292,49 @@ function StoryViewer({
         )}
       </div>
 
-      {/* Comment bar (not own story) */}
+      {/* Comment bar + Like (not own story) */}
       {story.author.id !== myUserId && (
         <div className="flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3">
+          {/* Botão curtir */}
+          <button
+            type="button"
+            onClick={() => void handleLike()}
+            className="flex flex-col items-center gap-0.5 shrink-0"
+            aria-label={liked ? 'Descurtir' : 'Curtir'}
+          >
+            <Heart
+              className={cn(
+                'h-6 w-6 transition-all duration-200',
+                liked ? 'fill-red-500 text-red-500' : 'text-white/70',
+                likeAnim && 'scale-125'
+              )}
+            />
+            {likeCount > 0 && (
+              <span className="text-[9px] text-white/60 leading-none">{likeCount}</span>
+            )}
+          </button>
+
+          {/* Input comentário com efeito de apagar */}
           <input
-            className="flex-1 rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none"
+            className={cn(
+              'flex-1 rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
+              clearing ? 'opacity-0' : 'opacity-100'
+            )}
             placeholder="Comentar... (só o autor verá)"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void handleSendComment(); }}
+            disabled={sending}
           />
           <button
             type="button"
             disabled={sending || !comment.trim()}
             onClick={() => void handleSendComment()}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-primary disabled:opacity-40 shrink-0 transition-all"
           >
-            <Send className="h-4 w-4 text-white" />
+            {sending
+              ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              : <Send className="h-4 w-4 text-white" />}
           </button>
         </div>
       )}
@@ -575,6 +634,9 @@ export default function Stories() {
                       <Eye className="h-3 w-3" />{s.viewCount}
                     </span>
                     <span className="flex items-center gap-0.5 text-[10px] text-white/80">
+                      <Heart className="h-3 w-3" />{s.likeCount ?? 0}
+                    </span>
+                    <span className="flex items-center gap-0.5 text-[10px] text-white/80">
                       <MessageCircle className="h-3 w-3" />{s.commentCount}
                     </span>
                     <span className="ml-auto text-[9px] text-white/60 truncate">{timeLeft(s.expiresAt)}</span>
@@ -749,12 +811,15 @@ export default function Stories() {
               <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={() => goOwn(1)} />
             </div>
             {/* Footer */}
-            <div className="flex items-center justify-center gap-6 border-t border-white/10 bg-black/80 px-4 py-3">
-              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80 hover:text-white">
-                <Eye className="h-4 w-4" /> {s.viewCount} visualizações
+            <div className="flex items-center justify-center gap-5 border-t border-white/10 bg-black/80 px-4 py-3">
+              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-1.5 text-sm text-white/80 hover:text-white">
+                <Eye className="h-4 w-4" /> {s.viewCount}
               </button>
-              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80 hover:text-white">
-                <MessageCircle className="h-4 w-4" /> {s.commentCount} comentários
+              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-1.5 text-sm text-white/80 hover:text-white">
+                <Heart className="h-4 w-4" /> {s.likeCount ?? 0}
+              </button>
+              <button type="button" onClick={() => { setPreviewIdx(null); setStatsStoryId(s.id); setStatsOpen(true); }} className="flex items-center gap-1.5 text-sm text-white/80 hover:text-white">
+                <MessageCircle className="h-4 w-4" /> {s.commentCount}
               </button>
             </div>
           </div>

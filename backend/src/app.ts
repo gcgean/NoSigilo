@@ -3281,9 +3281,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Compatibilidade: manter campo `story` apontando para o mais recente
     if (rows.length === 0) { res.json({ story: null, stories: [] }); return; }
     const storiesWithStats = await Promise.all(rows.map(async (s) => {
-      const [viewCount, commentCount] = await Promise.all([
+      const [viewCount, commentCount, likeCount] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM story_views WHERE story_id = ?', [s.id]) as Promise<any>,
         queryOne(db, 'SELECT COUNT(*) as c FROM story_comments WHERE story_id = ?', [s.id]) as Promise<any>,
+        queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [s.id]) as Promise<any>,
       ]);
       return {
         id: String(s.id),
@@ -3293,6 +3294,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         expiresAt: String(s.expires_at),
         viewCount: Number(viewCount?.c || 0),
         commentCount: Number(commentCount?.c || 0),
+        likeCount: Number(likeCount?.c || 0),
       };
     }));
     res.json({ story: storiesWithStats[storiesWithStats.length - 1], stories: storiesWithStats });
@@ -3356,39 +3358,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return age;
     };
 
-    res.json({
-      stories: filtered.map((r: any) => {
-        let distanceKm: number | null = null;
-        if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
-          distanceKm = roundDistanceKm(haversineKm(
-            { lat: myLat, lon: myLon },
-            { lat: Number(r.lat), lon: Number(r.lon) }
-          ));
-        }
-        return {
-          id: String(r.id),
-          mediaUrl: `/uploads/${r.filename}`,
-          mimeType: String(r.mime_type || ''),
-          createdAt: String(r.created_at),
-          expiresAt: String(r.expires_at),
-          viewed: viewedSet.has(String(r.id)),
-          author: {
-            id: String(r.user_id),
-            name: String(r.name),
-            gender: r.gender ? String(r.gender) : null,
-            avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
-            age: calcAge(r.birth_date),
-            partnerAge: calcAge(r.partner_birth_date),
-            city: r.city ? String(r.city) : null,
-            state: r.state ? String(r.state) : null,
-            bio: r.bio ? String(r.bio) : null,
-            fetiches: (safeJsonParse(r.fetiches_json) as string[] | null) ?? [],
-            intentions: (safeJsonParse(r.intentions_json) as string[] | null) ?? [],
-            distanceKm,
-          },
-        };
-      }),
-    });
+    const storiesOut = await Promise.all(filtered.map(async (r: any) => {
+      let distanceKm: number | null = null;
+      if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
+        distanceKm = roundDistanceKm(haversineKm(
+          { lat: myLat, lon: myLon },
+          { lat: Number(r.lat), lon: Number(r.lon) }
+        ));
+      }
+      const [likeRow, likedRow] = await Promise.all([
+        queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [r.id]) as Promise<any>,
+        queryOne(db, 'SELECT id FROM story_likes WHERE story_id = ? AND liker_id = ?', [r.id, userId]) as Promise<any>,
+      ]);
+      return {
+        id: String(r.id),
+        mediaUrl: `/uploads/${r.filename}`,
+        mimeType: String(r.mime_type || ''),
+        createdAt: String(r.created_at),
+        expiresAt: String(r.expires_at),
+        viewed: viewedSet.has(String(r.id)),
+        likeCount: Number(likeRow?.c || 0),
+        likedByMe: !!likedRow,
+        author: {
+          id: String(r.user_id),
+          name: String(r.name),
+          gender: r.gender ? String(r.gender) : null,
+          avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+          age: calcAge(r.birth_date),
+          partnerAge: calcAge(r.partner_birth_date),
+          city: r.city ? String(r.city) : null,
+          state: r.state ? String(r.state) : null,
+          bio: r.bio ? String(r.bio) : null,
+          fetiches: (safeJsonParse(r.fetiches_json) as string[] | null) ?? [],
+          intentions: (safeJsonParse(r.intentions_json) as string[] | null) ?? [],
+          distanceKm,
+        },
+      };
+    }));
+    res.json({ stories: storiesOut });
   });
 
   // POST /api/stories — criar story a partir de media_id já uploaded
@@ -3423,6 +3430,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!story) { res.status(404).json({ error: 'not_found' }); return; }
     await run(db, 'DELETE FROM story_views WHERE story_id = ?', [storyId]);
     await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [storyId]);
+    await run(db, 'DELETE FROM story_likes WHERE story_id = ?', [storyId]);
     await run(db, 'DELETE FROM stories WHERE id = ?', [storyId]);
     await persist();
     res.json({ ok: true });
@@ -3530,6 +3538,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         },
       })),
     });
+  });
+
+  // POST /api/stories/:id/like — curtir/descurtir story (toggle)
+  app.post('/api/stories/:id/like', requireAuth(env, db), async (req, res) => {
+    const likerId = req.auth!.userId;
+    const storyId = req.params.id;
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    const existing = (await queryOne(db, 'SELECT id FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId])) as any;
+    if (existing) {
+      await run(db, 'DELETE FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId]);
+    } else {
+      await run(db, 'INSERT OR IGNORE INTO story_likes (id, story_id, liker_id, liked_at) VALUES (?, ?, ?, ?)', [randomUUID(), storyId, likerId, new Date().toISOString()]);
+    }
+    await persist();
+    const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [storyId])) as any;
+    res.json({ liked: !existing, likeCount: Number(countRow?.c || 0) });
   });
 
   // ── Video search (browse reels like profile search) ───────────────────────
