@@ -332,6 +332,21 @@ export default function SearchVideos() {
 
   const handleVideoClick = (item: VideoItem) => {
     if (!premiumAccess) { setPaywallOpen(true); return; }
+    // Salva o item no sessionStorage para o Reels injetar na posição 0
+    // sem depender do feed carregar esse vídeo específico
+    try {
+      sessionStorage.setItem('nosigilo:target-reel', JSON.stringify({
+        id: item.mediaId,
+        postId: item.postId,
+        url: resolveServerUrl(item.videoUrl),
+        author: item.author,
+        content: item.content,
+        createdAt: item.createdAt,
+        likesCount: item.likesCount,
+        commentsCount: item.commentsCount,
+        likedByMe: false,
+      }));
+    } catch { /* ignora falha de storage */ }
     navigate(`/reels?reelId=${encodeURIComponent(item.mediaId)}`);
   };
 

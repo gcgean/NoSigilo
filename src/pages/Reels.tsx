@@ -98,6 +98,8 @@ export default function Reels() {
   const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // Reel pré-carregado via sessionStorage (vindo de SearchVideos)
+  const [preloadedReel, setPreloadedReel] = useState<ReelItem | null>(null);
   const [likedByPostId, setLikedByPostId] = useState<Record<string, boolean>>({});
   const [statsByPostId, setStatsByPostId] = useState<Record<string, ReelStats>>({});
   const [commentsOpenFor, setCommentsOpenFor] = useState<ReelItem | null>(null);
@@ -177,6 +179,26 @@ export default function Reels() {
       setSeenReelIds([]);
     }
   }, [user?.id]);
+
+  // Carrega reel alvo pré-salvo pelo SearchVideos e injeta na posição 0
+  useEffect(() => {
+    if (!targetReelId) return;
+    try {
+      const raw = sessionStorage.getItem('nosigilo:target-reel');
+      if (!raw) return;
+      const item = JSON.parse(raw) as ReelItem;
+      if (String(item.id) !== targetReelId) return;
+      sessionStorage.removeItem('nosigilo:target-reel');
+      setPreloadedReel(item);
+      // Inicializa estado de mute e like para esse reel
+      setMutedById((prev) => ({ [item.id]: true, ...prev }));
+      setLikedByPostId((prev) => ({ [item.postId]: item.likedByMe, ...prev }));
+      setStatsByPostId((prev) => ({
+        [item.postId]: { likesCount: item.likesCount, commentsCount: item.commentsCount },
+        ...prev,
+      }));
+    } catch { /* ignora */ }
+  }, [targetReelId]);
 
   useEffect(() => {
     if (!isMobileMaximized) {
@@ -290,9 +312,15 @@ export default function Reels() {
   const orderedReels = useMemo(() => {
     const seenIds = new Set(initialSeenReelIds);
     const unseen = reels.filter((item) => !seenIds.has(item.id));
-    const seen = reels.filter((item) => seenIds.has(item.id));
-    return [...unseen, ...seen];
-  }, [initialSeenReelIds, reels]);
+    const seen   = reels.filter((item) => seenIds.has(item.id));
+    const base   = [...unseen, ...seen];
+    // Se há um reel pré-carregado (vindo de SearchVideos), coloca no índice 0
+    if (preloadedReel) {
+      const withoutTarget = base.filter((r) => r.id !== preloadedReel.id);
+      return [preloadedReel, ...withoutTarget];
+    }
+    return base;
+  }, [initialSeenReelIds, reels, preloadedReel]);
 
   const markReelAsSeen = useCallback((reelId: string) => {
     if (!reelId) return;

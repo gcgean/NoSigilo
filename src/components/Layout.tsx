@@ -44,6 +44,7 @@ import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import ScreenGuard from '@/components/ScreenGuard';
 import OnboardingModal from '@/components/OnboardingModal';
+import CityRequiredModal from '@/components/CityRequiredModal';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
@@ -940,6 +941,7 @@ export default function Layout() {
       <WeekendAdventureModal />
       <DailyAvailabilityModal />
       <OnboardingModal />
+      <CityRequiredModal />
       <nav className={cn(
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
         shouldHideMobileNav && "hidden"
