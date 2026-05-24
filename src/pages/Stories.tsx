@@ -388,13 +388,14 @@ export default function Stories() {
   const navigate  = useNavigate();
   const isPremium = hasPremiumAccess(user);
 
-  const [myStory,   setMyStory]   = useState<MyStory | null | undefined>(undefined);
-  const [feed,      setFeed]      = useState<FeedStory[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [viewerIdx, setViewerIdx] = useState<number | null>(null);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const [deleting,  setDeleting]  = useState(false);
+  const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined);
+  const [feed,         setFeed]         = useState<FeedStory[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [uploading,    setUploading]    = useState(false);
+  const [viewerIdx,    setViewerIdx]    = useState<number | null>(null);
+  const [previewOwn,   setPreviewOwn]   = useState(false);
+  const [statsOpen,    setStatsOpen]    = useState(false);
+  const [deleting,     setDeleting]     = useState(false);
 
   const fileRef    = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -402,18 +403,15 @@ export default function Stories() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const [mine, feedData] = await Promise.all([
-        storiesService.getMyStory(),
-        storiesService.getFeed(),
-      ]);
-      setMyStory(mine.story);
-      setFeed(feedData.stories);
-    } catch {
-      toast({ title: 'Erro ao carregar stories', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
+    const [mineRes, feedRes] = await Promise.allSettled([
+      storiesService.getMyStory(),
+      storiesService.getFeed(),
+    ]);
+    if (mineRes.status === 'fulfilled') setMyStory(mineRes.value.story);
+    else setMyStory(null);
+    if (feedRes.status === 'fulfilled') setFeed(feedRes.value.stories);
+    else toast({ title: 'Erro ao carregar stories', variant: 'destructive' });
+    setLoading(false);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -508,14 +506,22 @@ export default function Stories() {
 
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-sm">Story ativo</p>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setPreviewOwn(true)}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Visualizar
+                </button>
                 <button
                   type="button"
                   onClick={() => setStatsOpen(true)}
                   className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <Eye className="h-3.5 w-3.5" />
-                  {myStory.viewCount} visualizações
+                  {myStory.viewCount} views
                 </button>
                 <button
                   type="button"
@@ -661,6 +667,54 @@ export default function Stories() {
           </div>
         )}
       </section>
+
+      {/* Preview do próprio story */}
+      {previewOwn && myStory && (
+        <div className="fixed inset-0 z-[9995] flex flex-col bg-black">
+          {/* Barra de progresso única */}
+          <div className="flex gap-1 px-3 pt-3 pb-2">
+            <div className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
+              <div className="h-full bg-white w-full" />
+            </div>
+          </div>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-3 pb-2">
+            {user?.avatar ? (
+              <img src={resolveServerUrl(user.avatar)} alt={user.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-white/60" />
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-white font-bold text-sm ring-2 ring-white/60">
+                {user?.name?.charAt(0) ?? '?'}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
+              <p className="text-xs text-white/60">{timeLeft(myStory.expiresAt)}</p>
+            </div>
+            <button type="button" onClick={() => setPreviewOwn(false)} className="text-white/80 hover:text-white p-1">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          {/* Mídia */}
+          <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+            {myStory.mimeType.startsWith('video/') ? (
+              <video key={myStory.id} src={resolveServerUrl(myStory.mediaUrl)} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => setPreviewOwn(false)} />
+            ) : (
+              <img key={myStory.id} src={resolveServerUrl(myStory.mediaUrl)} alt="" className="h-full w-full object-cover" />
+            )}
+            {/* Fechar ao tocar */}
+            <button type="button" className="absolute inset-0 w-full h-full" onClick={() => setPreviewOwn(false)} aria-label="Fechar preview" />
+          </div>
+          {/* Footer info */}
+          <div className="flex items-center justify-center gap-6 border-t border-white/10 bg-black/80 px-4 py-3">
+            <button type="button" onClick={() => { setPreviewOwn(false); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80">
+              <Eye className="h-4 w-4" /> {myStory.viewCount} visualizações
+            </button>
+            <button type="button" onClick={() => { setPreviewOwn(false); setStatsOpen(true); }} className="flex items-center gap-2 text-sm text-white/80">
+              <MessageCircle className="h-4 w-4" /> {myStory.commentCount} comentários
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Viewer fullscreen */}
       {viewerIdx !== null && (
