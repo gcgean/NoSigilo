@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, ChevronLeft,
-  ChevronRight, Lock, Crown, Sparkles, Clock,
+  ChevronRight, Lock, Crown, Sparkles, Clock, ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -397,6 +397,7 @@ export default function Stories() {
   const [deleting,  setDeleting]  = useState(false);
 
   const fileRef    = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const videoRef   = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -554,7 +555,7 @@ export default function Stories() {
                 Foto ou vídeo de até 30s · visível por 24h · só para perfis compatíveis
               </p>
             </div>
-            <div className="flex justify-center gap-3">
+            <div className="flex justify-center gap-3 flex-wrap">
               <Button
                 size="sm"
                 variant="outline"
@@ -563,7 +564,17 @@ export default function Stories() {
                 onClick={() => fileRef.current?.click()}
               >
                 <Camera className="h-4 w-4" />
-                Foto
+                Câmera
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                disabled={uploading}
+                onClick={() => galleryRef.current?.click()}
+              >
+                <ImageIcon className="h-4 w-4" />
+                Galeria
               </Button>
               <Button
                 size="sm"
@@ -579,8 +590,11 @@ export default function Stories() {
                 {uploading ? 'Enviando...' : 'Vídeo'}
               </Button>
             </div>
-            <input ref={fileRef}  type="file" accept="image/*"       className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
-            <input ref={videoRef} type="file" accept="video/*"       className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} capture="environment" />
+            {/* capture=environment abre a câmera diretamente */}
+            <input ref={fileRef}    type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
+            {/* galeria de fotos sem capture */}
+            <input ref={galleryRef} type="file" accept="image/*"                       className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
+            <input ref={videoRef}   type="file" accept="video/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleUpload(f); e.target.value = ''; }} />
           </div>
         )}
       </section>
