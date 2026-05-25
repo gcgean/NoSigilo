@@ -174,14 +174,43 @@ export default function Settings() {
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
-      updateUser({
-        ...(profile as any),
-        allowMessages: privacy.allowMessages,
-        blockOutsidePrefs: privacy.blockOutsidePrefs,
-        // Normalize empty string → null for backend enum validation
+      const payload = {
+        name: profile.name.trim() || undefined,
+        birthDate: profile.birthDate || undefined,
+        partnerBirthDate: profile.partnerBirthDate || undefined,
+        partnerName: profile.partnerName.trim() || undefined,
+        partnerSexualOrientation: profile.partnerSexualOrientation || undefined,
+        partnerEthnicity: profile.partnerEthnicity || undefined,
+        partnerHair: profile.partnerHair || undefined,
+        partnerEyes: profile.partnerEyes || undefined,
+        partnerHeight: profile.partnerHeight || undefined,
+        partnerBodyType: profile.partnerBodyType || undefined,
+        gender: profile.gender || undefined,
+        maritalStatus: profile.maritalStatus || undefined,
+        sexualOrientation: profile.sexualOrientation || undefined,
+        ethnicity: profile.ethnicity || undefined,
+        hair: profile.hair || undefined,
+        eyes: profile.eyes || undefined,
+        height: profile.height || undefined,
+        bodyType: profile.bodyType || undefined,
+        smokes: profile.smokes || undefined,
+        drinks: profile.drinks || undefined,
+        profession: profile.profession.trim() || undefined,
+        zodiacSign: profile.zodiacSign || undefined,
+        status: profile.status.trim() || undefined,
+        bio: profile.bio.trim() || undefined,
+        city: profile.city.trim() || undefined,
+        state: profile.state.trim() || undefined,
+        lookingFor: profile.lookingFor,
+        intentions: profile.intentions,
+        fetiches: profile.fetiches,
         availabilityStatus: profile.availabilityStatus || null,
         meetingTagline: profile.meetingTagline.trim() || null,
-      });
+        allowMessages: privacy.allowMessages,
+        blockOutsidePrefs: privacy.blockOutsidePrefs,
+      };
+      await profileService.updateProfile(payload);
+      updateUser(payload as any);
       toast({ title: 'Perfil atualizado com sucesso!' });
     } catch {
       toast({ title: 'Erro ao salvar', variant: 'destructive' });
