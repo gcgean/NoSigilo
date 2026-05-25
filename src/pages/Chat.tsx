@@ -455,6 +455,23 @@ export default function Chat() {
     setSelectedChat(conversationId);
   }, [location.state, location.search]);
 
+  // Abre ou cria conversa diretamente quando ?userId= está na URL (ex: "Mandar msg" nos Stories)
+  useEffect(() => {
+    const targetUserId = new URLSearchParams(location.search).get('userId');
+    if (!targetUserId) return;
+    (async () => {
+      try {
+        const data = await chatService.createConversation(targetUserId);
+        if (data?.id) {
+          await loadConversations();
+          setSelectedChat(data.id);
+        }
+      } catch {
+        // falha silenciosa — usuário continua na lista de conversas
+      }
+    })();
+  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!selectedChat) {
       setSelectedConversationSnapshot(null);
