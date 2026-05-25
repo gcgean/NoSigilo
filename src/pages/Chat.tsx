@@ -1172,11 +1172,17 @@ export default function Chat() {
           )}
 
           {/* Messages – native scrollable div; ref used for scroll-to-bottom */}
+          {/* flex-col + the leading flex-1 spacer keeps messages pinned to the   */}
+          {/* bottom when content is shorter than the container (e.g. after the   */}
+          {/* iOS keyboard closes and the container height suddenly grows).        */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden space-y-2.5 px-2.5 py-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:space-y-4 md:p-4"
+            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden flex flex-col [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
+            {/* Spacer: pushes messages to the bottom when content < container height */}
+            <div className="flex-1 shrink-0" />
+            <div className="flex flex-col gap-2.5 px-2.5 py-3 md:gap-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation && (
                 <div className="flex flex-col items-center gap-3 py-6 px-2">
@@ -1378,6 +1384,7 @@ export default function Chat() {
               })}
               {/* Sentinel – keeps scroll-to-bottom target for future use */}
               <div aria-hidden />
+            </div>{/* end inner flex-col messages wrapper */}
           </div>
 
           {/* Message Input
