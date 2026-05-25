@@ -354,6 +354,7 @@ function StatsModal({
   onClose: () => void;
   onUpgrade: () => void;
 }) {
+  const navigate = useNavigate();
   const [tab, setTab]         = useState<'viewers' | 'comments'>('viewers');
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -425,19 +426,24 @@ function StatsModal({
                   <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma visualização ainda.</p>
                 ) : (
                   viewers.map((v) => (
-                    <div key={v.id} className="flex items-center gap-3 px-5 py-3 border-b last:border-0">
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => { onClose(); navigate(`/users/${v.id}`); }}
+                      className="flex w-full items-center gap-3 px-5 py-3 border-b last:border-0 hover:bg-secondary/40 active:bg-secondary/60 transition-colors text-left"
+                    >
                       {v.avatar ? (
-                        <img src={resolveServerUrl(v.avatar)} alt={v.name} className="h-9 w-9 rounded-full object-cover" />
+                        <img src={resolveServerUrl(v.avatar)} alt={v.name} className="h-9 w-9 rounded-full object-cover shrink-0" />
                       ) : (
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-bold">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-bold">
                           {v.name.charAt(0)}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{v.name}</p>
+                        <p className="text-sm font-medium truncate hover:underline">{v.name}</p>
                         <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
                       </div>
-                    </div>
+                    </button>
                   ))
                 )
               ) : (
