@@ -37,11 +37,31 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
-async function getPushRegistration() {
+/**
+ * Returns the active service worker registration.
+ * First tries to find an existing registration whose scope covers the page.
+ * Falls back to navigator.serviceWorker.ready (resolves once any SW is active).
+ * Adds a 5s timeout so the call never hangs indefinitely (e.g. SW stuck installing).
+ */
+async function getPushRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
-  const existing = await navigator.serviceWorker.getRegistration('/sw.js');
-  if (existing) return existing;
-  return navigator.serviceWorker.ready;
+
+  // Try to get the registration for the current page scope
+  const existing = await navigator.serviceWorker.getRegistration('/').catch(() => null);
+  if (existing?.active) return existing;
+
+  // Also try looking up by the sw.js script directly
+  const bySw = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => null);
+  if (bySw?.active) return bySw;
+
+  // Fall back to ready, but with a timeout to avoid hanging
+  const readyWithTimeout = Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+  ]);
+
+  const reg = await readyWithTimeout;
+  return reg as ServiceWorkerRegistration | null;
 }
 
 function normalizeSubscription(
@@ -79,6 +99,15 @@ export async function getPushActivationState(): Promise<PushActivationState> {
   };
 }
 
+/**
+ * Ativa push notifications neste dispositivo.
+ *
+ * Sempre desinscreve a subscription anterior antes de criar uma nova.
+ * Isso garante que a chave VAPID atual do servidor seja usada — evita
+ * falhas silenciosas quando o servidor foi reiniciado com novas chaves
+ * efêmeras e a subscription antiga (com chave diferente) seria rejeitada
+ * com 401/403 ao tentar entregar a notificação.
+ */
 export async function enablePushNotifications() {
   if (!isBrowserPushSupported()) {
     throw new Error('Seu navegador não suporta notificações push neste dispositivo.');
@@ -92,17 +121,26 @@ export async function enablePushNotifications() {
 
   const registration = await getPushRegistration();
   if (!registration) {
-    throw new Error('O aplicativo ainda não terminou de preparar as notificações.');
+    throw new Error('O aplicativo ainda não terminou de preparar as notificações. Tente recarregar a página.');
   }
 
+  // Fetch the current VAPID public key from the server BEFORE subscribing
   const { publicKey } = await pushService.getPublicKey();
-  let subscription = await registration.pushManager.getSubscription();
-  if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey),
-    });
+
+  // Unsubscribe any existing subscription so we always use the current server key.
+  // This prevents silent failures when the server's VAPID key changed (e.g. restart
+  // without persistent VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY env vars).
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    await existing.unsubscribe().catch(() => {});
+    // Also remove from backend so we don't accumulate stale subscriptions
+    await pushService.unsubscribe(existing.endpoint).catch(() => {});
   }
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(publicKey),
+  });
 
   const payload = normalizeSubscription(subscription.toJSON());
   if (!payload) {
@@ -126,6 +164,11 @@ export async function disablePushNotifications() {
   return true;
 }
 
+/**
+ * Sincroniza a subscription existente com o backend (chamado no login/app load).
+ * Não força re-subscribe — apenas garante que o backend tem a subscription atual.
+ * Se não houver subscription ativa, não faz nada.
+ */
 export async function syncPushSubscription() {
   if (!isBrowserPushSupported() || Notification.permission !== 'granted') return false;
   const registration = await getPushRegistration();
