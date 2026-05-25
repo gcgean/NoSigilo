@@ -2461,7 +2461,7 @@ export default function Feed() {
               {/* Post Content */}
               {item.post.content?.trim() ? (
                 <div className="px-3 pb-3 sm:px-4">
-                  <p className="text-[0.95rem] leading-6 sm:text-base">{item.post.content}</p>
+                  <p className="text-base leading-6 sm:text-lg sm:leading-7">{item.post.content}</p>
                 </div>
               ) : null}
 
