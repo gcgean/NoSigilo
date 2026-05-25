@@ -2731,10 +2731,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const seenIdsSet = new Set<string>(
       seenIdsRaw ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
     );
+    // When includeReelsOnly=true (Reels/Rap page): include ALL posts regardless of is_reels_only.
+    // Posts with is_reels_only=0 that contain video media should also appear in the video feed
+    // (UI shows "Aparecerá no feed e em Rap" for such posts). Client-side mapPostsToReels()
+    // already filters for video-only items, so non-video posts are silently discarded.
+    // Regular feed (includeReelsOnly=false) still excludes reels-only posts to keep the feed clean.
     const reelsOnlyFilter = includeReelsOnly
-      ? 'AND p.is_reels_only = 1'
+      ? '' // no is_reels_only restriction — video filtering is done client-side
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    const fetchLimit = includeReelsOnly ? offset + limit + 1 : Math.min(400, offset + limit + 150);
+    // For reels feed, fetch a larger batch so the client's video-only filter has more to work with
+    const fetchLimit = Math.min(400, offset + limit + 150);
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
@@ -3610,8 +3616,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.lat as author_lat, u.lon as author_lon
        FROM posts p
        JOIN users u ON u.id = p.user_id
-       WHERE p.is_reels_only = 1
-         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+       WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
