@@ -323,14 +323,16 @@ export default function SearchVideos() {
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
+    // Só começa a observar depois da primeira página carregada
+    if (isLoading || videos.length === 0) return;
     const obs = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+      if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
         void fetchNextPage();
       }
-    }, { rootMargin: '300px' });
+    });
     obs.observe(el);
     return () => obs.disconnect();
-  }, [fetchNextPage, hasMore, isLoadingMore, isLoading]);
+  }, [fetchNextPage, hasMore, isLoadingMore, isLoading, videos.length]);
 
   const handleVideoClick = async (item: VideoItem) => {
     if (!premiumAccess) { setPaywallOpen(true); return; }
