@@ -18,6 +18,7 @@ import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -55,6 +56,7 @@ function formatDistanceKm(distanceKm: unknown) {
 export default function SearchPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { requireFields } = useProfileGate();
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -171,6 +173,13 @@ export default function SearchPage() {
       setFilteredLiked(applyLikedFilters(likedProfiles));
       return;
     }
+    // Gate: pede dados de perfil na primeira busca da sessão
+    const SEARCH_GATE_KEY = 'nosigilo:search-gate-done';
+    if (!sessionStorage.getItem(SEARCH_GATE_KEY)) {
+      sessionStorage.setItem(SEARCH_GATE_KEY, '1');
+      const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+      if (!ok) return;
+    }
     setIsLoading(true);
     setResults([]);
     setPage(1);
@@ -191,7 +200,7 @@ export default function SearchPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles, toast]);
+  }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles, toast, requireFields]);
 
   // ── fetch next page ────────────────────────────────────────────────────────
   const fetchNextPage = useCallback(async () => {

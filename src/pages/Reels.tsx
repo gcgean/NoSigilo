@@ -13,6 +13,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -86,6 +87,7 @@ export default function Reels() {
   const reelCompleteCountRef = useRef(0);
   const isMobile = useIsMobile();
   const premiumAccess = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
@@ -478,6 +480,13 @@ export default function Reels() {
     togglePlay(id);
   }, [isMobile, isMobileMaximized, togglePlay]);
 
+  const handleReelClick = useCallback(async (id: string) => {
+    const ok = await requireFields(['photo', 'birthDate']);
+    if (!ok) return;
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    handleVideoAreaClick(id);
+  }, [requireFields, premiumAccess, handleVideoAreaClick]);
+
   const loadComments = useCallback(async (reel: ReelItem) => {
     setIsLoadingComments(true);
     try {
@@ -759,7 +768,7 @@ export default function Reels() {
             muted={mutedById[reel.id] ?? true}
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
-            onClick={() => !premiumAccess ? setPaywallOpen(true) : handleVideoAreaClick(reel.id)}
+            onClick={() => void handleReelClick(reel.id)}
             controlsList="nodownload noremoteplayback"
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
@@ -896,7 +905,7 @@ export default function Reels() {
           {playingId !== reel.id && (
             <button
               type="button"
-              onClick={() => handleVideoAreaClick(reel.id)}
+              onClick={() => void handleReelClick(reel.id)}
               className="absolute inset-0 flex items-center justify-center"
             >
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/40 backdrop-blur-sm">

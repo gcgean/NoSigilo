@@ -28,6 +28,7 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { CitySearch } from '@/components/CitySearch';
 import { locationService, radarService } from '@/services/api';
 import { hasPremiumAccess } from '@/utils/premium';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -150,6 +151,7 @@ export default function Radar() {
   const { registerActivity } = useActivityTracker();
   const navigate = useNavigate();
   const radarAllowed = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
 
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
@@ -241,6 +243,8 @@ export default function Radar() {
   };
 
   const handleSendBroadcast = async () => {
+    const ok = await requireFields(['photo', 'birthDate', 'city']);
+    if (!ok) return;
     if (!radarAllowed || !canCreate) {
       setPaywallOpen(true);
       return;

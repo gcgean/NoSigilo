@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
@@ -482,6 +483,7 @@ export default function Stories() {
   const { toast } = useToast();
   const navigate  = useNavigate();
   const isPremium = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
 
   const [myStories,    setMyStories]    = useState<MyStory[]>([]);
   const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined); // compat
@@ -518,6 +520,12 @@ export default function Stories() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  const handleOpenStory = useCallback(async (idx: number) => {
+    const ok = await requireFields(['photo', 'birthDate']);
+    if (!ok) return;
+    setViewerIdx(idx);
+  }, [requireFields]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
@@ -727,7 +735,7 @@ export default function Stories() {
               <button
                 key={story.id}
                 type="button"
-                onClick={() => setViewerIdx(i)}
+                onClick={() => void handleOpenStory(i)}
                 className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-black group"
               >
                 {story.mimeType.startsWith('video/') ? (

@@ -18,6 +18,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
@@ -171,6 +172,7 @@ export default function Chat() {
   const activeConversation =
     selectedConversation ?? (selectedConversationSnapshot?.id === selectedChat ? selectedConversationSnapshot : null);
   const premiumAccess = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
@@ -677,6 +679,8 @@ export default function Chat() {
   }, []);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
+    const profileOk = await requireFields(['photo', 'birthDate']);
+    if (!profileOk) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;

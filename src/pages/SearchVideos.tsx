@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { videoSearchService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import MobileState from '@/components/MobileState';
 import { cn } from '@/lib/utils';
@@ -252,6 +253,7 @@ export default function SearchVideos() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const premiumAccess = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   const [cityFilter,     setCityFilter]     = useState('');
@@ -330,7 +332,9 @@ export default function SearchVideos() {
     return () => obs.disconnect();
   }, [fetchNextPage, hasMore, isLoadingMore, isLoading]);
 
-  const handleVideoClick = (item: VideoItem) => {
+  const handleVideoClick = async (item: VideoItem) => {
+    const ok = await requireFields(['photo', 'birthDate']);
+    if (!ok) return;
     if (!premiumAccess) { setPaywallOpen(true); return; }
     // Salva o item no sessionStorage para o Reels injetar na posição 0
     // sem depender do feed carregar esse vídeo específico
@@ -493,7 +497,7 @@ export default function SearchVideos() {
               key={item.mediaId}
               item={item}
               premiumAccess={premiumAccess}
-              onClick={() => handleVideoClick(item)}
+              onClick={() => void handleVideoClick(item)}
             />
           ))}
         </div>

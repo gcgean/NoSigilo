@@ -10,6 +10,7 @@ import { SocketProvider } from "@/contexts/SocketContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { FriendsProvider } from "@/contexts/FriendsContext";
 import { ActivityTrackerProvider } from "@/contexts/ActivityTrackerContext";
+import { ProfileGateProvider } from "@/contexts/ProfileGateContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import SiteVisitTracker from "@/components/SiteVisitTracker";
@@ -59,6 +60,7 @@ const App = () => (
     <TooltipProvider>
       <AgeGateProvider>
         <AuthProvider>
+          <ProfileGateProvider>
           <SocketProvider>
             <FavoritesProvider>
               <FriendsProvider>
@@ -116,6 +118,7 @@ const App = () => (
               </FriendsProvider>
             </FavoritesProvider>
           </SocketProvider>
+          </ProfileGateProvider>
         </AuthProvider>
       </AgeGateProvider>
     </TooltipProvider>

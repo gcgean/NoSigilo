@@ -1,26 +1,41 @@
-import { useRef, useState } from 'react';
-import { Camera, ImagePlus, ArrowRight, Eye, Heart, Zap } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Camera, ImagePlus, Eye, Heart, Zap, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { profileService, feedService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useNavigate } from 'react-router-dom';
-
 const EXEMPT_PATHS = ['/profile', '/settings', '/subscriptions', '/plans'];
+const PHOTO_SKIP_KEY = 'nosigilo:photo-gate-skipped';
+
 export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
   const { user, updateUser } = useAuth();
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<'idle' | 'uploading' | 'done'>('idle');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [skipped, setSkipped] = useState(() => {
+    try { return localStorage.getItem(PHOTO_SKIP_KEY) === (user?.id ?? ''); } catch { return false; }
+  });
 
-  // Don't show overlay on exempt routes, if user already has a photo, or if admin
+  // Re-check when user id resolves (async auth restore)
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      if (localStorage.getItem(PHOTO_SKIP_KEY) === user.id) setSkipped(true);
+    } catch {}
+  }, [user?.id]);
+
+  // Don't show overlay on exempt routes, if user already has a photo, admin, or skipped
   const isExempt = EXEMPT_PATHS.some((p) => pathname.startsWith(p));
-  if (!user || user.avatar || user.isAdmin || isExempt) return null;
+  if (!user || user.avatar || user.isAdmin || isExempt || skipped) return null;
+
+  const handleSkip = () => {
+    try { localStorage.setItem(PHOTO_SKIP_KEY, user.id); } catch {}
+    setSkipped(true);
+  };
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -90,7 +105,16 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
         <div className="w-full max-w-md">
 
           {/* Card */}
-          <div className="overflow-hidden rounded-3xl border border-primary/20 bg-background/95 shadow-2xl shadow-primary/10">
+          <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-background/95 shadow-2xl shadow-primary/10">
+            {/* Close / skip button */}
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="absolute right-3 top-3 z-10 rounded-full p-1.5 text-muted-foreground hover:bg-secondary transition-colors"
+              aria-label="Continuar sem foto por agora"
+            >
+              <X className="h-4 w-4" />
+            </button>
 
             {/* Top gradient strip */}
             <div className="h-1.5 w-full bg-gradient-to-r from-primary via-violet-500 to-rose-500" />
@@ -217,6 +241,15 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
                     <Camera className="mr-2 h-5 w-5" />
                     {isUploading ? 'Enviando...' : 'Adicionar foto aqui'}
                   </Button>
+                )}
+                {uploadProgress !== 'done' && (
+                  <button
+                    type="button"
+                    onClick={handleSkip}
+                    className="text-center text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors py-1"
+                  >
+                    Continuar sem foto por agora
+                  </button>
                 )}
               </div>
             </div>

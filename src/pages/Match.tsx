@@ -20,6 +20,7 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
 import { calcProfileCompletion } from '@/utils/profileCompletion';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
+import { useProfileGate } from '@/contexts/ProfileGateContext';
 
 type MatchProfile = {
   id: string;
@@ -100,6 +101,7 @@ export default function Match() {
   const [pushLoading, setPushLoading] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
+  const { requireFields } = useProfileGate();
   const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
     avatar: user?.avatar ?? null,
     bio: user?.bio ?? null,
@@ -238,6 +240,8 @@ export default function Match() {
   };
 
   const handleLike = async () => {
+    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    if (!ok) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;
@@ -271,6 +275,8 @@ export default function Match() {
   };
 
   const handlePass = async () => {
+    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    if (!ok) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;

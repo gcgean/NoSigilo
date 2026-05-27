@@ -223,9 +223,9 @@ export default function OnboardingModal() {
     }
   };
 
-  // Step 0: requer data da pessoa 1; casal também pode avançar sem data (opcional)
-  const canAdvanceStep0 = !!birthDate;
-  const canAdvanceStep1 = lookingFor.length > 0;
+  // Avançar é sempre permitido — os campos são incentivados mas não obrigatórios
+  const canAdvanceStep0 = true;
+  const canAdvanceStep1 = true;
 
   return (
     <div
@@ -405,6 +405,19 @@ export default function OnboardingModal() {
               </Button>
             )}
           </div>
+
+          {/* Pular por agora — visível nos passos 1 e 2 (no passo 0 já existe o botão Pular à esquerda) */}
+          {step > 0 && (
+            <div className="text-center -mt-1">
+              <button
+                type="button"
+                onClick={dismiss}
+                className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline transition-colors"
+              >
+                Pular por agora
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
