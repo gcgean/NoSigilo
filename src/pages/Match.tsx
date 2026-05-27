@@ -148,7 +148,8 @@ export default function Match() {
     return () => {
       cancelled = true;
     };
-  }, [premiumAccess]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const handler = (payload: any) => {
@@ -448,7 +449,7 @@ export default function Match() {
             </p>
           </div>
         )}
-        {!isLoading && premiumAccess && !currentProfile && !hasSwipedAny && (
+        {!isLoading && !currentProfile && !hasSwipedAny && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <User className="h-8 w-8 text-muted-foreground" />
@@ -493,7 +494,7 @@ export default function Match() {
             </Button>
           </div>
         )}
-        {!isLoading && premiumAccess && currentProfile && (
+        {!isLoading && currentProfile && (
           <div
             className={cn(
               'absolute inset-0 rounded-[22px] sm:rounded-3xl overflow-hidden shadow-elevated transition-all duration-300',
