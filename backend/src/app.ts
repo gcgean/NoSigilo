@@ -1928,7 +1928,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     const createdAt = nowIso();
-    const trialEndsAt = addDaysIso(createdAt, env.TRIAL_DAYS);
+    // Homens não recebem período de trial — precisam assinar para ter acesso.
+    // Todos os outros perfis (Mulher, Casal, Transexual, etc.) recebem o trial completo.
+    const registeredGender = String(parsed.data.gender || '').trim().toLowerCase();
+    const isMaleProfile = registeredGender === 'homem' || registeredGender.startsWith('homem ');
+    const trialEndsAt = isMaleProfile ? createdAt : addDaysIso(createdAt, env.TRIAL_DAYS);
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
@@ -2561,12 +2565,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (!userRow) {
         isNewUser = true;
         const createdAt         = nowIso();
-        const trialEndsAt       = addDaysIso(createdAt, env.TRIAL_DAYS);
         const id                = randomUUID();
         const registrationIpHash = hashRequestIp(env, getRequestIp(req));
 
         // Use hints from state (chosen by user in Register step 1) or fall back to Google data
         const gender = stateClaims.gender || null;
+        // Homens não recebem trial — precisam assinar para ter acesso
+        const oauthGender = String(gender || '').trim().toLowerCase();
+        const isMaleOauth = oauthGender === 'homem' || oauthGender.startsWith('homem ');
+        const trialEndsAt = isMaleOauth ? createdAt : addDaysIso(createdAt, env.TRIAL_DAYS);
         const name   = stateClaims.name
           ? await uniqueGoogleName(stateClaims.name)
           : await uniqueGoogleName(googleName);
