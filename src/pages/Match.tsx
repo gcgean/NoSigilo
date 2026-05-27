@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, Lock, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
+import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -117,11 +117,6 @@ export default function Match() {
   };
 
   useEffect(() => {
-    if (!premiumAccess) {
-      setProfiles([]);
-      setIsLoading(false);
-      return;
-    }
     let cancelled = false;
     if (profiles.length === 0) setIsLoading(true);
 
@@ -410,22 +405,9 @@ export default function Match() {
         </div>
       </div>
 
-      {!premiumAccess && (
-        <button
-          type="button"
-          onClick={redirectToPlans}
-          className="mb-4 flex w-full items-center justify-between rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 sm:mb-6 sm:px-5 sm:py-4"
-        >
-          <div>
-            <p className="font-semibold text-destructive">Match bloqueado</p>
-            <p className="text-sm text-muted-foreground">Renove seu plano para ver perfis, navegar e curtir no Match.</p>
-          </div>
-          <Lock className="h-5 w-5 text-destructive" />
-        </button>
-      )}
 
       <div className="relative h-[min(68dvh,520px)] min-h-[390px] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
-        {isLoading && premiumAccess && (
+        {isLoading && (
           <div className="absolute inset-0">
             <MobileState
               loading
@@ -435,20 +417,7 @@ export default function Match() {
             />
           </div>
         )}
-        {!premiumAccess && (
-          <button
-            type="button"
-            onClick={redirectToPlans}
-            className="absolute inset-0 rounded-[22px] sm:rounded-3xl glass flex flex-col items-center justify-center gap-3 text-center text-muted-foreground"
-          >
-            <Lock className="h-10 w-10 text-destructive" />
-            <div>
-              <p className="font-medium text-foreground">Navegação bloqueada</p>
-              <p className="text-sm">Toque para renovar seu plano.</p>
-            </div>
-          </button>
-        )}
-        {!isLoading && premiumAccess && !currentProfile && hasSwipedAny && (
+        {!isLoading && !currentProfile && hasSwipedAny && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
               <Heart className="h-8 w-8 text-primary" />
