@@ -240,12 +240,12 @@ export default function Match() {
   };
 
   const handleLike = async () => {
-    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
-    if (!ok) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;
     }
+    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    if (!ok) return;
     if (!currentProfile) return;
     try {
       await matchService.like(currentProfile.id);
@@ -275,12 +275,12 @@ export default function Match() {
   };
 
   const handlePass = async () => {
-    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
-    if (!ok) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;
     }
+    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    if (!ok) return;
     if (currentProfile?.id) {
       try {
         await matchService.pass(currentProfile.id);

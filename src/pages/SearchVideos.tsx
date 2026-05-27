@@ -333,9 +333,9 @@ export default function SearchVideos() {
   }, [fetchNextPage, hasMore, isLoadingMore, isLoading]);
 
   const handleVideoClick = async (item: VideoItem) => {
+    if (!premiumAccess) { setPaywallOpen(true); return; }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
-    if (!premiumAccess) { setPaywallOpen(true); return; }
     // Salva o item no sessionStorage para o Reels injetar na posição 0
     // sem depender do feed carregar esse vídeo específico
     try {

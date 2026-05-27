@@ -243,12 +243,12 @@ export default function Radar() {
   };
 
   const handleSendBroadcast = async () => {
-    const ok = await requireFields(['photo', 'birthDate', 'city']);
-    if (!ok) return;
     if (!radarAllowed || !canCreate) {
       setPaywallOpen(true);
       return;
     }
+    const ok = await requireFields(['photo', 'birthDate', 'city']);
+    if (!ok) return;
     if (limitReached) {
       toast({
         title: 'Limite do radar atingido',

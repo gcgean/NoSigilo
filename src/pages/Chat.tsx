@@ -679,12 +679,12 @@ export default function Chat() {
   }, []);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
-    const profileOk = await requireFields(['photo', 'birthDate']);
-    if (!profileOk) return;
     if (!premiumAccess) {
       redirectToPlans();
       return;
     }
+    const profileOk = await requireFields(['photo', 'birthDate']);
+    if (!profileOk) return;
     if (!content?.trim() && !mediaId) return;
     if (!selectedChat) return;
     if (USE_MOCKS) {

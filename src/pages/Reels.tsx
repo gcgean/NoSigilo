@@ -481,9 +481,9 @@ export default function Reels() {
   }, [isMobile, isMobileMaximized, togglePlay]);
 
   const handleReelClick = useCallback(async (id: string) => {
+    if (!premiumAccess) { setPaywallOpen(true); return; }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
-    if (!premiumAccess) { setPaywallOpen(true); return; }
     handleVideoAreaClick(id);
   }, [requireFields, premiumAccess, handleVideoAreaClick]);
 
