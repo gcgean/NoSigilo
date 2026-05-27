@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Crown, Lock } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoWithPreview from './VideoWithPreview';
-import { Button } from './ui/button';
 
 export interface PostMediaItem {
   id: string;
@@ -67,18 +66,30 @@ export function PostMediaCarousel({
       if (!premiumAccess) {
         return (
           <div
-            className="w-full bg-secondary/30 border flex flex-col items-center justify-center gap-3"
+            className="relative w-full"
             style={aspectStyle ? aspectStyle(m.id) : { minHeight: 200 }}
           >
-            <Lock className="w-6 h-6 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Vídeos disponíveis apenas para Premium</p>
-            <Button
-              size="sm"
-              className="bg-gradient-primary hover:opacity-90 gap-2"
+            {/* Thumbnail visível */}
+            <VideoWithPreview
+              src={resolveUrl(m.url)}
+              className="h-full w-full bg-black object-contain sm:object-cover"
+              muted
+              playsInline
+              preload="metadata"
+              onLoadedMetadata={(e) =>
+                onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
+              }
+            />
+            {/* Overlay de paywall — clique abre assinatura */}
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 cursor-pointer"
               onClick={onPremiumGate}
             >
-              <Crown className="w-4 h-4" /> Ver planos
-            </Button>
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
+                <Crown className="w-7 h-7 text-yellow-400" />
+              </div>
+              <p className="text-sm font-semibold text-white drop-shadow">Assinar para assistir</p>
+            </div>
           </div>
         );
       }
