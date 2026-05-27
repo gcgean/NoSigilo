@@ -10,7 +10,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { calculateAge } from '@/utils/age';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { NavLink } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { UserAvatar } from '@/components/UserAvatar';
 import { CitySearch } from '@/components/CitySearch';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -19,6 +19,8 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
+import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -56,7 +58,10 @@ function formatDistanceKm(distanceKm: unknown) {
 export default function SearchPage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { requireFields } = useProfileGate();
+  const premiumAccess = hasPremiumAccess(user);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
@@ -433,9 +438,17 @@ export default function SearchPage() {
     const intentions: string[] = Array.isArray(profile.intentions) ? profile.intentions : [];
     const tagline: string | null = profile.meetingTagline ?? null;
 
+    const handleOpenProfile = () => {
+      if (!premiumAccess) {
+        setPaywallOpen(true);
+        return;
+      }
+      navigate(getUserProfileHref(profile.id, undefined, '/search'));
+    };
+
     return (
-      <NavLink
-        to={getUserProfileHref(profile.id, undefined, '/search')}
+      <div
+        onClick={handleOpenProfile}
         className="group relative min-w-0 cursor-pointer overflow-hidden rounded-2xl transition-all hover:shadow-glow"
       >
         <div className="aspect-[4/5] w-full min-[420px]:aspect-[3/4]">
@@ -546,7 +559,7 @@ export default function SearchPage() {
             <Heart className="w-6 h-6" />
           </Button>
         </div>
-      </NavLink>
+      </div>
     );
   };
 
@@ -1183,6 +1196,8 @@ export default function SearchPage() {
           )}
         </>
       )}
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

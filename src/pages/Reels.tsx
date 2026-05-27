@@ -384,7 +384,10 @@ export default function Reels() {
           if (!video) return;
 
           if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            void video.play().catch(() => {});
+            // Não auto-play para não-premium — só mostra o thumbnail
+            if (premiumAccess) {
+              void video.play().catch(() => {});
+            }
             setPlayingId(id);
             markReelAsSeen(id);
             const idx = orderedReels.findIndex((r) => r.id === id);
@@ -402,7 +405,7 @@ export default function Reels() {
     });
 
     return () => observer.disconnect();
-  }, [markReelAsSeen, orderedReels]);
+  }, [markReelAsSeen, orderedReels, premiumAccess]);
 
   const scrollTo = useCallback((idx: number, behavior: ScrollBehavior = 'smooth') => {
     const reel = orderedReels[idx];
@@ -762,7 +765,6 @@ export default function Reels() {
             ref={(node) => { videoRefs.current[reel.id] = node; }}
             src={reel.url}
             className="h-full w-full object-cover"
-            style={{ filter: !premiumAccess ? 'blur(14px)' : undefined }}
             playsInline
             loop={false}
             muted={mutedById[reel.id] ?? true}
@@ -776,26 +778,16 @@ export default function Reels() {
           {/* Dark gradient overlay */}
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
 
-          {/* Premium gate overlay */}
+          {/* Premium gate overlay — leve, thumbnail visível, clique abre paywall */}
           {!premiumAccess && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
-              <div className="flex flex-col items-center gap-4 px-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-primary/30 bg-primary/20 backdrop-blur-md">
-                  <Lock className="h-7 w-7 text-primary" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold text-white">Conteúdo Premium</p>
-                  <p className="mt-1 text-sm text-white/70">Assine para assistir os vídeos do Rap</p>
-                </div>
-                <Button
-                  type="button"
-                  className="gap-2 bg-gradient-to-r from-primary to-purple-500 text-white hover:opacity-90"
-                  onClick={() => setPaywallOpen(true)}
-                >
-                  <Crown className="h-4 w-4" />
-                  Assine agora
-                </Button>
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/50 cursor-pointer"
+              onClick={() => setPaywallOpen(true)}
+            >
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
+                <Crown className="h-8 w-8 text-yellow-400" />
               </div>
+              <p className="text-sm font-semibold text-white drop-shadow">Assinar para assistir</p>
             </div>
           )}
 
