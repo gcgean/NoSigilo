@@ -12,6 +12,7 @@ import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MyStory = {
@@ -495,6 +496,7 @@ export default function Stories() {
   const [statsStoryId, setStatsStoryId] = useState<string | null>(null);
   const [statsOpen,    setStatsOpen]    = useState(false);
   const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
+  const [paywallOpen,  setPaywallOpen]  = useState(false);
 
   const fileRef    = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -522,10 +524,14 @@ export default function Stories() {
   useEffect(() => { void load(); }, [load]);
 
   const handleOpenStory = useCallback(async (idx: number) => {
+    if (!isPremium) {
+      setPaywallOpen(true);
+      return;
+    }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
     setViewerIdx(idx);
-  }, [requireFields]);
+  }, [isPremium, requireFields]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
@@ -860,6 +866,8 @@ export default function Stories() {
           onUpgrade={() => { setStatsOpen(false); setStatsStoryId(null); navigate('/subscriptions'); }}
         />
       )}
+
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }
