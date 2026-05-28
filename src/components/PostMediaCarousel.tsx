@@ -69,10 +69,10 @@ export function PostMediaCarousel({
             className="relative w-full"
             style={aspectStyle ? aspectStyle(m.id) : { minHeight: 200 }}
           >
-            {/* Thumbnail visível */}
+            {/* Thumbnail visível — poster gerado do primeiro frame */}
             <VideoWithPreview
               src={resolveUrl(m.url)}
-              className="h-full w-full bg-black object-contain sm:object-cover"
+              className="h-full w-full object-contain sm:object-cover"
               muted
               playsInline
               preload="metadata"
@@ -80,15 +80,24 @@ export function PostMediaCarousel({
                 onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
               }
             />
-            {/* Overlay de paywall — clique abre assinatura */}
+            {/* Overlay leve — thumbnail aparece por baixo */}
             <div
-              className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 cursor-pointer"
+              className="absolute inset-0 cursor-pointer"
+              style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.18) 45%, rgba(0,0,0,0.08) 100%)' }}
               onClick={onPremiumGate}
             >
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
-                <Crown className="w-7 h-7 text-yellow-400" />
+              {/* Ícone de play + cadeado centralizado */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/40 backdrop-blur-[2px] ring-2 ring-white/20">
+                  <Crown className="w-7 h-7 text-yellow-400 drop-shadow" />
+                </div>
               </div>
-              <p className="text-sm font-semibold text-white drop-shadow">Assinar para assistir</p>
+              {/* Texto fixado na base */}
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
+                <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                  Assinar para assistir
+                </span>
+              </div>
             </div>
           </div>
         );

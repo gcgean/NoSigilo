@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Crown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -554,10 +554,21 @@ export default function SearchPage() {
         </div>
 
         {/* Hover overlay */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-          <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
-            <Heart className="w-6 h-6" />
-          </Button>
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          {premiumAccess ? (
+            <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
+              <Heart className="w-6 h-6" />
+            </Button>
+          ) : (
+            <>
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/40 backdrop-blur-sm">
+                <Crown className="w-7 h-7 text-yellow-400 drop-shadow" />
+              </div>
+              <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                Assinar para ver
+              </span>
+            </>
+          )}
         </div>
       </div>
     );

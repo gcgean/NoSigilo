@@ -663,6 +663,7 @@ export default function Match() {
       </div>
 
       <div className="mt-3 grid grid-cols-4 gap-2 sm:mt-6 sm:flex sm:items-center sm:justify-center sm:gap-6">
+        {/* Passar — requer premium */}
         <Button
           size="lg"
           variant="outline"
@@ -670,43 +671,42 @@ export default function Match() {
           onClick={() => void handlePass()}
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
-          disabled={!currentProfile && premiumAccess}
+          disabled={!currentProfile}
         >
           <X className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
+        {/* Curtir — requer premium */}
         <Button
           size="lg"
-          className="h-[64px] w-full rounded-[24px] bg-gradient-primary shadow-glow transition-all hover:opacity-90 sm:h-20 sm:w-20 sm:rounded-full"
+          className="relative h-[64px] w-full rounded-[24px] bg-gradient-primary shadow-glow transition-all hover:opacity-90 sm:h-20 sm:w-20 sm:rounded-full"
           onClick={() => void handleLike()}
-          disabled={!currentProfile && premiumAccess}
+          disabled={!currentProfile}
         >
           <Heart className="h-7 w-7 sm:h-10 sm:w-10" fill="white" />
         </Button>
 
+        {/* Ver Perfil — livre para todos */}
         <Button
           size="lg"
           variant="outline"
           className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => {
             if (!currentProfile) return;
-            if (!premiumAccess) {
-              redirectToPlans();
-              return;
-            }
             navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'));
           }}
-          disabled={!currentProfile && premiumAccess}
+          disabled={!currentProfile}
         >
           <User className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
 
+        {/* Mensagem — requer premium */}
         <Button
           size="lg"
           variant="outline"
           className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => void handleOpenChat()}
-          disabled={!currentProfile && premiumAccess}
+          disabled={!currentProfile}
         >
           <MessageCircle className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
