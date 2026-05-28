@@ -131,6 +131,9 @@ export default function Layout() {
   const [firstAccessFlow, setFirstAccessFlow] = useState<{ needsPhoto?: boolean; needsPost?: boolean } | null>(null);
   const [showFirstAccessReward, setShowFirstAccessReward] = useState(false);
   const [firstAccessFlowVersion, setFirstAccessFlowVersion] = useState(0);
+  const [bannerDismissed, setBannerDismissed] = useState(
+    () => sessionStorage.getItem('nosigilo:banner-dismissed') === '1'
+  );
   const isMobile = useIsMobile();
   const isMobileChatRoute = isMobile && location.pathname === '/chat';
   const isMobileReelsRoute = isMobile && location.pathname === '/reels';
@@ -729,11 +732,11 @@ export default function Layout() {
           )}
         >
           <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsMaximized) && 'max-w-none h-full')}>
-            {!isMobileChatRoute && accessBanner ? (
+            {!isMobileChatRoute && accessBanner && !bannerDismissed ? (
               <div className="mb-4">
                 <div
                   className={cn(
-                    'flex w-full flex-col gap-3 rounded-2xl px-4 py-3 text-white shadow-[0_14px_40px_rgba(91,33,182,0.18)] sm:flex-row sm:items-center sm:justify-between',
+                    'relative flex w-full flex-col gap-3 rounded-2xl px-4 py-3 text-white shadow-[0_14px_40px_rgba(91,33,182,0.18)] sm:flex-row sm:items-center sm:justify-between',
                     accessBanner.tone === 'trial'
                       ? 'bg-[linear-gradient(90deg,hsl(273_51%_43%),hsl(267_48%_41%))]'
                       : 'bg-[linear-gradient(90deg,hsl(355_78%_56%),hsl(8_84%_58%))]'
@@ -757,6 +760,17 @@ export default function Layout() {
                       Convidar 3 amigos
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    aria-label="Fechar aviso"
+                    onClick={() => {
+                      setBannerDismissed(true);
+                      sessionStorage.setItem('nosigilo:banner-dismissed', '1');
+                    }}
+                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white/70 transition hover:bg-white/25 hover:text-white"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -810,7 +824,7 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            {!isMobileChatRoute && accessCountdown && (
+            {!isMobileChatRoute && accessCountdown && !bannerDismissed && (
               <div className="mb-4 sm:hidden">
                 {accessCountdown.tone === 'premium' ? (
                   <NavLink to="/subscriptions" className="inline-flex max-w-full">
