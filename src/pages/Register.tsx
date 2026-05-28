@@ -285,10 +285,10 @@ export default function Register() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        inviteToken,
+        ...(inviteToken ? { inviteToken } : {}),
         gender: formData.gender,
-        city: formData.city,
-        state: formData.state,
+        city: formData.city || undefined,
+        state: formData.state || undefined,
         lookingFor,
       });
 
@@ -324,11 +324,16 @@ export default function Register() {
         title: 'Erro ao criar conta',
         description: 'Tente novamente mais tarde.',
       });
-      // Exibe o erro técnico real se o backend enviar campo debug
-      const debugMsg = (error as any)?.response?.data?.debug;
+      // Exibe mensagem real do servidor quando disponível
+      const data = (error as any)?.response?.data;
+      const serverMsg =
+        data?.debug ||
+        data?.message ||
+        (Array.isArray(data?.errors) ? data.errors.map((e: any) => e.message).join(', ') : null);
+      console.error('[Register handleSubmit]', data ?? error);
       toast({
         title: info.title,
-        description: debugMsg ? `[DEBUG] ${debugMsg}` : info.description,
+        description: serverMsg ? serverMsg : info.description,
         variant: 'destructive',
       });
     } finally {
