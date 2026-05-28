@@ -174,7 +174,7 @@ export default function Settings() {
   const handleSaveProfile = async () => {
     setIsLoading(true);
     try {
-      const payload = {
+      const profilePayload = {
         name: profile.name.trim() || undefined,
         birthDate: profile.birthDate || undefined,
         partnerBirthDate: profile.partnerBirthDate || undefined,
@@ -206,14 +206,33 @@ export default function Settings() {
         fetiches: profile.fetiches,
         availabilityStatus: profile.availabilityStatus || null,
         meetingTagline: profile.meetingTagline.trim() || null,
+      };
+
+      const privacyPayload = {
         allowMessages: privacy.allowMessages,
         blockOutsidePrefs: privacy.blockOutsidePrefs,
       };
-      await profileService.updateProfile(payload);
-      updateUser(payload as any);
+
+      await profileService.updateProfile(profilePayload);
+      try {
+        await profileService.updateProfile(privacyPayload);
+      } catch {
+        // privacidade: ignora falha silenciosamente para não bloquear o save principal
+      }
+
+      updateUser({ ...profilePayload, ...privacyPayload } as any);
       toast({ title: 'Perfil atualizado com sucesso!' });
-    } catch {
-      toast({ title: 'Erro ao salvar', variant: 'destructive' });
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.response?.data?.error ||
+        (Array.isArray(err?.response?.data?.errors)
+          ? err.response.data.errors.map((e: any) => e.message).join(', ')
+          : null) ||
+        err?.message ||
+        'Verifique os campos e tente novamente.';
+      console.error('[handleSaveProfile]', err?.response?.data ?? err);
+      toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

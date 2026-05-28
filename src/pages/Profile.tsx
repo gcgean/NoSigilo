@@ -66,6 +66,37 @@ const REACTION_EMOJI_MAP: Record<string, string> = {
   heart: '💜', fire: '🔥', love: '😍', wow: '🤭', devil: '😈', splash: '💦',
 };
 
+/** Faz fetch de imagens privadas com o Bearer token e retorna um blob URL */
+function usePrivateImageUrl(url: string, isPrivate: boolean): string {
+  const [blobUrl, setBlobUrl] = React.useState('');
+  const blobRef = React.useRef('');
+
+  React.useEffect(() => {
+    if (!isPrivate || !url) { setBlobUrl(''); return; }
+    let cancelled = false;
+    const controller = new AbortController();
+    const token = localStorage.getItem('token');
+    fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
+    })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+      .then((blob) => {
+        if (cancelled) return;
+        if (blobRef.current) URL.revokeObjectURL(blobRef.current);
+        const objUrl = URL.createObjectURL(blob);
+        blobRef.current = objUrl;
+        setBlobUrl(objUrl);
+      })
+      .catch(() => { if (!cancelled) setBlobUrl(''); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [url, isPrivate]);
+
+  React.useEffect(() => () => { if (blobRef.current) URL.revokeObjectURL(blobRef.current); }, []);
+
+  return blobUrl;
+}
+
 function PhotoItem({
   photo,
   onSetMain,
@@ -86,6 +117,10 @@ function PhotoItem({
   const [isLoadingLikes, setIsLoadingLikes] = React.useState(false);
   const [showLikes, setShowLikes] = React.useState(false);
   const privateRefreshAttemptedRef = React.useRef(false);
+
+  const resolvedUrl = resolveMediaUrl(photo.url);
+  const privateImgUrl = usePrivateImageUrl(resolvedUrl, photo.isPrivate);
+  const imgSrc = photo.isPrivate ? privateImgUrl : resolvedUrl;
 
   const loadLikes = async () => {
     if (photo.isPrivate) return;
@@ -124,9 +159,9 @@ function PhotoItem({
         <DialogTrigger asChild>
           <button type="button" className="h-full w-full">
             <img
-              src={resolveMediaUrl(photo.url)}
+              src={imgSrc}
               alt=""
-              className="h-full w-full cursor-zoom-in bg-black object-contain sm:object-cover"
+              className="h-full w-full cursor-zoom-in bg-secondary object-contain sm:object-cover"
               onError={handlePrivateImageError}
             />
           </button>
@@ -147,7 +182,7 @@ function PhotoItem({
           {/* Photo */}
           <div className="flex flex-1 items-center justify-center p-3 pb-1">
             <img
-              src={resolveMediaUrl(photo.url)}
+              src={imgSrc}
               alt=""
               className="block max-h-[55dvh] w-auto max-w-full rounded-xl object-contain"
               onError={handlePrivateImageError}
@@ -1359,6 +1394,45 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="private">
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {isLoadingPhotos && (
+              <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>
+            )}
+            {!isLoadingPhotos && photos.filter((p) => p.isPrivate).map((photo) => (
+              <PhotoItem
+                key={photo.id}
+                photo={photo}
+                onSetMain={handleSetMain}
+                onDelete={handleDelete}
+                onToggleVisibility={handleToggleMediaVisibility}
+                isTogglingVisibility={busyMediaVisibilityId === photo.id}
+                onRefreshPrivatePhotos={loadPhotos}
+              />
+            ))}
+            {!isLoadingPhotos && (
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => privateFileInputRef.current?.click()}
+                className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Plus className="w-8 h-8" />
+                <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar privada'}</span>
+              </button>
+            )}
+          </div>
+          <input
+            ref={privateFileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void handleUploadPrivate(file);
+              if (e.target) e.target.value = '';
+            }}
+          />
+
           <div className="mb-4 space-y-4">
             <div className="glass rounded-2xl p-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
@@ -1455,45 +1529,6 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            {isLoadingPhotos && (
-              <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>
-            )}
-            {!isLoadingPhotos && photos.filter((p) => p.isPrivate).map((photo) => (
-              <PhotoItem
-                key={photo.id}
-                photo={photo}
-                onSetMain={handleSetMain}
-                onDelete={handleDelete}
-                onToggleVisibility={handleToggleMediaVisibility}
-                isTogglingVisibility={busyMediaVisibilityId === photo.id}
-                onRefreshPrivatePhotos={loadPhotos}
-              />
-            ))}
-
-            {!isLoadingPhotos && (
-              <button
-                type="button"
-                disabled={isUploading}
-                onClick={() => privateFileInputRef.current?.click()}
-                className="aspect-square rounded-xl border-2 border-dashed border-border hover:border-primary flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <Plus className="w-8 h-8" />
-                <span className="text-sm">{isUploading ? 'Enviando...' : 'Adicionar privada'}</span>
-              </button>
-            )}
-          </div>
-          <input
-            ref={privateFileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleUploadPrivate(file);
-              if (e.target) e.target.value = '';
-            }}
-          />
         </TabsContent>
       </Tabs>
 
