@@ -1844,85 +1844,93 @@ export default function Feed() {
       <div className="grid min-w-0 gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
         <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
-          <Card className="overflow-hidden p-3 glass">
-            <div className={cn(
-              'flex min-w-0 items-center gap-2',
-              feedFilter === 'experiences'
-                ? 'flex-wrap'
-                : 'flex-nowrap overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-            )}>
-              <Button
-                type="button"
-                size="sm"
-                variant={feedFilter === 'all' ? 'secondary' : 'ghost'}
-                className="shrink-0"
-                onClick={() => setFeedFilter('all')}
-              >
-                Todos
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={feedFilter === 'experiences' ? 'secondary' : 'ghost'}
-                className="shrink-0 gap-1.5"
-                onClick={() => setFeedFilter('experiences')}
-              >
-                ✍️ Experiências
-              </Button>
-              {feedFilter === 'experiences' ? (
-                <Button
+          <Card className="overflow-hidden px-3 py-2.5 glass">
+            {/* Tab bar container */}
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {/* Segmented pill group */}
+              <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-white/5 p-0.5 ring-1 ring-white/8">
+                <button
                   type="button"
-                  size="sm"
                   onClick={() => setFeedFilter('all')}
-                  className="h-11 basis-full shrink-0 gap-2 rounded-xl bg-gradient-primary px-3 text-center text-sm font-semibold text-white whitespace-normal leading-tight hover:opacity-95 md:hidden"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Voltar para o feed
-                </Button>
-              ) : null}
-              {feedFilter !== 'experiences' ? (
-                <>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-11 shrink-0 rounded-xl gap-2 border-primary/30 bg-background px-4 text-sm font-medium sm:h-9 sm:rounded-md sm:px-3"
-                onClick={() => navigate('/reels')}
-              >
-                <Clapperboard className="h-4 w-4" />
-                Rap
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={feedFilter === 'favorites' ? 'default' : 'outline'}
-                onClick={() => setFeedFilter('favorites')}
-                disabled={favorites.length === 0}
-                className={cn(
-                  'shrink-0 gap-2',
-                  feedFilter === 'favorites'
-                    ? 'animate-liked-filter border-0 bg-gradient-primary text-white hover:opacity-95 motion-reduce:animate-none'
-                    : 'border-primary/50 bg-primary/5 text-primary hover:bg-primary/10'
-                )}
-              >
-                <Heart className={cn('h-4 w-4', feedFilter === 'favorites' && 'fill-current')} />
-                Somente curtidos
-                <span
                   className={cn(
-                    'rounded-full px-2 py-0.5 text-xs font-semibold',
-                    feedFilter === 'favorites'
-                      ? 'bg-pink-300/30 text-white'
-                      : 'bg-pink-500/15 text-pink-600'
+                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
+                    feedFilter === 'all'
+                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                   )}
                 >
-                  {favorites.length}
-                </span>
-              </Button>
-              {feedFilter === 'favorites' && favorites.length === 0 ? (
-                <span className="ml-1 text-sm text-muted-foreground">Adicione curtidos para filtrar.</span>
-              ) : null}
-                </>
-              ) : null}
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter('experiences')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
+                    feedFilter === 'experiences'
+                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  )}
+                >
+                  ✍️ Experiências
+                </button>
+              </div>
+
+              {/* Separator */}
+              {feedFilter !== 'experiences' && (
+                <div className="mx-1 h-5 w-px shrink-0 bg-white/10" />
+              )}
+
+              {/* Rap — navigation shortcut */}
+              {feedFilter !== 'experiences' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/reels')}
+                  className="flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium text-muted-foreground ring-1 ring-white/10 transition-all duration-200 hover:bg-white/5 hover:text-foreground hover:ring-white/20"
+                >
+                  <Clapperboard className="h-3.5 w-3.5" />
+                  Rap
+                </button>
+              )}
+
+              {/* Somente curtidos */}
+              {feedFilter !== 'experiences' && (
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter('favorites')}
+                  disabled={favorites.length === 0}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
+                    feedFilter === 'favorites'
+                      ? 'animate-liked-filter bg-gradient-to-r from-pink-600 to-rose-500 text-white shadow-[0_2px_12px_rgba(236,72,153,0.4)] motion-reduce:animate-none'
+                      : 'text-pink-400 ring-1 ring-pink-500/25 hover:bg-pink-500/10 hover:ring-pink-500/40 disabled:pointer-events-none disabled:opacity-40'
+                  )}
+                >
+                  <Heart className={cn('h-3.5 w-3.5', feedFilter === 'favorites' && 'fill-current')} />
+                  Curtidos
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                      feedFilter === 'favorites'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-pink-500/15 text-pink-500'
+                    )}
+                  >
+                    {favorites.length}
+                  </span>
+                </button>
+              )}
+
+              {/* Voltar ao feed (modo Experiências, mobile) */}
+              {feedFilter === 'experiences' && (
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter('all')}
+                  className="flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium text-muted-foreground ring-1 ring-white/10 transition hover:bg-white/5 hover:text-foreground md:hidden"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Voltar
+                </button>
+              )}
             </div>
 
             {/* Proximity filter row — segunda linha, só quando tem localização e não está em Experiências */}
