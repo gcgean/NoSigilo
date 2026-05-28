@@ -72,6 +72,7 @@ export default function Register() {
   const [showOthers, setShowOthers] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState('Criando sua conta...');
   const [gpsLoading, setGpsLoading] = useState(false);
   const [proofIndex, setProofIndex] = useState(0);
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -278,19 +279,38 @@ export default function Register() {
       });
       return;
     }
+
+    const payload = {
+      name: formData.name,
+      email: formData.email,
+      password: formData.password,
+      ...(inviteToken ? { inviteToken } : {}),
+      gender: formData.gender,
+      city: formData.city || undefined,
+      state: formData.state || undefined,
+      lookingFor: defaultLookingFor(formData.gender),
+    };
+
+    const attemptRegister = async (attempt: number): Promise<Awaited<ReturnType<typeof register>>> => {
+      try {
+        return await register(payload);
+      } catch (err: any) {
+        const status = err?.response?.status as number | undefined;
+        // Retry once on transient server errors (5xx / network) — server may be warming up
+        if (attempt === 1 && (!status || status >= 500)) {
+          setLoadingLabel('Reconectando...');
+          await new Promise((r) => setTimeout(r, 1500));
+          setLoadingLabel('Criando sua conta...');
+          return attemptRegister(2);
+        }
+        throw err;
+      }
+    };
+
     setIsLoading(true);
+    setLoadingLabel('Criando sua conta...');
     try {
-      const lookingFor = defaultLookingFor(formData.gender);
-      const createdUser = await register({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        ...(inviteToken ? { inviteToken } : {}),
-        gender: formData.gender,
-        city: formData.city || undefined,
-        state: formData.state || undefined,
-        lookingFor,
-      });
+      const createdUser = await attemptRegister(1);
 
       if (selectedSuggestionIds.length > 0) {
         selectedSuggestionIds.forEach((id) => {
@@ -324,7 +344,6 @@ export default function Register() {
         title: 'Erro ao criar conta',
         description: 'Tente novamente mais tarde.',
       });
-      // Exibe mensagem real do servidor quando disponível
       const data = (error as any)?.response?.data;
       const serverMsg =
         data?.debug ||
@@ -338,6 +357,7 @@ export default function Register() {
       });
     } finally {
       setIsLoading(false);
+      setLoadingLabel('Criando sua conta...');
     }
   };
 
@@ -734,7 +754,7 @@ export default function Register() {
                   disabled={isLoading || !formData.acceptTerms}
                 >
                   {isLoading ? (
-                    'Criando sua conta...'
+                    loadingLabel
                   ) : (
                     <>
                       Entrar no NoSigilo
