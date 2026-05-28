@@ -144,6 +144,29 @@ export default function Settings() {
   const hasTelegram = !!(user as any)?.telegramChatId;
   const [telegramLoading, setTelegramLoading] = useState(false);
 
+  // ── Alterar Senha ──────────────────────────────────────────────────────────
+  const [passwords, setPasswords] = useState({ current: '', newPass: '', confirm: '' });
+  const [showPasswords, setShowPasswords] = useState({ current: false, newPass: false, confirm: false });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    const { current, newPass, confirm } = passwords;
+    if (!current) { toast({ title: 'Informe a senha atual', variant: 'destructive' }); return; }
+    if (!newPass || newPass.length < 6) { toast({ title: 'Nova senha muito curta', description: 'Use pelo menos 6 caracteres.', variant: 'destructive' }); return; }
+    if (newPass !== confirm) { toast({ title: 'Senhas não coincidem', description: '"Nova senha" e "Confirmar nova senha" devem ser iguais.', variant: 'destructive' }); return; }
+    setIsChangingPassword(true);
+    try {
+      await authService.changePassword({ currentPassword: current, newPassword: newPass });
+      toast({ title: '✅ Senha alterada com sucesso!' });
+      setPasswords({ current: '', newPass: '', confirm: '' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.response?.data?.error || err?.message || 'Verifique a senha atual e tente novamente.';
+      toast({ title: 'Erro ao alterar senha', description: msg, variant: 'destructive' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   useEffect(() => {
     setNotifications((prev) => ({
       ...prev,
@@ -221,7 +244,7 @@ export default function Settings() {
       }
 
       updateUser({ ...profilePayload, ...privacyPayload } as any);
-      toast({ title: 'Perfil atualizado com sucesso!' });
+      toast({ title: '✅ Perfil salvo!', description: 'Suas informações foram atualizadas com sucesso.' });
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -520,13 +543,19 @@ export default function Settings() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="state">Estado (UF)</Label>
-                    <Input
-                      id="state"
-                      value={profile.state}
-                      onChange={(e) => setProfile({ ...profile, state: e.target.value.toUpperCase().slice(0, 2) })}
-                      placeholder="Ex.: SP"
-                      className="uppercase"
-                    />
+                    <Select
+                      value={profile.state || ''}
+                      onValueChange={(val) => setProfile((prev) => ({ ...prev, state: val }))}
+                    >
+                      <SelectTrigger id="state">
+                        <SelectValue placeholder="Selecione" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map((uf) => (
+                          <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -1360,21 +1389,78 @@ export default function Settings() {
 
           <div className="glass rounded-xl p-6 space-y-4">
             <h3 className="font-semibold">Alterar Senha</h3>
-            
+
             <div className="space-y-4">
+              {/* Senha atual */}
               <div className="space-y-2">
                 <Label>Senha Atual</Label>
-                <Input type="password" />
+                <div className="relative">
+                  <Input
+                    type={showPasswords.current ? 'text' : 'password'}
+                    placeholder="Sua senha atual"
+                    value={passwords.current}
+                    onChange={(e) => setPasswords((p) => ({ ...p, current: e.target.value }))}
+                    className="pr-10"
+                  />
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPasswords((s) => ({ ...s, current: !s.current }))}>
+                    {showPasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
+
+              {/* Nova senha */}
               <div className="space-y-2">
                 <Label>Nova Senha</Label>
-                <Input type="password" />
+                <div className="relative">
+                  <Input
+                    type={showPasswords.newPass ? 'text' : 'password'}
+                    placeholder="Mínimo 6 caracteres"
+                    value={passwords.newPass}
+                    onChange={(e) => setPasswords((p) => ({ ...p, newPass: e.target.value }))}
+                    className={`pr-10 ${passwords.newPass && passwords.newPass.length < 6 ? 'border-destructive' : ''}`}
+                  />
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPasswords((s) => ({ ...s, newPass: !s.newPass }))}>
+                    {showPasswords.newPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {passwords.newPass && passwords.newPass.length < 6 && (
+                  <p className="text-xs text-destructive">Mínimo 6 caracteres</p>
+                )}
               </div>
+
+              {/* Confirmar nova senha */}
               <div className="space-y-2">
                 <Label>Confirmar Nova Senha</Label>
-                <Input type="password" />
+                <div className="relative">
+                  <Input
+                    type={showPasswords.confirm ? 'text' : 'password'}
+                    placeholder="Repita a nova senha"
+                    value={passwords.confirm}
+                    onChange={(e) => setPasswords((p) => ({ ...p, confirm: e.target.value }))}
+                    className={`pr-10 ${passwords.confirm && passwords.confirm !== passwords.newPass ? 'border-destructive' : passwords.confirm && passwords.confirm === passwords.newPass ? 'border-success' : ''}`}
+                  />
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPasswords((s) => ({ ...s, confirm: !s.confirm }))}>
+                    {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {passwords.confirm && passwords.confirm !== passwords.newPass && (
+                  <p className="text-xs text-destructive">As senhas não coincidem</p>
+                )}
+                {passwords.confirm && passwords.confirm === passwords.newPass && passwords.newPass.length >= 6 && (
+                  <p className="text-xs text-success">Senhas coincidem ✓</p>
+                )}
               </div>
-              <Button variant="outline">Alterar Senha</Button>
+
+              <Button
+                variant="outline"
+                onClick={() => void handleChangePassword()}
+                disabled={isChangingPassword || !passwords.current || !passwords.newPass || !passwords.confirm}
+              >
+                {isChangingPassword ? 'Alterando...' : 'Alterar Senha'}
+              </Button>
             </div>
           </div>
 

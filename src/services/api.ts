@@ -90,6 +90,11 @@ export const authService = {
     const response = await apiClient.post('/auth/forgot-password/confirm', data);
     return response.data;
   },
+
+  changePassword: async (data: { currentPassword: string; newPassword: string }) => {
+    const response = await apiClient.put('/auth/change-password', data);
+    return response.data;
+  },
 };
 
 // Feed Service
