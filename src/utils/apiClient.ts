@@ -109,17 +109,16 @@ apiClient.interceptors.response.use(
     }
     const apiErrorCode = String(error.response?.data?.error || '');
     if (error.response?.status === 403 && apiErrorCode === 'premium_required') {
+      // Não redireciona automaticamente — cada página trata o paywall por conta própria
+      // (Match, Search, Stories, etc. já verificam premiumAccess client-side)
       const now = Date.now();
       if (now - lastPremiumToastAt > NETWORK_TOAST_COOLDOWN_MS) {
         lastPremiumToastAt = now;
         toast({
-          title: 'Plano necessário',
-          description: 'Renove seu plano para continuar usando este recurso.',
+          title: 'Recurso Premium',
+          description: 'Assine para desbloquear este recurso.',
           variant: 'destructive',
         });
-      }
-      if (!window.location.pathname.startsWith('/subscriptions')) {
-        window.location.href = '/subscriptions';
       }
     }
     return Promise.reject(error);
