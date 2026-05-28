@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoWithPreview from './VideoWithPreview';
@@ -12,13 +12,146 @@ export interface PostMediaItem {
 interface PostMediaCarouselProps {
   media: PostMediaItem[];
   resolveUrl: (url: string) => string;
-  /** Pass to compute aspect-ratio box for images/videos */
   onAspectLoaded?: (id: string, w: number, h: number) => void;
   aspectStyle?: (id: string) => React.CSSProperties;
   premiumAccess?: boolean;
   onPremiumGate?: () => void;
 }
 
+// ─── Preview Gate (3s play → paywall) ────────────────────────────────────────
+function VideoPreviewGate({
+  src,
+  style,
+  onAspectLoaded,
+  onPremiumGate,
+}: {
+  src: string;
+  style?: React.CSSProperties;
+  onAspectLoaded?: (w: number, h: number) => void;
+  onPremiumGate?: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [previewDone, setPreviewDone] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [barWidth, setBarWidth] = useState(0);
+
+  // Arrange progress bar animation right after play starts
+  useEffect(() => {
+    if (isPlaying && !previewDone) {
+      // Next frame: animate from 0 → 100% over 3 s
+      const raf = requestAnimationFrame(() => setBarWidth(100));
+      return () => cancelAnimationFrame(raf);
+    }
+    setBarWidth(0);
+  }, [isPlaying, previewDone]);
+
+  // IntersectionObserver: play when ≥40% visible, stop if scrolled away
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || previewDone) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+
+        if (entry.isIntersecting) {
+          void video.play()
+            .then(() => setIsPlaying(true))
+            .catch(() => {});
+
+          timerRef.current = setTimeout(() => {
+            video.pause();
+            setPreviewDone(true);
+            setIsPlaying(false);
+          }, 3000);
+        } else {
+          video.pause();
+          setIsPlaying(false);
+          if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+          }
+        }
+      },
+      { threshold: 0.4 }
+    );
+
+    observer.observe(video);
+    return () => {
+      observer.disconnect();
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [previewDone]);
+
+  return (
+    <div className="relative w-full" style={style}>
+      <video
+        ref={videoRef}
+        src={src}
+        className="h-full w-full object-contain sm:object-cover bg-black/70"
+        muted
+        playsInline
+        preload="auto"
+        controlsList="nodownload noremoteplayback"
+        disablePictureInPicture
+        onContextMenu={(e) => e.preventDefault()}
+        onLoadedMetadata={(e) =>
+          onAspectLoaded?.(e.currentTarget.videoWidth, e.currentTarget.videoHeight)
+        }
+      />
+
+      {/* Barra de progresso do preview (0 → 100% em 3 s) */}
+      {isPlaying && !previewDone && (
+        <div className="absolute bottom-0 left-0 right-0 z-10 h-1 bg-black/30">
+          <div
+            className="h-full bg-yellow-400"
+            style={{
+              width: `${barWidth}%`,
+              transition: barWidth === 100 ? 'width 3s linear' : 'none',
+            }}
+          />
+        </div>
+      )}
+
+      {/* Overlay de paywall — aparece após os 3 s */}
+      {previewDone && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 cursor-pointer animate-fade-in"
+          style={{ background: 'rgba(0,0,0,0.68)', backdropFilter: 'blur(3px)' }}
+          onClick={onPremiumGate}
+        >
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/50">
+            <Crown className="w-8 h-8 text-yellow-400 drop-shadow" />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-white drop-shadow">Assinar para assistir</p>
+            <p className="text-xs text-white/65 mt-0.5">Preview de 3s encerrado</p>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay leve antes do preview começar (video ainda carregando / não visível) */}
+      {!isPlaying && !previewDone && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 cursor-pointer"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.12) 50%, rgba(0,0,0,0.04) 100%)' }}
+          onClick={onPremiumGate}
+        >
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/40 ring-2 ring-white/20">
+            <Crown className="w-7 h-7 text-yellow-400 drop-shadow" />
+          </div>
+          <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+            Preview de 3s • Toque para assistir
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Carousel ────────────────────────────────────────────────────────────
 export function PostMediaCarousel({
   media,
   resolveUrl,
@@ -31,17 +164,6 @@ export function PostMediaCarousel({
   const touchStartX = useRef<number | null>(null);
 
   if (!media || media.length === 0) return null;
-
-  // Single item — no carousel overhead
-  if (media.length === 1) {
-    const m = media[0];
-    return (
-      <div className="relative rounded-lg overflow-hidden">
-        {renderSlide(m)}
-      </div>
-    );
-  }
-
 
   const prev = () => setIndex((i) => (i - 1 + media.length) % media.length);
   const next = () => setIndex((i) => (i + 1) % media.length);
@@ -65,41 +187,13 @@ export function PostMediaCarousel({
     if (isVideo) {
       if (!premiumAccess) {
         return (
-          <div
-            className="relative w-full"
+          <VideoPreviewGate
+            key={m.id}
+            src={resolveUrl(m.url)}
             style={aspectStyle ? aspectStyle(m.id) : { minHeight: 200 }}
-          >
-            {/* Thumbnail visível — poster gerado do primeiro frame */}
-            <VideoWithPreview
-              src={resolveUrl(m.url)}
-              className="h-full w-full object-contain sm:object-cover"
-              muted
-              playsInline
-              preload="metadata"
-              onLoadedMetadata={(e) =>
-                onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
-              }
-            />
-            {/* Overlay leve — thumbnail aparece por baixo */}
-            <div
-              className="absolute inset-0 cursor-pointer"
-              style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.18) 45%, rgba(0,0,0,0.08) 100%)' }}
-              onClick={onPremiumGate}
-            >
-              {/* Ícone de play + cadeado centralizado */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/40 backdrop-blur-[2px] ring-2 ring-white/20">
-                  <Crown className="w-7 h-7 text-yellow-400 drop-shadow" />
-                </div>
-              </div>
-              {/* Texto fixado na base */}
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center pointer-events-none">
-                <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-                  Assinar para assistir
-                </span>
-              </div>
-            </div>
-          </div>
+            onAspectLoaded={(w, h) => onAspectLoaded?.(m.id, w, h)}
+            onPremiumGate={onPremiumGate}
+          />
         );
       }
       return (
@@ -136,6 +230,15 @@ export function PostMediaCarousel({
     );
   }
 
+  // Single item — no carousel overhead
+  if (media.length === 1) {
+    return (
+      <div className="relative rounded-lg overflow-hidden">
+        {renderSlide(media[0])}
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative overflow-hidden rounded-lg select-none"
@@ -150,7 +253,7 @@ export function PostMediaCarousel({
         {index + 1}/{media.length}
       </span>
 
-      {/* Arrow buttons (visible on desktop / wide screens) */}
+      {/* Arrow buttons (desktop) */}
       <button
         type="button"
         onClick={prev}
