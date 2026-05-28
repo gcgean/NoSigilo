@@ -1105,10 +1105,20 @@ export default function Chat() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button variant="ghost" size="icon" className="h-8.5 w-8.5 rounded-full">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8.5 w-8.5 rounded-full"
+                onClick={() => toast({ title: '🎙️ Em breve', description: 'Chamadas de voz estão chegando em breve.' })}
+              >
                 <Phone className="h-4.5 w-4.5" />
               </Button>
-              <Button variant="ghost" size="icon" className="hidden h-8.5 w-8.5 rounded-full sm:inline-flex">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden h-8.5 w-8.5 rounded-full sm:inline-flex"
+                onClick={() => toast({ title: '📹 Em breve', description: 'Chamadas de vídeo estão chegando em breve.' })}
+              >
                 <Video className="h-4.5 w-4.5" />
               </Button>
               <DropdownMenu>
