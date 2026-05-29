@@ -3619,24 +3619,27 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       orderByClause = 'p.created_at DESC';
     }
 
-    // Join with media table to guarantee only posts with video media are returned.
-    // INSTR(p.media_ids_json, m.id) > 0 matches the UUID in the JSON array without
-    // needing json_each (not available in all SQLite versions).
-    // DISTINCT prevents duplicate rows when a post has multiple video files.
+    // Fetch a larger batch of posts with any media, then filter for video in Node.js.
+    // We over-fetch (scanLimit) to ensure enough video posts survive the filter.
+    const scanLimit = (limit + 1) * 8; // fetch up to 8x more to survive image-only filtering
+    const scanParams = [...params];
+    // replace the last two params (limit+1, offset) with (scanLimit, offset)
+    scanParams[scanParams.length - 2] = scanLimit;
+
     const rows = await queryAll(
       db,
-      `SELECT DISTINCT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
               u.id as author_id, u.name as author_name, u.avatar as author_avatar,
               u.gender as author_gender, u.city as author_city, u.state as author_state,
               u.lat as author_lat, u.lon as author_lon
        FROM posts p
        JOIN users u ON u.id = p.user_id
-       JOIN media vm ON vm.is_private = 0
-                    AND vm.mime_type LIKE 'video/%'
-                    AND INSTR(p.media_ids_json, vm.id) > 0
        ${aggregateJoins}
        WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND p.media_ids_json IS NOT NULL
+         AND p.media_ids_json != '[]'
+         AND p.media_ids_json != 'null'
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
            WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
@@ -3645,11 +3648,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${whereExtra}
        ORDER BY ${orderByClause}
        LIMIT ? OFFSET ?`,
-      params
+      scanParams
     ) as any[];
 
-    const slice = rows.slice(0, limit);
-    const hasMore = rows.length > limit;
+    // Process all fetched rows; hasMore is determined after video filtering below
+    const slice = rows;
 
     // Load video media for each post
     const mediaIdSet = new Set<string>();
@@ -3740,7 +3743,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
     }
 
-    res.json({ videos, hasMore });
+    // Trim to requested page size and determine hasMore from video results
+    const hasMore = videos.length > limit;
+    res.json({ videos: videos.slice(0, limit), hasMore });
   });
 
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
