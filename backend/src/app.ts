@@ -2799,7 +2799,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
       `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
-        u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+        u.id as author_id,
+        CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+        CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state,
         u.lat as author_lat, u.lon as author_lon,
         u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date
@@ -2808,7 +2810,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        WHERE 1=1
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-         ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
            WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
@@ -3629,7 +3630,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
       `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
-              u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+              u.id as author_id,
+              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
               u.gender as author_gender, u.city as author_city, u.state as author_state,
               u.lat as author_lat, u.lon as author_lon
        FROM posts p
@@ -3805,7 +3808,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT e.id, e.title, e.description, e.created_at,
-        u.id as author_id, u.name as author_name, u.avatar as author_avatar,
+        u.id as author_id,
+        CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+        CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state
       FROM experiences e
       JOIN users u ON u.id = e.user_id
