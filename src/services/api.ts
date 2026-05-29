@@ -105,6 +105,7 @@ export const videoSearchService = {
     gender?: string;
     city?: string;
     maxDistanceKm?: number;
+    sort?: string;
   }): Promise<{
     videos: Array<{
       mediaId: string;
@@ -113,6 +114,7 @@ export const videoSearchService = {
       content: string;
       createdAt: string;
       likesCount: number;
+      commentsCount: number;
       distanceKm: number | null;
       author: {
         id: string;

@@ -267,6 +267,7 @@ export default function SearchVideos() {
   const [hasMore,        setHasMore]        = useState(false);
   const [isLoading,      setIsLoading]      = useState(false);
   const [isLoadingMore,  setIsLoadingMore]  = useState(false);
+  const [fetchError,     setFetchError]     = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -285,11 +286,25 @@ export default function SearchVideos() {
     setVideos([]);
     setPage(1);
     setHasMore(false);
+    setFetchError(null);
     try {
       const data = await videoSearchService.search(buildParams(1));
-      setVideos(data.videos);
-      setHasMore(data.hasMore);
-    } catch {
+      // Normalise response — backend may return `items` or `data` instead of `videos`
+      const list = Array.isArray(data?.videos)
+        ? data.videos
+        : Array.isArray((data as any)?.items)
+          ? (data as any).items
+          : Array.isArray((data as any)?.data)
+            ? (data as any).data
+            : [];
+      console.info('[SearchVideos] fetched', list.length, 'videos', buildParams(1));
+      setVideos(list);
+      setHasMore(data?.hasMore ?? false);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || err?.message || 'Erro desconhecido';
+      console.error('[SearchVideos] fetch error', status, msg, err);
+      setFetchError(`Erro ${status ?? ''}: ${msg}`);
       setVideos([]);
       setHasMore(false);
     } finally {
@@ -482,8 +497,17 @@ export default function SearchVideos() {
         </div>
       )}
 
+      {/* Error state */}
+      {!isLoading && fetchError && (
+        <MobileState
+          icon={Clapperboard}
+          title="Erro ao carregar vídeos"
+          description={fetchError}
+        />
+      )}
+
       {/* Empty state */}
-      {!isLoading && videos.length === 0 && (
+      {!isLoading && !fetchError && videos.length === 0 && (
         <MobileState
           icon={Clapperboard}
           title="Nenhum vídeo encontrado"
