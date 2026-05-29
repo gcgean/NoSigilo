@@ -3606,11 +3606,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     params.push(limit + 1, offset);
 
+    // Use pre-aggregated JOINs instead of correlated subqueries in ORDER BY (huge perf gain)
     let orderByClause: string;
+    let aggregateJoins = '';
     if (sortParam === 'liked') {
-      orderByClause = '(SELECT COUNT(*) FROM likes WHERE target_type = \'post\' AND target_id = p.id) DESC, p.created_at DESC';
+      aggregateJoins = `LEFT JOIN (SELECT target_id, COUNT(*) as agg_cnt FROM likes WHERE target_type = 'post' GROUP BY target_id) agg ON agg.target_id = p.id`;
+      orderByClause = 'COALESCE(agg.agg_cnt, 0) DESC, p.created_at DESC';
     } else if (sortParam === 'commented') {
-      orderByClause = '(SELECT COUNT(*) FROM comments WHERE target_type = \'post\' AND target_id = p.id) DESC, p.created_at DESC';
+      aggregateJoins = `LEFT JOIN (SELECT target_id, COUNT(*) as agg_cnt FROM comments WHERE target_type = 'post' GROUP BY target_id) agg ON agg.target_id = p.id`;
+      orderByClause = 'COALESCE(agg.agg_cnt, 0) DESC, p.created_at DESC';
     } else {
       orderByClause = 'p.created_at DESC';
     }
@@ -3623,8 +3627,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.lat as author_lat, u.lon as author_lon
        FROM posts p
        JOIN users u ON u.id = p.user_id
+       ${aggregateJoins}
        WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND p.media_ids_json IS NOT NULL
+         AND p.media_ids_json != '[]'
+         AND p.media_ids_json != 'null'
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
            WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)

@@ -127,7 +127,7 @@ export const videoSearchService = {
     }>;
     hasMore: boolean;
   }> => {
-    const response = await apiClient.get('/videos/search', { params });
+    const response = await apiClient.get('/videos/search', { params, timeout: 30000 });
     return response.data;
   },
 };
