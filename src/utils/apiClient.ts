@@ -10,6 +10,7 @@ const RESUME_RETRY_DELAY_MS = 1200;
 let lastNetworkToastAt = 0;
 let lastPremiumToastAt = 0;
 let isHandlingUnauthorized = false;
+const SERVER_RETRY_DELAY_MS = 2000;
 let lastVisibilityResumeAt = typeof Date !== 'undefined' ? Date.now() : 0;
 
 if (typeof document !== 'undefined') {
@@ -90,6 +91,17 @@ apiClient.interceptors.response.use(
         });
       }
     }
+    // Auto-retry once on 503/502 for safe methods (cold-start / transient overload)
+    const status = error.response?.status as number | undefined;
+    if (status === 503 || status === 502) {
+      const config = (error.config || {}) as typeof error.config & { __serverRetry?: boolean };
+      if (!config.__serverRetry && isSafeRetryMethod(config.method)) {
+        config.__serverRetry = true;
+        await wait(SERVER_RETRY_DELAY_MS);
+        return apiClient.request(config);
+      }
+    }
+
     if (error.response?.status === 401) {
       localStorage.removeItem('nosigilo_user');
       localStorage.removeItem('token');

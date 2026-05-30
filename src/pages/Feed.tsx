@@ -1448,7 +1448,7 @@ export default function Feed() {
   };
 
   return (
-    <div className="w-full min-w-0 overflow-x-hidden pb-24 md:pb-0">
+    <div className="w-full min-w-0 overflow-x-hidden pb-24 md:pb-0 bg-background">
       {hasNewPosts ? (
         <div className="mb-4">
           <Card className="p-3 glass flex items-center justify-between">
@@ -2371,7 +2371,7 @@ export default function Feed() {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
             ) : (
-            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card className="overflow-hidden glass">
+            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card className="overflow-hidden glass" style={{ contain: 'paint' }}>
               {/* Post Header */}
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link

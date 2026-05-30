@@ -105,6 +105,8 @@ const App = () => (
                       <Route path="/events" element={<Events />} />
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />
+                      <Route path="/rap" element={<Navigate to="/reels" replace />} />
+                      <Route path="/likes" element={<Navigate to="/favorites" replace />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />

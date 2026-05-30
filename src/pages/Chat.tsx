@@ -1003,16 +1003,9 @@ export default function Chat() {
                     {conversation.isHighlighted ? (
                       <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />
                     ) : null}
-                    <button
-                      type="button"
-                      className="truncate pr-2 text-[0.98rem] font-medium hover:underline sm:text-base"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        goToUserProfile(conversation.user.id);
-                      }}
-                    >
+                    <span className="truncate pr-2 text-[0.98rem] font-medium sm:text-base">
                       {conversation.user.name}
-                    </button>
+                    </span>
                   </div>
                   {conversation.unreadCount && conversation.unreadCount > 0 && (
                     <Badge variant="destructive" className="flex h-5 min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold">
