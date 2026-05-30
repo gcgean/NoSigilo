@@ -2764,9 +2764,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
     // seenIds: comma-separated post IDs already shown to the client — exclude from current page
+    // Cap at 60 IDs to avoid URL/query bloat; client already limits to 40
     const seenIdsRaw = typeof req.query.seenIds === 'string' ? req.query.seenIds.trim() : '';
     const seenIdsSet = new Set<string>(
-      seenIdsRaw ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean) : []
+      seenIdsRaw
+        ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 60)
+        : []
     );
     // When includeReelsOnly=true (Reels/Rap page): include ALL posts regardless of is_reels_only.
     // Posts with is_reels_only=0 that contain video media should also appear in the video feed
@@ -2776,8 +2779,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const reelsOnlyFilter = includeReelsOnly
       ? '' // no is_reels_only restriction — video filtering is done client-side
       : 'AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)';
-    // For reels feed, fetch a larger batch so the client's video-only filter has more to work with
-    const fetchLimit = Math.min(400, offset + limit + 150);
+    // For reels feed, fetch a larger batch so the client's video-only filter has more to work with.
+    // Cap at 200 (was 400) — with proper indexes this is plenty and keeps the response fast.
+    const fetchLimit = includeReelsOnly
+      ? Math.min(200, offset + limit + 120)
+      : Math.min(120, offset + limit + 80);
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
@@ -3028,8 +3034,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           for (const row of todayCommentRows as any[]) todayCommentsByAuthorId.set(String(row.author_id), Number(row.c || 0));
 
           // "New since last visit" threshold — posts created after last_seen_at get priority boost
-          const lastSeenAtMs = (viewerRow as any)?.last_seen_at
+          const _rawLastSeen = (viewerRow as any)?.last_seen_at
             ? new Date(String((viewerRow as any).last_seen_at)).getTime()
+            : NaN;
+          const lastSeenAtMs = Number.isFinite(_rawLastSeen)
+            ? _rawLastSeen
             : nowMs - 24 * 3_600_000; // fallback: treat last 24h as "new"
 
           const nearbyActiveAuthors = new Set<string>();
@@ -6201,6 +6210,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
   // ─── Daily Missions ───────────────────────────────────────────────────────
   app.get('/api/missions/today', requireAuth(env, db), async (req, res) => {
+    try {
     const myId = req.auth!.userId;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -6294,6 +6304,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
     const completedCount = missions.filter((m) => m.completed).length;
     res.json({ missions, completedCount, totalCount: missions.length, date: todayIso });
+    } catch (err) {
+      console.error('[missions/today]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   app.get('/api/radar', requireAuth(env, db), async (req, res) => {
