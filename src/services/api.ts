@@ -167,6 +167,7 @@ export const feedService = {
       mutualLikes: number;
       unreadNotifs: number;
       recentVisitors: Array<{ id: string; name: string; avatar: string | null }> | null;
+      recentLikers: Array<{ id: string; name: string; avatar: string | null }> | null;
       isPremium: boolean;
     };
   },

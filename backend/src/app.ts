@@ -4082,12 +4082,32 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }));
     }
 
+    // Last 3 users who liked my profile (premium sees real data, non-premium sees null)
+    let recentLikers: Array<{ id: string; name: string; avatar: string | null }> | null = null;
+    if (isPremium) {
+      const likerRows = await queryAll(
+        db,
+        `SELECT u.id, u.name, u.avatar FROM likes l
+         JOIN users u ON u.id = l.user_id
+         WHERE l.target_type = 'user' AND l.target_id = ?
+           AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         ORDER BY l.created_at DESC LIMIT 3`,
+        [userId]
+      );
+      recentLikers = (likerRows as any[]).map((r) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ?? null,
+      }));
+    }
+
     res.json({
       likesToday: Number(likesToday?.c || 0),
       visitorsToday: Number(visitorsToday?.c || 0),
       mutualLikes: Number(mutualLikes?.c || 0),
       unreadNotifs: Number(unreadNotifs?.c || 0),
       recentVisitors, // null for non-premium (curiosity gap)
+      recentLikers,   // null for non-premium (curiosity gap)
       isPremium,
     });
   });
