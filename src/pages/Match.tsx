@@ -8,6 +8,7 @@ import { calculateAge } from '@/utils/age';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useSocket } from '@/contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
+import UserBadges from '@/components/UserBadges';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
@@ -42,13 +43,6 @@ type MatchProfile = {
   distanceKm?: number | null;
 };
 
-const BADGE_META: Record<string, { emoji: string; label: string }> = {
-  veteran:      { emoji: '🏅', label: 'Veterano' },
-  photographer: { emoji: '📸', label: 'Fotógrafo' },
-  popular:      { emoji: '💜', label: 'Popular' },
-  active:       { emoji: '⚡', label: 'Ativo' },
-  connected:    { emoji: '🔗', label: 'Conectado' },
-};
 
 type LikedProfile = {
   id: string;
@@ -585,19 +579,8 @@ export default function Match() {
                     <p className="mb-3 line-clamp-2 text-[0.95rem] font-normal text-white/80 sm:text-sm">{currentProfile.bio || ''}</p>
 
                     {currentProfile.badges && currentProfile.badges.length > 0 && (
-                      <div className="mb-3 flex flex-wrap gap-1.5">
-                        {currentProfile.badges.slice(0, 3).map((b) => {
-                          const meta = BADGE_META[b];
-                          if (!meta) return null;
-                          return (
-                            <span
-                              key={b}
-                              className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm"
-                            >
-                              {meta.emoji} {meta.label}
-                            </span>
-                          );
-                        })}
+                      <div className="mb-3">
+                        <UserBadges badges={currentProfile.badges} size="sm" max={5} />
                       </div>
                     )}
 

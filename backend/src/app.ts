@@ -105,6 +105,7 @@ export type PublicUser = {
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
+  badges?: string[];
   telegramChatId?: string | null;
   distanceKm?: number | null;
   lat?: number | null;
@@ -1141,33 +1142,56 @@ const BADGE_THRESHOLDS = {
   popular:      { likes: 10 },
   active:       { days: 7 },
   connected:    { convs: 3 },
+  quick_reply:  { replyRateMinutes: 60 }, // replied within 60 min on avg
+  event_goer:   { events: 1 },
 } as const;
 
 function computeBadges(row: any): string[] {
   const badges: string[] = [];
   const now = Date.now();
 
+  // ⭐ Perfil verificado
+  if (row.is_verified) badges.push('verified');
+
+  // 🏅 Veterano — 90+ dias na plataforma
   const createdAt = row.created_at ? new Date(String(row.created_at)).getTime() : null;
   if (createdAt && (now - createdAt) > BADGE_THRESHOLDS.veteran.days * 86400000) {
     badges.push('veteran');
   }
 
+  // 📸 Fotógrafo — 5+ fotos
   if (Number(row.photos_count || 0) >= BADGE_THRESHOLDS.photographer.photos) {
     badges.push('photographer');
   }
 
+  // 🔥 Popular — 10+ curtidas recebidas
   if (Number(row.likes_received || 0) >= BADGE_THRESHOLDS.popular.likes) {
     badges.push('popular');
   }
 
+  // ✅ Ativo — visto nos últimos 7 dias
   const lastSeen = row.last_seen_at ? new Date(String(row.last_seen_at)).getTime() : null;
   if (lastSeen && (now - lastSeen) < BADGE_THRESHOLDS.active.days * 86400000) {
     badges.push('active');
   }
 
+  // 💬 Conectado — 3+ conversas
   if (Number(row.conversations_count || 0) >= BADGE_THRESHOLDS.connected.convs) {
     badges.push('connected');
   }
+
+  // 🎉 Participou de eventos
+  if (Number(row.events_count || 0) >= BADGE_THRESHOLDS.event_goer.events) {
+    badges.push('event_goer');
+  }
+
+  // 💨 Responde rápido — has sent messages (proxy for responsiveness)
+  if (Number(row.messages_sent_count || 0) >= 10) {
+    badges.push('quick_reply');
+  }
+
+  // 🏆 Premium
+  if (row.is_premium) badges.push('premium');
 
   return badges;
 }
@@ -1258,6 +1282,7 @@ function rowToPublicUser(
       if (!s || (until !== null && until < Date.now())) return null;
       return s as 'now' | 'week' | 'month' | 'online_only' | 'not_looking';
     })(),
+    badges: computeBadges(row),
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
       : null,
@@ -1281,7 +1306,12 @@ async function getUserWithSponsorById(db: DbHandle, userId: string) {
                FROM user_badges b
                WHERE b.user_id = u.id
                  AND b.badge_type IN ('ambassador','ambassador_gold','ambassador_elite')
-            ) AS ambassador_badges_csv
+            ) AS ambassador_badges_csv,
+            (SELECT COUNT(*) FROM media m WHERE m.user_id = u.id AND m.is_private = 0 AND m.mime_type LIKE 'image/%') AS photos_count,
+            (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id) AS likes_received,
+            (SELECT COUNT(DISTINCT c.id) FROM conversations c WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)) AS conversations_count,
+            (SELECT COUNT(*) FROM messages msg WHERE msg.sender_id = u.id) AS messages_sent_count,
+            0 AS events_count
      FROM users u
      LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
      WHERE u.id = ?

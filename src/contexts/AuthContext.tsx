@@ -66,6 +66,7 @@ export interface User {
   billingAddressState?: string | null;
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
+  badges?: string[];
   telegramChatId?: string | null;
   lat?: number | null;
   lon?: number | null;

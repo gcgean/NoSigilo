@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { UserAvatar } from '@/components/UserAvatar';
+import UserBadges from '@/components/UserBadges';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sparkles } from 'lucide-react';
@@ -1024,7 +1025,21 @@ export default function UserProfile() {
                 </Badge>
               )}
             </div>
-            
+
+            {/* Achievement badges */}
+            {(profile?.badges ?? []).filter(b =>
+              !['verified','premium','ambassador','ambassador_gold','ambassador_elite'].includes(b)
+            ).length > 0 && (
+              <div className="mb-3 flex justify-center sm:justify-start">
+                <UserBadges
+                  badges={(profile?.badges ?? []).filter(b =>
+                    !['verified','premium','ambassador','ambassador_gold','ambassador_elite'].includes(b)
+                  )}
+                  size="md"
+                />
+              </div>
+            )}
+
             <div className="flex flex-col gap-1 text-muted-foreground mb-4">
               <div className="flex items-center justify-center sm:justify-start gap-1">
                 <MapPin className="w-4 h-4" />
