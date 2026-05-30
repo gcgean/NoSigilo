@@ -666,9 +666,10 @@ export default function Chat() {
       x: e.touches[0]?.clientX ?? 0,
       y: e.touches[0]?.clientY ?? 0,
     };
+    // 480ms — fires before iOS native callout (~500ms) so our menu appears instead
     longPressTimer.current = setTimeout(() => {
       setContextMenu({ messageId, x: touchCoords.current.x, y: touchCoords.current.y });
-    }, 600);
+    }, 480);
   }, []);
 
   const cancelLongPress = useCallback(() => {
@@ -1247,7 +1248,13 @@ export default function Chat() {
                                 : 'bg-secondary rounded-bl-sm'
                             )
                       )}
-                      onContextMenu={(e) => !isDeleted && !msg.isSending && !isMutualMatchMessage && openContextMenu(e, msg.id)}
+                      style={{
+                        // Prevents iOS native callout (Save Image / Copy Text) from
+                        // appearing on long-press — our custom context menu handles this
+                        WebkitTouchCallout: 'none',
+                        userSelect: 'none',
+                      } as React.CSSProperties}
+                      onContextMenu={(e) => { e.preventDefault(); if (!isDeleted && !msg.isSending && !isMutualMatchMessage) openContextMenu(e, msg.id); }}
                       onTouchStart={(e) => { if (!isDeleted && !msg.isSending && !isMutualMatchMessage) startLongPress(e, msg.id); }}
                       onTouchEnd={cancelLongPress}
                       onTouchMove={cancelLongPress}
@@ -1340,6 +1347,9 @@ export default function Chat() {
                                     src={msg.mediaUrl?.startsWith('blob:') ? msg.mediaUrl : (msg.mediaUrl ? resolveServerUrl(msg.mediaUrl) : '')}
                                     alt="Mídia"
                                     className="max-h-72 max-w-full w-auto object-contain rounded-lg"
+                                    draggable={false}
+                                    onContextMenu={(e) => e.preventDefault()}
+                                    style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
                                     onClick={() => {
                                       if (!msg.mediaUrl) return;
                                       const finalUrl = msg.mediaUrl.startsWith('blob:') ? msg.mediaUrl : resolveServerUrl(msg.mediaUrl);
@@ -1738,18 +1748,23 @@ export default function Chat() {
       {viewingPhoto && (
         <div
           className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90"
+          style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}
           onClick={() => setViewingPhoto(null)}
         >
           <img
             src={viewingPhoto}
             alt="Visualização"
-            className="max-h-[90vh] max-w-[95vw] object-contain rounded-lg"
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ WebkitTouchCallout: 'none', maxHeight: 'min(90vh, 90svh)' } as React.CSSProperties}
+            className="max-w-[95vw] object-contain rounded-lg"
             onClick={(e) => e.stopPropagation()}
           />
           <button
             type="button"
             aria-label="Fechar"
-            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+            style={{ top: 'max(1rem, env(safe-area-inset-top, 1rem))' }}
+            className="absolute right-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
             onClick={() => setViewingPhoto(null)}
           >
             <X className="h-5 w-5" />
