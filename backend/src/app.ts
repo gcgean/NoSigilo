@@ -6165,7 +6165,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       ) as Promise<any>,
       // Profile visits today (distinct targets)
       queryOne(db,
-        `SELECT COUNT(DISTINCT target_user_id) as c FROM profile_visits WHERE visitor_user_id = ? AND DATE(visited_at) = ?`,
+        `SELECT COUNT(DISTINCT visited_user_id) as c FROM profile_visits WHERE visitor_user_id = ? AND DATE(created_at) = ?`,
         [myId, todayIso]
       ) as Promise<any>,
     ]);
