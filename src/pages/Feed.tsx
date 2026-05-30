@@ -583,8 +583,14 @@ export default function Feed() {
     try {
       const feed = await experienceService.getFeed({ page: 1, limit: 50 });
       setAllExperiences(Array.isArray(feed?.experiences) ? feed.experiences : []);
-    } catch {
-      toast({ title: 'Erro ao carregar experiências', description: 'Tente novamente.', variant: 'destructive' });
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msg = err?.response?.data?.message || err?.message || '';
+      console.error('[Feed] experiences error', status, msg, err);
+      // Only show toast for unexpected errors (not 404 meaning feature not enabled)
+      if (status !== 404) {
+        toast({ title: 'Erro ao carregar experiências', description: 'Tente novamente.', variant: 'destructive' });
+      }
       setAllExperiences([]);
     } finally {
       setIsLoadingExperiences(false);
