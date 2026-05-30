@@ -1478,12 +1478,21 @@ export default function Chat() {
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent side="top" align="start" className="p-0 border-none w-auto">
+                    <PopoverContent
+                      side="top"
+                      align="center"
+                      sideOffset={8}
+                      collisionPadding={8}
+                      className="p-0 border-none w-auto max-h-[min(380px,45svh)] overflow-hidden"
+                    >
                       <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Carregando…</div>}>
-                        <EmojiPicker
-                          onEmojiClick={(emojiData: { emoji: string }) => setMessage(prev => prev + emojiData.emoji)}
-                          theme={"light" as any}
-                        />
+                        <div className="overflow-y-auto max-h-[min(380px,45svh)]">
+                          <EmojiPicker
+                            onEmojiClick={(emojiData: { emoji: string }) => setMessage(prev => prev + emojiData.emoji)}
+                            theme={"light" as any}
+                            width={Math.min(350, typeof window !== 'undefined' ? window.innerWidth - 16 : 350)}
+                          />
+                        </div>
                       </Suspense>
                     </PopoverContent>
                   </Popover>
@@ -1570,8 +1579,10 @@ export default function Chat() {
       
       {/* Message context menu */}
       {contextMenu && (() => {
-        const vw = typeof window !== 'undefined' ? window.innerWidth : 400;
-        const vh = typeof window !== 'undefined' ? window.innerHeight : 700;
+        // Use visualViewport on iOS Safari — window.innerHeight includes hidden browser chrome
+        const vp = typeof window !== 'undefined' ? window.visualViewport : null;
+        const vw = vp ? Math.round(vp.width) : (typeof window !== 'undefined' ? window.innerWidth : 400);
+        const vh = vp ? Math.round(vp.height) : (typeof window !== 'undefined' ? window.innerHeight : 700);
         const contextMessage = messages.find((m) => m.id === contextMenu.messageId);
         const canCopyText = Boolean(String(contextMessage?.content || '').trim());
         const canDeleteForEveryone = contextMessage?.senderId === user?.id;
