@@ -2748,7 +2748,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
       db,
-      'SELECT email, is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state FROM users WHERE id = ?',
+      'SELECT email, is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state, last_seen_at FROM users WHERE id = ?',
       [req.auth!.userId]
     );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
@@ -3027,6 +3027,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           for (const row of todayLikeRows as any[]) todayLikesByAuthorId.set(String(row.author_id), Number(row.c || 0));
           for (const row of todayCommentRows as any[]) todayCommentsByAuthorId.set(String(row.author_id), Number(row.c || 0));
 
+          // "New since last visit" threshold — posts created after last_seen_at get priority boost
+          const lastSeenAtMs = (viewerRow as any)?.last_seen_at
+            ? new Date(String((viewerRow as any).last_seen_at)).getTime()
+            : nowMs - 24 * 3_600_000; // fallback: treat last 24h as "new"
+
           const nearbyActiveAuthors = new Set<string>();
           const interactionActiveAuthors = new Set<string>();
           const localPopularAuthors = new Set<string>();
@@ -3088,21 +3093,30 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             // Media is essential for engagement — strong boost, penalize text-only
             const mediaScore = hasMedia ? 22 : -8;
 
-            // Recency: 72h window with steeper decay after 24h
-            const recencyScore = recencyHours <= 24
-              ? Math.max(0, 60 - recencyHours * 1.2)
-              : Math.max(0, 32 - (recencyHours - 24) * 0.8);
+            // Recency: 6h window peak, then slower decay — quality older posts can still surface
+            const recencyScore = recencyHours <= 6
+              ? Math.max(0, 55 - recencyHours * 2)
+              : recencyHours <= 24
+                ? Math.max(0, 43 - (recencyHours - 6) * 1.1)
+                : Math.max(0, 24 - (recencyHours - 24) * 0.25); // very slow decay after 24h so engaged older posts surface
 
             // Interest: already filtered at SQL level if preferences set, this is bonus
             const interestScore = matchesInterest ? 20 : (viewerLookingFor.length > 0 ? -30 : 0);
 
-            // Variable reward jitter: keeps feed unpredictable so users see fresh content on each visit
-            const jitter = (Math.random() * 30) - 15; // ±15 points
+            // "New since last visit" bonus — ensures users always see unread content first
+            const isNewSinceLastVisit = Number.isFinite(createdAtMs) && createdAtMs > lastSeenAtMs;
+            const newContentBonus = isNewSinceLastVisit ? 55 : 0;
 
-            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + jitter;
+            // Variable reward jitter: larger range on older posts to keep feed unpredictable
+            // Recent posts (< 6h): ±12 — mostly stable
+            // Older posts (> 6h): ±30 — wide shuffle creates genuine variety per visit
+            const jitterRange = recencyHours <= 6 ? 12 : 30;
+            const jitter = (Math.random() * jitterRange * 2) - jitterRange;
+
+            const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + newContentBonus + jitter;
 
             let reason: 'nearby' | 'affinity' | 'popular_local' | 'recent' = 'recent';
-            let label = 'Novo agora';
+            let label = isNewSinceLastVisit ? '🆕 Novo para você' : 'Recente';
             if (distanceScore >= 18 || (distanceKm !== null && distanceKm <= 20)) {
               reason = 'nearby';
               label = distanceKm !== null && distanceKm <= 20 ? `${distanceKm} km de você` : 'Perto de você';
