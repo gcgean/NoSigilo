@@ -957,6 +957,28 @@ export const adminService = {
   },
 };
 
+export const missionsService = {
+  getToday: async (): Promise<{
+    missions: Array<{
+      id: string;
+      title: string;
+      description: string;
+      icon: string;
+      target: number;
+      progress: number;
+      completed: boolean;
+      reward: string;
+      rewardIcon: string;
+    }>;
+    completedCount: number;
+    totalCount: number;
+    date: string;
+  }> => {
+    const response = await apiClient.get('/missions/today');
+    return response.data;
+  },
+};
+
 export const suggestionsService = {
   submit: async (data: { category: string; content: string }) => {
     const response = await apiClient.post('/suggestions', data);

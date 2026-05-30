@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { authService, experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
+import DailyMissions from '@/components/DailyMissions';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1844,6 +1845,7 @@ export default function Feed() {
       <div className="grid min-w-0 gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
         <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
+          <DailyMissions />
           <Card className="overflow-hidden px-3 py-2.5 glass">
             {/* Tab bar container */}
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

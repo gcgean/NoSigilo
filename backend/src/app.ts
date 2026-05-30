@@ -6135,6 +6135,103 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
+  // ─── Daily Missions ───────────────────────────────────────────────────────
+  app.get('/api/missions/today', requireAuth(env, db), async (req, res) => {
+    const myId = req.auth!.userId;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayIso = todayStart.toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const [
+      likesGiven,
+      postsToday,
+      messagesSent,
+      profilesVisited,
+    ] = await Promise.all([
+      // Likes given to other users today
+      queryOne(db,
+        `SELECT COUNT(*) as c FROM likes WHERE user_id = ? AND target_type = 'user' AND DATE(created_at) = ?`,
+        [myId, todayIso]
+      ) as Promise<any>,
+      // Posts (with media) created today
+      queryOne(db,
+        `SELECT COUNT(*) as c FROM posts WHERE user_id = ? AND DATE(created_at) = ? AND media_ids_json IS NOT NULL AND media_ids_json != '[]'`,
+        [myId, todayIso]
+      ) as Promise<any>,
+      // Messages sent today (distinct conversations)
+      queryOne(db,
+        `SELECT COUNT(DISTINCT conversation_id) as c FROM messages WHERE sender_id = ? AND DATE(created_at) = ?`,
+        [myId, todayIso]
+      ) as Promise<any>,
+      // Profile visits today (distinct targets)
+      queryOne(db,
+        `SELECT COUNT(DISTINCT target_user_id) as c FROM profile_visits WHERE visitor_user_id = ? AND DATE(visited_at) = ?`,
+        [myId, todayIso]
+      ) as Promise<any>,
+    ]);
+
+    const missions = [
+      {
+        id: 'access_app',
+        title: 'Acessar o app hoje',
+        description: 'Você já está aqui! ✅',
+        icon: '📱',
+        target: 1,
+        progress: 1,
+        completed: true,
+        reward: 'Sequência mantida',
+        rewardIcon: '🔥',
+      },
+      {
+        id: 'like_profiles',
+        title: 'Curtir 5 perfis',
+        description: 'Curta perfis no Match ou no feed',
+        icon: '❤️',
+        target: 5,
+        progress: Math.min(Number(likesGiven?.c ?? 0), 5),
+        completed: Number(likesGiven?.c ?? 0) >= 5,
+        reward: 'Destaque no feed por 2h',
+        rewardIcon: '⭐',
+      },
+      {
+        id: 'post_content',
+        title: 'Publicar uma foto ou vídeo',
+        description: 'Poste no feed com mídia',
+        icon: '📸',
+        target: 1,
+        progress: Math.min(Number(postsToday?.c ?? 0), 1),
+        completed: Number(postsToday?.c ?? 0) >= 1,
+        reward: 'Radar bônus',
+        rewardIcon: '📡',
+      },
+      {
+        id: 'reply_messages',
+        title: 'Responder 2 conversas',
+        description: 'Mande mensagens em pelo menos 2 chats',
+        icon: '💬',
+        target: 2,
+        progress: Math.min(Number(messagesSent?.c ?? 0), 2),
+        completed: Number(messagesSent?.c ?? 0) >= 2,
+        reward: 'Sobe no ranking semanal',
+        rewardIcon: '🏆',
+      },
+      {
+        id: 'visit_profiles',
+        title: 'Visitar 3 perfis',
+        description: 'Clique e veja o perfil de outras pessoas',
+        icon: '👁️',
+        target: 3,
+        progress: Math.min(Number(profilesVisited?.c ?? 0), 3),
+        completed: Number(profilesVisited?.c ?? 0) >= 3,
+        reward: 'Aparece como "Perfil Ativo"',
+        rewardIcon: '✨',
+      },
+    ];
+
+    const completedCount = missions.filter((m) => m.completed).length;
+    res.json({ missions, completedCount, totalCount: missions.length, date: todayIso });
+  });
+
   app.get('/api/radar', requireAuth(env, db), async (req, res) => {
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
     const io = req.app.get('io') as SocketIOServer | undefined;
