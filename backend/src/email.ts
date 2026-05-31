@@ -112,11 +112,15 @@ export async function sendReengagementEmail(
          Novos perfis incríveis entraram na plataforma enquanto você esteve fora.
        </div>`;
 
-  // Subject lines with psychological triggers (urgency + curiosity + social proof)
+  // Subject lines — psychologically provocative, high open-rate curiosity triggers
   const subjects = [
-    `${safeName}, alguém está esperando sua resposta no NoSigilo 👀`,
-    `${safeName}, seu perfil recebeu atenção enquanto você estava fora 💜`,
-    `[${appName}] Você tem notificações que não pode perder, ${safeName}`,
+    `${safeName}, alguém te olhou e não disse nada... 👀`,
+    `Isso aconteceu no seu perfil enquanto você sumiu, ${safeName} 😏`,
+    `${safeName}... alguém está esperando. Mas por quanto tempo? ⏳`,
+    `Seu perfil atraiu atenção — mas você ainda não viu quem 🔥`,
+    `${safeName}, tem coisa guardada pra você no nosigilo.net 💌`,
+    `Eles curtiram, mandaram mensagem... e você nem sabe 😮`,
+    `Alguém quase desistiu de esperar por você, ${safeName} 💜`,
   ];
   const subject = subjects[Math.floor(Math.random() * subjects.length)];
 
@@ -129,9 +133,11 @@ export async function sendReengagementEmail(
 
     <!-- Header -->
     <div style="text-align:center;margin-bottom:24px;">
-      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
-        <span style="color:white;font-size:22px;font-weight:800;letter-spacing:-0.5px;">${escapeHtml(appName)}</span>
-      </div>
+      <a href="${siteUrl}" style="text-decoration:none;">
+        <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+          <span style="color:white;font-size:20px;font-weight:800;letter-spacing:-0.5px;">nosigilo.net</span>
+        </div>
+      </a>
     </div>
 
     <!-- Card -->
@@ -160,9 +166,9 @@ export async function sendReengagementEmail(
 
       <!-- CTA Button -->
       <div style="text-align:center;margin-bottom:28px;">
-        <a href="${siteUrl}/feed"
+        <a href="${siteUrl}"
            style="display:inline-block;background:#e83e68;color:white;font-size:17px;font-weight:700;padding:16px 40px;border-radius:14px;text-decoration:none;letter-spacing:-0.2px;box-shadow:0 4px 16px rgba(232,62,104,0.35);">
-          Ver minhas notificações agora →
+          Ver em nosigilo.net →
         </a>
       </div>
 
@@ -178,8 +184,8 @@ export async function sendReengagementEmail(
     <!-- Footer -->
     <div style="text-align:center;margin-top:20px;">
       <p style="font-size:12px;color:#b08090;line-height:1.6;margin:0;">
-        Você está recebendo este e-mail porque tem uma conta no ${escapeHtml(appName)}.<br>
-        <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">${siteUrl.replace('https://', '')}</a>
+        Você está recebendo este e-mail porque tem uma conta no nosigilo.net.<br>
+        <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">nosigilo.net</a>
       </p>
     </div>
 
@@ -253,13 +259,15 @@ export async function sendWeeklySummaryEmail(
     : `<div style="padding:14px;border-radius:12px;background:#fff1f5;font-size:15px;color:#6b4b57;text-align:center;">Novos perfis incríveis entraram esta semana. Confira quem está online.</div>`;
 
   const subjects = [
-    `${safeName}, seu resumo semanal chegou 📬`,
-    `O que aconteceu enquanto você estava fora, ${safeName}?`,
-    `${safeName}, tem gente esperando você no ${appName} 👀`,
+    `${safeName}, o que rolou na sua ausência vai te surpreender 😏`,
+    `Tem alguém de olho em você no nosigilo.net, ${safeName} 👀`,
+    `${safeName}... eles agiram. E você ainda não sabe 🔥`,
+    `Seu resumo chegou — e tem coisa boa te esperando, ${safeName} 💌`,
+    `${safeName}, 7 dias de ausência. Veja o que ficou guardado pra você ⏳`,
   ];
   const subject = subjects[Math.floor(Math.random() * subjects.length)];
 
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#fff7fa;font-family:Arial,sans-serif;"><div style="max-width:580px;margin:0 auto;padding:24px 16px;"><div style="text-align:center;margin-bottom:24px;"><div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;"><span style="color:white;font-size:22px;font-weight:800;">${appName}</span></div></div><div style="background:white;border-radius:20px;border:1px solid #f4c7d7;padding:36px 32px;"><p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c81e58;margin:0 0 8px;">📅 Resumo Semanal</p><p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName}! 👋</p><p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 24px;">O que aconteceu no seu perfil nos <strong>últimos 7 dias</strong>:</p><div style="margin-bottom:24px;">${statsHtml}</div><div style="text-align:center;margin-bottom:24px;"><a href="${siteUrl}/feed" style="display:inline-block;background:#e83e68;color:white;font-size:17px;font-weight:700;padding:16px 40px;border-radius:14px;text-decoration:none;">Ver meu resumo →</a></div><div style="border-top:1px solid #f4c7d7;padding-top:16px;text-align:center;"><p style="font-size:12px;color:#b08090;margin:0;">Você recebe este e-mail por ter conta no ${appName}.</p></div></div></div></body></html>`;
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#fff7fa;font-family:Arial,sans-serif;"><div style="max-width:580px;margin:0 auto;padding:24px 16px;"><div style="text-align:center;margin-bottom:24px;"><a href="${siteUrl}" style="text-decoration:none;"><div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;"><span style="color:white;font-size:20px;font-weight:800;">nosigilo.net</span></div></a></div><div style="background:white;border-radius:20px;border:1px solid #f4c7d7;padding:36px 32px;"><p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c81e58;margin:0 0 8px;">📅 Resumo Semanal</p><p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName}! 👋</p><p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 24px;">O que aconteceu no seu perfil nos <strong>últimos 7 dias</strong>:</p><div style="margin-bottom:24px;">${statsHtml}</div><div style="text-align:center;margin-bottom:24px;"><a href="${siteUrl}" style="display:inline-block;background:#e83e68;color:white;font-size:17px;font-weight:700;padding:16px 40px;border-radius:14px;text-decoration:none;">Ver em nosigilo.net →</a></div><div style="border-top:1px solid #f4c7d7;padding-top:16px;text-align:center;"><p style="font-size:12px;color:#b08090;margin:0;">Você recebe este e-mail por ter conta no nosigilo.net.<br><a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">nosigilo.net</a></p></div></div></div></body></html>`;
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
