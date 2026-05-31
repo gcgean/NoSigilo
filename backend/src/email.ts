@@ -208,3 +208,68 @@ export async function sendReengagementEmail(
 
   return { skipped: false as const };
 }
+
+// ─── Weekly Summary Email ─────────────────────────────────────────────────────
+
+export type WeeklySummaryOptions = {
+  apiKey?: string;
+  fromEmail?: string;
+  appName?: string;
+  siteUrl?: string;
+};
+
+export type WeeklySummaryPayload = {
+  to: string;
+  userName: string;
+  stats: {
+    profileVisits: number;
+    likesReceived: number;
+    newInCity: number;
+    activeInCity: number;
+    unreadMessages: number;
+  };
+};
+
+export async function sendWeeklySummaryEmail(
+  options: WeeklySummaryOptions,
+  payload: WeeklySummaryPayload
+) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = (payload.userName.split(' ')[0] || payload.userName).replace(/[<>&"']/g, (c) => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]||c));
+  const { profileVisits, likesReceived, newInCity, activeInCity, unreadMessages } = payload.stats;
+
+  const rows: {icon:string;text:string}[] = [];
+  if (profileVisits > 0)  rows.push({ icon: '👁️', text: `<strong>${profileVisits}</strong> ${profileVisits === 1 ? 'pessoa visitou' : 'pessoas visitaram'} seu perfil` });
+  if (likesReceived > 0)  rows.push({ icon: '❤️', text: `<strong>${likesReceived}</strong> curtida${likesReceived > 1 ? 's' : ''} no seu perfil` });
+  if (unreadMessages > 0) rows.push({ icon: '💬', text: `<strong>${unreadMessages}</strong> mensagem${unreadMessages > 1 ? 'ns' : ''} sem resposta` });
+  if (newInCity > 0)      rows.push({ icon: '🆕', text: `<strong>${newInCity}</strong> novo${newInCity > 1 ? 's' : ''} perfil${newInCity > 1 ? 's' : ''} na sua região` });
+  if (activeInCity > 0)   rows.push({ icon: '🔥', text: `<strong>${activeInCity}</strong> usuário${activeInCity > 1 ? 's' : ''} ativo${activeInCity > 1 ? 's' : ''} perto de você` });
+
+  const statsHtml = rows.length > 0
+    ? rows.map(r => `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:#fff1f5;margin-bottom:8px;"><span style="font-size:20px;width:28px;text-align:center;">${r.icon}</span><span style="font-size:15px;color:#2b1720;line-height:1.5;">${r.text}</span></div>`).join('')
+    : `<div style="padding:14px;border-radius:12px;background:#fff1f5;font-size:15px;color:#6b4b57;text-align:center;">Novos perfis incríveis entraram esta semana. Confira quem está online.</div>`;
+
+  const subjects = [
+    `${safeName}, seu resumo semanal chegou 📬`,
+    `O que aconteceu enquanto você estava fora, ${safeName}?`,
+    `${safeName}, tem gente esperando você no ${appName} 👀`,
+  ];
+  const subject = subjects[Math.floor(Math.random() * subjects.length)];
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#fff7fa;font-family:Arial,sans-serif;"><div style="max-width:580px;margin:0 auto;padding:24px 16px;"><div style="text-align:center;margin-bottom:24px;"><div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;"><span style="color:white;font-size:22px;font-weight:800;">${appName}</span></div></div><div style="background:white;border-radius:20px;border:1px solid #f4c7d7;padding:36px 32px;"><p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c81e58;margin:0 0 8px;">📅 Resumo Semanal</p><p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName}! 👋</p><p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 24px;">O que aconteceu no seu perfil nos <strong>últimos 7 dias</strong>:</p><div style="margin-bottom:24px;">${statsHtml}</div><div style="text-align:center;margin-bottom:24px;"><a href="${siteUrl}/feed" style="display:inline-block;background:#e83e68;color:white;font-size:17px;font-weight:700;padding:16px 40px;border-radius:14px;text-decoration:none;">Ver meu resumo →</a></div><div style="border-top:1px solid #f4c7d7;padding-top:16px;text-align:center;"><p style="font-size:12px;color:#b08090;margin:0;">Você recebe este e-mail por ter conta no ${appName}.</p></div></div></div></body></html>`;
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_weekly_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
