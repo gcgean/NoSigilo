@@ -2009,15 +2009,17 @@ function AdminReengagementTab() {
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
-  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+  const [metricsError, setMetricsError] = useState(false);
 
   const loadMetrics = async () => {
     setMetricsLoading(true);
+    setMetricsError(false);
     try {
       const m = await adminService.getReengagementMetrics();
       setMetrics(m);
     } catch {
-      // silently fail — metrics panel is optional
+      setMetricsError(true);
     } finally {
       setMetricsLoading(false);
     }
@@ -2134,11 +2136,17 @@ function AdminReengagementTab() {
       </div>
 
       {/* Metrics panel */}
-      {(metrics || metricsLoading) && (
-        <div className="glass rounded-xl p-5">
-          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Taxa de retorno dos e-mails</h4>
+      <div className="glass rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Métricas de envio</h4>
+          <button onClick={loadMetrics} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <RefreshCw className={cn("w-3.5 h-3.5", metricsLoading && "animate-spin")} /> Atualizar
+          </button>
+        </div>
           {metricsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Calculando...</div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><RefreshCw className="w-4 h-4 animate-spin" /> Carregando métricas...</div>
+          ) : metricsError ? (
+            <div className="text-sm text-destructive">Erro ao carregar métricas. <button onClick={loadMetrics} className="underline">Tentar novamente</button></div>
           ) : metrics && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
@@ -2238,8 +2246,7 @@ function AdminReengagementTab() {
               )}
             </>
           )}
-        </div>
-      )}
+      </div>
 
       {/* Filters */}
       <div className="glass rounded-xl p-6">
