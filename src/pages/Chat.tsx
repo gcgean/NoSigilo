@@ -713,7 +713,14 @@ export default function Chat() {
     };
 
     setMessages((prev) => [...prev, tempMsg]);
-    if (!mediaId) setMessage('');
+    if (!mediaId) {
+      setMessage('');
+      // Keep keyboard open on mobile after sending (prevents browser chrome from
+      // jumping into view and causing a layout shift).
+      if (isMobileViewport) {
+        requestAnimationFrame(() => messageInputRef.current?.focus());
+      }
+    }
 
     try {
       const sent = await chatService.sendMessage(selectedChat, { 

@@ -1608,11 +1608,14 @@ export default function Feed() {
                 placeholder={"Conta pra gente… o que rolou? 😈\nPode escrever à vontade — aqui é lugar seguro."}
                 value={experienceDescription}
                 onChange={(e) => setExperienceDescription(e.target.value)}
+                maxLength={50000}
                 className="min-h-[160px] resize-y rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[140px] sm:rounded-md sm:border-input sm:text-sm"
                 rows={6}
               />
               <span className={cn('absolute bottom-2 right-3 text-xs', experienceDescription.trim().length < 20 ? 'text-muted-foreground' : 'text-green-500')}>
-                {experienceDescription.trim().length}/20 mín.
+                {experienceDescription.trim().length < 20
+                  ? `${experienceDescription.trim().length}/20 mín.`
+                  : `${experienceDescription.trim().length.toLocaleString('pt-BR')} caracteres`}
               </span>
             </div>
             {/* Photo/Video previews */}

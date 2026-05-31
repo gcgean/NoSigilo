@@ -3955,7 +3955,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/experiences', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       title: z.string().max(120).optional().or(z.literal('')),
-      description: z.string().min(20).max(6000),
+      description: z.string().min(20).max(50000),
       mediaIds: z.array(z.string()).max(10).optional(),
     });
     const parsed = schema.safeParse(req.body);
