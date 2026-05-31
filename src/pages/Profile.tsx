@@ -21,7 +21,7 @@ import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
-type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
+type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
 type ProfileVisitItem = { id: string; createdAt: string; visitsCount?: number; visitor: { id: string; name: string; avatar?: string | null } };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -119,7 +119,8 @@ function PhotoItem({
   const privateRefreshAttemptedRef = React.useRef(false);
 
   const resolvedUrl = resolveMediaUrl(photo.url);
-  const privateImgUrl = usePrivateImageUrl(resolvedUrl, photo.isPrivate);
+  // Don't attempt to fetch if the backend already confirmed the file is missing
+  const privateImgUrl = usePrivateImageUrl(resolvedUrl, photo.isPrivate && !photo.broken);
   const imgSrc = photo.isPrivate ? privateImgUrl : resolvedUrl;
 
   const loadLikes = async () => {
@@ -153,17 +154,43 @@ function PhotoItem({
     void onRefreshPrivatePhotos?.();
   };
 
+  // Broken private photo — file missing on server disk
+  if (photo.broken) {
+    return (
+      <div className="relative aspect-square rounded-xl overflow-hidden group bg-secondary/50 border border-destructive/20">
+        <div className="flex h-full flex-col items-center justify-center gap-1.5 p-2 text-center">
+          <span className="text-2xl">🖼️</span>
+          <p className="text-[10px] text-muted-foreground leading-tight">Arquivo não encontrado</p>
+          <button
+            type="button"
+            onClick={() => onDelete(photo.id)}
+            className="mt-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive hover:bg-destructive/20 transition-colors"
+          >
+            Remover
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative aspect-square rounded-xl overflow-hidden group">
       <Dialog open={isPreviewOpen} onOpenChange={handleOpen}>
         <DialogTrigger asChild>
           <button type="button" className="h-full w-full">
-            <img
-              src={imgSrc}
-              alt=""
-              className="h-full w-full cursor-zoom-in bg-secondary object-contain sm:object-cover"
-              onError={handlePrivateImageError}
-            />
+            {photo.isPrivate && !privateImgUrl ? (
+              /* Loading state while blob URL is being fetched */
+              <div className="flex h-full w-full items-center justify-center bg-secondary/60 animate-pulse">
+                <span className="text-2xl opacity-40">🔒</span>
+              </div>
+            ) : (
+              <img
+                src={imgSrc}
+                alt=""
+                className="h-full w-full cursor-zoom-in bg-secondary object-contain sm:object-cover"
+                onError={handlePrivateImageError}
+              />
+            )}
           </button>
         </DialogTrigger>
         <DialogContent className="flex flex-col max-h-[96dvh] max-w-[96vw] border-white/10 bg-black/95 p-0 shadow-2xl overflow-hidden">
@@ -426,6 +453,7 @@ export default function Profile() {
               isPrivate: !!p.isPrivate,
               isMain: !!p.isMain,
               createdAt: p.createdAt ? String(p.createdAt) : undefined,
+              broken: !!p.broken,
             }))
           : []
       );

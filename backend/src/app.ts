@@ -4040,14 +4040,48 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [req.auth!.userId]
     );
     res.json(
-      rows.map((r: any) => ({
-        id: r.id,
-        url: r.is_private ? `/private-uploads/${r.id}?token=${encodeURIComponent(jwt.sign({ mediaId: String(r.id) }, env.JWT_SECRET, { expiresIn: '30m' }))}` : `/uploads/${r.filename}`,
-        isPrivate: !!r.is_private,
-        isMain: !!r.is_main,
-        createdAt: r.created_at,
-        mimeType: r.mime_type ? String(r.mime_type) : null,
-      }))
+      rows.map((r: any) => {
+        const isPrivate = !!r.is_private;
+        const filename = String(r.filename || '');
+
+        // For private photos, verify file exists on disk before issuing a token.
+        // If the file is missing (e.g. after a server migration), mark it broken
+        // so the frontend can show a proper error instead of a black box.
+        if (isPrivate) {
+          const allCandidateDirs = [privateUploadsDir, ...legacyPrivateUploadsDirCandidates];
+          const fileExists = allCandidateDirs.some((dir) => existsSync(path.join(dir, filename)));
+          if (!fileExists) {
+            return {
+              id: r.id,
+              url: '',
+              isPrivate: true,
+              isMain: !!r.is_main,
+              createdAt: r.created_at,
+              mimeType: r.mime_type ? String(r.mime_type) : null,
+              broken: true,
+            };
+          }
+          return {
+            id: r.id,
+            url: `/private-uploads/${r.id}?token=${encodeURIComponent(jwt.sign({ mediaId: String(r.id) }, env.JWT_SECRET, { expiresIn: '2h' }))}`,
+            isPrivate: true,
+            isMain: !!r.is_main,
+            createdAt: r.created_at,
+            mimeType: r.mime_type ? String(r.mime_type) : null,
+            broken: false,
+          };
+        }
+
+        return {
+          id: r.id,
+          url: `/uploads/${filename}`,
+          isPrivate: false,
+          isMain: !!r.is_main,
+          createdAt: r.created_at,
+          mimeType: r.mime_type ? String(r.mime_type) : null,
+          broken: false,
+        };
+      })
     );
   });
 
