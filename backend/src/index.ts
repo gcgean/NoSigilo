@@ -270,17 +270,17 @@ async function runNearbyOnlinePush(db: DbHandle, onlineCount: number) {
 function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) {
   const check = async () => {
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
-    const hour = now.getUTCHours();
-    const weekday = now.getUTCDay(); // 0=Sun, 1=Mon
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    const hour = now.getHours();
+    const weekday = now.getDay(); // 0=Sun, 1=Mon
 
-    // Daily reengagement emails — 8am UTC
+    // Daily reengagement emails — 8am (Fortaleza local time)
     if (hour === 8 && lastDailyRunDate !== dateStr) {
       lastDailyRunDate = dateStr;
       runDailyReengagement(db).catch(err => console.error('[scheduler/daily] fatal', err));
     }
 
-    // Weekly summary emails — Monday 9am UTC
+    // Weekly summary emails — Monday 9am (Fortaleza local time)
     if (weekday === 1 && hour === 9 && lastWeeklyRunDate !== dateStr) {
       lastWeeklyRunDate = dateStr;
       runWeeklySummary(db).catch(err => console.error('[scheduler/weekly] fatal', err));

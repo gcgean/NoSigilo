@@ -10,6 +10,7 @@ RUN npm ci
 COPY . .
 
 ENV NODE_ENV=production
+ENV TZ=America/Fortaleza
 
 EXPOSE 4001
 
