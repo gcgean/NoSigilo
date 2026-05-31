@@ -48,7 +48,7 @@ function Bar({ label, value, max, color = 'bg-primary' }: { label: string; value
 }
 
 const GENDER_OPTIONS = [
-  { value: '', label: 'Todos os gêneros' },
+  { value: 'all', label: 'Todos os gêneros' },
   { value: 'Homem', label: 'Homem' },
   { value: 'Mulher', label: 'Mulher' },
   { value: 'Casal (Ele/Ela)', label: 'Casal (Ele/Ela)' },
@@ -72,7 +72,7 @@ export default function AdminMetrics() {
       const m = await adminService.getMetrics({
         city: city.trim() || undefined,
         state: state.trim() || undefined,
-        gender: gender || undefined,
+        gender: (gender && gender !== 'all') ? gender : undefined,
       });
       setData(m);
     } catch {
