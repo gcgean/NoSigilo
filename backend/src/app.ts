@@ -9488,6 +9488,36 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         []
       )) as any[];
 
+      // Per-period breakdown
+      const now = new Date();
+      const iso7  = new Date(now.getTime() - 7  * 86400000).toISOString();
+      const iso30 = new Date(now.getTime() - 30 * 86400000).toISOString();
+      const iso90 = new Date(now.getTime() - 90 * 86400000).toISOString();
+
+      const periodRow = (await db.queryOne(
+        `SELECT
+           COUNT(CASE WHEN sent_at >= ? AND status = 'sent'  THEN 1 END) AS sent7d,
+           COUNT(CASE WHEN sent_at >= ? AND status = 'error' THEN 1 END) AS err7d,
+           COUNT(CASE WHEN sent_at >= ? AND status = 'sent'  THEN 1 END) AS sent30d,
+           COUNT(CASE WHEN sent_at >= ? AND status = 'error' THEN 1 END) AS err30d,
+           COUNT(CASE WHEN sent_at >= ? AND status = 'sent'  THEN 1 END) AS sent90d,
+           COUNT(CASE WHEN sent_at >= ? AND status = 'error' THEN 1 END) AS err90d
+         FROM reengagement_emails`,
+        [iso7, iso7, iso30, iso30, iso90, iso90]
+      )) as any;
+
+      // Daily history — last 30 days grouped by date
+      const byDay = (await db.queryAll(
+        `SELECT SUBSTR(sent_at, 1, 10) AS date,
+                COUNT(CASE WHEN status = 'sent'  THEN 1 END) AS sent,
+                COUNT(CASE WHEN status = 'error' THEN 1 END) AS errors
+         FROM reengagement_emails
+         WHERE sent_at >= ?
+         GROUP BY SUBSTR(sent_at, 1, 10)
+         ORDER BY date ASC`,
+        [iso30]
+      )) as any[];
+
       res.json({
         totalEmailed,
         totalSends: Number(totalsRow?.total_sends ?? 0),
@@ -9498,6 +9528,16 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         recentBatches: recentBatches.map((r: any) => ({
           batchAt: String(r.batch_minute) + ':00',
           total: Number(r.total),
+          sent: Number(r.sent),
+          errors: Number(r.errors),
+        })),
+        byPeriod: {
+          last7d:  { sent: Number(periodRow?.sent7d  ?? 0), errors: Number(periodRow?.err7d  ?? 0) },
+          last30d: { sent: Number(periodRow?.sent30d ?? 0), errors: Number(periodRow?.err30d ?? 0) },
+          last90d: { sent: Number(periodRow?.sent90d ?? 0), errors: Number(periodRow?.err90d ?? 0) },
+        },
+        byDay: byDay.map((r: any) => ({
+          date: String(r.date),
           sent: Number(r.sent),
           errors: Number(r.errors),
         })),

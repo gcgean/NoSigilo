@@ -942,6 +942,12 @@ export const adminService = {
     returnedCount: number;
     returnRate: number;
     recentBatches: Array<{ batchAt: string; total: number; sent: number; errors: number }>;
+    byPeriod: {
+      last7d:  { sent: number; errors: number };
+      last30d: { sent: number; errors: number };
+      last90d: { sent: number; errors: number };
+    };
+    byDay: Array<{ date: string; sent: number; errors: number }>;
   }> => {
     const response = await apiClient.get('/admin/reengagement/metrics');
     return response.data;

@@ -1974,6 +1974,12 @@ type ReengagementMetrics = {
   returnedCount: number;
   returnRate: number;
   recentBatches: Array<{ batchAt: string; total: number; sent: number; errors: number }>;
+  byPeriod?: {
+    last7d:  { sent: number; errors: number };
+    last30d: { sent: number; errors: number };
+    last90d: { sent: number; errors: number };
+  };
+  byDay?: Array<{ date: string; sent: number; errors: number }>;
 };
 
 function formatLastSeen(iso: string | null) {
@@ -2128,9 +2134,64 @@ function AdminReengagementTab() {
                   {metrics.failedSends > 0 && <p className="text-[11px] text-destructive mt-0.5">{metrics.failedSends} erro(s)</p>}
                 </div>
               </div>
+              {/* By period */}
+              {metrics.byPeriod && (
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Envios por período</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {([
+                      { label: 'Últimos 7 dias',  key: 'last7d'  },
+                      { label: 'Últimos 30 dias', key: 'last30d' },
+                      { label: 'Últimos 90 dias', key: 'last90d' },
+                    ] as const).map(({ label, key }) => {
+                      const p = metrics.byPeriod![key];
+                      return (
+                        <div key={key} className="bg-secondary/40 rounded-lg p-3 text-center">
+                          <p className="text-xl font-bold text-emerald-600 tabular-nums">{p.sent}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+                          {p.errors > 0 && <p className="text-[11px] text-destructive mt-0.5">{p.errors} erro(s)</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Daily bar chart — last 30 days */}
+              {metrics.byDay && metrics.byDay.length > 0 && (() => {
+                const maxVal = Math.max(1, ...metrics.byDay!.map(d => d.sent + d.errors));
+                return (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Histórico diário (últimos 30 dias)</p>
+                    <div className="flex items-end gap-1 h-20">
+                      {metrics.byDay!.map((d) => {
+                        const totalH = Math.round(((d.sent + d.errors) / maxVal) * 100);
+                        const errH   = Math.round((d.errors / Math.max(1, d.sent + d.errors)) * totalH);
+                        const sentH  = totalH - errH;
+                        return (
+                          <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5 group relative" title={`${d.date}: ${d.sent} enviados${d.errors ? `, ${d.errors} erros` : ''}`}>
+                            <div className="w-full flex flex-col-reverse" style={{ height: 72 }}>
+                              {sentH > 0 && <div className="w-full rounded-sm bg-emerald-500/70" style={{ height: sentH }} />}
+                              {errH  > 0 && <div className="w-full rounded-sm bg-destructive/60" style={{ height: errH }} />}
+                            </div>
+                            <span className="text-[9px] text-muted-foreground hidden group-hover:block absolute -bottom-4 whitespace-nowrap">
+                              {new Date(d.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500/70 inline-block" />Enviados</span>
+                      <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-destructive/60 inline-block" />Erros</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {metrics.recentBatches.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Últimos envios</p>
+                <div className="mt-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Últimos lotes enviados</p>
                   <div className="space-y-1">
                     {metrics.recentBatches.map((b) => (
                       <div key={b.batchAt} className="flex items-center justify-between text-xs px-3 py-1.5 rounded-md bg-secondary/30">
