@@ -144,39 +144,55 @@ export async function sendReengagementEmail(
     <div style="background:white;border-radius:20px;border:1px solid #f4c7d7;padding:36px 32px;box-shadow:0 4px 24px rgba(232,62,104,0.06);">
 
       <!-- Greeting -->
-      <p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName}! 👋</p>
+      <p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName}! 👀</p>
+      <p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 8px;">
+        Enquanto você estava fora, <strong style="color:#e83e68;">alguém ficou de olho no seu perfil</strong> — e não é qualquer um.
+      </p>
       <p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 24px;">
-        Sentimos sua falta. Enquanto você esteve fora, <strong style="color:#e83e68;">algumas coisas aconteceram no seu perfil</strong> que merecem sua atenção agora.
+        Essa pessoa ainda não abordou. Mas quanto tempo acha que ela vai esperar?
       </p>
 
       <!-- Notification highlights -->
       <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#c81e58;margin:0 0 12px;">
-        📬 O que está esperando por você
+        🔐 Guardado pra você
       </p>
       <div style="margin-bottom:24px;">
         ${highlightsHtml}
       </div>
 
       <!-- Urgency block -->
-      <div style="background:linear-gradient(135deg,#fff1f5 0%,#fde8ef 100%);border-left:4px solid #e83e68;border-radius:0 10px 10px 0;padding:14px 16px;margin-bottom:28px;">
+      <div style="background:linear-gradient(135deg,#fff1f5 0%,#fde8ef 100%);border-left:4px solid #e83e68;border-radius:0 10px 10px 0;padding:14px 16px;margin-bottom:20px;">
         <p style="font-size:14px;color:#2b1720;line-height:1.6;margin:0;">
-          <strong>Não deixe essas conexões esfriarem.</strong> Quem não é visto, não é lembrado — e alguém pode perder o interesse se você demorar muito para responder.
+          😬 <strong>Atenção:</strong> perfis que demoram para responder perdem espaço para quem está ativo. Pessoas curiosas no nosigilo.net não ficam esperando muito — elas seguem em frente.
+        </p>
+      </div>
+
+      <!-- Extra hook -->
+      <div style="background:#2b1720;border-radius:12px;padding:16px 20px;margin-bottom:28px;text-align:center;">
+        <p style="font-size:15px;color:#fff;line-height:1.7;margin:0;">
+          Tem <strong style="color:#f472a0;">gente online agora mesmo</strong> procurando alguém com o seu perfil.<br>
+          <span style="font-size:13px;color:#d4a0b5;">Quem chega primeiro, conecta primeiro.</span>
         </p>
       </div>
 
       <!-- CTA Button -->
-      <div style="text-align:center;margin-bottom:28px;">
+      <div style="text-align:center;margin-bottom:20px;">
         <a href="${siteUrl}"
-           style="display:inline-block;background:#e83e68;color:white;font-size:17px;font-weight:700;padding:16px 40px;border-radius:14px;text-decoration:none;letter-spacing:-0.2px;box-shadow:0 4px 16px rgba(232,62,104,0.35);">
-          Ver em nosigilo.net →
+           style="display:inline-block;background:#e83e68;color:white;font-size:18px;font-weight:800;padding:18px 44px;border-radius:14px;text-decoration:none;letter-spacing:-0.2px;box-shadow:0 6px 20px rgba(232,62,104,0.45);">
+          Quero ver quem me olhou →
         </a>
       </div>
 
+      <!-- PS urgency -->
+      <p style="font-size:13px;color:#9a6b7a;text-align:center;margin:0 0 20px;">
+        ⚡ Acesse agora — essas notificações somem se ficarem sem resposta por muito tempo.
+      </p>
+
       <!-- Social proof -->
       <div style="border-top:1px solid #f4c7d7;padding-top:20px;">
-        <p style="font-size:13px;color:#9a6b7a;text-align:center;line-height:1.6;margin:0 0 6px;">
-          🔒 <strong>Discret. Seguro. Real.</strong><br>
-          Mais de 600 perfis verificados já estão se conectando agora mesmo.
+        <p style="font-size:13px;color:#9a6b7a;text-align:center;line-height:1.6;margin:0;">
+          🔒 <strong>Discreto. Seguro. Real.</strong><br>
+          Mais de 600 perfis verificados conectando agora mesmo em <strong>nosigilo.net</strong>
         </p>
       </div>
     </div>
