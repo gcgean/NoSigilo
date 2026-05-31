@@ -9700,6 +9700,160 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // ─── Admin Metrics Dashboard ─────────────────────────────────────────────
+  app.get('/api/admin/metrics', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const now = new Date();
+      const todayIso = now.toISOString().slice(0, 10);
+      const ago = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+
+      const filterCity  = typeof req.query.city  === 'string' ? req.query.city.trim()  : '';
+      const filterState = typeof req.query.state === 'string' ? req.query.state.trim() : '';
+      const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
+
+      const baseWhere = [
+        filterCity   ? `AND LOWER(u.city)  = LOWER('${filterCity.replace(/'/g, "''")}')` : '',
+        filterState  ? `AND LOWER(u.state) = LOWER('${filterState.replace(/'/g, "''")}')` : '',
+        filterGender ? `AND u.gender = '${filterGender.replace(/'/g, "''")}'` : '',
+      ].join(' ');
+
+      const [
+        totalUsers,
+        registrationsToday,
+        registrations7,
+        registrations30,
+        regByDay30,
+        regByGender,
+        regByCity,
+        regByState,
+        regByOrigin,
+        activeToday,
+        active7,
+        active30,
+        neverReturned,
+        inactive3,
+        inactive7,
+        inactive15,
+        inactive30,
+        usersWithPhoto,
+        usersWithVideo,
+        usersLikedSomeone,
+        usersReceivedLike,
+        usersSentMessage,
+        usersVisitedProfile,
+        totalPaying,
+        payingMen,
+        trialCount,
+        trialConverted,
+        active2PlusWeek,
+      ] = await Promise.all([
+        // ── Total users
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE 1=1 ${baseWhere}`, []),
+        // ── Today registrations
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE DATE(u.created_at) = ? ${baseWhere}`, [todayIso]),
+        // ── Last 7 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.created_at >= ? ${baseWhere}`, [ago(7)]),
+        // ── Last 30 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.created_at >= ? ${baseWhere}`, [ago(30)]),
+        // ── Registrations per day (last 30 days)
+        queryAll(db, `SELECT DATE(u.created_at) as day, COUNT(*) as c FROM users u WHERE u.created_at >= ? ${baseWhere} GROUP BY day ORDER BY day`, [ago(30)]),
+        // ── By gender
+        queryAll(db, `SELECT u.gender, COUNT(*) as c FROM users u WHERE 1=1 ${baseWhere} GROUP BY u.gender ORDER BY c DESC LIMIT 20`, []),
+        // ── By city (top 20)
+        queryAll(db, `SELECT u.city, COUNT(*) as c FROM users u WHERE u.city IS NOT NULL AND u.city != '' ${baseWhere} GROUP BY u.city ORDER BY c DESC LIMIT 20`, []),
+        // ── By state (top 30)
+        queryAll(db, `SELECT u.state, COUNT(*) as c FROM users u WHERE u.state IS NOT NULL AND u.state != '' ${baseWhere} GROUP BY u.state ORDER BY c DESC LIMIT 30`, []),
+        // ── By origin (utm_source / referrer)
+        queryAll(db, `SELECT origin_type, COUNT(*) as c FROM site_visits WHERE origin_type IS NOT NULL GROUP BY origin_type ORDER BY c DESC LIMIT 20`, []),
+        // ── Active today (last_seen_at today)
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE DATE(u.last_seen_at) = ? ${baseWhere}`, [todayIso]),
+        // ── Active last 7 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at >= ? ${baseWhere}`, [ago(7)]),
+        // ── Active last 30 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at >= ? ${baseWhere}`, [ago(30)]),
+        // ── Never returned (only one visit ever = created_at same day as last_seen)
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE DATE(u.created_at) = DATE(u.last_seen_at) AND u.created_at < ? ${baseWhere}`, [ago(1)]),
+        // ── Inactive 3 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at < ? AND u.last_seen_at >= ? ${baseWhere}`, [ago(3), ago(90)]),
+        // ── Inactive 7 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at < ? AND u.last_seen_at >= ? ${baseWhere}`, [ago(7), ago(90)]),
+        // ── Inactive 15 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at < ? AND u.last_seen_at >= ? ${baseWhere}`, [ago(15), ago(90)]),
+        // ── Inactive 30 days
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at < ? AND u.last_seen_at >= ? ${baseWhere}`, [ago(30), ago(180)]),
+        // ── Users with public photo
+        queryOne(db, `SELECT COUNT(DISTINCT m.user_id) as c FROM media m JOIN users u ON u.id = m.user_id WHERE m.mime_type LIKE 'image/%' AND m.is_private = 0 ${baseWhere}`, []),
+        // ── Users with video
+        queryOne(db, `SELECT COUNT(DISTINCT m.user_id) as c FROM media m JOIN users u ON u.id = m.user_id WHERE m.mime_type LIKE 'video/%' ${baseWhere}`, []),
+        // ── Users who liked someone
+        queryOne(db, `SELECT COUNT(DISTINCT l.user_id) as c FROM likes l JOIN users u ON u.id = l.user_id WHERE l.target_type = 'user' ${baseWhere}`, []),
+        // ── Users who received a like
+        queryOne(db, `SELECT COUNT(DISTINCT l.target_id) as c FROM likes l JOIN users u ON u.id = l.target_id WHERE l.target_type = 'user' ${baseWhere}`, []),
+        // ── Users who sent a message
+        queryOne(db, `SELECT COUNT(DISTINCT m.sender_id) as c FROM messages m JOIN users u ON u.id = m.sender_id WHERE 1=1 ${baseWhere.replace(/u\./g, 'u.')}`, []),
+        // ── Users who visited a profile
+        queryOne(db, `SELECT COUNT(DISTINCT pv.visitor_user_id) as c FROM profile_visits pv JOIN users u ON u.id = pv.visitor_user_id WHERE 1=1 ${baseWhere}`, []),
+        // ── Total paying (is_premium)
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.is_premium = 1 ${baseWhere}`, []),
+        // ── Paying men
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.is_premium = 1 AND (u.gender = 'Homem' OR u.gender = 'homem') ${baseWhere}`, []),
+        // ── Users who had a trial (trial_ends_at set and > created_at)
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.trial_ends_at > u.created_at ${baseWhere}`, []),
+        // ── Trial users who converted to paid
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.trial_ends_at > u.created_at AND u.is_premium = 1 ${baseWhere}`, []),
+        // ── Active 2+ times this week (approximation via last_seen >= 7d ago, excluding today-only)
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at >= ? AND DATE(u.last_seen_at) != DATE(u.created_at) ${baseWhere}`, [ago(7)]),
+      ]);
+
+      const n = (v: any) => Number((v as any)?.c ?? 0);
+
+      res.json({
+        filters: { city: filterCity, state: filterState, gender: filterGender },
+        acquisition: {
+          total: n(totalUsers),
+          today: n(registrationsToday),
+          last7days: n(registrations7),
+          last30days: n(registrations30),
+          byDay: (regByDay30 as any[]).map((r) => ({ date: String(r.day), count: Number(r.c) })),
+          byGender: (regByGender as any[]).map((r) => ({ gender: r.gender || 'Não informado', count: Number(r.c) })),
+          byCity: (regByCity as any[]).map((r) => ({ city: r.city, count: Number(r.c) })),
+          byState: (regByState as any[]).map((r) => ({ state: r.state, count: Number(r.c) })),
+          byOrigin: (regByOrigin as any[]).map((r) => ({ origin: r.origin_type, count: Number(r.c) })),
+        },
+        activation: {
+          addedPhoto: n(usersWithPhoto),
+          addedVideo: n(usersWithVideo),
+          likedProfile: n(usersLikedSomeone),
+          receivedLike: n(usersReceivedLike),
+          sentFirstMessage: n(usersSentMessage),
+          visitedProfile: n(usersVisitedProfile),
+          total: n(totalUsers),
+        },
+        retention: {
+          activeToday: n(activeToday),
+          active7days: n(active7),
+          active30days: n(active30),
+          active2plusWeek: n(active2PlusWeek),
+          neverReturned: n(neverReturned),
+          inactiveSince3days: n(inactive3),
+          inactiveSince7days: n(inactive7),
+          inactiveSince15days: n(inactive15),
+          inactiveSince30days: n(inactive30),
+        },
+        revenue: {
+          totalPaying: n(totalPaying),
+          payingMen: n(payingMen),
+          trialCount: n(trialCount),
+          trialConverted: n(trialConverted),
+          trialConversionRate: n(trialCount) > 0 ? Math.round((n(trialConverted) / n(trialCount)) * 100) : 0,
+        },
+      });
+    } catch (err) {
+      console.error('[admin/metrics]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', path: req.path });
   });

@@ -956,6 +956,35 @@ export const adminService = {
     const response = await apiClient.post('/admin/reengagement/send', { userIds });
     return response.data;
   },
+
+  getMetrics: async (filters?: { city?: string; state?: string; gender?: string }) => {
+    const response = await apiClient.get('/admin/metrics', { params: filters });
+    return response.data as {
+      filters: { city: string; state: string; gender: string };
+      acquisition: {
+        total: number; today: number; last7days: number; last30days: number;
+        byDay: { date: string; count: number }[];
+        byGender: { gender: string; count: number }[];
+        byCity: { city: string; count: number }[];
+        byState: { state: string; count: number }[];
+        byOrigin: { origin: string; count: number }[];
+      };
+      activation: {
+        addedPhoto: number; addedVideo: number; likedProfile: number;
+        receivedLike: number; sentFirstMessage: number; visitedProfile: number; total: number;
+      };
+      retention: {
+        activeToday: number; active7days: number; active30days: number;
+        active2plusWeek: number; neverReturned: number;
+        inactiveSince3days: number; inactiveSince7days: number;
+        inactiveSince15days: number; inactiveSince30days: number;
+      };
+      revenue: {
+        totalPaying: number; payingMen: number; trialCount: number;
+        trialConverted: number; trialConversionRate: number;
+      };
+    };
+  },
 };
 
 export const missionsService = {

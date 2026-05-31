@@ -18,6 +18,7 @@ import { adminService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
+import AdminMetrics from '@/components/AdminMetrics';
 
 type AdminPhoto = {
   id: string;
@@ -943,8 +944,12 @@ export default function Admin() {
         ) : null}
       </Card>
 
-      <Tabs defaultValue="photos" className="space-y-6">
+      <Tabs defaultValue="metrics" className="space-y-6">
         <TabsList className="flex w-full max-w-full justify-start overflow-x-auto">
+          <TabsTrigger value="metrics" className="gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Métricas
+          </TabsTrigger>
           <TabsTrigger value="photos" className="gap-2">
             <Image className="w-4 h-4" />
             Moderação de Fotos
@@ -987,6 +992,13 @@ export default function Admin() {
             Reengajamento
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="metrics">
+          <div className="glass rounded-xl p-6">
+            <h3 className="font-semibold mb-6">Dashboard de Métricas</h3>
+            <AdminMetrics />
+          </div>
+        </TabsContent>
 
         <TabsContent value="photos">
           <div className="glass rounded-xl p-6">
