@@ -2006,6 +2006,7 @@ function AdminReengagementTab() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
+  const [isSendingAll, setIsSendingAll] = useState(false);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(false);
@@ -2085,6 +2086,33 @@ function AdminReengagementTab() {
       toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSendAll = async () => {
+    const total = data?.total ?? 0;
+    if (!confirm(`Enviar e-mail de reengajamento para TODOS os ${total} usuários do filtro atual?\n\nIsso pode demorar alguns minutos.`)) return;
+    setIsSendingAll(true);
+    setSendResult(null);
+    try {
+      const result = await adminService.sendReengagementEmailsAll({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: search || undefined,
+        withPhoto: withPhoto || undefined,
+        emailSent: emailSent || undefined,
+      });
+      setSendResult({ sent: result.sent, errors: result.errors, skipped: result.skipped });
+      toast({
+        title: `${result.sent} e-mail(s) enviado(s) de ${result.total}`,
+        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Envio concluído com sucesso.',
+        variant: result.errors > 0 ? 'destructive' : 'default',
+      });
+      loadMetrics();
+    } catch {
+      toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
+    } finally {
+      setIsSendingAll(false);
     }
   };
 
@@ -2291,18 +2319,27 @@ function AdminReengagementTab() {
               </button>
               <span className="text-xs text-muted-foreground">| {data.total} usuário(s) encontrado(s)</span>
             </div>
-            <Button
-              onClick={handleSend}
-              disabled={selectedIds.size === 0 || isSending}
-              size="sm"
-              className="gap-2"
-            >
-              {isSending
-                ? <RefreshCw className="w-4 h-4 animate-spin" />
-                : <Send className="w-4 h-4" />
-              }
-              {isSending ? 'Enviando...' : `Enviar e-mail (${selectedIds.size})`}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSend}
+                disabled={selectedIds.size === 0 || isSending || isSendingAll}
+                size="sm"
+                variant="outline"
+                className="gap-2"
+              >
+                {isSending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isSending ? 'Enviando...' : `Enviar selecionados (${selectedIds.size})`}
+              </Button>
+              <Button
+                onClick={handleSendAll}
+                disabled={!data || data.total === 0 || isSending || isSendingAll}
+                size="sm"
+                className="gap-2 bg-primary"
+              >
+                {isSendingAll ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {isSendingAll ? 'Enviando para todos...' : `Enviar para todos (${data?.total ?? 0})`}
+              </Button>
+            </div>
           </div>
 
           {/* Send result banner */}

@@ -963,6 +963,13 @@ export const adminService = {
     return response.data;
   },
 
+  sendReengagementEmailsAll: async (filters: {
+    dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; emailSent?: boolean;
+  }): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
+    const response = await apiClient.post('/admin/reengagement/send-all', filters, { timeout: 10 * 60 * 1000 });
+    return response.data;
+  },
+
   getMetrics: async (filters?: { city?: string; state?: string; gender?: string }) => {
     const response = await apiClient.get('/admin/metrics', { params: filters });
     return response.data as {
