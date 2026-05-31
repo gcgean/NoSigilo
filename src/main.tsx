@@ -17,11 +17,11 @@ class ErrorBoundary extends React.Component<
   render() {
     if (this.state.error) {
       return (
-        <div style={{ padding: 24, fontFamily: 'sans-serif', color: '#111' }}>
-          <h2 style={{ color: '#c00' }}>Erro ao carregar o app</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13 }}>
+        <div style={{ padding: 24, fontFamily: 'monospace', color: '#fff', background: '#1a1a1a', minHeight: '100vh' }}>
+          <h2 style={{ color: '#f55', marginBottom: 16 }}>Erro ao carregar o app</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 13, color: '#ffd', background: '#000', padding: 16, borderRadius: 8 }}>
             {this.state.error.message}
-            {'\n'}
+            {'\n\n'}
             {this.state.error.stack}
           </pre>
         </div>
