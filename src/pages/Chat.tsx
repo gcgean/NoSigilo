@@ -713,14 +713,7 @@ export default function Chat() {
     };
 
     setMessages((prev) => [...prev, tempMsg]);
-    if (!mediaId) {
-      setMessage('');
-      // Keep keyboard open on mobile after sending (prevents browser chrome from
-      // jumping into view and causing a layout shift).
-      if (isMobileViewport) {
-        requestAnimationFrame(() => messageInputRef.current?.focus());
-      }
-    }
+    if (!mediaId) setMessage('');
 
     try {
       const sent = await chatService.sendMessage(selectedChat, { 
@@ -1574,6 +1567,10 @@ export default function Chat() {
               <Button
                 size="icon"
                 className="h-12 w-12 shrink-0 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                onMouseDown={(e) => {
+                  // Prevent textarea from losing focus on iOS (keeps keyboard open)
+                  e.preventDefault();
+                }}
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
