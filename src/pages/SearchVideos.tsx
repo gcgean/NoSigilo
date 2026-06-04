@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Clapperboard, SlidersHorizontal, MapPin, Heart, Play,
-  X, Search, Clock, MessageCircle, Flame,
+  X, Search, Clock, MessageCircle, Flame, Eye, EyeOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -71,13 +71,36 @@ function formatDistanceKm(d: number | null) {
 }
 
 const PAGE_SIZE = 24;
+const SEEN_VIDEOS_LS_KEY = 'nosigilo:seen-video-ids';
+const SEEN_VIDEOS_MAX = 500;
+
+function readSeenVideoIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SEEN_VIDEOS_LS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === 'string'));
+  } catch { return new Set(); }
+}
+
+function addSeenVideoId(id: string) {
+  try {
+    const set = readSeenVideoIds();
+    set.add(id);
+    const arr = Array.from(set).slice(-SEEN_VIDEOS_MAX);
+    localStorage.setItem(SEEN_VIDEOS_LS_KEY, JSON.stringify(arr));
+  } catch {}
+}
 
 // ─── VideoCard com lazy-load + canvas thumbnail ───────────────────────────────
 function VideoCard({
   item,
   premiumAccess,
+  seen,
   onClick,
 }: {
+  seen?: boolean;
   item: VideoItem;
   premiumAccess: boolean;
   onClick: () => void;
@@ -179,6 +202,14 @@ function VideoCard({
       {/* Gradient overlay */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
 
+      {/* Badge "Já visto" */}
+      {seen && (
+        <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 backdrop-blur-sm">
+          <Eye className="h-3 w-3 text-white/80" />
+          <span className="text-[10px] font-semibold text-white/80">Visto</span>
+        </div>
+      )}
+
       {/* Badge premium */}
       {!premiumAccess && (
         <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 backdrop-blur-sm">
@@ -261,6 +292,8 @@ export default function SearchVideos() {
   const [distanceFilter, setDistanceFilter] = useState('all');
   const [sortFilter,     setSortFilter]     = useState<SortOption>('recent');
   const [showFilters,    setShowFilters]    = useState(false);
+  const [onlyUnseen,     setOnlyUnseen]     = useState(false);
+  const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds());
 
   const [videos,         setVideos]         = useState<VideoItem[]>([]);
   const [page,           setPage]           = useState(1);
@@ -353,6 +386,9 @@ export default function SearchVideos() {
     if (!premiumAccess) { setPaywallOpen(true); return; }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
+    // Mark as seen
+    addSeenVideoId(item.mediaId);
+    setSeenIds((prev) => { const next = new Set(prev); next.add(item.mediaId); return next; });
     // Salva o item no sessionStorage para o Reels injetar na posição 0
     // sem depender do feed carregar esse vídeo específico
     try {
@@ -436,6 +472,20 @@ export default function SearchVideos() {
               {label}
             </button>
           ))}
+          {/* Filtro "Não vistos" */}
+          <button
+            type="button"
+            onClick={() => setOnlyUnseen((v) => !v)}
+            className={cn(
+              'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+              onlyUnseen
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-border bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
+            )}
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+            Não vistos
+          </button>
         </div>
 
         {/* Expanded filters */}
@@ -516,18 +566,38 @@ export default function SearchVideos() {
       )}
 
       {/* Video grid */}
-      {!isLoading && videos.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-          {videos.map((item) => (
-            <VideoCard
-              key={item.mediaId}
-              item={item}
-              premiumAccess={premiumAccess}
-              onClick={() => void handleVideoClick(item)}
-            />
-          ))}
-        </div>
-      )}
+      {!isLoading && videos.length > 0 && (() => {
+        const displayVideos = onlyUnseen ? videos.filter((v) => !seenIds.has(v.mediaId)) : videos;
+        return (
+          <>
+            {onlyUnseen && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                <EyeOff className="inline h-3.5 w-3.5 mr-1" />
+                Mostrando {displayVideos.length} vídeo{displayVideos.length !== 1 ? 's' : ''} não vistos de {videos.length} carregados
+              </p>
+            )}
+            {displayVideos.length === 0 ? (
+              <MobileState
+                icon={Eye}
+                title="Você já viu todos os vídeos!"
+                description="Desative o filtro 'Não vistos' para ver todos, ou aguarde novos vídeos serem publicados."
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {displayVideos.map((item) => (
+                  <VideoCard
+                    key={item.mediaId}
+                    item={item}
+                    premiumAccess={premiumAccess}
+                    seen={seenIds.has(item.mediaId)}
+                    onClick={() => void handleVideoClick(item)}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Infinite scroll sentinel */}
       <div ref={sentinelRef} className="h-4" />
