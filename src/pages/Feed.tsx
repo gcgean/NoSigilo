@@ -203,28 +203,48 @@ function formatRemainingRadarTime(iso: string) {
 
 const FEED_SESSION_AUTHOR_COUNTS_KEY = 'nosigilo:feed-session-author-counts';
 const FEED_SESSION_SEEN_IDS_KEY = 'nosigilo:feed-session-seen-ids';
+const FEED_SEEN_IDS_LS_KEY = 'nosigilo:feed-seen-ids-v2';
+const FEED_SEEN_IDS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
 const NEARBY_OPTIONS = [10, 25, 50] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
 
-/** Persist seen post IDs across Feed re-mounts within the same session */
+/** Persist seen post IDs across sessions (localStorage, 24h TTL) */
 function readFeedSeenIds(): Set<string> {
   if (typeof window === 'undefined') return new Set();
+  const result = new Set<string>();
+  // 1. Read from localStorage (persists across tab closes, 24h TTL)
+  try {
+    const raw = window.localStorage.getItem(FEED_SEEN_IDS_LS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { ids: string[]; savedAt: number };
+      const age = Date.now() - (parsed.savedAt || 0);
+      if (age < FEED_SEEN_IDS_TTL_MS && Array.isArray(parsed.ids)) {
+        parsed.ids.forEach((id) => typeof id === 'string' && result.add(id));
+      } else {
+        // Expired — clear it
+        window.localStorage.removeItem(FEED_SEEN_IDS_LS_KEY);
+      }
+    }
+  } catch {}
+  // 2. Also merge sessionStorage (same-session IDs not yet persisted)
   try {
     const raw = window.sessionStorage.getItem(FEED_SESSION_SEEN_IDS_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return new Set();
-    return new Set((arr as unknown[]).filter((x): x is string => typeof x === 'string'));
-  } catch {
-    return new Set();
-  }
+    if (raw) {
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr)) arr.forEach((x) => typeof x === 'string' && result.add(x));
+    }
+  } catch {}
+  return result;
 }
 
 function saveFeedSeenIds(ids: Set<string>) {
   try {
-    // Keep only the 400 most-recent IDs to avoid unbounded growth
-    const arr = Array.from(ids).slice(-400);
+    // Keep only the 200 most-recent IDs to avoid unbounded growth
+    const arr = Array.from(ids).slice(-200);
+    // Save to localStorage with timestamp (survives tab close)
+    window.localStorage.setItem(FEED_SEEN_IDS_LS_KEY, JSON.stringify({ ids: arr, savedAt: Date.now() }));
+    // Also keep sessionStorage in sync
     window.sessionStorage.setItem(FEED_SESSION_SEEN_IDS_KEY, JSON.stringify(arr));
   } catch {}
 }
@@ -363,7 +383,7 @@ export default function Feed() {
     try {
       const params: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (km !== null) params.maxDistanceKm = km;
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) params.seenIds = seenIds;
       const feed = await feedService.getFeed(params);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
@@ -547,7 +567,7 @@ export default function Feed() {
       const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
       // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
       const [feed, radarData] = await Promise.all([
         feedService.getFeed(feedParams),
@@ -734,7 +754,7 @@ export default function Feed() {
     setIsLoadingMore(true);
     try {
       // Pass currently-seen post IDs so backend can exclude them (cross-page deduplication)
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-40).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
       const feed = await feedService.getFeed(moreParams);
