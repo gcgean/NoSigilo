@@ -63,6 +63,7 @@ export default function Promoter() {
   // Activation form
   const [fullName, setFullName] = useState('');
   const [pixKey, setPixKey] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
 
@@ -101,7 +102,7 @@ export default function Promoter() {
     if (!fullName.trim() || !pixKey.trim() || !acceptTerms) return;
     setIsActivating(true);
     try {
-      await promoterService.activate({ fullName: fullName.trim(), pixKey: pixKey.trim(), acceptTerms: true });
+      await promoterService.activate({ fullName: fullName.trim(), pixKey: pixKey.trim(), whatsapp: whatsapp.trim() || undefined, acceptTerms: true });
       toast({ title: 'Programa ativado!', description: 'Seu perfil de promotor foi ativado. Agora gere seu convite e comece a ganhar.' });
       await loadData();
     } catch {
@@ -244,6 +245,17 @@ export default function Promoter() {
                   onChange={(e) => setPixKey(e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">As comissões serão pagas via Pix mensalmente.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">WhatsApp <span className="text-muted-foreground font-normal">(opcional)</span></label>
+                <Input
+                  placeholder="(11) 99999-9999"
+                  value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  type="tel"
+                />
+                <p className="text-xs text-muted-foreground">Para facilitar o contato sobre pagamentos e suporte.</p>
               </div>
 
               {/* Terms */}

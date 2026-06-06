@@ -693,12 +693,12 @@ export const invitesService = {
 };
 
 // ── Programa de Indicação (Promotores) ──────────────────────────────────────
-export type PromoterProfile = { id: string; fullName: string; pixKey: string; status: string; activatedAt: string };
+export type PromoterProfile = { id: string; fullName: string; pixKey: string; whatsapp: string | null; status: string; activatedAt: string };
 export type PromoterCommission = { id: string; subscriptionAmount: number; commissionAmount: number; status: string; period: string | null; paidAt: string | null; createdAt: string };
 export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number };
 
 export const promoterService = {
-  activate: async (data: { fullName: string; pixKey: string; acceptTerms: true }) => {
+  activate: async (data: { fullName: string; pixKey: string; whatsapp?: string; acceptTerms: true }) => {
     const response = await apiClient.post('/promoter/activate', data);
     return response.data;
   },
@@ -1035,6 +1035,11 @@ export const adminService = {
     dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; emailSent?: boolean;
   }): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
     const response = await apiClient.post('/admin/reengagement/send-all', filters, { timeout: 10 * 60 * 1000 });
+    return response.data;
+  },
+
+  sendPromoterCampaign: async (): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
+    const response = await apiClient.post('/admin/reengagement/send-promoter-campaign', {}, { timeout: 10 * 60 * 1000 });
     return response.data;
   },
 

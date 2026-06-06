@@ -2016,6 +2016,8 @@ function AdminReengagementTab() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isSending, setIsSending] = useState(false);
   const [isSendingAll, setIsSendingAll] = useState(false);
+  const [isSendingCampaign, setIsSendingCampaign] = useState(false);
+  const [campaignResult, setCampaignResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -2124,6 +2126,25 @@ function AdminReengagementTab() {
       toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
     } finally {
       setIsSendingAll(false);
+    }
+  };
+
+  const handleSendPromoterCampaign = async () => {
+    if (!confirm('Enviar e-mail da campanha de promotores para TODOS os usuários cadastrados?\n\nIsso pode demorar alguns minutos.')) return;
+    setIsSendingCampaign(true);
+    setCampaignResult(null);
+    try {
+      const result = await adminService.sendPromoterCampaign();
+      setCampaignResult(result);
+      toast({
+        title: `💰 ${result.sent} e-mail(s) da campanha enviado(s)`,
+        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Campanha enviada com sucesso!',
+        variant: result.errors > 0 ? 'destructive' : 'default',
+      });
+    } catch {
+      toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });
+    } finally {
+      setIsSendingCampaign(false);
     }
   };
 
@@ -2255,6 +2276,37 @@ function AdminReengagementTab() {
               )}
             </>
           )}
+      </div>
+
+      {/* Promoter Campaign Email */}
+      <div className="glass rounded-xl overflow-hidden border border-emerald-500/30">
+        <div className="bg-gradient-to-r from-emerald-600/10 to-teal-600/10 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xl">💰</span>
+              <h4 className="font-semibold text-base">Campanha: Programa de Promotores</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Envie um e-mail para <strong>todos os usuários cadastrados</strong> convidando-os a se tornar promotores e ganhar R$1,98 por assinatura indicada.
+              O e-mail inclui CTA para <strong>/ganhe</strong>.
+            </p>
+            {campaignResult && (
+              <p className={`mt-2 text-sm font-medium ${campaignResult.errors > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                ✓ {campaignResult.sent} enviado(s) de {campaignResult.total} usuários
+                {campaignResult.errors > 0 && ` · ${campaignResult.errors} erro(s)`}
+                {campaignResult.skipped > 0 && ` · ${campaignResult.skipped} sem e-mail configurado`}
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={handleSendPromoterCampaign}
+            disabled={isSendingCampaign}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
+          >
+            {isSendingCampaign ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {isSendingCampaign ? 'Enviando campanha...' : 'Enviar para todos os usuários'}
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -2677,7 +2729,7 @@ function AdminSuggestionsTab() {
 // ─── Promotores Tab ────────────────────────────────────────────────────────
 
 type PromoterRow = {
-  userId: string; fullName: string; pixKey: string; status: string;
+  userId: string; fullName: string; pixKey: string; whatsapp: string | null; status: string;
   activatedAt: string; userName: string; userEmail: string; userAvatar: string | null;
   totalSubscriptions: number; pendingCents: number; approvedCents: number; paidCents: number;
 };
@@ -2910,6 +2962,7 @@ function AdminPromotersTab() {
                 </div>
                 <p className="text-xs text-muted-foreground">{p.userEmail}</p>
                 <p className="text-xs text-muted-foreground">Pix: <strong>{p.pixKey}</strong></p>
+                {p.whatsapp && <p className="text-xs text-muted-foreground">WhatsApp: <strong>{p.whatsapp}</strong></p>}
                 <p className="text-xs text-muted-foreground">Ativo desde {formatDateAdmin(p.activatedAt)}</p>
               </div>
               <div className="flex gap-4 text-center">

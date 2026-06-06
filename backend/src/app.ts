@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -2434,14 +2434,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const schema = z.object({
       fullName: z.string().min(3).max(200),
       pixKey: z.string().min(5).max(200),
+      whatsapp: z.string().min(10).max(20).optional(),
       acceptTerms: z.literal(true),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const userId = req.auth!.userId;
+    const { fullName, pixKey, whatsapp } = parsed.data;
     const existing = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
     if (existing) {
-      await run(db, 'UPDATE promoters SET full_name = ?, pix_key = ?, status = ? WHERE user_id = ?', [parsed.data.fullName, parsed.data.pixKey, 'active', userId]);
+      await run(db, 'UPDATE promoters SET full_name = ?, pix_key = ?, whatsapp = ?, status = ? WHERE user_id = ?', [fullName, pixKey, whatsapp ?? null, 'active', userId]);
       await persist();
       res.json({ ok: true, updated: true });
       return;
@@ -2449,8 +2451,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const now = nowIso();
     await run(
       db,
-      'INSERT INTO promoters (id, user_id, full_name, pix_key, status, accepted_terms_at, activated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [randomUUID(), userId, parsed.data.fullName, parsed.data.pixKey, 'active', now, now, now]
+      'INSERT INTO promoters (id, user_id, full_name, pix_key, whatsapp, status, accepted_terms_at, activated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, fullName, pixKey, whatsapp ?? null, 'active', now, now, now]
     );
     await persist();
     res.json({ ok: true, created: true });
@@ -2460,7 +2462,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const row = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [req.auth!.userId]);
     if (!row) { res.json({ promoter: null }); return; }
     const r = row as any;
-    res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), status: String(r.status), activatedAt: String(r.activated_at) } });
+    res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), whatsapp: r.whatsapp ? String(r.whatsapp) : null, status: String(r.status), activatedAt: String(r.activated_at) } });
   });
 
   app.get('/api/promoter/dashboard', requireAuth(env, db), async (req, res) => {
@@ -2513,6 +2515,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     )) as any[];
     res.json({ promoters: rows.map((r) => ({
       id: String(r.id), userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
+      whatsapp: r.whatsapp ? String(r.whatsapp) : null,
       status: String(r.status), activatedAt: String(r.activated_at),
       userName: String(r.user_name || ''), userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
       totalSubscriptions: Number(r.total_subscriptions || 0),
@@ -10109,6 +10112,42 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       res.json({ sent, errors, skipped, total: users.length });
     } catch (err) {
       console.error('[admin/reengagement/send-all]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ─── Send Promoter Campaign Email to All Users ──────────────────────────────
+  app.post('/api/admin/reengagement/send-promoter-campaign', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const users = await query(
+        db,
+        `SELECT id, name, email FROM users WHERE email IS NOT NULL AND email != '' AND is_banned != 1 ORDER BY created_at ASC`
+      );
+      let sent = 0; let errors = 0; let skipped = 0;
+      for (const user of users) {
+        let status = 'error'; let errorMsg: string | null = null;
+        try {
+          const result = await sendPromoterCampaignEmail(
+            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+            { to: String(user.email), userName: String(user.name || 'você') }
+          );
+          if ((result as any)?.skipped) { skipped++; continue; }
+          status = 'sent'; sent++;
+        } catch (e: any) {
+          errorMsg = String(e?.message ?? e); errors++;
+        }
+        try {
+          await db.run(
+            `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
+            [randomUUID(), String(user.id), nowIso(), status, errorMsg]
+          );
+        } catch { /* non-fatal */ }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      try { await persist(); } catch { /* non-fatal */ }
+      res.json({ sent, errors, skipped, total: users.length });
+    } catch (err) {
+      console.error('[admin/reengagement/send-promoter-campaign]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

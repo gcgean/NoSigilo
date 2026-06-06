@@ -297,3 +297,108 @@ export async function sendWeeklySummaryEmail(
   }
   return { skipped: false as const };
 }
+
+// ─── Promoter Campaign Email ─────────────────────────────────────────────────
+export async function sendPromoterCampaignEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: { to: string; userName?: string | null }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = options.siteUrl || 'https://nosigilo.net';
+  const safeName = payload.userName ? escapeHtml(payload.userName) : 'você';
+  const promoterUrl = `${siteUrl}/ganhe`;
+
+  const subjects = [
+    `💰 ${safeName}, ganhe dinheiro divulgando o ${appName}!`,
+    `💸 Renda extra todo mês — sem investir nada`,
+    `🚀 Você pode faturar R$1,98 por cada assinatura que indicar`,
+    `💰 Indique amigos e receba Pix todo mês no ${appName}`,
+    `🔥 Programa de promotores: comece a ganhar hoje mesmo`,
+  ];
+  const subject = subjects[Math.floor(Math.random() * subjects.length)];
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:white;border-radius:20px;border:1px solid #bbf7d0;padding:36px 32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:48px;margin-bottom:8px;">💰</div>
+      <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#15803d;">Ganhe dinheiro divulgando o ${appName}!</h1>
+      <p style="font-size:15px;color:#4b5563;margin:0;">Oi, ${safeName}! Temos uma novidade incrível para você.</p>
+    </div>
+
+    <p style="font-size:16px;line-height:1.6;color:#1f2937;margin:0 0 20px;">
+      Agora você pode <strong>ganhar renda extra todo mês</strong> simplesmente indicando pessoas para o ${appName}.
+      Cada assinatura confirmada que vier pelo seu link gera <strong style="color:#15803d;">R$1,98 de comissão</strong> direto no seu Pix.
+    </p>
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:20px;margin:0 0 24px;">
+      <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0 0 12px;">✨ Como funciona</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">1</span>
+          <span>Cadastre-se como promotor e pegue seu link exclusivo</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">2</span>
+          <span>Compartilhe nas redes sociais, grupos e com amigos</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">3</span>
+          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, todo mês via Pix</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;margin:0 0 24px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;background:#fef9c3;border-radius:12px;padding:16px;text-align:center;border:1px solid #fde047;">
+        <p style="font-size:22px;font-weight:800;color:#854d0e;margin:0;">20%</p>
+        <p style="font-size:12px;color:#713f12;margin:4px 0 0;">de comissão</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#dcfce7;border-radius:12px;padding:16px;text-align:center;border:1px solid #86efac;">
+        <p style="font-size:22px;font-weight:800;color:#15803d;margin:0;">R$0</p>
+        <p style="font-size:12px;color:#166534;margin:4px 0 0;">para começar</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#e0f2fe;border-radius:12px;padding:16px;text-align:center;border:1px solid #7dd3fc;">
+        <p style="font-size:22px;font-weight:800;color:#0369a1;margin:0;">Pix</p>
+        <p style="font-size:12px;color:#075985;margin:4px 0 0;">todo mês</p>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${promoterUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
+        💰 Quero ser promotor agora →
+      </a>
+      <p style="font-size:12px;color:#6b7280;margin-top:10px;">Gratuito. Sem investimento. Comece hoje.</p>
+    </div>
+
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
+      <p style="font-size:12px;color:#9ca3af;margin:0;">Você recebe este e-mail por ter conta no ${appName}.<br>
+      <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">${appName.toLowerCase()}</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_promoter_campaign_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
