@@ -12,6 +12,7 @@ import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
 import { onboardingService, authService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { useAgeGate } from '@/contexts/AgeGateContext';
 import { CitySearch } from '@/components/CitySearch';
 import BrandLogo from '@/components/BrandLogo';
 
@@ -93,6 +94,7 @@ export default function Register() {
 
   const { register } = useAuth();
   const { addFavorite } = useFavorites();
+  const { confirmAge } = useAgeGate();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -337,6 +339,7 @@ export default function Register() {
         );
         window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
       }
+      confirmAge(); // user accepted 18+ terms during registration
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
       navigate('/feed');
     } catch (error) {

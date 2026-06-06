@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Heart, Users, Shield, ArrowRight, MessageCircle, Star, BadgeAlert, EyeOff, HeartHandshake, Radio, Images, LockKeyhole, ChevronDown, Zap, Lock } from 'lucide-react';
-import { useAgeGate } from '@/contexts/AgeGateContext';
 import BrandLogo from '@/components/BrandLogo';
 import { appService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,7 +56,7 @@ const TESTIMONIALS = [
 ];
 
 export default function Landing() {
-  const { hasConfirmedAge, confirmAge } = useAgeGate();
+  // Age gate is no longer shown on landing — it's confirmed automatically after registration
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
@@ -84,7 +83,7 @@ export default function Landing() {
     return () => { cancelled = true; };
   }, []);
 
-  if (hasConfirmedAge && isAuthenticated) {
+  if (isAuthenticated) {
     return <Navigate to={getLastAuthRoute('/feed')} replace />;
   }
 
@@ -101,37 +100,6 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-background">
-      {!hasConfirmedAge && (
-        <div className="fixed inset-0 z-[120] bg-black/80 backdrop-blur-md p-4 flex items-center justify-center">
-          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[hsl(0_0%_8%)] p-6 sm:p-8 shadow-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm text-primary mb-4">
-              <BadgeAlert className="w-4 h-4" />
-              Acesso restrito para maiores de 18 anos
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Ambiente adulto, discreto e consensual</h2>
-            <p className="text-muted-foreground mb-6">
-              O NoSigilo é uma rede social adulta voltada principalmente para casais e singles femininos e masculinos.
-              Ao entrar, você confirma que tem 18 anos ou mais e concorda com nossas regras de consentimento, privacidade e conduta.
-            </p>
-            <div className="grid gap-3 text-sm text-muted-foreground mb-6">
-              <div>Conteúdo e interações apenas entre adultos.</div>
-              <div>Privacidade, discrição e respeito são obrigatórios.</div>
-              <div>Perfis falsos, assédio, exposição indevida e conteúdo ilegal resultam em bloqueio.</div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button className="bg-gradient-primary hover:opacity-90" onClick={confirmAge}>
-                Tenho 18 anos ou mais
-              </Button>
-              <Button asChild variant="outline" className="w-full">
-                <Link to="/terms">Ler termos</Link>
-              </Button>
-              <Button asChild variant="ghost" className="w-full">
-                <Link to="/guidelines">Diretrizes</Link>
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Hero Section */}
       <section className="relative min-h-screen overflow-hidden">

@@ -26,6 +26,7 @@ import { promoterService, promoterSupportService, type PromoterProfile, type Pro
 import { invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import InviteModal from '@/components/InviteModal';
+import { getSiteUrl } from '@/utils/serverUrl';
 
 const COMMISSION_RATE = 0.20;
 const SUBSCRIPTION_PRICE = 9.90;
@@ -91,7 +92,7 @@ export default function Promoter() {
         setSupportMessages(supportData.messages);
         const active = Array.isArray(invites) ? invites.find((i: any) => i.status === 'created') : null;
         if (active?.token) {
-          setInviteUrl(`${window.location.origin}/invite/${encodeURIComponent(active.token)}`);
+          setInviteUrl(`${getSiteUrl()}/invite/${encodeURIComponent(active.token)}`);
         }
       }
     } catch {

@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { invitesService } from '@/services/api';
 import { cn } from '@/lib/utils';
+import { getSiteUrl } from '@/utils/serverUrl';
 
 type InviteItem = {
   id: string;
@@ -71,7 +72,7 @@ export default function InviteModal({ open, onClose }: Props) {
   }, [open]);
 
   const getInviteUrl = (token: string) =>
-    `${window.location.origin}/invite/${encodeURIComponent(token)}`;
+    `${getSiteUrl()}/invite/${encodeURIComponent(token)}`;
 
   const handleCreate = async () => {
     setIsCreating(true);

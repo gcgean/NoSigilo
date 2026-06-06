@@ -4,6 +4,7 @@ import { Check, CheckCircle2, Copy, Crown, ExternalLink, Flame, Gift, Heart, Loc
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getSiteUrl } from '@/utils/serverUrl';
 import { useAuth } from '@/contexts/AuthContext';
 import { invitesService } from '@/services/api';
 
@@ -385,7 +386,7 @@ export default function FirstAccessTutorial() {
   const handleGenerateInvite = async (): Promise<{ url: string } | { errorCode: string } | null> => {
     try {
       const data = await invitesService.create();
-      const url: string = data?.url ?? (data?.token ? `${window.location.origin}/invite/${data.token}` : '');
+      const url: string = data?.url ?? (data?.token ? `${getSiteUrl()}/invite/${data.token}` : '');
       if (!url) return { errorCode: 'unknown' };
       return { url };
     } catch (err: any) {

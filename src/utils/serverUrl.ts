@@ -45,6 +45,19 @@ export const SERVER_ORIGIN = deriveServerOrigin();
 export const API_URL = import.meta.env.VITE_API_URL?.trim() || `${SERVER_ORIGIN}/api`;
 export const SOCKET_URL = SERVER_ORIGIN;
 
+/**
+ * Returns the canonical site URL used for share links (e.g. invite links).
+ * Priority: VITE_SITE_URL env var → window.location.origin.
+ * Set VITE_SITE_URL=https://nosigilo.net in production to ensure links
+ * always point to the main domain regardless of which proxy/CDN the user
+ * is currently accessing.
+ */
+export function getSiteUrl(): string {
+  const configured = import.meta.env.VITE_SITE_URL?.trim();
+  if (configured) return trimTrailingSlash(configured);
+  return getBrowserOrigin();
+}
+
 export function resolveServerUrl(url: string | null | undefined) {
   if (!url) return '';
   const u = String(url).trim();
