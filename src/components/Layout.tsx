@@ -962,6 +962,25 @@ export default function Layout() {
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
         shouldHideMobileNav && "hidden"
       )}>
+        {/* Promoter CTA strip — mobile */}
+        <button
+          type="button"
+          onClick={() => navigate('/ganhe')}
+          className={cn(
+            "w-full flex items-center justify-between gap-2 px-4 py-2",
+            "bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white",
+            location.pathname === '/ganhe' && "hidden"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-base">💰</span>
+            <span className="text-xs font-semibold leading-tight">Ganhe até R$1.980/mês indicando a plataforma</span>
+          </div>
+          <span className="shrink-0 text-xs font-bold text-yellow-300 flex items-center gap-0.5">
+            Saiba como →
+          </span>
+        </button>
+
         <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
