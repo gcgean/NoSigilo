@@ -70,6 +70,7 @@ export interface User {
   telegramChatId?: string | null;
   lat?: number | null;
   lon?: number | null;
+  isPromoter?: boolean;
 }
 
 interface AuthContextType {

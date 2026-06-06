@@ -122,6 +122,7 @@ export type PublicUser = {
   partnerEyes?: string | null;
   partnerHeight?: string | null;
   partnerBodyType?: string | null;
+  isPromoter?: boolean;
 };
 
 type InviteRow = {
@@ -2733,11 +2734,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const presence = req.app.get('presence');
     const globalEnabled = await getSubscriptionsEnabled(db);
     const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String((row as any)?.email || ''), env.BILLING_TEST_EMAILS);
-    res.json(rowToPublicUser(row, presence?.isOnline(String((row as any)?.id)), {
+    const promoterRow = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [req.auth!.userId]);
+    const user = rowToPublicUser(row, presence?.isOnline(String((row as any)?.id)), {
       showEmail: true,
       subscriptionsEnabled,
       showLocation: true,
-    }));
+    });
+    res.json({ ...user, isPromoter: !!promoterRow });
   });
 
   app.post('/api/auth/refresh', requireAuth(env, db), async (req, res) => {

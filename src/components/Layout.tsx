@@ -862,17 +862,31 @@ export default function Layout() {
             )}
             {!isMobileChatRoute && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && (
               <div className="mb-4">
-                <button
-                  type="button"
-                  onClick={() => navigate('/ganhe')}
-                  className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span className="text-xl shrink-0">💰</span>
-                    <p className="text-sm font-semibold text-left leading-tight">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</p>
-                  </div>
-                  <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Saiba como →</span>
-                </button>
+                {user?.isPromoter ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/promoter')}
+                    className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">💰</span>
+                      <p className="text-sm font-semibold text-left leading-tight">Acessar área do promotor</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Ver painel →</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/ganhe')}
+                    className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-xl shrink-0">💰</span>
+                      <p className="text-sm font-semibold text-left leading-tight">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Saiba como →</span>
+                  </button>
+                )}
               </div>
             )}
             {!isMobileChatRoute && showFirstAccessReward ? (
