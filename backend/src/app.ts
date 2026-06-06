@@ -426,9 +426,11 @@ async function userHasPremiumAccess(db: DbHandle, userId: string, billingTestEma
 const REFERRAL_VALIDATION_DAYS = 7;
 const REFERRAL_MIN_ACTIONS = 2; // popcount(bitmask) must be >= 2
 const REFERRAL_TIERS = [
-  { count: 3,  days: 30,  rewardType: 'ambassador',       badgeType: 'ambassador',       label: 'Embaixador(a)' },
-  { count: 10, days: 90,  rewardType: 'ambassador_gold',  badgeType: 'ambassador_gold',  label: 'Embaixador(a) Gold' },
-  { count: 30, days: 365, rewardType: 'ambassador_elite', badgeType: 'ambassador_elite', label: 'Embaixador(a) Elite' },
+  { count: 1,  days: 10,  rewardType: 'starter_1',        badgeType: 'starter',          label: '1° Convite' },
+  { count: 2,  days: 10,  rewardType: 'starter_2',        badgeType: 'starter',          label: '2° Convite' },
+  { count: 3,  days: 10,  rewardType: 'ambassador',       badgeType: 'ambassador',       label: 'Embaixador(a)' },
+  { count: 10, days: 100, rewardType: 'ambassador_gold',  badgeType: 'ambassador_gold',  label: 'Embaixador(a) Gold' },
+  { count: 30, days: 300, rewardType: 'ambassador_elite', badgeType: 'ambassador_elite', label: 'Embaixador(a) Elite' },
 ];
 
 function popcount(n: number) {

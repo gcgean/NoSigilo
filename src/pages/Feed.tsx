@@ -970,7 +970,8 @@ export default function Feed() {
       }
       const hasVideo = attachments.some((a) => a.file.type.startsWith('video/'));
       const wasReelsOnly = hasVideo && reelsOnly;
-      await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
+      const created = await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
+      const newPostId = created?.id ? String(created.id) : null;
       registerActivity('post');
       setPostContent('');
       setReelsOnly(false);
@@ -1008,9 +1009,11 @@ export default function Feed() {
           description: 'Seu vídeo aparecerá somente em Vídeos Curtos, não no feed.',
           action: (
             <ToastAction altText="Ver publicação" onClick={() => {
+              if (newPostId) {
+                const el = document.getElementById(`post-${newPostId}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+              }
               window.scrollTo({ top: 0, behavior: 'smooth' });
-              const el = document.querySelector('[data-post-card]');
-              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}>
               Ver
             </ToastAction>
@@ -1022,9 +1025,11 @@ export default function Feed() {
           description: 'Seu post foi publicado.',
           action: (
             <ToastAction altText="Ver publicação" onClick={() => {
+              if (newPostId) {
+                const el = document.getElementById(`post-${newPostId}`);
+                if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+              }
               window.scrollTo({ top: 0, behavior: 'smooth' });
-              const el = document.querySelector('[data-post-card]');
-              el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}>
               Ver
             </ToastAction>
