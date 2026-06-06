@@ -263,30 +263,39 @@ export default function PromoterLanding() {
       <div className="glass rounded-2xl p-6 sm:p-8 space-y-6">
         <div className="text-center space-y-1">
           <h2 className="text-2xl font-bold">Quanto você pode ganhar?</h2>
-          <p className="text-muted-foreground text-sm">Exemplos reais baseados no valor atual da assinatura</p>
+          <p className="text-muted-foreground text-sm">Simulação com assinantes ativos — baseada no valor atual da assinatura (R$9,90)</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {[
-            { label: 'Divulgação básica', subs: 5,   emoji: '🌱', desc: 'Você compartilha para amigos próximos' },
-            { label: 'Divulgação ativa',  subs: 20,  emoji: '🚀', desc: 'Você usa redes sociais e grupos' },
-            { label: 'Divulgação intensa', subs: 50, emoji: '💎', desc: 'Você cria conteúdo e tem audiência' },
-          ].map((s) => (
-            <div key={s.label} className="rounded-2xl border bg-card p-5 text-center space-y-3">
-              <p className="text-3xl">{s.emoji}</p>
-              <p className="font-semibold text-sm">{s.label}</p>
-              <p className="text-xs text-muted-foreground">{s.desc}</p>
-              <div className="rounded-xl bg-emerald-500/10 py-3">
-                <p className="text-xs text-emerald-600 mb-0.5">{s.subs} assinantes</p>
-                <p className="text-2xl font-bold text-emerald-500">
-                  {(s.subs * PER_REFERRAL).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                </p>
-                <p className="text-xs text-emerald-600">por mês</p>
+            { label: '100 assinantes', subs: 100,  emoji: '🌱', badge: 'Iniciante', badgeColor: 'bg-sky-500/15 text-sky-600 border-sky-400/30', desc: 'Redes sociais pessoais e grupos de WhatsApp' },
+            { label: '500 assinantes', subs: 500,  emoji: '🚀', badge: 'Intermediário', badgeColor: 'bg-violet-500/15 text-violet-600 border-violet-400/30', desc: 'Audiência ativa no Instagram, Telegram ou TikTok' },
+            { label: '1000 assinantes', subs: 1000, emoji: '💎', badge: 'Top Promotor', badgeColor: 'bg-amber-500/15 text-amber-600 border-amber-400/30', desc: 'Canal, perfil influente ou tráfego pago' },
+          ].map((s) => {
+            const monthly = s.subs * PER_REFERRAL;
+            const yearly  = monthly * 12;
+            return (
+              <div key={s.label} className="rounded-2xl border bg-card p-5 text-center space-y-3 flex flex-col">
+                <p className="text-4xl">{s.emoji}</p>
+                <div>
+                  <span className={`inline-block text-xs font-semibold rounded-full border px-2.5 py-0.5 ${s.badgeColor}`}>{s.badge}</span>
+                </div>
+                <p className="font-bold text-base">{s.label} ativos</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">{s.desc}</p>
+                <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 py-4 px-3 mt-auto space-y-1">
+                  <p className="text-xs text-emerald-600 font-medium">por mês</p>
+                  <p className="text-3xl font-extrabold text-emerald-500">
+                    {monthly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                  <p className="text-xs text-emerald-700/70 font-medium">
+                    {yearly.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} <span className="text-muted-foreground font-normal">/ ano</span>
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <p className="text-center text-xs text-muted-foreground">
-          * Valores estimados. Os ganhos reais dependem das assinaturas confirmadas pelos seus indicados.
+          * Valores estimados. Cada assinatura confirmada gera R$ {PER_REFERRAL.toFixed(2).replace('.', ',')} de comissão. Os ganhos reais dependem das assinaturas ativas dos seus indicados.
         </p>
       </div>
 
