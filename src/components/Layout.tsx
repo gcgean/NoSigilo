@@ -860,6 +860,21 @@ export default function Layout() {
                 )}
               </div>
             )}
+            {!isMobileChatRoute && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={() => navigate('/ganhe')}
+                  className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl shrink-0">💰</span>
+                    <p className="text-sm font-semibold text-left leading-tight">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Saiba como →</span>
+                </button>
+              </div>
+            )}
             {!isMobileChatRoute && showFirstAccessReward ? (
               <div className="mb-4">
                 <div className="relative overflow-hidden rounded-2xl border border-emerald-300/40 bg-gradient-to-r from-emerald-500/12 via-lime-400/10 to-amber-400/12 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.12)]">
@@ -962,25 +977,6 @@ export default function Layout() {
         "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
         shouldHideMobileNav && "hidden"
       )}>
-        {/* Promoter CTA strip — mobile */}
-        <button
-          type="button"
-          onClick={() => navigate('/ganhe')}
-          className={cn(
-            "w-full flex items-center justify-between gap-2 px-4 py-2",
-            "bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white",
-            location.pathname === '/ganhe' && "hidden"
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-base">💰</span>
-            <span className="text-xs font-semibold leading-tight">Ganhe até R$1.980/mês indicando a plataforma</span>
-          </div>
-          <span className="shrink-0 text-xs font-bold text-yellow-300 flex items-center gap-0.5">
-            Saiba como →
-          </span>
-        </button>
-
         <div className="flex items-center justify-around h-14 px-1">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
