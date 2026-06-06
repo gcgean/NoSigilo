@@ -2284,11 +2284,10 @@ function AdminReengagementTab() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xl">💰</span>
-              <h4 className="font-semibold text-base">Campanha: Programa de Promotores</h4>
+              <h4 className="font-semibold text-base">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</h4>
             </div>
             <p className="text-sm text-muted-foreground">
-              Envie um e-mail para <strong>todos os usuários cadastrados</strong> convidando-os a se tornar promotores e ganhar R$1,98 por assinatura indicada.
-              O e-mail inclui CTA para <strong>/ganhe</strong>.
+              Dispara e-mail para <strong>todos os usuários cadastrados</strong> com o convite para se tornarem promotores e receberem R$1,98 por cada assinatura confirmada via Pix todo mês.
             </p>
             {campaignResult && (
               <p className={`mt-2 text-sm font-medium ${campaignResult.errors > 0 ? 'text-destructive' : 'text-emerald-600'}`}>

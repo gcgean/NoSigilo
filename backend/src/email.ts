@@ -313,11 +313,11 @@ export async function sendPromoterCampaignEmail(
   const promoterUrl = `${siteUrl}/ganhe`;
 
   const subjects = [
-    `💰 ${safeName}, ganhe dinheiro divulgando o ${appName}!`,
-    `💸 Renda extra todo mês — sem investir nada`,
-    `🚀 Você pode faturar R$1,98 por cada assinatura que indicar`,
-    `💰 Indique amigos e receba Pix todo mês no ${appName}`,
-    `🔥 Programa de promotores: comece a ganhar hoje mesmo`,
+    `💰 Ganhe até R$1.980/mês indicando a plataforma — 100% grátis`,
+    `💰 ${safeName}, ganhe até R$1.980 todo mês sem investir nada`,
+    `💸 Renda extra recorrente: R$1,98 por assinatura confirmada`,
+    `🚀 Ganhe até R$1.980/mês divulgando o ${appName} — grátis para participar`,
+    `🔥 Até R$1.980 todo mês no Pix — veja como no ${appName}`,
   ];
   const subject = subjects[Math.floor(Math.random() * subjects.length)];
 
