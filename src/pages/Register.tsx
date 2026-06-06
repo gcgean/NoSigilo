@@ -298,12 +298,13 @@ export default function Register() {
         return await register(payload);
       } catch (err: any) {
         const status = err?.response?.status as number | undefined;
-        // Retry once on transient server errors (5xx / network) — server may be warming up
-        if (attempt === 1 && (!status || status >= 500)) {
-          setLoadingLabel('Reconectando...');
-          await new Promise((r) => setTimeout(r, 1500));
+        // Retry up to 3 times on transient server errors (5xx / network) — server may be warming up after deploy
+        const maxAttempts = 3;
+        if (attempt < maxAttempts && (!status || status >= 500)) {
+          setLoadingLabel(attempt === 1 ? 'Reconectando...' : 'Aguardando servidor...');
+          await new Promise((r) => setTimeout(r, 2500 * attempt)); // 2.5s, 5s
           setLoadingLabel('Criando sua conta...');
-          return attemptRegister(2);
+          return attemptRegister(attempt + 1);
         }
         throw err;
       }
