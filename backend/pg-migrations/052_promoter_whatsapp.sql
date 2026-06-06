@@ -1,0 +1,1 @@
+ALTER TABLE promoters ADD COLUMN IF NOT EXISTS whatsapp TEXT;
