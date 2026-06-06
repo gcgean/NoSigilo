@@ -893,6 +893,28 @@ export default function Feed() {
     window.setTimeout(() => fileInputRef.current?.click(), 0);
   };
 
+  const handlePasteOnComposer = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItems = items.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+    const files = imageItems
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (files.length === 0) return;
+    const list = files.map((f) => {
+      const ext = f.type.split('/')[1] || 'png';
+      const namedFile = new File([f], `paste-${Date.now()}.${ext}`, { type: f.type });
+      return {
+        id: `paste-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        file: namedFile,
+        url: URL.createObjectURL(namedFile),
+      };
+    });
+    setAttachments((prev) => [...prev, ...list]);
+    toast({ title: 'Imagem colada', description: `${list.length} imagem${list.length > 1 ? 's' : ''} adicionada${list.length > 1 ? 's' : ''} ao post.` });
+  };
+
   const handleFilesSelected = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const acceptedFiles = Array.from(files).filter((f) => {
@@ -1732,6 +1754,7 @@ export default function Feed() {
               placeholder="O que está pensando?"
               value={postContent}
               onChange={(e) => setPostContent(e.target.value)}
+              onPaste={handlePasteOnComposer}
               className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input sm:text-sm"
               rows={2}
             />
