@@ -46,6 +46,8 @@ import Friends from "./pages/Friends";
 import Favorites from "./pages/Favorites";
 import Events from "./pages/Events";
 import Invites from "./pages/Invites";
+import Promoter from "./pages/Promoter";
+import PromoterLanding from "./pages/PromoterLanding";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import UserProfile from "./pages/UserProfile";
@@ -104,6 +106,8 @@ const App = () => (
                       <Route path="/friends" element={<Friends />} />
                       <Route path="/events" element={<Events />} />
                       <Route path="/invites" element={<Invites />} />
+                      <Route path="/promoter" element={<Promoter />} />
+                      <Route path="/ganhe" element={<PromoterLanding />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />
                       <Route path="/rap" element={<Navigate to="/reels" replace />} />
                       <Route path="/likes" element={<Navigate to="/favorites" replace />} />

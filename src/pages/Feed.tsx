@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -2892,6 +2892,25 @@ export default function Feed() {
               </Button>
             </Card>
           )}
+
+          {/* Promoter CTA — always visible on desktop sidebar */}
+          <Card
+            className="overflow-hidden border-0 cursor-pointer"
+            onClick={() => navigate('/ganhe')}
+          >
+            <div className="bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 p-4 text-white space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💰</span>
+                <p className="text-sm font-bold leading-tight">Ganhe dinheiro<br />indicando a plataforma</p>
+              </div>
+              <p className="text-xs text-white/80 leading-relaxed">
+                R$1,98 por assinatura confirmada. Pix todo mês. Grátis para participar.
+              </p>
+              <div className="flex items-center gap-1 text-yellow-300 text-xs font-semibold">
+                Quero saber como <ArrowRight className="w-3 h-3" />
+              </div>
+            </div>
+          </Card>
 
           {/* Quick nav — always visible on desktop */}
           <Card className="p-4 glass border-border/50">
