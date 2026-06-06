@@ -2729,7 +2729,7 @@ function AdminSuggestionsTab() {
 // ─── Promotores Tab ────────────────────────────────────────────────────────
 
 type PromoterRow = {
-  userId: string; fullName: string; pixKey: string; whatsapp: string | null; status: string;
+  userId: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null; status: string;
   activatedAt: string; userName: string; userEmail: string; userAvatar: string | null;
   totalSubscriptions: number; pendingCents: number; approvedCents: number; paidCents: number;
 };
@@ -2772,6 +2772,12 @@ function AdminPromotersTab() {
   const [commFilter, setCommFilter] = useState<string>('pending');
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
+
+  // Monthly summary email
+  const currentPeriod = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+  const [summaryPeriod, setSummaryPeriod] = useState(currentPeriod);
+  const [isSendingSummary, setIsSendingSummary] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{ sent: number; errors: number; skipped: number; total: number; dueDate: string } | null>(null);
 
   // Support chat state
   const [selectedChat, setSelectedChat] = useState<PromoterRow | null>(null);
@@ -2853,6 +2859,19 @@ function AdminPromotersTab() {
       void loadAll();
     } catch { toast({ title: 'Erro', variant: 'destructive' }); }
     finally { setIsBusy(false); }
+  };
+
+  const handleSendMonthlySummary = async () => {
+    if (!summaryPeriod.match(/^\d{4}-\d{2}$/)) { toast({ title: 'Período inválido (use AAAA-MM)', variant: 'destructive' }); return; }
+    if (!confirm(`Enviar resumo mensal de comissões de ${summaryPeriod} para todos os promotores ativos?`)) return;
+    setIsSendingSummary(true);
+    setSummaryResult(null);
+    try {
+      const result = await adminPromoterService.sendMonthlySummary(summaryPeriod);
+      setSummaryResult(result);
+      toast({ title: `📧 ${result.sent} e-mail(s) enviado(s) para promotores`, description: result.errors > 0 ? `${result.errors} erro(s).` : 'Resumo enviado com sucesso!' });
+    } catch { toast({ title: 'Erro ao enviar resumo', variant: 'destructive' }); }
+    finally { setIsSendingSummary(false); }
   };
 
   // Group commissions by period
@@ -2943,6 +2962,45 @@ function AdminPromotersTab() {
         ))}
       </div>
 
+      {/* Monthly Summary Email */}
+      <div className="glass rounded-xl overflow-hidden border border-blue-500/30">
+        <div className="bg-gradient-to-r from-blue-600/10 to-indigo-600/10 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <Mail className="w-4 h-4 text-blue-500" />
+              <h4 className="font-semibold">Resumo mensal de comissões</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Envia para cada promotor ativo um e-mail com o total de assinaturas, valor de comissão e data de pagamento prevista para o período selecionado.
+            </p>
+            {summaryResult && (
+              <p className={`text-sm font-medium ${summaryResult.errors > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                ✓ {summaryResult.sent} enviado(s) · vencimento {summaryResult.dueDate}
+                {summaryResult.errors > 0 && ` · ${summaryResult.errors} erro(s)`}
+                {summaryResult.skipped > 0 && ` · ${summaryResult.skipped} sem e-mail`}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <input
+              type="month"
+              value={summaryPeriod}
+              onChange={(e) => setSummaryPeriod(e.target.value)}
+              className="h-9 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <Button
+              onClick={handleSendMonthlySummary}
+              disabled={isSendingSummary || promoters.length === 0}
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              size="sm"
+            >
+              {isSendingSummary ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {isSendingSummary ? 'Enviando...' : `Enviar para ${promoters.length} promotor(es)`}
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {/* Promoters list */}
       <div className="glass rounded-xl p-5 space-y-4">
         <h3 className="font-semibold flex items-center gap-2">
@@ -2963,6 +3021,10 @@ function AdminPromotersTab() {
                 <p className="text-xs text-muted-foreground">{p.userEmail}</p>
                 <p className="text-xs text-muted-foreground">Pix: <strong>{p.pixKey}</strong></p>
                 {p.whatsapp && <p className="text-xs text-muted-foreground">WhatsApp: <strong>{p.whatsapp}</strong></p>}
+                <p className="text-xs text-muted-foreground">
+                  📧 {p.contactEmail ?? p.userEmail}
+                  {p.contactEmail && p.contactEmail !== p.userEmail && <span className="ml-1 text-[10px] text-muted-foreground/70">(notif.)</span>}
+                </p>
                 <p className="text-xs text-muted-foreground">Ativo desde {formatDateAdmin(p.activatedAt)}</p>
               </div>
               <div className="flex gap-4 text-center">

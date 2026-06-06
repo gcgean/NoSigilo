@@ -402,3 +402,113 @@ export async function sendPromoterCampaignEmail(
   }
   return { skipped: false as const };
 }
+
+// ─── Promoter Monthly Summary Email ──────────────────────────────────────────
+export async function sendPromoterMonthlySummaryEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: {
+    to: string;
+    promoterName: string;
+    period: string; // 'YYYY-MM'
+    totalSubscriptions: number;
+    commissionCents: number;   // total em centavos
+    pendingCents: number;      // ainda pendente de aprovação
+    approvedCents: number;     // aprovado aguardando pagamento
+    paidCents: number;         // já pago
+    dueDate: string;           // '10/MM/YYYY' — data de pagamento prevista
+  }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName  = options.appName  || 'NoSigilo';
+  const siteUrl  = options.siteUrl  || 'https://nosigilo.net';
+  const safeName = escapeHtml(payload.promoterName);
+  const [year, month] = payload.period.split('-');
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const monthLabel = `${monthNames[parseInt(month, 10) - 1]} / ${year}`;
+
+  const fmt = (cents: number) =>
+    (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const subject = `💰 Seu resumo de comissões de ${monthLabel} — ${appName}`;
+
+  const statusRows = [
+    payload.pendingCents  > 0 ? `<tr><td style="padding:8px 12px;font-size:14px;color:#374151;">⏳ Pendente de aprovação</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#d97706;text-align:right;">${fmt(payload.pendingCents)}</td></tr>` : '',
+    payload.approvedCents > 0 ? `<tr><td style="padding:8px 12px;font-size:14px;color:#374151;">✅ Aprovado (aguardando Pix)</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#2563eb;text-align:right;">${fmt(payload.approvedCents)}</td></tr>` : '',
+    payload.paidCents     > 0 ? `<tr><td style="padding:8px 12px;font-size:14px;color:#374151;">💸 Já pago via Pix</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#16a34a;text-align:right;">${fmt(payload.paidCents)}</td></tr>` : '',
+  ].filter(Boolean).join('');
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:white;border-radius:20px;border:1px solid #bbf7d0;padding:36px 32px;">
+    <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0 0 8px;">💰 Resumo Mensal — Programa de Promotores</p>
+    <h1 style="font-size:22px;font-weight:800;color:#1f2937;margin:0 0 6px;">Oi, ${safeName}! 👋</h1>
+    <p style="font-size:15px;color:#6b7280;margin:0 0 24px;">Aqui está o seu resumo de comissões referente a <strong style="color:#1f2937;">${monthLabel}</strong>.</p>
+
+    <!-- Big number -->
+    <div style="background:linear-gradient(135deg,#16a34a,#15803d);border-radius:16px;padding:24px;text-align:center;margin:0 0 24px;">
+      <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0 0 4px;">Total de comissões geradas</p>
+      <p style="color:white;font-size:38px;font-weight:900;margin:0 0 4px;">${fmt(payload.commissionCents)}</p>
+      <p style="color:rgba(255,255,255,0.75);font-size:13px;margin:0;">${payload.totalSubscriptions} assinatura${payload.totalSubscriptions !== 1 ? 's' : ''} confirmada${payload.totalSubscriptions !== 1 ? 's' : ''} via seu convite</p>
+    </div>
+
+    <!-- Breakdown table -->
+    ${statusRows ? `
+    <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+      <thead>
+        <tr style="background:#f9fafb;">
+          <th style="padding:8px 12px;font-size:12px;text-align:left;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Status</th>
+          <th style="padding:8px 12px;font-size:12px;text-align:right;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Valor</th>
+        </tr>
+      </thead>
+      <tbody>${statusRows}</tbody>
+    </table>` : ''}
+
+    <!-- Payment date -->
+    <div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:14px 16px;margin:0 0 24px;display:flex;align-items:center;gap:10px;">
+      <span style="font-size:20px;">📅</span>
+      <div>
+        <p style="font-size:13px;font-weight:700;color:#854d0e;margin:0 0 2px;">Previsão de pagamento</p>
+        <p style="font-size:13px;color:#713f12;margin:0;">Pagamentos aprovados são realizados via Pix até <strong>${payload.dueDate}</strong>.</p>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${siteUrl}/promoter" style="display:inline-block;background:#e83e68;color:white;font-size:16px;font-weight:700;padding:15px 36px;border-radius:14px;text-decoration:none;">
+        Ver meu painel completo →
+      </a>
+    </div>
+
+    <!-- Footer -->
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
+      <p style="font-size:12px;color:#9ca3af;margin:0;">
+        Você recebe este e-mail por ser promotor do ${appName}.<br>
+        Dúvidas? Acesse <a href="${siteUrl}/promoter" style="color:#e83e68;text-decoration:none;">seu painel de promotor</a>.
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_promoter_monthly_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}

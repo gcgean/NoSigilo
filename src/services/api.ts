@@ -693,12 +693,12 @@ export const invitesService = {
 };
 
 // ── Programa de Indicação (Promotores) ──────────────────────────────────────
-export type PromoterProfile = { id: string; fullName: string; pixKey: string; whatsapp: string | null; status: string; activatedAt: string };
+export type PromoterProfile = { id: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null; status: string; activatedAt: string };
 export type PromoterCommission = { id: string; subscriptionAmount: number; commissionAmount: number; status: string; period: string | null; paidAt: string | null; createdAt: string };
 export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number };
 
 export const promoterService = {
-  activate: async (data: { fullName: string; pixKey: string; whatsapp?: string; acceptTerms: true }) => {
+  activate: async (data: { fullName: string; pixKey: string; whatsapp?: string; contactEmail?: string; acceptTerms: true }) => {
     const response = await apiClient.post('/promoter/activate', data);
     return response.data;
   },
@@ -745,6 +745,10 @@ export const adminPromoterService = {
   },
   sendSupportMessage: async (userId: string, message: string) => {
     const response = await apiClient.post(`/admin/promoter-support/${userId}`, { message });
+    return response.data;
+  },
+  sendMonthlySummary: async (period: string): Promise<{ sent: number; errors: number; skipped: number; total: number; period: string; dueDate: string }> => {
+    const response = await apiClient.post('/admin/promoters/send-monthly-summary', { period }, { timeout: 10 * 60 * 1000 });
     return response.data;
   },
 };

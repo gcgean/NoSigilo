@@ -24,6 +24,7 @@ import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { promoterService, promoterSupportService, type PromoterProfile, type PromoterCommission, type PromoterStats, type SupportMessage } from '@/services/api';
 import { invitesService } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 import InviteModal from '@/components/InviteModal';
 
 const COMMISSION_RATE = 0.20;
@@ -48,6 +49,7 @@ function formatDate(iso: string) {
 
 export default function Promoter() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [promoter, setPromoter] = useState<PromoterProfile | null>(null);
   const [stats, setStats] = useState<PromoterStats | null>(null);
@@ -64,6 +66,7 @@ export default function Promoter() {
   const [fullName, setFullName] = useState('');
   const [pixKey, setPixKey] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [isActivating, setIsActivating] = useState(false);
 
@@ -72,6 +75,8 @@ export default function Promoter() {
 
   const loadData = async () => {
     setIsLoading(true);
+    // Pre-fill contact email with account email if not set yet
+    if (user?.email && !contactEmail) setContactEmail(user.email);
     try {
       const { promoter: p } = await promoterService.getProfile();
       setPromoter(p);
@@ -102,7 +107,7 @@ export default function Promoter() {
     if (!fullName.trim() || !pixKey.trim() || !acceptTerms) return;
     setIsActivating(true);
     try {
-      await promoterService.activate({ fullName: fullName.trim(), pixKey: pixKey.trim(), whatsapp: whatsapp.trim() || undefined, acceptTerms: true });
+      await promoterService.activate({ fullName: fullName.trim(), pixKey: pixKey.trim(), whatsapp: whatsapp.trim() || undefined, contactEmail: contactEmail.trim() || undefined, acceptTerms: true });
       toast({ title: 'Programa ativado!', description: 'Seu perfil de promotor foi ativado. Agora gere seu convite e comece a ganhar.' });
       await loadData();
     } catch {
@@ -256,6 +261,19 @@ export default function Promoter() {
                   type="tel"
                 />
                 <p className="text-xs text-muted-foreground">Para facilitar o contato sobre pagamentos e suporte.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">E-mail para notificações</label>
+                <Input
+                  placeholder="seu@email.com"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  type="email"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Você receberá o resumo mensal de comissões neste e-mail. Pré-preenchido com o e-mail da sua conta.
+                </p>
               </div>
 
               {/* Terms */}

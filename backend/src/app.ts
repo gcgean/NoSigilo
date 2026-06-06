@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -2435,15 +2435,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       fullName: z.string().min(3).max(200),
       pixKey: z.string().min(5).max(200),
       whatsapp: z.string().min(10).max(20).optional(),
+      contactEmail: z.string().email().max(200).optional(),
       acceptTerms: z.literal(true),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const userId = req.auth!.userId;
-    const { fullName, pixKey, whatsapp } = parsed.data;
+    const { fullName, pixKey, whatsapp, contactEmail } = parsed.data;
     const existing = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
     if (existing) {
-      await run(db, 'UPDATE promoters SET full_name = ?, pix_key = ?, whatsapp = ?, status = ? WHERE user_id = ?', [fullName, pixKey, whatsapp ?? null, 'active', userId]);
+      await run(db, 'UPDATE promoters SET full_name = ?, pix_key = ?, whatsapp = ?, contact_email = ?, status = ? WHERE user_id = ?', [fullName, pixKey, whatsapp ?? null, contactEmail ?? null, 'active', userId]);
       await persist();
       res.json({ ok: true, updated: true });
       return;
@@ -2451,8 +2452,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const now = nowIso();
     await run(
       db,
-      'INSERT INTO promoters (id, user_id, full_name, pix_key, whatsapp, status, accepted_terms_at, activated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [randomUUID(), userId, fullName, pixKey, whatsapp ?? null, 'active', now, now, now]
+      'INSERT INTO promoters (id, user_id, full_name, pix_key, whatsapp, contact_email, status, accepted_terms_at, activated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, fullName, pixKey, whatsapp ?? null, contactEmail ?? null, 'active', now, now, now]
     );
     await persist();
     res.json({ ok: true, created: true });
@@ -2462,7 +2463,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const row = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [req.auth!.userId]);
     if (!row) { res.json({ promoter: null }); return; }
     const r = row as any;
-    res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), whatsapp: r.whatsapp ? String(r.whatsapp) : null, status: String(r.status), activatedAt: String(r.activated_at) } });
+    res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), whatsapp: r.whatsapp ? String(r.whatsapp) : null, contactEmail: r.contact_email ? String(r.contact_email) : null, status: String(r.status), activatedAt: String(r.activated_at) } });
   });
 
   app.get('/api/promoter/dashboard', requireAuth(env, db), async (req, res) => {
@@ -2516,6 +2517,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ promoters: rows.map((r) => ({
       id: String(r.id), userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
       whatsapp: r.whatsapp ? String(r.whatsapp) : null,
+      contactEmail: r.contact_email ? String(r.contact_email) : null,
       status: String(r.status), activatedAt: String(r.activated_at),
       userName: String(r.user_name || ''), userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
       totalSubscriptions: Number(r.total_subscriptions || 0),
@@ -2654,6 +2656,72 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await run(db, q, params);
     await persist();
     res.json({ ok: true });
+  });
+
+  // Admin: enviar resumo mensal de comissões para todos os promotores ativos
+  app.post('/api/admin/promoters/send-monthly-summary', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input — period deve ser YYYY-MM' }); return; }
+      const { period } = parsed.data;
+
+      // Due date: dia 10 do mês seguinte ao período
+      const [py, pm] = period.split('-').map(Number);
+      const dueDate = new Date(py, pm, 10); // pm é o mês atual (1-indexed), Date usa 0-indexed, então pm = próximo mês
+      const dueDateStr = dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+      // Buscar todos os promotores ativos com seus dados e comissões do período
+      const rows = (await queryAll(
+        db,
+        `SELECT p.user_id, p.full_name,
+          COALESCE(p.contact_email, u.email) AS notify_email,
+          COALESCE(SUM(CASE WHEN pc.status != 'cancelled' THEN pc.commission_amount ELSE 0 END), 0) AS total_commission,
+          COALESCE(SUM(CASE WHEN pc.status = 'pending'  THEN pc.commission_amount ELSE 0 END), 0) AS pending_cents,
+          COALESCE(SUM(CASE WHEN pc.status = 'approved' THEN pc.commission_amount ELSE 0 END), 0) AS approved_cents,
+          COALESCE(SUM(CASE WHEN pc.status = 'paid'     THEN pc.commission_amount ELSE 0 END), 0) AS paid_cents,
+          COUNT(CASE WHEN pc.status != 'cancelled' THEN 1 END) AS total_subscriptions
+         FROM promoters p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id AND pc.period = ?
+         WHERE p.status = 'active'
+         GROUP BY p.user_id`,
+        [period]
+      )) as any[];
+
+      let sent = 0; let errors = 0; let skipped = 0;
+      for (const row of rows) {
+        const email = String(row.notify_email || '');
+        if (!email) { skipped++; continue; }
+        try {
+          const result = await sendPromoterMonthlySummaryEmail(
+            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+            {
+              to: email,
+              promoterName: String(row.full_name || 'Promotor'),
+              period,
+              totalSubscriptions: Number(row.total_subscriptions || 0),
+              commissionCents: Number(row.total_commission || 0),
+              pendingCents: Number(row.pending_cents || 0),
+              approvedCents: Number(row.approved_cents || 0),
+              paidCents: Number(row.paid_cents || 0),
+              dueDate: dueDateStr,
+            }
+          );
+          if ((result as any)?.skipped) { skipped++; continue; }
+          sent++;
+        } catch (e: any) {
+          console.error('[send-monthly-summary] error for', row.user_id, e?.message);
+          errors++;
+        }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      try { await persist(); } catch { /* non-fatal */ }
+      res.json({ sent, errors, skipped, total: rows.length, period, dueDate: dueDateStr });
+    } catch (err) {
+      console.error('[admin/promoters/send-monthly-summary]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   // ── END Suporte ao Promotor ────────────────────────────────────────────────
