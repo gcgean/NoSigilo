@@ -10187,13 +10187,60 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     }
   });
 
-  // ─── Send Promoter Campaign Email to All Users ──────────────────────────────
+  // ─── Send Promoter Campaign Email (filtered or by selected IDs) ─────────────
   app.post('/api/admin/reengagement/send-promoter-campaign', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
-      const users = await query(
-        db,
-        `SELECT id, name, email FROM users WHERE email IS NOT NULL AND email != '' AND is_banned != 1 ORDER BY created_at ASC`
-      );
+      const body = req.body as Record<string, unknown>;
+      const userIds   = Array.isArray(body.userIds) ? (body.userIds as unknown[]).map(String) : [];
+      const dateFrom  = typeof body.dateFrom  === 'string' ? body.dateFrom.trim()  : '';
+      const dateTo    = typeof body.dateTo    === 'string' ? body.dateTo.trim()    : '';
+      const search    = typeof body.search    === 'string' ? body.search.trim()    : '';
+      const withPhoto = body.withPhoto === true || body.withPhoto === 1;
+      const emailSent = body.emailSent === true || body.emailSent === 1;
+
+      let users: any[];
+
+      if (userIds.length > 0) {
+        // Send only to specifically selected users
+        const placeholders = userIds.map(() => '?').join(', ');
+        users = (await db.queryAll(
+          `SELECT id, name, email FROM users
+           WHERE id IN (${placeholders})
+             AND email IS NOT NULL AND email != ''
+             AND is_banned = 0 AND is_deactivated = 0
+           ORDER BY created_at ASC`,
+          userIds
+        )) as any[];
+      } else {
+        // Send to all users matching current filters (same logic as send-all)
+        const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
+        const params: unknown[] = [];
+        if (withPhoto) conditions.push("u.avatar IS NOT NULL AND u.avatar != ''");
+        if (emailSent) conditions.push("EXISTS (SELECT 1 FROM reengagement_emails re WHERE re.user_id = u.id AND re.status = 'sent')");
+        if (search) {
+          conditions.push("(LOWER(u.email) LIKE ? OR LOWER(u.name) LIKE ?)");
+          const like = `%${search.toLowerCase()}%`;
+          params.push(like, like);
+        }
+        if (dateFrom) {
+          conditions.push(db.mode === 'pg'
+            ? "(u.last_seen_at IS NULL OR u.last_seen_at >= ?::TIMESTAMPTZ)"
+            : "(u.last_seen_at IS NULL OR u.last_seen_at >= ?)");
+          params.push(dateFrom);
+        }
+        if (dateTo) {
+          conditions.push(db.mode === 'pg'
+            ? "(u.last_seen_at IS NULL OR u.last_seen_at <= ?::TIMESTAMPTZ)"
+            : "(u.last_seen_at IS NULL OR u.last_seen_at <= ?)");
+          params.push(dateTo + 'T23:59:59');
+        }
+        const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        users = (await db.queryAll(
+          `SELECT u.id, u.name, u.email FROM users u ${where} ORDER BY u.created_at ASC`,
+          params
+        )) as any[];
+      }
+
       let sent = 0; let errors = 0; let skipped = 0;
       for (const user of users) {
         let status = 'error'; let errorMsg: string | null = null;

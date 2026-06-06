@@ -2017,6 +2017,7 @@ function AdminReengagementTab() {
   const [isSending, setIsSending] = useState(false);
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [isSendingCampaign, setIsSendingCampaign] = useState(false);
+  const [isSendingCampaignSelected, setIsSendingCampaignSelected] = useState(false);
   const [campaignResult, setCampaignResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
@@ -2129,12 +2130,19 @@ function AdminReengagementTab() {
     }
   };
 
-  const handleSendPromoterCampaign = async () => {
-    if (!confirm('Enviar e-mail da campanha de promotores para TODOS os usuários cadastrados?\n\nIsso pode demorar alguns minutos.')) return;
+  const handleSendPromoterCampaignAll = async () => {
+    const total = data?.total ?? 0;
+    if (!confirm(`Enviar e-mail da campanha de promotores para TODOS os ${total} usuários do filtro atual?\n\nIsso pode demorar alguns minutos.`)) return;
     setIsSendingCampaign(true);
     setCampaignResult(null);
     try {
-      const result = await adminService.sendPromoterCampaign();
+      const result = await adminService.sendPromoterCampaign({
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        search: search || undefined,
+        withPhoto: withPhoto || undefined,
+        emailSent: emailSent || undefined,
+      });
       setCampaignResult(result);
       toast({
         title: `💰 ${result.sent} e-mail(s) da campanha enviado(s)`,
@@ -2145,6 +2153,26 @@ function AdminReengagementTab() {
       toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });
     } finally {
       setIsSendingCampaign(false);
+    }
+  };
+
+  const handleSendPromoterCampaignSelected = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Enviar e-mail da campanha de promotores para ${selectedIds.size} usuário(s) selecionado(s)?`)) return;
+    setIsSendingCampaignSelected(true);
+    setCampaignResult(null);
+    try {
+      const result = await adminService.sendPromoterCampaign({ userIds: Array.from(selectedIds) });
+      setCampaignResult(result);
+      toast({
+        title: `💰 ${result.sent} e-mail(s) da campanha enviado(s)`,
+        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Campanha enviada com sucesso!',
+        variant: result.errors > 0 ? 'destructive' : 'default',
+      });
+    } catch {
+      toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });
+    } finally {
+      setIsSendingCampaignSelected(false);
     }
   };
 
@@ -2287,7 +2315,7 @@ function AdminReengagementTab() {
               <h4 className="font-semibold text-base">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</h4>
             </div>
             <p className="text-sm text-muted-foreground">
-              Dispara e-mail para <strong>todos os usuários cadastrados</strong> com o convite para se tornarem promotores e receberem R$1,98 por cada assinatura confirmada via Pix todo mês.
+              Convida usuários a se tornarem promotores e receberem R$1,98 por cada assinatura confirmada via Pix todo mês. Use os botões <strong>💰 Campanha</strong> na lista abaixo para enviar com os filtros ativos.
             </p>
             {campaignResult && (
               <p className={`mt-2 text-sm font-medium ${campaignResult.errors > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
@@ -2297,14 +2325,6 @@ function AdminReengagementTab() {
               </p>
             )}
           </div>
-          <Button
-            onClick={handleSendPromoterCampaign}
-            disabled={isSendingCampaign}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shrink-0"
-          >
-            {isSendingCampaign ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {isSendingCampaign ? 'Enviando campanha...' : 'Enviar para todos os usuários'}
-          </Button>
         </div>
       </div>
 
@@ -2386,10 +2406,10 @@ function AdminReengagementTab() {
               </button>
               <span className="text-xs text-muted-foreground">| {data.total} usuário(s) encontrado(s)</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <Button
                 onClick={handleSend}
-                disabled={selectedIds.size === 0 || isSending || isSendingAll}
+                disabled={selectedIds.size === 0 || isSending || isSendingAll || isSendingCampaign || isSendingCampaignSelected}
                 size="sm"
                 variant="outline"
                 className="gap-2"
@@ -2399,12 +2419,31 @@ function AdminReengagementTab() {
               </Button>
               <Button
                 onClick={handleSendAll}
-                disabled={!data || data.total === 0 || isSending || isSendingAll}
+                disabled={!data || data.total === 0 || isSending || isSendingAll || isSendingCampaign || isSendingCampaignSelected}
                 size="sm"
                 className="gap-2 bg-primary"
               >
                 {isSendingAll ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                 {isSendingAll ? 'Enviando para todos...' : `Enviar para todos (${data?.total ?? 0})`}
+              </Button>
+              <Button
+                onClick={handleSendPromoterCampaignSelected}
+                disabled={selectedIds.size === 0 || isSending || isSendingAll || isSendingCampaign || isSendingCampaignSelected}
+                size="sm"
+                variant="outline"
+                className="gap-2 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10"
+              >
+                {isSendingCampaignSelected ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>💰</span>}
+                {isSendingCampaignSelected ? 'Enviando...' : `Campanha selecionados (${selectedIds.size})`}
+              </Button>
+              <Button
+                onClick={handleSendPromoterCampaignAll}
+                disabled={!data || data.total === 0 || isSending || isSendingAll || isSendingCampaign || isSendingCampaignSelected}
+                size="sm"
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {isSendingCampaign ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>💰</span>}
+                {isSendingCampaign ? 'Enviando campanha...' : `Campanha todos (${data?.total ?? 0})`}
               </Button>
             </div>
           </div>

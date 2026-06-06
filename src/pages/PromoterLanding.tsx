@@ -110,13 +110,13 @@ function EarningsCalculator() {
         <input
           type="range"
           min={1}
-          max={200}
+          max={1000}
           value={count}
           onChange={(e) => setCount(Number(e.target.value))}
           className="w-full accent-emerald-500"
         />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>1</span><span>50</span><span>100</span><span>200</span>
+          <span>1</span><span>250</span><span>500</span><span>750</span><span>1000</span>
         </div>
       </div>
 

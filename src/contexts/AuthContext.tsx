@@ -225,9 +225,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const applySettings = async (currentUser: User | null) => {
-      const settings = await appService.getSettings().catch(() => ({ subscriptionsEnabled: true }));
+      const [settings, freshMe] = await Promise.all([
+        appService.getSettings().catch(() => ({ subscriptionsEnabled: true })),
+        (!USE_MOCKS && localStorage.getItem('token'))
+          ? authService.getMe().catch(() => null)
+          : Promise.resolve(null),
+      ]);
       if (!currentUser) return null;
-      const mergedUser = { ...currentUser, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
+      const base = freshMe ?? currentUser;
+      const mergedUser = { ...base, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
       saveUserToStorage(mergedUser);
       return mergedUser;
     };

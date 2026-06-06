@@ -1042,8 +1042,15 @@ export const adminService = {
     return response.data;
   },
 
-  sendPromoterCampaign: async (): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
-    const response = await apiClient.post('/admin/reengagement/send-promoter-campaign', {}, { timeout: 10 * 60 * 1000 });
+  sendPromoterCampaign: async (params?: {
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+    withPhoto?: boolean;
+    emailSent?: boolean;
+    userIds?: string[];
+  }): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
+    const response = await apiClient.post('/admin/reengagement/send-promoter-campaign', params ?? {}, { timeout: 10 * 60 * 1000 });
     return response.data;
   },
 
