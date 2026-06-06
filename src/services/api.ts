@@ -692,6 +692,74 @@ export const invitesService = {
   },
 };
 
+// ── Programa de Indicação (Promotores) ──────────────────────────────────────
+export type PromoterProfile = { id: string; fullName: string; pixKey: string; status: string; activatedAt: string };
+export type PromoterCommission = { id: string; subscriptionAmount: number; commissionAmount: number; status: string; period: string | null; paidAt: string | null; createdAt: string };
+export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number };
+
+export const promoterService = {
+  activate: async (data: { fullName: string; pixKey: string; acceptTerms: true }) => {
+    const response = await apiClient.post('/promoter/activate', data);
+    return response.data;
+  },
+  getProfile: async (): Promise<{ promoter: PromoterProfile | null }> => {
+    const response = await apiClient.get('/promoter/profile');
+    return response.data;
+  },
+  getDashboard: async (): Promise<{ promoter: PromoterProfile; stats: PromoterStats; commissions: PromoterCommission[] }> => {
+    const response = await apiClient.get('/promoter/dashboard');
+    return response.data;
+  },
+};
+
+export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; message: string; readAt: string | null; createdAt: string };
+
+export const adminPromoterService = {
+  listPromoters: async () => {
+    const response = await apiClient.get('/admin/promoters');
+    return response.data;
+  },
+  listCommissions: async (status?: string) => {
+    const response = await apiClient.get('/admin/promoter-commissions', { params: status ? { status } : {} });
+    return response.data;
+  },
+  updateCommissionStatus: async (id: string, status: 'pending' | 'approved' | 'paid' | 'cancelled') => {
+    const response = await apiClient.patch(`/admin/promoter-commissions/${id}`, { status });
+    return response.data;
+  },
+  batchApprove: async (period: string) => {
+    const response = await apiClient.post('/admin/promoter-commissions/batch-approve', { period });
+    return response.data;
+  },
+  batchPay: async (data: { period?: string; promoterUserId?: string }) => {
+    const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
+    return response.data;
+  },
+  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }> }> => {
+    const response = await apiClient.get('/admin/promoter-support');
+    return response.data;
+  },
+  getSupportMessages: async (userId: string): Promise<{ messages: SupportMessage[] }> => {
+    const response = await apiClient.get(`/admin/promoter-support/${userId}`);
+    return response.data;
+  },
+  sendSupportMessage: async (userId: string, message: string) => {
+    const response = await apiClient.post(`/admin/promoter-support/${userId}`, { message });
+    return response.data;
+  },
+};
+
+export const promoterSupportService = {
+  getMessages: async (): Promise<{ messages: SupportMessage[] }> => {
+    const response = await apiClient.get('/promoter/support');
+    return response.data;
+  },
+  sendMessage: async (message: string) => {
+    const response = await apiClient.post('/promoter/support', { message });
+    return response.data;
+  },
+};
+
 export const testimonialsService = {
   create: async (profileUserId: string, content: string, mediaIds?: string[]) => {
     const response = await apiClient.post('/testimonials', { profileUserId, content, ...(mediaIds?.length ? { mediaIds } : {}) });

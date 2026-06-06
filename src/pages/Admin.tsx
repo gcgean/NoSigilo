@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
-  Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle
+  Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle,
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
-import { adminService } from '@/services/api';
+import { adminService, adminPromoterService, type SupportMessage } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -991,6 +992,10 @@ export default function Admin() {
             <Mail className="w-4 h-4" />
             Reengajamento
           </TabsTrigger>
+          <TabsTrigger value="promoters" className="gap-2">
+            <BadgeDollarSign className="w-4 h-4" />
+            Promotores
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="metrics">
@@ -1736,6 +1741,10 @@ export default function Admin() {
 
         <TabsContent value="reengagement">
           <AdminReengagementTab />
+        </TabsContent>
+
+        <TabsContent value="promoters">
+          <AdminPromotersTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -2661,6 +2670,389 @@ function AdminSuggestionsTab() {
           </Card>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Promotores Tab ────────────────────────────────────────────────────────
+
+type PromoterRow = {
+  userId: string; fullName: string; pixKey: string; status: string;
+  activatedAt: string; userName: string; userEmail: string; userAvatar: string | null;
+  totalSubscriptions: number; pendingCents: number; approvedCents: number; paidCents: number;
+};
+
+type CommissionRow = {
+  id: string; promoterUserId: string; promoterName: string; promoterPix: string;
+  subscriberUserId: string; subscriptionAmount: number; commissionAmount: number;
+  status: string; period: string | null; paidAt: string | null; createdAt: string;
+};
+
+const COMM_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  pending:   { label: 'Pendente',   color: 'bg-yellow-500/10 text-yellow-600 border-yellow-400/30' },
+  approved:  { label: 'Aprovada',   color: 'bg-blue-500/10 text-blue-600 border-blue-400/30' },
+  paid:      { label: 'Paga ✓',     color: 'bg-emerald-500/10 text-emerald-600 border-emerald-400/30' },
+  cancelled: { label: 'Cancelada',  color: 'bg-red-500/10 text-red-500 border-red-400/30' },
+};
+
+function formatBRLAdmin(cents: number) {
+  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatDateAdmin(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/** Calculate the due date for a period (e.g. '2025-06' → 10th of July 2025) */
+function calcDueDate(period: string | null): string {
+  if (!period) return '—';
+  const [y, m] = period.split('-').map(Number);
+  if (!y || !m) return '—';
+  const due = new Date(y, m, 10); // month is 0-indexed in JS, so m = next month's 1st = index m
+  return due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function AdminPromotersTab() {
+  const { toast } = useToast();
+  const [promoters, setPromoters] = useState<PromoterRow[]>([]);
+  const [commissions, setCommissions] = useState<CommissionRow[]>([]);
+  const [commFilter, setCommFilter] = useState<string>('pending');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isBusy, setIsBusy] = useState(false);
+
+  // Support chat state
+  const [selectedChat, setSelectedChat] = useState<PromoterRow | null>(null);
+  const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  const loadAll = async () => {
+    setIsLoading(true);
+    try {
+      const [pRes, cRes, chatRes] = await Promise.all([
+        adminPromoterService.listPromoters(),
+        adminPromoterService.listCommissions(commFilter !== 'all' ? commFilter : undefined),
+        adminPromoterService.listSupportChats().catch(() => ({ chats: [] })),
+      ]);
+      setPromoters(pRes.promoters ?? []);
+      setCommissions(cRes.commissions ?? []);
+      const map: Record<string, number> = {};
+      for (const c of (chatRes.chats ?? [])) map[c.userId] = c.unreadCount;
+      setUnreadMap(map);
+    } catch { /* silent */ }
+    finally { setIsLoading(false); }
+  };
+
+  useEffect(() => { void loadAll(); }, [commFilter]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const openChat = async (promoter: PromoterRow) => {
+    setSelectedChat(promoter);
+    setChatMessages([]);
+    try {
+      const data = await adminPromoterService.getSupportMessages(promoter.userId);
+      setChatMessages(data.messages);
+      setUnreadMap((prev) => ({ ...prev, [promoter.userId]: 0 }));
+    } catch {}
+  };
+
+  const handleSendChat = async () => {
+    if (!selectedChat || !chatInput.trim()) return;
+    setIsSendingChat(true);
+    try {
+      await adminPromoterService.sendSupportMessage(selectedChat.userId, chatInput.trim());
+      setChatInput('');
+      const data = await adminPromoterService.getSupportMessages(selectedChat.userId);
+      setChatMessages(data.messages);
+    } catch {
+      toast({ title: 'Erro ao enviar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally { setIsSendingChat(false); }
+  };
+
+  const handleCommStatus = async (id: string, status: 'pending' | 'approved' | 'paid' | 'cancelled') => {
+    try {
+      await adminPromoterService.updateCommissionStatus(id, status);
+      toast({ title: 'Status atualizado' });
+      void loadAll();
+    } catch { toast({ title: 'Erro', variant: 'destructive' }); }
+  };
+
+  const handleBatchApprove = async (period: string) => {
+    setIsBusy(true);
+    try {
+      await adminPromoterService.batchApprove(period);
+      toast({ title: `Comissões de ${period} aprovadas` });
+      void loadAll();
+    } catch { toast({ title: 'Erro', variant: 'destructive' }); }
+    finally { setIsBusy(false); }
+  };
+
+  const handleBatchPay = async (period?: string, promoterUserId?: string) => {
+    setIsBusy(true);
+    try {
+      await adminPromoterService.batchPay({ period, promoterUserId });
+      toast({ title: 'Comissões marcadas como pagas' });
+      void loadAll();
+    } catch { toast({ title: 'Erro', variant: 'destructive' }); }
+    finally { setIsBusy(false); }
+  };
+
+  // Group commissions by period
+  const byPeriod = useMemo(() => {
+    const map = new Map<string, CommissionRow[]>();
+    for (const c of commissions) {
+      const key = c.period ?? 'sem-período';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(c);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [commissions]);
+
+  const totalPending = promoters.reduce((s, p) => s + p.pendingCents, 0);
+  const totalApproved = promoters.reduce((s, p) => s + p.approvedCents, 0);
+  const totalPaid = promoters.reduce((s, p) => s + p.paidCents, 0);
+
+  if (isLoading) return <div className="py-20 text-center text-muted-foreground"><Loader2 className="w-6 h-6 animate-spin mx-auto" /></div>;
+
+  // ── Support chat view ──────────────────────────────────────────────────────
+  if (selectedChat) {
+    return (
+      <div className="glass rounded-xl p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setSelectedChat(null)} className="rounded-full p-1.5 hover:bg-secondary">
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div>
+            <p className="font-semibold">{selectedChat.fullName}</p>
+            <p className="text-xs text-muted-foreground">{selectedChat.userEmail} · Pix: {selectedChat.pixKey}</p>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="space-y-2 h-96 overflow-y-auto border rounded-xl p-3 bg-secondary/20 pr-2">
+          {chatMessages.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">Nenhuma mensagem ainda.</p>}
+          {chatMessages.map((m) => (
+            <div key={m.id} className={`flex ${m.senderType === 'admin' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.senderType === 'admin' ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border rounded-bl-sm'}`}>
+                {m.senderType === 'promoter' && <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{selectedChat.fullName}</p>}
+                <p>{m.message}</p>
+                <p className={`text-[10px] mt-0.5 ${m.senderType === 'admin' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>{formatDateAdmin(m.createdAt)}</p>
+              </div>
+            </div>
+          ))}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            placeholder="Responder ao promotor..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat(); }}}
+          />
+          <button
+            onClick={handleSendChat}
+            disabled={!chatInput.trim() || isSendingChat}
+            className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {isSendingChat ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            Enviar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main view ──────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-6">
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Promotores ativos', value: promoters.length, color: 'text-blue-500', icon: BadgeDollarSign },
+          { label: 'Pendente de pagto', value: formatBRLAdmin(totalPending), color: 'text-yellow-600', icon: Clock },
+          { label: 'Aprovado', value: formatBRLAdmin(totalApproved), color: 'text-blue-600', icon: CheckCircle2 },
+          { label: 'Total já pago', value: formatBRLAdmin(totalPaid), color: 'text-emerald-600', icon: Wallet },
+        ].map((item) => (
+          <Card key={item.label} className="p-4 glass space-y-1">
+            <item.icon className={`w-4 h-4 ${item.color}`} />
+            <p className="text-xs text-muted-foreground">{item.label}</p>
+            <p className="text-lg font-bold">{item.value}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Promoters list */}
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold flex items-center gap-2">
+          <Users className="w-4 h-4 text-primary" />
+          Promotores ({promoters.length})
+        </h3>
+        {promoters.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhum promotor ainda.</p>}
+        <div className="space-y-3">
+          {promoters.map((p) => (
+            <div key={p.userId} className="rounded-xl border bg-secondary/20 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1 min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold truncate">{p.fullName}</p>
+                  <span className={`text-xs rounded-full px-2 py-0.5 border ${p.status === 'active' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-400/30' : 'bg-red-500/10 text-red-500 border-red-400/30'}`}>
+                    {p.status === 'active' ? 'Ativo' : 'Suspenso'}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">{p.userEmail}</p>
+                <p className="text-xs text-muted-foreground">Pix: <strong>{p.pixKey}</strong></p>
+                <p className="text-xs text-muted-foreground">Ativo desde {formatDateAdmin(p.activatedAt)}</p>
+              </div>
+              <div className="flex gap-4 text-center">
+                <div>
+                  <p className="text-sm font-bold">{p.totalSubscriptions}</p>
+                  <p className="text-[10px] text-muted-foreground">assinaturas</p>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-yellow-600">{formatBRLAdmin(p.pendingCents)}</p>
+                  <p className="text-[10px] text-muted-foreground">pendente</p>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-emerald-600">{formatBRLAdmin(p.paidCents)}</p>
+                  <p className="text-[10px] text-muted-foreground">pago</p>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {p.pendingCents > 0 && (
+                  <button
+                    onClick={() => handleBatchPay(undefined, p.userId)}
+                    disabled={isBusy}
+                    className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Check className="w-3 h-3" /> Pagar tudo
+                  </button>
+                )}
+                <button
+                  onClick={() => openChat(p)}
+                  className="relative text-xs rounded-lg border px-3 py-1.5 hover:bg-secondary flex items-center gap-1"
+                >
+                  <MessageCircle className="w-3 h-3" /> Chat
+                  {(unreadMap[p.userId] ?? 0) > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                      {unreadMap[p.userId]}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Commissions by period */}
+      <div className="glass rounded-xl p-5 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h3 className="font-semibold flex items-center gap-2">
+            <DollarSign className="w-4 h-4 text-emerald-500" />
+            Comissões por período
+          </h3>
+          <div className="flex gap-2 flex-wrap">
+            {['pending', 'approved', 'paid', 'cancelled', 'all'].map((s) => (
+              <button
+                key={s}
+                onClick={() => setCommFilter(s)}
+                className={`text-xs rounded-full px-3 py-1 border font-medium transition-colors ${commFilter === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-secondary'}`}
+              >
+                {{ pending: 'Pendentes', approved: 'Aprovadas', paid: 'Pagas', cancelled: 'Canceladas', all: 'Todas' }[s]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {byPeriod.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhuma comissão neste filtro.</p>}
+
+        {byPeriod.map(([period, items]) => {
+          const totalCents = items.reduce((s, c) => s + c.commissionAmount, 0);
+          const pendingItems = items.filter((c) => c.status === 'pending');
+          const approvedItems = items.filter((c) => c.status === 'approved');
+          return (
+            <div key={period} className="rounded-xl border bg-card">
+              {/* Period header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b bg-secondary/30 rounded-t-xl">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Calendar className="w-4 h-4 text-primary" />
+                    {period}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    Vencimento: <strong>{calcDueDate(period)}</strong>
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-600">{formatBRLAdmin(totalCents)} total</span>
+                </div>
+                <div className="flex gap-2">
+                  {pendingItems.length > 0 && (
+                    <button
+                      onClick={() => handleBatchApprove(period)}
+                      disabled={isBusy}
+                      className="text-xs rounded-lg bg-blue-500 text-white px-3 py-1.5 hover:bg-blue-600 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <CheckCircle2 className="w-3 h-3" /> Aprovar todas ({pendingItems.length})
+                    </button>
+                  )}
+                  {approvedItems.length > 0 && (
+                    <button
+                      onClick={() => handleBatchPay(period)}
+                      disabled={isBusy}
+                      className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      <Check className="w-3 h-3" /> Pagar aprovadas ({approvedItems.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Commission rows */}
+              <div className="divide-y">
+                {items.map((c) => {
+                  const statusMeta = COMM_STATUS_LABELS[c.status] ?? COMM_STATUS_LABELS.pending;
+                  return (
+                    <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{c.promoterName}</p>
+                        <p className="text-xs text-muted-foreground">Pix: {c.promoterPix}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-emerald-600">{formatBRLAdmin(c.commissionAmount)}</p>
+                        <p className="text-xs text-muted-foreground">{formatBRLAdmin(c.subscriptionAmount)} assinatura</p>
+                      </div>
+                      <span className={`text-xs rounded-full px-2.5 py-0.5 border font-medium ${statusMeta.color}`}>
+                        {statusMeta.label}
+                      </span>
+                      {c.paidAt && <span className="text-xs text-muted-foreground">Pago em {formatDateAdmin(c.paidAt)}</span>}
+                      {/* Action buttons */}
+                      {c.status === 'pending' && (
+                        <div className="flex gap-1">
+                          <button onClick={() => handleCommStatus(c.id, 'approved')} className="text-[11px] rounded-lg bg-blue-500/10 text-blue-600 border border-blue-400/30 px-2 py-1 hover:bg-blue-500/20">Aprovar</button>
+                          <button onClick={() => handleCommStatus(c.id, 'cancelled')} className="text-[11px] rounded-lg bg-red-500/10 text-red-500 border border-red-400/30 px-2 py-1 hover:bg-red-500/20">Cancelar</button>
+                        </div>
+                      )}
+                      {c.status === 'approved' && (
+                        <button onClick={() => handleCommStatus(c.id, 'paid')} className="text-[11px] rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-400/30 px-2 py-1 hover:bg-emerald-500/20">
+                          Marcar paga
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -2428,6 +2428,235 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json(rowToInvite(refreshed));
   });
 
+  // ── Programa de Indicação (Promotores) ────────────────────────────────────
+
+  app.post('/api/promoter/activate', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({
+      fullName: z.string().min(3).max(200),
+      pixKey: z.string().min(5).max(200),
+      acceptTerms: z.literal(true),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const userId = req.auth!.userId;
+    const existing = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
+    if (existing) {
+      await run(db, 'UPDATE promoters SET full_name = ?, pix_key = ?, status = ? WHERE user_id = ?', [parsed.data.fullName, parsed.data.pixKey, 'active', userId]);
+      await persist();
+      res.json({ ok: true, updated: true });
+      return;
+    }
+    const now = nowIso();
+    await run(
+      db,
+      'INSERT INTO promoters (id, user_id, full_name, pix_key, status, accepted_terms_at, activated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, parsed.data.fullName, parsed.data.pixKey, 'active', now, now, now]
+    );
+    await persist();
+    res.json({ ok: true, created: true });
+  });
+
+  app.get('/api/promoter/profile', requireAuth(env, db), async (req, res) => {
+    const row = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [req.auth!.userId]);
+    if (!row) { res.json({ promoter: null }); return; }
+    const r = row as any;
+    res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), status: String(r.status), activatedAt: String(r.activated_at) } });
+  });
+
+  app.get('/api/promoter/dashboard', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const promoterRow = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
+    if (!promoterRow) { res.status(404).json({ error: 'not_a_promoter' }); return; }
+    const pr = promoterRow as any;
+    const invitesRow = await queryOne(db, "SELECT COUNT(*) as c FROM invite_links WHERE inviter_user_id = ? AND status != 'revoked'", [userId]) as any;
+    const signupsRow = await queryOne(db, `SELECT COUNT(*) as c FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id WHERE l.inviter_user_id = ?`, [userId]) as any;
+    const commissions = (await queryAll(db, 'SELECT * FROM promoter_commissions WHERE promoter_user_id = ? ORDER BY created_at DESC LIMIT 100', [userId])) as any[];
+    const active = commissions.filter((c) => c.status !== 'cancelled');
+    const pending = commissions.filter((c) => c.status === 'pending');
+    const approved = commissions.filter((c) => c.status === 'approved');
+    const paid = commissions.filter((c) => c.status === 'paid');
+    const sum = (arr: any[]) => arr.reduce((s, c) => s + Number(c.commission_amount || 0), 0);
+    res.json({
+      promoter: { id: String(pr.id), fullName: String(pr.full_name), pixKey: String(pr.pix_key), status: String(pr.status), activatedAt: String(pr.activated_at) },
+      stats: {
+        invitesSent: Number(invitesRow?.c ?? 0),
+        totalSignups: Number(signupsRow?.c ?? 0),
+        totalSubscriptions: active.length,
+        totalCommissionCents: sum(active),
+        pendingCents: sum(pending),
+        approvedCents: sum(approved),
+        paidCents: sum(paid),
+      },
+      commissions: commissions.slice(0, 50).map((c) => ({
+        id: String(c.id),
+        subscriptionAmount: Number(c.subscription_amount),
+        commissionAmount: Number(c.commission_amount),
+        status: String(c.status),
+        period: c.period ?? null,
+        paidAt: c.paid_at ?? null,
+        createdAt: String(c.created_at),
+      })),
+    });
+  });
+
+  // Admin: list promoters
+  app.get('/api/admin/promoters', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT p.*, u.name as user_name, u.email as user_email, u.avatar as user_avatar,
+        (SELECT COUNT(*) FROM promoter_commissions pc WHERE pc.promoter_user_id = p.user_id AND pc.status != 'cancelled') as total_subscriptions,
+        (SELECT COALESCE(SUM(pc.commission_amount),0) FROM promoter_commissions pc WHERE pc.promoter_user_id = p.user_id AND pc.status = 'pending') as pending_cents,
+        (SELECT COALESCE(SUM(pc.commission_amount),0) FROM promoter_commissions pc WHERE pc.promoter_user_id = p.user_id AND pc.status = 'approved') as approved_cents,
+        (SELECT COALESCE(SUM(pc.commission_amount),0) FROM promoter_commissions pc WHERE pc.promoter_user_id = p.user_id AND pc.status = 'paid') as paid_cents
+       FROM promoters p JOIN users u ON u.id = p.user_id ORDER BY p.activated_at DESC`,
+      []
+    )) as any[];
+    res.json({ promoters: rows.map((r) => ({
+      id: String(r.id), userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
+      status: String(r.status), activatedAt: String(r.activated_at),
+      userName: String(r.user_name || ''), userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
+      totalSubscriptions: Number(r.total_subscriptions || 0),
+      pendingCents: Number(r.pending_cents || 0),
+      approvedCents: Number(r.approved_cents || 0),
+      paidCents: Number(r.paid_cents || 0),
+    })) });
+  });
+
+  // Admin: list all commissions
+  app.get('/api/admin/promoter-commissions', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const status = req.query.status ? String(req.query.status) : null;
+    const rows = (await queryAll(
+      db,
+      `SELECT pc.*, p.full_name as promoter_name, p.pix_key as promoter_pix
+       FROM promoter_commissions pc
+       JOIN promoters p ON p.user_id = pc.promoter_user_id
+       ${status ? 'WHERE pc.status = ?' : ''}
+       ORDER BY pc.created_at DESC LIMIT 200`,
+      status ? [status] : []
+    )) as any[];
+    res.json({ commissions: rows.map((r) => ({
+      id: String(r.id), promoterUserId: String(r.promoter_user_id), promoterName: String(r.promoter_name || ''),
+      promoterPix: String(r.promoter_pix || ''), subscriberUserId: String(r.subscriber_user_id),
+      subscriptionAmount: Number(r.subscription_amount), commissionAmount: Number(r.commission_amount),
+      status: String(r.status), period: r.period ?? null, paidAt: r.paid_at ?? null, createdAt: String(r.created_at),
+    })) });
+  });
+
+  // Admin: update commission status
+  app.patch('/api/admin/promoter-commissions/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ status: z.enum(['pending', 'approved', 'paid', 'cancelled']) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const paidAt = parsed.data.status === 'paid' ? nowIso() : null;
+    await run(db, 'UPDATE promoter_commissions SET status = ?, paid_at = COALESCE(?, paid_at) WHERE id = ?', [parsed.data.status, paidAt, String(req.params.id || '')]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // ── Suporte ao Promotor (chat) ─────────────────────────────────────────────
+
+  // Promotor: listar mensagens do próprio suporte
+  app.get('/api/promoter/support', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const promoter = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
+    if (!promoter) { res.status(403).json({ error: 'not_a_promoter' }); return; }
+    const msgs = (await queryAll(
+      db,
+      'SELECT * FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at ASC',
+      [userId]
+    )) as any[];
+    // Mark admin messages as read
+    await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'admin' AND read_at IS NULL", [nowIso(), userId]);
+    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+  });
+
+  // Promotor: enviar mensagem para suporte
+  app.post('/api/promoter/support', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const promoter = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
+    if (!promoter) { res.status(403).json({ error: 'not_a_promoter' }); return; }
+    const schema = z.object({ message: z.string().min(1).max(2000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const now = nowIso();
+    const id = randomUUID();
+    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, 'promoter', userId, parsed.data.message, now]);
+    await persist();
+    res.json({ ok: true, id });
+  });
+
+  // Admin: listar todos os chats de suporte (com última mensagem + não lidas)
+  app.get('/api/admin/promoter-support', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT p.user_id, p.full_name, p.pix_key, u.email as user_email, u.avatar as user_avatar,
+         (SELECT message FROM promoter_support_messages WHERE promoter_user_id = p.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
+         (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = p.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
+         (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = p.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count
+       FROM promoters p
+       JOIN users u ON u.id = p.user_id
+       ORDER BY last_message_at DESC NULLS LAST`,
+      []
+    )) as any[];
+    res.json({ chats: rows.map((r) => ({
+      userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
+      userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
+      lastMessage: r.last_message ?? null, lastMessageAt: r.last_message_at ?? null,
+      unreadCount: Number(r.unread_count || 0),
+    })) });
+  });
+
+  // Admin: mensagens de um promotor específico
+  app.get('/api/admin/promoter-support/:userId', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const targetUserId = String(req.params.userId || '');
+    const msgs = (await queryAll(db, 'SELECT * FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at ASC', [targetUserId])) as any[];
+    // Mark promoter messages as read
+    await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'promoter' AND read_at IS NULL", [nowIso(), targetUserId]);
+    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+  });
+
+  // Admin: responder a um promotor
+  app.post('/api/admin/promoter-support/:userId', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const targetUserId = String(req.params.userId || '');
+    const schema = z.object({ message: z.string().min(1).max(2000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const now = nowIso();
+    const id = randomUUID();
+    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, targetUserId, 'admin', req.auth!.userId, parsed.data.message, now]);
+    await persist();
+    res.json({ ok: true, id });
+  });
+
+  // Admin: batch approve commissions (by period)
+  app.post('/api/admin/promoter-commissions/batch-approve', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const result = await run(db, "UPDATE promoter_commissions SET status = 'approved' WHERE period = ? AND status = 'pending'", [parsed.data.period]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Admin: batch pay commissions (mark all approved as paid)
+  app.post('/api/admin/promoter-commissions/batch-pay', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional(), promoterUserId: z.string().optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const now = nowIso();
+    let q = "UPDATE promoter_commissions SET status = 'paid', paid_at = ? WHERE status = 'approved'";
+    const params: any[] = [now];
+    if (parsed.data.period) { q += ' AND period = ?'; params.push(parsed.data.period); }
+    if (parsed.data.promoterUserId) { q += ' AND promoter_user_id = ?'; params.push(parsed.data.promoterUserId); }
+    await run(db, q, params);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // ── END Suporte ao Promotor ────────────────────────────────────────────────
+
+  // ── END Programa de Indicação ──────────────────────────────────────────────
+
   app.get('/api/auth/me', requireAuth(env, db), async (req, res) => {
     const row = await getUserWithSponsorById(db, req.auth!.userId);
     const presence = req.app.get('presence');
@@ -8451,6 +8680,53 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         ]
       );
       await persist();
+
+      // ── Promoter commission on payment.approved ──────────────────────────
+      if (eventType === 'payment.approved') {
+        try {
+          const subscriberUserId = String(user.id);
+          // Check if subscriber came through a promoter's invite
+          const inviteEntry = (await queryOne(
+            db,
+            `SELECT l.inviter_user_id FROM invite_link_entries e
+             JOIN invite_links l ON l.id = e.invite_link_id
+             WHERE e.invitee_user_id = ? LIMIT 1`,
+            [subscriberUserId]
+          )) as any;
+          if (inviteEntry) {
+            const inviterUserId = String(inviteEntry.inviter_user_id);
+            const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
+            if (promoter) {
+              // Only create one commission per subscriber (idempotent)
+              const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
+              if (!existing) {
+                const subAmount = Number(payload?.payload?.amount || 990); // cents from webhook, fallback 990
+                const commAmount = Math.round(subAmount * 0.20);
+                const period = new Date().toISOString().slice(0, 7);
+                await run(
+                  db,
+                  'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                  [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
+                );
+                await persist();
+                console.log(`[promoter] commission created: promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[promoter] commission error:', err);
+        }
+      }
+
+      // ── Cancel commission on chargeback ─────────────────────────────────
+      if (eventType === 'payment.chargeback') {
+        try {
+          await run(db, "UPDATE promoter_commissions SET status = 'cancelled' WHERE subscriber_user_id = ?", [String(user.id)]);
+          await persist();
+        } catch (err) {
+          console.error('[promoter] cancel commission error:', err);
+        }
+      }
     }
 
     res.json({ ok: true });
