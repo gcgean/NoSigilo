@@ -3856,6 +3856,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/stories/:id/comments', requireAuth(env, db), async (req, res) => {
     const commenterId = req.auth!.userId;
     const storyId = req.params.id;
+    const io = req.app.get('io') as SocketIOServer | undefined;
     const { text } = req.body as { text?: string };
     if (!text?.trim()) { res.status(400).json({ error: 'text_required' }); return; }
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
@@ -3864,16 +3865,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     await run(db, 'INSERT INTO story_comments (id, story_id, commenter_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, storyId, commenterId, text.trim(), now]);
     await persist();
-    // Notifica o dono do story
+    // Notifica o dono do story (falha de notificação não deve derrubar o comentário)
     if (story.user_id !== commenterId) {
-      const commenter = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [commenterId])) as any;
-      await createNotification(db, {
-        userId: String(story.user_id),
-        type: 'story.comment',
-        title: 'Comentário no seu story',
-        description: `${commenter?.name || 'Alguém'} comentou no seu story`,
-        url: '/stories',
-      });
+      try {
+        const commenter = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [commenterId])) as any;
+        await createNotification({ db, io }, {
+          userId: String(story.user_id),
+          type: 'story.comment',
+          title: 'Comentário no seu story',
+          description: `${commenter?.name || 'Alguém'} comentou no seu story`,
+          dataJson: { storyId },
+        });
+      } catch (err) {
+        console.error('[stories/comments] notification failed', err);
+      }
     }
     res.json({ id, ok: true });
   });
