@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Clapperboard, SlidersHorizontal, MapPin, Heart, Play,
@@ -457,35 +457,38 @@ export default function SearchVideos() {
         {/* Sort pills */}
         <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
           {sortOptions.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setSortFilter(value)}
-              className={cn(
-                'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                sortFilter === value
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+            <Fragment key={value}>
+              <button
+                type="button"
+                onClick={() => setSortFilter(value)}
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                  sortFilter === value
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+              {/* Filtro "Não vistos" — posicionado logo após "Mais curtidos" e antes de "Mais comentados" */}
+              {value === 'liked' && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyUnseen((v) => !v)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    onlyUnseen
+                      ? 'border-emerald-500 bg-emerald-500 text-white'
+                      : 'border-border bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
+                  )}
+                >
+                  <EyeOff className="h-3.5 w-3.5" />
+                  Não vistos
+                </button>
               )}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
+            </Fragment>
           ))}
-          {/* Filtro "Não vistos" */}
-          <button
-            type="button"
-            onClick={() => setOnlyUnseen((v) => !v)}
-            className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-              onlyUnseen
-                ? 'border-emerald-500 bg-emerald-500 text-white'
-                : 'border-border bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
-            )}
-          >
-            <EyeOff className="h-3.5 w-3.5" />
-            Não vistos
-          </button>
         </div>
 
         {/* Expanded filters */}

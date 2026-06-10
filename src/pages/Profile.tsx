@@ -999,7 +999,7 @@ export default function Profile() {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center sm:justify-start gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-center sm:justify-start gap-3">
               <NavLink to="/settings">
                 <Button variant="outline" size="sm" className="w-full gap-2">
                   <Edit2 className="w-4 h-4" />

@@ -468,10 +468,10 @@ export default function FirstAccessTutorial() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const today = new Date().toISOString().slice(0, 10);
     const key = `nosigilo:welcome-tutorial-date:${user.id}`;
-    if (localStorage.getItem(key) === today) return; // já foi exibido hoje
-    localStorage.setItem(key, today);
+    // Mostra apenas uma vez por usuário (no primeiro acesso) e nunca mais.
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, new Date().toISOString().slice(0, 10));
     setOpen(true);
     setStepIndex(0);
   }, [user?.id]);
