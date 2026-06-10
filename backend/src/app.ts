@@ -3746,9 +3746,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           { lat: Number(r.lat), lon: Number(r.lon) }
         ));
       }
-      const [likeRow, likedRow] = await Promise.all([
+      const [likeRow, likedRow, reactionRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [r.id]) as Promise<any>,
-        queryOne(db, 'SELECT id FROM story_likes WHERE story_id = ? AND liker_id = ?', [r.id, userId]) as Promise<any>,
+        queryOne(db, "SELECT COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?", [r.id, userId]) as Promise<any>,
+        queryAll(db, "SELECT COALESCE(reaction, 'heart') AS reaction, COUNT(*) AS c FROM story_likes WHERE story_id = ? GROUP BY COALESCE(reaction, 'heart')", [r.id]) as Promise<any[]>,
       ]);
       return {
         id: String(r.id),
@@ -3759,6 +3760,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         viewed: viewedSet.has(String(r.id)),
         likeCount: Number(likeRow?.c || 0),
         likedByMe: !!likedRow,
+        myReaction: likedRow?.reaction ? String(likedRow.reaction) : null,
+        reactions: (reactionRows as any[]).map((rr) => ({ type: String(rr.reaction), count: Number(rr.c) })),
         author: {
           id: String(r.user_id),
           name: String(r.name),
@@ -3925,21 +3928,45 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
-  // POST /api/stories/:id/like — curtir/descurtir story (toggle)
+  // POST /api/stories/:id/like — reagir/desreagir a um story (toggle por reação)
   app.post('/api/stories/:id/like', requireAuth(env, db), async (req, res) => {
     const likerId = req.auth!.userId;
     const storyId = req.params.id;
+    const reactionSchema = z.object({
+      reaction: z.enum(['heart', 'love', 'wow', 'devil', 'fire', 'splash']).optional(),
+    });
+    const parsed = reactionSchema.safeParse(req.body || {});
+    const reaction = parsed.success && parsed.data.reaction ? parsed.data.reaction : 'heart';
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
     if (!story) { res.status(404).json({ error: 'not_found' }); return; }
-    const existing = (await queryOne(db, 'SELECT id FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId])) as any;
+    const existing = (await queryOne(
+      db,
+      "SELECT id, COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?",
+      [storyId, likerId]
+    )) as any;
+    let myReaction: string | null = null;
     if (existing) {
-      await run(db, 'DELETE FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId]);
+      if (String(existing.reaction) === reaction) {
+        // Mesma reação → remove (toggle off)
+        await run(db, 'DELETE FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId]);
+      } else {
+        // Reação diferente → troca
+        await run(db, 'UPDATE story_likes SET reaction = ? WHERE story_id = ? AND liker_id = ?', [reaction, storyId, likerId]);
+        myReaction = reaction;
+      }
     } else {
-      await run(db, 'INSERT OR IGNORE INTO story_likes (id, story_id, liker_id, liked_at) VALUES (?, ?, ?, ?)', [randomUUID(), storyId, likerId, new Date().toISOString()]);
+      await run(db, 'INSERT OR IGNORE INTO story_likes (id, story_id, liker_id, liked_at, reaction) VALUES (?, ?, ?, ?, ?)', [randomUUID(), storyId, likerId, new Date().toISOString(), reaction]);
+      myReaction = reaction;
     }
     await persist();
     const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [storyId])) as any;
-    res.json({ liked: !existing, likeCount: Number(countRow?.c || 0) });
+    const reactionRows = (await queryAll(
+      db,
+      "SELECT COALESCE(reaction, 'heart') AS reaction, COUNT(*) AS c FROM story_likes WHERE story_id = ? GROUP BY COALESCE(reaction, 'heart')",
+      [storyId]
+    )) as any[];
+    const reactions = reactionRows.map((r) => ({ type: String(r.reaction), count: Number(r.c) }));
+    res.json({ liked: myReaction !== null, likeCount: Number(countRow?.c || 0), myReaction, reactions });
   });
 
   // ── Video search (browse reels like profile search) ───────────────────────

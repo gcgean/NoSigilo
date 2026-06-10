@@ -32,6 +32,7 @@ import SocialPulseCard from '@/components/SocialPulseCard';
 import StreakBadge from '@/components/StreakBadge';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
+import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -145,33 +146,8 @@ const WEEKLY_THEME = {
   deadline: 'Até domingo',
 };
 
-type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
-const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
-  { id: 'heart', emoji: '💜' },
-  { id: 'fire', emoji: '🔥' },
-  { id: 'love', emoji: '😍' },
-  { id: 'wow', emoji: '🤭' },
-  { id: 'devil', emoji: '😈' },
-  { id: 'splash', emoji: '💦' },
-];
-const EMPTY_REACTION_COUNTS: Record<PhotoReaction, number> = {
-  heart: 0,
-  fire: 0,
-  love: 0,
-  wow: 0,
-  devil: 0,
-  splash: 0,
-};
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
 const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
-const REACTION_EMOJI: Record<string, string> = {
-  heart: '💜',
-  fire: '🔥',
-  love: '😍',
-  wow: '🤭',
-  devil: '😈',
-  splash: '💦',
-};
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';

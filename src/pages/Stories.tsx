@@ -12,6 +12,7 @@ import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { PHOTO_REACTIONS, REACTION_EMOJI } from '@/lib/reactions';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ type MyStory = {
 type FeedStory = {
   id: string; mediaUrl: string; mimeType: string;
   createdAt: string; expiresAt: string; viewed: boolean;
-  likeCount: number; likedByMe: boolean;
+  likeCount: number; likedByMe: boolean; myReaction?: string | null;
   author: {
     id: string; name: string; gender: string | null; avatar: string | null;
     age: number | null; partnerAge: number | null;
@@ -74,6 +75,9 @@ function StoryViewer({
   const [liked, setLiked]       = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [likeAnim, setLikeAnim] = useState(false);
+  const [myReaction, setMyReaction] = useState<string | null>(null);
+  const [showReactions, setShowReactions] = useState(false);
+  const reactionLongPress = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const DURATION = 5000;
 
@@ -83,6 +87,8 @@ function StoryViewer({
   useEffect(() => {
     setLiked(story.likedByMe ?? false);
     setLikeCount(story.likeCount ?? 0);
+    setMyReaction(story.myReaction ?? null);
+    setShowReactions(false);
   }, [story.id]);
 
   const go = useCallback((delta: number) => {
@@ -128,22 +134,33 @@ function StoryViewer({
     }
   };
 
-  const handleLike = async () => {
-    // Otimista
-    const newLiked = !liked;
-    setLiked(newLiked);
-    setLikeCount((c) => c + (newLiked ? 1 : -1));
+  const handleReact = async (reaction: string) => {
+    setShowReactions(false);
+    const prev = { liked, likeCount, myReaction };
+    // Atualização otimista
+    const isToggleOff = myReaction === reaction;
+    setMyReaction(isToggleOff ? null : reaction);
+    setLiked(!isToggleOff);
+    setLikeCount((c) => c + (isToggleOff ? -1 : myReaction ? 0 : 1));
     setLikeAnim(true);
     setTimeout(() => setLikeAnim(false), 400);
     try {
-      const res = await storiesService.like(story.id);
+      const res = await storiesService.like(story.id, reaction as any);
       setLiked(res.liked);
       setLikeCount(res.likeCount);
+      setMyReaction(res.myReaction);
     } catch {
-      // Reverte em caso de erro
-      setLiked(!newLiked);
-      setLikeCount((c) => c + (newLiked ? -1 : 1));
+      setLiked(prev.liked);
+      setLikeCount(prev.likeCount);
+      setMyReaction(prev.myReaction);
     }
+  };
+
+  const startReactionPress = () => {
+    reactionLongPress.current = setTimeout(() => setShowReactions(true), 400);
+  };
+  const cancelReactionPress = () => {
+    if (reactionLongPress.current) { clearTimeout(reactionLongPress.current); reactionLongPress.current = null; }
   };
 
   // Touch navigation (esquerda/direita)
@@ -297,24 +314,46 @@ function StoryViewer({
       {/* Comment bar + Like (not own story) */}
       {story.author.id !== myUserId && (
         <div className="flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3">
-          {/* Botão curtir */}
-          <button
-            type="button"
-            onClick={() => void handleLike()}
-            className="flex flex-col items-center gap-0.5 shrink-0"
-            aria-label={liked ? 'Descurtir' : 'Curtir'}
-          >
-            <Heart
-              className={cn(
-                'h-6 w-6 transition-all duration-200',
-                liked ? 'fill-red-500 text-red-500' : 'text-white/70',
-                likeAnim && 'scale-125'
-              )}
-            />
-            {likeCount > 0 && (
-              <span className="text-[9px] text-white/60 leading-none">{likeCount}</span>
+          {/* Botão reagir (tap = reação atual/💜, segurar = escolher) */}
+          <div className="relative shrink-0">
+            {showReactions && (
+              <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 rounded-full border border-white/15 bg-black/85 px-2 py-1.5 shadow-lg backdrop-blur-sm">
+                {PHOTO_REACTIONS.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => void handleReact(r.id)}
+                    className={cn('text-xl leading-none transition-transform hover:scale-125', myReaction === r.id && 'scale-125')}
+                    aria-label={`Reagir ${r.emoji}`}
+                  >
+                    {r.emoji}
+                  </button>
+                ))}
+              </div>
             )}
-          </button>
+            <button
+              type="button"
+              onClick={() => void handleReact(myReaction || 'heart')}
+              onMouseDown={startReactionPress}
+              onMouseUp={cancelReactionPress}
+              onMouseLeave={cancelReactionPress}
+              onTouchStart={startReactionPress}
+              onTouchEnd={cancelReactionPress}
+              className="flex flex-col items-center gap-0.5"
+              aria-label="Reagir ao story"
+            >
+              {myReaction ? (
+                <span className={cn('text-2xl leading-none transition-transform duration-200', likeAnim && 'scale-125')}>
+                  {REACTION_EMOJI[myReaction] ?? '💜'}
+                </span>
+              ) : (
+                <Heart className={cn('h-6 w-6 text-white/70 transition-all duration-200', likeAnim && 'scale-125')} />
+              )}
+              {likeCount > 0 && (
+                <span className="text-[9px] text-white/60 leading-none">{likeCount}</span>
+              )}
+            </button>
+          </div>
 
           {/* Input comentário com efeito de apagar */}
           <input
@@ -689,16 +728,16 @@ export default function Stories() {
           </div>
         ) : (
           /* Criar story */
-          <div className="rounded-2xl border-2 border-dashed border-border p-6 text-center space-y-4">
+          <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-fuchsia-500/10 to-violet-600/15 p-6 text-center space-y-4 shadow-[0_8px_32px_rgba(168,85,247,0.18)]">
             <div className="flex justify-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-                <Camera className="h-8 w-8 text-primary" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-violet-600 shadow-lg">
+                <Sparkles className="h-8 w-8 text-white" />
               </div>
             </div>
             <div>
-              <p className="font-semibold">Publique um story</p>
+              <p className="text-lg font-bold">Poste um momento quente 🔥</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Foto ou vídeo de até 30s · visível por 24h · só para perfis compatíveis
+                Foto ou vídeo de até 30s · fica 24h no ar · aparece para quem combina com você
               </p>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">

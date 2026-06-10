@@ -18,6 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { UserAvatar } from '@/components/UserAvatar';
+import { PHOTO_REACTIONS, type PhotoReaction } from '@/lib/reactions';
 import UserBadges from '@/components/UserBadges';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,15 +41,6 @@ import {
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
 type PhotoComment = { id: string; content: string; createdAt: string; user?: { id?: string; name?: string; avatar?: string | null } };
-type PhotoReaction = 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash';
-const PHOTO_REACTIONS: Array<{ id: PhotoReaction; emoji: string }> = [
-  { id: 'heart', emoji: '💜' },
-  { id: 'fire', emoji: '🔥' },
-  { id: 'love', emoji: '😍' },
-  { id: 'wow', emoji: '🤭' },
-  { id: 'devil', emoji: '😈' },
-  { id: 'splash', emoji: '💦' },
-];
 const FULLSCREEN_VIDEO_SWIPE_THRESHOLD_PX = 36;
 const FULLSCREEN_VIDEO_SWIPE_VERTICAL_DOMINANCE = 1.15;
 

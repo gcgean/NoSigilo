@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { calculateAge } from '@/utils/age';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
+import { REACTION_EMOJI } from '@/lib/reactions';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -61,10 +62,6 @@ function visitTimeAgo(iso: string) {
   const diffDays = Math.floor(diffHours / 24);
   return `Há ${diffDays} d`;
 }
-
-const REACTION_EMOJI_MAP: Record<string, string> = {
-  heart: '💜', fire: '🔥', love: '😍', wow: '🤭', devil: '😈', splash: '💦',
-};
 
 /** Faz fetch de imagens privadas com o Bearer token e retorna um blob URL */
 function usePrivateImageUrl(url: string, isPrivate: boolean): string {
@@ -246,7 +243,7 @@ function PhotoItem({
                           </AvatarFallback>
                         </Avatar>
                         <span className="absolute -bottom-0.5 -right-0.5 text-[11px]">
-                          {REACTION_EMOJI_MAP[l.reaction || 'heart'] ?? '💜'}
+                          {REACTION_EMOJI[l.reaction || 'heart'] ?? '💜'}
                         </span>
                       </div>
                       <span className="text-sm text-white/90 truncate">{l.user.name}</span>
