@@ -445,11 +445,19 @@ export default function SearchPage() {
         className="group relative min-w-0 cursor-pointer overflow-hidden rounded-2xl transition-all hover:shadow-glow"
       >
         <div className="aspect-[4/5] w-full min-[420px]:aspect-[3/4]">
-          <UserAvatar
-            user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
-            className="w-full h-full rounded-none"
-            indicatorClassName="hidden"
-          />
+          {(avatarUrl ?? profile.avatar) ? (
+            <UserAvatar
+              user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
+              className="w-full h-full rounded-none"
+              indicatorClassName="hidden"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary/25 via-background to-rose-500/15">
+              <span className="text-5xl font-bold text-primary/50">
+                {profile.name?.[0]?.toUpperCase() || 'U'}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Gradient */}

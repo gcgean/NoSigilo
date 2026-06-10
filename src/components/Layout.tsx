@@ -136,6 +136,16 @@ export default function Layout() {
   const [bannerDismissed, setBannerDismissed] = useState(
     () => sessionStorage.getItem('nosigilo:banner-dismissed') === '1'
   );
+  const [promoterBannerDismissed, setPromoterBannerDismissed] = useState(() => {
+    try {
+      const v = localStorage.getItem('nosigilo:promoter-banner-dismissed');
+      if (!v) return false;
+      // Reaparece após 7 dias
+      return Date.now() - new Date(v).getTime() < 7 * 24 * 60 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  });
   const isMobile = useIsMobile();
   const isMobileChatRoute = isMobile && location.pathname === '/chat';
   const isMobileReelsRoute = isMobile && location.pathname === '/reels';
@@ -474,6 +484,11 @@ export default function Layout() {
   const dismissPwaInstallPrompt = () => {
     localStorage.setItem(PWA_INSTALL_DISMISS_KEY, new Date().toISOString().slice(0, 10));
     setShowPwaInstallPrompt(false);
+  };
+
+  const dismissPromoterBanner = () => {
+    try { localStorage.setItem('nosigilo:promoter-banner-dismissed', new Date().toISOString()); } catch {}
+    setPromoterBannerDismissed(true);
   };
 
   const dismissInterestsNudge = () => {
@@ -860,33 +875,33 @@ export default function Layout() {
                 )}
               </div>
             )}
-            {!isMobileChatRoute && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && (
+            {!isMobileChatRoute && !promoterBannerDismissed && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && (
               <div className="mb-4">
-                {user?.isPromoter ? (
+                <div className="relative flex items-center justify-between gap-2 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)]">
                   <button
                     type="button"
-                    onClick={() => navigate('/promoter')}
-                    className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
+                    onClick={() => navigate(user?.isPromoter ? '/promoter' : '/ganhe')}
+                    className="flex flex-1 items-center gap-2.5 min-w-0 text-left transition-opacity hover:opacity-95"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">💰</span>
-                      <p className="text-sm font-semibold text-left leading-tight">Acessar área do promotor</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Ver painel →</span>
+                    <span className="text-xl shrink-0">💰</span>
+                    <p className="text-sm font-semibold leading-tight">
+                      {user?.isPromoter
+                        ? 'Acessar área do promotor'
+                        : 'Ganhe até R$1.980/mês indicando a plataforma — 100% grátis'}
+                    </p>
+                    <span className="ml-1 shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">
+                      {user?.isPromoter ? 'Ver painel →' : 'Saiba como →'}
+                    </span>
                   </button>
-                ) : (
                   <button
                     type="button"
-                    onClick={() => navigate('/ganhe')}
-                    className="w-full flex items-center justify-between gap-3 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:opacity-95 transition-opacity"
+                    aria-label="Dispensar"
+                    onClick={dismissPromoterBanner}
+                    className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-black/20 text-white/80 transition hover:bg-black/40 hover:text-white"
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="text-xl shrink-0">💰</span>
-                      <p className="text-sm font-semibold text-left leading-tight">Ganhe até R$1.980/mês indicando a plataforma — 100% grátis</p>
-                    </div>
-                    <span className="shrink-0 text-xs font-bold text-yellow-300 whitespace-nowrap">Saiba como →</span>
+                    <X className="h-3.5 w-3.5" />
                   </button>
-                )}
+                </div>
               </div>
             )}
             {!isMobileChatRoute && showFirstAccessReward ? (
