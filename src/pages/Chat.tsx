@@ -13,6 +13,7 @@ import { chatService, profileService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
@@ -131,6 +132,7 @@ function formatDistanceLabel(distanceKm?: number | null) {
 
 export default function Chat() {
   const { user } = useAuth();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const { emit, on, off, isConnected } = useSocket();
   const { toast } = useToast();
@@ -1473,7 +1475,7 @@ export default function Chat() {
                     size="icon"
                     onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
-                    className="h-11 w-9 rounded-xl min-[380px]:w-10 md:h-9 md:w-9"
+                    className="h-11 w-9 rounded-xl md:h-9 md:w-9"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1484,7 +1486,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl min-[380px]:w-10 md:h-9 md:w-9">
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl md:h-9 md:w-9">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -1499,7 +1501,7 @@ export default function Chat() {
                         <div className="overflow-y-auto max-h-[min(380px,45svh)]">
                           <EmojiPicker
                             onEmojiClick={(emojiData: { emoji: string }) => setMessage(prev => prev + emojiData.emoji)}
-                            theme={"light" as any}
+                            theme={theme as any}
                             width={Math.min(350, typeof window !== 'undefined' ? window.innerWidth - 16 : 350)}
                           />
                         </div>
@@ -1515,7 +1517,7 @@ export default function Chat() {
                           size="icon"
                           onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
                           className={cn(
-                            "h-11 w-9 rounded-xl transition-all duration-200 min-[380px]:w-10 md:h-9 md:w-9",
+                            "h-11 w-9 rounded-xl transition-all duration-200 md:h-9 md:w-9",
                             isViewOnceEnabled
                               ? "bg-yellow-400/20 text-yellow-500 ring-1 ring-yellow-400/60 hover:bg-yellow-400/30"
                               : "text-muted-foreground hover:text-foreground"
@@ -1540,7 +1542,7 @@ export default function Chat() {
 
               <textarea
                 ref={messageInputRef}
-                placeholder="Digite sua mensagem..."
+                placeholder={isMobileViewport ? "Mensagem..." : "Digite sua mensagem..."}
                 value={message}
                 onChange={(e) => {
                   setMessage(e.target.value);
@@ -1566,7 +1568,7 @@ export default function Chat() {
               />
               <Button
                 size="icon"
-                className="h-12 w-12 shrink-0 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
+                className="h-11 w-11 shrink-0 rounded-xl bg-gradient-primary hover:opacity-90 md:h-10 md:w-10 md:rounded-md"
                 onMouseDown={(e) => {
                   // Prevent textarea from losing focus on iOS (keeps keyboard open)
                   e.preventDefault();
