@@ -1000,6 +1000,14 @@ async function createNotification(
   return id;
 }
 
+// Sanitiza o nome da cidade vindo do input do usuário: descarta valores inválidos
+// (1-2 letras), que surgem quando alguém digita no campo e não seleciona uma
+// cidade da lista. Não há município brasileiro com menos de 3 letras.
+function sanitizeCityValue(value: unknown): string | null {
+  const v = String(value ?? '').trim();
+  return v.length >= 3 ? v : null;
+}
+
 async function ensureConversationBetweenUsers(db: DbHandle, userAId: string, userBId: string) {
   const pair = [userAId, userBId].sort((a, b) => a.localeCompare(b));
   const existing = (await queryOne(
@@ -1988,7 +1996,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         '',
         null,
         null,
-        parsed.data.city ?? null,
+        sanitizeCityValue(parsed.data.city),
         parsed.data.state ?? null,
         parsed.data.birthDate ?? null,
         parsed.data.gender ?? null,
@@ -2912,7 +2920,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         const name   = stateClaims.name
           ? await uniqueGoogleName(stateClaims.name)
           : await uniqueGoogleName(googleName);
-        const city   = stateClaims.city  || null;
+        const city   = sanitizeCityValue(stateClaims.city);
         const state  = stateClaims.state || null;
         const email  = googleEmail || `google_${googleId}@nosigilo.internal`;
 
@@ -4721,7 +4729,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     for (const [key, col] of Object.entries(map)) {
       if (key in data) {
         setParts.push(`${col} = ?`);
-        values.push((data as any)[key]);
+        values.push(key === 'city' ? sanitizeCityValue((data as any)[key]) : (data as any)[key]);
       }
     }
     if ('lookingFor' in data) {
@@ -9353,21 +9361,16 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
            ORDER BY accesses DESC
            LIMIT 10`
         ),
+        // Top cidades por usuários — cidade+UF crus; normalização no JS
         queryAll(
           db,
-          `SELECT
-             CASE
-               WHEN TRIM(COALESCE(u.city, '')) = '' THEN 'Não informado'
-               WHEN TRIM(COALESCE(u.state, '')) = '' THEN TRIM(COALESCE(u.city, ''))
-               ELSE TRIM(COALESCE(u.city, '')) || ', ' || UPPER(TRIM(COALESCE(u.state, '')))
-             END AS city_label,
-             COUNT(*) AS c
+          `SELECT TRIM(COALESCE(u.city, '')) AS city,
+                  UPPER(TRIM(COALESCE(u.state, ''))) AS uf,
+                  COUNT(*) AS c
            FROM users u
            WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
              ${cityUsersFromIso ? 'AND u.created_at >= ?' : ''}
-           GROUP BY city_label
-           ORDER BY c DESC
-           LIMIT 20`,
+           GROUP BY TRIM(COALESCE(u.city, '')), UPPER(TRIM(COALESCE(u.state, '')))`,
           cityUsersFromIso ? [cityUsersFromIso] : []
         ),
         queryOne(
@@ -9482,13 +9485,35 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           label: String(row.city_label || 'Não informado'),
           count: Number(row.c || 0),
         })),
-        byUserCity: (topCitiesRows as any[]).map((row: any) => ({
-          label: String(row.city_label || 'Não informado'),
-          count: Number(row.c || 0),
-          percentage: totalUsersByCity > 0
-            ? Number(((Number(row.c || 0) / totalUsersByCity) * 100).toFixed(2))
-            : 0,
-        })),
+        byUserCity: (() => {
+          // Agrupa por cidade normalizada, unindo variações com/sem UF
+          const cityMap = new Map<string, { city: string; ufCounts: Map<string, number>; count: number }>();
+          for (const row of (topCitiesRows as any[])) {
+            const cityRaw = String(row.city || '').trim();
+            const uf = String(row.uf || '').trim();
+            const count = Number(row.c || 0);
+            const key = cityRaw ? cityRaw.toLowerCase() : '__none__';
+            let entry = cityMap.get(key);
+            if (!entry) { entry = { city: cityRaw, ufCounts: new Map(), count: 0 }; cityMap.set(key, entry); }
+            entry.count += count;
+            if (cityRaw && uf) entry.ufCounts.set(uf, (entry.ufCounts.get(uf) || 0) + count);
+          }
+          return Array.from(cityMap.values())
+            // Mantém "Não informado" (cidade vazia), mas remove nomes inválidos de 1-2 letras
+            .filter((e) => e.city === '' || e.city.trim().length >= 3)
+            .map((e) => {
+              let topUf = ''; let maxC = 0;
+              for (const [uf, c] of e.ufCounts) { if (c > maxC) { maxC = c; topUf = uf; } }
+              const label = !e.city ? 'Não informado' : (topUf ? `${e.city}, ${topUf}` : e.city);
+              return {
+                label,
+                count: e.count,
+                percentage: totalUsersByCity > 0 ? Number(((e.count / totalUsersByCity) * 100).toFixed(2)) : 0,
+              };
+            })
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 20);
+        })(),
         byDevice: (deviceRows as any[]).map((row: any) => {
           const count = Number(row.c || 0);
           const rawLabel = String(row.device_label || 'desktop').toLowerCase();
@@ -9549,7 +9574,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             if (uf) entry.ufCounts.set(uf, (entry.ufCounts.get(uf) || 0) + total);
           }
           return Array.from(cityMap.values())
-            .filter((e) => e.total >= MIN_USERS && e.novos > 0)
+            // Ignora nomes inválidos (1-2 letras) — não há município brasileiro tão curto
+            .filter((e) => e.city.trim().length >= 3 && e.total >= MIN_USERS && e.novos > 0)
             .map((e) => {
               // UF predominante para o rótulo
               let topUf = ''; let maxC = 0;
