@@ -1544,62 +1544,40 @@ export default function Feed() {
         <EventPromoCard userId={user.id} />
       )}
 
-      {user && !firstAccessPostMode && !notifBannerDismissed && !pushEnabled && (
-        <Card className="relative mb-4 overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-rose-500/5 p-4 sm:mb-6">
+      {user && !firstAccessPostMode && !notifBannerDismissed && !pushEnabled && pushSupported && (
+        <Card className="relative mb-3 flex items-center gap-2.5 overflow-hidden border-primary/20 bg-gradient-to-r from-primary/10 to-rose-500/5 px-3 py-2.5 sm:mb-4">
+          <Bell className="h-4 w-4 shrink-0 text-primary" />
+          <p className="min-w-0 flex-1 text-xs font-medium text-foreground">
+            Ative as notificações para não perder matches, radares e mensagens.
+          </p>
           <button
             type="button"
-            className="absolute right-3 top-3 rounded-full p-1 text-muted-foreground hover:text-foreground"
+            disabled={pushLoading}
+            onClick={async () => {
+              setPushLoading(true);
+              try {
+                await enablePushNotifications();
+                const s = await getPushActivationState();
+                setPushEnabled(s.enabled);
+                toast({ title: '🔔 Notificações ativadas!' });
+              } catch {
+                toast({ title: 'Não foi possível ativar', variant: 'destructive' });
+              } finally {
+                setPushLoading(false);
+              }
+            }}
+            className="shrink-0 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+          >
+            {pushLoading ? '…' : 'Ativar'}
+          </button>
+          <button
+            type="button"
+            aria-label="Dispensar aviso de notificações"
+            className="shrink-0 rounded-full p-1 text-muted-foreground hover:text-foreground"
             onClick={() => { localStorage.setItem('nosigilo:notif-banner-date', new Date().toISOString().slice(0, 10)); setNotifBannerDismissed(true); }}
           >
             <X className="h-3.5 w-3.5" />
           </button>
-
-          <div className="mb-3 flex items-center gap-2">
-            <Bell className="h-4 w-4 text-primary" />
-            <p className="text-sm font-semibold">Fique por dentro de tudo</p>
-          </div>
-          <p className="mb-4 text-xs text-muted-foreground">
-            Ative as notificações para não perder radares, matches e mensagens importantes.
-          </p>
-
-          <div className="space-y-2">
-            {/* Push notifications */}
-            {pushSupported && !pushEnabled && (
-              <button
-                type="button"
-                disabled={pushLoading}
-                onClick={async () => {
-                  setPushLoading(true);
-                  try {
-                    await enablePushNotifications();
-                    const s = await getPushActivationState();
-                    setPushEnabled(s.enabled);
-                    toast({ title: '🔔 Notificações ativadas!' });
-                  } catch {
-                    toast({ title: 'Não foi possível ativar', variant: 'destructive' });
-                  } finally {
-                    setPushLoading(false);
-                  }
-                }}
-                className="flex w-full items-center gap-3 rounded-xl border border-primary/25 bg-primary/10 px-4 py-3 text-left transition hover:bg-primary/20"
-              >
-                <Bell className="h-5 w-5 shrink-0 text-primary" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-foreground">Notificações do app</p>
-                  <p className="text-xs text-muted-foreground">Matches, mensagens e radares em tempo real</p>
-                </div>
-                <span className="rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-white">Ativar</span>
-              </button>
-            )}
-            {pushEnabled && (
-              <div className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
-                <Bell className="h-5 w-5 shrink-0 text-emerald-500" />
-                <p className="text-sm font-medium text-emerald-500">Notificações do app ativas ✓</p>
-              </div>
-            )}
-
-            {/* Telegram — hidden for now */}
-          </div>
         </Card>
       )}
 
@@ -2242,6 +2220,7 @@ export default function Feed() {
                             onTouchEnd={cancelExpLikeLongPress}
                             onTouchCancel={cancelExpLikeLongPress}
                             onClick={() => void handleExpLikeClick(experience)}
+                            aria-label={experience.likedByMe ? 'Remover curtida' : 'Curtir experiência'}
                             className={cn(
                               'flex items-center gap-2 transition-colors',
                               experience.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
@@ -2288,6 +2267,8 @@ export default function Feed() {
                         </div>
                         {/* Comment button */}
                         <button
+                          type="button"
+                          aria-label="Ver comentários"
                           onClick={() => void toggleExpComments(experience.id)}
                           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                         >
@@ -2552,6 +2533,8 @@ export default function Feed() {
                   {/* Like button with long-press reaction picker */}
                   <div className="relative" data-reaction-picker-root="true">
                     <button
+                      type="button"
+                      aria-label={item.post.likedByMe ? 'Remover curtida' : 'Curtir publicação'}
                       onMouseDown={() => startLikeLongPress(item.post)}
                       onMouseUp={cancelLikeLongPress}
                       onMouseLeave={cancelLikeLongPress}
@@ -2598,6 +2581,8 @@ export default function Feed() {
 
                   {/* Comment button */}
                   <button
+                    type="button"
+                    aria-label="Ver comentários"
                     onClick={() => void toggleComments(item.post.id)}
                     className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
                   >
