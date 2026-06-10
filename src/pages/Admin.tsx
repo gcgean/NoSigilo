@@ -150,7 +150,7 @@ type TopAccessUser = {
   lastAccessAt: string | null;
 };
 
-type GrowingCity = { label: string; periodA: number; periodB: number; growth: number };
+type GrowingCity = { label: string; novos: number; total: number; growth: number };
 
 type VisitAnalytics = {
   total: number;
@@ -173,6 +173,7 @@ type VisitAnalytics = {
   byHour: Array<{ hour: number; count: number }>;
   newUsersByDay: VisitBreakdown[];
   growingCities: GrowingCity[];
+  growthPeriodDays: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -207,6 +208,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   byHour: [],
   newUsersByDay: [],
   growingCities: [],
+  growthPeriodDays: 30,
 };
 
 function parseDate(value?: string | null) {
@@ -1424,12 +1426,12 @@ export default function Admin() {
                 <div>
                   <h3 className="font-semibold">Cidades em crescimento 🔥</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Comparativo de novos usuários: últimos 7 dias vs 7 dias anteriores. Invista nas cidades com maior crescimento.
+                    % de novos usuários nos últimos {visitAnalytics.growthPeriodDays} dias sobre o total da cidade (mín. 5 usuários). Quanto maior a taxa, mais a cidade está crescendo — invista nessas.
                   </p>
                 </div>
               </div>
               {visitAnalytics.growingCities.length === 0 ? (
-                <p className="text-sm text-muted-foreground mt-4">Sem dados de crescimento ainda — necessário pelo menos 14 dias de cadastros.</p>
+                <p className="text-sm text-muted-foreground mt-4">Nenhuma cidade com 5+ usuários e cadastros no período ainda.</p>
               ) : (
                 <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                   {visitAnalytics.growingCities.slice(0, 15).map((city, i) => {
@@ -1447,12 +1449,12 @@ export default function Admin() {
                             <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
                             <p className="font-medium text-sm truncate">{city.label}</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              <span className="font-medium">{city.periodA}</span> novos (7d) &nbsp;·&nbsp; antes: {city.periodB}
+                              <span className="font-medium">{city.novos}</span> novos &nbsp;·&nbsp; de {city.total} no total
                             </p>
                           </div>
                           <div className={`text-right shrink-0 ${textClass}`}>
                             <p className="text-lg font-bold leading-none">{arrow} {Math.abs(city.growth)}%</p>
-                            <p className="text-[10px] mt-1 text-muted-foreground">crescimento</p>
+                            <p className="text-[10px] mt-1 text-muted-foreground">novos no período</p>
                           </div>
                         </div>
                       </div>

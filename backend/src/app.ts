@@ -9275,6 +9275,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const sevenDaysAgoIso  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
       const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      // Crescimento de cidades usa o período selecionado (30/90/365) ou 30 dias por padrão
+      const growthPeriodDays = cityUsersPeriodDays || 30;
+      const growthFromIso = cityUsersFromIso || thirtyDaysAgoIso;
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
@@ -9404,28 +9407,20 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
            ORDER BY 1 ASC`,
           [thirtyDaysAgoIso]
         ),
-        // Crescimento de cidades: compara últimos 7 dias vs 7 dias anteriores
-        // ORDER BY column position to avoid PostgreSQL alias-in-expression restriction
+        // Crescimento de cidades: novos no período vs total da cidade.
+        // Agrupado por cidade+UF crus; a normalização (unir "São Luís" e
+        // "São Luís, MA") e o cálculo da taxa são feitos no JS abaixo.
         queryAll(
           db,
-          `SELECT city_label,
-                  SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS period_a,
-                  SUM(CASE WHEN created_at < ? AND created_at >= ? THEN 1 ELSE 0 END) AS period_b
-           FROM (
-             SELECT u.created_at,
-                    CASE
-                      WHEN TRIM(COALESCE(u.city, '')) = '' THEN 'Não informado'
-                      WHEN TRIM(COALESCE(u.state, '')) = '' THEN TRIM(COALESCE(u.city, ''))
-                      ELSE TRIM(COALESCE(u.city, '')) || ', ' || UPPER(TRIM(COALESCE(u.state, '')))
-                    END AS city_label
-             FROM users u
-             WHERE u.created_at >= ? AND (u.is_admin = 0 OR u.is_admin IS NULL)
-           ) sub
-           WHERE city_label != 'Não informado'
-           GROUP BY city_label
-           ORDER BY 2 DESC
-           LIMIT 30`,
-          [sevenDaysAgoIso, sevenDaysAgoIso, fourteenDaysAgoIso, fourteenDaysAgoIso]
+          `SELECT TRIM(COALESCE(u.city, '')) AS city,
+                  UPPER(TRIM(COALESCE(u.state, ''))) AS uf,
+                  SUM(CASE WHEN u.created_at >= ? THEN 1 ELSE 0 END) AS novos,
+                  COUNT(*) AS total
+           FROM users u
+           WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
+             AND TRIM(COALESCE(u.city, '')) != ''
+           GROUP BY TRIM(COALESCE(u.city, '')), UPPER(TRIM(COALESCE(u.state, '')))`,
+          [growthFromIso]
         ),
       ]);
 
@@ -9535,17 +9530,38 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           label: String(row.reg_day || ''),
           count: Number(row.c || 0),
         })),
-        growingCities: (cityGrowthRows as any[]).map((row: any) => {
-          const a = Number(row.period_a || 0); // last 7d
-          const b = Number(row.period_b || 0); // prev 7d
-          const growth = b > 0 ? Math.round(((a - b) / b) * 100) : (a > 0 ? 100 : 0);
-          return {
-            label: String(row.city_label || ''),
-            periodA: a,
-            periodB: b,
-            growth,
-          };
-        }).sort((x: any, y: any) => y.growth - x.growth),
+        growthPeriodDays,
+        growingCities: (() => {
+          const MIN_USERS = 5; // ignora cidades minúsculas
+          // Agrupa por cidade normalizada (lowercase), unindo variações com/sem UF
+          const cityMap = new Map<string, { city: string; ufCounts: Map<string, number>; novos: number; total: number }>();
+          for (const row of (cityGrowthRows as any[])) {
+            const cityRaw = String(row.city || '').trim();
+            if (!cityRaw) continue;
+            const key = cityRaw.toLowerCase();
+            const uf = String(row.uf || '').trim();
+            const novos = Number(row.novos || 0);
+            const total = Number(row.total || 0);
+            let entry = cityMap.get(key);
+            if (!entry) { entry = { city: cityRaw, ufCounts: new Map(), novos: 0, total: 0 }; cityMap.set(key, entry); }
+            entry.novos += novos;
+            entry.total += total;
+            if (uf) entry.ufCounts.set(uf, (entry.ufCounts.get(uf) || 0) + total);
+          }
+          return Array.from(cityMap.values())
+            .filter((e) => e.total >= MIN_USERS && e.novos > 0)
+            .map((e) => {
+              // UF predominante para o rótulo
+              let topUf = ''; let maxC = 0;
+              for (const [uf, c] of e.ufCounts) { if (c > maxC) { maxC = c; topUf = uf; } }
+              const label = topUf ? `${e.city}, ${topUf}` : e.city;
+              // Taxa: % dos usuários da cidade que entraram no período
+              const growth = Math.round((e.novos / e.total) * 100);
+              return { label, novos: e.novos, total: e.total, growth };
+            })
+            .sort((x, y) => y.growth - x.growth || y.novos - x.novos)
+            .slice(0, 30);
+        })(),
       });
     } catch (err) {
       console.error('[admin/analytics/visits]', err);
