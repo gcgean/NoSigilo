@@ -313,11 +313,11 @@ function StoryViewer({
 
       {/* Comment bar + Like (not own story) */}
       {story.author.id !== myUserId && (
-        <div className="flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3">
+        <div className="relative z-30 flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3">
           {/* Botão reagir (tap = reação atual/💜, segurar = escolher) */}
           <div className="relative shrink-0">
             {showReactions && (
-              <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 rounded-full border border-white/15 bg-black/85 px-2 py-1.5 shadow-lg backdrop-blur-sm">
+              <div className="absolute bottom-full left-0 z-50 mb-2 flex items-center gap-1 rounded-full border border-white/15 bg-black/90 px-2 py-1.5 shadow-xl backdrop-blur-sm">
                 {PHOTO_REACTIONS.map((r) => (
                   <button
                     key={r.id}

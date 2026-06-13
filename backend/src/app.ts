@@ -3978,7 +3978,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(40, Math.max(1, Number(req.query.limit || 24)));
-    const offset = (page - 1) * limit;
+    // Over-fetch de posts (muitos são só imagem e serão filtrados depois). A paginação
+    // avança por POSTS escaneados — não por vídeos — senão as páginas seguintes
+    // re-escaneiam quase os mesmos posts e o scroll trava nos primeiros vídeos.
+    const scanLimit = (limit + 1) * 8;
+    const offset = (page - 1) * scanLimit;
 
     const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
     const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
@@ -4018,11 +4022,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       orderByClause = 'p.created_at DESC';
     }
 
-    // Fetch a larger batch of posts with any media, then filter for video in Node.js.
-    // We over-fetch (scanLimit) to ensure enough video posts survive the filter.
-    const scanLimit = (limit + 1) * 8; // fetch up to 8x more to survive image-only filtering
+    // params termina com (limit+1, offset); troca o limit+1 pelo scanLimit real da varredura
     const scanParams = [...params];
-    // replace the last two params (limit+1, offset) with (scanLimit, offset)
     scanParams[scanParams.length - 2] = scanLimit;
 
     const rows = await queryAll(
@@ -4144,9 +4145,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
     }
 
-    // Trim to requested page size and determine hasMore from video results
-    const hasMore = videos.length > limit;
-    res.json({ videos: videos.slice(0, limit), hasMore });
+    // Retorna todos os vídeos encontrados no lote escaneado. Há mais páginas se a
+    // varredura de posts veio cheia (rows.length === scanLimit) — assim o offset por
+    // posts avança corretamente sem repetir vídeos.
+    const hasMore = rows.length >= scanLimit;
+    res.json({ videos, hasMore });
   });
 
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
