@@ -1783,8 +1783,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     const email = parsed.data.email.toLowerCase();
-    const user = (await queryOne(db, 'SELECT id, name, email FROM users WHERE email = ? LIMIT 1', [email])) as any;
-    if (!user) {
+    const user = (await queryOne(db, 'SELECT id, name, email, is_banned FROM users WHERE email = ? LIMIT 1', [email])) as any;
+    // Contas banidas não recebem código de redefinição (retorna ok para não revelar o status).
+    // Contas desativadas seguem permitidas — o reset é o caminho para reativar a conta.
+    if (!user || Number(user.is_banned) === 1) {
       res.json({ ok: true });
       return;
     }
@@ -2694,6 +2696,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          JOIN users u ON u.id = p.user_id
          LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id AND pc.period = ?
          WHERE p.status = 'active'
+           AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          GROUP BY p.user_id`,
         [period]
       )) as any[];
@@ -10104,7 +10107,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                   WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
                     AND m.sender_id != u.id
                     AND m.is_read = 0) AS unread_messages
-         FROM users u WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''`,
+         FROM users u WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''
+                AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)`,
         userIds
       )) as any[];
 
