@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -256,12 +257,12 @@ function PhotoItem({
 
           {/* Action buttons */}
           <div className="px-3 pb-3 pt-1">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="h-10 justify-center text-xs"
+                className="h-10 flex-1 justify-center text-xs"
                 disabled={photo.isMain || photo.isPrivate}
                 onClick={() => { void onSetMain(photo.id); setIsPreviewOpen(false); }}
               >
@@ -271,21 +272,34 @@ function PhotoItem({
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="h-10 justify-center text-xs"
+                className="h-10 flex-1 justify-center text-xs"
                 disabled={isTogglingVisibility}
                 onClick={() => { void onToggleVisibility(photo.id, photo.isPrivate); setIsPreviewOpen(false); }}
               >
                 {photo.isPrivate ? 'Tornar pública' : 'Tornar privada'}
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className="h-10 justify-center text-xs"
-                onClick={() => { void onDelete(photo.id); setIsPreviewOpen(false); }}
-              >
-                Excluir
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    className="h-10 w-10 shrink-0"
+                    aria-label="Mais opções"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) { void onDelete(photo.id); setIsPreviewOpen(false); } }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Excluir foto
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </DialogContent>
@@ -298,7 +312,7 @@ function PhotoItem({
         <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onSetMain(photo.id)}>
           <Edit2 className="w-4 h-4" />
         </Button>
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onDelete(photo.id)}>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) void onDelete(photo.id); }}>
           <Trash2 className="w-4 h-4" />
         </Button>
         <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" disabled={isTogglingVisibility} onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}>
