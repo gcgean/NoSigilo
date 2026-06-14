@@ -3978,6 +3978,55 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       } catch (err) {
         console.error('[stories/comments] notification failed', err);
       }
+
+      // Encaminha a resposta para o chat (estilo Instagram): cria/recupera a conversa
+      // e insere uma mensagem referenciando o story. Best-effort — não derruba o comentário.
+      try {
+        const canMessage = await canSendMessage({ db }, { fromUserId: commenterId, toUserId: String(story.user_id) });
+        if (canMessage) {
+          const pair = [commenterId, String(story.user_id)].sort((a, b) => a.localeCompare(b));
+          const existingConv = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
+          let conversationId: string;
+          if (existingConv?.id) {
+            conversationId = String(existingConv.id);
+          } else {
+            conversationId = randomUUID();
+            await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [conversationId, pair[0], pair[1], now]);
+          }
+          const msgId = randomUUID();
+          await run(
+            db,
+            'INSERT INTO messages (id, conversation_id, sender_id, content, story_id, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [msgId, conversationId, commenterId, text.trim(), storyId, 1, now]
+          );
+          await persist();
+          const storyMedia = (await queryOne(
+            db,
+            'SELECT m.filename, m.mime_type FROM stories s JOIN media m ON m.id = s.media_id WHERE s.id = ?',
+            [storyId]
+          )) as any;
+          const replyStory = {
+            id: storyId,
+            mediaUrl: storyMedia?.filename ? `/uploads/${storyMedia.filename}` : null,
+            mimeType: storyMedia?.mime_type ?? null,
+          };
+          io?.to(conversationId).emit('message.created', {
+            id: msgId,
+            conversationId,
+            senderId: commenterId,
+            content: text.trim(),
+            mediaId: null,
+            mediaUrl: null,
+            mediaMimeType: null,
+            replyStory,
+            isViewOnce: false,
+            isDelivered: true,
+            createdAt: now,
+          });
+        }
+      } catch (err) {
+        console.error('[stories/comments] forward to chat failed', err);
+      }
     }
     res.json({ id, ok: true });
   });
@@ -7451,10 +7500,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
-             m.deleted_for_all, m.deleted_by_ids,
-             med.filename as media_filename, med.mime_type as media_mime_type
+             m.deleted_for_all, m.deleted_by_ids, m.story_id,
+             med.filename as media_filename, med.mime_type as media_mime_type,
+             smed.filename as story_media_filename, smed.mime_type as story_media_mime_type
       FROM messages m
       LEFT JOIN media med ON med.id = m.media_id
+      LEFT JOIN stories s ON s.id = m.story_id
+      LEFT JOIN media smed ON smed.id = s.media_id
       WHERE m.conversation_id = ?
       ORDER BY m.created_at ASC
       LIMIT 200
@@ -7480,6 +7532,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           isViewed: !!m.is_viewed,
           isDelivered: !!m.is_delivered,
           isLocked: !deletedForMe && !canViewReceived && m.sender_id !== viewerId,
+          replyStory: deletedForMe || !m.story_id ? null : {
+            id: String(m.story_id),
+            mediaUrl: m.story_media_filename ? `/uploads/${m.story_media_filename}` : null,
+            mimeType: m.story_media_mime_type ?? null,
+          },
           createdAt: m.created_at,
           isRead: !!m.is_read,
           isDeletedForAll: deletedForAll,

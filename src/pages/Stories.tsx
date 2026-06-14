@@ -77,39 +77,23 @@ function StoryViewer({
   const [likeAnim, setLikeAnim] = useState(false);
   const [myReaction, setMyReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
-  const reactionLongPress = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const DURATION = 5000;
-
   const story = stories[idx];
 
-  // Sincroniza like ao trocar de story
+  // Sincroniza like ao trocar de story. Sem auto-avanço: a barra fica cheia
+  // em imagens (passa só quando o usuário toca) e reflete o tempo em vídeos.
   useEffect(() => {
     setLiked(story.likedByMe ?? false);
     setLikeCount(story.likeCount ?? 0);
     setMyReaction(story.myReaction ?? null);
     setShowReactions(false);
-  }, [story.id]);
+    setProgress(story.mimeType.startsWith('video/') ? 0 : 100);
+  }, [story.id, story.mimeType]);
 
   const go = useCallback((delta: number) => {
     const next = idx + delta;
     if (next < 0 || next >= stories.length) { onClose(); return; }
     setIdx(next);
-    setProgress(0);
   }, [idx, stories.length, onClose]);
-
-  // Auto-advance
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    const start = Date.now();
-    timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const pct = Math.min((elapsed / DURATION) * 100, 100);
-      setProgress(pct);
-      if (pct >= 100) { go(1); }
-    }, 50);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [idx, go]);
 
   // Registrar view
   useEffect(() => {
@@ -126,7 +110,7 @@ function StoryViewer({
       await new Promise((r) => setTimeout(r, 220));
       setComment('');
       setClearing(false);
-      toast({ title: 'Comentário enviado ✓', description: 'Só o autor do story verá.' });
+      toast({ title: 'Resposta enviada ✓', description: 'Sua resposta foi enviada nas mensagens.' });
     } catch {
       toast({ title: 'Erro ao enviar', variant: 'destructive' });
     } finally {
@@ -154,13 +138,6 @@ function StoryViewer({
       setLikeCount(prev.likeCount);
       setMyReaction(prev.myReaction);
     }
-  };
-
-  const startReactionPress = () => {
-    reactionLongPress.current = setTimeout(() => setShowReactions(true), 400);
-  };
-  const cancelReactionPress = () => {
-    if (reactionLongPress.current) { clearTimeout(reactionLongPress.current); reactionLongPress.current = null; }
   };
 
   // Touch navigation (esquerda/direita)
@@ -214,8 +191,11 @@ function StoryViewer({
             key={story.id}
             src={resolveServerUrl(story.mediaUrl)}
             className="h-full w-full object-cover"
-            autoPlay muted playsInline
-            onEnded={() => go(1)}
+            autoPlay muted playsInline loop
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget;
+              if (v.duration > 0) setProgress(Math.min((v.currentTime / v.duration) * 100, 100));
+            }}
           />
         ) : (
           <img
@@ -333,12 +313,7 @@ function StoryViewer({
             )}
             <button
               type="button"
-              onClick={() => void handleReact(myReaction || 'heart')}
-              onMouseDown={startReactionPress}
-              onMouseUp={cancelReactionPress}
-              onMouseLeave={cancelReactionPress}
-              onTouchStart={startReactionPress}
-              onTouchEnd={cancelReactionPress}
+              onClick={() => setShowReactions((v) => !v)}
               className="flex flex-col items-center gap-0.5"
               aria-label="Reagir ao story"
             >
@@ -361,7 +336,7 @@ function StoryViewer({
               'flex-1 rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
               clearing ? 'opacity-0' : 'opacity-100'
             )}
-            placeholder="Comentar... (só o autor verá)"
+            placeholder="Responder ao story..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void handleSendComment(); }}

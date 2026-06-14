@@ -98,6 +98,7 @@ type Message = {
   isLocked?: boolean;
   isDeletedForAll?: boolean;
   isDeletedForMe?: boolean;
+  replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null } | null;
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
@@ -1360,6 +1361,36 @@ export default function Chat() {
                                   />
                                 )
                               )}
+                            </div>
+                          )}
+                          {msg.replyStory && (
+                            <div className={cn(
+                              'mb-1 flex items-center gap-2 rounded-lg border p-1.5',
+                              isMine ? 'border-primary-foreground/25 bg-black/15' : 'border-foreground/15 bg-foreground/5'
+                            )}>
+                              {msg.replyStory.mediaUrl ? (
+                                msg.replyStory.mimeType?.startsWith('video/') ? (
+                                  <video
+                                    src={resolveServerUrl(msg.replyStory.mediaUrl)}
+                                    className="h-12 w-9 shrink-0 rounded object-cover"
+                                    muted
+                                    playsInline
+                                  />
+                                ) : (
+                                  <img
+                                    src={resolveServerUrl(msg.replyStory.mediaUrl)}
+                                    alt="Story"
+                                    className="h-12 w-9 shrink-0 rounded object-cover"
+                                  />
+                                )
+                              ) : (
+                                <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded bg-foreground/10 text-[9px] opacity-60">
+                                  Story
+                                </div>
+                              )}
+                              <span className="text-[11px] opacity-70">
+                                {isMine ? 'Você respondeu ao story' : 'Respondeu ao seu story'}
+                              </span>
                             </div>
                           )}
                           {msg.content && (
