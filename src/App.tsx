@@ -48,6 +48,7 @@ import Events from "./pages/Events";
 import Invites from "./pages/Invites";
 import Promoter from "./pages/Promoter";
 import PromoterLanding from "./pages/PromoterLanding";
+import Tokens from "./pages/Tokens";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import UserProfile from "./pages/UserProfile";
@@ -108,6 +109,7 @@ const App = () => (
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/promoter" element={<Promoter />} />
                       <Route path="/ganhe" element={<PromoterLanding />} />
+                      <Route path="/tokens" element={<Tokens />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />
                       <Route path="/rap" element={<Navigate to="/reels" replace />} />
                       <Route path="/likes" element={<Navigate to="/favorites" replace />} />

@@ -29,12 +29,14 @@ import {
   Moon,
   Sun,
   BadgeDollarSign,
+  Coins,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import HelpButton from '@/components/HelpButton';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
+import TokenBadge from '@/components/TokenBadge';
 import { notificationsService, chatService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
@@ -66,6 +68,7 @@ const navItems = [
   { path: '/radar', icon: Radio, label: 'Radar' },
   { path: '/chat', icon: MessageCircle, label: 'Chat' },
   { path: '/friends', icon: Users, label: 'Amigos' },
+  { path: '/tokens', icon: Coins, label: 'Tokens' },
   { path: '/profile', icon: User, label: 'Perfil' },
 ];
 
@@ -543,6 +546,7 @@ export default function Layout() {
           </NavLink>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
+            <TokenBadge />
             <NavLink to="/notifications" onClick={handleNotificationsBellClick}>
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full sm:h-10 sm:w-10">
                 <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />

@@ -1156,3 +1156,33 @@ export const storiesService = {
     return res.data as { liked: boolean; likeCount: number; myReaction: string | null; reactions: Array<{ type: string; count: number }> };
   },
 };
+
+export interface TokenSummary {
+  points: number;
+  total: number;
+  freeDays: number;
+  pointsPerDay: number;
+  nextDayProgress: number;
+  history: Array<{ action: string; points: number; createdAt: string }>;
+}
+
+export interface TokenRankingEntry {
+  position: number;
+  id: string;
+  name: string;
+  avatar: string | null;
+  gender: string | null;
+  total: number;
+  isMe: boolean;
+}
+
+export const tokenService = {
+  me: async (): Promise<TokenSummary> => {
+    const res = await apiClient.get('/tokens/me');
+    return res.data as TokenSummary;
+  },
+  ranking: async (type: 'homem' | 'mulher' | 'casal'): Promise<{ type: string; ranking: TokenRankingEntry[] }> => {
+    const res = await apiClient.get('/tokens/ranking', { params: { type } });
+    return res.data;
+  },
+};

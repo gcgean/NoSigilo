@@ -449,6 +449,89 @@ async function grantPremiumDays(db: DbHandle, userId: string, days: number) {
   await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [newEndsAt, userId]);
 }
 
+// ── Sistema de tokens (gamificação → dias grátis) ──────────────────────────
+// Pontos por ação (peso = dificuldade/engajamento) com teto diário anti-farm.
+const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
+  like:    { points: 1,  dailyCap: 20 },
+  comment: { points: 3,  dailyCap: 10 },
+  photo:   { points: 10, dailyCap: 3 },
+  story:   { points: 8,  dailyCap: 3 },
+  post:    { points: 10, dailyCap: 3 },
+  checkin: { points: 5,  dailyCap: 1 },
+};
+const POINTS_PER_FREE_DAY = 100;
+
+// Credita pontos por uma ação. Best-effort: nunca lança (não derruba a ação principal).
+// Aplica dedup por alvo (refId) e teto diário; ao cruzar 100 pontos, converte
+// automaticamente em +1 dia grátis (desconta 100 e registra a baixa no ledger).
+async function awardTokens(db: DbHandle, userId: string, actionType: string, refId?: string | null) {
+  try {
+    if (!userId) return;
+    const rule = TOKEN_RULES[actionType];
+    if (!rule) return;
+    const now = nowIso();
+    const todayPrefix = now.slice(0, 10); // YYYY-MM-DD (UTC), consistente com o resto
+
+    // Dedup por alvo — ex.: curtir o mesmo post só pontua uma vez (descurtir+curtir não farma)
+    if (refId) {
+      const dup = (await queryOne(
+        db,
+        'SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = ? AND ref_id = ? LIMIT 1',
+        [userId, actionType, refId]
+      )) as any;
+      if (dup) return;
+    }
+
+    // Teto diário por tipo de ação
+    const cntRow = (await queryOne(
+      db,
+      "SELECT COUNT(*) AS c FROM token_transactions WHERE user_id = ? AND action_type = ? AND points > 0 AND created_at >= ?",
+      [userId, actionType, todayPrefix]
+    )) as any;
+    if (Number(cntRow?.c || 0) >= rule.dailyCap) return;
+
+    // Credita pontos (saldo + acumulado histórico)
+    await run(
+      db,
+      'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, actionType, rule.points, refId ?? null, now]
+    );
+    await run(
+      db,
+      'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ? WHERE id = ?',
+      [rule.points, rule.points, userId]
+    );
+
+    // Conversão automática: cada 100 pontos vira 1 dia grátis
+    const balRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
+    let balance = Number(balRow?.p || 0);
+    while (balance >= POINTS_PER_FREE_DAY) {
+      await run(
+        db,
+        'UPDATE users SET token_points = COALESCE(token_points,0) - ?, token_free_days = COALESCE(token_free_days,0) + 1 WHERE id = ?',
+        [POINTS_PER_FREE_DAY, userId]
+      );
+      await grantPremiumDays(db, userId, 1);
+      await run(
+        db,
+        'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), userId, 'convert_day', -POINTS_PER_FREE_DAY, null, nowIso()]
+      );
+      try {
+        await run(
+          db,
+          `INSERT INTO notifications (id, user_id, type, title, description, is_read, created_at) VALUES (?, ?, 'tokens.free_day', ?, ?, 0, ?)`,
+          [randomUUID(), userId, '🎉 Você ganhou 1 dia grátis!', 'Seus pontos viraram +1 dia de acesso na plataforma.', nowIso()]
+        );
+      } catch { /* non-fatal */ }
+      balance -= POINTS_PER_FREE_DAY;
+    }
+    await db.persist();
+  } catch (err) {
+    console.error('[awardTokens]', err);
+  }
+}
+
 async function grantBadge(db: DbHandle, userId: string, badgeType: string) {
   await run(
     db,
@@ -3805,6 +3888,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const expiresAt = storyExpiresAt(now);
     await run(db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [id, userId, mediaId, now, expiresAt]);
     await persist();
+    await awardTokens(db, userId, 'story', id);
     res.json({ id, expiresAt });
   });
 
@@ -4183,6 +4267,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       nowIso(),
     ]);
     await persist();
+    await awardTokens(db, req.auth!.userId, 'post', id);
     res.json({ id });
   });
 
@@ -4652,7 +4737,69 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const todayLocal = nowLocal.toISOString().slice(0, 10);
 
     const result = await applyStreakAction(userId, todayLocal);
+    // Check-in diário rende pontos uma vez por dia (a ação em si é registrada no servidor pelos endpoints)
+    if (result.streakRegistered) {
+      await awardTokens(db, userId, 'checkin', `checkin-${todayLocal}`);
+    }
     res.json({ ...result, action, todayLocal });
+  });
+
+  // ── Tokens: saldo + histórico do usuário ──────────────────────────────────
+  app.get('/api/tokens/me', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const row = (await queryOne(
+      db,
+      'SELECT COALESCE(token_points,0) AS points, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days FROM users WHERE id = ?',
+      [userId]
+    )) as any;
+    const history = (await queryAll(
+      db,
+      'SELECT action_type, points, created_at FROM token_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      [userId]
+    )) as any[];
+    const points = Number(row?.points || 0);
+    res.json({
+      points,
+      total: Number(row?.total || 0),
+      freeDays: Number(row?.free_days || 0),
+      pointsPerDay: POINTS_PER_FREE_DAY,
+      nextDayProgress: points % POINTS_PER_FREE_DAY,
+      history: history.map((h) => ({ action: String(h.action_type), points: Number(h.points), createdAt: String(h.created_at) })),
+    });
+  });
+
+  // ── Tokens: ranking por tipo de perfil (Homem / Mulher / Casal) ───────────
+  app.get('/api/tokens/ranking', requireAuth(env, db), async (req, res) => {
+    const type = String(req.query.type || 'homem').toLowerCase();
+    const genderCond =
+      type === 'mulher' ? "u.gender = 'Mulher'"
+      : type === 'casal' ? "u.gender LIKE 'Casal%'"
+      : "u.gender = 'Homem'";
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.gender, COALESCE(u.token_points_total,0) AS total
+       FROM users u
+       WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
+         AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${genderCond}
+         AND COALESCE(u.token_points_total,0) > 0
+       ORDER BY total DESC, u.created_at ASC
+       LIMIT 50`,
+      []
+    )) as any[];
+    const myId = req.auth!.userId;
+    res.json({
+      type,
+      ranking: rows.map((r, i) => ({
+        position: i + 1,
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ? String(r.avatar) : null,
+        gender: r.gender ? String(r.gender) : null,
+        total: Number(r.total || 0),
+        isMe: String(r.id) === myId,
+      })),
+    });
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {
@@ -5750,6 +5897,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, nowIso()]
     );
     await persist();
+    if (mediaSource === 'profile' && mime.startsWith('image/')) {
+      await awardTokens(db, req.auth!.userId, 'photo', id);
+    }
     if (isPrivate) {
       const token = jwt.sign({ mediaId: id }, env.JWT_SECRET, { expiresIn: '30m' });
       res.json({ id, url: `/private-uploads/${id}?token=${encodeURIComponent(token)}` });
@@ -7576,6 +7726,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       nowIso(),
     ]);
     await persist();
+    await awardTokens(db, req.auth!.userId, 'like', parsed.data.targetId);
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;
@@ -7757,6 +7908,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       parentId,
     ]);
     await persist();
+    await awardTokens(db, req.auth!.userId, 'comment', id);
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;
