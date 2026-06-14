@@ -9,8 +9,9 @@ import { Card } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { authService, experienceService, feedService, interactionsService, profileService, radarService } from '@/services/api';
+import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -262,6 +263,7 @@ export default function Feed() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [storyPromptMediaId, setStoryPromptMediaId] = useState<string | null>(null);
   const [isPublishingExperience, setIsPublishingExperience] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
@@ -977,6 +979,13 @@ export default function Feed() {
         }
       }
       await reload();
+      // Pergunta se quer postar nos stories (só para imagens — vídeos podem exceder 30s)
+      const firstImageId = attachments.find((a) => a.file.type.startsWith('image/'))
+        ? mediaIds[attachments.findIndex((a) => a.file.type.startsWith('image/'))]
+        : null;
+      if (firstImageId && !completedFirstPostStep) {
+        setStoryPromptMediaId(firstImageId);
+      }
       if (completedFirstPostStep) {
         toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
       } else if (wasReelsOnly) {
@@ -3142,6 +3151,36 @@ export default function Feed() {
         })()}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+
+      {/* Pergunta se quer postar a imagem nos stories também */}
+      <AlertDialog open={!!storyPromptMediaId} onOpenChange={(open) => { if (!open) setStoryPromptMediaId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Postar nos stories também?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja publicar essa imagem no seu story? Ela ficará disponível por 24h.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!storyPromptMediaId) return;
+                try {
+                  await storiesService.create(storyPromptMediaId);
+                  toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
+                } catch {
+                  toast({ title: 'Erro ao publicar story', variant: 'destructive' });
+                } finally {
+                  setStoryPromptMediaId(null);
+                }
+              }}
+            >
+              Sim, publicar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
