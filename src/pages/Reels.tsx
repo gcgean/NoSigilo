@@ -715,7 +715,8 @@ export default function Reels() {
         scrollSnapType: 'y mandatory',
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
-        WebkitOverflowScrolling: 'touch',
+        touchAction: 'pan-y',
+        overscrollBehavior: 'contain',
       } as React.CSSProperties}
     >
       {/* Buscar Vídeos — floating button (mobile only) */}

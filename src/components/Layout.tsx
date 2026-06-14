@@ -749,10 +749,10 @@ export default function Layout() {
           className={cn(
             'flex-1 min-w-0 px-3 py-3 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:px-4 sm:py-6 md:pb-6',
             isMobileChatRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0',
-            isMobileReelsMaximized && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
+            isMobileReelsRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
           )}
         >
-          <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsMaximized) && 'max-w-none h-full')}>
+          <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsRoute) && 'max-w-none h-full')}>
             {!isMobileChatRoute && accessBanner && !bannerDismissed ? (
               <div className="mb-4">
                 <div
