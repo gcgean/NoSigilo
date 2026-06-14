@@ -3963,6 +3963,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     await run(db, 'INSERT INTO story_comments (id, story_id, commenter_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, storyId, commenterId, text.trim(), now]);
     await persist();
+    await awardTokens(db, commenterId, 'comment', id);
     // Notifica o dono do story (falha de notificação não deve derrubar o comentário)
     if (story.user_id !== commenterId) {
       try {
@@ -4046,6 +4047,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       myReaction = reaction;
     }
     await persist();
+    if (myReaction !== null) await awardTokens(db, likerId, 'like', storyId);
     const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [storyId])) as any;
     const reactionRows = (await queryAll(
       db,
