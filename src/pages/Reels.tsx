@@ -98,6 +98,7 @@ export default function Reels() {
   const [hasMoreReels, setHasMoreReels] = useState(true);
   const [isLoadingMoreReels, setIsLoadingMoreReels] = useState(false);
   const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
+  const [progressById, setProgressById] = useState<Record<string, number>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   // Reel pré-carregado via sessionStorage (vindo de SearchVideos)
@@ -770,6 +771,10 @@ export default function Reels() {
             muted={mutedById[reel.id] ?? true}
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
+            onTimeUpdate={(e) => {
+              const v = e.currentTarget;
+              if (v.duration > 0) setProgressById((p) => ({ ...p, [reel.id]: v.currentTime / v.duration }));
+            }}
             onClick={() => void handleReelClick(reel.id)}
             controlsList="nodownload noremoteplayback"
             disablePictureInPicture
@@ -905,6 +910,14 @@ export default function Reels() {
               </div>
             </button>
           )}
+
+          {/* Progress bar */}
+          <div className="absolute bottom-0 left-0 right-0 z-20 h-[3px] bg-white/20">
+            <div
+              className="h-full bg-white transition-none"
+              style={{ width: `${((progressById[reel.id] ?? 0) * 100).toFixed(2)}%` }}
+            />
+          </div>
         </div>
       ))}
 
