@@ -3769,7 +3769,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ story: storiesWithStats[storiesWithStats.length - 1], stories: storiesWithStats });
   });
 
-  // GET /api/stories — feed de stories de perfis compatíveis (interesse mútuo)
+  // GET /api/stories — feed de stories filtrado pelo interesse do viewer.
+  // Unidirecional: o usuário só vê stories de quem combina com a SUA preferência
+  // (looking_for). Não há restrição do lado do autor — qualquer pessoa interessada
+  // no gênero do autor (ou sem preferência) pode ver os stories dele.
   app.get('/api/stories', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
@@ -3797,7 +3800,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [now, userId]
     )) as any[];
 
-    // Filtra por compatibilidade de interesse
+    // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
+    // combina com a preferência do usuário (ou tudo, se ele não tiver preferência).
     const filtered = rows.filter((r: any) => {
       if (myLookingFor.length === 0) return true;
       return matchesLookingFor(myLookingFor, r.gender);
