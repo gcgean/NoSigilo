@@ -464,7 +464,7 @@ const POINTS_PER_FREE_DAY = 100;
 // Credita pontos por uma ação. Best-effort: nunca lança (não derruba a ação principal).
 // Aplica dedup por alvo (refId) e teto diário; ao cruzar 100 pontos, converte
 // automaticamente em +1 dia grátis (desconta 100 e registra a baixa no ledger).
-async function awardTokens(db: DbHandle, userId: string, actionType: string, refId?: string | null) {
+async function awardTokens(db: DbHandle, userId: string, actionType: string, refId?: string | null, io?: SocketIOServer) {
   try {
     if (!userId) return;
     const rule = TOKEN_RULES[actionType];
@@ -527,6 +527,9 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
       balance -= POINTS_PER_FREE_DAY;
     }
     await db.persist();
+    // Notifica o cliente em tempo real com o novo saldo
+    const newBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
+    io?.to(`user:${userId}`).emit('tokens.updated', { points: Number(newBalRow?.p || 0) });
   } catch (err) {
     console.error('[awardTokens]', err);
   }
@@ -3888,7 +3891,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const expiresAt = storyExpiresAt(now);
     await run(db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [id, userId, mediaId, now, expiresAt]);
     await persist();
-    await awardTokens(db, userId, 'story', id);
+    await awardTokens(db, userId, 'story', id, req.app.get('io'));
     res.json({ id, expiresAt });
   });
 
@@ -3963,7 +3966,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     await run(db, 'INSERT INTO story_comments (id, story_id, commenter_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, storyId, commenterId, text.trim(), now]);
     await persist();
-    await awardTokens(db, commenterId, 'comment', id);
+    await awardTokens(db, commenterId, 'comment', id, io);
     // Notifica o dono do story (falha de notificação não deve derrubar o comentário)
     if (story.user_id !== commenterId) {
       try {
@@ -4096,7 +4099,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       myReaction = reaction;
     }
     await persist();
-    if (myReaction !== null) await awardTokens(db, likerId, 'like', storyId);
+    if (myReaction !== null) await awardTokens(db, likerId, 'like', storyId, req.app.get('io'));
     const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [storyId])) as any;
     const reactionRows = (await queryAll(
       db,
@@ -4318,7 +4321,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       nowIso(),
     ]);
     await persist();
-    await awardTokens(db, req.auth!.userId, 'post', id);
+    await awardTokens(db, req.auth!.userId, 'post', id, req.app.get('io'));
     res.json({ id });
   });
 
@@ -4790,7 +4793,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const result = await applyStreakAction(userId, todayLocal);
     // Check-in diário rende pontos uma vez por dia (a ação em si é registrada no servidor pelos endpoints)
     if (result.streakRegistered) {
-      await awardTokens(db, userId, 'checkin', `checkin-${todayLocal}`);
+      await awardTokens(db, userId, 'checkin', `checkin-${todayLocal}`, req.app.get('io'));
     }
     res.json({ ...result, action, todayLocal });
   });
@@ -5949,7 +5952,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     );
     await persist();
     if (mediaSource === 'profile' && mime.startsWith('image/')) {
-      await awardTokens(db, req.auth!.userId, 'photo', id);
+      await awardTokens(db, req.auth!.userId, 'photo', id, req.app.get('io'));
     }
     if (isPrivate) {
       const token = jwt.sign({ mediaId: id }, env.JWT_SECRET, { expiresIn: '30m' });
@@ -7785,7 +7788,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       nowIso(),
     ]);
     await persist();
-    await awardTokens(db, req.auth!.userId, 'like', parsed.data.targetId);
+    await awardTokens(db, req.auth!.userId, 'like', parsed.data.targetId, req.app.get('io'));
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;
@@ -7967,7 +7970,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       parentId,
     ]);
     await persist();
-    await awardTokens(db, req.auth!.userId, 'comment', id);
+    await awardTokens(db, req.auth!.userId, 'comment', id, req.app.get('io'));
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;

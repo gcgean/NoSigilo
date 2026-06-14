@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Coins, TrendingUp, Gift, Trophy } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { UserAvatar } from '@/components/UserAvatar';
 import { tokenService, type TokenSummary, type TokenRankingEntry } from '@/services/api';
+import { useSocket } from '@/contexts/SocketContext';
 import { cn } from '@/lib/utils';
 
 const ACTION_LABELS: Record<string, string> = {
@@ -27,10 +28,17 @@ export default function Tokens() {
   const [rankTab, setRankTab] = useState<'homem' | 'mulher' | 'casal'>('homem');
   const [ranking, setRanking] = useState<TokenRankingEntry[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
+  const { on, off } = useSocket();
+
+  const reload = useCallback(() => {
+    tokenService.me().then(setSummary).catch(() => {});
+  }, []);
 
   useEffect(() => {
     tokenService.me().then(setSummary).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    on('tokens.updated', reload);
+    return () => off('tokens.updated', reload);
+  }, [on, off, reload]);
 
   useEffect(() => {
     setRankLoading(true);

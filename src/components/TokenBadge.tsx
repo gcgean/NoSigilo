@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Coins } from 'lucide-react';
 import { tokenService } from '@/services/api';
+import { useSocket } from '@/contexts/SocketContext';
 import { cn } from '@/lib/utils';
 
 /** Saldo de tokens em destaque no header (celular + desktop). Clicável → /tokens. */
 export default function TokenBadge({ className }: { className?: string }) {
   const [points, setPoints] = useState<number | null>(null);
+  const { on, off } = useSocket();
 
   useEffect(() => {
     let cancelled = false;
@@ -14,9 +16,22 @@ export default function TokenBadge({ className }: { className?: string }) {
       tokenService.me().then((s) => { if (!cancelled) setPoints(s.points); }).catch(() => {});
     };
     load();
+
+    // Atualização via evento local (outras abas, chamadas manuais)
     window.addEventListener('nosigilo:tokens-updated', load);
-    return () => { cancelled = true; window.removeEventListener('nosigilo:tokens-updated', load); };
-  }, []);
+
+    // Atualização em tempo real via socket (backend emite após cada ação pontuada)
+    const handleSocket = (data: { points: number }) => {
+      if (!cancelled) setPoints(data.points);
+    };
+    on('tokens.updated', handleSocket);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('nosigilo:tokens-updated', load);
+      off('tokens.updated', handleSocket);
+    };
+  }, [on, off]);
 
   if (points === null) return null;
 
