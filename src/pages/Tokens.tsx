@@ -125,8 +125,11 @@ export default function Tokens() {
       <Card className="p-4">
         <div className="mb-3 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-400" />
-          <h2 className="text-sm font-semibold uppercase tracking-wider">Ranking por tokens</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wider">Ranking do mês</h2>
         </div>
+        <p className="-mt-2 mb-3 text-[11px] text-muted-foreground">
+          Conta os pontos ganhos no mês atual. Zera no dia 1º de cada mês — seu saldo e dias grátis não são afetados.
+        </p>
         <div className="mb-3 flex gap-2">
           {RANKING_TABS.map((t) => (
             <button

@@ -4827,23 +4827,31 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // ── Tokens: ranking por tipo de perfil (Homem / Mulher / Casal) ───────────
+  // Ranking MENSAL: soma apenas os pontos ganhos no mês corrente (a partir do
+  // token_transactions). Zera naturalmente na virada do mês, sem job agendado
+  // e sem afetar o saldo nem os dias grátis dos usuários.
   app.get('/api/tokens/ranking', requireAuth(env, db), async (req, res) => {
     const type = String(req.query.type || 'homem').toLowerCase();
     const genderCond =
       type === 'mulher' ? "u.gender = 'Mulher'"
       : type === 'casal' ? "u.gender LIKE 'Casal%'"
       : "u.gender = 'Homem'";
+    // Início do mês atual em UTC (consistente com o teto diário, que usa UTC).
+    const monthStart = `${nowIso().slice(0, 7)}-01`;
     const rows = (await queryAll(
       db,
-      `SELECT u.id, u.name, u.avatar, u.gender, COALESCE(u.token_points_total,0) AS total
+      `SELECT u.id, u.name, u.avatar, u.gender,
+              COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) AS total
        FROM users u
+       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ?
        WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
          AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND ${genderCond}
-         AND COALESCE(u.token_points_total,0) > 0
+       GROUP BY u.id, u.name, u.avatar, u.gender, u.created_at
+       HAVING COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) > 0
        ORDER BY total DESC, u.created_at ASC
        LIMIT 50`,
-      []
+      [monthStart]
     )) as any[];
     const myId = req.auth!.userId;
     res.json({
