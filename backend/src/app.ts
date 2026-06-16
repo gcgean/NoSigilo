@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -9018,89 +9018,113 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    const user = (await queryOne(db, 'SELECT id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
-    if (!user) {
-      res.json({ ok: true, ignored: true });
-      return;
-    }
+    // Respond immediately so the gateway never times out waiting for us
+    res.json({ ok: true });
 
-    const nextStatus =
-      eventType === 'payment.approved' || eventType === 'license.activated'
-        ? 'licensed'
-        : eventType === 'license.suspended'
-          ? 'blocked'
-          : eventType === 'license.revoked' || eventType === 'subscription.canceled' || eventType === 'payment.chargeback'
+    // Process asynchronously — errors here are caught and emailed to the admin
+    const adminEmailOpts = { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME || 'NoSigilo' };
+    const adminTo = env.HUB_BILLING_ADMIN_EMAIL || '';
+
+    const notifyAdmin = (title: string, detail: string) => {
+      if (!adminTo) return;
+      sendAdminAlertEmail(adminEmailOpts, {
+        to: adminTo,
+        subject: `[NoSigilo] Falha no webhook de pagamento — ${eventType || 'evento desconhecido'}`,
+        title,
+        body: detail,
+      }).catch((e) => console.error('[webhook/admin-alert] failed to send email:', e));
+    };
+
+    try {
+      const user = (await queryOne(db, 'SELECT id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
+      if (!user) {
+        console.log(`[hub-billing/webhook] customerId=${customerId} not found — ignored`);
+        return;
+      }
+
+      const nextStatus =
+        eventType === 'payment.approved' || eventType === 'license.activated'
+          ? 'licensed'
+          : eventType === 'license.suspended'
             ? 'blocked'
-            : null;
+            : eventType === 'license.revoked' || eventType === 'subscription.canceled' || eventType === 'payment.chargeback'
+              ? 'blocked'
+              : null;
 
-    if (nextStatus) {
-      await run(
-        db,
-        `UPDATE users
-         SET is_premium = ?,
-             hub_access_status = ?,
-             hub_access_reason = ?,
-             hub_license_end_at = COALESCE(?, hub_license_end_at)
-         WHERE id = ?`,
-        [
-          nextStatus === 'licensed' ? 1 : 0,
-          nextStatus,
-          eventType || null,
-          payload?.payload?.licenseEndAt ?? null,
-          String(user.id),
-        ]
-      );
-      await persist();
+      if (nextStatus) {
+        await run(
+          db,
+          `UPDATE users
+           SET is_premium = ?,
+               hub_access_status = ?,
+               hub_access_reason = ?,
+               hub_license_end_at = COALESCE(?, hub_license_end_at)
+           WHERE id = ?`,
+          [
+            nextStatus === 'licensed' ? 1 : 0,
+            nextStatus,
+            eventType || null,
+            payload?.payload?.licenseEndAt ?? null,
+            String(user.id),
+          ]
+        );
+        await persist();
 
-      // ── Promoter commission on payment.approved ──────────────────────────
-      if (eventType === 'payment.approved') {
-        try {
-          const subscriberUserId = String(user.id);
-          // Check if subscriber came through a promoter's invite
-          const inviteEntry = (await queryOne(
-            db,
-            `SELECT l.inviter_user_id FROM invite_link_entries e
-             JOIN invite_links l ON l.id = e.invite_link_id
-             WHERE e.invitee_user_id = ? LIMIT 1`,
-            [subscriberUserId]
-          )) as any;
-          if (inviteEntry) {
-            const inviterUserId = String(inviteEntry.inviter_user_id);
-            const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
-            if (promoter) {
-              // Only create one commission per subscriber (idempotent)
-              const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
-              if (!existing) {
-                const subAmount = Number(payload?.payload?.amount || 990); // cents from webhook, fallback 990
-                const commAmount = Math.round(subAmount * 0.20);
-                const period = new Date().toISOString().slice(0, 7);
-                await run(
-                  db,
-                  'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                  [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
-                );
-                await persist();
-                console.log(`[promoter] commission created: promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
+        // ── Promoter commission on payment.approved ──────────────────────────
+        if (eventType === 'payment.approved') {
+          try {
+            const subscriberUserId = String(user.id);
+            const inviteEntry = (await queryOne(
+              db,
+              `SELECT l.inviter_user_id FROM invite_link_entries e
+               JOIN invite_links l ON l.id = e.invite_link_id
+               WHERE e.invitee_user_id = ? LIMIT 1`,
+              [subscriberUserId]
+            )) as any;
+            if (inviteEntry) {
+              const inviterUserId = String(inviteEntry.inviter_user_id);
+              const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
+              if (promoter) {
+                const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
+                if (!existing) {
+                  const subAmount = Number(payload?.payload?.amount || 990);
+                  const commAmount = Math.round(subAmount * 0.20);
+                  const period = new Date().toISOString().slice(0, 7);
+                  await run(
+                    db,
+                    'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
+                  );
+                  await persist();
+                  console.log(`[promoter] commission created: promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
+                }
               }
             }
+          } catch (err) {
+            console.error('[promoter] commission error:', err);
           }
-        } catch (err) {
-          console.error('[promoter] commission error:', err);
+        }
+
+        // ── Cancel commission on chargeback ─────────────────────────────────
+        if (eventType === 'payment.chargeback') {
+          try {
+            await run(db, "UPDATE promoter_commissions SET status = 'cancelled' WHERE subscriber_user_id = ?", [String(user.id)]);
+            await persist();
+          } catch (err) {
+            console.error('[promoter] cancel commission error:', err);
+          }
         }
       }
 
-      // ── Cancel commission on chargeback ─────────────────────────────────
-      if (eventType === 'payment.chargeback') {
-        try {
-          await run(db, "UPDATE promoter_commissions SET status = 'cancelled' WHERE subscriber_user_id = ?", [String(user.id)]);
-          await persist();
-        } catch (err) {
-          console.error('[promoter] cancel commission error:', err);
-        }
-      }
+      console.log(`[hub-billing/webhook] event=${eventType} customerId=${customerId} status=${nextStatus ?? 'ignored'}`);
+    } catch (err) {
+      const errMsg = err instanceof Error ? `${err.message}\n\n${err.stack || ''}` : String(err);
+      console.error('[hub-billing/webhook] processing error:', err);
+      notifyAdmin(
+        `Falha ao processar evento "${eventType}"`,
+        `customerId: ${customerId}\neventType: ${eventType}\nerro: ${errMsg}\n\npayload:\n${JSON.stringify(payload, null, 2)}`
+      );
     }
-
-    res.json({ ok: true });
   });
 
   app.post('/api/events', requireAuth(env, db), async (req, res) => {

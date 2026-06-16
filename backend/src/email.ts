@@ -512,3 +512,40 @@ export async function sendPromoterMonthlySummaryEmail(
   }
   return { skipped: false as const };
 }
+
+// ─── Admin Alert Email ────────────────────────────────────────────────────────
+export async function sendAdminAlertEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string },
+  payload: { to: string; subject: string; title: string; body: string }
+) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+
+  const appName = options.appName || 'NoSigilo';
+  const safeTitle = escapeHtml(payload.title);
+  const safeBody = escapeHtml(payload.body).replace(/\n/g, '<br>');
+  const now = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#fff1f2;padding:24px;color:#1f2937;">
+      <div style="max-width:600px;margin:0 auto;background:white;border:1px solid #fca5a5;border-radius:16px;padding:32px;">
+        <h1 style="margin:0 0 4px;font-size:20px;color:#dc2626;">[${appName}] Alerta do Sistema</h1>
+        <p style="margin:0 0 20px;font-size:13px;color:#9ca3af;">${now}</p>
+        <h2 style="margin:0 0 12px;font-size:17px;color:#1f2937;">${safeTitle}</h2>
+        <pre style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:16px;font-size:13px;white-space:pre-wrap;word-break:break-all;color:#7f1d1d;">${safeBody}</pre>
+        <p style="margin:20px 0 0;font-size:12px;color:#9ca3af;">Este e-mail foi gerado automaticamente pelo servidor ${appName}.</p>
+      </div>
+    </div>
+  `.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject: payload.subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_admin_alert_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
