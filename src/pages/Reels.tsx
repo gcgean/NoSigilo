@@ -97,7 +97,8 @@ export default function Reels() {
   const [reelsPage, setReelsPage] = useState(1);
   const [hasMoreReels, setHasMoreReels] = useState(true);
   const [isLoadingMoreReels, setIsLoadingMoreReels] = useState(false);
-  const [mutedById, setMutedById] = useState<Record<string, boolean>>({});
+  const [muted, setMuted] = useState(true); // som global: vale para todos os reels
+  const loadedReelIdsRef = useRef<Set<string>>(new Set()); // ids já carregados (dedup + detectar novos na paginação)
   const [progressById, setProgressById] = useState<Record<string, number>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -143,6 +144,7 @@ export default function Reels() {
       for (const item of nextItems) {
         if (seen.has(item.id)) continue;
         seen.add(item.id);
+        loadedReelIdsRef.current.add(item.id);
         merged.push(item);
       }
       return merged;
@@ -158,13 +160,6 @@ export default function Reels() {
         if (!next[item.postId]) {
           next[item.postId] = { likesCount: item.likesCount, commentsCount: item.commentsCount };
         }
-      }
-      return next;
-    });
-    setMutedById((prev) => {
-      const next = { ...prev };
-      for (const item of nextItems) {
-        if (typeof next[item.id] === 'undefined') next[item.id] = true;
       }
       return next;
     });
@@ -193,8 +188,7 @@ export default function Reels() {
       if (String(item.id) !== targetReelId) return;
       sessionStorage.removeItem('nosigilo:target-reel');
       setPreloadedReel(item);
-      // Inicializa estado de mute e like para esse reel
-      setMutedById((prev) => ({ [item.id]: true, ...prev }));
+      // Inicializa estado de like para esse reel
       setLikedByPostId((prev) => ({ [item.postId]: item.likedByMe, ...prev }));
       setStatsByPostId((prev) => ({
         [item.postId]: { likesCount: item.likesCount, commentsCount: item.commentsCount },
@@ -235,10 +229,10 @@ export default function Reels() {
       try {
         if (cancelled) return;
         setReels([]);
+        loadedReelIdsRef.current.clear();
         setHasLockedVideos(false);
         setLikedByPostId({});
         setStatsByPostId({});
-        setMutedById({});
 
         let currentPage = 1;
         let hasMore = true;
@@ -287,20 +281,33 @@ export default function Reels() {
 
   const loadMoreReels = useCallback(async () => {
     if (isLoading || isLoadingMoreReels || !hasMoreReels) return;
-    const nextPage = reelsPage + 1;
     setIsLoadingMoreReels(true);
     try {
-      const data = await feedService.getFeed({ page: nextPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
-      const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
-      const containsLockedVideo = posts.some((post) =>
-        (post.media || []).some(
-          (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
-        )
-      );
-      if (containsLockedVideo) setHasLockedVideos(true);
-      appendReels(mapPostsToReels(posts));
-      setReelsPage(nextPage);
-      setHasMoreReels(Boolean(data?.hasMore));
+      let page = reelsPage;
+      let more = true;
+      let addedAny = false;
+      let guard = 0;
+      // O feed é misto (muitos posts não são vídeo); continua avançando páginas
+      // até trazer novos reels ou o backend indicar que acabou.
+      while (more && !addedAny && guard < 8) {
+        guard += 1;
+        page += 1;
+        const data = await feedService.getFeed({ page, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
+        const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
+        const containsLockedVideo = posts.some((post) =>
+          (post.media || []).some(
+            (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
+          )
+        );
+        if (containsLockedVideo) setHasLockedVideos(true);
+        const pageReels = mapPostsToReels(posts);
+        // Considera só vídeos ainda não carregados (a paginação do feed tem sobreposição)
+        const newReels = pageReels.filter((r) => !loadedReelIdsRef.current.has(r.id));
+        if (newReels.length > 0) { appendReels(newReels); addedAny = true; }
+        more = Boolean(data?.hasMore);
+      }
+      setReelsPage(page);
+      setHasMoreReels(more);
     } catch {
       toast({
         title: 'Não foi possível carregar mais vídeos',
@@ -455,12 +462,12 @@ export default function Reels() {
     }
   }, [currentIndex, hasMoreReels, isLoading, isLoadingMoreReels, loadMoreReels, orderedReels.length]);
 
-  const toggleMute = useCallback((id: string) => {
-    setMutedById((prev) => {
-      const nextMuted = !(prev[id] ?? true);
-      const video = videoRefs.current[id];
-      if (video) video.muted = nextMuted;
-      return { ...prev, [id]: nextMuted };
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      // Aplica o som a TODOS os vídeos (estado global de mute)
+      Object.values(videoRefs.current).forEach((v) => { if (v) v.muted = next; });
+      return next;
     });
   }, []);
 
@@ -769,7 +776,7 @@ export default function Reels() {
             className="h-full w-full object-cover"
             playsInline
             loop={false}
-            muted={mutedById[reel.id] ?? true}
+            muted={muted}
             preload="metadata"
             onEnded={() => handleVideoEnded(idx)}
             onTimeUpdate={(e) => {
@@ -812,12 +819,10 @@ export default function Reels() {
             {/* Mute */}
             <button
               type="button"
-              onClick={() => toggleMute(reel.id)}
+              onClick={() => toggleMute()}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11"
             >
-              {mutedById[reel.id] ?? true
-                ? <VolumeX className="h-5 w-5" />
-                : <Volume2 className="h-5 w-5" />}
+              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
 
             {/* Like */}

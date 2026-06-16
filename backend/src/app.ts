@@ -3722,7 +3722,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
         distanceKm: distanceKmByPostId.get(String(r.id)) ?? null,
       })),
-      hasMore: includeReelsOnly ? orderedRows.length > offset + limit : freshRows.length > limit,
+      hasMore: includeReelsOnly ? rows.length >= fetchLimit : freshRows.length > limit,
       insights: includeReelsOnly ? null : feedInsights,
     });
   });
