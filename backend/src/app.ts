@@ -9869,7 +9869,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         res.status(400).json({ error: 'invalid_input' });
         return;
       }
-      const reporterId = (req as any).userId as string;
+      const reporterId = req.auth!.userId;
       const id = randomUUID();
       const createdAt = nowIso();
       await run(
