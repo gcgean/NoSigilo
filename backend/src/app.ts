@@ -732,9 +732,8 @@ async function syncHubAccessForUser(
 function fallbackSubscriptionPlans() {
   return [
     { id: 'basic', code: 'basic', name: 'Básico', description: 'Plano básico', amount: 0, currency: 'BRL', intervalUnit: 'month', intervalCount: 1, status: 'active', isActive: true },
-    { id: 'premium_monthly', code: 'premium_monthly', name: 'Premium Mensal', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 2990, currency: 'BRL', intervalUnit: 'month', intervalCount: 1, status: 'active', isActive: true },
-    { id: 'premium_semiannual', code: 'premium_semiannual', name: 'Premium Semestral', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 2490, currency: 'BRL', intervalUnit: 'month', intervalCount: 6, status: 'active', isActive: true },
-    { id: 'premium_annual', code: 'premium_annual', name: 'Premium Anual', description: 'Radar Premium, vídeos, eventos e recursos exclusivos', amount: 1299, currency: 'BRL', intervalUnit: 'month', intervalCount: 12, status: 'active', isActive: true },
+    // Plano único: Premium mensal por R$ 9,90
+    { id: 'premium_monthly', code: 'premium_monthly', name: 'Premium', description: 'Acesso premium completo: radar, vídeos, eventos e recursos exclusivos', amount: 990, currency: 'BRL', intervalUnit: 'month', intervalCount: 1, status: 'active', isActive: true },
   ];
 }
 
