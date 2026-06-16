@@ -71,6 +71,14 @@ function sqljsRun(db: SqlJsDb, sql: string, params: unknown[] = []) {
   db.run(sql, params as any);
 }
 
+// O schema Postgres usa INTEGER (0/1) para todos os campos booleanos — não há
+// colunas boolean reais. O driver `pg` não converte boolean JS automaticamente
+// (envia a string 'false'/'true', que quebra colunas INTEGER). Coerce aqui para
+// evitar crashes em qualquer query que passe boolean como parâmetro.
+function toPgParams(params: unknown[]): unknown[] {
+  return params.map((p) => (typeof p === 'boolean' ? (p ? 1 : 0) : p));
+}
+
 function toPgSql(sql: string) {
   // SQLite-specific syntax → PostgreSQL equivalents
 
@@ -142,15 +150,15 @@ async function tryInitPostgres(databaseUrl: string, migrationsDir: string): Prom
           await pool.query(sql);
         },
         queryAll: async (sql: string, params: unknown[] = []) => {
-          const r = await pool.query(toPgSql(sql), params as any);
+          const r = await pool.query(toPgSql(sql), toPgParams(params) as any);
           return r.rows;
         },
         queryOne: async (sql: string, params: unknown[] = []) => {
-          const r = await pool.query(toPgSql(sql), params as any);
+          const r = await pool.query(toPgSql(sql), toPgParams(params) as any);
           return r.rows.length > 0 ? r.rows[0] : null;
         },
         run: async (sql: string, params: unknown[] = []) => {
-          await pool.query(toPgSql(sql), params as any);
+          await pool.query(toPgSql(sql), toPgParams(params) as any);
         },
         persist: async () => {},
         close: async () => {
