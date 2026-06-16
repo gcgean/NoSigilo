@@ -21,12 +21,32 @@ export default function Login() {
   const location = useLocation();
   const { toast } = useToast();
 
+  const [winbackStatus, setWinbackStatus] = useState<'ok' | 'expired' | 'invalid' | null>(null);
+
   useEffect(() => {
     const storedEmail = sessionStorage.getItem('nosigilo_login_email');
     if (storedEmail && typeof storedEmail === 'string') {
       setEmail(storedEmail);
     }
   }, []);
+
+  // Campanha win-back: usuário chegou pelo link de "30 dias grátis"
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const wb = params.get('winback');
+    if (wb === 'ok' || wb === 'expired' || wb === 'invalid') {
+      setWinbackStatus(wb);
+      if (wb === 'ok') {
+        toast({ title: '🎁 30 dias grátis ativados!', description: 'Entre na sua conta para aproveitar o acesso premium completo.' });
+      } else {
+        toast({
+          title: wb === 'expired' ? 'Link expirado' : 'Link inválido',
+          description: 'Entre na sua conta — você ainda pode assinar o Premium por apenas R$ 9,90/mês.',
+          variant: 'destructive',
+        });
+      }
+    }
+  }, [location.search, toast]);
 
   if (isAuthenticated) {
     const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
@@ -88,6 +108,15 @@ export default function Login() {
               <p className="text-muted-foreground">Entre na sua conta</p>
             </div>
           </div>
+
+          {winbackStatus === 'ok' && (
+            <div className="mb-6 rounded-2xl border-2 border-emerald-400/50 bg-emerald-50 p-4 text-center dark:bg-emerald-950/30">
+              <p className="text-2xl font-extrabold text-emerald-600">🎁 30 dias grátis ativados!</p>
+              <p className="mt-1 text-sm text-emerald-700 dark:text-emerald-300">
+                Entre na sua conta e aproveite o acesso premium completo. Depois, só <strong>R$ 9,90/mês</strong> — cancele quando quiser.
+              </p>
+            </div>
+          )}
 
           {/* Google Sign-In */}
           <div className="mb-6 space-y-4">

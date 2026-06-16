@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -10444,6 +10444,137 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       res.json({ sent, errors, skipped: results.filter((r) => r.status === 'skipped').length, results });
     } catch (err) {
       console.error('[admin/reengagement/send]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ─── Win-back: resgatar 30 dias grátis via link assinado (público) ──────────
+  // O usuário clica no botão do e-mail; concedemos 30 dias e redirecionamos
+  // para o login. Não exige sessão — o token assinado identifica o usuário.
+  app.get('/api/winback/claim', async (req, res) => {
+    const frontend = (env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
+    const token = String(req.query.token || '');
+    if (!token) { res.redirect(`${frontend}/login?winback=invalid`); return; }
+    try {
+      const decoded = jwt.verify(token, env.JWT_SECRET) as any;
+      if (decoded?.purpose !== 'winback' || !decoded?.sub) {
+        res.redirect(`${frontend}/login?winback=invalid`);
+        return;
+      }
+      const userId = String(decoded.sub);
+      const row = (await queryOne(db, 'SELECT id, is_banned, is_deactivated FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+      if (!row || row.is_banned || row.is_deactivated) {
+        res.redirect(`${frontend}/login?winback=invalid`);
+        return;
+      }
+      await grantPremiumDays(db, userId, 30);
+      await persist();
+      console.log(`[winback/claim] granted 30 days to user=${userId}`);
+      res.redirect(`${frontend}/login?winback=ok`);
+    } catch {
+      res.redirect(`${frontend}/login?winback=expired`);
+    }
+  });
+
+  // ─── Win-back campaign: enviar para usuários que entraram 1x e não voltaram ──
+  app.post('/api/admin/winback/send-all', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const inactiveDays = Math.max(1, Math.min(365, Number(body.inactiveDays ?? 7)));
+      const maxBatch = Math.max(1, Math.min(500, Number(body.limit ?? 200)));
+      const resend = body.resend === true; // reenviar mesmo para quem já recebeu winback
+      const dryRun = body.dryRun === true;  // apenas contar/listar, não enviar
+
+      const cutoffIso = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000).toISOString();
+
+      // "Entrou uma vez e sumiu": inativo (última visita) há pelo menos inactiveDays.
+      const sinceExpr = db.mode === 'pg'
+        ? `COALESCE(TO_CHAR(u.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), u.created_at)`
+        : `COALESCE(u.last_seen_at, u.created_at)`;
+
+      const conditions: string[] = [
+        'u.is_banned = 0',
+        '(u.is_deactivated = 0 OR u.is_deactivated IS NULL)',
+        "u.email IS NOT NULL AND u.email != ''",
+        `${sinceExpr} <= ?`,
+      ];
+      const params: unknown[] = [cutoffIso];
+      if (!resend) {
+        conditions.push("NOT EXISTS (SELECT 1 FROM reengagement_emails re WHERE re.user_id = u.id AND re.campaign = 'winback' AND re.status = 'sent')");
+      }
+      const where = `WHERE ${conditions.join(' AND ')}`;
+
+      const users = (await db.queryAll(
+        `SELECT u.id, u.name, u.email,
+                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > ${sinceExpr}) AS visits_since,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > ${sinceExpr}) AS likes_since,
+                (SELECT COUNT(*) FROM messages m
+                  JOIN conversations c ON c.id = m.conversation_id
+                  WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
+                    AND m.sender_id != u.id AND m.is_read = 0) AS unread_messages
+         FROM users u ${where}
+         ORDER BY ${sinceExpr} ASC
+         LIMIT ?`,
+        [...params, maxBatch]
+      )) as any[];
+
+      if (dryRun) {
+        res.json({ dryRun: true, eligible: users.length, sample: users.slice(0, 20).map((u: any) => ({ id: String(u.id), email: String(u.email) })) });
+        return;
+      }
+
+      const frontend = (env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
+      const results: { userId: string; email: string; status: 'sent' | 'skipped' | 'error'; error?: string }[] = [];
+      const nowBatch = nowIso();
+
+      for (const user of users) {
+        let status: 'sent' | 'skipped' | 'error' = 'error';
+        let errorMsg: string | null = null;
+        try {
+          const claimToken = jwt.sign({ sub: String(user.id), purpose: 'winback' }, env.JWT_SECRET, { expiresIn: '45d' });
+          const claimUrl = `${frontend}/api/winback/claim?token=${encodeURIComponent(claimToken)}`;
+          const result = await sendWinbackEmail(
+            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: frontend },
+            {
+              to: String(user.email),
+              userName: String(user.name || 'usuário'),
+              claimUrl,
+              priceLabel: '9,90',
+              stats: {
+                visits: Number(user.visits_since ?? 0),
+                likes: Number(user.likes_since ?? 0),
+                messages: Number(user.unread_messages ?? 0),
+              },
+            }
+          );
+          status = result.skipped ? 'skipped' : 'sent';
+        } catch (err: any) {
+          status = 'error';
+          errorMsg = String(err?.message ?? err);
+        }
+
+        results.push({ userId: String(user.id), email: String(user.email), status, ...(errorMsg ? { error: errorMsg } : {}) });
+
+        if (status !== 'skipped') {
+          try {
+            await db.run(
+              `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message, campaign) VALUES (?, ?, ?, ?, ?, ?)`,
+              [randomUUID(), String(user.id), nowBatch, status, errorMsg, 'winback']
+            );
+          } catch (dbErr) {
+            console.error('[winback/send-all] failed to record send for', user.id, dbErr);
+          }
+        }
+
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      try { await persist(); } catch { /* non-fatal */ }
+
+      const sent = results.filter((r) => r.status === 'sent').length;
+      const errors = results.filter((r) => r.status === 'error').length;
+      res.json({ campaign: 'winback', eligible: users.length, sent, errors, skipped: results.filter((r) => r.status === 'skipped').length, results });
+    } catch (err) {
+      console.error('[admin/winback/send-all]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

@@ -513,6 +513,164 @@ export async function sendPromoterMonthlySummaryEmail(
   return { skipped: false as const };
 }
 
+// ─── Win-back Campaign Email (usuários que entraram 1x e não voltaram) ───────
+type WinbackOptions = {
+  apiKey?: string;
+  fromEmail?: string;
+  appName?: string;
+  siteUrl?: string;
+};
+
+type WinbackPayload = {
+  to: string;
+  userName: string;
+  claimUrl: string;            // link que concede 30 dias grátis
+  priceLabel?: string;         // ex.: "9,90"
+  stats?: {
+    visits?: number;
+    likes?: number;
+    messages?: number;
+  };
+};
+
+export async function sendWinbackEmail(options: WinbackOptions, payload: WinbackPayload) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = escapeHtml(payload.userName.split(' ')[0] || payload.userName);
+  const claimUrl = payload.claimUrl;
+  const price = payload.priceLabel || '9,90';
+  const visits = payload.stats?.visits ?? 0;
+  const likes = payload.stats?.likes ?? 0;
+  const messages = payload.stats?.messages ?? 0;
+
+  // O que ele perdeu — gatilho de prova social + FOMO. Se não houver dados
+  // reais, usamos uma frase de escassez genérica (sempre verdadeira).
+  const missed: string[] = [];
+  if (visits > 0) missed.push(`<strong>${visits}</strong> ${visits === 1 ? 'pessoa visitou' : 'pessoas visitaram'} seu perfil`);
+  if (likes > 0) missed.push(`<strong>${likes}</strong> ${likes === 1 ? 'curtida' : 'curtidas'} no seu perfil`);
+  if (messages > 0) missed.push(`<strong>${messages}</strong> ${messages === 1 ? 'mensagem' : 'mensagens'} esperando resposta`);
+  const missedHtml = (missed.length ? missed : [
+    'Vários perfis novos e verificados entraram na sua região',
+    'Gente compatível com você esteve online procurando conexões',
+  ]).map((m) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;background:#fff1f5;margin-bottom:8px;">
+        <span style="font-size:18px;">💜</span>
+        <span style="font-size:15px;color:#2b1720;line-height:1.4;">${m}</span>
+      </div>`).join('');
+
+  const subjects = [
+    `${safeName}, abrimos 30 dias grátis pra você voltar 🎁`,
+    `Sentimos sua falta, ${safeName} — 30 dias grátis te esperando 💜`,
+    `${safeName}, você entrou e sumiu... veja o que perdeu (e ganhe 30 dias) 👀`,
+    `Um presente pra você voltar, ${safeName}: 30 dias grátis ⏳`,
+  ];
+  const subject = subjects[Math.floor(Math.random() * subjects.length)];
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#fff7fa;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+
+    <!-- Header -->
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${siteUrl}" style="text-decoration:none;">
+        <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+          <span style="color:white;font-size:20px;font-weight:800;letter-spacing:-0.5px;">nosigilo.net</span>
+        </div>
+      </a>
+    </div>
+
+    <div style="background:white;border-radius:20px;border:1px solid #f4c7d7;padding:36px 32px;box-shadow:0 4px 24px rgba(232,62,104,0.06);">
+
+      <!-- Greeting -->
+      <p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 6px;">Oi, ${safeName} 💜</p>
+      <p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 8px;">
+        Você criou sua conta, deu uma espiada... e foi embora. A gente entende — mas <strong style="color:#e83e68;">muita coisa aconteceu desde então</strong>.
+      </p>
+      <p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 24px;">
+        E preparamos algo pra você voltar do jeito certo.
+      </p>
+
+      <!-- Gift / offer block -->
+      <div style="background:linear-gradient(135deg,#e83e68 0%,#b5179e 100%);border-radius:16px;padding:24px;text-align:center;margin-bottom:24px;">
+        <p style="color:rgba(255,255,255,0.85);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">🎁 Presente de boas-vindas</p>
+        <p style="color:#fff;font-size:34px;font-weight:900;margin:0 0 4px;">30 DIAS GRÁTIS</p>
+        <p style="color:rgba(255,255,255,0.9);font-size:14px;margin:0;">Acesso premium completo, sem pagar nada agora.</p>
+      </div>
+
+      <!-- What you missed -->
+      <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#c81e58;margin:0 0 12px;">
+        🔐 O que rolou enquanto você esteve fora
+      </p>
+      <div style="margin-bottom:24px;">
+        ${missedHtml}
+      </div>
+
+      <!-- Scarcity / urgency -->
+      <div style="background:#2b1720;border-radius:12px;padding:16px 20px;margin-bottom:24px;text-align:center;">
+        <p style="font-size:15px;color:#fff;line-height:1.7;margin:0;">
+          Tem <strong style="color:#f472a0;">gente online agora mesmo</strong> procurando alguém com o seu perfil.<br>
+          <span style="font-size:13px;color:#d4a0b5;">Quem volta primeiro, conecta primeiro.</span>
+        </p>
+      </div>
+
+      <!-- CTA Button -->
+      <div style="text-align:center;margin-bottom:14px;">
+        <a href="${claimUrl}"
+           style="display:inline-block;background:#e83e68;color:white;font-size:18px;font-weight:800;padding:18px 40px;border-radius:14px;text-decoration:none;letter-spacing:-0.2px;box-shadow:0 6px 20px rgba(232,62,104,0.45);">
+          Ativar meus 30 dias grátis →
+        </a>
+      </div>
+      <p style="font-size:12px;color:#9a6b7a;text-align:center;margin:0 0 24px;">
+        Basta entrar pelo botão acima — os 30 dias são liberados automaticamente.
+      </p>
+
+      <!-- Price reassurance -->
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px;text-align:center;margin-bottom:20px;">
+        <p style="font-size:14px;color:#15803d;line-height:1.6;margin:0;">
+          E depois dos 30 dias? Só <strong style="font-size:18px;">R$ ${price}/mês</strong> — menos que um lanche. 🍔<br>
+          <span style="font-size:13px;color:#16a34a;">Sem fidelidade. Cancele quando quiser.</span>
+        </p>
+      </div>
+
+      <!-- Social proof -->
+      <div style="border-top:1px solid #f4c7d7;padding-top:20px;">
+        <p style="font-size:13px;color:#9a6b7a;text-align:center;line-height:1.6;margin:0;">
+          🔒 <strong>Discreto. Seguro. Real.</strong><br>
+          Mais de 600 perfis verificados conectando agora em <strong>nosigilo.net</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align:center;margin-top:20px;">
+      <p style="font-size:12px;color:#b08090;line-height:1.6;margin:0;">
+        Você está recebendo este e-mail porque criou uma conta no nosigilo.net.<br>
+        <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">nosigilo.net</a>
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_winback_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Admin Alert Email ────────────────────────────────────────────────────────
 export async function sendAdminAlertEmail(
   options: { apiKey?: string; fromEmail?: string; appName?: string },
