@@ -238,8 +238,15 @@ export default function Reels() {
         let hasMore = true;
         let foundAnyReel = false;
         let foundLockedVideo = false;
+        // Proteção contra loop infinito: se o backend devolver páginas sem fim
+        // (hasMore sempre true) e nenhuma trouxer vídeo, paramos após um limite
+        // generoso. No fluxo normal os vídeos já vêm na 1ª página, então o
+        // usuário nunca esbarra nesse teto.
+        const MAX_INITIAL_PAGES = 25;
+        let pagesScanned = 0;
 
-        while (hasMore && !foundAnyReel) {
+        while (hasMore && !foundAnyReel && pagesScanned < MAX_INITIAL_PAGES) {
+          pagesScanned += 1;
           const data = await feedService.getFeed({ page: currentPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
           if (cancelled) return;
 
@@ -666,7 +673,10 @@ export default function Reels() {
     [orderedReels, statsByPostId]
   );
 
-  if (isLoading) {
+  // Se já temos um reel pré-carregado (vindo de SearchVideos via ?reelId=),
+  // renderiza-o imediatamente em vez de travar no spinner enquanto o feed
+  // completo é paginado em segundo plano.
+  if (isLoading && reelsWithMeta.length === 0) {
     return (
       <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
         <MobileState
