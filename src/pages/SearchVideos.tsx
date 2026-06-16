@@ -247,6 +247,13 @@ function VideoCard({
           </p>
         </div>
 
+        {/* Prévia da descrição do vídeo — discreta, 1 linha */}
+        {item.content?.trim() && (
+          <p className="mb-1 line-clamp-1 text-[10px] leading-snug text-white/75">
+            {item.content}
+          </p>
+        )}
+
         <div className="flex items-center gap-1.5 flex-wrap">
           {item.distanceKm !== null && (
             <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
