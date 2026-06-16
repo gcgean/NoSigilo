@@ -3975,12 +3975,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (story.user_id !== commenterId) {
       try {
         const commenter = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [commenterId])) as any;
+        const commenterName = commenter?.name ? String(commenter.name) : 'Alguém';
         await createNotification({ db, io }, {
           userId: String(story.user_id),
           type: 'story.comment',
           title: 'Comentário no seu story',
-          description: `${commenter?.name || 'Alguém'} comentou no seu story`,
-          dataJson: { storyId },
+          description: `${commenterName} comentou no seu story`,
+          dataJson: { storyId, actorId: commenterId, actorName: commenterName },
+        });
+        await sendPushToUser({ db, env }, {
+          userId: String(story.user_id),
+          payload: { title: 'Comentário no seu story', body: `${commenterName} comentou no seu story`, url: '/stories', tag: `story.comment:${storyId}`, data: { storyId, actorId: commenterId } },
         });
       } catch (err) {
         console.error('[stories/comments] notification failed', err);
@@ -4104,6 +4109,27 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     await persist();
     if (myReaction !== null) await awardTokens(db, likerId, 'like', storyId, req.app.get('io'));
+    // Notifica o dono do story quando alguém reage (não no toggle-off nem no próprio story)
+    if (myReaction !== null && String(story.user_id) !== likerId) {
+      try {
+        const io = req.app.get('io') as SocketIOServer | undefined;
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [likerId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        await createNotification({ db, io }, {
+          userId: String(story.user_id),
+          type: 'story.liked',
+          title: 'Reagiram ao seu story',
+          description: `${actorName} reagiu ao seu story.`,
+          dataJson: { storyId, actorId: likerId, actorName, reaction: myReaction },
+        });
+        await sendPushToUser({ db, env }, {
+          userId: String(story.user_id),
+          payload: { title: 'Reagiram ao seu story', body: `${actorName} reagiu ao seu story.`, url: '/stories', tag: `story.liked:${storyId}`, data: { storyId, actorId: likerId } },
+        });
+      } catch (err) {
+        console.error('[stories/like] notification failed', err);
+      }
+    }
     const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [storyId])) as any;
     const reactionRows = (await queryAll(
       db,
@@ -7824,7 +7850,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             payload: {
               title: 'Curtiram sua publicação',
               body: `${actorName} curtiu sua publicação.`,
-              url: '/feed',
+              url: `/feed?postId=${parsed.data.targetId}`,
               tag: `post.liked:${parsed.data.targetId}`,
               data: { postId: parsed.data.targetId, actorId: req.auth!.userId },
             },
@@ -8007,7 +8033,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             payload: {
               title: 'Novo comentário',
               body: `${actorName} comentou: ${preview}`,
-              url: '/feed',
+              url: `/feed?postId=${parsed.data.targetId}&openComments=1`,
               tag: `post.commented:${parsed.data.targetId}`,
               data: { postId: parsed.data.targetId, commentId: id, actorId: req.auth!.userId },
             },

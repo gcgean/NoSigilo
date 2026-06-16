@@ -12,6 +12,12 @@ export function getNotificationHref(notification: any): string {
   if (type === 'post.liked' && postId) return `/feed?postId=${encodeURIComponent(postId)}`;
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
+  // Stories — leva à área de stories (o dono vê reações/comentários do seu story)
+  if (type === 'story.liked' || type === 'story.comment') {
+    const storyId = data?.storyId ? String(data.storyId) : '';
+    return storyId ? `/stories?storyId=${encodeURIComponent(storyId)}` : '/stories';
+  }
+
   if (type === 'profile.liked' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
   if (type === 'profile.favorited' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
   if (type === 'profile.visited' && data.actorId) return getUserProfileHref(data.actorId, undefined, '/notifications');
