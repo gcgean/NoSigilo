@@ -6065,47 +6065,52 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/onboarding/suggestions', async (req, res) => {
-    const city = req.query.city ? String(req.query.city) : null;
-    const state = req.query.state ? String(req.query.state) : null;
-    const lookingFor = parseAudiencePreferences(req.query.lookingFor ? String(req.query.lookingFor) : '');
+    try {
+      const city = req.query.city ? String(req.query.city) : null;
+      const state = req.query.state ? String(req.query.state) : null;
+      const lookingFor = parseAudiencePreferences(req.query.lookingFor ? String(req.query.lookingFor) : '');
 
-    // Priority order: same city > same state > verified > has avatar > recently active
-    const qualityOrder = [
-      'CASE WHEN avatar_url IS NOT NULL AND avatar_url <> \'\' THEN 0 ELSE 1 END',
-      'CASE WHEN is_verified = 1 THEN 0 ELSE 1 END',
-      'CASE WHEN last_seen_at IS NOT NULL THEN 0 ELSE 1 END',
-    ];
+      // Priority order: same city > same state > verified > has avatar > recently active
+      const qualityOrder = [
+        'CASE WHEN avatar IS NOT NULL AND avatar <> \'\' THEN 0 ELSE 1 END',
+        'CASE WHEN is_verified = 1 THEN 0 ELSE 1 END',
+        'CASE WHEN last_seen_at IS NOT NULL THEN 0 ELSE 1 END',
+      ];
 
-    let rows: any[] = [];
-    if (lookingFor.length > 0) {
-      const placeholders = lookingFor.map(() => '?').join(', ');
-      const params: any[] = [...lookingFor];
-      const orderParts: string[] = [];
-      const audiencePriority = buildAudiencePriorityOrder('gender', lookingFor);
-      orderParts.push(...audiencePriority.orderParts);
-      params.push(...audiencePriority.params);
-      if (city) {
-        orderParts.push('CASE WHEN city = ? THEN 0 ELSE 1 END');
-        params.push(city);
+      let rows: any[] = [];
+      if (lookingFor.length > 0) {
+        const placeholders = lookingFor.map(() => '?').join(', ');
+        const params: any[] = [...lookingFor];
+        const orderParts: string[] = [];
+        const audiencePriority = buildAudiencePriorityOrder('gender', lookingFor);
+        orderParts.push(...audiencePriority.orderParts);
+        params.push(...audiencePriority.params);
+        if (city) {
+          orderParts.push('CASE WHEN city = ? THEN 0 ELSE 1 END');
+          params.push(city);
+        }
+        if (state) {
+          orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
+          params.push(state);
+        }
+        orderParts.push(...qualityOrder);
+        const orderBy = `${orderParts.join(', ')}, last_seen_at DESC NULLS LAST`;
+        rows = await queryAll(
+          db,
+          `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 18`,
+          params
+        );
       }
-      if (state) {
-        orderParts.push('CASE WHEN state = ? THEN 0 ELSE 1 END');
-        params.push(state);
+
+      if (rows.length === 0) {
+        rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND avatar IS NOT NULL AND avatar <> '' ORDER BY ${baseAudienceRankingSql('gender')}, is_verified DESC, last_seen_at DESC NULLS LAST LIMIT 18`);
       }
-      orderParts.push(...qualityOrder);
-      const orderBy = `${orderParts.join(', ')}, last_seen_at DESC NULLS LAST`;
-      rows = await queryAll(
-        db,
-        `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND gender IN (${placeholders}) ORDER BY ${orderBy} LIMIT 18`,
-        params
-      );
-    }
 
-    if (rows.length === 0) {
-      rows = await queryAll(db, `SELECT * FROM users WHERE is_admin = 0 AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL) AND avatar_url IS NOT NULL AND avatar_url <> '' ORDER BY ${baseAudienceRankingSql('gender')}, is_verified DESC, last_seen_at DESC NULLS LAST LIMIT 18`);
+      res.json(rows.filter((r: any) => r.avatar).slice(0, 6).map((row: any) => rowToPublicUser(row)));
+    } catch (err) {
+      console.error('[onboarding/suggestions]', err);
+      res.status(500).json({ error: 'internal' });
     }
-
-    res.json(rows.filter((r: any) => r.avatar_url).slice(0, 6).map((row: any) => rowToPublicUser(row)));
   });
 
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
