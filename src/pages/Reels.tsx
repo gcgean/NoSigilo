@@ -429,6 +429,101 @@ export default function Reels() {
     el?.scrollIntoView({ behavior, block: 'start' });
   }, [orderedReels]);
 
+  // Navegação estilo Instagram/TikTok: cada gesto de wheel/tecla avança exatamente
+  // UM vídeo, com uma trava curta para não pular vários de uma vez. No mobile o
+  // swipe continua usando o scroll-snap nativo (não interceptamos touch).
+  const wheelLockRef = useRef(false);
+  const currentIndexRef = useRef(0);
+  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const goRelative = (dir: number) => {
+      if (wheelLockRef.current) return;
+      const target = currentIndexRef.current + dir;
+      if (target < 0 || target >= orderedReels.length) return;
+      wheelLockRef.current = true;
+      scrollTo(target);
+      setCurrentIndex(target);
+      setPlayingId(orderedReels[target]?.id ?? null);
+      window.setTimeout(() => { wheelLockRef.current = false; }, 650);
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) < 8) return;
+      e.preventDefault();
+      goRelative(e.deltaY > 0 ? 1 : -1);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      // Não sequestra setas/espaço enquanto o usuário digita um comentário
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        goRelative(1);
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        goRelative(-1);
+      }
+    };
+
+    // Touch (mobile): controlamos o swipe manualmente para garantir que cada
+    // deslize avance exatamente um vídeo — o scroll-snap nativo "voltava" para
+    // o mesmo vídeo em swipes suaves.
+    let touchStartY = 0;
+    let touchStartX = 0;
+    let touchTracking = false;
+    const SWIPE_THRESHOLD = 45; // px mínimos para considerar um swipe
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) { touchTracking = false; return; }
+      touchStartY = e.touches[0].clientY;
+      touchStartX = e.touches[0].clientX;
+      touchTracking = true;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!touchTracking) return;
+      const dy = e.touches[0].clientY - touchStartY;
+      const dx = e.touches[0].clientX - touchStartX;
+      // Só impede o scroll nativo quando o gesto é predominantemente vertical,
+      // para não atrapalhar toques/cliques nos botões laterais.
+      if (Math.abs(dy) > Math.abs(dx)) {
+        e.preventDefault();
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!touchTracking) return;
+      touchTracking = false;
+      const endTouch = e.changedTouches[0];
+      if (!endTouch) return;
+      const dy = endTouch.clientY - touchStartY;
+      const dx = endTouch.clientX - touchStartX;
+      // Ignora toques (tap) e gestos horizontais
+      if (Math.abs(dy) < SWIPE_THRESHOLD || Math.abs(dy) <= Math.abs(dx)) return;
+      // Arrastar para cima (dy negativo) = próximo vídeo
+      goRelative(dy < 0 ? 1 : -1);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [orderedReels, scrollTo]);
+
   const restartFromBeginning = useCallback(() => {
     const firstReel = orderedReels[0];
     if (!firstReel) return;
