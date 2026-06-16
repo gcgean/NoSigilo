@@ -2022,6 +2022,14 @@ function AdminReengagementTab() {
   const [isSendingCampaignSelected, setIsSendingCampaignSelected] = useState(false);
   const [campaignResult, setCampaignResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
+
+  // Win-back campaign
+  const [winbackInactiveDays, setWinbackInactiveDays] = useState(7);
+  const [winbackLimit, setWinbackLimit] = useState(200);
+  const [winbackResend, setWinbackResend] = useState(false);
+  const [winbackDryRun, setWinbackDryRun] = useState(true);
+  const [isSendingWinback, setIsSendingWinback] = useState(false);
+  const [winbackResult, setWinbackResult] = useState<{ sent: number; errors: number; skipped: number; total: number; dryRun?: boolean } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [metricsError, setMetricsError] = useState(false);
@@ -2155,6 +2163,38 @@ function AdminReengagementTab() {
       toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });
     } finally {
       setIsSendingCampaign(false);
+    }
+  };
+
+  const handleSendWinback = async () => {
+    if (winbackDryRun) {
+      if (!confirm(`Pré-visualizar quantos usuários receberiam o e-mail win-back (inativos há ≥ ${winbackInactiveDays} dias, limite ${winbackLimit})?\n\nNenhum e-mail será enviado.`)) return;
+    } else {
+      if (!confirm(`Enviar e-mail win-back "30 dias grátis" para usuários inativos há ≥ ${winbackInactiveDays} dias (limite: ${winbackLimit})?\n\nIsso irá disparar e-mails reais!`)) return;
+    }
+    setIsSendingWinback(true);
+    setWinbackResult(null);
+    try {
+      const result = await adminService.sendWinbackCampaign({
+        inactiveDays: winbackInactiveDays,
+        limit: winbackLimit,
+        resend: winbackResend,
+        dryRun: winbackDryRun,
+      });
+      setWinbackResult(result);
+      toast({
+        title: winbackDryRun
+          ? `Pré-visualização: ${result.total} usuário(s) seriam contactados`
+          : `🎁 Win-back: ${result.sent} e-mail(s) enviado(s)`,
+        description: winbackDryRun
+          ? 'Desmarque "Simulação" e clique novamente para enviar de verdade.'
+          : result.errors > 0 ? `${result.errors} erro(s).` : 'Campanha enviada com sucesso!',
+        variant: !winbackDryRun && result.errors > 0 ? 'destructive' : 'default',
+      });
+    } catch {
+      toast({ title: 'Erro ao enviar campanha win-back', variant: 'destructive' });
+    } finally {
+      setIsSendingWinback(false);
     }
   };
 
@@ -2327,6 +2367,106 @@ function AdminReengagementTab() {
               </p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Win-back Campaign */}
+      <div className="glass rounded-xl overflow-hidden border border-pink-500/30">
+        <div className="bg-gradient-to-r from-pink-600/10 to-rose-600/10 px-6 py-5">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xl">🎁</span>
+            <h4 className="font-semibold text-base">Campanha Win-back — 30 dias grátis</h4>
+          </div>
+          <p className="text-sm text-muted-foreground mb-5">
+            Envia um e-mail promocional para usuários que entraram uma vez e nunca mais voltaram, oferecendo 30 dias de acesso Premium gratuito via link assinado. Após os 30 dias, o plano custa apenas <strong>R$ 9,90/mês</strong>.
+          </p>
+
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-muted-foreground font-medium">Inativos há (dias)</label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={winbackInactiveDays}
+                onChange={(e) => setWinbackInactiveDays(Math.max(1, Number(e.target.value)))}
+                className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs text-muted-foreground font-medium">Limite de envios</label>
+              <input
+                type="number"
+                min={1}
+                max={1000}
+                value={winbackLimit}
+                onChange={(e) => setWinbackLimit(Math.max(1, Number(e.target.value)))}
+                className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
+              <input
+                type="checkbox"
+                checked={winbackResend}
+                onChange={(e) => setWinbackResend(e.target.checked)}
+                className="w-4 h-4 accent-primary rounded"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Reenviar para quem já recebeu</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
+              <input
+                type="checkbox"
+                checked={winbackDryRun}
+                onChange={(e) => setWinbackDryRun(e.target.checked)}
+                className="w-4 h-4 accent-amber-500 rounded"
+              />
+              <span className="text-sm text-amber-600 dark:text-amber-400 font-medium whitespace-nowrap">Simulação (não envia)</span>
+            </label>
+            <Button
+              onClick={handleSendWinback}
+              disabled={isSendingWinback}
+              className={cn(
+                'gap-2 h-9',
+                winbackDryRun
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                  : 'bg-pink-600 hover:bg-pink-700 text-white'
+              )}
+            >
+              {isSendingWinback
+                ? <RefreshCw className="w-4 h-4 animate-spin" />
+                : winbackDryRun ? <Search className="w-4 h-4" /> : <Send className="w-4 h-4" />
+              }
+              {isSendingWinback
+                ? (winbackDryRun ? 'Calculando...' : 'Enviando...')
+                : (winbackDryRun ? 'Simular' : 'Enviar Win-back')
+              }
+            </Button>
+          </div>
+
+          {winbackResult && (
+            <div className={cn(
+              'mt-4 flex flex-wrap items-center gap-4 rounded-lg px-4 py-3 text-sm',
+              winbackResult.dryRun
+                ? 'bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400'
+                : winbackResult.errors > 0
+                  ? 'bg-destructive/10 border border-destructive/30 text-destructive'
+                  : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+            )}>
+              {winbackResult.dryRun ? (
+                <>
+                  <span className="font-semibold">{winbackResult.total}</span> usuário(s) seriam contactados
+                  {winbackResult.skipped > 0 && <>, <span className="font-semibold">{winbackResult.skipped}</span> já receberam (seriam pulados)</>}
+                  <span className="text-xs opacity-70">— Desmarque "Simulação" e clique "Enviar Win-back" para disparar de verdade.</span>
+                </>
+              ) : (
+                <>
+                  <span>🎁 <strong>{winbackResult.sent}</strong> e-mail(s) enviado(s)</span>
+                  {winbackResult.errors > 0 && <span><strong>{winbackResult.errors}</strong> erro(s)</span>}
+                  {winbackResult.skipped > 0 && <span><strong>{winbackResult.skipped}</strong> pulado(s)</span>}
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
