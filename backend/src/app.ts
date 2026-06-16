@@ -10480,14 +10480,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   app.post('/api/admin/winback/send-all', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const inactiveDays = Math.max(1, Math.min(365, Number(body.inactiveDays ?? 7)));
+      // inactiveDays=0 desabilita o filtro de inatividade (todos os não-assinantes)
+      const inactiveDaysRaw = Number(body.inactiveDays ?? 7);
+      const inactiveDays = Math.max(0, Math.min(365, inactiveDaysRaw));
       const maxBatch = Math.max(1, Math.min(500, Number(body.limit ?? 200)));
-      const resend = body.resend === true; // reenviar mesmo para quem já recebeu winback
-      const dryRun = body.dryRun === true;  // apenas contar/listar, não enviar
+      const resend = body.resend === true;
+      const dryRun = body.dryRun === true;
+      // nonSubscribersOnly=true (padrão): exclui quem tem is_premium=1 ou trial ativo
+      const nonSubscribersOnly = body.nonSubscribersOnly !== false;
 
-      const cutoffIso = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000).toISOString();
-
-      // "Entrou uma vez e sumiu": inativo (última visita) há pelo menos inactiveDays.
       const sinceExpr = db.mode === 'pg'
         ? `COALESCE(TO_CHAR(u.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), u.created_at)`
         : `COALESCE(u.last_seen_at, u.created_at)`;
@@ -10496,9 +10497,25 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         'u.is_banned = 0',
         '(u.is_deactivated = 0 OR u.is_deactivated IS NULL)',
         "u.email IS NOT NULL AND u.email != ''",
-        `${sinceExpr} <= ?`,
       ];
-      const params: unknown[] = [cutoffIso];
+      const params: unknown[] = [];
+
+      if (inactiveDays > 0) {
+        const cutoffIso = new Date(Date.now() - inactiveDays * 24 * 60 * 60 * 1000).toISOString();
+        conditions.push(`${sinceExpr} <= ?`);
+        params.push(cutoffIso);
+      }
+
+      if (nonSubscribersOnly) {
+        const nowIsoStr = new Date().toISOString();
+        if (db.mode === 'pg') {
+          conditions.push(`(u.is_premium IS NULL OR u.is_premium = false) AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)`);
+        } else {
+          conditions.push(`(u.is_premium IS NULL OR u.is_premium = 0) AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)`);
+        }
+        params.push(nowIsoStr);
+      }
+
       if (!resend) {
         conditions.push("NOT EXISTS (SELECT 1 FROM reengagement_emails re WHERE re.user_id = u.id AND re.campaign = 'winback' AND re.status = 'sent')");
       }
@@ -10519,7 +10536,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       )) as any[];
 
       if (dryRun) {
-        res.json({ dryRun: true, eligible: users.length, sample: users.slice(0, 20).map((u: any) => ({ id: String(u.id), email: String(u.email) })) });
+        res.json({ dryRun: true, total: users.length, eligible: users.length, sample: users.slice(0, 20).map((u: any) => ({ id: String(u.id), email: String(u.email) })) });
         return;
       }
 
@@ -10572,7 +10589,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
       const sent = results.filter((r) => r.status === 'sent').length;
       const errors = results.filter((r) => r.status === 'error').length;
-      res.json({ campaign: 'winback', eligible: users.length, sent, errors, skipped: results.filter((r) => r.status === 'skipped').length, results });
+      res.json({ campaign: 'winback', total: users.length, eligible: users.length, sent, errors, skipped: results.filter((r) => r.status === 'skipped').length, results });
     } catch (err) {
       console.error('[admin/winback/send-all]', err);
       res.status(500).json({ error: 'internal' });

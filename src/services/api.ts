@@ -1047,6 +1047,7 @@ export const adminService = {
     limit?: number;
     resend?: boolean;
     dryRun?: boolean;
+    nonSubscribersOnly?: boolean;
   }): Promise<{ sent: number; errors: number; skipped: number; total: number; dryRun?: boolean }> => {
     const response = await apiClient.post('/admin/winback/send-all', params, { timeout: 10 * 60 * 1000 });
     return response.data;

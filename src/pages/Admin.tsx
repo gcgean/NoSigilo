@@ -2024,10 +2024,11 @@ function AdminReengagementTab() {
   const [sendResult, setSendResult] = useState<{ sent: number; errors: number; skipped: number } | null>(null);
 
   // Win-back campaign
-  const [winbackInactiveDays, setWinbackInactiveDays] = useState(7);
+  const [winbackInactiveDays, setWinbackInactiveDays] = useState(0);
   const [winbackLimit, setWinbackLimit] = useState(200);
   const [winbackResend, setWinbackResend] = useState(false);
   const [winbackDryRun, setWinbackDryRun] = useState(true);
+  const [winbackNonSubscribersOnly, setWinbackNonSubscribersOnly] = useState(true);
   const [isSendingWinback, setIsSendingWinback] = useState(false);
   const [winbackResult, setWinbackResult] = useState<{ sent: number; errors: number; skipped: number; total: number; dryRun?: boolean } | null>(null);
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
@@ -2167,10 +2168,12 @@ function AdminReengagementTab() {
   };
 
   const handleSendWinback = async () => {
+    const audienceDesc = winbackNonSubscribersOnly ? 'não-assinantes' : 'todos os usuários';
+    const inactivityDesc = winbackInactiveDays > 0 ? ` inativos há ≥ ${winbackInactiveDays} dias` : '';
     if (winbackDryRun) {
-      if (!confirm(`Pré-visualizar quantos usuários receberiam o e-mail win-back (inativos há ≥ ${winbackInactiveDays} dias, limite ${winbackLimit})?\n\nNenhum e-mail será enviado.`)) return;
+      if (!confirm(`Pré-visualizar quantos ${audienceDesc}${inactivityDesc} receberiam o e-mail win-back (limite ${winbackLimit})?\n\nNenhum e-mail será enviado.`)) return;
     } else {
-      if (!confirm(`Enviar e-mail win-back "30 dias grátis" para usuários inativos há ≥ ${winbackInactiveDays} dias (limite: ${winbackLimit})?\n\nIsso irá disparar e-mails reais!`)) return;
+      if (!confirm(`Enviar e-mail win-back "30 dias grátis" para ${audienceDesc}${inactivityDesc} (limite: ${winbackLimit})?\n\nIsso irá disparar e-mails reais!`)) return;
     }
     setIsSendingWinback(true);
     setWinbackResult(null);
@@ -2180,6 +2183,7 @@ function AdminReengagementTab() {
         limit: winbackLimit,
         resend: winbackResend,
         dryRun: winbackDryRun,
+        nonSubscribersOnly: winbackNonSubscribersOnly,
       });
       setWinbackResult(result);
       toast({
@@ -2383,13 +2387,15 @@ function AdminReengagementTab() {
 
           <div className="flex flex-wrap gap-4 items-end">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs text-muted-foreground font-medium">Inativos há (dias)</label>
+              <label className="text-xs text-muted-foreground font-medium">
+                Inativos há (dias) <span className="text-xs opacity-60">— 0 = todos</span>
+              </label>
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={365}
                 value={winbackInactiveDays}
-                onChange={(e) => setWinbackInactiveDays(Math.max(1, Number(e.target.value)))}
+                onChange={(e) => setWinbackInactiveDays(Math.max(0, Number(e.target.value)))}
                 className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
@@ -2404,6 +2410,15 @@ function AdminReengagementTab() {
                 className="h-9 w-28 rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
               />
             </div>
+            <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
+              <input
+                type="checkbox"
+                checked={winbackNonSubscribersOnly}
+                onChange={(e) => setWinbackNonSubscribersOnly(e.target.checked)}
+                className="w-4 h-4 accent-primary rounded"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">Apenas não-assinantes</span>
+            </label>
             <label className="flex items-center gap-2 cursor-pointer h-9 px-1 select-none">
               <input
                 type="checkbox"
