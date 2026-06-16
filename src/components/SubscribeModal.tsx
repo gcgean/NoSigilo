@@ -68,6 +68,11 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const pixCode = checkout?.pixCode || checkout?.pixPayload || '';
   const qrSrc = normalizePixQrCode(checkout?.pixQrCode);
 
+  // Preço mensal de destaque — menor preço por mês entre os planos (fallback 9,90).
+  const monthlyPrices = plans.map((p) => p.price / Math.max(1, p.intervalCount || 1)).filter((v) => v > 0);
+  const headlinePrice = monthlyPrices.length ? Math.min(...monthlyPrices) : 9.9;
+  const headlinePriceLabel = headlinePrice.toFixed(2).replace('.', ',');
+
   // Load plans when modal opens
   useEffect(() => {
     if (!open) return;
@@ -282,6 +287,20 @@ export default function SubscribeModal({ open, onClose }: Props) {
               {/* Checkout form */}
               {!checkout && (
                 <>
+                  {/* Destaque de preço — "custa somente R$ 9,90" */}
+                  <div className="rounded-2xl border-2 border-gold/40 bg-gradient-to-r from-gold/15 via-primary/5 to-violet-500/10 px-4 py-3 text-center">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Acesso completo por apenas
+                    </p>
+                    <p className="mt-0.5 text-3xl font-extrabold text-foreground">
+                      R$ {headlinePriceLabel}
+                      <span className="text-sm font-medium text-muted-foreground">/mês</span>
+                    </p>
+                    <p className="mt-0.5 text-xs font-medium text-primary">
+                      Menos que um lanche — cancele quando quiser.
+                    </p>
+                  </div>
+
                   {/* Plan selector */}
                   {plans.length > 1 ? (
                     <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(plans.length, 3)}, 1fr)` }}>

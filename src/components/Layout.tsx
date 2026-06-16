@@ -230,11 +230,14 @@ export default function Layout() {
     }
 
     if (licenseEnds === null) {
+      // Premium ativo sem data de vencimento conhecida (ex.: ativação manual,
+      // conta de teste ou webhook sem licenseEndAt). Não é um erro — mostramos
+      // o status premium de forma positiva, sem alarme de "regularize".
       return {
         href: '/subscriptions',
-        tone: 'danger',
-        title: 'Assinatura sem data de vencimento disponível',
-        label: 'Assinante sem prazo',
+        tone: 'premium',
+        title: 'Assinatura Premium ativa',
+        label: 'Assinante Premium',
       };
     }
     const diff = licenseEnds - clockNow;
@@ -253,21 +256,24 @@ export default function Layout() {
 
     if (trialEnds !== null && trialEnds > clockNow) {
       const detailed = formatDetailedRemainingTime(trialEnds, clockNow);
+      const expiresSoon = trialEnds - clockNow <= 24 * 60 * 60 * 1000;
       return {
         href: '/subscriptions',
         tone: 'trial' as const,
-        message: detailed
-          ? `Seu teste grátis acaba em ${detailed}`
-          : 'Seu teste grátis está ativo.',
-        cta: 'ASSINE AGORA',
+        message: expiresSoon
+          ? `⏰ Seu teste grátis acaba em ${detailed || 'menos de 1 dia'}! Continue Premium por apenas R$ 9,90/mês.`
+          : detailed
+            ? `Seu teste grátis acaba em ${detailed}. Garanta o Premium por apenas R$ 9,90/mês.`
+            : 'Seu teste grátis está ativo. Premium por apenas R$ 9,90/mês.',
+        cta: expiresSoon ? 'ASSINAR R$ 9,90' : 'ASSINE AGORA',
       };
     }
 
     return {
       href: '/subscriptions',
       tone: 'inactive' as const,
-      message: 'Seu acesso está inativo ou sua licença venceu. Assine para continuar com todos os recursos.',
-      cta: 'VER PLANOS',
+      message: 'Seu acesso está inativo ou sua licença venceu. Volte a ser Premium por apenas R$ 9,90/mês.',
+      cta: 'ASSINAR R$ 9,90',
     };
   }, [clockNow, subscriptionsEnabled, trialEnds, user]);
 

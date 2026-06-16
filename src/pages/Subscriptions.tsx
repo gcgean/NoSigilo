@@ -232,26 +232,14 @@ export default function Subscriptions() {
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
   const paidPlans = plans.filter((p) => p.price > 0);
 
-  // ── Premium already active ──────────────────────────────────────────────
-  if (!isLoading && user?.isPremium) {
-    return (
-      <div className="max-w-lg mx-auto w-full py-12 text-center space-y-4">
-        <div className="flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gold/15 text-5xl">👑</div>
-        </div>
-        <h1 className="text-2xl font-bold">Você já é Premium!</h1>
-        <p className="text-muted-foreground text-sm">
-          Aproveite todos os recursos exclusivos do NoSigilo.
-          {user.hubLicenseEndAt && (
-            <> Assinatura ativa até <strong>{new Date(user.hubLicenseEndAt).toLocaleDateString('pt-BR')}</strong>.</>
-          )}
-        </p>
-        <Button onClick={() => navigate('/feed')} className="gap-2 bg-gradient-primary">
-          Ir para o Feed <ArrowRight className="w-4 h-4" />
-        </Button>
-      </div>
-    );
-  }
+  // Preço mensal de destaque — menor preço por mês entre os planos (fallback 9,90).
+  const monthlyPrices = paidPlans
+    .map((p) => p.price / Math.max(1, p.intervalCount || 1))
+    .filter((v) => v > 0);
+  const headlinePrice = monthlyPrices.length ? Math.min(...monthlyPrices) : 9.9;
+  const headlinePriceLabel = headlinePrice.toFixed(2).replace('.', ',');
+
+  const isPremiumActive = !!user?.isPremium;
 
   return (
     <div className="max-w-2xl mx-auto w-full space-y-6 pb-10">
@@ -261,9 +249,47 @@ export default function Subscriptions() {
         <Badge className="bg-gradient-primary gap-1">
           <Crown className="w-3 h-3" /> Premium
         </Badge>
-        <h1 className="text-2xl font-bold">Assine o NoSigilo Premium</h1>
+        <h1 className="text-2xl font-bold">
+          {isPremiumActive ? 'Renove seu NoSigilo Premium' : 'Assine o NoSigilo Premium'}
+        </h1>
         <p className="text-sm text-muted-foreground">Desbloqueie radar, vídeos, eventos e muito mais</p>
       </div>
+
+      {/* Destaque de preço — "custa somente R$ 9,90" */}
+      {!isLoading && subscriptionsEnabled === true && (
+        <div className="rounded-2xl border-2 border-gold/40 bg-gradient-to-r from-gold/15 via-primary/5 to-violet-500/10 px-5 py-4 text-center">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Acesso completo por apenas
+          </p>
+          <p className="mt-0.5 text-4xl font-extrabold text-foreground">
+            R$ {headlinePriceLabel}
+            <span className="text-base font-medium text-muted-foreground">/mês</span>
+          </p>
+          <p className="mt-1 text-sm font-medium text-primary">
+            Menos que um lanche — cancele quando quiser, sem fidelidade.
+          </p>
+        </div>
+      )}
+
+      {/* Status premium ativo — pode renovar/estender mesmo já sendo Premium */}
+      {!isLoading && isPremiumActive && (
+        <Card className="border-gold/40 bg-gold/10 p-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gold/20 text-2xl">👑</div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold">Você já é Premium!</p>
+              <p className="text-xs text-muted-foreground">
+                {user?.hubLicenseEndAt
+                  ? <>Ativo até <strong>{new Date(user.hubLicenseEndAt).toLocaleDateString('pt-BR')}</strong>. Renove a qualquer momento para estender.</>
+                  : 'Aproveite todos os recursos. Você pode renovar quando quiser.'}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => navigate('/feed')} className="shrink-0 gap-1">
+              Feed <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Banner */}
       {hubBanner && (
