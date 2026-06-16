@@ -10507,12 +10507,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       }
 
       if (nonSubscribersOnly) {
+        // is_premium é INTEGER (0/1) tanto no pg quanto no sqlite; trial_ends_at é TEXT (ISO).
         const nowIsoStr = new Date().toISOString();
-        if (db.mode === 'pg') {
-          conditions.push(`(u.is_premium IS NULL OR u.is_premium = false) AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)`);
-        } else {
-          conditions.push(`(u.is_premium IS NULL OR u.is_premium = 0) AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)`);
-        }
+        conditions.push(`(u.is_premium IS NULL OR u.is_premium = 0) AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)`);
         params.push(nowIsoStr);
       }
 
