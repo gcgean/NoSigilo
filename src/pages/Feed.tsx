@@ -321,6 +321,8 @@ export default function Feed() {
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string; isVideo?: boolean }>>([]);
   const [expPhotoIndex, setExpPhotoIndex] = useState<Record<string, number>>({});
+  // Contos expandidos (mostra texto completo); por padrão exibimos só uma prévia
+  const [expandedExp, setExpandedExp] = useState<Record<string, boolean>>({});
   const expFileInputRef = useRef<HTMLInputElement | null>(null);
   const expVideoInputRef = useRef<HTMLInputElement | null>(null);
   const expFormRef = useRef<HTMLDivElement | null>(null);
@@ -1053,7 +1055,7 @@ export default function Feed() {
       await reloadExperiences();
       toast({
         title: 'Experiência publicada',
-        description: 'Seu conto já está visível na aba Experiências.',
+        description: 'Seu conto já está visível na aba Meus Contos Eróticos.',
         action: (
           <ToastAction altText="Ver experiência" onClick={() => {
             const el = document.querySelector('[data-experience-card]');
@@ -1893,7 +1895,7 @@ export default function Feed() {
                       : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                   )}
                 >
-                  ✍️ Experiências
+                  ✍️ Meus Contos Eróticos
                 </button>
               </div>
 
@@ -2164,10 +2166,27 @@ export default function Feed() {
                       ) : null}
                     </div>
                     <div className="px-3 pb-3 sm:px-4">
-                      <h3 className="text-lg font-bold">{experience.title}</h3>
-                      <p className="mt-2 whitespace-pre-wrap text-[0.95rem] leading-6 text-muted-foreground sm:text-base">
-                        {experience.description}
-                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedExp((prev) => ({ ...prev, [experience.id]: !prev[experience.id] }))
+                        }
+                        className="block w-full text-left"
+                        aria-expanded={!!expandedExp[experience.id]}
+                      >
+                        <h3 className="text-lg font-bold hover:underline">{experience.title}</h3>
+                        <p
+                          className={cn(
+                            'mt-2 text-[0.95rem] leading-6 text-muted-foreground sm:text-base',
+                            expandedExp[experience.id] ? 'whitespace-pre-wrap' : 'line-clamp-3'
+                          )}
+                        >
+                          {experience.description}
+                        </p>
+                        <span className="mt-1.5 inline-block text-sm font-semibold text-primary hover:underline">
+                          {expandedExp[experience.id] ? 'Ler menos' : 'Ler conto completo →'}
+                        </span>
+                      </button>
                     </div>
                     {/* Photo carousel */}
                     {(experience.media ?? []).filter((m) => m.mimeType.startsWith('image/')).length > 0 && (() => {
