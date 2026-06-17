@@ -396,20 +396,23 @@ export default function SearchVideos() {
     // Mark as seen
     addSeenVideoId(item.mediaId);
     setSeenIds((prev) => { const next = new Set(prev); next.add(item.mediaId); return next; });
-    // Salva o item no sessionStorage para o Reels injetar na posição 0
-    // sem depender do feed carregar esse vídeo específico
+    // Salva no sessionStorage para o Reels: o item clicado (renderiza na hora)
+    // e a fila completa de vídeos que o usuário estava vendo, para ele conseguir
+    // deslizar por TODOS — não só o clicado.
+    const toReel = (v: VideoItem) => ({
+      id: v.mediaId,
+      postId: v.postId,
+      url: resolveServerUrl(v.videoUrl),
+      author: v.author,
+      content: v.content,
+      createdAt: v.createdAt,
+      likesCount: v.likesCount,
+      commentsCount: v.commentsCount,
+      likedByMe: false,
+    });
     try {
-      sessionStorage.setItem('nosigilo:target-reel', JSON.stringify({
-        id: item.mediaId,
-        postId: item.postId,
-        url: resolveServerUrl(item.videoUrl),
-        author: item.author,
-        content: item.content,
-        createdAt: item.createdAt,
-        likesCount: item.likesCount,
-        commentsCount: item.commentsCount,
-        likedByMe: false,
-      }));
+      sessionStorage.setItem('nosigilo:target-reel', JSON.stringify(toReel(item)));
+      sessionStorage.setItem('nosigilo:reel-queue', JSON.stringify(videos.map(toReel)));
     } catch { /* ignora falha de storage */ }
     navigate(`/reels?reelId=${encodeURIComponent(item.mediaId)}`);
   };

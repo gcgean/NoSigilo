@@ -228,11 +228,39 @@ export default function Reels() {
     (async () => {
       try {
         if (cancelled) return;
-        setReels([]);
+
+        // Fila vinda da Busca de Vídeos: a lista completa que o usuário estava
+        // vendo. Assim ele consegue deslizar por TODOS os vídeos da busca, e não
+        // ficar preso só no que clicou (o feed do Rap é filtrado por preferência
+        // e pode trazer poucos vídeos).
+        let queueReels: ReelItem[] = [];
+        if (targetReelId) {
+          try {
+            const raw = sessionStorage.getItem('nosigilo:reel-queue');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) queueReels = parsed as ReelItem[];
+              sessionStorage.removeItem('nosigilo:reel-queue');
+            }
+          } catch { /* ignora */ }
+        }
+
+        setReels(queueReels);
         loadedReelIdsRef.current.clear();
+        for (const r of queueReels) loadedReelIdsRef.current.add(String(r.id));
         setHasLockedVideos(false);
-        setLikedByPostId({});
-        setStatsByPostId({});
+        setLikedByPostId(() => {
+          const map: Record<string, boolean> = {};
+          for (const r of queueReels) map[r.postId] = r.likedByMe;
+          return map;
+        });
+        setStatsByPostId(() => {
+          const map: Record<string, ReelStats> = {};
+          for (const r of queueReels) {
+            map[r.postId] = { likesCount: r.likesCount, commentsCount: r.commentsCount };
+          }
+          return map;
+        });
 
         let currentPage = 1;
         let hasMore = true;
@@ -284,7 +312,7 @@ export default function Reels() {
     })();
 
     return () => { cancelled = true; };
-  }, [appendReels, mapPostsToReels]);
+  }, [appendReels, mapPostsToReels, targetReelId]);
 
   const loadMoreReels = useCallback(async () => {
     if (isLoading || isLoadingMoreReels || !hasMoreReels) return;
