@@ -3261,7 +3261,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
     const distanceKmByPostId = new Map<string, number | null>();
+    const sameCityByPostId = new Map<string, boolean>();
     const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
+    const cityOnly = req.query.cityOnly === 'true' || req.query.cityOnly === '1';
     let feedInsights = {
       nearbyActiveCount: 0,
       nearbyRadiusKm: null as number | null,
@@ -3463,6 +3465,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             // Store distance for response payload and proximity filtering
             distanceKmByPostId.set(postId, distanceKm);
             const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '');
+            sameCityByPostId.set(postId, sameCity);
             const sameState = !!viewerState && viewerState === normalizeRadarText(row.author_state || '');
             const matchesInterest = matchesLookingFor(viewerLookingFor, row.author_gender);
             const parsedMediaIds = safeJsonParse(row.media_ids_json);
@@ -3605,13 +3608,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           return diversified.map((item) => item.row);
         })();
 
-    // Proximity filter: only keep posts within maxDistanceKm radius (when set)
-    const proximityRows = maxDistanceKm !== null && viewerLat !== null && viewerLon !== null
-      ? orderedRows.filter((r: any) => {
-          const d = distanceKmByPostId.get(String(r.id));
-          return d !== null && d !== undefined && d <= maxDistanceKm;
-        })
-      : orderedRows;
+    // Proximity filter: cityOnly = same city; maxDistanceKm = radius in km
+    const proximityRows = cityOnly && viewerCity
+      ? orderedRows.filter((r: any) => sameCityByPostId.get(String(r.id)) === true)
+      : maxDistanceKm !== null && viewerLat !== null && viewerLon !== null
+        ? orderedRows.filter((r: any) => {
+            const d = distanceKmByPostId.get(String(r.id));
+            return d !== null && d !== undefined && d <= maxDistanceKm;
+          })
+        : orderedRows;
 
     // Exclude posts already shown to the client (cross-page deduplication)
     const freshRows = seenIdsSet.size > 0

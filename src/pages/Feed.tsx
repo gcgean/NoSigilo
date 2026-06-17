@@ -183,7 +183,7 @@ const FEED_SESSION_SEEN_IDS_KEY = 'nosigilo:feed-session-seen-ids';
 const FEED_SEEN_IDS_LS_KEY = 'nosigilo:feed-seen-ids-v2';
 const FEED_SEEN_IDS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
-const NEARBY_OPTIONS = [10, 25, 50] as const;
+const NEARBY_OPTIONS = [10, 25, 50, 100, 200, 300] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
 
 /** Persist seen post IDs across sessions (localStorage, 24h TTL) */
@@ -349,20 +349,30 @@ export default function Feed() {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
 
-  // Proximity filter: null = todos, number = raio em km
+  // Proximity filter: null = todos, number = raio em km; cityOnly = somente minha cidade
   const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(null);
+  const [cityOnly, setCityOnly] = useState(false);
 
   const handleNearbyRadius = (km: NearbyOption) => {
     const next = nearbyRadius === km ? null : km;
     setNearbyRadius(next);
-    void triggerNearbyReload(next);
+    if (next !== null) setCityOnly(false);
+    void triggerNearbyReload(next, false);
   };
 
-  const triggerNearbyReload = async (km: NearbyOption | null) => {
+  const handleCityOnly = () => {
+    const next = !cityOnly;
+    setCityOnly(next);
+    if (next) setNearbyRadius(null);
+    void triggerNearbyReload(null, next);
+  };
+
+  const triggerNearbyReload = async (km: NearbyOption | null, co = cityOnly) => {
     setIsLoading(true);
     try {
       const params: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (km !== null) params.maxDistanceKm = km;
+      if (co) params.cityOnly = true;
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) params.seenIds = seenIds;
       const feed = await feedService.getFeed(params);
@@ -546,6 +556,7 @@ export default function Feed() {
         !radarHighlightsCacheRef.current || Date.now() - radarHighlightsCacheRef.current.fetchedAt > RADAR_HIGHLIGHTS_CACHE_TTL_MS;
       const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
+      if (cityOnly) feedParams.cityOnly = true;
       // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
@@ -737,6 +748,7 @@ export default function Feed() {
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
+      if (cityOnly) moreParams.cityOnly = true;
       const feed = await feedService.getFeed(moreParams);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];
@@ -1962,7 +1974,19 @@ export default function Feed() {
               <div className="mt-2.5 pt-2.5 border-t border-border/40 flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                 <span className="text-xs text-muted-foreground font-medium shrink-0">Perto de mim:</span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleCityOnly}
+                    className={cn(
+                      'rounded-full px-3 py-1 text-xs font-semibold transition-all',
+                      cityOnly
+                        ? 'bg-emerald-500 text-white shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
+                    )}
+                  >
+                    🏙 Minha cidade
+                  </button>
                   {NEARBY_OPTIONS.map((km) => (
                     <button
                       key={km}
@@ -1978,10 +2002,10 @@ export default function Feed() {
                       {km} km
                     </button>
                   ))}
-                  {nearbyRadius !== null && (
+                  {(nearbyRadius !== null || cityOnly) && (
                     <button
                       type="button"
-                      onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}
+                      onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}
                       className="ml-1 rounded-full px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ✕ limpar
@@ -1992,21 +2016,21 @@ export default function Feed() {
             ) : null}
           </Card>
           {/* Social Pulse — variable reward curiosity gap card (mobile only; moves to sidebar on desktop) */}
-          {feedFilter === 'all' && nearbyRadius === null ? (
+          {feedFilter === 'all' && nearbyRadius === null && !cityOnly ? (
             <div className="md:hidden">
               <SocialPulseCard enabled={!!user?.id} />
             </div>
           ) : null}
 
           {/* Proximity active banner */}
-          {feedFilter !== 'experiences' && nearbyRadius !== null ? (
+          {feedFilter !== 'experiences' && (nearbyRadius !== null || cityOnly) ? (
             <Card className="overflow-hidden border-emerald-400/25 bg-gradient-to-r from-emerald-50/70 via-background to-teal-50/50 p-4 glass dark:from-emerald-950/30 dark:to-teal-950/20">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="text-lg">📍</span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      Pessoas a até {nearbyRadius} km de você
+                      {cityOnly ? 'Pessoas da sua cidade' : `Pessoas a até ${nearbyRadius} km de você`}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Toque em qualquer perfil para iniciar uma conversa e marcar um encontro.
@@ -2014,7 +2038,7 @@ export default function Feed() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}
+                  onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}
                   className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors underline"
                 >
                   Ver todos
@@ -2022,7 +2046,7 @@ export default function Feed() {
               </div>
             </Card>
           ) : null}
-          {feedFilter === 'all' && nearbyRadius === null && feedInsightsSummary ? (
+          {feedFilter === 'all' && nearbyRadius === null && !cityOnly && feedInsightsSummary ? (
             <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass md:hidden">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -2385,20 +2409,30 @@ export default function Feed() {
               description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
             />
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && nearbyRadius !== null && allPosts.length === 0 ? (
+          {feedFilter !== 'experiences' && !isLoading && (nearbyRadius !== null || cityOnly) && allPosts.length === 0 ? (
             <Card className="overflow-hidden p-8 glass text-center space-y-3">
               <div className="text-4xl">📍</div>
-              <p className="font-semibold text-foreground">Ninguém perto de você por enquanto</p>
+              <p className="font-semibold text-foreground">
+                {cityOnly ? 'Ninguém da sua cidade por enquanto' : 'Ninguém perto de você por enquanto'}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Não encontramos publicações de pessoas a até {nearbyRadius} km. Tente ampliar o raio ou voltar mais tarde.
+                {cityOnly
+                  ? 'Não encontramos publicações de pessoas da sua cidade. Tente um raio de distância ou volte mais tarde.'
+                  : `Não encontramos publicações de pessoas a até ${nearbyRadius} km. Tente ampliar o raio ou voltar mais tarde.`
+                }
               </p>
               <div className="flex justify-center gap-2 pt-1">
-                {NEARBY_OPTIONS.filter((km) => km > nearbyRadius).slice(0, 1).map((km) => (
+                {!cityOnly && nearbyRadius !== null && NEARBY_OPTIONS.filter((km) => km > nearbyRadius).slice(0, 1).map((km) => (
                   <Button key={km} size="sm" variant="outline" onClick={() => handleNearbyRadius(km)}>
                     Ampliar para {km} km
                   </Button>
                 ))}
-                <Button size="sm" variant="ghost" onClick={() => { setNearbyRadius(null); void triggerNearbyReload(null); }}>
+                {cityOnly && (
+                  <Button size="sm" variant="outline" onClick={() => { setCityOnly(false); void handleNearbyRadius(50); }}>
+                    Ver até 50 km
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}>
                   Ver todos
                 </Button>
               </div>
@@ -2809,7 +2843,7 @@ export default function Feed() {
           ) : null}
 
           {/* Feed Insights */}
-          {feedFilter === 'all' && nearbyRadius === null && feedInsightsSummary ? (
+          {feedFilter === 'all' && nearbyRadius === null && !cityOnly && feedInsightsSummary ? (
             <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

@@ -133,7 +133,7 @@ export const videoSearchService = {
 };
 
 export const feedService = {
-  getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number }) => {
+  getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number; cityOnly?: boolean }) => {
     if (USE_MOCKS) {
       return { posts: [], hasMore: false, insights: null };
     }
