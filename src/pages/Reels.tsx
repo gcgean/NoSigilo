@@ -510,16 +510,43 @@ export default function Reels() {
       goRelative(dy < 0 ? 1 : -1);
     };
 
+    // Mouse drag (desktop / janela estreita sem touch): arrastar para cima/baixo
+    // também avança/volta um vídeo, replicando o gesto de "deslizar".
+    let mouseDownY = 0;
+    let mouseDownX = 0;
+    let mouseDragging = false;
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return; // só botão esquerdo
+      mouseDownY = e.clientY;
+      mouseDownX = e.clientX;
+      mouseDragging = true;
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      if (!mouseDragging) return;
+      mouseDragging = false;
+      const dy = e.clientY - mouseDownY;
+      const dx = e.clientX - mouseDownX;
+      // Ignora cliques (sem arrasto) e arrastos horizontais — preserva os botões
+      if (Math.abs(dy) < SWIPE_THRESHOLD || Math.abs(dy) <= Math.abs(dx)) return;
+      goRelative(dy < 0 ? 1 : -1);
+    };
+
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('keydown', onKey);
     return () => {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
       window.removeEventListener('keydown', onKey);
     };
   }, [orderedReels, scrollTo]);
@@ -829,6 +856,8 @@ export default function Reels() {
         msOverflowStyle: 'none',
         touchAction: 'pan-y',
         overscrollBehavior: 'contain',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       } as React.CSSProperties}
     >
       {/* Buscar Vídeos — floating button (mobile only) */}
