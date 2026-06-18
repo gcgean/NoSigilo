@@ -431,7 +431,7 @@ export default function Chat() {
     return messages.filter((m) => String(m.content || '').toLowerCase().includes(q));
   }, [messages, messageSearch]);
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
-    formatProfileIdentityLine(profile);
+    String(profile?.gender || '').trim();
 
   const loadConversations = useCallback(async () => {
     if (USE_MOCKS) return;
