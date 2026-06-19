@@ -4,7 +4,7 @@ import {
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -695,14 +695,19 @@ export default function Admin() {
     }
   };
 
-  const handleResolveReport = async (reportId: string) => {
+  const handleResolveReport = async (reportId: string, action: 'ban' | 'warn' | 'remove_content' | 'dismiss' = 'dismiss') => {
     setBusyReportId(reportId);
     try {
-      await adminService.resolveReport(reportId);
+      await adminService.resolveReport(reportId, action);
       setReports((prev) => prev.filter((r) => r.id !== reportId));
-      toast({ title: 'Denúncia arquivada' });
+      const msg =
+        action === 'ban' ? 'Usuário banido e denúncia resolvida'
+        : action === 'warn' ? 'Advertência enviada e denúncia resolvida'
+        : action === 'remove_content' ? 'Conteúdo removido e denúncia resolvida'
+        : 'Denúncia descartada';
+      toast({ title: msg });
     } catch {
-      toast({ title: 'Erro ao arquivar denúncia', variant: 'destructive' });
+      toast({ title: 'Erro ao resolver denúncia', variant: 'destructive' });
     } finally {
       setBusyReportId(null);
     }
@@ -1231,26 +1236,46 @@ export default function Admin() {
                           <p className="text-sm text-muted-foreground italic">"{report.details}"</p>
                         )}
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        {report.targetType === 'user' && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={busyUserId === report.targetId}
-                            onClick={() => void handleBanUser(report.targetId)}
-                          >
-                            <Ban className="w-4 h-4 mr-1" />
-                            Banir
-                          </Button>
-                        )}
+                      <div className="flex flex-wrap gap-2 shrink-0 justify-end">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={busyReportId === report.id}
+                          onClick={() => void handleResolveReport(report.id, 'ban')}
+                        >
+                          <Ban className="w-4 h-4 mr-1" />
+                          {report.targetType === 'user' ? 'Banir' : 'Banir autor'}
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
+                          className="border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
                           disabled={busyReportId === report.id}
-                          onClick={() => void handleResolveReport(report.id)}
+                          onClick={() => void handleResolveReport(report.id, 'warn')}
+                        >
+                          <AlertTriangle className="w-4 h-4 mr-1" />
+                          Advertir
+                        </Button>
+                        {report.targetType !== 'user' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-destructive/50 text-destructive hover:bg-destructive/10"
+                            disabled={busyReportId === report.id}
+                            onClick={() => void handleResolveReport(report.id, 'remove_content')}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Remover conteúdo
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busyReportId === report.id}
+                          onClick={() => void handleResolveReport(report.id, 'dismiss')}
                         >
                           <Check className="w-4 h-4 mr-1" />
-                          Arquivar
+                          Descartar
                         </Button>
                       </div>
                     </div>

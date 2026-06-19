@@ -9991,20 +9991,78 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const { reportId } = req.params;
-      const adminId = (req as any).userId as string;
-      const report = await queryOne(db, 'SELECT id FROM reports WHERE id = ?', [reportId]);
-      if (!report) {
-        res.status(404).json({ error: 'not_found' });
-        return;
+      const adminId = req.auth!.userId;
+      const io = req.app.get('io') as SocketIOServer | undefined;
+      const action = ['ban', 'warn', 'remove_content', 'dismiss'].includes(String(req.body?.action))
+        ? String(req.body.action)
+        : 'dismiss';
+      const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+
+      const report = (await queryOne(
+        db,
+        'SELECT id, target_type, target_id, reporter_user_id FROM reports WHERE id = ?',
+        [reportId]
+      )) as any;
+      if (!report) { res.status(404).json({ error: 'not_found' }); return; }
+
+      const targetType = String(report.target_type);
+      const targetId = String(report.target_id);
+      const reporterId = report.reporter_user_id ? String(report.reporter_user_id) : null;
+
+      // Resolve o autor do perfil/conteúdo denunciado
+      let ownerId: string | null = null;
+      if (targetType === 'user') ownerId = targetId;
+      else if (targetType === 'post') ownerId = (((await queryOne(db, 'SELECT user_id FROM posts WHERE id = ?', [targetId])) as any)?.user_id) ?? null;
+      else if (targetType === 'photo') ownerId = (((await queryOne(db, 'SELECT user_id FROM media WHERE id = ?', [targetId])) as any)?.user_id) ?? null;
+      else if (targetType === 'message') ownerId = (((await queryOne(db, 'SELECT sender_id FROM messages WHERE id = ?', [targetId])) as any)?.sender_id) ?? null;
+      ownerId = ownerId ? String(ownerId) : null;
+
+      const notify = async (userId: string | null, type: string, title: string, description: string) => {
+        if (!userId) return;
+        try {
+          await createNotification({ db, io }, { userId, type, title, description, dataJson: { reportId, action } });
+          await sendPushToUser({ db, env }, { userId, payload: { title, body: description, url: '/notifications', tag: `${type}:${reportId}` } });
+        } catch (err) {
+          console.error('[admin/reports/resolve] notify failed', err);
+        }
+      };
+
+      // Executa a ação de moderação
+      if (action === 'ban' && ownerId) {
+        await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, ownerId]);
+        // Usuário banido não é notificado (perde acesso à plataforma)
+      } else if (action === 'warn') {
+        await notify(ownerId, 'moderation.warning', 'Você recebeu uma advertência', note || 'Um conteúdo seu foi reportado e analisado pela moderação. Reveja as regras da comunidade para evitar uma suspensão.');
+      } else if (action === 'remove_content') {
+        if (targetType === 'post') {
+          await run(db, 'DELETE FROM likes WHERE target_type = ? AND target_id = ?', ['post', targetId]);
+          await run(db, 'DELETE FROM comments WHERE target_type = ? AND target_id = ?', ['post', targetId]);
+          await run(db, 'DELETE FROM posts WHERE id = ?', [targetId]);
+        } else if (targetType === 'photo') {
+          await deleteStoredMedia(targetId);
+        } else if (targetType === 'message') {
+          await run(db, 'UPDATE messages SET deleted_for_all = 1, content = NULL, media_id = NULL WHERE id = ?', [targetId]);
+        }
+        await notify(ownerId, 'moderation.content_removed', 'Conteúdo removido', note || 'Um conteúdo seu foi removido por violar as regras da comunidade.');
       }
-      const resolvedAt = nowIso();
+      // dismiss: apenas resolve a denúncia (improcedente)
+
       await run(
         db,
-        'UPDATE reports SET status = ?, resolved_by = ?, resolved_at = ? WHERE id = ?',
-        ['resolved', adminId, resolvedAt, reportId]
+        'UPDATE reports SET status = ?, resolved_by = ?, resolved_at = ?, resolution_action = ? WHERE id = ?',
+        ['resolved', adminId, nowIso(), action, reportId]
       );
+
+      // Notifica o denunciante sobre o desfecho (sem expor a ação detalhada nem o denunciado)
+      if (reporterId && reporterId !== ownerId) {
+        const outcome = action === 'dismiss'
+          ? 'Analisamos sua denúncia e, desta vez, não identificamos violação das regras. Obrigado por ajudar a manter a comunidade segura.'
+          : 'Analisamos sua denúncia e tomamos as medidas necessárias. Obrigado por ajudar a manter a comunidade segura.';
+        await notify(reporterId, 'report.reviewed', 'Sua denúncia foi analisada', outcome);
+      }
+
       await persist();
-      res.json({ id: reportId, status: 'resolved' });
+      res.json({ id: reportId, status: 'resolved', action });
     } catch (err) {
       console.error('[admin/reports/resolve]', err);
       res.status(500).json({ error: 'internal' });

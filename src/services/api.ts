@@ -969,8 +969,8 @@ export const adminService = {
     return response.data;
   },
 
-  resolveReport: async (reportId: string) => {
-    const response = await apiClient.put(`/admin/reports/${reportId}/resolve`);
+  resolveReport: async (reportId: string, action: 'ban' | 'warn' | 'remove_content' | 'dismiss' = 'dismiss', note?: string) => {
+    const response = await apiClient.put(`/admin/reports/${reportId}/resolve`, { action, note });
     return response.data;
   },
 
