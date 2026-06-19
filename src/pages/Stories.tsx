@@ -547,6 +547,18 @@ export default function Stories() {
     setViewerIdx(idx);
   }, [isPremium, requireFields]);
 
+  // Auto-abre o story indicado em ?open=<storyId> (vindo da barra no Feed)
+  const autoOpenedRef = useRef(false);
+  useEffect(() => {
+    if (loading || autoOpenedRef.current) return;
+    const openId = new URLSearchParams(window.location.search).get('open');
+    if (!openId) return;
+    const idx = feed.findIndex((s) => s.id === openId);
+    autoOpenedRef.current = true;
+    window.history.replaceState({}, '', '/stories');
+    if (idx >= 0) void handleOpenStory(idx);
+  }, [loading, feed, handleOpenStory]);
+
   const handleUpload = async (file: File) => {
     if (!file) return;
     // Validação de vídeo máx 30s via duration

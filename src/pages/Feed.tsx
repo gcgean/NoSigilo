@@ -13,6 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { cn } from '@/lib/utils';
 import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
+import StoriesBar from '@/components/StoriesBar';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1579,6 +1580,9 @@ export default function Feed() {
           </button>
         </Card>
       )}
+
+      {/* Stories bar — porta de entrada para os Stories de 24h */}
+      {feedFilter !== 'experiences' ? <StoriesBar /> : null}
 
       {/* Composer */}
       {feedFilter === 'experiences' ? (
