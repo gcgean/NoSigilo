@@ -3588,48 +3588,31 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               createdAtMs,
               reason,
               label,
+              matchesInterest,
             };
           });
 
-          ranked.sort((a, b) => {
-            if (b.score !== a.score) return b.score - a.score;
-            return b.createdAtMs - a.createdAtMs;
-          });
+          // Ordem cronológica: mais recentes primeiro. Mantém o feed previsível e
+          // evita o usuário rever a mesma postagem (a dedup por seenIds cuida do resto).
+          ranked.sort((a, b) => b.createdAtMs - a.createdAtMs);
 
-          // Hard author cap: each author may appear at most 2 times per page to prevent repetition
+          // Só perfis do interesse do viewer (quando ele definiu preferência)
+          const interestFiltered = viewerLookingFor.length > 0
+            ? ranked.filter((item) => item.matchesInterest)
+            : ranked;
+
+          // Teto por autor: no máximo 2 posts por autor por página (anti-flood)
           const MAX_POSTS_PER_AUTHOR = 2;
           const authorPageCount = new Map<string, number>();
-          const cappedRanked = ranked.filter((item) => {
+          const cappedRanked = interestFiltered.filter((item) => {
             const count = authorPageCount.get(item.authorId) ?? 0;
             if (count >= MAX_POSTS_PER_AUTHOR) return false;
             authorPageCount.set(item.authorId, count + 1);
             return true;
           });
 
-          const diversified: typeof cappedRanked = [];
-          const remaining = [...cappedRanked];
-          // Track recent author window (last 3 positions) to ensure no author repeats within 3 slots
-          const recentAuthors: string[] = [];
-          while (remaining.length > 0) {
-            let bestIndex = 0;
-            let bestAdjustedScore = -Infinity;
-            for (let i = 0; i < remaining.length; i += 1) {
-              const candidate = remaining[i];
-              // Penalize if author appeared in last 3 posts
-              const recentIdx = recentAuthors.lastIndexOf(candidate.authorId);
-              const gapPenalty = recentIdx >= 0 ? (30 + (recentAuthors.length - 1 - recentIdx) * 15) : 0;
-              const adjustedScore = candidate.score - gapPenalty;
-              if (adjustedScore > bestAdjustedScore) {
-                bestAdjustedScore = adjustedScore;
-                bestIndex = i;
-              }
-            }
-            const [picked] = remaining.splice(bestIndex, 1);
-            if (!picked) break;
-            diversified.push(picked);
-            recentAuthors.push(picked.authorId);
-            if (recentAuthors.length > 3) recentAuthors.shift();
-            feedContextByPostId.set(String(picked.row.id), { reason: picked.reason, label: picked.label });
+          for (const item of cappedRanked) {
+            feedContextByPostId.set(String(item.row.id), { reason: item.reason, label: item.label });
           }
 
           feedInsights = {
@@ -3639,7 +3622,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             localPopularCount: localPopularAuthors.size,
           };
 
-          return diversified.map((item) => item.row);
+          return cappedRanked.map((item) => item.row);
         })();
 
     // Proximity filter: cityOnly = same city; maxDistanceKm = radius in km
