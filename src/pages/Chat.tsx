@@ -18,6 +18,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { backgroundCss } from '@/lib/storyBackgrounds';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
@@ -98,7 +99,7 @@ type Message = {
   isLocked?: boolean;
   isDeletedForAll?: boolean;
   isDeletedForMe?: boolean;
-  replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null } | null;
+  replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null; text?: string | null; background?: string | null } | null;
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
@@ -1383,6 +1384,15 @@ export default function Chat() {
                                     className="h-12 w-9 shrink-0 rounded object-cover"
                                   />
                                 )
+                              ) : msg.replyStory.text ? (
+                                <div
+                                  className="flex h-12 w-9 shrink-0 items-center justify-center overflow-hidden rounded px-0.5 text-center"
+                                  style={{ background: backgroundCss(msg.replyStory.background) }}
+                                >
+                                  <span className="text-[7px] font-semibold leading-tight text-white line-clamp-3 break-words">
+                                    {msg.replyStory.text}
+                                  </span>
+                                </div>
                               ) : (
                                 <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded bg-foreground/10 text-[9px] opacity-60">
                                   Story

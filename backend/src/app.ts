@@ -7635,7 +7635,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
              m.deleted_for_all, m.deleted_by_ids, m.story_id,
              med.filename as media_filename, med.mime_type as media_mime_type,
-             smed.filename as story_media_filename, smed.mime_type as story_media_mime_type
+             smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
+             s.text as story_text, s.background as story_background
       FROM messages m
       LEFT JOIN media med ON med.id = m.media_id
       LEFT JOIN stories s ON s.id = m.story_id
@@ -7669,6 +7670,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             id: String(m.story_id),
             mediaUrl: m.story_media_filename ? `/uploads/${m.story_media_filename}` : null,
             mimeType: m.story_media_mime_type ?? null,
+            text: m.story_text ?? null,
+            background: m.story_background ?? null,
           },
           createdAt: m.created_at,
           isRead: !!m.is_read,
