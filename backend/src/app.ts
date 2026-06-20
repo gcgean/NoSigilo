@@ -503,9 +503,11 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
     );
 
     // Conversão automática: cada 100 pontos vira 1 dia grátis
+    let freeDaysGranted = 0;
     const balRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
     let balance = Number(balRow?.p || 0);
     while (balance >= POINTS_PER_FREE_DAY) {
+      freeDaysGranted += 1;
       await run(
         db,
         'UPDATE users SET token_points = COALESCE(token_points,0) - ?, token_free_days = COALESCE(token_free_days,0) + 1 WHERE id = ?',
@@ -527,9 +529,15 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
       balance -= POINTS_PER_FREE_DAY;
     }
     await db.persist();
-    // Notifica o cliente em tempo real com o novo saldo
+    // Notifica o cliente em tempo real: saldo novo, quanto ganhou agora (delta)
+    // e quantos dias grátis foram concedidos (para as animações no front).
     const newBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
-    io?.to(`user:${userId}`).emit('tokens.updated', { points: Number(newBalRow?.p || 0) });
+    io?.to(`user:${userId}`).emit('tokens.updated', {
+      points: Number(newBalRow?.p || 0),
+      gained: rule.points,
+      action: actionType,
+      freeDaysGranted,
+    });
   } catch (err) {
     console.error('[awardTokens]', err);
   }
