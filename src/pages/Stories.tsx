@@ -581,6 +581,7 @@ export default function Stories() {
   const [statsOpen,    setStatsOpen]    = useState(false);
   const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
   const [paywallOpen,  setPaywallOpen]  = useState(false);
+  const [returnTo,     setReturnTo]     = useState<string | null>(null); // rota de retorno ao fechar (ex.: /feed)
 
   // Composer de story de texto
   const [textOpen,  setTextOpen]  = useState(false);
@@ -633,6 +634,8 @@ export default function Stories() {
     const ownId = params.get('storyId');
     if (!openId && !ownId) return;
     autoOpenedRef.current = true;
+    // Aberto a partir do feed → ao fechar o story, volta pro feed (não fica em /stories)
+    if (params.get('from') === 'feed') setReturnTo('/feed');
     window.history.replaceState({}, '', '/stories');
     if (ownId) {
       const ownIdx = myStories.findIndex((s) => s.id === ownId);
@@ -985,7 +988,7 @@ export default function Stories() {
           startIndex={viewerIdx}
           myUserId={user?.id || ''}
           isPremium={isPremium}
-          onClose={() => { setViewerIdx(null); void load(); }}
+          onClose={() => { setViewerIdx(null); if (returnTo) navigate(returnTo); else void load(); }}
         />
       )}
 

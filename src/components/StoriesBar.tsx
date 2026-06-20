@@ -148,7 +148,7 @@ export default function StoriesBar() {
           <button
             key={g.authorId}
             type="button"
-            onClick={() => navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}`)}
+            onClick={() => navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed`)}
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
             <div className={cn('h-16 w-16 rounded-full p-[2px]', g.allViewed ? ringMuted : ringActive)}>
