@@ -4005,9 +4005,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
 
-    const me = (await queryOne(db, 'SELECT looking_for_json FROM users WHERE id = ?', [userId])) as any;
-    const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
-
     const rows = (await queryAll(
       db,
       `SELECT p.id, p.media_ids_json, p.created_at,
@@ -4033,9 +4030,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [weekAgo, userId, userId]
     )) as any[];
 
-    // Filtra por interesse e exige pelo menos 1 curtida; pega os 12 primeiros
+    // Top da Semana é vitrine global: mostra para todos, independente do
+    // interesse (looking_for) de quem vê. Exige pelo menos 1 curtida.
     const filtered = rows
-      .filter((r) => myLookingFor.length === 0 || matchesLookingFor(myLookingFor, r.author_gender))
       .filter((r) => Number(r.like_count || 0) > 0)
       .slice(0, 12);
 
