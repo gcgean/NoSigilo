@@ -1147,14 +1147,39 @@ export const suggestionsService = {
 };
 
 
+export type StoryMine = {
+  id: string; mediaUrl: string | null; mimeType: string;
+  text?: string | null; background?: string | null;
+  createdAt: string; expiresAt: string;
+  viewCount: number; commentCount: number; likeCount: number;
+};
+
+export type StoryFeedItem = {
+  id: string; mediaUrl: string | null; mimeType: string;
+  text?: string | null; background?: string | null;
+  createdAt: string; expiresAt: string; viewed: boolean;
+  likeCount: number; likedByMe: boolean; myReaction?: string | null;
+  reactions?: Array<{ type: string; count: number }>;
+  author: {
+    id: string; name: string; gender: string | null; avatar: string | null;
+    age: number | null; partnerAge: number | null;
+    city: string | null; state: string | null; bio: string | null;
+    fetiches: string[]; intentions: string[];
+    distanceKm: number | null;
+  };
+};
+
 export const storiesService = {
   getMyStory: async () => {
     const res = await apiClient.get('/stories/me');
-    return res.data as { story: null | { id: string; mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null; createdAt: string; expiresAt: string; viewCount: number; commentCount: number } };
+    return res.data as {
+      story: null | StoryMine;
+      stories?: StoryMine[];
+    };
   },
   getFeed: async () => {
     const res = await apiClient.get('/stories');
-    return res.data as { stories: Array<{ id: string; mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null; createdAt: string; expiresAt: string; viewed: boolean; author: { id: string; name: string; gender: string | null; avatar: string | null } }> };
+    return res.data as { stories: StoryFeedItem[] };
   },
   create: async (mediaId: string) => {
     const res = await apiClient.post('/stories', { mediaId });
