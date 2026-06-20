@@ -192,6 +192,7 @@ export default function Notifications() {
             const Icon = (() => {
               const type = notification.type;
               if (type === 'referral.reward') return Gift;
+              if (type === 'feed.top_week') return Award;
               if (type === 'story.hot' || type.includes('liked')) return Heart;
               if (type.includes('commented') || type === 'story.comment') return MessageCircle;
               if (type.includes('testimonial')) return Star;

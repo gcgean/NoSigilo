@@ -17,6 +17,7 @@ let lastDailyRunDate = '';     // "YYYY-MM-DD" — reengagement emails
 let lastWeeklyRunDate = '';    // "YYYY-MM-DD" — weekly summary emails
 let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
 let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
+let lastTopWeekDate = '';      // "YYYY-MM-DD" — "você está no Top da Semana" notification
 
 // Helper: given a user's looking_for_json array, build a SQL WHERE fragment
 // that matches profile genders the user is interested in.
@@ -322,6 +323,75 @@ async function runNightlyRitualPush(db: DbHandle) {
   console.log(`[scheduler] Nightly push sent to ${sent} users`);
 }
 
+async function runTopWeekNotifications(db: DbHandle) {
+  console.log('[scheduler] Notifying Top da Semana authors...');
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+
+  // Top 12 posts globais da semana (com mídia), por curtidas
+  const rows = await db.queryAll(
+    `SELECT p.id, p.user_id,
+       (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'post' AND l.target_id = p.id) as like_count
+     FROM posts p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.created_at >= ?
+       AND (u.is_banned = 0 OR u.is_banned IS NULL)
+       AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND p.media_ids_json IS NOT NULL AND p.media_ids_json != '[]'
+       AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)
+     ORDER BY like_count DESC, p.created_at DESC
+     LIMIT 12`,
+    [weekAgo]
+  ) as any[];
+  const top = rows.filter((r) => Number(r.like_count || 0) > 0);
+
+  let sent = 0;
+  const seenAuthors = new Set<string>();
+  for (let i = 0; i < top.length; i++) {
+    const r = top[i];
+    const authorId = String(r.user_id);
+    const rank = i + 1;
+    if (seenAuthors.has(authorId)) continue; // 1 notificação por autor (melhor post)
+    seenAuthors.add(authorId);
+    try {
+      // Já notificado nos últimos 7 dias? evita spam diário
+      const recent = await db.queryOne(
+        `SELECT 1 as x FROM notifications WHERE user_id = ? AND type = 'feed.top_week' AND created_at >= ? LIMIT 1`,
+        [authorId, weekAgo]
+      ) as any;
+      if (recent) continue;
+
+      const title = '🏆 Você está no Top da Semana!';
+      const body = `Seu post está entre os mais curtidos da semana (top ${rank}). Aproveite o destaque para conectar!`;
+      await db.run(
+        `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at) VALUES (?, ?, 'feed.top_week', ?, ?, ?, 0, ?)`,
+        [randomUUID(), authorId, title, body, JSON.stringify({ postId: String(r.id), rank }), new Date().toISOString()]
+      );
+
+      // Push (best-effort)
+      const subs = await db.queryAll(
+        'SELECT subscription_json FROM push_subscriptions WHERE user_id = ?',
+        [authorId]
+      ) as any[];
+      for (const sub of subs) {
+        const parsed = JSON.parse(String(sub.subscription_json || '{}'));
+        if (!parsed?.endpoint) continue;
+        const { default: webpush } = await import('web-push');
+        await webpush.sendNotification(parsed, JSON.stringify({
+          title,
+          body,
+          url: '/feed',
+          tag: 'feed-top-week',
+        })).catch(() => {});
+      }
+      sent++;
+    } catch (err) {
+      console.error('[scheduler/top-week] error for author', authorId, err);
+    }
+  }
+  await db.persist();
+  console.log(`[scheduler] Top da Semana notified ${sent} authors`);
+}
+
 function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) {
   const check = async () => {
     const now = new Date();
@@ -340,6 +410,13 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     if (weekday === 1 && hour === 9 && lastWeeklyRunDate !== dateStr) {
       lastWeeklyRunDate = dateStr;
       runWeeklySummary(db).catch(err => console.error('[scheduler/weekly] fatal', err));
+    }
+
+    // "Você está no Top da Semana" — diariamente às 11h. Notifica autores que
+    // entraram no top (no máx. 1x por semana cada).
+    if (hour === 11 && lastTopWeekDate !== dateStr) {
+      lastTopWeekDate = dateStr;
+      runTopWeekNotifications(db).catch(err => console.error('[scheduler/top-week] fatal', err));
     }
 
     // Push noturno: "novos perfis na sua cidade entraram hoje" — ~19h30 (ritual)
@@ -364,7 +441,7 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   setInterval(check, 30 * 60 * 1000);
   // Also run once on startup (will be a no-op unless it's the right hour)
   check().catch(() => {});
-  console.log('[scheduler] Started — daily reengagement 08:00, weekly summary Mon 09:00, nightly city push 19:30, online push 20:00');
+  console.log('[scheduler] Started — daily reengagement 08:00, weekly summary Mon 09:00, top-week notify 11:00, nightly city push 19:30, online push 20:00');
 }
 
 async function main() {
