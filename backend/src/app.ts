@@ -10462,33 +10462,22 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         []
       )) as any;
 
-      // Per user: last successful send date — then check if they came back via site_visits
-      const perUser = (await db.queryAll(
-        `SELECT re.user_id, MAX(re.sent_at) AS last_sent_at
-         FROM reengagement_emails re
-         WHERE re.status = 'sent'
-         GROUP BY re.user_id`,
+      // Usuários que voltaram após o e-mail: tem uma visita após o último envio.
+      // Uma única query (EXISTS) em vez de N+1 sobre site_visits.
+      const returnedRow = (await db.queryOne(
+        `SELECT COUNT(*) AS cnt FROM (
+           SELECT re.user_id, MAX(re.sent_at) AS last_sent_at
+           FROM reengagement_emails re
+           WHERE re.status = 'sent'
+           GROUP BY re.user_id
+         ) ls
+         WHERE EXISTS (
+           SELECT 1 FROM site_visits sv
+           WHERE sv.user_id = ls.user_id AND sv.created_at > ls.last_sent_at
+         )`,
         []
-      )) as any[];
-
-      let returnedCount = 0;
-      // For each emailed user check if site_visits has a row after last_sent_at
-      if (perUser.length > 0) {
-        const returnChecks = (await db.queryAll(
-          `SELECT DISTINCT sv.user_id
-           FROM site_visits sv
-           WHERE sv.user_id IN (${perUser.map(() => '?').join(',')})`,
-          perUser.map((r: any) => String(r.user_id))
-        )) as any[];
-        const visitedSet = new Set(returnChecks.map((r: any) => String(r.user_id)));
-        for (const row of perUser) {
-          const visits = (await db.queryAll(
-            `SELECT 1 FROM site_visits WHERE user_id = ? AND created_at > ? LIMIT 1`,
-            [String(row.user_id), String(row.last_sent_at)]
-          )) as any[];
-          if (visits.length > 0) returnedCount++;
-        }
-      }
+      )) as any;
+      const returnedCount = Number(returnedRow?.cnt ?? 0);
 
       const totalEmailed = Number(totalsRow?.total_emailed ?? 0);
       const returnRate = totalEmailed > 0 ? Math.round((returnedCount / totalEmailed) * 100) : 0;
@@ -10619,18 +10608,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       )) as any;
       const total = Number(countRow?.cnt ?? 0);
 
+      // 1) Página base (rápida, sem subqueries por linha)
       const rows = (await db.queryAll(
-        `SELECT u.id, u.name, u.email, u.avatar, u.created_at, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > ${sinceExpr}) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > ${sinceExpr}) AS likes_since,
-                (SELECT COUNT(*) FROM messages m
-                  JOIN conversations c ON c.id = m.conversation_id
-                  WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
-                    AND m.sender_id != u.id
-                    AND m.is_read = 0) AS unread_messages,
-                (SELECT sent_at FROM reengagement_emails re WHERE re.user_id = u.id ORDER BY re.sent_at DESC LIMIT 1) AS last_email_sent_at,
-                (SELECT status  FROM reengagement_emails re WHERE re.user_id = u.id ORDER BY re.sent_at DESC LIMIT 1) AS last_email_status,
-                (SELECT COUNT(*) FROM reengagement_emails re WHERE re.user_id = u.id AND re.status = 'sent') AS email_send_count
+        `SELECT u.id, u.name, u.email, u.avatar, u.created_at, u.last_seen_at
          FROM users u
          ${where}
          ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 0 ELSE 1 END ASC, u.last_seen_at ASC, u.created_at DESC
@@ -10638,27 +10618,81 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         [...params, limit, offset]
       )) as any[];
 
+      // 2) Estatísticas em lote sobre os IDs da página (evita N+1 / timeout)
+      const ids = rows.map((r: any) => String(r.id));
+      const visitsMap = new Map<string, number>();
+      const likesMap = new Map<string, number>();
+      const unreadMap = new Map<string, number>();
+      const lastEmailMap = new Map<string, { sentAt: string | null; status: string | null }>();
+      const emailCountMap = new Map<string, number>();
+
+      if (ids.length > 0) {
+        const ph = ids.map(() => '?').join(',');
+
+        const [visitRows, likeRows, msgRows, emailRows] = await Promise.all([
+          db.queryAll(
+            `SELECT sv.user_id AS uid, COUNT(*) AS c
+             FROM site_visits sv JOIN users u ON u.id = sv.user_id
+             WHERE sv.user_id IN (${ph}) AND sv.created_at > ${sinceExpr}
+             GROUP BY sv.user_id`, ids
+          ) as Promise<any[]>,
+          db.queryAll(
+            `SELECT l.target_id AS uid, COUNT(*) AS c
+             FROM likes l JOIN users u ON u.id = l.target_id
+             WHERE l.target_type = 'user' AND l.target_id IN (${ph}) AND l.created_at > ${sinceExpr}
+             GROUP BY l.target_id`, ids
+          ) as Promise<any[]>,
+          db.queryAll(
+            `SELECT u.id AS uid, COUNT(*) AS c
+             FROM messages m
+             JOIN conversations c2 ON c2.id = m.conversation_id
+             JOIN users u ON (u.id = c2.user_a_id OR u.id = c2.user_b_id)
+             WHERE u.id IN (${ph}) AND m.sender_id != u.id AND m.is_read = 0
+             GROUP BY u.id`, ids
+          ) as Promise<any[]>,
+          db.queryAll(
+            `SELECT user_id AS uid, sent_at, status
+             FROM reengagement_emails
+             WHERE user_id IN (${ph})
+             ORDER BY sent_at DESC`, ids
+          ) as Promise<any[]>,
+        ]);
+
+        for (const r of visitRows) visitsMap.set(String(r.uid), Number(r.c || 0));
+        for (const r of likeRows) likesMap.set(String(r.uid), Number(r.c || 0));
+        for (const r of msgRows) unreadMap.set(String(r.uid), Number(r.c || 0));
+        for (const r of emailRows) {
+          const uid = String(r.uid);
+          if (!lastEmailMap.has(uid)) lastEmailMap.set(uid, { sentAt: r.sent_at ?? null, status: r.status ?? null });
+          if (String(r.status) === 'sent') emailCountMap.set(uid, (emailCountMap.get(uid) ?? 0) + 1);
+        }
+      }
+
       res.json({
         total,
         page,
         pages: Math.ceil(total / limit),
-        users: rows.map((r: any) => ({
-          id: String(r.id),
-          name: String(r.name || ''),
-          email: String(r.email || ''),
-          avatar: r.avatar ?? null,
-          createdAt: r.created_at ?? null,
-          lastSeenAt: r.last_seen_at ?? null,
-          lastEmailSentAt: r.last_email_sent_at ?? null,
-          lastEmailStatus: r.last_email_status ?? null,
-          emailSendCount: Number(r.email_send_count ?? 0),
-          stats: {
-            visits: Number(r.visits_since ?? 0),
-            likes: Number(r.likes_since ?? 0),
-            messages: Number(r.unread_messages ?? 0),
-            matches: 0,
-          },
-        })),
+        users: rows.map((r: any) => {
+          const uid = String(r.id);
+          const lastEmail = lastEmailMap.get(uid);
+          return {
+            id: uid,
+            name: String(r.name || ''),
+            email: String(r.email || ''),
+            avatar: r.avatar ?? null,
+            createdAt: r.created_at ?? null,
+            lastSeenAt: r.last_seen_at ?? null,
+            lastEmailSentAt: lastEmail?.sentAt ?? null,
+            lastEmailStatus: lastEmail?.status ?? null,
+            emailSendCount: emailCountMap.get(uid) ?? 0,
+            stats: {
+              visits: visitsMap.get(uid) ?? 0,
+              likes: likesMap.get(uid) ?? 0,
+              messages: unreadMap.get(uid) ?? 0,
+              matches: 0,
+            },
+          };
+        }),
       });
     } catch (err: any) {
       console.error('[admin/reengagement/users]', err);
