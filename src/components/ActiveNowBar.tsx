@@ -14,23 +14,24 @@ const REASON_LABEL: Record<ActiveNowProfile['reason'], string> = {
  * Fila horizontal "Ativos agora": perfis que postaram, usaram o Radar ou
  * estiveram online nas últimas 2h, perto de você. Cada avatar leva ao perfil.
  */
-export default function ActiveNowBar({ maxDistanceKm }: { maxDistanceKm?: number | null }) {
+export default function ActiveNowBar({ maxDistanceKm, cityOnly }: { maxDistanceKm?: number | null; cityOnly?: boolean }) {
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<ActiveNowProfile[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await radarService.getActiveNow(
-        maxDistanceKm != null ? { maxDistanceKm } : undefined,
-      );
+      const params: { maxDistanceKm?: number; cityOnly?: boolean } = {};
+      if (cityOnly) params.cityOnly = true;
+      else if (maxDistanceKm != null) params.maxDistanceKm = maxDistanceKm;
+      const res = await radarService.getActiveNow(Object.keys(params).length ? params : undefined);
       setProfiles(res.profiles);
     } catch {
       setProfiles([]);
     } finally {
       setLoaded(true);
     }
-  }, [maxDistanceKm]);
+  }, [maxDistanceKm, cityOnly]);
 
   useEffect(() => { void load(); }, [load]);
 

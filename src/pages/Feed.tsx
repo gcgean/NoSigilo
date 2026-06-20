@@ -1587,7 +1587,7 @@ export default function Feed() {
       {feedFilter !== 'experiences' ? <FeedGreeting userName={user?.name} summary={feedInsightsSummary} /> : null}
 
       {/* Ativos agora — perfis ativos nas últimas 2h perto de você */}
-      {feedFilter !== 'experiences' ? <ActiveNowBar maxDistanceKm={nearbyRadius} /> : null}
+      {feedFilter !== 'experiences' ? <ActiveNowBar maxDistanceKm={nearbyRadius} cityOnly={cityOnly} /> : null}
 
       {/* Stories bar — porta de entrada para os Stories de 24h */}
       {feedFilter !== 'experiences' ? <StoriesBar /> : null}

@@ -357,7 +357,7 @@ export const radarService = {
     return response.data;
   },
 
-  getActiveNow: async (params?: { maxDistanceKm?: number }): Promise<{ profiles: ActiveNowProfile[] }> => {
+  getActiveNow: async (params?: { maxDistanceKm?: number; cityOnly?: boolean }): Promise<{ profiles: ActiveNowProfile[] }> => {
     const response = await apiClient.get('/feed/active-now', { params });
     return response.data;
   },

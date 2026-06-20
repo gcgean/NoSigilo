@@ -3924,11 +3924,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
     const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString();
     const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
+    const cityOnly = req.query.cityOnly === 'true' || req.query.cityOnly === '1';
 
-    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon FROM users WHERE id = ?', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, city FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
     const myLat = me?.lat != null ? Number(me.lat) : null;
     const myLon = me?.lon != null ? Number(me.lon) : null;
+    const myCity = normalizeRadarText(me?.city || '');
 
     const rows = (await queryAll(
       db,
@@ -3955,11 +3957,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     for (const r of rows) {
       if (myLookingFor.length > 0 && !matchesLookingFor(myLookingFor, r.gender)) continue;
 
+      // Filtro "Minha cidade": só perfis da mesma cidade do viewer
+      if (cityOnly && myCity && normalizeRadarText(r.city || '') !== myCity) continue;
+
       let distanceKm: number | null = null;
       if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
         distanceKm = roundDistanceKm(haversineKm({ lat: myLat, lon: myLon }, { lat: Number(r.lat), lon: Number(r.lon) }));
       }
-      if (maxDistanceKm != null) {
+      if (!cityOnly && maxDistanceKm != null) {
         if (distanceKm == null || distanceKm > maxDistanceKm) continue;
       }
 
