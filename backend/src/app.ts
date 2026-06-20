@@ -3939,11 +3939,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               MAX(act.posted)   AS posted,
               MAX(act.radar)    AS radar
        FROM (
-         SELECT user_id AS uid, created_at AS last_act, 1 AS posted, 0 AS radar FROM posts WHERE created_at >= ?
+         SELECT user_id AS uid, CAST(created_at AS text) AS last_act, 1 AS posted, 0 AS radar FROM posts WHERE created_at >= ?
          UNION ALL
-         SELECT user_id AS uid, created_at AS last_act, 0 AS posted, 1 AS radar FROM radar_broadcasts WHERE created_at >= ?
+         SELECT user_id AS uid, CAST(created_at AS text) AS last_act, 0 AS posted, 1 AS radar FROM radar_broadcasts WHERE created_at >= ?
          UNION ALL
-         SELECT id AS uid, last_seen_at AS last_act, 0 AS posted, 0 AS radar FROM users WHERE last_seen_at >= ?
+         SELECT id AS uid, CAST(last_seen_at AS text) AS last_act, 0 AS posted, 0 AS radar FROM users WHERE last_seen_at >= ?
        ) act
        JOIN users u ON u.id = act.uid
        WHERE u.id != ? AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
