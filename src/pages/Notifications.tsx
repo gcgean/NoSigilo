@@ -192,8 +192,8 @@ export default function Notifications() {
             const Icon = (() => {
               const type = notification.type;
               if (type === 'referral.reward') return Gift;
-              if (type.includes('liked')) return Heart;
-              if (type.includes('commented')) return MessageCircle;
+              if (type === 'story.hot' || type.includes('liked')) return Heart;
+              if (type.includes('commented') || type === 'story.comment') return MessageCircle;
               if (type.includes('testimonial')) return Star;
               if (type.includes('invite')) return UserCheck;
               if (type.includes('private_photos')) return Lock;

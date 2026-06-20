@@ -13,7 +13,7 @@ export function getNotificationHref(notification: any): string {
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
   // Stories — leva à área de stories (o dono vê reações/comentários do seu story)
-  if (type === 'story.liked' || type === 'story.comment') {
+  if (type === 'story.liked' || type === 'story.hot' || type === 'story.comment') {
     const storyId = data?.storyId ? String(data.storyId) : '';
     return storyId ? `/stories?storyId=${encodeURIComponent(storyId)}` : '/stories';
   }

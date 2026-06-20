@@ -622,17 +622,27 @@ export default function Stories() {
     setViewerIdx(idx);
   }, [isPremium, requireFields]);
 
-  // Auto-abre o story indicado em ?open=<storyId> (vindo da barra no Feed)
+  // Auto-abre o story certo ao chegar por link:
+  //  ?open=<id>   → story de outro autor (vindo da barra no Feed) → viewer
+  //  ?storyId=<id> → seu próprio story (vindo de notificação) → preview
   const autoOpenedRef = useRef(false);
   useEffect(() => {
     if (loading || autoOpenedRef.current) return;
-    const openId = new URLSearchParams(window.location.search).get('open');
-    if (!openId) return;
-    const idx = feed.findIndex((s) => s.id === openId);
+    const params = new URLSearchParams(window.location.search);
+    const openId = params.get('open');
+    const ownId = params.get('storyId');
+    if (!openId && !ownId) return;
     autoOpenedRef.current = true;
     window.history.replaceState({}, '', '/stories');
-    if (idx >= 0) void handleOpenStory(idx);
-  }, [loading, feed, handleOpenStory]);
+    if (ownId) {
+      const ownIdx = myStories.findIndex((s) => s.id === ownId);
+      if (ownIdx >= 0) { setPreviewIdx(ownIdx); return; }
+    }
+    if (openId) {
+      const idx = feed.findIndex((s) => s.id === openId);
+      if (idx >= 0) void handleOpenStory(idx);
+    }
+  }, [loading, feed, myStories, handleOpenStory]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
