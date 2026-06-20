@@ -100,6 +100,7 @@ export default function Reels() {
   const [muted, setMuted] = useState(true); // som global: vale para todos os reels
   const loadedReelIdsRef = useRef<Set<string>>(new Set()); // ids já carregados (dedup + detectar novos na paginação)
   const [progressById, setProgressById] = useState<Record<string, number>>({});
+  const [bufferingById, setBufferingById] = useState<Record<string, boolean>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   // Reel pré-carregado via sessionStorage (vindo de SearchVideos)
@@ -628,6 +629,10 @@ export default function Reels() {
     });
   }, []);
 
+  const setBuffering = useCallback((id: string, val: boolean) => {
+    setBufferingById((prev) => (prev[id] === val ? prev : { ...prev, [id]: val }));
+  }, []);
+
   const togglePlay = useCallback((id: string) => {
     const video = videoRefs.current[id];
     if (!video) return;
@@ -940,7 +945,12 @@ export default function Reels() {
             loop={false}
             muted={muted}
             preload="metadata"
-            onEnded={() => handleVideoEnded(idx)}
+            onEnded={() => { setBuffering(reel.id, false); handleVideoEnded(idx); }}
+            onWaiting={() => setBuffering(reel.id, true)}
+            onStalled={() => setBuffering(reel.id, true)}
+            onPlaying={() => setBuffering(reel.id, false)}
+            onCanPlay={() => setBuffering(reel.id, false)}
+            onPause={() => setBuffering(reel.id, false)}
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (v.duration > 0) setProgressById((p) => ({ ...p, [reel.id]: v.currentTime / v.duration }));
@@ -1065,6 +1075,13 @@ export default function Reels() {
               </div>
             )}
           </div>
+
+          {/* Buffering spinner — só no vídeo ativo enquanto carrega */}
+          {premiumAccess && playingId === reel.id && bufferingById[reel.id] && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+              <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-white/30 border-t-white" />
+            </div>
+          )}
 
           {/* Paused overlay */}
           {playingId !== reel.id && (
