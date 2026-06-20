@@ -1132,14 +1132,18 @@ export const suggestionsService = {
 export const storiesService = {
   getMyStory: async () => {
     const res = await apiClient.get('/stories/me');
-    return res.data as { story: null | { id: string; mediaUrl: string; mimeType: string; createdAt: string; expiresAt: string; viewCount: number; commentCount: number } };
+    return res.data as { story: null | { id: string; mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null; createdAt: string; expiresAt: string; viewCount: number; commentCount: number } };
   },
   getFeed: async () => {
     const res = await apiClient.get('/stories');
-    return res.data as { stories: Array<{ id: string; mediaUrl: string; mimeType: string; createdAt: string; expiresAt: string; viewed: boolean; author: { id: string; name: string; gender: string | null; avatar: string | null } }> };
+    return res.data as { stories: Array<{ id: string; mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null; createdAt: string; expiresAt: string; viewed: boolean; author: { id: string; name: string; gender: string | null; avatar: string | null } }> };
   },
   create: async (mediaId: string) => {
     const res = await apiClient.post('/stories', { mediaId });
+    return res.data as { id: string; expiresAt: string };
+  },
+  createText: async (text: string, background: string) => {
+    const res = await apiClient.post('/stories', { text, background });
     return res.data as { id: string; expiresAt: string };
   },
   remove: async (id: string) => {
@@ -1162,7 +1166,7 @@ export const storiesService = {
     const res = await apiClient.get(`/stories/${id}/comments`);
     return res.data as { comments: Array<{ id: string; text: string; createdAt: string; commenter: { id: string; name: string; avatar: string | null } }> };
   },
-  like: async (id: string, reaction?: 'heart' | 'love' | 'wow' | 'devil' | 'fire' | 'splash') => {
+  like: async (id: string, reaction?: 'heart' | 'love' | 'wow' | 'devil' | 'fire' | 'splash' | 'hot') => {
     const res = await apiClient.post(`/stories/${id}/like`, reaction ? { reaction } : {});
     return res.data as { liked: boolean; likeCount: number; myReaction: string | null; reactions: Array<{ type: string; count: number }> };
   },

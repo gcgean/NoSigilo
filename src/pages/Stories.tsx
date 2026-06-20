@@ -13,17 +13,44 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { PHOTO_REACTIONS, REACTION_EMOJI } from '@/lib/reactions';
+import { STORY_BACKGROUNDS, backgroundCss } from '@/lib/storyBackgrounds';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+
+const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
+
+type StoryLike = { mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null };
+
+/** Renderiza o conteúdo de um story: texto com fundo, vídeo ou imagem. */
+function StoryContent({ story, thumb = false }: { story: StoryLike; thumb?: boolean }) {
+  if (!story.mediaUrl && story.text) {
+    return (
+      <div
+        className={cn('flex h-full w-full items-center justify-center text-center', thumb ? 'p-2' : 'p-8')}
+        style={{ background: backgroundCss(story.background) }}
+      >
+        <p className={cn('font-bold leading-snug text-white break-words', thumb ? 'text-[11px] line-clamp-4' : 'text-2xl')}>
+          {story.text}
+        </p>
+      </div>
+    );
+  }
+  if (story.mimeType.startsWith('video/')) {
+    return <video src={resolveServerUrl(story.mediaUrl || '')} className="h-full w-full object-cover" muted playsInline {...(thumb ? {} : { autoPlay: true, loop: true })} />;
+  }
+  return <img src={resolveServerUrl(story.mediaUrl || '')} alt="" className="h-full w-full object-cover" />;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MyStory = {
-  id: string; mediaUrl: string; mimeType: string;
+  id: string; mediaUrl: string | null; mimeType: string;
+  text?: string | null; background?: string | null;
   createdAt: string; expiresAt: string;
   viewCount: number; commentCount: number; likeCount: number;
 };
 
 type FeedStory = {
-  id: string; mediaUrl: string; mimeType: string;
+  id: string; mediaUrl: string | null; mimeType: string;
+  text?: string | null; background?: string | null;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
   author: {
@@ -133,10 +160,17 @@ function StoryViewer({
       setLiked(res.liked);
       setLikeCount(res.likeCount);
       setMyReaction(res.myReaction);
-    } catch {
+    } catch (err) {
       setLiked(prev.liked);
       setLikeCount(prev.likeCount);
       setMyReaction(prev.myReaction);
+      if (reaction === 'hot' && (err as any)?.response?.status === 402) {
+        toast({
+          title: 'Tokens insuficientes',
+          description: 'O Coração Quente custa 1 token. Ganhe tokens publicando e interagindo na plataforma.',
+          variant: 'destructive',
+        });
+      }
     }
   };
 
@@ -186,10 +220,18 @@ function StoryViewer({
 
       {/* Media */}
       <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-        {story.mimeType.startsWith('video/') ? (
+        {!story.mediaUrl && story.text ? (
+          <div
+            key={story.id}
+            className="flex h-full w-full items-center justify-center px-8 text-center"
+            style={{ background: backgroundCss(story.background) }}
+          >
+            <p className="text-2xl font-bold leading-snug text-white break-words">{story.text}</p>
+          </div>
+        ) : story.mimeType.startsWith('video/') ? (
           <video
             key={story.id}
-            src={resolveServerUrl(story.mediaUrl)}
+            src={resolveServerUrl(story.mediaUrl || '')}
             className="h-full w-full object-cover"
             autoPlay muted playsInline loop
             onTimeUpdate={(e) => {
@@ -200,7 +242,7 @@ function StoryViewer({
         ) : (
           <img
             key={story.id}
-            src={resolveServerUrl(story.mediaUrl)}
+            src={resolveServerUrl(story.mediaUrl || '')}
             alt=""
             className="h-full w-full object-cover"
           />
@@ -319,7 +361,7 @@ function StoryViewer({
             >
               {myReaction ? (
                 <span className={cn('text-2xl leading-none transition-transform duration-200', likeAnim && 'scale-125')}>
-                  {REACTION_EMOJI[myReaction] ?? '💜'}
+                  {myReaction === 'hot' ? HOT_HEART : (REACTION_EMOJI[myReaction] ?? '💜')}
                 </span>
               ) : (
                 <Heart className={cn('h-6 w-6 text-white/70 transition-all duration-200', likeAnim && 'scale-125')} />
@@ -329,6 +371,23 @@ function StoryViewer({
               )}
             </button>
           </div>
+
+          {/* Coração Quente — reação especial que consome 1 token */}
+          <button
+            type="button"
+            onClick={() => void handleReact('hot')}
+            className={cn(
+              'flex shrink-0 flex-col items-center gap-0.5 rounded-full px-2 py-1 transition-all active:scale-90',
+              myReaction === 'hot' ? 'bg-rose-500/25 ring-1 ring-rose-400/60' : 'hover:bg-white/10'
+            )}
+            aria-label="Dar um Coração Quente (1 token)"
+            title="Coração Quente · custa 1 token"
+          >
+            <span className={cn('text-2xl leading-none transition-transform duration-200', likeAnim && myReaction === 'hot' && 'scale-125')}>
+              {HOT_HEART}
+            </span>
+            <span className="text-[8px] font-semibold leading-none text-white/60">1 token</span>
+          </button>
 
           {/* Input comentário com efeito de apagar */}
           <input
@@ -442,24 +501,35 @@ function StatsModal({
                   <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma visualização ainda.</p>
                 ) : (
                   viewers.map((v) => (
-                    <button
+                    <div
                       key={v.id}
-                      type="button"
-                      onClick={() => { onClose(); navigate(`/users/${v.id}`); }}
-                      className="flex w-full items-center gap-3 px-5 py-3 border-b last:border-0 hover:bg-secondary/40 active:bg-secondary/60 transition-colors text-left"
+                      className="flex w-full items-center gap-3 px-5 py-3 border-b last:border-0 hover:bg-secondary/40 transition-colors"
                     >
-                      {v.avatar ? (
-                        <img src={resolveServerUrl(v.avatar)} alt={v.name} className="h-9 w-9 rounded-full object-cover shrink-0" />
-                      ) : (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-bold">
-                          {v.name.charAt(0)}
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); navigate(`/users/${v.id}`); }}
+                        className="flex flex-1 min-w-0 items-center gap-3 text-left"
+                      >
+                        {v.avatar ? (
+                          <img src={resolveServerUrl(v.avatar)} alt={v.name} className="h-9 w-9 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-bold">
+                            {v.name.charAt(0)}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate hover:underline">{v.name}</p>
+                          <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate hover:underline">{v.name}</p>
-                        <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
-                      </div>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); navigate(`/chat?userId=${v.id}`); }}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 active:scale-95 transition-all"
+                      >
+                        <Send className="h-3.5 w-3.5" /> Mensagem
+                      </button>
+                    </div>
                   ))
                 )
               ) : (
@@ -511,6 +581,11 @@ export default function Stories() {
   const [statsOpen,    setStatsOpen]    = useState(false);
   const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
   const [paywallOpen,  setPaywallOpen]  = useState(false);
+
+  // Composer de story de texto
+  const [textOpen,  setTextOpen]  = useState(false);
+  const [storyText, setStoryText] = useState('');
+  const [storyBg,   setStoryBg]   = useState(STORY_BACKGROUNDS[0].id);
 
   const fileRef    = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -588,6 +663,24 @@ export default function Stories() {
     }
   };
 
+  const handleCreateText = async () => {
+    const text = storyText.trim();
+    if (!text) return;
+    setUploading(true);
+    try {
+      await storiesService.createText(text, storyBg);
+      toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
+      setTextOpen(false);
+      setStoryText('');
+      setStoryBg(STORY_BACKGROUNDS[0].id);
+      await load();
+    } catch (err) {
+      handleUploadError(err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDelete = async (storyId: string) => {
     setDeleting(storyId);
     try {
@@ -627,7 +720,7 @@ export default function Stories() {
         </div>
         <div>
           <h1 className="text-xl font-bold leading-tight">Stories</h1>
-          <p className="text-sm text-muted-foreground">Fotos e vídeos que expiram em 24h</p>
+          <p className="text-sm text-muted-foreground">Fotos, vídeos e textos que expiram em 24h</p>
         </div>
       </div>
 
@@ -652,6 +745,10 @@ export default function Stories() {
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                 <Camera className="h-3.5 w-3.5" /> Vídeo
               </button>
+              <button type="button" disabled={uploading} onClick={() => setTextOpen(true)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                <span className="text-[13px] leading-none font-bold">Aa</span> Texto
+              </button>
               {uploading && <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />}
             </div>
           )}
@@ -668,11 +765,7 @@ export default function Stories() {
                   onClick={() => setPreviewIdx(i)}
                   className="relative w-full aspect-[9/16] overflow-hidden rounded-xl bg-black block"
                 >
-                  {s.mimeType.startsWith('video/') ? (
-                    <video src={resolveServerUrl(s.mediaUrl)} className="h-full w-full object-cover" muted playsInline />
-                  ) : (
-                    <img src={resolveServerUrl(s.mediaUrl)} alt="Story" className="h-full w-full object-cover" />
-                  )}
+                  <StoryContent story={s} thumb />
                   {/* Overlay com stats */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                   <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-2">
@@ -724,7 +817,7 @@ export default function Stories() {
             <div>
               <p className="text-lg font-bold">Poste um momento quente 🔥</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Foto ou vídeo de até 30s · fica 24h no ar · aparece para quem combina com você
+                Foto, vídeo de até 30s ou só texto · fica 24h no ar · aparece para quem combina com você
               </p>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">
@@ -734,9 +827,12 @@ export default function Stories() {
               <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => galleryRef.current?.click()}>
                 <ImageIcon className="h-4 w-4" /> Galeria
               </Button>
-              <Button size="sm" className="gap-2 bg-gradient-to-r from-primary to-violet-600" disabled={uploading} onClick={() => videoRef.current?.click()}>
-                {uploading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Camera className="h-4 w-4" />}
-                {uploading ? 'Enviando...' : 'Vídeo'}
+              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => videoRef.current?.click()}>
+                <Camera className="h-4 w-4" /> Vídeo
+              </Button>
+              <Button size="sm" className="gap-2 bg-gradient-to-r from-primary to-violet-600" disabled={uploading} onClick={() => setTextOpen(true)}>
+                {uploading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <span className="font-bold">Aa</span>}
+                {uploading ? 'Enviando...' : 'Texto'}
               </Button>
             </div>
           </div>
@@ -770,11 +866,7 @@ export default function Stories() {
                 onClick={() => void handleOpenStory(i)}
                 className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-black group"
               >
-                {story.mimeType.startsWith('video/') ? (
-                  <video src={resolveServerUrl(story.mediaUrl)} className="h-full w-full object-cover" muted playsInline />
-                ) : (
-                  <img src={resolveServerUrl(story.mediaUrl)} alt={story.author.name} className="h-full w-full object-cover" />
-                )}
+                <StoryContent story={story} thumb />
 
                 {/* Gradient */}
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
@@ -848,10 +940,14 @@ export default function Stories() {
             </div>
             {/* Mídia */}
             <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-              {s.mimeType.startsWith('video/') ? (
-                <video key={s.id} src={resolveServerUrl(s.mediaUrl)} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => goOwn(1)} />
+              {!s.mediaUrl && s.text ? (
+                <div key={s.id} className="flex h-full w-full items-center justify-center px-8 text-center" style={{ background: backgroundCss(s.background) }}>
+                  <p className="text-2xl font-bold leading-snug text-white break-words">{s.text}</p>
+                </div>
+              ) : s.mimeType.startsWith('video/') ? (
+                <video key={s.id} src={resolveServerUrl(s.mediaUrl || '')} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => goOwn(1)} />
               ) : (
-                <img key={s.id} src={resolveServerUrl(s.mediaUrl)} alt="" className="h-full w-full object-cover" />
+                <img key={s.id} src={resolveServerUrl(s.mediaUrl || '')} alt="" className="h-full w-full object-cover" />
               )}
               <button type="button" className="absolute left-0 top-0 h-full w-1/3" onClick={() => goOwn(-1)} />
               <button type="button" className="absolute right-0 top-0 h-full w-1/3" onClick={() => goOwn(1)} />
@@ -891,6 +987,62 @@ export default function Stories() {
           onClose={() => { setStatsOpen(false); setStatsStoryId(null); }}
           onUpgrade={() => { setStatsOpen(false); setStatsStoryId(null); navigate('/subscriptions'); }}
         />
+      )}
+
+      {/* Composer de story de texto */}
+      {textOpen && (
+        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-semibold">Story de texto</h3>
+              <button type="button" onClick={() => setTextOpen(false)} disabled={uploading}><X className="h-5 w-5" /></button>
+            </div>
+
+            {/* Preview */}
+            <div
+              className="mb-4 flex aspect-[9/16] max-h-72 w-full items-center justify-center overflow-hidden rounded-2xl px-6 text-center"
+              style={{ background: backgroundCss(storyBg) }}
+            >
+              <p className="text-xl font-bold leading-snug text-white break-words">
+                {storyText.trim() || 'Escreva algo...'}
+              </p>
+            </div>
+
+            <textarea
+              value={storyText}
+              onChange={(e) => setStoryText(e.target.value.slice(0, 280))}
+              placeholder="O que você quer dizer?"
+              rows={3}
+              className="w-full resize-none rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <div className="mb-3 mt-1 text-right text-[11px] text-muted-foreground">{storyText.length}/280</div>
+
+            {/* Paleta de fundos */}
+            <div className="mb-4 flex flex-wrap gap-2">
+              {STORY_BACKGROUNDS.map((bg) => (
+                <button
+                  key={bg.id}
+                  type="button"
+                  onClick={() => setStoryBg(bg.id)}
+                  title={bg.label}
+                  className={cn('h-8 w-8 rounded-full ring-2 ring-offset-2 ring-offset-background transition-all', storyBg === bg.id ? 'ring-primary scale-110' : 'ring-transparent')}
+                  style={{ background: bg.css }}
+                />
+              ))}
+            </div>
+
+            <Button
+              className="w-full gap-2 bg-gradient-to-r from-primary to-violet-600"
+              disabled={uploading || !storyText.trim()}
+              onClick={() => void handleCreateText()}
+            >
+              {uploading
+                ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                : <Sparkles className="h-4 w-4" />}
+              {uploading ? 'Publicando...' : 'Publicar story'}
+            </Button>
+          </div>
+        </div>
       )}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />

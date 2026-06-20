@@ -535,6 +535,40 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
   }
 }
 
+// Debita pontos por uma ação que CONSOME tokens (ex.: Coração Quente no story).
+// Idempotente por (userId, actionType, refId): se já houve cobrança para o mesmo
+// alvo, retorna { ok:true, charged:false } sem cobrar de novo. Se faltar saldo,
+// retorna { ok:false }. Registra a baixa no ledger como pontos negativos.
+async function spendTokens(
+  db: DbHandle,
+  userId: string,
+  cost: number,
+  actionType: string,
+  refId: string,
+  io?: SocketIOServer,
+): Promise<{ ok: boolean; charged: boolean; balance: number }> {
+  const balRow0 = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
+  const balance0 = Number(balRow0?.p || 0);
+  // Já pagou por este alvo? Não cobra de novo (permite toggle livre depois).
+  const paid = (await queryOne(
+    db,
+    'SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = ? AND ref_id = ? LIMIT 1',
+    [userId, actionType, refId],
+  )) as any;
+  if (paid) return { ok: true, charged: false, balance: balance0 };
+  if (balance0 < cost) return { ok: false, charged: false, balance: balance0 };
+  await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ? WHERE id = ?', [cost, userId]);
+  await run(
+    db,
+    'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), userId, actionType, -cost, refId, nowIso()],
+  );
+  await db.persist();
+  const balance = balance0 - cost;
+  io?.to(`user:${userId}`).emit('tokens.updated', { points: balance });
+  return { ok: true, charged: true, balance };
+}
+
 async function grantBadge(db: DbHandle, userId: string, badgeType: string) {
   await run(
     db,
@@ -3743,10 +3777,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.media_id, s.created_at, s.expires_at,
+      `SELECT s.id, s.media_id, s.text, s.background, s.created_at, s.expires_at,
               m.filename, m.mime_type
        FROM stories s
-       JOIN media m ON m.id = s.media_id
+       LEFT JOIN media m ON m.id = s.media_id
        WHERE s.user_id = ? AND s.expires_at > ?
        ORDER BY s.created_at ASC`,
       [userId, now]
@@ -3761,8 +3795,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ]);
       return {
         id: String(s.id),
-        mediaUrl: `/uploads/${s.filename}`,
+        mediaUrl: s.filename ? `/uploads/${s.filename}` : null,
         mimeType: String(s.mime_type || ''),
+        text: s.text ? String(s.text) : null,
+        background: s.background ? String(s.background) : null,
         createdAt: String(s.created_at),
         expiresAt: String(s.expires_at),
         viewCount: Number(viewCount?.c || 0),
@@ -3789,7 +3825,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Busca stories ativos de outros usuários
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.user_id, s.media_id, s.created_at, s.expires_at,
+      `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.created_at, s.expires_at,
               m.filename, m.mime_type,
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
@@ -3797,7 +3833,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.lat, u.lon,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename
        FROM stories s
-       JOIN media m ON m.id = s.media_id
+       LEFT JOIN media m ON m.id = s.media_id
        JOIN users u ON u.id = s.user_id
        WHERE s.expires_at > ? AND s.user_id != ?
        ORDER BY s.created_at DESC`,
@@ -3850,8 +3886,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ]);
       return {
         id: String(r.id),
-        mediaUrl: `/uploads/${r.filename}`,
+        mediaUrl: r.filename ? `/uploads/${r.filename}` : null,
         mimeType: String(r.mime_type || ''),
+        text: r.text ? String(r.text) : null,
+        background: r.background ? String(r.background) : null,
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         viewed: viewedSet.has(String(r.id)),
@@ -3878,14 +3916,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ stories: storiesOut });
   });
 
-  // POST /api/stories — criar story a partir de media_id já uploaded
+  // POST /api/stories — criar story a partir de media_id já uploaded OU de texto
+  // com fundo colorido (sem mídia: media_id = '' como sentinela).
   app.post('/api/stories', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const { mediaId } = req.body as { mediaId?: string };
-    if (!mediaId) { res.status(400).json({ error: 'mediaId_required' }); return; }
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    const background = typeof req.body?.background === 'string' ? req.body.background.trim() : '';
+    const isText = !mediaId && text.length > 0;
 
-    const media = (await queryOne(db, 'SELECT id, user_id, filename FROM media WHERE id = ? AND user_id = ?', [mediaId, userId])) as any;
-    if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
+    if (!mediaId && !isText) { res.status(400).json({ error: 'mediaId_or_text_required' }); return; }
+    if (isText && text.length > 280) { res.status(400).json({ error: 'text_too_long', message: 'O texto deve ter no máximo 280 caracteres.' }); return; }
+
+    if (mediaId) {
+      const media = (await queryOne(db, 'SELECT id, user_id, filename FROM media WHERE id = ? AND user_id = ?', [mediaId, userId])) as any;
+      if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
+    }
 
     // Limite máximo de 10 stories ativos por usuário
     const now = new Date().toISOString();
@@ -3897,7 +3943,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const id = randomUUID();
     const expiresAt = storyExpiresAt(now);
-    await run(db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [id, userId, mediaId, now, expiresAt]);
+    await run(
+      db,
+      'INSERT INTO stories (id, user_id, media_id, text, background, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, mediaId || '', isText ? text : null, isText ? (background || 'sunset') : null, now, expiresAt],
+    );
     await persist();
     await awardTokens(db, userId, 'story', id, req.app.get('io'));
     res.json({ id, expiresAt });
@@ -4086,10 +4136,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const likerId = req.auth!.userId;
     const storyId = req.params.id;
     const reactionSchema = z.object({
-      reaction: z.enum(['heart', 'love', 'wow', 'devil', 'fire', 'splash']).optional(),
+      reaction: z.enum(['heart', 'love', 'wow', 'devil', 'fire', 'splash', 'hot']).optional(),
     });
     const parsed = reactionSchema.safeParse(req.body || {});
     const reaction = parsed.success && parsed.data.reaction ? parsed.data.reaction : 'heart';
+    const HOT_HEART_COST = 1; // Coração Quente consome 1 token
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
     if (!story) { res.status(404).json({ error: 'not_found' }); return; }
     const existing = (await queryOne(
@@ -4097,9 +4148,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       "SELECT id, COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?",
       [storyId, likerId]
     )) as any;
+    const isToggleOff = existing && String(existing.reaction) === reaction;
+
+    // Coração Quente: cobra 1 token ao aplicar (não no toggle-off). Idempotente por
+    // story — quem já pagou pode tirar/recolocar de graça depois.
+    if (reaction === 'hot' && !isToggleOff && String(story.user_id) !== likerId) {
+      const charge = await spendTokens(db, likerId, HOT_HEART_COST, 'hot_heart', storyId, req.app.get('io'));
+      if (!charge.ok) {
+        res.status(402).json({ error: 'insufficient_tokens', message: 'Você precisa de pelo menos 1 token para dar um Coração Quente.' });
+        return;
+      }
+    }
+
     let myReaction: string | null = null;
     if (existing) {
-      if (String(existing.reaction) === reaction) {
+      if (isToggleOff) {
         // Mesma reação → remove (toggle off)
         await run(db, 'DELETE FROM story_likes WHERE story_id = ? AND liker_id = ?', [storyId, likerId]);
       } else {
@@ -4112,23 +4175,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       myReaction = reaction;
     }
     await persist();
-    if (myReaction !== null) await awardTokens(db, likerId, 'like', storyId, req.app.get('io'));
+    if (myReaction !== null && myReaction !== 'hot') await awardTokens(db, likerId, 'like', storyId, req.app.get('io'));
     // Notifica o dono do story quando alguém reage (não no toggle-off nem no próprio story)
     if (myReaction !== null && String(story.user_id) !== likerId) {
       try {
         const io = req.app.get('io') as SocketIOServer | undefined;
         const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [likerId])) as any;
         const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        const isHot = myReaction === 'hot';
+        const notifTitle = isHot ? '🔥 Coração Quente no seu story!' : 'Reagiram ao seu story';
+        const notifBody = isHot ? `${actorName} deu um Coração Quente no seu story 🔥` : `${actorName} reagiu ao seu story.`;
         await createNotification({ db, io }, {
           userId: String(story.user_id),
-          type: 'story.liked',
-          title: 'Reagiram ao seu story',
-          description: `${actorName} reagiu ao seu story.`,
+          type: isHot ? 'story.hot' : 'story.liked',
+          title: notifTitle,
+          description: notifBody,
           dataJson: { storyId, actorId: likerId, actorName, reaction: myReaction },
         });
         await sendPushToUser({ db, env }, {
           userId: String(story.user_id),
-          payload: { title: 'Reagiram ao seu story', body: `${actorName} reagiu ao seu story.`, url: '/stories', tag: `story.liked:${storyId}`, data: { storyId, actorId: likerId } },
+          payload: { title: notifTitle, body: notifBody, url: '/stories', tag: `story.liked:${storyId}`, data: { storyId, actorId: likerId } },
         });
       } catch (err) {
         console.error('[stories/like] notification failed', err);
@@ -6857,6 +6923,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       postsToday,
       messagesSent,
       profilesVisited,
+      storiesToday,
     ] = await Promise.all([
       // Likes given to other users today
       queryOne(db,
@@ -6876,6 +6943,11 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       // Profile visits today (distinct targets)
       queryOne(db,
         `SELECT COUNT(DISTINCT visited_user_id) as c FROM profile_visits WHERE visitor_user_id = ? AND DATE(created_at) = ?`,
+        [myId, todayIso]
+      ) as Promise<any>,
+      // Stories published today
+      queryOne(db,
+        `SELECT COUNT(*) as c FROM stories WHERE user_id = ? AND DATE(created_at) = ?`,
         [myId, todayIso]
       ) as Promise<any>,
     ]);
@@ -6913,6 +6985,17 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         completed: Number(postsToday?.c ?? 0) >= 1,
         reward: 'Radar bônus',
         rewardIcon: '📡',
+      },
+      {
+        id: 'post_story',
+        title: 'Publique 1 Story hoje',
+        description: 'Poste um story de foto, vídeo ou texto — some em 24h',
+        icon: '✨',
+        target: 1,
+        progress: Math.min(Number(storiesToday?.c ?? 0), 1),
+        completed: Number(storiesToday?.c ?? 0) >= 1,
+        reward: 'Aparece no topo do feed',
+        rewardIcon: '🔥',
       },
       {
         id: 'reply_messages',
