@@ -101,6 +101,8 @@ export default function Reels() {
   const loadedReelIdsRef = useRef<Set<string>>(new Set()); // ids já carregados (dedup + detectar novos na paginação)
   const [progressById, setProgressById] = useState<Record<string, number>>({});
   const [bufferingById, setBufferingById] = useState<Record<string, boolean>>({});
+  const [heartBurstId, setHeartBurstId] = useState<string | null>(null);
+  const tapTimerRef = useRef<Record<string, number>>({});
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   // Reel pré-carregado via sessionStorage (vindo de SearchVideos)
@@ -727,6 +729,33 @@ export default function Reels() {
     }
   }, [likedByPostId, toast, user]);
 
+  // Duplo-toque curte (sem descurtir) e mostra um coração animado, estilo reels.
+  const handleDoubleTapLike = useCallback(async (id: string) => {
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    const ok = await requireFields(['photo', 'birthDate']);
+    if (!ok) return;
+    const reel = orderedReels.find((r) => r.id === id);
+    if (!reel) return;
+    setHeartBurstId(id);
+    window.setTimeout(() => setHeartBurstId((cur) => (cur === id ? null : cur)), 800);
+    if (!likedByPostId[reel.postId]) void handleToggleLike(reel);
+  }, [premiumAccess, requireFields, orderedReels, likedByPostId, handleToggleLike]);
+
+  // Distingue toque simples (play/pause) de duplo-toque (curtir) com janela curta.
+  const handleVideoTap = useCallback((id: string) => {
+    const timers = tapTimerRef.current;
+    if (timers[id]) {
+      window.clearTimeout(timers[id]);
+      delete timers[id];
+      void handleDoubleTapLike(id);
+    } else {
+      timers[id] = window.setTimeout(() => {
+        delete timers[id];
+        void handleReelClick(id);
+      }, 260);
+    }
+  }, [handleDoubleTapLike, handleReelClick]);
+
   const handleSubmitComment = useCallback(async () => {
     if (!commentsOpenFor || !commentDraft.trim()) return;
 
@@ -944,7 +973,13 @@ export default function Reels() {
             playsInline
             loop={false}
             muted={muted}
-            preload="metadata"
+            preload={
+              idx === currentIndex || idx === currentIndex + 1
+                ? 'auto'                                   // atual + próximo: buffer pronto
+                : Math.abs(idx - currentIndex) <= 2
+                  ? 'metadata'                             // vizinhos: só metadados
+                  : 'none'                                 // distantes: nada (economiza memória/dados)
+            }
             onEnded={() => { setBuffering(reel.id, false); handleVideoEnded(idx); }}
             onWaiting={() => setBuffering(reel.id, true)}
             onStalled={() => setBuffering(reel.id, true)}
@@ -955,7 +990,7 @@ export default function Reels() {
               const v = e.currentTarget;
               if (v.duration > 0) setProgressById((p) => ({ ...p, [reel.id]: v.currentTime / v.duration }));
             }}
-            onClick={() => void handleReelClick(reel.id)}
+            onClick={() => handleVideoTap(reel.id)}
             controlsList="nodownload noremoteplayback"
             disablePictureInPicture
             onContextMenu={(e) => e.preventDefault()}
@@ -1075,6 +1110,17 @@ export default function Reels() {
               </div>
             )}
           </div>
+
+          {/* Coração do duplo-toque */}
+          {heartBurstId === reel.id && (
+            <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+              <Heart
+                className="h-28 w-28 text-rose-500 drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]"
+                fill="currentColor"
+                style={{ animation: 'heart-pop 0.8s ease-out forwards' }}
+              />
+            </div>
+          )}
 
           {/* Buffering spinner — só no vídeo ativo enquanto carrega */}
           {premiumAccess && playingId === reel.id && bufferingById[reel.id] && (
