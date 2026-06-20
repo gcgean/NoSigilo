@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
+import FeedGreeting from '@/components/FeedGreeting';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1580,6 +1581,9 @@ export default function Feed() {
           </button>
         </Card>
       )}
+
+      {/* Saudação contextual por horário */}
+      {feedFilter !== 'experiences' ? <FeedGreeting userName={user?.name} summary={feedInsightsSummary} /> : null}
 
       {/* Stories bar — porta de entrada para os Stories de 24h */}
       {feedFilter !== 'experiences' ? <StoriesBar /> : null}
