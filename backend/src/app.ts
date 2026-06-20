@@ -3635,12 +3635,50 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           })
         : orderedRows;
 
-    // Exclude posts already shown to the client (cross-page deduplication)
-    const freshRows = seenIdsSet.size > 0
-      ? proximityRows.filter((r: any) => !seenIdsSet.has(String(r.id)))
-      : proximityRows;
+    // Tema do dia: prioriza posts on-theme (ex.: quinta = TBT) no topo, em ordem
+    // cronológica. Não-vistos primeiro; ao esgotar, reexibe os vistos uma vez
+    // (chegar ao "fim do feed") para manter engajamento sem repetir em loop.
+    const THEME_KEYWORDS: string[][] = [
+      ['domingo'],                                                 // 0 Dom
+      ['segundou', 'segunda'],                                     // 1 Seg
+      ['terça', 'terca', 'tentação', 'tentacao'],                  // 2 Ter
+      ['quarta'],                                                  // 3 Qua
+      ['tbt', 'throwback'],                                        // 4 Qui
+      ['sextou', 'sexta'],                                         // 5 Sex
+      ['encontro', 'encontros', 'sabadou', 'sábado', 'sabado'],    // 6 Sáb
+    ];
+    const todayKeywords = THEME_KEYWORDS[new Date().getDay()] ?? [];
+    const matchesTheme = (content: any) => {
+      if (todayKeywords.length === 0) return false;
+      const c = String(content || '').toLowerCase();
+      return todayKeywords.some((k) => c.includes(k));
+    };
+    // Coloca os posts do tema do dia na frente, preservando a ordem cronológica
+    const themeFirst = (arr: any[]) => {
+      const onTheme: any[] = [];
+      const rest: any[] = [];
+      for (const r of arr) (matchesTheme(r.content) ? onTheme : rest).push(r);
+      return [...onTheme, ...rest];
+    };
 
-    const slice = freshRows.slice(0, limit);
+    const unseenRows: any[] = [];
+    const seenRows: any[] = [];
+    for (const r of proximityRows as any[]) {
+      (seenIdsSet.has(String(r.id)) ? seenRows : unseenRows).push(r);
+    }
+    const unseenOrdered = themeFirst(unseenRows);
+
+    let slice: any[];
+    let feedHasMore: boolean;
+    if (unseenOrdered.length > 0) {
+      slice = unseenOrdered.slice(0, limit);
+      // Há mais não-vistos? continua. Esgotando, deixa o fallback de vistos assumir.
+      feedHasMore = unseenOrdered.length > limit ? true : seenRows.length > 0;
+    } else {
+      // Fim do feed: reexibe os vistos uma vez (tema do dia primeiro) e encerra.
+      slice = themeFirst(seenRows).slice(0, limit);
+      feedHasMore = false;
+    }
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -3743,7 +3781,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
         distanceKm: distanceKmByPostId.get(String(r.id)) ?? null,
       })),
-      hasMore: includeReelsOnly ? rows.length >= fetchLimit : freshRows.length > limit,
+      hasMore: includeReelsOnly ? rows.length >= fetchLimit : feedHasMore,
       insights: includeReelsOnly ? null : feedInsights,
     });
   });
