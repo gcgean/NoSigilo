@@ -338,9 +338,27 @@ export const matchService = {
   },
 };
 
+export type ActiveNowProfile = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  gender: string | null;
+  city: string | null;
+  state: string | null;
+  distanceKm: number | null;
+  isOnline: boolean;
+  lastActiveAt: string | null;
+  reason: 'posted' | 'radar' | 'online';
+};
+
 export const radarService = {
   getOverview: async () => {
     const response = await apiClient.get('/radar');
+    return response.data;
+  },
+
+  getActiveNow: async (params?: { maxDistanceKm?: number }): Promise<{ profiles: ActiveNowProfile[] }> => {
+    const response = await apiClient.get('/feed/active-now', { params });
     return response.data;
   },
 

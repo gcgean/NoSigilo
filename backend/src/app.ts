@@ -3916,6 +3916,73 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ stories: storiesOut });
   });
 
+  // GET /api/feed/active-now — perfis ativos nas últimas 2h (postaram, usaram o
+  // Radar ou estiveram online), filtrados pelo interesse do viewer e, opcionalmente,
+  // por raio de distância. Usado pela fila "Ativos agora" no topo do feed.
+  app.get('/api/feed/active-now', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
+
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon FROM users WHERE id = ?', [userId])) as any;
+    const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
+    const myLat = me?.lat != null ? Number(me.lat) : null;
+    const myLon = me?.lon != null ? Number(me.lon) : null;
+
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.gender, u.city, u.state, u.lat, u.lon,
+              MAX(act.last_act) AS last_act,
+              MAX(act.posted)   AS posted,
+              MAX(act.radar)    AS radar
+       FROM (
+         SELECT user_id AS uid, created_at AS last_act, 1 AS posted, 0 AS radar FROM posts WHERE created_at >= ?
+         UNION ALL
+         SELECT user_id AS uid, created_at AS last_act, 0 AS posted, 1 AS radar FROM radar_broadcasts WHERE created_at >= ?
+         UNION ALL
+         SELECT id AS uid, last_seen_at AS last_act, 0 AS posted, 0 AS radar FROM users WHERE last_seen_at >= ?
+       ) act
+       JOIN users u ON u.id = act.uid
+       WHERE u.id != ? AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       GROUP BY u.id
+       ORDER BY last_act DESC
+       LIMIT 80`,
+      [twoHoursAgo, twoHoursAgo, twoHoursAgo, userId]
+    )) as any[];
+
+    const out: any[] = [];
+    for (const r of rows) {
+      if (myLookingFor.length > 0 && !matchesLookingFor(myLookingFor, r.gender)) continue;
+
+      let distanceKm: number | null = null;
+      if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
+        distanceKm = roundDistanceKm(haversineKm({ lat: myLat, lon: myLon }, { lat: Number(r.lat), lon: Number(r.lon) }));
+      }
+      if (maxDistanceKm != null) {
+        if (distanceKm == null || distanceKm > maxDistanceKm) continue;
+      }
+
+      out.push({
+        id: String(r.id),
+        name: String(r.name),
+        avatar: r.avatar ? String(r.avatar) : null,
+        gender: r.gender ? String(r.gender) : null,
+        city: r.city ? String(r.city) : null,
+        state: r.state ? String(r.state) : null,
+        distanceKm,
+        isOnline: presence?.isOnline ? presence.isOnline(String(r.id)) : false,
+        lastActiveAt: r.last_act ? String(r.last_act) : null,
+        reason: Number(r.posted) ? 'posted' : Number(r.radar) ? 'radar' : 'online',
+      });
+      if (out.length >= 24) break;
+    }
+
+    // Online primeiro, depois mais recentes
+    out.sort((a, b) => Number(b.isOnline) - Number(a.isOnline));
+    res.json({ profiles: out });
+  });
+
   // POST /api/stories — criar story a partir de media_id já uploaded OU de texto
   // com fundo colorido (sem mídia: media_id = '' como sentinela).
   app.post('/api/stories', requireAuth(env, db), async (req, res) => {
