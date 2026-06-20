@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Crown } from 'lucide-react';
+import ActiveNowBar from '@/components/ActiveNowBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -804,6 +805,9 @@ export default function SearchPage() {
         <h1 className="mb-1 text-[1.8rem] font-bold sm:mb-1.5 sm:text-2xl">Buscar</h1>
         <p className="text-[0.98rem] leading-6 text-muted-foreground sm:text-base">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
+
+      {/* Ativos agora — descoberta de perfis ativos nas últimas 2h */}
+      {!showWizard && <ActiveNowBar />}
 
       {/* ── "Mostrando:" active defaults bar ──────────────────────────────── */}
       {hasActiveDefaults && defaultsLabel && !showWizard && (
