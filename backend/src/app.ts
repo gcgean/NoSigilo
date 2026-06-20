@@ -3218,7 +3218,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Cap at 200 (was 400) — with proper indexes this is plenty and keeps the response fast.
     const fetchLimit = includeReelsOnly
       ? Math.min(200, offset + limit + 120)
-      : Math.min(120, offset + limit + 80);
+      : 120; // janela estável p/ paginação por offset consistente entre páginas
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
@@ -3661,24 +3661,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return [...onTheme, ...rest];
     };
 
-    const unseenRows: any[] = [];
-    const seenRows: any[] = [];
-    for (const r of proximityRows as any[]) {
-      (seenIdsSet.has(String(r.id)) ? seenRows : unseenRows).push(r);
-    }
-    const unseenOrdered = themeFirst(unseenRows);
-
-    let slice: any[];
-    let feedHasMore: boolean;
-    if (unseenOrdered.length > 0) {
-      slice = unseenOrdered.slice(0, limit);
-      // Há mais não-vistos? continua. Esgotando, deixa o fallback de vistos assumir.
-      feedHasMore = unseenOrdered.length > limit ? true : seenRows.length > 0;
-    } else {
-      // Fim do feed: reexibe os vistos uma vez (tema do dia primeiro) e encerra.
-      slice = themeFirst(seenRows).slice(0, limit);
-      feedHasMore = false;
-    }
+    // Paginação por OFFSET (determinística) sobre a lista tema-primeiro.
+    // Substitui a antiga exclusão por seenIds (limitada a 60 IDs), que reenviava
+    // posts já carregados quando o feed passava de ~60 itens → o cliente
+    // deduplicava tudo e o "Carregar mais" ficava em loop infinito. Com offset,
+    // cada página é distinta e o feed termina corretamente (hasMore=false).
+    const orderedByTheme = themeFirst(proximityRows as any[]);
+    const slice = orderedByTheme.slice(offset, offset + limit);
+    const feedHasMore = orderedByTheme.length > offset + limit;
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
