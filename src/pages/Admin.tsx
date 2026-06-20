@@ -2168,7 +2168,7 @@ function AdminReengagementTab() {
 
   const handleSendPromoterCampaignAll = async () => {
     const total = data?.total ?? 0;
-    if (!confirm(`Enviar e-mail da campanha de promotores para TODOS os ${total} usuários do filtro atual?\n\nIsso pode demorar alguns minutos.`)) return;
+    if (!confirm(`Enviar e-mail da campanha de promotores para TODOS os ${total} usuários do filtro atual?\n\nO envio roda em segundo plano e pode levar vários minutos. Acompanhe pelas Métricas.`)) return;
     setIsSendingCampaign(true);
     setCampaignResult(null);
     try {
@@ -2179,14 +2179,14 @@ function AdminReengagementTab() {
         withPhoto: withPhoto || undefined,
         emailSent: emailSent || undefined,
       });
-      setCampaignResult(result);
       toast({
-        title: `💰 ${result.sent} e-mail(s) da campanha enviado(s)`,
-        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Campanha enviada com sucesso!',
-        variant: result.errors > 0 ? 'destructive' : 'default',
+        title: `💰 Campanha iniciada para ${result.total} usuário(s)`,
+        description: 'O disparo roda em segundo plano. Acompanhe o progresso nas Métricas (atualize em alguns minutos).',
       });
+      loadMetrics();
+      [30, 60, 120].forEach((s) => window.setTimeout(() => loadMetrics(), s * 1000));
     } catch {
-      toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });
+      toast({ title: 'Erro ao iniciar a campanha', variant: 'destructive' });
     } finally {
       setIsSendingCampaign(false);
     }
@@ -2234,11 +2234,13 @@ function AdminReengagementTab() {
     setCampaignResult(null);
     try {
       const result = await adminService.sendPromoterCampaign({ userIds: Array.from(selectedIds) });
-      setCampaignResult(result);
+      const sent = result.sent ?? 0;
+      const errors = result.errors ?? 0;
+      setCampaignResult({ sent, errors, skipped: result.skipped ?? 0, total: result.total });
       toast({
-        title: `💰 ${result.sent} e-mail(s) da campanha enviado(s)`,
-        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Campanha enviada com sucesso!',
-        variant: result.errors > 0 ? 'destructive' : 'default',
+        title: `💰 ${sent} e-mail(s) da campanha enviado(s)`,
+        description: errors > 0 ? `${errors} erro(s).` : 'Campanha enviada com sucesso!',
+        variant: errors > 0 ? 'destructive' : 'default',
       });
     } catch {
       toast({ title: 'Erro ao enviar campanha', variant: 'destructive' });

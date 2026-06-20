@@ -1094,8 +1094,10 @@ export const adminService = {
     withPhoto?: boolean;
     emailSent?: boolean;
     userIds?: string[];
-  }): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
-    const response = await apiClient.post('/admin/reengagement/send-promoter-campaign', params ?? {}, { timeout: 10 * 60 * 1000 });
+  }): Promise<{ sent?: number; errors?: number; skipped?: number; total: number; started?: boolean }> => {
+    // "Todos" (sem userIds) processa em segundo plano e responde { started, total };
+    // selecionados respondem síncrono com { sent, errors, skipped, total }.
+    const response = await apiClient.post('/admin/reengagement/send-promoter-campaign', params ?? {});
     return response.data;
   },
 

@@ -11096,29 +11096,45 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         )) as any[];
       }
 
-      let sent = 0; let errors = 0; let skipped = 0;
-      for (const user of users) {
-        let status = 'error'; let errorMsg: string | null = null;
-        try {
-          const result = await sendPromoterCampaignEmail(
-            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
-            { to: String(user.email), userName: String(user.name || 'você') }
-          );
-          if ((result as any)?.skipped) { skipped++; continue; }
-          status = 'sent'; sent++;
-        } catch (e: any) {
-          errorMsg = String(e?.message ?? e); errors++;
+      // Loop de envio (compartilhado). Para "todos" (sem userIds) roda em segundo
+      // plano para não estourar o timeout do cliente; para selecionados (poucos)
+      // roda síncrono e devolve as contagens.
+      const processSend = async () => {
+        let sent = 0; let errors = 0; let skipped = 0;
+        for (const user of users) {
+          let status = 'error'; let errorMsg: string | null = null;
+          try {
+            const result = await sendPromoterCampaignEmail(
+              { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+              { to: String(user.email), userName: String(user.name || 'você') }
+            );
+            if ((result as any)?.skipped) { skipped++; continue; }
+            status = 'sent'; sent++;
+          } catch (e: any) {
+            errorMsg = String(e?.message ?? e); errors++;
+          }
+          try {
+            await db.run(
+              `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
+              [randomUUID(), String(user.id), nowIso(), status, errorMsg]
+            );
+          } catch { /* non-fatal */ }
+          await new Promise((r) => setTimeout(r, 120));
         }
-        try {
-          await db.run(
-            `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
-            [randomUUID(), String(user.id), nowIso(), status, errorMsg]
-          );
-        } catch { /* non-fatal */ }
-        await new Promise((r) => setTimeout(r, 120));
+        try { await persist(); } catch { /* non-fatal */ }
+        return { sent, errors, skipped };
+      };
+
+      if (userIds.length === 0) {
+        // "Campanha todos": responde já e processa em background.
+        res.json({ started: true, total: users.length });
+        void processSend()
+          .then((r) => console.log(`[admin/reengagement/send-promoter-campaign] done: ${r.sent} sent, ${r.errors} errors, ${r.skipped} skipped of ${users.length}`))
+          .catch((e) => console.error('[admin/reengagement/send-promoter-campaign] background', e));
+      } else {
+        const r = await processSend();
+        res.json({ ...r, total: users.length });
       }
-      try { await persist(); } catch { /* non-fatal */ }
-      res.json({ sent, errors, skipped, total: users.length });
     } catch (err) {
       console.error('[admin/reengagement/send-promoter-campaign]', err);
       res.status(500).json({ error: 'internal' });
