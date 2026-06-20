@@ -1,12 +1,64 @@
 import { useEffect, useMemo, useState } from 'react';
 
-type Greeting = { emoji: string; title: string; subtitle: string; accent: string };
+type DayTheme = {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  accent: string;
+};
+
+// Tema sensual por dia da semana — incentiva o usuário a postar.
+// índice = getDay() (0=Domingo ... 6=Sábado)
+const DAY_THEMES: DayTheme[] = [
+  { // Domingo
+    emoji: '🛏️',
+    title: 'Domingo de Preguiça',
+    subtitle: 'Aquele clima de cama o dia todo. Mostra como é o seu domingo mais quente.',
+    accent: 'from-indigo-500/15 via-background to-purple-600/10',
+  },
+  { // Segunda
+    emoji: '🔥',
+    title: 'Segundou sem Tabu',
+    subtitle: 'Começa a semana com ousadia: poste uma foto ou texto que provoque.',
+    accent: 'from-primary/15 via-background to-rose-500/10',
+  },
+  { // Terça
+    emoji: '😈',
+    title: 'Terça da Tentação',
+    subtitle: 'Poste aquilo que ninguém teve coragem hoje. O feed tá esperando.',
+    accent: 'from-fuchsia-500/15 via-background to-violet-600/10',
+  },
+  { // Quarta
+    emoji: '💋',
+    title: 'Quarta sem Censura',
+    subtitle: 'Metade da semana pede um respiro quente. Solte a imaginação no feed.',
+    accent: 'from-rose-500/15 via-background to-pink-500/10',
+  },
+  { // Quinta
+    emoji: '📸',
+    title: '#TBT — Throwback Quente',
+    subtitle: 'Quinta é dia de TBT! Poste aquele registro guardado que merece voltar.',
+    accent: 'from-amber-400/15 via-background to-orange-500/10',
+  },
+  { // Sexta
+    emoji: '🍾',
+    title: 'Sextou!',
+    subtitle: 'Bora esquentar a noite. Compartilhe seu clima de sexta e marque presença.',
+    accent: 'from-pink-500/15 via-background to-orange-400/10',
+  },
+  { // Sábado
+    emoji: '❤️‍🔥',
+    title: 'Sábado de Encontros',
+    subtitle: 'Hoje é dia de marcar algo. Diga o que (e quem) você procura agora.',
+    accent: 'from-red-500/15 via-background to-rose-600/10',
+  },
+];
 
 /**
- * Saudação contextual no topo do feed — muda conforme o horário/dia.
- * Apenas apresentação: reaproveita o resumo de atividade (feedInsightsSummary)
- * que o Feed já calcula. Reavalia sozinha a cada 5 min para não ficar presa
- * num período do dia enquanto o app fica aberto.
+ * Bloco de tema do dia no topo do feed — muda conforme o dia da semana e
+ * incentiva o usuário a postar. Reaproveita o resumo de atividade
+ * (feedInsightsSummary) como prova social quando disponível. Reavalia sozinho
+ * a cada 5 min para virar o tema à meia-noite sem precisar recarregar.
  */
 export default function FeedGreeting({ userName, summary }: { userName?: string | null; summary?: string | null }) {
   const [now, setNow] = useState(() => new Date());
@@ -16,77 +68,20 @@ export default function FeedGreeting({ userName, summary }: { userName?: string 
     return () => clearInterval(t);
   }, []);
 
-  const greeting = useMemo<Greeting>(() => {
-    const firstName = String(userName || '').trim().split(/\s+/)[0] || '';
-    const namePart = firstName ? `, ${firstName}` : '';
-    const day = now.getDay(); // 0=Dom ... 5=Sex, 6=Sáb
-    const h = now.getHours();
+  const theme = useMemo(() => DAY_THEMES[now.getDay()] ?? DAY_THEMES[0], [now]);
 
-    // Domingo à noite — urgência de encerramento do fim de semana
-    if (day === 0 && h >= 20) {
-      return {
-        emoji: '🌙',
-        title: 'Última chance do fim de semana',
-        subtitle: summary || 'Veja quem ainda está disponível antes que a semana recomece.',
-        accent: 'from-indigo-500/15 via-background to-violet-600/10',
-      };
-    }
-
-    // Janela de fim de semana: sexta após 17h, sábado e domingo (dia)
-    const weekendMode = (day === 5 && h >= 17) || day === 6 || day === 0;
-    if (weekendMode) {
-      return {
-        emoji: '🎉',
-        title: 'Sextou!',
-        subtitle: summary
-          ? `Casais na sua cidade procurando planos pro fim de semana. ${summary}`
-          : 'Casais na sua cidade procurando planos pro fim de semana.',
-        accent: 'from-pink-500/15 via-background to-orange-400/10',
-      };
-    }
-
-    // Dias de semana, por período
-    if (h >= 6 && h < 12) {
-      return {
-        emoji: '🌅',
-        title: `Bom dia${namePart}!`,
-        subtitle: 'Veja quem acordou animado hoje perto de você.',
-        accent: 'from-amber-400/15 via-background to-rose-400/10',
-      };
-    }
-    if (h >= 12 && h < 18) {
-      return {
-        emoji: '☀️',
-        title: `Boa tarde${namePart}`,
-        subtitle: summary || 'Novas publicações desde o seu último acesso.',
-        accent: 'from-sky-400/15 via-background to-cyan-400/10',
-      };
-    }
-    if (h >= 18 && h < 23) {
-      return {
-        emoji: '🔥',
-        title: 'Boa noite — hora de encontrar alguém',
-        subtitle: summary || 'Veja quem entrou hoje na sua região.',
-        accent: 'from-primary/15 via-background to-rose-500/10',
-      };
-    }
-
-    // Madrugada (23h–6h)
-    return {
-      emoji: '🌙',
-      title: 'Boa madrugada',
-      subtitle: 'A noite ainda é uma criança — veja quem está acordado agora.',
-      accent: 'from-indigo-500/15 via-background to-purple-600/10',
-    };
-  }, [now, userName, summary]);
+  const firstName = String(userName || '').trim().split(/\s+/)[0] || '';
+  const subtitle = summary ? `${theme.subtitle} ${summary}` : theme.subtitle;
 
   return (
-    <div className={`mb-3 sm:mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-r ${greeting.accent} px-4 py-3 glass`}>
+    <div className={`mb-3 sm:mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-r ${theme.accent} px-4 py-3 glass`}>
       <div className="flex items-center gap-3">
-        <span className="text-2xl leading-none shrink-0" aria-hidden>{greeting.emoji}</span>
+        <span className="text-2xl leading-none shrink-0" aria-hidden>{theme.emoji}</span>
         <div className="min-w-0">
-          <p className="text-sm font-bold leading-tight text-foreground">{greeting.title}</p>
-          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{greeting.subtitle}</p>
+          <p className="text-sm font-bold leading-tight text-foreground">
+            {theme.title}{firstName ? <span className="text-muted-foreground font-semibold">{`, ${firstName}`}</span> : ''}
+          </p>
+          <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{subtitle}</p>
         </div>
       </div>
     </div>
