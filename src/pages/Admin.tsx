@@ -2141,7 +2141,7 @@ function AdminReengagementTab() {
 
   const handleSendAll = async () => {
     const total = data?.total ?? 0;
-    if (!confirm(`Enviar e-mail de reengajamento para TODOS os ${total} usuários do filtro atual?\n\nIsso pode demorar alguns minutos.`)) return;
+    if (!confirm(`Enviar e-mail de reengajamento para TODOS os ${total} usuários do filtro atual?\n\nO envio roda em segundo plano e pode levar vários minutos. Acompanhe pelas Métricas.`)) return;
     setIsSendingAll(true);
     setSendResult(null);
     try {
@@ -2152,15 +2152,15 @@ function AdminReengagementTab() {
         withPhoto: withPhoto || undefined,
         emailSent: emailSent || undefined,
       });
-      setSendResult({ sent: result.sent, errors: result.errors, skipped: result.skipped });
       toast({
-        title: `${result.sent} e-mail(s) enviado(s) de ${result.total}`,
-        description: result.errors > 0 ? `${result.errors} erro(s).` : 'Envio concluído com sucesso.',
-        variant: result.errors > 0 ? 'destructive' : 'default',
+        title: `📨 Envio iniciado para ${result.total} usuário(s)`,
+        description: 'O disparo roda em segundo plano. Acompanhe o progresso nas Métricas (atualize em alguns minutos).',
       });
+      // Atualiza as métricas algumas vezes para mostrar o progresso do background
       loadMetrics();
+      [30, 60, 120].forEach((s) => window.setTimeout(() => loadMetrics(), s * 1000));
     } catch {
-      toast({ title: 'Erro ao enviar e-mails', variant: 'destructive' });
+      toast({ title: 'Erro ao iniciar o envio', variant: 'destructive' });
     } finally {
       setIsSendingAll(false);
     }

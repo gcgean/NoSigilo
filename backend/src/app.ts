@@ -10972,61 +10972,70 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       }
 
       const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-      const sinceExpr = db.mode === 'pg'
-        ? `COALESCE(TO_CHAR(u.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), u.created_at)`
-        : `COALESCE(u.last_seen_at, u.created_at)`;
 
+      // Lista base (rápida, sem subqueries) — as estatísticas são calculadas no
+      // background, por usuário, usando os índices.
       const users = (await db.queryAll(
-        `SELECT u.id, u.name, u.email, u.last_seen_at,
-                (SELECT COUNT(*) FROM site_visits sv WHERE sv.user_id = u.id AND sv.created_at > ${sinceExpr}) AS visits_since,
-                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'user' AND l.target_id = u.id AND l.created_at > ${sinceExpr}) AS likes_since,
-                (SELECT COUNT(*) FROM messages m
-                  JOIN conversations c ON c.id = m.conversation_id
-                  WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
-                    AND m.sender_id != u.id
-                    AND m.is_read = 0) AS unread_messages
+        `SELECT u.id, u.name, u.email, u.last_seen_at, u.created_at
          FROM users u ${where}
          ORDER BY u.last_seen_at ASC NULLS FIRST`,
         params
       )) as any[];
 
-      let sent = 0, errors = 0, skipped = 0;
-      const nowBatch = nowIso();
+      // Responde IMEDIATAMENTE: enviar 2572 e-mails leva minutos e estourava o
+      // timeout do cliente (parecia falha, mas continuava enviando). Agora o
+      // disparo roda em segundo plano e o admin acompanha pelas Métricas.
+      res.json({ started: true, total: users.length });
 
-      for (const user of users) {
-        let status: 'sent' | 'error' = 'error';
-        let errorMsg: string | null = null;
-        try {
-          const result = await sendReengagementEmail(
-            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
-            {
-              to: String(user.email),
-              userName: String(user.name || 'usuário'),
-              stats: {
-                visits: Number(user.visits_since ?? 0),
-                likes: Number(user.likes_since ?? 0),
-                messages: Number(user.unread_messages ?? 0),
-                matches: 0,
-              },
-            }
-          );
-          if ((result as any)?.skipped) { skipped++; continue; }
-          status = 'sent';
-          sent++;
-        } catch (e: any) {
-          errorMsg = String(e?.message ?? e);
-          errors++;
+      void (async () => {
+        const nowBatch = nowIso();
+        let sent = 0, errors = 0, skipped = 0;
+        for (const user of users) {
+          const uid = String(user.id);
+          const sinceVal = user.last_seen_at
+            ? new Date(user.last_seen_at).toISOString()
+            : String(user.created_at || '');
+          let visits = 0, likes = 0, unread = 0;
+          try {
+            const [sv, lk, msg] = await Promise.all([
+              db.queryOne(`SELECT COUNT(*) AS c FROM site_visits WHERE user_id = ? AND created_at > ?`, [uid, sinceVal]) as Promise<any>,
+              db.queryOne(`SELECT COUNT(*) AS c FROM likes WHERE target_type = 'user' AND target_id = ? AND created_at > ?`, [uid, sinceVal]) as Promise<any>,
+              db.queryOne(`SELECT COUNT(*) AS c FROM messages m JOIN conversations c2 ON c2.id = m.conversation_id WHERE (c2.user_a_id = ? OR c2.user_b_id = ?) AND m.sender_id != ? AND m.is_read = 0`, [uid, uid, uid]) as Promise<any>,
+            ]);
+            visits = Number(sv?.c ?? 0);
+            likes = Number(lk?.c ?? 0);
+            unread = Number(msg?.c ?? 0);
+          } catch { /* segue sem stats */ }
+
+          let status: 'sent' | 'error' = 'error';
+          let errorMsg: string | null = null;
+          try {
+            const result = await sendReengagementEmail(
+              { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+              {
+                to: String(user.email),
+                userName: String(user.name || 'usuário'),
+                stats: { visits, likes, messages: unread, matches: 0 },
+              }
+            );
+            if ((result as any)?.skipped) { skipped++; continue; }
+            status = 'sent';
+            sent++;
+          } catch (e: any) {
+            errorMsg = String(e?.message ?? e);
+            errors++;
+          }
+          try {
+            await db.run(
+              `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
+              [randomUUID(), uid, nowBatch, status, errorMsg]
+            );
+          } catch { /* non-fatal */ }
+          await new Promise((r) => setTimeout(r, 120));
         }
-        try {
-          await db.run(
-            `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message) VALUES (?, ?, ?, ?, ?)`,
-            [randomUUID(), String(user.id), nowBatch, status, errorMsg]
-          );
-        } catch { /* non-fatal */ }
-        await new Promise((r) => setTimeout(r, 120));
-      }
-      try { await persist(); } catch { /* non-fatal */ }
-      res.json({ sent, errors, skipped, total: users.length });
+        try { await persist(); } catch { /* non-fatal */ }
+        console.log(`[admin/reengagement/send-all] done: ${sent} sent, ${errors} errors, ${skipped} skipped of ${users.length}`);
+      })().catch((e) => console.error('[admin/reengagement/send-all] background', e));
     } catch (err) {
       console.error('[admin/reengagement/send-all]', err);
       res.status(500).json({ error: 'internal' });

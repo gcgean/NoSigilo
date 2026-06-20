@@ -1070,8 +1070,9 @@ export const adminService = {
 
   sendReengagementEmailsAll: async (filters: {
     dateFrom?: string; dateTo?: string; search?: string; withPhoto?: boolean; emailSent?: boolean;
-  }): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
-    const response = await apiClient.post('/admin/reengagement/send-all', filters, { timeout: 10 * 60 * 1000 });
+  }): Promise<{ started: boolean; total: number }> => {
+    // O backend responde imediatamente e processa o envio em segundo plano.
+    const response = await apiClient.post('/admin/reengagement/send-all', filters);
     return response.data;
   },
 
