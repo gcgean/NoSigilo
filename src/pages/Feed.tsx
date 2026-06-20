@@ -15,6 +15,7 @@ import { authService, experienceService, feedService, interactionsService, profi
 import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
+import TopWeekBar from '@/components/TopWeekBar';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1584,6 +1585,9 @@ export default function Feed() {
 
       {/* Saudação contextual por horário */}
       {feedFilter !== 'experiences' ? <FeedGreeting userName={user?.name} summary={feedInsightsSummary} /> : null}
+
+      {/* Top da Semana — posts mais curtidos dos últimos 7 dias */}
+      {feedFilter !== 'experiences' ? <TopWeekBar /> : null}
 
       {/* Stories bar — porta de entrada para os Stories de 24h */}
       {feedFilter !== 'experiences' ? <StoriesBar /> : null}

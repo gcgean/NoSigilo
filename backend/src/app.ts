@@ -3999,6 +3999,83 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ profiles: out });
   });
 
+  // GET /api/feed/top-week — posts mais curtidos dos últimos 7 dias (com mídia),
+  // filtrados pelo interesse do viewer. Alimenta a régua "Top da Semana" no feed.
+  app.get('/api/feed/top-week', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+
+    const me = (await queryOne(db, 'SELECT looking_for_json FROM users WHERE id = ?', [userId])) as any;
+    const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
+
+    const rows = (await queryAll(
+      db,
+      `SELECT p.id, p.media_ids_json, p.created_at,
+              u.id as author_id,
+              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
+              u.gender as author_gender,
+              (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'post' AND l.target_id = p.id) as like_count
+       FROM posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.created_at >= ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND p.media_ids_json IS NOT NULL AND p.media_ids_json != '[]'
+         AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+       ORDER BY like_count DESC, p.created_at DESC
+       LIMIT 40`,
+      [weekAgo, userId, userId]
+    )) as any[];
+
+    // Filtra por interesse e exige pelo menos 1 curtida; pega os 12 primeiros
+    const filtered = rows
+      .filter((r) => myLookingFor.length === 0 || matchesLookingFor(myLookingFor, r.author_gender))
+      .filter((r) => Number(r.like_count || 0) > 0)
+      .slice(0, 12);
+
+    // Resolve a primeira mídia (thumbnail) de cada post
+    const firstMediaIdByPost = new Map<string, string>();
+    const mediaIdSet = new Set<string>();
+    for (const r of filtered) {
+      const ids = safeJsonParse(r.media_ids_json);
+      const first = Array.isArray(ids) ? ids.find((x: any) => typeof x === 'string' && x.trim()) : null;
+      if (first) { firstMediaIdByPost.set(String(r.id), String(first)); mediaIdSet.add(String(first)); }
+    }
+    const mediaById = new Map<string, { filename: string | null; mime: string | null }>();
+    if (mediaIdSet.size > 0) {
+      const ids = Array.from(mediaIdSet);
+      const ph = ids.map(() => '?').join(', ');
+      const mrows = (await queryAll(db, `SELECT id, filename, mime_type FROM media WHERE id IN (${ph})`, ids)) as any[];
+      for (const m of mrows) mediaById.set(String(m.id), { filename: m.filename ?? null, mime: m.mime_type ?? null });
+    }
+
+    const posts = filtered.map((r, i) => {
+      const mid = firstMediaIdByPost.get(String(r.id));
+      const media = mid ? mediaById.get(mid) : null;
+      return {
+        id: String(r.id),
+        rank: i + 1,
+        likeCount: Number(r.like_count || 0),
+        createdAt: String(r.created_at),
+        mediaUrl: media?.filename ? `/uploads/${media.filename}` : null,
+        mimeType: media?.mime ?? null,
+        author: {
+          id: String(r.author_id),
+          name: String(r.author_name),
+          avatar: r.author_avatar ? String(r.author_avatar) : null,
+        },
+      };
+    });
+
+    res.json({ posts });
+  });
+
   // POST /api/stories — criar story a partir de media_id já uploaded OU de texto
   // com fundo colorido (sem mídia: media_id = '' como sentinela).
   app.post('/api/stories', requireAuth(env, db), async (req, res) => {

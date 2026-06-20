@@ -351,6 +351,16 @@ export type ActiveNowProfile = {
   reason: 'posted' | 'radar' | 'online';
 };
 
+export type TopWeekPost = {
+  id: string;
+  rank: number;
+  likeCount: number;
+  createdAt: string;
+  mediaUrl: string | null;
+  mimeType: string | null;
+  author: { id: string; name: string; avatar: string | null };
+};
+
 export const radarService = {
   getOverview: async () => {
     const response = await apiClient.get('/radar');
@@ -359,6 +369,11 @@ export const radarService = {
 
   getActiveNow: async (params?: { maxDistanceKm?: number; cityOnly?: boolean }): Promise<{ profiles: ActiveNowProfile[] }> => {
     const response = await apiClient.get('/feed/active-now', { params });
+    return response.data;
+  },
+
+  getTopWeek: async (): Promise<{ posts: TopWeekPost[] }> => {
+    const response = await apiClient.get('/feed/top-week');
     return response.data;
   },
 
