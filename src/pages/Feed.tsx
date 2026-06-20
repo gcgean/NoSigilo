@@ -781,9 +781,11 @@ export default function Feed() {
     const sp = new URLSearchParams(location.search);
     const postId = sp.get('postId');
     const openComments = sp.get('openComments');
+    const fallbackUser = sp.get('u');
     return {
       postId: postId ? String(postId) : null,
       openComments: openComments === '1' || openComments === 'true',
+      fallbackUser: fallbackUser ? String(fallbackUser) : null,
     };
   }, [location.search]);
 
@@ -816,14 +818,18 @@ export default function Feed() {
           await new Promise((r) => window.setTimeout(r, 0));
           continue;
         }
-        return;
+        break; // post não existe no feed e não há mais páginas
+      }
+      // Não encontrou o post → fallback para o perfil do autor (se informado)
+      if (!cancelled && focusParams.fallbackUser) {
+        navigate(getUserProfileHref(focusParams.fallbackUser, user?.id, '/feed'));
       }
     };
     void run();
     return () => {
       cancelled = true;
     };
-  }, [focusParams.postId, focusParams.openComments, isLoading, allPosts]);
+  }, [focusParams.postId, focusParams.openComments, focusParams.fallbackUser, isLoading, allPosts]);
 
   const setAspectForKey = (key: string, width: number, height: number) => {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;

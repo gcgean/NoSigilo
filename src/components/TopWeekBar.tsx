@@ -45,7 +45,7 @@ export default function TopWeekBar() {
           <button
             key={p.id}
             type="button"
-            onClick={() => navigate(`/feed?postId=${encodeURIComponent(p.id)}`)}
+            onClick={() => navigate(`/feed?postId=${encodeURIComponent(p.id)}&u=${encodeURIComponent(p.author.id)}`)}
             className="group relative w-28 shrink-0 overflow-hidden rounded-2xl bg-black"
             title={`${p.author.name} · ${p.likeCount} curtidas`}
           >
