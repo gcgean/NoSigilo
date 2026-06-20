@@ -13,9 +13,10 @@ import { randomUUID } from 'node:crypto';
 // Runs every hour and checks if daily/weekly tasks need to fire.
 // Timestamps are stored in-memory (survives restarts via re-check logic).
 
-let lastDailyRunDate = '';    // "YYYY-MM-DD" — reengagement emails
-let lastWeeklyRunDate = '';   // "YYYY-MM-DD" — weekly summary emails
-let lastOnlinePushDate = '';  // "YYYY-MM-DD" — online push notification
+let lastDailyRunDate = '';     // "YYYY-MM-DD" — reengagement emails
+let lastWeeklyRunDate = '';    // "YYYY-MM-DD" — weekly summary emails
+let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
+let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
 
 // Helper: given a user's looking_for_json array, build a SQL WHERE fragment
 // that matches profile genders the user is interested in.
@@ -267,11 +268,66 @@ async function runNearbyOnlinePush(db: DbHandle, onlineCount: number) {
   console.log(`[scheduler] Online push sent to ${sent} users`);
 }
 
+async function runNightlyRitualPush(db: DbHandle) {
+  console.log('[scheduler] Sending nightly "novos na sua cidade" push (19h30)...');
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startIso = startOfToday.toISOString();
+
+  // Usuários com push inscrito, ativos (não inativos demais não importa aqui:
+  // o objetivo é ancorar o ritual noturno em quem aceitou notificações).
+  const users = await db.queryAll(
+    `SELECT u.id, u.city, u.looking_for_json FROM users u
+     JOIN push_subscriptions ps ON ps.user_id = u.id
+     WHERE u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND u.city IS NOT NULL AND u.city != ''
+     GROUP BY u.id
+     LIMIT 500`
+  ) as any[];
+
+  let sent = 0;
+  for (const u of users) {
+    try {
+      // Conta novos perfis compatíveis que entraram HOJE na cidade do usuário
+      const genderClause = buildGenderMatchClause(u.looking_for_json, 'u2');
+      const newRow = await db.queryOne(
+        `SELECT COUNT(*) as c FROM users u2
+         WHERE u2.city = ? AND u2.id != ? AND u2.created_at >= ?
+           AND u2.is_banned = 0 AND (u2.is_deactivated = 0 OR u2.is_deactivated IS NULL) ${genderClause}`,
+        [u.city, u.id, startIso]
+      ) as any;
+      const newCount = Number(newRow?.c || 0);
+      if (newCount < 1) continue; // só envia quando há um número real e crível
+
+      const body = `${newCount} ${newCount > 1 ? 'novos perfis entraram' : 'novo perfil entrou'} na sua cidade hoje. Veja antes que somem. 🔥`;
+
+      const subs = await db.queryAll(
+        'SELECT endpoint, subscription_json FROM push_subscriptions WHERE user_id = ?',
+        [u.id]
+      ) as any[];
+      for (const sub of subs) {
+        const parsed = JSON.parse(String(sub.subscription_json || '{}'));
+        if (!parsed?.endpoint) continue;
+        const { default: webpush } = await import('web-push');
+        await webpush.sendNotification(parsed, JSON.stringify({
+          title: '🌙 Boa noite!',
+          body,
+          url: '/feed',
+          tag: 'nightly-new-in-city',
+        })).catch(() => {});
+      }
+      sent++;
+    } catch { /* ignore */ }
+  }
+  console.log(`[scheduler] Nightly push sent to ${sent} users`);
+}
+
 function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) {
   const check = async () => {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const hour = now.getHours();
+    const minute = now.getMinutes();
     const weekday = now.getDay(); // 0=Sun, 1=Mon
 
     // Daily reengagement emails — 8am (Fortaleza local time)
@@ -284,6 +340,13 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     if (weekday === 1 && hour === 9 && lastWeeklyRunDate !== dateStr) {
       lastWeeklyRunDate = dateStr;
       runWeeklySummary(db).catch(err => console.error('[scheduler/weekly] fatal', err));
+    }
+
+    // Push noturno: "novos perfis na sua cidade entraram hoje" — ~19h30 (ritual)
+    // O check roda a cada 30 min; dispara uma vez entre 19h30 e 19h59.
+    if (hour === 19 && minute >= 30 && lastNightlyPushDate !== dateStr) {
+      lastNightlyPushDate = dateStr;
+      runNightlyRitualPush(db).catch(err => console.error('[scheduler/nightly] fatal', err));
     }
 
     // Push: "users online in your region" — every day at 20:00 UTC (prime time)
@@ -301,7 +364,7 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   setInterval(check, 30 * 60 * 1000);
   // Also run once on startup (will be a no-op unless it's the right hour)
   check().catch(() => {});
-  console.log('[scheduler] Started — daily reengagement at 08:00 UTC, weekly summary on Mondays at 09:00 UTC');
+  console.log('[scheduler] Started — daily reengagement 08:00, weekly summary Mon 09:00, nightly city push 19:30, online push 20:00');
 }
 
 async function main() {
