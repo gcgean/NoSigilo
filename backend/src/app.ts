@@ -10823,6 +10823,35 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // ─── Descadastro de e-mail via link assinado no rodapé (público, 1 clique) ──
+  app.get('/api/email/unsubscribe', async (req, res) => {
+    const page = (title: string, msg: string, ok: boolean) => `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
+      <body style="font-family:Arial,sans-serif;background:#0c0c0f;color:#eee;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;">
+        <div style="max-width:420px;text-align:center;padding:32px;border:1px solid #2a2a30;border-radius:18px;background:#15151a;">
+          <div style="font-size:40px;margin-bottom:8px;">${ok ? '✅' : '⚠️'}</div>
+          <h1 style="font-size:20px;margin:0 0 10px;">${title}</h1>
+          <p style="font-size:14px;color:#b8b8c0;line-height:1.6;margin:0;">${msg}</p>
+        </div>
+      </body></html>`;
+    const token = String(req.query.token || '');
+    let email = '';
+    try {
+      const payload = jwt.verify(token, env.JWT_SECRET) as any;
+      if (payload?.purpose !== 'unsubscribe' || !payload?.email) throw new Error('bad');
+      email = String(payload.email);
+    } catch {
+      res.status(400).send(page('Link inválido', 'Este link de descadastro é inválido ou expirou.', false));
+      return;
+    }
+    try {
+      await run(db, `UPDATE users SET notify_email = ${db.mode === 'pg' ? 'FALSE' : '0'} WHERE LOWER(email) = LOWER(?)`, [email]);
+      await persist();
+    } catch (err) {
+      console.error('[email/unsubscribe]', err);
+    }
+    res.send(page('Descadastrado', 'Pronto! Você não receberá mais e-mails do NoSigilo. Pode reativar quando quiser em Configurações → Notificações externas.', true));
+  });
+
   // ─── Win-back: resgatar 30 dias grátis via link assinado (público) ──────────
   // O usuário clica no botão do e-mail; concedemos 30 dias e redirecionamos
   // para o login. Não exige sessão — o token assinado identifica o usuário.

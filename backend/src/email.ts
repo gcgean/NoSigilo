@@ -1,3 +1,6 @@
+import jwt from 'jsonwebtoken';
+import { env } from './env.js';
+
 type SendPasswordResetCodeOptions = {
   apiKey?: string;
   fromEmail?: string;
@@ -11,6 +14,28 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// Link de descadastro (1 clique) assinado pelo e-mail do destinatário.
+export function buildUnsubscribeUrl(email: string, siteUrl?: string) {
+  const base = (siteUrl || env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
+  const token = jwt.sign({ email, purpose: 'unsubscribe' }, env.JWT_SECRET);
+  return `${base}/api/email/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
+// Rodapé de descadastro — exigido por boas práticas anti-spam/Gmail. Anexado
+// automaticamente nos e-mails de marketing a partir do e-mail do destinatário.
+function withUnsubscribe(html: string, email: string, siteUrl?: string) {
+  if (!email) return html;
+  const url = buildUnsubscribeUrl(email, siteUrl);
+  const footer = `
+    <div style="max-width:560px;margin:14px auto 0;text-align:center;font-family:Arial,sans-serif;">
+      <p style="font-size:12px;color:#9aa0a6;line-height:1.5;margin:0;">
+        Não quer mais receber estes e-mails?
+        <a href="${url}" style="color:#9aa0a6;text-decoration:underline;">Descadastrar com 1 clique</a>.
+      </p>
+    </div>`;
+  return html + footer;
 }
 
 export async function sendPasswordResetCodeEmail(
@@ -219,7 +244,7 @@ export async function sendReengagementEmail(
       from: options.fromEmail,
       to: [payload.to],
       subject,
-      html,
+      html: withUnsubscribe(html, payload.to),
     }),
   });
 
@@ -288,7 +313,7 @@ export async function sendWeeklySummaryEmail(
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
   });
 
   if (!response.ok) {
@@ -393,7 +418,7 @@ export async function sendPromoterCampaignEmail(
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
   });
 
   if (!response.ok) {
@@ -503,7 +528,7 @@ export async function sendPromoterMonthlySummaryEmail(
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
   });
 
   if (!response.ok) {
@@ -661,7 +686,7 @@ export async function sendWinbackEmail(options: WinbackOptions, payload: Winback
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html }),
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
   });
 
   if (!response.ok) {
