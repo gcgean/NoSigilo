@@ -57,6 +57,11 @@ async function runDailyReengagement(db: DbHandle) {
   // Do not email same user more than once every 7 days
   const cooldown = ago(7);
 
+  // Respeita a preferência de e-mail (ligada por padrão; só pula quem optou por NÃO)
+  const notifyEmailCond = db.mode === 'pg'
+    ? 'u.notify_email IS NOT FALSE'
+    : '(u.notify_email IS NULL OR u.notify_email != 0)';
+
   // Fetch users inactive 7–90 days, not emailed in last 7 days
   // Include looking_for_json + gender so we can personalise the email
   const users = await db.queryAll(
@@ -75,6 +80,7 @@ async function runDailyReengagement(db: DbHandle) {
      FROM users u
      WHERE u.email IS NOT NULL AND u.email != ''
        AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND ${notifyEmailCond}
        AND u.last_seen_at IS NOT NULL
        AND u.last_seen_at < ?
        AND u.last_seen_at > ?
@@ -153,6 +159,7 @@ async function runWeeklySummary(db: DbHandle) {
      FROM users u
      WHERE u.email IS NOT NULL AND u.email != ''
        AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND ${db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)'}
        AND u.last_seen_at >= ?
        AND COALESCE(
              (SELECT ws.sent_at FROM reengagement_emails ws

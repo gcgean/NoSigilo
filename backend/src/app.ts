@@ -92,6 +92,7 @@ export type PublicUser = {
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
   notificationVisits?: boolean;
+  notificationEmail?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -1388,6 +1389,7 @@ function rowToPublicUser(
     hubLicenseEndAt: row.hub_license_end_at ?? null,
     hubBanner: row.hub_banner ?? null,
     notificationVisits: row.notification_visits == null ? true : !!row.notification_visits,
+    notificationEmail: row.notify_email == null ? true : !!row.notify_email,
     subscriptionsEnabled: options?.subscriptionsEnabled ?? true,
     ...(options?.showEmail
       ? {
@@ -5166,6 +5168,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
         blockOutsidePrefs: z.boolean().optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
+        notificationEmail: z.boolean().optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
         billingLegalName: z.string().max(120).optional().nullable(),
         billingPersonType: z.enum(['PF', 'PJ']).optional().nullable(),
@@ -5220,6 +5223,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       allowMessages: 'allow_messages',
       blockOutsidePrefs: 'block_outside_prefs',
       notificationVisits: 'notification_visits',
+      notificationEmail: 'notify_email',
       billingDocument: 'billing_document',
       billingLegalName: 'billing_legal_name',
       billingPersonType: 'billing_person_type',

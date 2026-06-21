@@ -53,6 +53,7 @@ export interface User {
   hubLicenseEndAt?: string | null;
   hubBanner?: string | null;
   notificationVisits?: boolean;
+  notificationEmail?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -381,6 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'allowMessages',
           'blockOutsidePrefs',
           'notificationVisits',
+          'notificationEmail',
           'billingDocument',
           'billingLegalName',
           'billingPersonType',

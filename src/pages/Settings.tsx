@@ -137,7 +137,7 @@ export default function Settings() {
     matches: true,
     messages: true,
     visits: user?.notificationVisits !== false,
-    email: false,
+    email: user?.notificationEmail !== false,
     push: true,
   });
 
@@ -171,8 +171,9 @@ export default function Settings() {
     setNotifications((prev) => ({
       ...prev,
       visits: user?.notificationVisits !== false,
+      email: user?.notificationEmail !== false,
     }));
-  }, [user?.notificationVisits]);
+  }, [user?.notificationVisits, user?.notificationEmail]);
 
   useEffect(() => {
     let cancelled = false;
@@ -264,14 +265,14 @@ export default function Settings() {
   const handleSaveNotifications = async () => {
     setIsLoading(true);
     try {
-      await profileService.updateProfile({ notificationVisits: notifications.visits });
+      await profileService.updateProfile({ notificationVisits: notifications.visits, notificationEmail: notifications.email });
       if (notifications.push) {
         await enablePushNotifications();
       } else {
         await disablePushNotifications();
       }
       const pushState = await getPushActivationState().catch(() => ({ enabled: false }));
-      updateUser({ notificationVisits: notifications.visits });
+      updateUser({ notificationVisits: notifications.visits, notificationEmail: notifications.email });
       setNotifications((prev) => ({ ...prev, push: !!pushState.enabled }));
       toast({
         title: 'Preferências de notificação atualizadas!',
