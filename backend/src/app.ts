@@ -452,7 +452,7 @@ async function grantPremiumDays(db: DbHandle, userId: string, days: number) {
 // ── Sistema de tokens (gamificação → dias grátis) ──────────────────────────
 // Pontos por ação (peso = dificuldade/engajamento) com teto diário anti-farm.
 const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
-  like:    { points: 1,  dailyCap: 50 },
+  like:    { points: 1,  dailyCap: 20 },
   comment: { points: 3,  dailyCap: 10 },
   photo:   { points: 10, dailyCap: 3 },
   story:   { points: 8,  dailyCap: 3 },
