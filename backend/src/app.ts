@@ -410,15 +410,21 @@ function hasPremiumAccess(userRow: any, subscriptionsEnabled: boolean = true, bi
     : subscriptionsEnabled;
   if (!effectiveEnabled) return true;
   if (!userRow) return false;
-  if (userRow.is_premium) return true;
-  const ends = userRow.trial_ends_at ? new Date(String(userRow.trial_ends_at)) : null;
-  if (ends && !Number.isNaN(ends.getTime()) && ends.getTime() > Date.now()) return true;
+  const now = Date.now();
+  const parse = (v: any) => { if (!v) return null; const t = new Date(String(v)).getTime(); return Number.isNaN(t) ? null : t; };
+  const lic = parse(userRow.hub_license_end_at);
+  const trial = parse(userRow.trial_ends_at);
+  // Pago/HUB: vale só se a licença NÃO venceu (lic null = data desconhecida no row,
+  // não bloqueia para não derrubar pagantes válidos cujo SELECT não trouxe a coluna).
+  if (userRow.is_premium && (lic === null || lic > now)) return true;
+  // Trial / dias ganhos por token continuam valendo mesmo após a licença paga vencer.
+  if (trial !== null && trial > now) return true;
   return false;
 }
 
 async function userHasPremiumAccess(db: DbHandle, userId: string, billingTestEmails: string = '') {
   const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-  const row = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const row = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
   return hasPremiumAccess(row, subscriptionsEnabled, billingTestEmails);
 }
 
@@ -3193,7 +3199,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
       db,
-      'SELECT email, is_premium, trial_ends_at, gender, looking_for_json, is_admin, lat, lon, city, state, last_seen_at FROM users WHERE id = ?',
+      'SELECT email, is_premium, trial_ends_at, hub_license_end_at, gender, looking_for_json, is_admin, lat, lon, city, state, last_seen_at FROM users WHERE id = ?',
       [req.auth!.userId]
     );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
@@ -4879,7 +4885,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/feed/social-pulse', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewerRow = await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [userId]);
+    const viewerRow = await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId]);
     const isPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     const todayStart = new Date();
@@ -6841,7 +6847,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(
       db,
-      'SELECT id, email, name, gender, city, state, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, name, gender, city, state, looking_for_json, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
     if (!hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) {
@@ -7215,7 +7221,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(
       db,
-      'SELECT id, name, avatar, gender, city, state, lat, lon, looking_for_json, is_premium, trial_ends_at FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, name, avatar, gender, city, state, lat, lon, looking_for_json, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
     if (!me) {
@@ -7799,7 +7805,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       return;
     }
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewer = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const viewer = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     // Mark messages as read
@@ -8878,7 +8884,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
   app.get('/api/notifications', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const me = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const me = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const isPremium = hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     const rows = await queryAll(db, 'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.auth!.userId]);
@@ -9406,7 +9412,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
   app.post('/api/events', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const userRow = (await queryOne(db, 'SELECT email, name, is_premium, trial_ends_at, lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const userRow = (await queryOne(db, 'SELECT email, name, is_premium, trial_ends_at, hub_license_end_at, lat, lon FROM users WHERE id = ?', [req.auth!.userId])) as any;
     if (!hasPremiumAccess(userRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) {
       res.status(403).json({ error: 'premium_required' });
       return;

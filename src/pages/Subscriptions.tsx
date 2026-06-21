@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { subscriptionsService, authService, invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { hasPremiumAccess } from '@/utils/premium';
 import { cn } from '@/lib/utils';
 
 type Plan = {
@@ -239,7 +240,9 @@ export default function Subscriptions() {
   const headlinePrice = monthlyPrices.length ? Math.min(...monthlyPrices) : 9.9;
   const headlinePriceLabel = headlinePrice.toFixed(2).replace('.', ',');
 
-  const isPremiumActive = !!user?.isPremium;
+  // Premium ATIVO = pago e ainda não vencido. Um assinante vencido (is_premium=1
+  // mas licença expirada) deixa de ser "ativo" → mostra "Regularize", não "Você já é Premium".
+  const isPremiumActive = !!user?.isPremium && hasPremiumAccess(user);
 
   return (
     <div className="max-w-2xl mx-auto w-full space-y-6 pb-10">

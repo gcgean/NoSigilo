@@ -5,16 +5,31 @@ export function isTrialExpired(trialEndsAt?: string | null) {
   return end <= Date.now();
 }
 
-export function hasPremiumAccess(
-  user?: { isPremium?: boolean; trialEndsAt?: string | null; subscriptionsEnabled?: boolean } | null
-) {
-  if (user?.subscriptionsEnabled === false) return true;
-  if (user?.isPremium) return true;
-  return !isTrialExpired(user?.trialEndsAt ?? null);
+type PremiumUser = {
+  isPremium?: boolean;
+  trialEndsAt?: string | null;
+  hubLicenseEndAt?: string | null;
+  subscriptionsEnabled?: boolean;
+} | null;
+
+function parseTime(v?: string | null) {
+  if (!v) return null;
+  const t = new Date(v).getTime();
+  return Number.isNaN(t) ? null : t;
 }
 
-export function isPremiumBlocked(
-  user?: { isPremium?: boolean; trialEndsAt?: string | null; subscriptionsEnabled?: boolean } | null
-) {
+export function hasPremiumAccess(user?: PremiumUser) {
+  if (user?.subscriptionsEnabled === false) return true;
+  const now = Date.now();
+  const lic = parseTime(user?.hubLicenseEndAt);
+  const trial = parseTime(user?.trialEndsAt);
+  // Pago/HUB: vale só se a licença NÃO venceu (lic null = vitalício/sem data → mantém).
+  if (user?.isPremium && (lic === null || lic > now)) return true;
+  // Trial / dias ganhos por token continuam valendo mesmo após a licença paga vencer.
+  if (trial !== null && trial > now) return true;
+  return false;
+}
+
+export function isPremiumBlocked(user?: PremiumUser) {
   return !hasPremiumAccess(user);
 }
