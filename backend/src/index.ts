@@ -18,6 +18,7 @@ let lastWeeklyRunDate = '';    // "YYYY-MM-DD" — weekly summary emails
 let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
 let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
 let lastTopWeekDate = '';      // "YYYY-MM-DD" — "você está no Top da Semana" notification
+let lastExpirePremiumDate = ''; // "YYYY-MM-DD" — limpa is_premium de licenças vencidas
 
 // Helper: given a user's looking_for_json array, build a SQL WHERE fragment
 // that matches profile genders the user is interested in.
@@ -399,6 +400,28 @@ async function runTopWeekNotifications(db: DbHandle) {
   console.log(`[scheduler] Top da Semana notified ${sent} authors`);
 }
 
+async function runExpirePremiumFlags(db: DbHandle) {
+  const now = new Date().toISOString();
+  // Quem tem licença paga vencida deixa de ser is_premium no banco. O acesso por
+  // trial / dias ganhos por token (trial_ends_at) continua valendo pela checagem
+  // em tempo de leitura — aqui só limpamos o flag para o dado ficar consistente.
+  const before = (await db.queryOne(
+    `SELECT COUNT(*) AS c FROM users
+     WHERE is_premium = 1 AND hub_license_end_at IS NOT NULL AND hub_license_end_at <= ?`,
+    [now]
+  )) as any;
+  const count = Number(before?.c || 0);
+  if (count > 0) {
+    await db.run(
+      `UPDATE users SET is_premium = 0
+       WHERE is_premium = 1 AND hub_license_end_at IS NOT NULL AND hub_license_end_at <= ?`,
+      [now]
+    );
+    await db.persist();
+  }
+  console.log(`[scheduler] Expired premium flags cleared: ${count}`);
+}
+
 function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) {
   const check = async () => {
     const now = new Date();
@@ -417,6 +440,12 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     if (weekday === 1 && hour === 9 && lastWeeklyRunDate !== dateStr) {
       lastWeeklyRunDate = dateStr;
       runWeeklySummary(db).catch(err => console.error('[scheduler/weekly] fatal', err));
+    }
+
+    // Limpa o flag is_premium de licenças vencidas — diariamente às 01h.
+    if (hour === 1 && lastExpirePremiumDate !== dateStr) {
+      lastExpirePremiumDate = dateStr;
+      runExpirePremiumFlags(db).catch(err => console.error('[scheduler/expire-premium] fatal', err));
     }
 
     // "Você está no Top da Semana" — diariamente às 11h. Notifica autores que
@@ -448,7 +477,9 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   setInterval(check, 30 * 60 * 1000);
   // Also run once on startup (will be a no-op unless it's the right hour)
   check().catch(() => {});
-  console.log('[scheduler] Started — daily reengagement 08:00, weekly summary Mon 09:00, top-week notify 11:00, nightly city push 19:30, online push 20:00');
+  // Limpa flags de premium vencido já na subida (não espera as 01h)
+  runExpirePremiumFlags(db).catch(err => console.error('[scheduler/expire-premium] startup', err));
+  console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-week 11:00, nightly push 19:30, online push 20:00');
 }
 
 async function main() {
