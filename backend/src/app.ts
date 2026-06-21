@@ -10602,7 +10602,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         : `COALESCE(u.last_seen_at, u.created_at)`;
 
       // Build WHERE clauses
-      const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
+      const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''", (db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)')];
       const params: unknown[] = [];
 
       if (withPhoto) {
@@ -10757,7 +10757,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
                     AND m.sender_id != u.id
                     AND m.is_read = 0) AS unread_messages
          FROM users u WHERE u.id IN (${placeholders}) AND u.email IS NOT NULL AND u.email != ''
-                AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)`,
+                AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+                AND ${db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)'}`,
         userIds
       )) as any[];
 
@@ -10871,6 +10872,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         'u.is_banned = 0',
         '(u.is_deactivated = 0 OR u.is_deactivated IS NULL)',
         "u.email IS NOT NULL AND u.email != ''",
+        // Respeita o opt-out de e-mail (quem desligou "Receber e-mails")
+        db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)',
       ];
       const params: unknown[] = [];
 
@@ -10977,7 +10980,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       const withPhoto = body.withPhoto === true || body.withPhoto === 1;
       const emailSent = body.emailSent === true || body.emailSent === 1;
 
-      const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
+      const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''", (db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)')];
       const params: unknown[] = [];
 
       if (withPhoto) conditions.push("u.avatar IS NOT NULL AND u.avatar != ''");
@@ -11092,12 +11095,13 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
            WHERE id IN (${placeholders})
              AND email IS NOT NULL AND email != ''
              AND is_banned = 0 AND is_deactivated = 0
+             AND ${db.mode === 'pg' ? 'notify_email IS NOT FALSE' : '(notify_email IS NULL OR notify_email != 0)'}
            ORDER BY created_at ASC`,
           userIds
         )) as any[];
       } else {
         // Send to all users matching current filters (same logic as send-all)
-        const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''"];
+        const conditions: string[] = ["u.is_banned = 0", "u.is_deactivated = 0", "u.email IS NOT NULL AND u.email != ''", (db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)')];
         const params: unknown[] = [];
         if (withPhoto) conditions.push("u.avatar IS NOT NULL AND u.avatar != ''");
         if (emailSent) conditions.push("EXISTS (SELECT 1 FROM reengagement_emails re WHERE re.user_id = u.id AND re.status = 'sent')");
