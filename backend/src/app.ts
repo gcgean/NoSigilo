@@ -3299,8 +3299,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${genderFilter}
          ${reelsOnlyFilter}
        ORDER BY p.created_at DESC
-       LIMIT ? OFFSET 0`,
-      [req.auth!.userId, req.auth!.userId, ...genderParams, fetchLimit]
+       ${includeReelsOnly ? 'LIMIT ? OFFSET ?' : 'LIMIT ? OFFSET 0'}`,
+      includeReelsOnly
+        ? [req.auth!.userId, req.auth!.userId, ...genderParams, limit, offset]
+        : [req.auth!.userId, req.auth!.userId, ...genderParams, fetchLimit]
     );
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
@@ -3671,14 +3673,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return [...onTheme, ...rest];
     };
 
-    // Paginação por OFFSET (determinística) sobre a lista tema-primeiro.
-    // Substitui a antiga exclusão por seenIds (limitada a 60 IDs), que reenviava
-    // posts já carregados quando o feed passava de ~60 itens → o cliente
-    // deduplicava tudo e o "Carregar mais" ficava em loop infinito. Com offset,
-    // cada página é distinta e o feed termina corretamente (hasMore=false).
-    const orderedByTheme = themeFirst(proximityRows as any[]);
-    const slice = orderedByTheme.slice(offset, offset + limit);
-    const feedHasMore = orderedByTheme.length > offset + limit;
+    // Reels: o SQL já paginou por offset (LIMIT/OFFSET), então a página atual já
+    // é a fatia certa — sem tema do dia e sem re-aplicar offset. Isso faz o player
+    // percorrer TODOS os posts até achar todos os vídeos (vídeos são esparsos no
+    // meio dos posts), em vez de parar na janela limitada.
+    //
+    // Feed normal: paginação por OFFSET sobre a lista tema-primeiro (determinística,
+    // sem repetir posts no mesmo scroll; termina com hasMore=false).
+    let slice: any[];
+    let feedHasMore: boolean;
+    if (includeReelsOnly) {
+      slice = proximityRows as any[];
+      feedHasMore = (proximityRows as any[]).length >= limit;
+    } else {
+      const orderedByTheme = themeFirst(proximityRows as any[]);
+      slice = orderedByTheme.slice(offset, offset + limit);
+      feedHasMore = orderedByTheme.length > offset + limit;
+    }
     const postIds = slice.map((r: any) => String(r.id));
 
     const mediaIdSet = new Set<string>();
@@ -3781,7 +3792,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
         distanceKm: distanceKmByPostId.get(String(r.id)) ?? null,
       })),
-      hasMore: includeReelsOnly ? rows.length >= fetchLimit : feedHasMore,
+      hasMore: feedHasMore,
       insights: includeReelsOnly ? null : feedInsights,
     });
   });
