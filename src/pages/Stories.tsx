@@ -879,10 +879,21 @@ export default function Stories() {
                 onClick={() => void handleOpenStory(i)}
                 className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-black group"
               >
-                <StoryContent story={story} thumb />
+                {/* Mídia borrada — gera curiosidade (revela só ao abrir) */}
+                <div className="absolute inset-0 scale-110 blur-xl brightness-[0.8]">
+                  <StoryContent story={story} thumb />
+                </div>
 
                 {/* Gradient */}
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-black/30" />
+
+                {/* Chamada "toque para ver" no centro */}
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/45 backdrop-blur-sm ring-1 ring-white/25 transition-transform group-hover:scale-110 group-active:scale-95">
+                    <Eye className="h-4 w-4 text-white" />
+                  </div>
+                  <span className="text-[10px] font-semibold leading-tight text-white/90 drop-shadow">Toque para ver</span>
+                </div>
 
                 {/* Avatar ring */}
                 <div className={cn(
