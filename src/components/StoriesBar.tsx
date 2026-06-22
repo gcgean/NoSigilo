@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
@@ -152,12 +152,20 @@ export default function StoriesBar() {
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
             <div className={cn('h-16 w-16 rounded-full p-[2px]', g.allViewed ? ringMuted : ringActive)}>
-              <div className="h-full w-full rounded-full bg-background p-[2px]">
-                {g.avatar ? (
-                  <img src={resolveServerUrl(g.avatar)} alt={g.name} className="h-full w-full rounded-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
-                    {g.name[0]}
+              <div className="relative h-full w-full overflow-hidden rounded-full bg-background p-[2px]">
+                {/* Avatar — borrado nos não-vistos p/ gerar curiosidade */}
+                <div className={cn('h-full w-full overflow-hidden rounded-full', !g.allViewed && 'scale-110 blur-[5px] brightness-90')}>
+                  {g.avatar ? (
+                    <img src={resolveServerUrl(g.avatar)} alt={g.name} className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
+                      {g.name[0]}
+                    </div>
+                  )}
+                </div>
+                {!g.allViewed && (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                    <Eye className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]" />
                   </div>
                 )}
               </div>
