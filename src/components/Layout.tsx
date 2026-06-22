@@ -52,6 +52,7 @@ import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
 import InviteModal from '@/components/InviteModal';
+import { hasPremiumAccess } from '@/utils/premium';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -252,7 +253,7 @@ export default function Layout() {
 
   const accessBanner = useMemo(() => {
     if (!subscriptionsEnabled) return null;
-    if (!user || user.isPremium) return null;
+    if (!user || hasPremiumAccess(user)) return null;
 
     if (trialEnds !== null && trialEnds > clockNow) {
       const detailed = formatDetailedRemainingTime(trialEnds, clockNow);
@@ -269,13 +270,16 @@ export default function Layout() {
       };
     }
 
+    const licenseExpired = user.isPremium && licenseEnds !== null && licenseEnds <= clockNow;
     return {
       href: '/subscriptions',
       tone: 'inactive' as const,
-      message: 'Seu acesso está inativo ou sua licença venceu. Volte a ser Premium por apenas R$ 9,90/mês.',
-      cta: 'ASSINAR R$ 9,90',
+      message: licenseExpired
+        ? 'Sua assinatura Premium venceu! Renove agora e continue aproveitando tudo.'
+        : 'Desbloqueie radar, vídeos, eventos e muito mais. Premium por apenas R$ 9,90/mês.',
+      cta: licenseExpired ? 'RENOVAR R$ 9,90' : 'ASSINAR R$ 9,90',
     };
-  }, [clockNow, subscriptionsEnabled, trialEnds, user]);
+  }, [clockNow, subscriptionsEnabled, trialEnds, licenseEnds, user]);
 
   const visibleExtraNavItems = useMemo(
     () => extraNavItems.filter((item) => subscriptionsEnabled || item.path !== '/subscriptions'),

@@ -77,58 +77,67 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
           {/* Cards */}
           <div className="px-5 -mt-5 space-y-3 pb-6">
 
-            {/* ── Option A: Invite (DESTAQUE) ── */}
-            <div className="relative rounded-2xl border-2 border-emerald-500 bg-card shadow-lg p-4 space-y-3">
-              {/* Badge Recomendado */}
-              <div className="absolute -top-3 left-4 flex items-center gap-1 rounded-full bg-emerald-500 px-3 py-0.5 text-xs font-bold text-white shadow">
+            {/* ── Option A: Subscribe (DESTAQUE) ── */}
+            <div className="relative rounded-2xl border-2 border-primary bg-card shadow-lg p-4 space-y-3">
+              <div className="absolute -top-3 left-4 flex items-center gap-1 rounded-full bg-gradient-to-r from-rose-500 to-primary px-3 py-0.5 text-xs font-bold text-white shadow">
                 <Zap className="w-3 h-3" />
-                Recomendado — 100% grátis
+                Acesso imediato
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <Gift className="w-5 h-5 text-emerald-500" />
-                <span className="font-bold text-base">Indique amigos e ganhe dias grátis</span>
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  <span className="font-bold text-base">Premium</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-2xl font-extrabold">R$ 9,90</span>
+                  <span className="text-xs text-muted-foreground">/mês</span>
+                </div>
               </div>
 
-              {/* Steps de recompensa */}
-              <div className="grid grid-cols-3 gap-2">
-                {INVITE_STEPS.map((step) => {
-                  const reached = progress >= step.invites;
-                  return (
-                    <div
-                      key={step.invites}
-                      className={`rounded-xl border p-2.5 text-center transition-colors ${
-                        reached
-                          ? 'border-emerald-500/60 bg-emerald-500/10'
-                          : progress === step.invites - 1
-                          ? 'border-emerald-400/50 bg-emerald-500/5'
-                          : 'border-border bg-secondary/30'
-                      }`}
-                    >
-                      <div className="flex justify-center mb-1">
-                        {reached ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        ) : (
-                          <UserPlus className={`w-4 h-4 ${progress === step.invites - 1 ? 'text-emerald-500' : 'text-muted-foreground/50'}`} />
-                        )}
-                      </div>
-                      <p className={`text-xs font-bold ${reached ? 'text-emerald-600' : 'text-foreground'}`}>
-                        {step.invites} convite{step.invites > 1 ? 's' : ''}
-                      </p>
-                      <p className={`text-[11px] font-semibold ${reached ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-                        +{step.totalDays} dias
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
+              <ul className="space-y-1.5 text-sm">
+                {[
+                  'Mensagens ilimitadas',
+                  'Radar "Estou Aqui"',
+                  'Ver quem visitou seu perfil',
+                  'Fotos e vídeos exclusivos',
+                  'Criar e participar de eventos',
+                ].map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span className="text-foreground">{f}</span>
+                  </li>
+                ))}
+              </ul>
 
-              <p className="text-xs text-muted-foreground">
-                Cada indicado precisa completar o perfil, enviar mensagem ou curtir um perfil nos primeiros 7 dias.
+              <Button
+                className="w-full py-5 gap-2 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 shadow-glow"
+                onClick={handleGoPlans}
+              >
+                <Crown className="w-5 h-5" />
+                Assinar agora — R$ 9,90/mês
+              </Button>
+
+              <p className="text-[11px] text-muted-foreground text-center">
+                Pagamento seguro via PIX. Cancele quando quiser, sem fidelidade.
               </p>
+            </div>
 
-              {/* Progress bar */}
-              {progress < target && (
+            {/* Divider */}
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex-1 border-t" />
+              ou ganhe grátis
+              <div className="flex-1 border-t" />
+            </div>
+
+            {/* ── Option B: Invite ── */}
+            <div className="rounded-2xl border bg-card shadow-sm p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Gift className="w-5 h-5 text-emerald-500" />
+                <span className="font-semibold">Indique amigos e ganhe dias grátis</span>
+              </div>
+
+              {progress < target ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-1 text-muted-foreground">
@@ -152,8 +161,7 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
                     </p>
                   )}
                 </div>
-              )}
-              {progress >= target && (
+              ) : (
                 <p className="text-xs text-emerald-600 font-medium flex items-center gap-1">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Você atingiu a meta! Acesse Convites para resgatar.
@@ -161,42 +169,12 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
               )}
 
               <Button
-                className="w-full gap-2 bg-emerald-500 hover:bg-emerald-600 text-white"
+                variant="outline"
+                className="w-full gap-2 border-emerald-400/40 text-emerald-600 hover:bg-emerald-500/10"
                 onClick={handleGoInvites}
               >
                 <UserPlus className="w-4 h-4" />
-                {remaining > 0 ? `Convidar agora (faltam ${remaining})` : 'Ver meus convites'}
-              </Button>
-            </div>
-
-            {/* Divider */}
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <div className="flex-1 border-t" />
-              ou prefira assinar
-              <div className="flex-1 border-t" />
-            </div>
-
-            {/* ── Option B: Subscribe ── */}
-            <div className="rounded-2xl border bg-card shadow-sm p-4 space-y-3">
-              <div className="flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-500" />
-                <span className="font-semibold">Assinar o Premium</span>
-              </div>
-              <ul className="space-y-1 text-sm text-muted-foreground">
-                {['Mensagens ilimitadas', 'Radar "Estou Aqui"', 'Ver quem visitou seu perfil', 'Fotos e vídeos exclusivos'].map((f) => (
-                  <li key={f} className="flex items-center gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={handleGoPlans}
-              >
-                Ver planos
-                <ArrowRight className="w-4 h-4" />
+                {remaining > 0 ? `Convidar amigos (faltam ${remaining})` : 'Ver meus convites'}
               </Button>
             </div>
           </div>
