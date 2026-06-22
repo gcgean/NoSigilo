@@ -464,6 +464,14 @@ export const chatService = {
     const response = await apiClient.delete(`/messages/${messageId}`, { data: { forEveryone } });
     return response.data;
   },
+
+  reactToMessage: async (
+    messageId: string,
+    reaction: 'heart' | 'love' | 'wow' | 'devil' | 'fire' | 'splash'
+  ) => {
+    const response = await apiClient.post(`/messages/${messageId}/reaction`, { reaction });
+    return response.data as { reaction: string | null };
+  },
 };
 
 // Likes & Comments Service

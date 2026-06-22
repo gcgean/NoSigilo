@@ -7819,7 +7819,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
-             m.deleted_for_all, m.deleted_by_ids, m.story_id,
+             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction,
              med.filename as media_filename, med.mime_type as media_mime_type,
              smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
              s.text as story_text, s.background as story_background
@@ -7859,6 +7859,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
             text: m.story_text ?? null,
             background: m.story_background ?? null,
           },
+          reaction: deletedForMe ? null : (m.reaction ?? null),
           createdAt: m.created_at,
           isRead: !!m.is_read,
           isDeletedForAll: deletedForAll,
@@ -7912,6 +7913,81 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     io?.to(msg.conversation_id).emit('message.viewed', { messageId, conversationId: msg.conversation_id });
 
     res.json({ ok: true });
+  });
+
+  // POST /api/messages/:messageId/reaction — reagir/desreagir a uma mensagem do chat
+  // (estilo Instagram), com as mesmas reações "safadas" do feed. Toggle por reação.
+  app.post('/api/messages/:messageId/reaction', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const messageId = req.params.messageId;
+    const reactionSchema = z.object({
+      reaction: z.enum(['heart', 'love', 'wow', 'devil', 'fire', 'splash']).optional(),
+    });
+    const parsed = reactionSchema.safeParse(req.body || {});
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+
+    const msg = (await queryOne(
+      db,
+      'SELECT id, conversation_id, sender_id, COALESCE(reaction, \'\') AS reaction FROM messages WHERE id = ?',
+      [messageId]
+    )) as any;
+    if (!msg) { res.status(404).json({ error: 'not_found' }); return; }
+
+    // Só participantes da conversa podem reagir
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [String(msg.conversation_id)])) as any;
+    if (!conv || (String(conv.user_a_id) !== userId && String(conv.user_b_id) !== userId)) {
+      res.status(403).json({ error: 'forbidden' });
+      return;
+    }
+    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
+    const requested = parsed.data.reaction || 'heart';
+    const current = String(msg.reaction || '');
+    // Toggle: mesma reação → remove; reação diferente (ou vazia) → aplica.
+    const nextReaction = current === requested ? null : requested;
+    await run(db, 'UPDATE messages SET reaction = ? WHERE id = ?', [nextReaction, messageId]);
+    await persist();
+
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(String(msg.conversation_id)).emit('message.reaction', {
+      messageId,
+      conversationId: String(msg.conversation_id),
+      reaction: nextReaction,
+      reactorId: userId,
+    });
+
+    // Notifica o autor da mensagem quando alguém reage (não no toggle-off, nem na própria msg)
+    if (nextReaction && String(msg.sender_id) !== userId) {
+      try {
+        const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+        const actorName = actor?.name ? String(actor.name) : 'Alguém';
+        const emoji = ({ heart: '💜', love: '😍', wow: '🤤', devil: '😈', fire: '🔥', splash: '💦' } as Record<string, string>)[nextReaction] || '💜';
+        await createNotification({ db, io }, {
+          userId: String(msg.sender_id),
+          type: 'message.reaction',
+          title: `${emoji} Reagiram à sua mensagem`,
+          description: `${actorName} reagiu ${emoji} à sua mensagem.`,
+          dataJson: { conversationId: String(msg.conversation_id), messageId, actorId: userId, actorName, reaction: nextReaction },
+        });
+        await sendPushToUser({ db, env }, {
+          userId: String(msg.sender_id),
+          payload: {
+            title: `${emoji} ${actorName}`,
+            body: `Reagiu ${emoji} à sua mensagem.`,
+            url: `/chat?conversationId=${encodeURIComponent(String(msg.conversation_id))}`,
+            tag: `chat-reaction:${messageId}`,
+            data: { conversationId: String(msg.conversation_id), messageId },
+          },
+        });
+      } catch (err) {
+        console.error('[messages/reaction] notification failed', err);
+      }
+    }
+
+    res.json({ reaction: nextReaction });
   });
 
   app.delete('/api/messages/:messageId', requireAuth(env, db), async (req, res) => {

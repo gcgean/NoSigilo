@@ -19,6 +19,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { backgroundCss } from '@/lib/storyBackgrounds';
+import { PHOTO_REACTIONS, REACTION_EMOJI, type PhotoReaction } from '@/lib/reactions';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
@@ -100,6 +101,7 @@ type Message = {
   isDeletedForAll?: boolean;
   isDeletedForMe?: boolean;
   replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null; text?: string | null; background?: string | null } | null;
+  reaction?: string | null;
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
@@ -608,17 +610,27 @@ export default function Chat() {
       }
     };
 
+    const reactionHandler = ({ messageId, conversationId, reaction }: { messageId: string; conversationId: string; reaction: string | null }) => {
+      if (conversationId === selectedChat) {
+        setMessages(prev => prev.map(m =>
+          m.id === messageId ? { ...m, reaction: reaction ?? null } : m
+        ));
+      }
+    };
+
     on('message.created', handler);
     on('message.new', handler);
     on('message.read', readHandler);
     on('message.viewed', viewedHandler);
     on('message.deleted', deletedHandler);
+    on('message.reaction', reactionHandler);
     return () => {
       off('message.created', handler);
       off('message.new', handler);
       off('message.read', readHandler);
       off('message.viewed', viewedHandler);
       off('message.deleted', deletedHandler);
+      off('message.reaction', reactionHandler);
     };
   }, [on, off, selectedChat, user?.id]);
 
@@ -642,6 +654,23 @@ export default function Chat() {
       toast({ title: 'Não foi possível apagar a mensagem', variant: 'destructive' });
     }
   }, [toast]);
+
+  const handleReactToMessage = useCallback(async (messageId: string, reaction: PhotoReaction) => {
+    setContextMenu(null);
+    const target = messages.find((m) => m.id === messageId);
+    if (!target || target.isSending || target.id.startsWith('temp-')) return;
+    // Otimista: toggle local imediato
+    const optimistic = target.reaction === reaction ? null : reaction;
+    setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reaction: optimistic } : m)));
+    try {
+      const { reaction: saved } = await chatService.reactToMessage(messageId, reaction);
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reaction: saved } : m)));
+    } catch {
+      // Reverte em caso de erro
+      setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, reaction: target.reaction ?? null } : m)));
+      toast({ title: 'Não foi possível reagir', variant: 'destructive' });
+    }
+  }, [messages, toast]);
 
   const handleCopyMessageText = useCallback(async (messageId: string) => {
     const messageToCopy = messages.find((messageItem) => messageItem.id === messageId);
@@ -1438,6 +1467,20 @@ export default function Chat() {
                           </span>
                         )}
                       </div>
+                      {/* Reação safada na bolha — estilo Instagram */}
+                      {!isDeleted && msg.reaction && REACTION_EMOJI[msg.reaction] && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); if (!isMutualMatchMessage) openContextMenu(e, msg.id); }}
+                          className={cn(
+                            'absolute -bottom-3 flex h-7 items-center justify-center rounded-full border border-border bg-background px-1.5 text-sm shadow-md',
+                            isMine ? 'left-1' : 'right-1'
+                          )}
+                          aria-label="Reação"
+                        >
+                          {REACTION_EMOJI[msg.reaction]}
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -1643,9 +1686,10 @@ export default function Chat() {
         const contextMessage = messages.find((m) => m.id === contextMenu.messageId);
         const canCopyText = Boolean(String(contextMessage?.content || '').trim());
         const canDeleteForEveryone = contextMessage?.senderId === user?.id;
-        const menuW = 190;
+        const currentReaction = contextMessage?.reaction ?? null;
+        const menuW = 240;
         const itemCount = 1 + (canCopyText ? 1 : 0) + (canDeleteForEveryone ? 1 : 0);
-        const menuH = itemCount * 56;
+        const menuH = itemCount * 56 + 56; // +56 p/ a barra de reações
         const x = Math.max(8, Math.min(contextMenu.x, vw - menuW - 8));
         const y = Math.max(8, Math.min(contextMenu.y, vh - menuH - 8));
         return (
@@ -1656,9 +1700,26 @@ export default function Chat() {
               onTouchStart={() => setContextMenu(null)}
             />
             <div
-              className="fixed z-50 min-w-[190px] overflow-hidden rounded-xl border bg-background shadow-2xl"
+              className="fixed z-50 min-w-[240px] overflow-hidden rounded-xl border bg-background shadow-2xl"
               style={{ left: x, top: y }}
             >
+              {/* Barra de reações safadas — estilo Instagram */}
+              <div className="flex items-center justify-between gap-0.5 border-b bg-secondary/40 px-2 py-2">
+                {PHOTO_REACTIONS.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    aria-label={`Reagir ${r.emoji}`}
+                    onClick={() => void handleReactToMessage(contextMenu.messageId, r.id)}
+                    className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-full text-xl transition-transform hover:scale-125 active:scale-110',
+                      currentReaction === r.id && 'bg-primary/20 scale-110 ring-2 ring-primary/40'
+                    )}
+                  >
+                    {r.emoji}
+                  </button>
+                ))}
+              </div>
               {canCopyText && (
                 <button
                   type="button"
