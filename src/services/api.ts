@@ -351,7 +351,7 @@ export type ActiveNowProfile = {
   reason: 'posted' | 'radar' | 'online';
 };
 
-export type TopWeekPost = {
+export type TopDayPost = {
   id: string;
   rank: number;
   likeCount: number;
@@ -372,8 +372,8 @@ export const radarService = {
     return response.data;
   },
 
-  getTopWeek: async (): Promise<{ posts: TopWeekPost[] }> => {
-    const response = await apiClient.get('/feed/top-week');
+  getTopDay: async (): Promise<{ posts: TopDayPost[] }> => {
+    const response = await apiClient.get('/feed/top-day');
     return response.data;
   },
 

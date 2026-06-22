@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Crown } from 'lucide-react';
-import { radarService, type TopWeekPost } from '@/services/api';
+import { radarService, type TopDayPost } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 
@@ -12,17 +12,17 @@ const RANK_STYLE: Record<number, string> = {
 };
 
 /**
- * Régua horizontal "Top da Semana": posts mais curtidos dos últimos 7 dias.
- * Prova social no topo do feed — tocar abre o post.
+ * Régua horizontal "Top do Dia": posts mais curtidos das últimas 24h.
+ * Prova social no topo do feed — tocar abre o post. Renova diariamente.
  */
-export default function TopWeekBar() {
+export default function TopDayBar() {
   const navigate = useNavigate();
-  const [posts, setPosts] = useState<TopWeekPost[]>([]);
+  const [posts, setPosts] = useState<TopDayPost[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
-    radarService.getTopWeek()
+    radarService.getTopDay()
       .then((res) => { if (active) setPosts(res.posts); })
       .catch(() => { if (active) setPosts([]); })
       .finally(() => { if (active) setLoaded(true); });
@@ -36,7 +36,7 @@ export default function TopWeekBar() {
     <div className="mb-3 sm:mb-4">
       <div className="mb-2 flex items-center gap-1.5 px-0.5">
         <Crown className="h-4 w-4 text-amber-400" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top da Semana</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top do Dia</span>
         <span className="text-xs text-muted-foreground/60">· mais curtidos</span>
       </div>
 

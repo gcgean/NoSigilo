@@ -12,8 +12,8 @@ export function getNotificationHref(notification: any): string {
   if (type === 'post.liked' && postId) return `/feed?postId=${encodeURIComponent(postId)}`;
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
-  // Top da Semana — leva ao próprio post em destaque
-  if (type === 'feed.top_week') return postId ? `/feed?postId=${encodeURIComponent(postId)}` : '/feed';
+  // Top do Dia (e Top da Semana legado) — leva ao próprio post em destaque
+  if (type === 'feed.top_day' || type === 'feed.top_week') return postId ? `/feed?postId=${encodeURIComponent(postId)}` : '/feed';
 
   // Stories — leva à área de stories (o dono vê reações/comentários do seu story)
   if (type === 'story.liked' || type === 'story.hot' || type === 'story.comment') {

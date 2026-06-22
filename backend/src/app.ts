@@ -4026,11 +4026,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ profiles: out });
   });
 
-  // GET /api/feed/top-week — posts mais curtidos dos últimos 7 dias (com mídia),
-  // filtrados pelo interesse do viewer. Alimenta a régua "Top da Semana" no feed.
-  app.get('/api/feed/top-week', requireAuth(env, db), async (req, res) => {
+  // GET /api/feed/top-day — posts mais curtidos das últimas 24h (com mídia).
+  // Vitrine global no topo do feed; renova diariamente para gerar mais dinâmica.
+  app.get('/api/feed/top-day', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
-    const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString();
 
     const rows = (await queryAll(
       db,
@@ -4054,10 +4054,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          )
        ORDER BY like_count DESC, p.created_at DESC
        LIMIT 40`,
-      [weekAgo, userId, userId]
+      [dayAgo, userId, userId]
     )) as any[];
 
-    // Top da Semana é vitrine global: mostra para todos, independente do
+    // Top do Dia é vitrine global: mostra para todos, independente do
     // interesse (looking_for) de quem vê. Exige pelo menos 1 curtida.
     const filtered = rows
       .filter((r) => Number(r.like_count || 0) > 0)
