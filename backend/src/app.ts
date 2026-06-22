@@ -4171,9 +4171,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const storyId = req.params.id;
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
     if (!story || story.user_id !== userId) { res.status(403).json({ error: 'forbidden' }); return; }
-    const user = (await queryOne(db, 'SELECT is_premium, hub_access_status FROM users WHERE id = ?', [userId])) as any;
-    const isPremium = Number(user?.is_premium || 0) === 1 || user?.hub_access_status === 'trial';
-    if (!isPremium) { res.status(403).json({ error: 'premium_required' }); return; }
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const userRow = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
+    if (!hasPremiumAccess(userRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) { res.status(403).json({ error: 'premium_required' }); return; }
     const rows = (await queryAll(
       db,
       `SELECT u.id, u.name,
@@ -4287,9 +4287,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const storyId = req.params.id;
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
     if (!story || story.user_id !== userId) { res.status(403).json({ error: 'forbidden' }); return; }
-    const user = (await queryOne(db, 'SELECT is_premium, hub_access_status FROM users WHERE id = ?', [userId])) as any;
-    const isPremium = Number(user?.is_premium || 0) === 1 || user?.hub_access_status === 'trial';
-    if (!isPremium) { res.status(403).json({ error: 'premium_required' }); return; }
+    const subscriptionsEnabled2 = await getSubscriptionsEnabled(db);
+    const userRow2 = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
+    if (!hasPremiumAccess(userRow2, subscriptionsEnabled2, env.BILLING_TEST_EMAILS)) { res.status(403).json({ error: 'premium_required' }); return; }
     const rows = (await queryAll(
       db,
       `SELECT sc.id, sc.text, sc.created_at,

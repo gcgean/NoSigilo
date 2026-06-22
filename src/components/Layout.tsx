@@ -212,28 +212,27 @@ export default function Layout() {
     if (!user) return null;
     if (!subscriptionsEnabled) return null;
 
-    if (!user.isPremium) {
-      if (trialEnds === null) {
+    const hasAccess = hasPremiumAccess(user);
+
+    if (hasAccess) {
+      if (user.isPremium && licenseEnds !== null) {
+        const diff = licenseEnds - clockNow;
         return {
           href: '/subscriptions',
-          tone: 'danger',
-          title: 'Seu acesso nao esta ativo',
-          label: 'Acesso inativo',
+          tone: diff <= 24 * 60 * 60 * 1000 ? 'danger' : 'premium',
+          title: `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
+          label: `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
         };
       }
-      const expiresSoon = trialEnds - clockNow <= 24 * 60 * 60 * 1000;
-      return {
-        href: '/subscriptions',
-        tone: expiresSoon ? 'danger' : 'muted',
-        title: trialEnds <= clockNow ? 'Seu acesso grátis expirou' : `Acesso grátis: ${formatRemainingTime(trialEnds, clockNow)}`,
-        label: trialEnds <= clockNow ? 'Acesso expirado' : formatRemainingTime(trialEnds, clockNow),
-      };
-    }
-
-    if (licenseEnds === null) {
-      // Premium ativo sem data de vencimento conhecida (ex.: ativação manual,
-      // conta de teste ou webhook sem licenseEndAt). Não é um erro — mostramos
-      // o status premium de forma positiva, sem alarme de "regularize".
+      if (trialEnds !== null && trialEnds > clockNow) {
+        const expiresSoon = trialEnds - clockNow <= 24 * 60 * 60 * 1000;
+        return {
+          href: '/subscriptions',
+          tone: expiresSoon ? 'danger' : 'muted',
+          title: `Acesso grátis: ${formatRemainingTime(trialEnds, clockNow)}`,
+          label: formatRemainingTime(trialEnds, clockNow),
+        };
+      }
       return {
         href: '/subscriptions',
         tone: 'premium',
@@ -241,13 +240,30 @@ export default function Layout() {
         label: 'Assinante Premium',
       };
     }
-    const diff = licenseEnds - clockNow;
+
+    if (user.isPremium && licenseEnds !== null && licenseEnds <= clockNow) {
+      return {
+        href: '/subscriptions',
+        tone: 'danger',
+        title: 'Sua licença premium expirou — renove agora',
+        label: 'Licença expirada',
+      };
+    }
+
+    if (trialEnds !== null) {
+      return {
+        href: '/subscriptions',
+        tone: 'danger',
+        title: trialEnds <= clockNow ? 'Seu acesso grátis expirou' : `Acesso grátis: ${formatRemainingTime(trialEnds, clockNow)}`,
+        label: trialEnds <= clockNow ? 'Acesso expirado' : formatRemainingTime(trialEnds, clockNow),
+      };
+    }
 
     return {
       href: '/subscriptions',
-      tone: diff <= 24 * 60 * 60 * 1000 ? 'danger' : 'premium',
-      title: diff <= 0 ? 'Sua licença premium expirou' : `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
-      label: diff <= 0 ? 'Licença expirada' : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
+      tone: 'danger',
+      title: 'Seu acesso não está ativo',
+      label: 'Acesso inativo',
     };
   }, [clockNow, licenseEnds, subscriptionsEnabled, trialEnds, user]);
 
@@ -613,7 +629,7 @@ export default function Layout() {
               <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
                 <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Ver planos">
                   <Crown className="h-4.5 w-4.5 text-gold" />
-                  {!user?.isPremium ? (
+                  {!hasPremiumAccess(user) ? (
                     <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
                   ) : null}
                 </Button>
@@ -624,7 +640,7 @@ export default function Layout() {
               <div
                 className={cn(
                   'rounded-full transition-all',
-                  user?.isPremium
+                  hasPremiumAccess(user)
                     ? 'bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 p-[3px] shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_10px_24px_rgba(245,158,11,0.28)]'
                     : ''
                 )}
