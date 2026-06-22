@@ -88,6 +88,7 @@ export default function Subscriptions() {
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState<boolean | null>(null);
   const [referralValidated, setReferralValidated] = useState<number | null>(null);
   const [hubBanner, setHubBanner] = useState<string | null>(user?.hubBanner ?? null);
+  const preCheckoutLicenseRef = useRef<string | null>(null);
 
   // Billing form (inline, no dialog)
   const [billingLegalName, setBillingLegalName] = useState('');
@@ -129,15 +130,8 @@ export default function Subscriptions() {
           } else {
             setSubscriptionsEnabled(true);
           }
-          const normalizedAccessStatus = String(status?.accessStatus || '').toLowerCase();
-          const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true;
-          if (hasActiveAccess) {
-            const me = await authService.getMe();
-            if (!cancelled) {
-              updateUser(me);
-              setCheckoutResult((prev) => prev ? { ...prev, status: 'paid' } : prev);
-            }
-          }
+          const me = await authService.getMe();
+          if (!cancelled) updateUser(me);
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -184,9 +178,17 @@ export default function Subscriptions() {
       setHubBanner(status?.banner ?? null);
       const me = await authService.getMe();
       updateUser(me);
+
+      const newLicenseEnd = status?.licenseEndAt || me?.hubLicenseEndAt || null;
+      const preLicense = preCheckoutLicenseRef.current;
+      const licenseExtended = !!newLicenseEnd && (!preLicense || new Date(newLicenseEnd) > new Date(preLicense));
+
       const normalizedAccessStatus = String(status?.accessStatus || me?.hubAccessStatus || '').toLowerCase();
-      const hasActiveAccess = normalizedAccessStatus === 'licensed' || status?.canAccess === true || !!me?.isPremium;
-      if (hasActiveAccess) {
+      const isLicensed = normalizedAccessStatus === 'licensed' || status?.canAccess === true;
+      const hasNewPayment = isLicensed && licenseExtended;
+
+      if (hasNewPayment) {
+        preCheckoutLicenseRef.current = newLicenseEnd;
         setCheckoutResult((prev) => prev ? { ...prev, status: 'paid' } : prev);
         if (!silent) toast({ title: 'Pagamento confirmado! 🎉', description: 'Sua assinatura foi ativada com sucesso.' });
       } else if (!silent) {
@@ -207,6 +209,7 @@ export default function Subscriptions() {
     }
     setIsCheckingOut(true);
     setCheckoutResult(null);
+    preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, 'PIX', {
         billingLegalName: billingLegalName.trim(),

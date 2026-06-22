@@ -53,6 +53,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const pixRef = useRef<HTMLDivElement>(null);
+  const preCheckoutLicenseRef = useRef<string | null>(null);
 
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
@@ -126,9 +127,17 @@ export default function SubscribeModal({ open, onClose }: Props) {
       const status = await subscriptionsService.getStatus();
       const me = await authService.getMe();
       updateUser(me);
+
+      const newLicenseEnd = status?.licenseEndAt || me?.hubLicenseEndAt || null;
+      const preLicense = preCheckoutLicenseRef.current;
+      const licenseExtended = !!newLicenseEnd && (!preLicense || new Date(newLicenseEnd) > new Date(preLicense));
+
       const normalizedStatus = String(status?.accessStatus || me?.hubAccessStatus || '').toLowerCase();
-      const active = normalizedStatus === 'licensed' || status?.canAccess === true || !!me?.isPremium;
-      if (active) {
+      const isLicensed = normalizedStatus === 'licensed' || status?.canAccess === true;
+      const hasNewPayment = isLicensed && licenseExtended;
+
+      if (hasNewPayment) {
+        preCheckoutLicenseRef.current = newLicenseEnd;
         setCheckout((prev) => prev ? { ...prev, status: 'paid' } : prev);
         if (!silent) toast({ title: '🎉 Pagamento confirmado!', description: 'Sua assinatura foi ativada.' });
       } else if (!silent) {
@@ -148,6 +157,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
     }
     setIsCheckingOut(true);
     setCheckout(null);
+    preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, 'PIX', {
         billingLegalName: billingLegalName.trim(),
