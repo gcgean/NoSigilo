@@ -22,11 +22,19 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { promoterService, promoterSupportService, type PromoterProfile, type PromoterCommission, type PromoterStats, type SupportMessage } from '@/services/api';
+import { promoterService, promoterSupportService, type PromoterProfile, type PromoterCommission, type PromoterStats, type PromoterReferredUser, type SupportMessage } from '@/services/api';
 import { invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import InviteModal from '@/components/InviteModal';
-import { getSiteUrl } from '@/utils/serverUrl';
+import { getSiteUrl, resolveServerUrl } from '@/utils/serverUrl';
+
+const REFERRED_STATUS_META: Record<string, { label: string; color: string }> = {
+  subscriber:  { label: 'Assinante',  color: 'bg-emerald-500/10 text-emerald-600 border-emerald-400/30' },
+  trial:       { label: 'Trial',      color: 'bg-blue-500/10 text-blue-600 border-blue-400/30' },
+  expired:     { label: 'Expirado',   color: 'bg-amber-500/10 text-amber-600 border-amber-400/30' },
+  deactivated: { label: 'Desativado', color: 'bg-muted text-muted-foreground border-border' },
+  banned:      { label: 'Banido',     color: 'bg-red-500/10 text-red-500 border-red-400/30' },
+};
 
 const COMMISSION_RATE = 0.20;
 const SUBSCRIPTION_PRICE = 9.90;
@@ -55,8 +63,10 @@ export default function Promoter() {
   const [promoter, setPromoter] = useState<PromoterProfile | null>(null);
   const [stats, setStats] = useState<PromoterStats | null>(null);
   const [commissions, setCommissions] = useState<PromoterCommission[]>([]);
+  const [referredUsers, setReferredUsers] = useState<PromoterReferredUser[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAllCommissions, setShowAllCommissions] = useState(false);
+  const [showAllReferred, setShowAllReferred] = useState(false);
 
   // Support chat
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
@@ -89,6 +99,7 @@ export default function Promoter() {
         ]);
         setStats(dash.stats);
         setCommissions(dash.commissions);
+        setReferredUsers(dash.referredUsers ?? []);
         setSupportMessages(supportData.messages);
         const active = Array.isArray(invites) ? invites.find((i: any) => i.status === 'created') : null;
         if (active?.token) {
@@ -143,6 +154,11 @@ export default function Promoter() {
   };
 
   const visibleCommissions = showAllCommissions ? commissions : commissions.slice(0, 5);
+  const visibleReferred = showAllReferred ? referredUsers : referredUsers.slice(0, 8);
+  const referredCounts = referredUsers.reduce(
+    (acc, u) => { acc[u.status] = (acc[u.status] || 0) + 1; return acc; },
+    {} as Record<string, number>
+  );
 
   const handleSendSupport = async () => {
     const msg = supportInput.trim();
@@ -417,6 +433,72 @@ export default function Promoter() {
             </div>
           </div>
         )}
+
+        {/* Seus convidados — status de cada usuário que entrou pelo seu link */}
+        <div className="glass rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Seus convidados
+            </h2>
+            <span className="text-xs text-muted-foreground">{referredUsers.length} no total</span>
+          </div>
+
+          {/* Resumo por status */}
+          {referredUsers.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {(['subscriber', 'trial', 'expired', 'deactivated', 'banned'] as const).map((s) => (
+                referredCounts[s] ? (
+                  <span key={s} className={`text-xs rounded-full px-2.5 py-1 border font-medium ${REFERRED_STATUS_META[s].color}`}>
+                    {REFERRED_STATUS_META[s].label}: {referredCounts[s]}
+                  </span>
+                ) : null
+              ))}
+            </div>
+          )}
+
+          {referredUsers.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Ninguém entrou pelo seu link ainda. Compartilhe seu convite para começar!
+            </p>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {visibleReferred.map((u) => {
+                  const meta = REFERRED_STATUS_META[u.status] ?? REFERRED_STATUS_META.expired;
+                  return (
+                    <div key={u.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
+                      <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary">
+                        {u.avatar ? (
+                          <img src={resolveServerUrl(u.avatar)} alt={u.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted-foreground">
+                            {(u.name || '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{u.name || 'Usuário'}</p>
+                        <p className="text-xs text-muted-foreground">Entrou em {formatDate(u.joinedAt)}</p>
+                      </div>
+                      <span className={`shrink-0 text-xs rounded-full px-2 py-0.5 border font-medium ${meta.color}`}>
+                        {meta.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {referredUsers.length > 8 && (
+                <button
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mx-auto"
+                  onClick={() => setShowAllReferred((v) => !v)}
+                >
+                  {showAllReferred ? <><ChevronUp className="w-4 h-4" /> Ver menos</> : <><ChevronDown className="w-4 h-4" /> Ver todos ({referredUsers.length})</>}
+                </button>
+              )}
+            </>
+          )}
+        </div>
 
         {/* Commission list */}
         {commissions.length > 0 && (

@@ -2712,6 +2712,48 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const approved = commissions.filter((c) => c.status === 'approved');
     const paid = commissions.filter((c) => c.status === 'paid');
     const sum = (arr: any[]) => arr.reduce((s, c) => s + Number(c.commission_amount || 0), 0);
+
+    // Usuários que entraram pelos links deste promotor, com o status atual de cada um
+    // (assinante / trial / expirado / desativado / banido) para o promotor acompanhar.
+    const referredRows = (await queryAll(
+      db,
+      `SELECT inv.id, inv.name, inv.email, inv.avatar, inv.is_banned, inv.is_deactivated,
+              inv.is_premium, inv.hub_license_end_at, inv.trial_ends_at, e.created_at AS joined_at
+       FROM invite_link_entries e
+       JOIN invite_links l ON l.id = e.invite_link_id
+       JOIN users inv ON inv.id = e.invitee_user_id
+       WHERE l.inviter_user_id = ?
+       ORDER BY e.created_at DESC`,
+      [userId]
+    )) as any[];
+
+    const nowMs = Date.now();
+    const parseMs = (v: any) => { if (!v) return null; const t = new Date(String(v)).getTime(); return Number.isNaN(t) ? null : t; };
+    const computeStatus = (r: any): 'subscriber' | 'trial' | 'expired' | 'deactivated' | 'banned' => {
+      if (Number(r.is_banned || 0) === 1) return 'banned';
+      if (Number(r.is_deactivated || 0) === 1) return 'deactivated';
+      const lic = parseMs(r.hub_license_end_at);
+      const trial = parseMs(r.trial_ends_at);
+      if (Number(r.is_premium || 0) === 1 && (lic === null || lic > nowMs)) return 'subscriber';
+      if (trial !== null && trial > nowMs) return 'trial';
+      return 'expired';
+    };
+    const seenReferred = new Set<string>();
+    const referredUsers = referredRows
+      .filter((r) => { const id = String(r.id); if (seenReferred.has(id)) return false; seenReferred.add(id); return true; })
+      .map((r) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ? String(r.avatar) : null,
+        status: computeStatus(r),
+        joinedAt: String(r.joined_at || ''),
+        licenseEndAt: r.hub_license_end_at ? String(r.hub_license_end_at) : null,
+      }));
+    const referredCounts = referredUsers.reduce(
+      (acc, u) => { acc[u.status] = (acc[u.status] || 0) + 1; return acc; },
+      {} as Record<string, number>
+    );
+
     res.json({
       promoter: { id: String(pr.id), fullName: String(pr.full_name), pixKey: String(pr.pix_key), status: String(pr.status), activatedAt: String(pr.activated_at) },
       stats: {
@@ -2723,6 +2765,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         approvedCents: sum(approved),
         paidCents: sum(paid),
       },
+      referredCounts,
+      referredUsers,
       commissions: commissions.slice(0, 50).map((c) => ({
         id: String(c.id),
         subscriptionAmount: Number(c.subscription_amount),

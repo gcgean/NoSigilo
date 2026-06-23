@@ -737,6 +737,8 @@ export const invitesService = {
 export type PromoterProfile = { id: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null; status: string; activatedAt: string };
 export type PromoterCommission = { id: string; subscriptionAmount: number; commissionAmount: number; status: string; period: string | null; paidAt: string | null; createdAt: string };
 export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number };
+export type PromoterReferredStatus = 'subscriber' | 'trial' | 'expired' | 'deactivated' | 'banned';
+export type PromoterReferredUser = { id: string; name: string; avatar: string | null; status: PromoterReferredStatus; joinedAt: string; licenseEndAt: string | null };
 
 export const promoterService = {
   activate: async (data: { fullName: string; pixKey: string; whatsapp?: string; contactEmail?: string; acceptTerms: true }) => {
@@ -747,7 +749,7 @@ export const promoterService = {
     const response = await apiClient.get('/promoter/profile');
     return response.data;
   },
-  getDashboard: async (): Promise<{ promoter: PromoterProfile; stats: PromoterStats; commissions: PromoterCommission[] }> => {
+  getDashboard: async (): Promise<{ promoter: PromoterProfile; stats: PromoterStats; commissions: PromoterCommission[]; referredUsers: PromoterReferredUser[]; referredCounts: Record<string, number> }> => {
     const response = await apiClient.get('/promoter/dashboard');
     return response.data;
   },
