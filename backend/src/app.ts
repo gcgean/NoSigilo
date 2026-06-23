@@ -746,7 +746,8 @@ function shouldUseHubBilling(env: Env) {
 async function syncHubAccessForUser(
   db: DbHandle,
   userId: string,
-  result: HubResolveAccessResult & { customerId: string; productId: string }
+  result: HubResolveAccessResult & { customerId: string; productId: string },
+  ctx?: { io?: SocketIOServer; env?: Env }
 ) {
   await run(
     db,
@@ -781,18 +782,19 @@ async function syncHubAccessForUser(
   // polling de /subscriptions/status), não só pelo webhook. Garantimos a comissão
   // aqui também, senão assinaturas confirmadas pelo sync ficam sem comissão.
   if (result.accessStatus === 'licensed') {
-    await ensurePromoterCommission(db, userId);
+    await ensurePromoterCommission(db, userId, 990, 'access_synced', ctx);
   }
 }
 
-// Cria a comissão do promotor para um assinante, se ainda não existir.
-// Idempotente por subscriber_user_id — pode ser chamada várias vezes sem duplicar.
-// Retorna true se criou uma nova comissão.
+// Cria a comissão do promotor para um assinante, se ainda não existir, e notifica
+// o promotor. Idempotente por subscriber_user_id — pode ser chamada várias vezes
+// sem duplicar. Retorna true se criou uma nova comissão.
 async function ensurePromoterCommission(
   db: DbHandle,
   subscriberUserId: string,
   subscriptionAmountCents = 990,
-  eventType = 'access_synced'
+  eventType = 'access_synced',
+  ctx?: { io?: SocketIOServer; env?: Env }
 ): Promise<boolean> {
   // Quem convidou este assinante (via link de convite)?
   const inviteEntry = (await queryOne(
@@ -820,6 +822,41 @@ async function ensurePromoterCommission(
     [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
   );
   console.log(`[promoter] commission created (${eventType}): promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
+
+  // Notifica o promotor: "alguém assinou pelo seu convite" + push.
+  try {
+    const commReais = (commAmount / 100).toFixed(2).replace('.', ',');
+    const title = '💰 Você ganhou uma comissão!';
+    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão.`;
+    await createNotification(
+      { db, io: ctx?.io },
+      {
+        userId: inviterUserId,
+        type: 'promoter.commission',
+        title,
+        description,
+        dataJson: { subscriberUserId, commissionCents: commAmount, period },
+      }
+    );
+    if (ctx?.env) {
+      await sendPushToUser(
+        { db, env: ctx.env },
+        {
+          userId: inviterUserId,
+          payload: {
+            title,
+            body: description,
+            url: '/promoter',
+            tag: `promoter-commission:${subscriberUserId}`,
+            data: { subscriberUserId },
+          },
+        }
+      );
+    }
+  } catch (err) {
+    console.error('[promoter] commission notification failed:', err);
+  }
+
   return true;
 }
 
@@ -2371,9 +2408,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           // Preserve premium access — log warning but don't revoke
           console.warn(`[login] HubBilling returned '${hubResult.accessStatus}' for premium user ${row.id} (license not yet expired) — preserving is_premium=1`);
           // Still sync non-premium fields (customer/product IDs, banner, etc.) but force licensed state
-          await syncHubAccessForUser(db, String(row.id), { ...hubResult, accessStatus: 'licensed' });
+          await syncHubAccessForUser(db, String(row.id), { ...hubResult, accessStatus: 'licensed' }, { io: req.app.get('io') as SocketIOServer | undefined, env });
         } else {
-          await syncHubAccessForUser(db, String(row.id), hubResult);
+          await syncHubAccessForUser(db, String(row.id), hubResult, { io: req.app.get('io') as SocketIOServer | undefined, env });
         }
         await persist();
       } catch (error) {
@@ -9228,7 +9265,7 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
     try {
       const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
-      await syncHubAccessForUser(db, req.auth!.userId, status);
+      await syncHubAccessForUser(db, req.auth!.userId, status, { io: req.app.get('io') as SocketIOServer | undefined, env });
       await persist();
       res.json({ ...status, subscriptionsEnabled });
     } catch (error) {
@@ -9487,7 +9524,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
               db,
               String(user.id),
               Number(payload?.payload?.amount || 990),
-              eventType
+              eventType,
+              { io: req.app.get('io') as SocketIOServer | undefined, env }
             );
             if (created) await persist();
           } catch (err) {

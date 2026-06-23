@@ -37,6 +37,7 @@ export function getNotificationHref(notification: any): string {
   if (type === 'message.reaction' && data.conversationId) return `/chat?conversationId=${encodeURIComponent(String(data.conversationId))}`;
 
   if (type === 'referral.reward') return '/invites';
+  if (type === 'promoter.commission') return '/promoter';
 
   return '/notifications';
 }

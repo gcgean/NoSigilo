@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Award, Bell, Check, Gift, Lock, UserCheck, UserX, Heart, MessageCircle, Star } from 'lucide-react';
+import { Award, Bell, Check, Gift, Lock, UserCheck, UserX, Heart, MessageCircle, Star, BadgeDollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { chatService, invitesService, notificationsService, privatePhotosService } from '@/services/api';
@@ -192,6 +192,7 @@ export default function Notifications() {
             const Icon = (() => {
               const type = notification.type;
               if (type === 'referral.reward') return Gift;
+              if (type === 'promoter.commission') return BadgeDollarSign;
               if (type === 'feed.top_day' || type === 'feed.top_week') return Award;
               if (type === 'story.hot' || type.includes('liked')) return Heart;
               if (type.includes('commented') || type === 'story.comment') return MessageCircle;
