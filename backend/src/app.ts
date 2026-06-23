@@ -776,6 +776,51 @@ async function syncHubAccessForUser(
       userId,
     ]
   );
+
+  // Comissão de promotor: o acesso premium é concedido por ESTE caminho (login +
+  // polling de /subscriptions/status), não só pelo webhook. Garantimos a comissão
+  // aqui também, senão assinaturas confirmadas pelo sync ficam sem comissão.
+  if (result.accessStatus === 'licensed') {
+    await ensurePromoterCommission(db, userId);
+  }
+}
+
+// Cria a comissão do promotor para um assinante, se ainda não existir.
+// Idempotente por subscriber_user_id — pode ser chamada várias vezes sem duplicar.
+// Retorna true se criou uma nova comissão.
+async function ensurePromoterCommission(
+  db: DbHandle,
+  subscriberUserId: string,
+  subscriptionAmountCents = 990,
+  eventType = 'access_synced'
+): Promise<boolean> {
+  // Quem convidou este assinante (via link de convite)?
+  const inviteEntry = (await queryOne(
+    db,
+    `SELECT l.inviter_user_id FROM invite_link_entries e
+     JOIN invite_links l ON l.id = e.invite_link_id
+     WHERE e.invitee_user_id = ? LIMIT 1`,
+    [subscriberUserId]
+  )) as any;
+  if (!inviteEntry) return false;
+
+  const inviterUserId = String(inviteEntry.inviter_user_id);
+  const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
+  if (!promoter) return false;
+
+  const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
+  if (existing) return false;
+
+  const subAmount = Number(subscriptionAmountCents || 990);
+  const commAmount = Math.round(subAmount * 0.20);
+  const period = new Date().toISOString().slice(0, 7);
+  await run(
+    db,
+    'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
+  );
+  console.log(`[promoter] commission created (${eventType}): promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
+  return true;
 }
 
 function fallbackSubscriptionPlans() {
@@ -9433,36 +9478,18 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         );
         await persist();
 
-        // ── Promoter commission on payment.approved ──────────────────────────
-        if (eventType === 'payment.approved') {
+        // ── Promoter commission: paga/ativa licença gera comissão ─────────────
+        // Tanto payment.approved quanto license.activated concedem acesso, então
+        // ambos devem gerar comissão (idempotente por assinante).
+        if (eventType === 'payment.approved' || eventType === 'license.activated') {
           try {
-            const subscriberUserId = String(user.id);
-            const inviteEntry = (await queryOne(
+            const created = await ensurePromoterCommission(
               db,
-              `SELECT l.inviter_user_id FROM invite_link_entries e
-               JOIN invite_links l ON l.id = e.invite_link_id
-               WHERE e.invitee_user_id = ? LIMIT 1`,
-              [subscriberUserId]
-            )) as any;
-            if (inviteEntry) {
-              const inviterUserId = String(inviteEntry.inviter_user_id);
-              const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
-              if (promoter) {
-                const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
-                if (!existing) {
-                  const subAmount = Number(payload?.payload?.amount || 990);
-                  const commAmount = Math.round(subAmount * 0.20);
-                  const period = new Date().toISOString().slice(0, 7);
-                  await run(
-                    db,
-                    'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                    [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
-                  );
-                  await persist();
-                  console.log(`[promoter] commission created: promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
-                }
-              }
-            }
+              String(user.id),
+              Number(payload?.payload?.amount || 990),
+              eventType
+            );
+            if (created) await persist();
           } catch (err) {
             console.error('[promoter] commission error:', err);
           }
