@@ -1071,6 +1071,21 @@ export default function Layout() {
             <Clapperboard className="h-4.5 w-4.5" />
             <span className="max-w-full truncate text-[10px] leading-4">Vídeos</span>
           </NavLink>
+          {/* Atalho para promotor/convites — no desktop fica na sidebar; no mobile
+              precisa de uma entrada fixa. Vai ao painel se já for promotor, senão
+              à landing de ativação. */}
+          <NavLink
+            to={user?.isPromoter ? '/promoter' : '/ganhe'}
+            className={cn(
+              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+              (location.pathname === '/promoter' || location.pathname === '/ganhe' || location.pathname === '/invites')
+                ? "text-amber-500"
+                : "text-amber-500/80 hover:text-amber-500"
+            )}
+          >
+            <BadgeDollarSign className="h-4.5 w-4.5" />
+            <span className="max-w-full truncate text-[10px] leading-4">Ganhe $</span>
+          </NavLink>
         </div>
       </nav>
     </div>
