@@ -360,7 +360,7 @@ export default function Invites() {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">Convite de acesso</span>
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
-                          {invite.status === 'created' ? 'Ativo' : invite.status === 'revoked' ? 'Revogado' : String(invite.status)}
+                          {invite.status === 'revoked' ? 'Revogado' : 'Ativo'}
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                           <Users className="w-3 h-3" />
@@ -385,7 +385,7 @@ export default function Invites() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {invite.status === 'created' ? (
+                      {invite.status !== 'revoked' ? (
                         <>
                           <Button type="button" variant="outline" size="sm" className="gap-2" onClick={() => void handleCopyInvite(invite)}>
                             <Copy className="w-4 h-4" />
@@ -410,7 +410,7 @@ export default function Invites() {
                           Link encerrado
                         </div>
                       ) : null}
-                      {invite.status === 'created' && (invite.entrantsCount || 0) > 0 ? (
+                      {invite.status !== 'revoked' && (invite.entrantsCount || 0) > 0 ? (
                         <div className="inline-flex items-center gap-2 rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-600">
                           <CheckCircle2 className="w-4 h-4" />
                           Convite em uso

@@ -2040,7 +2040,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({
       id: String(invite.id),
       status: String(invite.status),
-      canRegister: String(invite.status) === 'created',
+      // Links são multi-uso: continuam válidos enquanto não forem revogados.
+      canRegister: String(invite.status) !== 'revoked',
       inviter: {
         id: String(invite.inviter_user_id),
         name: String(invite.inviter_name || ''),
@@ -2087,7 +2088,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         res.status(404).json({ error: 'invalid_invite' });
         return;
       }
-      if (String(invite.status) !== 'created') {
+      // Links são multi-uso: só ficam indisponíveis se forem revogados.
+      if (String(invite.status) === 'revoked') {
         res.status(409).json({ error: 'invite_unavailable' });
         return;
       }
@@ -2193,10 +2195,13 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           sameIpAsInviter ? 'same_ip_as_inviter' : null,
         ]
       );
+      // Multi-uso: NÃO mudamos o status para 'approved' (isso tornava o link de
+      // uso único). O link permanece 'created' (ativo) para os próximos cadastros;
+      // só registramos os timestamps de primeiro uso.
       await run(
         db,
-        'UPDATE invite_links SET status = ?, approved_at = COALESCE(approved_at, ?), used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
-        ['approved', createdAt, createdAt, createdAt, String(invite.id)]
+        'UPDATE invite_links SET approved_at = COALESCE(approved_at, ?), used_at = COALESCE(used_at, ?), updated_at = ? WHERE id = ?',
+        [createdAt, createdAt, createdAt, String(invite.id)]
       );
     }
     await persist();
@@ -2559,7 +2564,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).json({ error: 'invite_not_found' });
       return;
     }
-    if (String(invite.status) !== 'created') {
+    if (String(invite.status) === 'revoked') {
       res.status(409).json({ error: 'invite_not_revocable' });
       return;
     }

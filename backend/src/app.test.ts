@@ -119,7 +119,7 @@ describe('nosigilo backend', () => {
     expect(me.body.invitedBy?.name).toBe('Sponsor Principal');
   });
 
-  it('invite-only registration grants immediate access and consumes the invite', async () => {
+  it('invite link is multi-use: stays active and accepts several signups until revoked', async () => {
     const invite = await createInviteFor(ctx, sponsorToken);
 
     const publicInfo = await request(ctx.app).get(`/api/invites/public/${invite.token}`).expect(200);
@@ -140,8 +140,12 @@ describe('nosigilo backend', () => {
     expect(registerResponse.body.user.email).toBe('direto@example.com');
     expect(registerResponse.body.user.invitationStatus).toBe('approved');
 
+    // O link permanece ativo (não vira 'approved'/uso único) após o 1º cadastro.
     const inviteList = await request(ctx.app).get('/api/invites').set('Authorization', `Bearer ${sponsorToken}`).expect(200);
-    expect(inviteList.body.some((item: any) => item.id === invite.id && item.status === 'approved')).toBe(true);
+    expect(inviteList.body.some((item: any) => item.id === invite.id && item.status !== 'revoked')).toBe(true);
+
+    const stillOpen = await request(ctx.app).get(`/api/invites/public/${invite.token}`).expect(200);
+    expect(stillOpen.body.canRegister).toBe(true);
 
     const login = await request(ctx.app)
       .post('/api/auth/login')
@@ -149,11 +153,32 @@ describe('nosigilo backend', () => {
       .expect(200);
     expect(login.body.user.invitedBy?.name).toBe('Sponsor Principal');
 
+    // Segundo cadastro com o MESMO link agora deve funcionar (multi-uso).
     await request(ctx.app)
       .post('/api/auth/register')
       .send({
         name: 'Convite Reutilizado',
         email: 'reutilizado@example.com',
+        password: 'senha123',
+        gender: 'Homem',
+        inviteToken: invite.token,
+      })
+      .expect(201);
+
+    // Após revogar, o link para de aceitar cadastros.
+    await request(ctx.app)
+      .post(`/api/invites/${invite.id}/revoke`)
+      .set('Authorization', `Bearer ${sponsorToken}`)
+      .expect(200);
+
+    const afterRevoke = await request(ctx.app).get(`/api/invites/public/${invite.token}`).expect(200);
+    expect(afterRevoke.body.canRegister).toBe(false);
+
+    await request(ctx.app)
+      .post('/api/auth/register')
+      .send({
+        name: 'Convite Apos Revogacao',
+        email: 'pos-revogacao@example.com',
         password: 'senha123',
         gender: 'Homem',
         inviteToken: invite.token,
