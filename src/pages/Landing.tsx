@@ -317,8 +317,9 @@ export default function Landing() {
             <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${seoOpen ? 'rotate-180' : ''}`} />
           </button>
 
-          {seoOpen && (
-            <div className="mt-6">
+          {/* Conteúdo sempre renderizado no DOM (indexável); o acordeão só controla a altura visível */}
+          <div className={`overflow-hidden transition-all duration-300 ${seoOpen ? 'mt-6 max-h-[1600px]' : 'max-h-0'}`} aria-hidden={!seoOpen}>
+            <div>
               <div className="grid md:grid-cols-2 gap-8 text-sm text-muted-foreground leading-relaxed">
                 <div className="space-y-4">
                   <h3 className="text-base font-semibold text-foreground">Swing e troca de casais em todo o Brasil</h3>
@@ -347,7 +348,7 @@ export default function Landing() {
                 ))}
               </div>
             </div>
-          )}
+          </div>
         </div>
       </section>
 

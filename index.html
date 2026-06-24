@@ -103,8 +103,51 @@
 
   <body>
     <div id="root">
-      <div id="js-loading" style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#999;font-size:14px;">
-        Carregando…
+      <!--
+        Conteúdo estático para indexação (Bing/Google e robôs sem JS).
+        O main.tsx limpa este #root e monta o app React por cima — usuários
+        com JS nunca veem este bloco, mas os buscadores leem o HTML cru.
+      -->
+      <div id="seo-prerender" style="max-width:880px;margin:0 auto;padding:32px 20px;font-family:system-ui,-apple-system,sans-serif;color:#e7e7ea;line-height:1.6;">
+        <header style="text-align:center;margin-bottom:28px;">
+          <h1 style="font-size:28px;font-weight:800;margin:0 0 12px;">NoSigilo.net — Swing, Troca de Casais e Ménage no Brasil</h1>
+          <p style="color:#b9b9c0;margin:0;">A rede social adulta e discreta para casais, mulheres e homens solteiros do meio liberal em todo o Brasil.</p>
+        </header>
+
+        <p>
+          O <strong>NoSigilo.net</strong> é uma rede social adulta feita para quem vive o
+          <strong>swing no Brasil</strong>: casais liberais, mulheres solteiras e homens solteiros
+          que buscam <strong>troca de casais</strong>, <strong>ménage</strong> e encontros liberais
+          com sigilo, privacidade e respeito. Cadastro gratuito, perfis com fotos públicas e privadas,
+          mensagens com visualização única e a função "Estou Aqui" para encontros próximos.
+        </p>
+
+        <h2 style="font-size:20px;font-weight:700;margin:24px 0 8px;">Por que entrar no NoSigilo</h2>
+        <ul>
+          <li><strong>Ambiente selecionado e discreto</strong> — voltado para o meio liberal brasileiro.</li>
+          <li><strong>Fotos públicas e privadas</strong> — você controla quem vê o que é mais íntimo.</li>
+          <li><strong>Mensagens privadas com visualização única</strong> — conteúdos que somem depois de vistos.</li>
+          <li><strong>Função "Estou Aqui"</strong> — encontre casais e singles próximos em tempo real.</li>
+          <li><strong>Matchs com química de verdade</strong> — perfis de casais, mulheres e homens do meio liberal.</li>
+        </ul>
+
+        <h2 style="font-size:20px;font-weight:700;margin:24px 0 8px;">Swing e troca de casais em todo o Brasil</h2>
+        <p>
+          Comunidades de <strong>swing</strong> e <strong>troca de casais</strong> são ativas em todo o país —
+          São Paulo, Rio de Janeiro, Belo Horizonte, Curitiba, Porto Alegre, Brasília, Salvador, Recife,
+          Fortaleza e muitas outras cidades. O NoSigilo conecta o meio liberal brasileiro num só lugar,
+          com privacidade de verdade e longe da exposição das redes sociais comuns.
+        </p>
+
+        <p>
+          <a href="/register" style="color:#eb4778;font-weight:700;">Criar conta grátis</a> ·
+          <a href="/login" style="color:#eb4778;">Entrar</a> ·
+          <a href="/subscriptions" style="color:#eb4778;">Planos</a> ·
+          <a href="/terms" style="color:#9a9aa2;">Termos</a> ·
+          <a href="/privacy" style="color:#9a9aa2;">Privacidade</a>
+        </p>
+
+        <p id="js-loading" style="text-align:center;color:#777;font-size:13px;margin-top:24px;">Carregando…</p>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
