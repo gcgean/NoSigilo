@@ -53,7 +53,8 @@ const STATES = [
 // ============================================================
 // ENABLED_STATES: slugs dos estados a gerar. Use a string 'all' para os 27.
 //   Ex.: ['sao-paulo', 'rio-de-janeiro']  ou  'all'
-const ENABLED_STATES = ['ceara', 'rio-grande-do-norte', 'rondonia', 'amazonas', 'maranhao'];
+// 'all' = todos os 27 estados (Norte, Nordeste, Centro-Oeste, Sudeste e Sul).
+const ENABLED_STATES = 'all';
 
 // ENABLED_CITIES: cidades com página própria em /swing/{estado}/{cidade}/.
 //   Chave = slug do estado (deve estar habilitado acima).
@@ -66,6 +67,31 @@ const ENABLED_CITIES = {
   'rondonia': [{ name: 'Porto Velho', slug: 'porto-velho' }],
   'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
   'maranhao': [{ name: 'São Luís', slug: 'sao-luis' }],
+  'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
+  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
+  'paraiba': [{ name: 'João Pessoa', slug: 'joao-pessoa' }],
+  'pernambuco': [{ name: 'Recife', slug: 'recife' }],
+  'piaui': [{ name: 'Teresina', slug: 'teresina' }],
+  'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
+  'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
+  'amapa': [{ name: 'Macapá', slug: 'macapa' }],
+  'para': [{ name: 'Belém', slug: 'belem' }],
+  'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
+  'tocantins': [{ name: 'Palmas', slug: 'palmas' }],
+  // Centro-Oeste
+  'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
+  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
+  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
+  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
+  // Sudeste
+  'espirito-santo': [{ name: 'Vitória', slug: 'vitoria' }],
+  'minas-gerais': [{ name: 'Belo Horizonte', slug: 'belo-horizonte' }],
+  'rio-de-janeiro': [{ name: 'Rio de Janeiro', slug: 'rio-de-janeiro' }],
+  'sao-paulo': [{ name: 'São Paulo', slug: 'sao-paulo' }],
+  // Sul
+  'parana': [{ name: 'Curitiba', slug: 'curitiba' }],
+  'rio-grande-do-sul': [{ name: 'Porto Alegre', slug: 'porto-alegre' }],
+  'santa-catarina': [{ name: 'Florianópolis', slug: 'florianopolis' }],
 };
 // ============================================================
 
