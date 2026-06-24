@@ -333,7 +333,7 @@ function getReferrerDomain(referrer: string | null) {
 function inferOriginType(referrerDomain: string | null, utmSource: string | null) {
   const source = String(utmSource || referrerDomain || '').toLowerCase();
   if (!source) return 'direct';
-  if (source.includes('nosigilo.baselider.com.br')) return 'internal';
+  if (source.includes('nosigilo.net') || source.includes('nosigilo.baselider.com.br')) return 'internal';
   if (/(google|bing|yahoo|duckduckgo|search)/.test(source)) return 'search';
   if (/(instagram|facebook|fb|tiktok|x\.com|twitter|telegram|whatsapp|youtube|linkedin|kwai)/.test(source)) return 'social';
   if (/(email|mail|newsletter)/.test(source)) return 'email';
