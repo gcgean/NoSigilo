@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, '..', 'dist');
 const SITE = 'https://nosigilo.net';
+// Domínio das páginas regionais (estado + cidade + hub /swing/).
+// Apenas estas páginas usam este domínio; o resto do site segue em SITE.
+const REGIONAL = 'https://nosigilo.baselider.com.br';
 const TODAY = new Date().toISOString().slice(0, 10);
 
 /** Estados brasileiros: nome, slug, capital, cidades-chave e região. */
@@ -89,7 +92,7 @@ function statesNav(currentSlug) {
   return SELECTED_STATES.map((s) =>
     s.slug === currentSlug
       ? `<strong style="color:#eb4778;">${esc(s.name)}</strong>`
-      : `<a href="${SITE}/swing/${s.slug}/" style="color:#b9b9c0;">${esc(s.name)}</a>`
+      : `<a href="${REGIONAL}/swing/${s.slug}/" style="color:#b9b9c0;">${esc(s.name)}</a>`
   ).join(' · ');
 }
 
@@ -102,11 +105,11 @@ function statePage(st) {
   const cities = list(st.cities);
   const cityPages = citiesOf(st.slug);
   const cityLinksBlock = cityPages.length
-    ? `\n      <h2>Cidades em ${esc(st.name)}</h2>\n      <div class="states">${cityPages.map((c) => `<a href="${SITE}/swing/${st.slug}/${c.slug}/" style="color:#eb4778;">Swing em ${esc(c.name)}</a>`).join(' · ')}</div>\n`
+    ? `\n      <h2>Cidades em ${esc(st.name)}</h2>\n      <div class="states">${cityPages.map((c) => `<a href="${REGIONAL}/swing/${st.slug}/${c.slug}/" style="color:#eb4778;">Swing em ${esc(c.name)}</a>`).join(' · ')}</div>\n`
     : '';
   const title = `Swing e Troca de Casais em ${st.name} (${st.uf}) | NoSigilo.net`;
   const desc = `Rede adulta discreta de swing, troca de casais e ménage em ${st.name} — ${cities}. Casais e singles do meio liberal com sigilo e privacidade. Cadastro grátis.`;
-  const url = `${SITE}/swing/${st.slug}/`;
+  const url = `${REGIONAL}/swing/${st.slug}/`;
 
   const jsonld = {
     '@context': 'https://schema.org',
@@ -140,11 +143,11 @@ function statePage(st) {
   <meta property="og:url" content="${url}" />
   <meta property="og:title" content="${esc(`Swing e Troca de Casais em ${st.name}`)}" />
   <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${SITE}/icon.jpg" />
+  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(`Swing e Troca de Casais em ${st.name}`)}" />
   <meta name="twitter:description" content="${esc(desc)}" />
-  <meta name="twitter:image" content="${SITE}/icon.jpg" />
+  <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
   <style>
@@ -241,7 +244,7 @@ ${cityLinksBlock}
 
 function cityPage(city) {
   const st = city.state;
-  const url = `${SITE}/swing/${st.slug}/${city.slug}/`;
+  const url = `${REGIONAL}/swing/${st.slug}/${city.slug}/`;
   const title = `Swing e Troca de Casais em ${city.name} (${st.uf}) | NoSigilo.net`;
   const desc = `Rede adulta discreta de swing, troca de casais e ménage em ${city.name}, ${st.name}. Casais e singles do meio liberal com sigilo e privacidade. Cadastro grátis.`;
 
@@ -277,11 +280,11 @@ function cityPage(city) {
   <meta property="og:url" content="${url}" />
   <meta property="og:title" content="${esc(`Swing e Troca de Casais em ${city.name}`)}" />
   <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${SITE}/icon.jpg" />
+  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${esc(`Swing e Troca de Casais em ${city.name}`)}" />
   <meta name="twitter:description" content="${esc(desc)}" />
-  <meta name="twitter:image" content="${SITE}/icon.jpg" />
+  <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
   <style>
@@ -367,14 +370,14 @@ function cityPage(city) {
 function hubPage() {
   const title = 'Swing e Troca de Casais por Estado no Brasil | NoSigilo.net';
   const desc = 'Encontre swing, troca de casais e ménage no seu estado. NoSigilo.net conecta o meio liberal brasileiro em todas as regiões — São Paulo, Rio, Minas, Bahia, Paraná e mais.';
-  const url = `${SITE}/swing/`;
+  const url = `${REGIONAL}/swing/`;
   const byRegion = {};
   for (const s of SELECTED_STATES) (byRegion[s.region] ||= []).push(s);
   const order = ['Sudeste', 'Sul', 'Nordeste', 'Centro-Oeste', 'Norte'].filter((r) => byRegion[r]?.length);
 
   const sections = order.map((reg) => `
       <h2>${esc(reg)}</h2>
-      <div class="states">${byRegion[reg].map((s) => `<a href="${SITE}/swing/${s.slug}/" style="color:#eb4778;">${esc(s.name)}</a>`).join(' · ')}</div>
+      <div class="states">${byRegion[reg].map((s) => `<a href="${REGIONAL}/swing/${s.slug}/" style="color:#eb4778;">${esc(s.name)}</a>`).join(' · ')}</div>
   `).join('\n');
 
   return `<!doctype html>
@@ -392,7 +395,7 @@ function hubPage() {
   <meta property="og:url" content="${url}" />
   <meta property="og:title" content="${esc(title)}" />
   <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${SITE}/icon.jpg" />
+  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
   <style>
     :root { color-scheme: dark; }
@@ -431,7 +434,7 @@ function hubPage() {
 function sitemap() {
   const base = [
     { loc: `${SITE}/`, freq: 'weekly', pri: '1.0' },
-    { loc: `${SITE}/swing/`, freq: 'weekly', pri: '0.9' },
+    { loc: `${REGIONAL}/swing/`, freq: 'weekly', pri: '0.9' },
     { loc: `${SITE}/register`, freq: 'monthly', pri: '0.9' },
     { loc: `${SITE}/login`, freq: 'monthly', pri: '0.7' },
     { loc: `${SITE}/subscriptions`, freq: 'monthly', pri: '0.8' },
@@ -439,8 +442,8 @@ function sitemap() {
     { loc: `${SITE}/privacy`, freq: 'yearly', pri: '0.4' },
     { loc: `${SITE}/guidelines`, freq: 'yearly', pri: '0.4' },
   ];
-  const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${SITE}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8' }));
-  const cityUrls = SELECTED_CITIES.map((c) => ({ loc: `${SITE}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7' }));
+  const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8' }));
+  const cityUrls = SELECTED_CITIES.map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7' }));
   const urls = [...base, ...stateUrls, ...cityUrls]
     .map((u) => `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${TODAY}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`)
     .join('\n');
