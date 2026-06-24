@@ -981,8 +981,11 @@ export default function Reels() {
                   : 'none'                                 // distantes: nada (economiza memória/dados)
             }
             onEnded={() => { setBuffering(reel.id, false); handleVideoEnded(idx); }}
+            onLoadStart={() => setBuffering(reel.id, true)}
+            onSeeking={() => setBuffering(reel.id, true)}
             onWaiting={() => setBuffering(reel.id, true)}
             onStalled={() => setBuffering(reel.id, true)}
+            onLoadedData={() => setBuffering(reel.id, false)}
             onPlaying={() => setBuffering(reel.id, false)}
             onCanPlay={() => setBuffering(reel.id, false)}
             onPause={() => setBuffering(reel.id, false)}
@@ -1122,15 +1125,16 @@ export default function Reels() {
             </div>
           )}
 
-          {/* Buffering spinner — só no vídeo ativo enquanto carrega */}
-          {premiumAccess && playingId === reel.id && bufferingById[reel.id] && (
-            <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+          {/* Buffering spinner — no vídeo ativo/atual enquanto carrega */}
+          {premiumAccess && bufferingById[reel.id] && (playingId === reel.id || idx === currentIndex) && (
+            <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-3">
               <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-white/30 border-t-white" />
+              <span className="text-xs font-medium text-white/70 drop-shadow">Carregando…</span>
             </div>
           )}
 
-          {/* Paused overlay */}
-          {playingId !== reel.id && (
+          {/* Paused overlay — escondido enquanto o reel atual está carregando */}
+          {playingId !== reel.id && !(idx === currentIndex && bufferingById[reel.id]) && (
             <button
               type="button"
               onClick={() => void handleReelClick(reel.id)}
