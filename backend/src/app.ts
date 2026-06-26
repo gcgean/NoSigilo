@@ -5262,7 +5262,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `SELECT u.id, u.name, u.avatar, u.gender,
               COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) AS total
        FROM users u
-       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ?
+       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.action_type != 'gift_received'
        WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
          AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND ${genderCond}
@@ -5285,6 +5285,113 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         isMe: String(r.id) === myId,
       })),
     });
+  });
+
+  // ── Tokens: presentear outro perfil ──────────────────────────────────────
+  // Transfere tokens do remetente para o destinatário (com mensagem opcional).
+  // O destinatário recebe notificação in-app + push; tokens recebidos contam no
+  // saldo/total e podem virar dia grátis, mas são EXCLUÍDOS do ranking (anti-farm).
+  app.post('/api/tokens/gift', requireAuth(env, db), async (req, res) => {
+    const fromId = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+
+    const schema = z.object({
+      toUserId: z.string().min(1),
+      amount: z.number().int().positive().max(5000),
+      message: z.string().trim().max(280).optional(),
+    });
+    const parsed = schema.safeParse({
+      toUserId: req.body?.toUserId,
+      amount: Number(req.body?.amount),
+      message: req.body?.message,
+    });
+    if (!parsed.success) return res.status(400).json({ message: 'Dados inválidos.' });
+    const { toUserId, amount } = parsed.data;
+    const message = parsed.data.message?.trim() || null;
+
+    if (toUserId === fromId) return res.status(400).json({ message: 'Você não pode presentear a si mesmo.' });
+
+    const recipient = (await queryOne(db, 'SELECT id, name, is_banned, is_deactivated FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
+    if (!recipient) return res.status(404).json({ message: 'Perfil não encontrado.' });
+    if (recipient.is_banned || recipient.is_deactivated) return res.status(400).json({ message: 'Não é possível presentear este perfil.' });
+
+    if (await isUserBlocked({ db }, { viewerId: fromId, targetId: toUserId })) {
+      return res.status(403).json({ message: 'Não é possível presentear este perfil.' });
+    }
+
+    const senderRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p, name FROM users WHERE id = ?', [fromId])) as any;
+    const balance = Number(senderRow?.p || 0);
+    if (balance < amount) return res.status(400).json({ message: 'Saldo de tokens insuficiente.' });
+
+    const giftId = randomUUID();
+    const now = nowIso();
+
+    // Debita o remetente
+    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ? WHERE id = ?', [amount, fromId]);
+    await run(
+      db,
+      'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), fromId, 'gift_sent', -amount, giftId, now]
+    );
+
+    // Credita o destinatário (saldo + total; excluído do ranking)
+    await run(
+      db,
+      'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ? WHERE id = ?',
+      [amount, amount, toUserId]
+    );
+    await run(
+      db,
+      'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), toUserId, 'gift_received', amount, giftId, now]
+    );
+
+    // Conversão automática do destinatário: cada 100 pontos vira 1 dia grátis
+    let freeDaysGranted = 0;
+    const rBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [toUserId])) as any;
+    let rBalance = Number(rBalRow?.p || 0);
+    while (rBalance >= POINTS_PER_FREE_DAY) {
+      freeDaysGranted += 1;
+      await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ?, token_free_days = COALESCE(token_free_days,0) + 1 WHERE id = ?', [POINTS_PER_FREE_DAY, toUserId]);
+      await grantPremiumDays(db, toUserId, 1);
+      await run(
+        db,
+        'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), toUserId, 'convert_day', -POINTS_PER_FREE_DAY, null, nowIso()]
+      );
+      rBalance -= POINTS_PER_FREE_DAY;
+    }
+
+    await db.persist();
+
+    const fromName = String(senderRow?.name || 'Alguém');
+    const plural = amount > 1 ? 's' : '';
+    const desc = message
+      ? `${fromName} te presenteou com ${amount} token${plural}: "${message}"`
+      : `${fromName} te presenteou com ${amount} token${plural}.`;
+    try {
+      await createNotification({ db, io }, {
+        userId: toUserId,
+        type: 'tokens.gift',
+        title: '🎁 Você ganhou um presente!',
+        description: desc,
+        dataJson: { fromUserId: fromId, fromName, amount, message },
+      });
+    } catch { /* non-fatal */ }
+    try {
+      await sendPushToUser({ db, env }, {
+        userId: toUserId,
+        payload: { title: '🎁 Você ganhou tokens!', body: desc, url: '/tokens', tag: `gift-${giftId}` },
+      });
+    } catch { /* non-fatal */ }
+
+    // Saldos em tempo real para os dois lados
+    const sBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [fromId])) as any;
+    const rNewBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [toUserId])) as any;
+    io?.to(`user:${fromId}`).emit('tokens.updated', { points: Number(sBalRow?.p || 0) });
+    io?.to(`user:${toUserId}`).emit('tokens.updated', { points: Number(rNewBalRow?.p || 0), gifted: amount, freeDaysGranted });
+
+    res.json({ ok: true, balance: Number(sBalRow?.p || 0), recipientName: String(recipient.name || '') });
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {

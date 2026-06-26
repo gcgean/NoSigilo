@@ -14,6 +14,8 @@ const ACTION_LABELS: Record<string, string> = {
   post: 'Post publicado',
   checkin: 'Presença diária',
   convert_day: '🎉 1 dia grátis resgatado',
+  gift_received: '🎁 Presente recebido',
+  gift_sent: 'Presente enviado',
 };
 
 const RANKING_TABS: Array<{ id: 'homem' | 'mulher' | 'casal'; label: string }> = [
@@ -95,32 +97,6 @@ export default function Tokens() {
         </div>
       </Card>
 
-      {/* Histórico */}
-      <Card className="p-4">
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Histórico</h2>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Carregando...</p>
-        ) : (summary?.history.length ?? 0) === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Você ainda não gerou tokens. Curta, comente e poste para começar a pontuar!
-          </p>
-        ) : (
-          <div className="space-y-1.5">
-            {summary!.history.map((h, i) => (
-              <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate text-sm">{ACTION_LABELS[h.action] ?? h.action}</p>
-                  <p className="text-[11px] text-muted-foreground">{new Date(h.createdAt).toLocaleString('pt-BR')}</p>
-                </div>
-                <span className={cn('shrink-0 text-sm font-bold', h.points >= 0 ? 'text-emerald-500' : 'text-primary')}>
-                  {h.points >= 0 ? `+${h.points}` : h.points}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
       {/* Ranking */}
       <Card className="p-4">
         <div className="mb-3 flex items-center gap-2">
@@ -167,6 +143,32 @@ export default function Tokens() {
                   {r.name}{r.isMe && ' (você)'}
                 </span>
                 <span className="shrink-0 text-sm font-bold text-amber-400">{r.total}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Histórico */}
+      <Card className="p-4">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Histórico</h2>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Carregando...</p>
+        ) : (summary?.history.length ?? 0) === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Você ainda não gerou tokens. Curta, comente e poste para começar a pontuar!
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {summary!.history.map((h, i) => (
+              <div key={i} className="flex items-center justify-between rounded-lg bg-secondary/30 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm">{ACTION_LABELS[h.action] ?? h.action}</p>
+                  <p className="text-[11px] text-muted-foreground">{new Date(h.createdAt).toLocaleString('pt-BR')}</p>
+                </div>
+                <span className={cn('shrink-0 text-sm font-bold', h.points >= 0 ? 'text-emerald-500' : 'text-primary')}>
+                  {h.points >= 0 ? `+${h.points}` : h.points}
+                </span>
               </div>
             ))}
           </div>

@@ -680,6 +680,12 @@ export default function Layout() {
                 <NavLink
                   key={item.path}
                   to={item.path}
+                  onClick={(e) => {
+                    if (location.pathname === item.path) {
+                      e.preventDefault();
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
                   className={cn(
                     "flex items-center gap-3 px-4 py-3 rounded-lg transition-all relative",
                     isActive
@@ -1043,6 +1049,12 @@ export default function Layout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={(e) => {
+                  if (location.pathname === item.path) {
+                    e.preventDefault();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }
+                }}
                 className={cn(
                   "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"

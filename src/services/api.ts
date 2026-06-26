@@ -1272,4 +1272,8 @@ export const tokenService = {
     const res = await apiClient.get('/tokens/ranking', { params: { type } });
     return res.data;
   },
+  gift: async (toUserId: string, amount: number, message?: string): Promise<{ ok: boolean; balance: number; recipientName: string }> => {
+    const res = await apiClient.post('/tokens/gift', { toUserId, amount, message: message?.trim() || undefined });
+    return res.data;
+  },
 };

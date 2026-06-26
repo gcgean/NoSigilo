@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
+import GiftTokensModal from '@/components/GiftTokensModal';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -486,6 +487,7 @@ export default function UserProfile() {
   const [testimonialPhotoPreview, setTestimonialPhotoPreview] = useState<string[]>([]);
   const [testimonialPhotoIndex, setTestimonialPhotoIndex] = useState<Record<string, number>>({});
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
   const [blockStatus, setBlockStatus] = useState<{ blocked: boolean; blockedByMe: boolean; blockedByThem: boolean } | null>(null);
   const [isBlockLoading, setIsBlockLoading] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
@@ -1151,6 +1153,19 @@ export default function UserProfile() {
                   : 'Curtir perfil'}
               </Button>
 
+              {/* Presentear tokens */}
+              {!isSelf && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-amber-400/40 text-amber-500 hover:bg-amber-400/10 hover:border-amber-400/60 hover:text-amber-500"
+                  onClick={() => setShowGiftModal(true)}
+                >
+                  <Gift className="w-3.5 h-3.5" />
+                  Presentear
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -1218,6 +1233,13 @@ export default function UserProfile() {
         targetType="user"
         targetId={String(userId)}
         targetName={String(profile?.name || '')}
+      />
+
+      <GiftTokensModal
+        open={showGiftModal}
+        onClose={() => setShowGiftModal(false)}
+        recipientId={String(userId)}
+        recipientName={String(profile?.name || '')}
       />
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
