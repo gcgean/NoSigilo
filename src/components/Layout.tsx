@@ -1075,15 +1075,16 @@ export default function Layout() {
                   )}
                 </NavLink>
 
-                {/* Botão central de ação: Radar / Evento */}
+                {/* Botão de ação Radar / Evento — mesmo padrão dos demais itens */}
                 {item.path === '/stories' && (
                   <button
                     type="button"
                     onClick={() => setRadarSheetOpen(true)}
                     aria-label="Ativar radar ou criar evento"
-                    className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-rose-500 text-white shadow-lg shadow-primary/40 ring-4 ring-background transition-transform active:scale-95"
+                    className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
                   >
-                    <Plus className="h-6 w-6" />
+                    <Plus className="h-4.5 w-4.5" />
+                    <span className="max-w-full truncate text-[10px] leading-4">Divulgar</span>
                   </button>
                 )}
               </Fragment>
