@@ -1,10 +1,21 @@
 import { useEffect, useCallback, useState } from 'react';
-import { Coins, TrendingUp, Gift, Trophy } from 'lucide-react';
+import { Coins, TrendingUp, Gift, Trophy, Zap, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
 import { tokenService, type TokenSummary, type TokenRankingEntry } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
+function formatBoostRemaining(until: string): string {
+  const ms = new Date(until).getTime() - Date.now();
+  if (ms <= 0) return '';
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  if (h >= 1) return `${h}h${m > 0 ? ` ${m}min` : ''}`;
+  return `${m}min`;
+}
 
 const ACTION_LABELS: Record<string, string> = {
   like: 'Curtida',
@@ -30,11 +41,32 @@ export default function Tokens() {
   const [rankTab, setRankTab] = useState<'homem' | 'mulher' | 'casal'>('homem');
   const [ranking, setRanking] = useState<TokenRankingEntry[]>([]);
   const [rankLoading, setRankLoading] = useState(true);
+  const [boosting, setBoosting] = useState(false);
   const { on, off } = useSocket();
+  const { toast } = useToast();
 
   const reload = useCallback(() => {
     tokenService.me().then(setSummary).catch(() => {});
   }, []);
+
+  const handleBoost = useCallback(async () => {
+    if (boosting) return;
+    setBoosting(true);
+    try {
+      const res = await tokenService.boost();
+      reload();
+      window.dispatchEvent(new Event('nosigilo:tokens-updated'));
+      toast({
+        title: '⚡ Perfil em destaque!',
+        description: `Seu perfil vai aparecer primeiro na descoberta pelas próximas ${res.boostHours}h.`,
+      });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Não foi possível destacar o perfil.';
+      toast({ title: 'Ops', description: msg, variant: 'destructive' });
+    } finally {
+      setBoosting(false);
+    }
+  }, [boosting, reload, toast]);
 
   useEffect(() => {
     tokenService.me().then(setSummary).catch(() => {}).finally(() => setLoading(false));
@@ -97,15 +129,52 @@ export default function Tokens() {
         </div>
       </Card>
 
+      {/* Destaque do perfil (gasta tokens) */}
+      <Card className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-400">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-bold">Destacar meu perfil</h2>
+            {summary?.boostUntil ? (
+              <p className="mt-0.5 text-xs text-emerald-500">
+                Ativo — seu perfil aparece primeiro por mais {formatBoostRemaining(summary.boostUntil)}.
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Apareça <strong className="text-foreground">no topo</strong> da descoberta por {summary?.boostHours ?? 24}h. Mais visitas, curtidas e matches.
+              </p>
+            )}
+          </div>
+        </div>
+        <Button
+          className="mt-3 w-full gap-2 bg-gradient-to-r from-amber-400 to-primary text-white hover:opacity-90"
+          disabled={boosting || (summary !== null && summary.points < (summary.boostCost ?? 30))}
+          onClick={() => void handleBoost()}
+        >
+          {boosting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+          {summary?.boostUntil ? 'Estender destaque' : 'Destacar agora'} · {summary?.boostCost ?? 30} tokens
+        </Button>
+        {summary !== null && summary.points < (summary.boostCost ?? 30) && !summary.boostUntil && (
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+            Você precisa de {summary.boostCost ?? 30} tokens. Interaja para ganhar mais!
+          </p>
+        )}
+      </Card>
+
       {/* Ranking */}
       <Card className="p-4">
         <div className="mb-3 flex items-center gap-2">
           <Trophy className="h-4 w-4 text-amber-400" />
           <h2 className="text-sm font-semibold uppercase tracking-wider">Ranking do mês</h2>
         </div>
-        <p className="-mt-2 mb-3 text-[11px] text-muted-foreground">
+        <p className="-mt-2 mb-2 text-[11px] text-muted-foreground">
           Conta os pontos ganhos no mês atual. Zera no dia 1º de cada mês — seu saldo e dias grátis não são afetados.
         </p>
+        <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+          🏆 <strong>Prêmio do mês:</strong> top 3 de cada categoria ganham dias premium + selo no perfil — 🥇 7 dias · 🥈 3 dias · 🥉 1 dia.
+        </div>
         <div className="mb-3 flex gap-2">
           {RANKING_TABS.map((t) => (
             <button

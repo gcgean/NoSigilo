@@ -174,9 +174,9 @@ export default function Radar() {
     dailyLimit: 1,
     dailyUsed: 0,
     dailyRemaining: 1,
-    weeklyLimit: 3,
+    weeklyLimit: 1,
     weeklyUsed: 0,
-    weeklyRemaining: 3,
+    weeklyRemaining: 1,
   });
 
   const loadRadar = async () => {
@@ -195,9 +195,9 @@ export default function Radar() {
         dailyLimit: Number(data?.usage?.dailyLimit || 1),
         dailyUsed: Number(data?.usage?.dailyUsed || 0),
         dailyRemaining: Number(data?.usage?.dailyRemaining ?? 1),
-        weeklyLimit: Number(data?.usage?.weeklyLimit || 3),
+        weeklyLimit: Number(data?.usage?.weeklyLimit || 1),
         weeklyUsed: Number(data?.usage?.weeklyUsed || 0),
-        weeklyRemaining: Number(data?.usage?.weeklyRemaining ?? 3),
+        weeklyRemaining: Number(data?.usage?.weeklyRemaining ?? 1),
       });
     } catch {
       toast({ title: 'Erro ao carregar radar', description: 'Tente novamente.', variant: 'destructive' });
@@ -255,7 +255,7 @@ export default function Radar() {
         description:
           usage.dailyRemaining <= 0
             ? 'Hoje voce ja usou seu radar. Amanhã o envio volta a liberar.'
-            : 'Voce atingiu o limite de 3 radares nesta semana.',
+            : 'Voce atingiu o limite de 1 radar por semana.',
         variant: 'destructive',
       });
       return;
@@ -314,7 +314,7 @@ export default function Radar() {
           : dailyLimitError
             ? 'O radar libera novamente no proximo dia.'
             : weeklyLimitError
-              ? 'O limite atual e de 3 radares por semana.'
+              ? 'O limite atual e de 1 radar por semana.'
               : 'Tente novamente.',
         variant: 'destructive',
       });
@@ -474,7 +474,7 @@ export default function Radar() {
             </div>
 
             <div className="rounded-lg border bg-secondary/20 p-3 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Regra atual:</span> no maximo 1 radar por dia e 3 por semana.
+              <span className="font-medium text-foreground">Regra atual:</span> no maximo 1 radar por semana.
               {limitReached ? ' Seu limite atual ja foi atingido.' : ' Enquanto houver saldo, o envio segue liberado.'}
             </div>
 

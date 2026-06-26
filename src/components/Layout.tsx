@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -30,10 +30,12 @@ import {
   Sun,
   BadgeDollarSign,
   Coins,
+  Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import HelpButton from '@/components/HelpButton';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import TokenBadge from '@/components/TokenBadge';
@@ -131,6 +133,7 @@ export default function Layout() {
   const { socket } = useSocket();
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [radarSheetOpen, setRadarSheetOpen] = useState(false);
   const [unreadConversationsCount, setUnreadConversationsCount] = useState(0);
   const [hasUnreadMatch, setHasUnreadMatch] = useState(false);
   const [clockNow, setClockNow] = useState(Date.now());
@@ -1046,31 +1049,44 @@ export default function Layout() {
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                onClick={(e) => {
-                  if (location.pathname === item.path) {
-                    e.preventDefault();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }
-                }}
-                className={cn(
-                  "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
-                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+              <Fragment key={item.path}>
+                <NavLink
+                  to={item.path}
+                  onClick={(e) => {
+                    if (location.pathname === item.path) {
+                      e.preventDefault();
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
+                  }}
+                  className={cn(
+                    "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <item.icon className={cn("h-4.5 w-4.5", isActive && "animate-scale-in")} />
+                  <span className="max-w-full truncate text-[10px] leading-4">{item.label}</span>
+                  {item.path === '/match' && hasUnreadMatch && (
+                    <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
+                  )}
+                  {item.path === '/chat' && unreadMessagesCount > 0 && (
+                    <span className="absolute right-2.5 top-0.5 flex h-4.5 min-w-[1.1rem] items-center justify-center rounded-full border-2 border-background bg-destructive px-1 text-[9px] font-bold text-white">
+                      {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
+                    </span>
+                  )}
+                </NavLink>
+
+                {/* Botão central de ação: Radar / Evento */}
+                {item.path === '/stories' && (
+                  <button
+                    type="button"
+                    onClick={() => setRadarSheetOpen(true)}
+                    aria-label="Ativar radar ou criar evento"
+                    className="relative -mt-5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-rose-500 text-white shadow-lg shadow-primary/40 ring-4 ring-background transition-transform active:scale-95"
+                  >
+                    <Plus className="h-6 w-6" />
+                  </button>
                 )}
-              >
-                <item.icon className={cn("h-4.5 w-4.5", isActive && "animate-scale-in")} />
-                <span className="max-w-full truncate text-[10px] leading-4">{item.label}</span>
-                {item.path === '/match' && hasUnreadMatch && (
-                  <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
-                )}
-                {item.path === '/chat' && unreadMessagesCount > 0 && (
-                  <span className="absolute right-2.5 top-0.5 flex h-4.5 min-w-[1.1rem] items-center justify-center rounded-full border-2 border-background bg-destructive px-1 text-[9px] font-bold text-white">
-                    {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
-                  </span>
-                )}
-              </NavLink>
+              </Fragment>
             );
           })}
           <NavLink
@@ -1100,6 +1116,46 @@ export default function Layout() {
           </NavLink>
         </div>
       </nav>
+
+      {/* Folha de ação do botão central: Ativar Radar ou Criar Evento */}
+      <Dialog open={radarSheetOpen} onOpenChange={setRadarSheetOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>O que você quer divulgar?</DialogTitle>
+            <DialogDescription>
+              Apareça para os perfis compatíveis com você — no feed e nas notificações deles.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <button
+              type="button"
+              onClick={() => { setRadarSheetOpen(false); navigate('/radar'); }}
+              className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <Radio className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold">Ativar Radar</span>
+                <span className="block text-xs text-muted-foreground">Avise que você está disponível agora na sua região.</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRadarSheetOpen(false); navigate('/events'); }}
+              className="flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-left transition-colors hover:bg-amber-400/10"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-500">
+                <Calendar className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold">Criar Evento</span>
+                <span className="block text-xs text-muted-foreground">Divulgue um encontro, festa ou viagem para a comunidade.</span>
+              </span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

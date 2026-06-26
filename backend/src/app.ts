@@ -107,6 +107,8 @@ export type PublicUser = {
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
   badges?: string[];
+  boosted?: boolean;
+  topMonth?: { position: number; month: string | null } | null;
   telegramChatId?: string | null;
   distanceKm?: number | null;
   lat?: number | null;
@@ -467,6 +469,9 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   checkin: { points: 5,  dailyCap: 1 },
 };
 const POINTS_PER_FREE_DAY = 100;
+// Destaque de perfil (sink de tokens): custo e duração.
+const BOOST_COST = 30;
+const BOOST_HOURS = 24;
 
 // Credita pontos por uma ação. Best-effort: nunca lança (não derruba a ação principal).
 // Aplica dedup por alvo (refId) e teto diário; ao cruzar 100 pontos, converte
@@ -582,6 +587,98 @@ async function spendTokens(
   const balance = balance0 - cost;
   io?.to(`user:${userId}`).emit('tokens.updated', { points: balance });
   return { ok: true, charged: true, balance };
+}
+
+// ── Prêmio mensal do ranking de tokens (7/3/1 dias premium + selo Top do Mês) ──
+const RANKING_PRIZES = [7, 3, 1]; // dias premium para 1º, 2º, 3º
+const RANKING_CATEGORIES: Array<{ id: 'homem' | 'mulher' | 'casal'; label: string; cond: string }> = [
+  { id: 'homem', label: 'Homens', cond: "u.gender = 'Homem'" },
+  { id: 'mulher', label: 'Mulheres', cond: "u.gender = 'Mulher'" },
+  { id: 'casal', label: 'Casais', cond: "u.gender LIKE 'Casal%'" },
+];
+
+function prevMonthStr(): string {
+  const d = new Date();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() - 1);
+  return d.toISOString().slice(0, 7);
+}
+function monthBounds(monthStr: string): { start: string; end: string } {
+  const [y, m] = monthStr.split('-').map(Number);
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  return { start: `${monthStr}-01`, end: `${nextY}-${String(nextM).padStart(2, '0')}-01` };
+}
+
+// Premia o top 3 de cada categoria no mês indicado. Idempotente: se já houver
+// prêmios para o mês, não refaz. Concede dias premium, marca o selo e notifica.
+async function settleRankingMonth(db: DbHandle, env: Env, io: SocketIOServer | undefined, monthStr: string) {
+  const already = (await queryOne(db, 'SELECT 1 AS x FROM token_ranking_awards WHERE month = ? LIMIT 1', [monthStr])) as any;
+  if (already) return;
+  const { start, end } = monthBounds(monthStr);
+  const [my, mm] = monthStr.split('-').map(Number);
+  const monthLabel = new Date(Date.UTC(my, mm - 1, 1)).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const medals = ['🥇', '🥈', '🥉'];
+
+  for (const cat of RANKING_CATEGORIES) {
+    const winners = (await queryAll(
+      db,
+      `SELECT u.id, u.name, COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) AS total
+       FROM users u
+       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.created_at < ? AND t.action_type != 'gift_received'
+       WHERE (u.is_admin = 0 OR u.is_admin IS NULL) AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${cat.cond}
+       GROUP BY u.id, u.name, u.created_at
+       HAVING COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) > 0
+       ORDER BY total DESC, u.created_at ASC
+       LIMIT 3`,
+      [start, end]
+    )) as any[];
+
+    for (let i = 0; i < winners.length; i++) {
+      const w = winners[i];
+      const position = i + 1;
+      const days = RANKING_PRIZES[i] ?? 0;
+      if (days <= 0) continue;
+      await grantPremiumDays(db, String(w.id), days);
+      await run(db, 'UPDATE users SET top_month_position = ?, top_month_month = ? WHERE id = ?', [position, monthStr, String(w.id)]);
+      await run(
+        db,
+        'INSERT INTO token_ranking_awards (id, month, category, position, user_id, points, premium_days, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [randomUUID(), monthStr, cat.id, position, String(w.id), Number(w.total || 0), days, nowIso()]
+      );
+      try {
+        await createNotification({ db, io }, {
+          userId: String(w.id),
+          type: 'tokens.top_month',
+          title: `🏆 Você foi Top do Mês! ${medals[i]}`,
+          description: `Você ficou em ${position}º no ranking de ${cat.label} em ${monthLabel} e ganhou ${days} dia${days > 1 ? 's' : ''} premium!`,
+          dataJson: { month: monthStr, position, category: cat.id, premiumDays: days },
+        });
+      } catch { /* non-fatal */ }
+      try {
+        await sendPushToUser({ db, env }, {
+          userId: String(w.id),
+          payload: {
+            title: `🏆 Top do Mês ${medals[i]}`,
+            body: `${position}º lugar em ${cat.label}! Você ganhou ${days} dia${days > 1 ? 's' : ''} premium.`,
+            url: '/tokens',
+            tag: `top-month-${monthStr}`,
+          },
+        });
+      } catch { /* non-fatal */ }
+    }
+  }
+  await db.persist();
+}
+
+// Liquida o mês anterior se ainda não foi premiado (chamada preguiçosa/idempotente).
+async function settlePreviousMonthIfNeeded(db: DbHandle, env: Env, io: SocketIOServer | undefined) {
+  try {
+    await settleRankingMonth(db, env, io, prevMonthStr());
+  } catch (err) {
+    console.error('[settleRankingMonth]', err);
+  }
 }
 
 async function grantBadge(db: DbHandle, userId: string, badgeType: string) {
@@ -1511,6 +1608,10 @@ function rowToPublicUser(
       return s as 'now' | 'week' | 'month' | 'online_only' | 'not_looking';
     })(),
     badges: computeBadges(row),
+    boosted: !!(row.boost_until && new Date(row.boost_until).getTime() > Date.now()),
+    topMonth: row.top_month_position
+      ? { position: Number(row.top_month_position), month: row.top_month_month ? String(row.top_month_month) : null }
+      : null,
     ambassadorBadges: row.ambassador_badges_csv
       ? String(row.ambassador_badges_csv).split(',').filter(Boolean)
       : null,
@@ -5226,7 +5327,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const row = (await queryOne(
       db,
-      'SELECT COALESCE(token_points,0) AS points, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days FROM users WHERE id = ?',
+      'SELECT COALESCE(token_points,0) AS points, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days, boost_until FROM users WHERE id = ?',
       [userId]
     )) as any;
     const history = (await queryAll(
@@ -5235,12 +5336,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [userId]
     )) as any[];
     const points = Number(row?.points || 0);
+    const boostUntilRaw = row?.boost_until ? String(row.boost_until) : null;
+    const boostActive = !!(boostUntilRaw && new Date(boostUntilRaw).getTime() > Date.now());
     res.json({
       points,
       total: Number(row?.total || 0),
       freeDays: Number(row?.free_days || 0),
       pointsPerDay: POINTS_PER_FREE_DAY,
       nextDayProgress: points % POINTS_PER_FREE_DAY,
+      boostUntil: boostActive ? boostUntilRaw : null,
+      boostCost: BOOST_COST,
+      boostHours: BOOST_HOURS,
       history: history.map((h) => ({ action: String(h.action_type), points: Number(h.points), createdAt: String(h.created_at) })),
     });
   });
@@ -5250,6 +5356,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // token_transactions). Zera naturalmente na virada do mês, sem job agendado
   // e sem afetar o saldo nem os dias grátis dos usuários.
   app.get('/api/tokens/ranking', requireAuth(env, db), async (req, res) => {
+    // Liquida o mês anterior na 1ª visualização do novo mês (idempotente).
+    await settlePreviousMonthIfNeeded(db, env, req.app.get('io') as SocketIOServer | undefined);
     const type = String(req.query.type || 'homem').toLowerCase();
     const genderCond =
       type === 'mulher' ? "u.gender = 'Mulher'"
@@ -5392,6 +5500,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     io?.to(`user:${toUserId}`).emit('tokens.updated', { points: Number(rNewBalRow?.p || 0), gifted: amount, freeDaysGranted });
 
     res.json({ ok: true, balance: Number(sBalRow?.p || 0), recipientName: String(recipient.name || '') });
+  });
+
+  // ── Tokens: destacar o próprio perfil (sink) ──────────────────────────────
+  // Gasta BOOST_COST tokens e prioriza o perfil na descoberta por BOOST_HOURS.
+  // Se já estiver destacado, soma o tempo (empilha).
+  app.post('/api/tokens/boost', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+
+    const spend = await spendTokens(db, userId, BOOST_COST, 'boost', `boost-${Date.now()}`, io);
+    if (!spend.ok) {
+      return res.status(400).json({ message: 'Saldo de tokens insuficiente.', balance: spend.balance });
+    }
+
+    // Empilha sobre o destaque vigente (se ainda ativo)
+    const row = (await queryOne(db, 'SELECT boost_until FROM users WHERE id = ?', [userId])) as any;
+    const current = row?.boost_until ? new Date(String(row.boost_until)).getTime() : 0;
+    const base = Math.max(Date.now(), current || 0);
+    const boostUntil = new Date(base + BOOST_HOURS * 3600 * 1000).toISOString();
+    await run(db, 'UPDATE users SET boost_until = ? WHERE id = ?', [boostUntil, userId]);
+    await db.persist();
+
+    res.json({ ok: true, balance: spend.balance, boostUntil, boostHours: BOOST_HOURS });
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {
@@ -6697,6 +6828,10 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       params.push(myLat - latDelta, myLat + latDelta, myLon - lonDelta, myLon + lonDelta);
     }
 
+    // Perfis com destaque ativo (comprado com tokens) aparecem primeiro.
+    const boostPrioritySql = "CASE WHEN u.boost_until IS NOT NULL AND u.boost_until > ? THEN 0 ELSE 1 END,";
+    params.push(nowIso());
+
     const cityPrioritySql = myCity
       ? "CASE WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
       : '';
@@ -6740,7 +6875,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         ) as conversations_count
       FROM users u
       WHERE ${whereClause}
-      ORDER BY 
+      ORDER BY
+        ${boostPrioritySql}
         ${cityPrioritySql}
         CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
         ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
@@ -7117,8 +7253,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       res.status(403).json({ error: 'radar_daily_limit', dailyLimit: 1, dailyUsed });
       return;
     }
-    if (weeklyUsed >= 3) {
-      res.status(403).json({ error: 'radar_weekly_limit', weeklyLimit: 3, weeklyUsed });
+    if (weeklyUsed >= 1) {
+      res.status(403).json({ error: 'radar_weekly_limit', weeklyLimit: 1, weeklyUsed });
       return;
     }
 
@@ -7323,9 +7459,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         dailyLimit: 1,
         dailyUsed: dailyUsed + 1,
         dailyRemaining: Math.max(0, 1 - (dailyUsed + 1)),
-        weeklyLimit: 3,
+        weeklyLimit: 1,
         weeklyUsed: weeklyUsed + 1,
-        weeklyRemaining: Math.max(0, 3 - (weeklyUsed + 1)),
+        weeklyRemaining: Math.max(0, 1 - (weeklyUsed + 1)),
       },
     });
   });
@@ -7670,9 +7806,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         dailyLimit: 1,
         dailyUsed: Number(dailyUsedRow?.c || 0),
         dailyRemaining: Math.max(0, 1 - Number(dailyUsedRow?.c || 0)),
-        weeklyLimit: 3,
+        weeklyLimit: 1,
         weeklyUsed: Number(weeklyUsedRow?.c || 0),
-        weeklyRemaining: Math.max(0, 3 - Number(weeklyUsedRow?.c || 0)),
+        weeklyRemaining: Math.max(0, 1 - Number(weeklyUsedRow?.c || 0)),
       },
       myBroadcasts: myRows.map((row: any) => {
         const analytics = analyticsByBroadcast.get(String(row.id)) ?? [];
@@ -9868,6 +10004,93 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         createdBy: r.user_name,
       }))
     );
+  });
+
+  // ── Feed: atividade "Perto de você" (radares + eventos compatíveis) ───────
+  // Radares: reaproveita os que o fan-out do radar já entregou a este viewer.
+  // Eventos: futuros, com público-alvo compatível e na cidade/estado do viewer.
+  app.get('/api/feed/nearby-activity', requireAuth(env, db), async (req, res) => {
+    const myId = req.auth!.userId;
+    const me = (await queryOne(db, 'SELECT gender, city, state, lat, lon FROM users WHERE id = ? LIMIT 1', [myId])) as any;
+    if (!me) { res.json({ radars: [], events: [] }); return; }
+    const myLat = me.lat != null ? Number(me.lat) : null;
+    const myLon = me.lon != null ? Number(me.lon) : null;
+    const myCityNorm = normalizeRadarText(me.city);
+    const myStateNorm = normalizeRadarText(me.state);
+    const now = nowIso();
+
+    // Radares compatíveis já entregues a mim (deduzido pelo fan-out do radar)
+    const radarRows = (await queryAll(
+      db,
+      `SELECT rb.id, rb.message, rb.city, rb.state, rb.city_lat, rb.city_lon, rb.is_anonymous, rb.created_at, rb.expires_at,
+              u.name AS sender_name, u.avatar AS sender_avatar
+       FROM radar_broadcast_views v
+       JOIN radar_broadcasts rb ON rb.id = v.broadcast_id
+       JOIN users u ON u.id = rb.user_id
+       WHERE v.viewer_user_id = ? AND rb.deactivated_at IS NULL AND rb.expires_at > ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL) AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       ORDER BY rb.created_at DESC LIMIT 20`,
+      [myId, now]
+    )) as any[];
+
+    const radars = radarRows.map((r: any) => {
+      const anon = Number(r.is_anonymous || 0) === 1;
+      const rLat = r.city_lat != null ? Number(r.city_lat) : null;
+      const rLon = r.city_lon != null ? Number(r.city_lon) : null;
+      const distanceKm = (myLat !== null && myLon !== null && rLat !== null && rLon !== null)
+        ? roundDistanceKm(haversineKm({ lat: myLat, lon: myLon }, { lat: rLat, lon: rLon }))
+        : null;
+      return {
+        id: String(r.id),
+        message: String(r.message || ''),
+        senderName: anon ? 'Perfil discreto' : String(r.sender_name || 'Alguém'),
+        senderAvatar: anon ? null : (r.sender_avatar ?? null),
+        city: r.city ?? null,
+        state: r.state ?? null,
+        distanceKm,
+        createdAt: String(r.created_at || ''),
+        expiresAt: String(r.expires_at || ''),
+      };
+    });
+
+    // Eventos compatíveis (futuros, público-alvo e localização)
+    const sinceIso = new Date(Date.now() - 60 * 86400000).toISOString();
+    const eventRows = (await queryAll(
+      db,
+      `SELECT e.id, e.payload_json, e.created_at, u.name AS creator_name, u.avatar AS creator_avatar
+       FROM events e JOIN users u ON u.id = e.user_id
+       WHERE e.user_id != ? AND e.created_at >= ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL) AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       ORDER BY e.created_at DESC LIMIT 150`,
+      [myId, sinceIso]
+    )) as any[];
+
+    const today = new Date().toISOString().slice(0, 10);
+    const myAudience = mapUserGenderToRadarAudience(me.gender ?? null);
+    const events: any[] = [];
+    for (const er of eventRows) {
+      const p = (safeJsonParse(er.payload_json) ?? {}) as any;
+      const date = String(p.date || '');
+      if (date && date < today) continue; // evento já passou
+      const target = Array.isArray(p?.notificationSettings?.targetGender) ? (p.notificationSettings.targetGender as string[]) : ['all'];
+      if (!target.includes('all') && (!myAudience || !target.includes(myAudience))) continue;
+      const locNorm = normalizeRadarText(String(p.location || ''));
+      const cityMatch = !!myCityNorm && locNorm.includes(myCityNorm);
+      const stateMatch = !!myStateNorm && locNorm.includes(myStateNorm);
+      if (!cityMatch && !stateMatch) continue;
+      events.push({
+        id: String(er.id),
+        title: String(p.title || 'Evento'),
+        location: String(p.location || ''),
+        date,
+        coverImage: p.coverImage ?? p.image ?? null,
+        createdBy: String(er.creator_name || ''),
+        creatorAvatar: er.creator_avatar ?? null,
+      });
+      if (events.length >= 20) break;
+    }
+
+    res.json({ radars, events });
   });
 
   app.get('/api/admin/photos', requireAuth(env, db), requireAdmin(), async (_req, res) => {

@@ -38,7 +38,7 @@ export function getNotificationHref(notification: any): string {
 
   if (type === 'referral.reward') return '/invites';
   if (type === 'promoter.commission') return '/promoter';
-  if (type === 'tokens.gift' || type === 'tokens.free_day') return '/tokens';
+  if (type === 'tokens.gift' || type === 'tokens.free_day' || type === 'tokens.top_month') return '/tokens';
 
   return '/notifications';
 }

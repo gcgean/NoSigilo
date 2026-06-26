@@ -16,6 +16,7 @@ import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
 import TopDayBar from '@/components/TopDayBar';
+import NearbyActivityStrip from '@/components/NearbyActivityStrip';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1597,6 +1598,9 @@ export default function Feed() {
 
       {/* Stories bar — porta de entrada para os Stories de 24h */}
       {feedFilter !== 'experiences' ? <StoriesBar /> : null}
+
+      {/* Perto de você — radares ativos e eventos compatíveis */}
+      {feedFilter !== 'experiences' ? <NearbyActivityStrip /> : null}
 
       {/* Composer */}
       {feedFilter === 'experiences' ? (

@@ -1250,6 +1250,9 @@ export interface TokenSummary {
   freeDays: number;
   pointsPerDay: number;
   nextDayProgress: number;
+  boostUntil?: string | null;
+  boostCost?: number;
+  boostHours?: number;
   history: Array<{ action: string; points: number; createdAt: string }>;
 }
 
@@ -1274,6 +1277,37 @@ export const tokenService = {
   },
   gift: async (toUserId: string, amount: number, message?: string): Promise<{ ok: boolean; balance: number; recipientName: string }> => {
     const res = await apiClient.post('/tokens/gift', { toUserId, amount, message: message?.trim() || undefined });
+    return res.data;
+  },
+  boost: async (): Promise<{ ok: boolean; balance: number; boostUntil: string; boostHours: number }> => {
+    const res = await apiClient.post('/tokens/boost', {});
+    return res.data;
+  },
+};
+
+export interface NearbyRadar {
+  id: string;
+  message: string;
+  senderName: string;
+  senderAvatar: string | null;
+  city: string | null;
+  state: string | null;
+  distanceKm: number | null;
+  createdAt: string;
+  expiresAt: string;
+}
+export interface NearbyEvent {
+  id: string;
+  title: string;
+  location: string;
+  date: string;
+  coverImage: string | null;
+  createdBy: string;
+  creatorAvatar: string | null;
+}
+export const nearbyActivityService = {
+  get: async (): Promise<{ radars: NearbyRadar[]; events: NearbyEvent[] }> => {
+    const res = await apiClient.get('/feed/nearby-activity');
     return res.data;
   },
 };

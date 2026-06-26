@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift, Zap } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -998,6 +998,16 @@ export default function UserProfile() {
                 </Badge>
               )}
               {profile?.isPremium && <Badge className="bg-gold/15 text-gold border border-gold/30">Premium</Badge>}
+              {(profile as any)?.boosted && (
+                <Badge className="gap-1 border border-amber-400/40 bg-amber-400/15 text-amber-500">
+                  <Zap className="w-3 h-3" /> Em destaque
+                </Badge>
+              )}
+              {(profile as any)?.topMonth && (
+                <Badge className="gap-1 border border-amber-400/40 bg-amber-400/15 text-amber-500">
+                  {['🥇', '🥈', '🥉'][(((profile as any).topMonth.position as number) || 1) - 1] || '🏆'} Top do Mês
+                </Badge>
+              )}
               {isNewProfile && (
                 <Badge variant="secondary" className="bg-blue-500/20 text-blue-400 border-blue-500/30">
                   Perfil Novo
