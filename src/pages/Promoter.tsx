@@ -8,6 +8,8 @@ import {
   ChevronUp,
   Copy,
   DollarSign,
+  Download,
+  Image as ImageIcon,
   Loader2,
   MessageCircle,
   Send as SendIcon,
@@ -27,6 +29,7 @@ import { invitesService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import InviteModal from '@/components/InviteModal';
 import { getSiteUrl, resolveServerUrl } from '@/utils/serverUrl';
+import { generatePromoterStoryImage } from '@/utils/promoterShareImage';
 
 const REFERRED_STATUS_META: Record<string, { label: string; color: string }> = {
   subscriber:  { label: 'Assinante',  color: 'bg-emerald-500/10 text-emerald-600 border-emerald-400/30' },
@@ -83,6 +86,7 @@ export default function Promoter() {
 
   // Invite link
   const [inviteUrl, setInviteUrl] = useState('');
+  const [generatingImg, setGeneratingImg] = useState<null | 'download' | 'share'>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -150,6 +154,69 @@ export default function Promoter() {
       } catch {}
     } else {
       await handleCopyInvite();
+    }
+  };
+
+  const buildShareImage = async () => {
+    if (!inviteUrl) {
+      setShowInviteModal(true);
+      return null;
+    }
+    return await generatePromoterStoryImage(inviteUrl, user?.name || promoter?.fullName || undefined);
+  };
+
+  const downloadBlob = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'nosigilo-convite.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadImage = async () => {
+    if (generatingImg) return;
+    setGeneratingImg('download');
+    try {
+      const blob = await buildShareImage();
+      if (blob) {
+        downloadBlob(blob);
+        toast({ title: 'Imagem baixada!', description: 'Poste no seu story ou envie no WhatsApp.' });
+      }
+    } catch {
+      toast({ title: 'Erro ao gerar imagem', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setGeneratingImg(null);
+    }
+  };
+
+  const handleShareImage = async () => {
+    if (generatingImg) return;
+    setGeneratingImg('share');
+    try {
+      const blob = await buildShareImage();
+      if (!blob) return;
+      const file = new File([blob], 'nosigilo-convite.png', { type: 'image/png' });
+      const text = `Entre na NoSigilo.net pelo meu convite: ${inviteUrl}`;
+      const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean };
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        try {
+          await nav.share({ files: [file], text } as ShareData);
+        } catch {
+          // usuário cancelou o compartilhamento
+        }
+      } else {
+        // Fallback: baixa a imagem e abre o WhatsApp com o texto
+        downloadBlob(blob);
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+        toast({ title: 'Imagem baixada', description: 'Anexe a imagem na conversa do WhatsApp que abrimos.' });
+      }
+    } catch {
+      toast({ title: 'Erro ao gerar imagem', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setGeneratingImg(null);
     }
   };
 
@@ -387,6 +454,41 @@ export default function Promoter() {
             <p className="text-xs text-muted-foreground italic">
               "Entre para a plataforma pelo meu convite exclusivo e faça parte da comunidade: [link]"
             </p>
+
+            {/* Imagem de divulgação (story 9:16) com QR do convite */}
+            <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <ImageIcon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">Imagem para Instagram e WhatsApp</p>
+                  <p className="text-xs text-muted-foreground">
+                    Gera uma arte de story com a marca <strong>NoSigilo.net</strong> e o <strong>QR Code do seu convite</strong> —
+                    quem escaneia entra já vinculado a você (sua comissão é preservada).
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-1.5"
+                  onClick={handleDownloadImage}
+                  disabled={generatingImg !== null}
+                >
+                  {generatingImg === 'download' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  Baixar imagem
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5"
+                  onClick={handleShareImage}
+                  disabled={generatingImg !== null}
+                >
+                  {generatingImg === 'share' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Share2 className="w-3.5 h-3.5" />}
+                  Compartilhar
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

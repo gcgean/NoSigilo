@@ -4528,9 +4528,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // ── Video search (browse reels like profile search) ───────────────────────
   app.get('/api/videos/search', requireAuth(env, db), async (req, res) => {
     const myId = req.auth!.userId;
-    const viewerRow = await queryOne(db, 'SELECT id, lat, lon FROM users WHERE id = ? LIMIT 1', [myId]) as any;
+    const viewerRow = await queryOne(db, 'SELECT id, lat, lon, looking_for_json FROM users WHERE id = ? LIMIT 1', [myId]) as any;
     const viewerLat = typeof viewerRow?.lat === 'number' ? viewerRow.lat : null;
     const viewerLon = typeof viewerRow?.lon === 'number' ? viewerRow.lon : null;
+    // Preferência do viewer ("o que eu curto"). Por padrão só mostra vídeos de perfis
+    // que combinam com esse interesse; o front pode pedir all=true para ver de todos.
+    const myLookingFor: string[] = safeJsonParse(viewerRow?.looking_for_json) ?? [];
+    const showAllProfiles = String(req.query.all || '') === 'true';
 
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(40, Math.max(1, Number(req.query.limit || 24)));
@@ -4664,6 +4668,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Build result entries (one per video media item), with distance calc + filter
     const videos: any[] = [];
     for (const r of slice) {
+      // Filtro por interesse do viewer: por padrão só vídeos de perfis que ele curte.
+      // Ignorado se o usuário escolheu um gênero específico (filterGender) ou pediu "ver todos" (all=true).
+      if (!filterGender && !showAllProfiles && !matchesLookingFor(myLookingFor, r.author_gender)) continue;
+
       const videoMedia = (mediaIdsByPostId.get(String(r.post_id)) ?? [])
         .map((mid) => mediaById.get(mid))
         .filter(Boolean) as { id: string; url: string; mimeType: string }[];

@@ -295,7 +295,8 @@ export default function SearchVideos() {
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   const [cityFilter,     setCityFilter]     = useState('');
-  const [genderFilter,   setGenderFilter]   = useState('all');
+  // 'prefs' = só os tipos de perfil que o usuário curte (padrão); 'all' = todos; ou um gênero específico
+  const [genderFilter,   setGenderFilter]   = useState('prefs');
   const [distanceFilter, setDistanceFilter] = useState('all');
   const [sortFilter,     setSortFilter]     = useState<SortOption>('recent');
   const [showFilters,    setShowFilters]    = useState(false);
@@ -315,7 +316,8 @@ export default function SearchVideos() {
   const buildParams = useCallback((p: number) => ({
     page:           p,
     limit:          PAGE_SIZE_CONST,
-    gender:         genderFilter !== 'all' ? genderFilter : undefined,
+    gender:         (genderFilter !== 'all' && genderFilter !== 'prefs') ? genderFilter : undefined,
+    all:            genderFilter === 'all' ? true : undefined,
     city:           cityFilter.trim() || undefined,
     maxDistanceKm:  distanceFilter !== 'all' ? Number(distanceFilter) : undefined,
     sort:           sortFilter !== 'recent' ? sortFilter : undefined,
@@ -418,7 +420,7 @@ export default function SearchVideos() {
   };
 
   const activeFilterCount = [
-    genderFilter !== 'all',
+    genderFilter !== 'prefs',
     cityFilter.trim() !== '',
     distanceFilter !== 'all',
   ].filter(Boolean).length;
@@ -507,14 +509,20 @@ export default function SearchVideos() {
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Tipo de perfil</p>
               <Select value={genderFilter} onValueChange={setGenderFilter}>
-                <SelectTrigger><SelectValue placeholder="Todos os perfis" /></SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="prefs">Meus interesses</SelectItem>
                   <SelectItem value="all">Todos os perfis</SelectItem>
                   {genderOptions.map((g) => (
                     <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {genderFilter === 'prefs' && (
+                <p className="text-[11px] text-muted-foreground">
+                  Mostrando só os tipos de perfil que você curte. Escolha "Todos os perfis" para ver de todos.
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -538,7 +546,7 @@ export default function SearchVideos() {
                   className="h-8 gap-1.5 text-muted-foreground"
                   onClick={() => {
                     setCityFilter('');
-                    setGenderFilter('all');
+                    setGenderFilter('prefs');
                     setDistanceFilter('all');
                     setSortFilter('recent');
                   }}

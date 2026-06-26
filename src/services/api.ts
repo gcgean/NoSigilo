@@ -106,6 +106,7 @@ export const videoSearchService = {
     city?: string;
     maxDistanceKm?: number;
     sort?: string;
+    all?: boolean;
   }): Promise<{
     videos: Array<{
       mediaId: string;
