@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
 import { adminService, adminPromoterService, type SupportMessage } from '@/services/api';
@@ -285,6 +286,7 @@ export default function Admin() {
   const [isLoadingMoreUsers, setIsLoadingMoreUsers] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
+  const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
@@ -363,13 +365,14 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult] = await Promise.all([
+        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult, rawRevenue] = await Promise.all([
           adminService.getPendingPhotos().catch(() => []),
           adminService.getUsers({ page: 1, limit: USERS_PAGE_SIZE }).catch(() => []),
           adminService.getLogs().catch(() => []),
           adminService.getFinanceSummary().catch(() => null),
           adminService.getSettings().catch(() => null),
           adminService.getReports('pending').catch(() => []),
+          adminService.getRevenueReport().catch(() => null),
         ]);
         const rawReports = rawReportsResult;
 
@@ -428,6 +431,7 @@ export default function Admin() {
             : []
         );
         setFinance(isRecord(rawFinance) ? { ...DEFAULT_FINANCE, ...rawFinance } as FinanceSummary : DEFAULT_FINANCE);
+        setRevenueReport(rawRevenue ?? null);
         setSettings({
           subscriptionsEnabled: rawSettings?.subscriptionsEnabled !== false,
         });
@@ -1334,6 +1338,67 @@ export default function Admin() {
               </div>
             </Card>
           </div>
+
+          {/* Relatório de MRR — histórico + projeção 12 meses */}
+          {revenueReport && (() => {
+            const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+            const lbl = (m: string) => { const [y, mm] = m.split('-'); return `${mm}/${y.slice(2)}`; };
+            const hist = revenueReport.history.map((h) => ({ month: lbl(h.month), historico: Math.round(h.mrrCents / 100), projecao: null as number | null }));
+            if (hist.length > 0) hist[hist.length - 1].projecao = hist[hist.length - 1].historico;
+            const proj = revenueReport.projection.map((p) => ({ month: lbl(p.month), historico: null as number | null, projecao: Math.round(p.mrrCents / 100) }));
+            const data = [...hist, ...proj];
+            const growthPct = (revenueReport.growthRate * 100).toFixed(1);
+            return (
+              <Card className="mt-6 p-6 glass">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <h3 className="font-semibold flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Receita recorrente (MRR) — histórico e projeção</h3>
+                </div>
+
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">MRR atual</p>
+                    <p className="text-xl font-bold text-success">{brl(revenueReport.currentMrrCents)}</p>
+                    <p className="text-[11px] text-muted-foreground">{revenueReport.payingUsers} assinantes</p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">ARR (anual)</p>
+                    <p className="text-xl font-bold">{brl(revenueReport.arrCents)}</p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">Crescimento mensal</p>
+                    <p className={cn('text-xl font-bold', revenueReport.growthRate >= 0 ? 'text-emerald-500' : 'text-destructive')}>
+                      {revenueReport.growthRate >= 0 ? '+' : ''}{growthPct}%
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">Projeção em 12 meses</p>
+                    <p className="text-xl font-bold text-primary">{brl(revenueReport.projected12mCents)}</p>
+                  </div>
+                </div>
+
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" interval="preserveStartEnd" />
+                      <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                      <Tooltip
+                        formatter={(v: any, name: string) => [Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }), name === 'historico' ? 'Histórico' : 'Projeção']}
+                        contentStyle={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }}
+                      />
+                      <Line type="monotone" dataKey="historico" stroke="#10b981" strokeWidth={2} dot={false} connectNulls name="historico" />
+                      <Line type="monotone" dataKey="projecao" stroke="#eb4778" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls name="projecao" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  Linha verde = histórico · linha rosa tracejada = projeção (crescimento médio de {growthPct}%/mês).
+                  {revenueReport.historyIsEstimated && ' Como não há registro de pagamentos no banco, os meses anteriores são uma estimativa pela data de cadastro dos assinantes atuais; a partir de agora o MRR real é registrado mês a mês.'}
+                </p>
+              </Card>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="logs">

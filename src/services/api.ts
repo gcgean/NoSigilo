@@ -973,6 +973,22 @@ export const adminService = {
     return response.data;
   },
 
+  getRevenueReport: async (): Promise<{
+    currency: string;
+    planPriceCents: number;
+    payingUsers: number;
+    currentMrrCents: number;
+    arrCents: number;
+    growthRate: number;
+    projected12mCents: number;
+    history: Array<{ month: string; mrrCents: number; payingUsers: number; estimated: boolean }>;
+    projection: Array<{ month: string; mrrCents: number }>;
+    historyIsEstimated: boolean;
+  }> => {
+    const response = await apiClient.get('/admin/finance/revenue-report');
+    return response.data;
+  },
+
   getSuggestions: async (status?: string) => {
     const response = await apiClient.get('/admin/suggestions', { params: status && status !== 'all' ? { status } : {} });
     return response.data;

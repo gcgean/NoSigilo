@@ -10384,6 +10384,118 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Relatório de receita recorrente (MRR): histórico + projeção 12 meses.
+  // Sem ledger de pagamentos: MRR real é registrado mês a mês a partir de agora
+  // (revenue_snapshots); meses anteriores são ESTIMADOS pela data de cadastro dos
+  // assinantes atuais. A projeção usa o crescimento médio mês a mês.
+  app.get('/api/admin/finance/revenue-report', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      // 1. Preço do plano (HubBilling se disponível, senão fallback R$9,90)
+      let priceCents = 990;
+      if (shouldUseHubBilling(env)) {
+        try {
+          const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+          const plans = await Promise.race([listHubPlans(getHubConfig(env)), timeout]);
+          const activePlan = plans.find((p) => p.isActive && p.status === 'active') ?? plans[0];
+          if (activePlan?.amount) priceCents = Number(activePlan.amount);
+        } catch (e) {
+          console.warn('[revenue-report] hub plans indisponível, usando fallback:', (e as Error).message);
+        }
+      }
+
+      // 2. Assinantes atuais e suas datas de cadastro (proxy do histórico)
+      const subs = (await queryAll(
+        db,
+        "SELECT created_at FROM users WHERE (hub_access_status = 'licensed' OR is_premium = 1) AND (is_banned = 0 OR is_banned IS NULL) AND (is_deactivated = 0 OR is_deactivated IS NULL)"
+      )) as any[];
+      const createdTimes = subs
+        .map((s) => new Date(String(s.created_at)).getTime())
+        .filter((t) => !Number.isNaN(t));
+      const payingNow = createdTimes.length;
+      const currentMrrCents = payingNow * priceCents;
+
+      // 3. Registra/atualiza o snapshot real do mês atual
+      const currentMonth = nowIso().slice(0, 7);
+      await run(
+        db,
+        `INSERT INTO revenue_snapshots (month, mrr_cents, paying_users, captured_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(month) DO UPDATE SET mrr_cents = excluded.mrr_cents, paying_users = excluded.paying_users, captured_at = excluded.captured_at`,
+        [currentMonth, currentMrrCents, payingNow, nowIso()]
+      );
+      await db.persist();
+
+      // Snapshots reais existentes (mês -> dados)
+      const snapRows = (await queryAll(db, 'SELECT month, mrr_cents, paying_users FROM revenue_snapshots', [])) as any[];
+      const snapByMonth = new Map<string, { mrrCents: number; payingUsers: number }>();
+      for (const r of snapRows) snapByMonth.set(String(r.month), { mrrCents: Number(r.mrr_cents || 0), payingUsers: Number(r.paying_users || 0) });
+
+      // 4. Histórico dos últimos 12 meses
+      const monthOffset = (off: number) => {
+        const d = new Date();
+        d.setUTCDate(1);
+        d.setUTCMonth(d.getUTCMonth() + off);
+        return d.toISOString().slice(0, 7);
+      };
+      const startOfNextMonthMs = (monthStr: string) => {
+        const [y, m] = monthStr.split('-').map(Number);
+        const ny = m === 12 ? y + 1 : y;
+        const nm = m === 12 ? 1 : m + 1;
+        return Date.UTC(ny, nm - 1, 1);
+      };
+
+      const history: Array<{ month: string; mrrCents: number; payingUsers: number; estimated: boolean }> = [];
+      for (let i = 11; i >= 0; i--) {
+        const month = monthOffset(-i);
+        const snap = snapByMonth.get(month);
+        if (snap) {
+          history.push({ month, mrrCents: snap.mrrCents, payingUsers: snap.payingUsers, estimated: false });
+        } else {
+          const boundary = startOfNextMonthMs(month);
+          const estPaying = createdTimes.filter((t) => t < boundary).length;
+          history.push({ month, mrrCents: estPaying * priceCents, payingUsers: estPaying, estimated: true });
+        }
+      }
+
+      // 5. Crescimento médio mês a mês (últimos meses com base > 0), limitado
+      const growths: number[] = [];
+      for (let i = 1; i < history.length; i++) {
+        const prev = history[i - 1].mrrCents;
+        const cur = history[i].mrrCents;
+        if (prev > 0) growths.push(cur / prev - 1);
+      }
+      const recent = growths.slice(-6);
+      let growthRate = recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
+      growthRate = Math.max(-0.5, Math.min(1, growthRate));
+
+      // 6. Projeção dos próximos 12 meses
+      const projection: Array<{ month: string; mrrCents: number }> = [];
+      let running = currentMrrCents;
+      for (let i = 1; i <= 12; i++) {
+        running = Math.round(running * (1 + growthRate));
+        projection.push({ month: monthOffset(i), mrrCents: running });
+      }
+
+      const projected12mCents = projection.length > 0 ? projection[projection.length - 1].mrrCents : currentMrrCents;
+
+      res.json({
+        currency: 'BRL',
+        planPriceCents: priceCents,
+        payingUsers: payingNow,
+        currentMrrCents,
+        arrCents: currentMrrCents * 12,
+        growthRate,
+        projected12mCents,
+        history,
+        projection,
+        historyIsEstimated: history.some((h) => h.estimated),
+      });
+    } catch (error) {
+      console.error('[admin/finance/revenue-report]', error);
+      res.status(500).json({ error: 'revenue_report_unavailable' });
+    }
+  });
+
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const requestedLimit = Number(req.query.limit || 120);
