@@ -25,6 +25,11 @@ export default function WelcomeModal() {
     try {
       if (!localStorage.getItem(WELCOME_KEY)) setOpen(true);
     } catch { /* ignora indisponibilidade do storage */ }
+
+    // Abertura manual pelo menu "Atalhos rápidos"
+    const openHandler = () => setOpen(true);
+    window.addEventListener('nosigilo:open-welcome', openHandler);
+    return () => window.removeEventListener('nosigilo:open-welcome', openHandler);
   }, []);
 
   const dismiss = () => {

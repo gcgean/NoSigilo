@@ -1164,6 +1164,19 @@ export default function Layout() {
                 <span className="block text-xs text-muted-foreground">Divulgue um encontro, festa ou viagem para a comunidade.</span>
               </span>
             </button>
+            <button
+              type="button"
+              onClick={() => { setRadarSheetOpen(false); window.dispatchEvent(new Event('nosigilo:open-welcome')); }}
+              className="flex items-start gap-3 rounded-xl border border-rose-400/25 bg-rose-400/5 p-4 text-left transition-colors hover:bg-rose-400/10"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-400/15 text-rose-400">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold">Conheça a plataforma</span>
+                <span className="block text-xs text-muted-foreground">Veja de novo tudo o que você pode fazer no NoSigilo.</span>
+              </span>
+            </button>
           </div>
         </DialogContent>
       </Dialog>
