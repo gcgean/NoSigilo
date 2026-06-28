@@ -1140,6 +1140,19 @@ export default function Layout() {
             </button>
             <button
               type="button"
+              onClick={() => { setRadarSheetOpen(false); navigate('/friends'); }}
+              className="flex items-start gap-3 rounded-xl border border-sky-400/25 bg-sky-400/5 p-4 text-left transition-colors hover:bg-sky-400/10"
+            >
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-400/15 text-sky-400">
+                <Users className="h-5 w-5" />
+              </span>
+              <span>
+                <span className="block text-sm font-bold">Amigos</span>
+                <span className="block text-xs text-muted-foreground">Veja sua lista de amigos e os perfis que viraram match.</span>
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => { setRadarSheetOpen(false); navigate('/events'); }}
               className="flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4 text-left transition-colors hover:bg-amber-400/10"
             >
