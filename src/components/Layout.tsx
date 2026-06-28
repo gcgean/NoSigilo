@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
+import WelcomeModal from '@/components/WelcomeModal';
 import TokenBadge from '@/components/TokenBadge';
 import { notificationsService, chatService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
@@ -559,6 +560,7 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      <WelcomeModal />
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
