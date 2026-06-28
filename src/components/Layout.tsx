@@ -36,7 +36,6 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import HelpButton from '@/components/HelpButton';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import TokenBadge from '@/components/TokenBadge';
 import { notificationsService, chatService } from '@/services/api';
@@ -601,7 +600,16 @@ export default function Layout() {
               }
             </Button>
 
-            <HelpButton buttonClassName="h-9 w-9 rounded-full sm:h-10 sm:w-10" iconClassName="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-full sm:h-10 sm:w-10"
+              onClick={() => setRadarSheetOpen(true)}
+              aria-label="Divulgar: ativar radar ou criar evento"
+              title="Divulgar (Radar / Evento)"
+            >
+              <Plus className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
+            </Button>
 
             {accessCountdown && (
               <NavLink to={accessCountdown.href} className="hidden min-w-0 shrink sm:block">
@@ -1074,19 +1082,6 @@ export default function Layout() {
                     </span>
                   )}
                 </NavLink>
-
-                {/* Botão de ação Radar / Evento — mesmo padrão dos demais itens */}
-                {item.path === '/stories' && (
-                  <button
-                    type="button"
-                    onClick={() => setRadarSheetOpen(true)}
-                    aria-label="Ativar radar ou criar evento"
-                    className="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <Plus className="h-4.5 w-4.5" />
-                    <span className="max-w-full truncate text-[10px] leading-4">Divulgar</span>
-                  </button>
-                )}
               </Fragment>
             );
           })}
