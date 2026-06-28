@@ -1119,9 +1119,9 @@ export default function Layout() {
       <Dialog open={radarSheetOpen} onOpenChange={setRadarSheetOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>O que você quer divulgar?</DialogTitle>
+            <DialogTitle>Atalhos rápidos</DialogTitle>
             <DialogDescription>
-              Apareça para os perfis compatíveis com você — no feed e nas notificações deles.
+              Divulgue-se para perfis compatíveis, crie eventos ou veja seus amigos.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
