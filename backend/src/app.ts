@@ -5583,6 +5583,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     const data = parsed.data;
+
+    // Tipo de perfil (gênero) é imutável: definido uma vez no cadastro, não muda mais.
+    if ('gender' in data) {
+      const cur = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+      if (cur?.gender && String(cur.gender).trim() !== '') {
+        delete (data as any).gender;
+      }
+    }
+
     const setParts: string[] = [];
     const values: unknown[] = [];
     const map: Record<string, string> = {

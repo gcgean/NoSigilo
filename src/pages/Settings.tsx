@@ -500,7 +500,11 @@ export default function Settings() {
 
                   <div className="space-y-2">
                     <Label>Tipo de perfil</Label>
-                    <Select value={profile.gender} onValueChange={(v) => setProfile({ ...profile, gender: v })}>
+                    <Select
+                      value={profile.gender}
+                      onValueChange={(v) => setProfile({ ...profile, gender: v })}
+                      disabled={!!user?.gender}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Como seu perfil será exibido" />
                       </SelectTrigger>
@@ -510,6 +514,11 @@ export default function Settings() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {!!user?.gender && (
+                      <p className="text-[11px] text-muted-foreground">
+                        O tipo de perfil é definido no cadastro e não pode ser alterado depois.
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
