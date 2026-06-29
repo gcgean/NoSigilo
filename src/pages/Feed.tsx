@@ -267,8 +267,10 @@ export default function Feed() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const publishGuardRef = useRef(false); // trava síncrona contra toque duplo (evita post/foto duplicada)
   const [storyPromptMediaId, setStoryPromptMediaId] = useState<string | null>(null);
   const [isPublishingExperience, setIsPublishingExperience] = useState(false);
+  const publishExperienceGuardRef = useRef(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
@@ -959,6 +961,8 @@ export default function Feed() {
   const handlePublish = async () => {
     const content = postContent.trim();
     if (!content && attachments.length === 0) return;
+    if (publishGuardRef.current) return; // bloqueia 2ª execução por toque duplo
+    publishGuardRef.current = true;
     setIsPublishing(true);
     try {
       let completedFirstPostStep = false;
@@ -1052,6 +1056,7 @@ export default function Feed() {
       toast({ title: 'Erro ao publicar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsPublishing(false);
+      publishGuardRef.current = false;
     }
   };
 
@@ -1063,6 +1068,8 @@ export default function Feed() {
       toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres.', variant: 'destructive' });
       return;
     }
+    if (publishExperienceGuardRef.current) return;
+    publishExperienceGuardRef.current = true;
     setIsPublishingExperience(true);
     try {
       const mediaIds: string[] = [];
@@ -1091,6 +1098,7 @@ export default function Feed() {
       toast({ title: 'Erro ao publicar experiência', description: e?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsPublishingExperience(false);
+      publishExperienceGuardRef.current = false;
     }
   };
 

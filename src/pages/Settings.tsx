@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2
 } from 'lucide-react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { authService, feedService, profileService, suggestionsService } from '@/services/api';
+import { authService, feedService, profileService, suggestionsService, usersService } from '@/services/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,14 +51,17 @@ export default function Settings() {
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
+  const [loadingVideos, setLoadingVideos] = useState(true);
+  const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingPushState, setIsLoadingPushState] = useState(true);
   const initialSubTab = (() => {
     const tab = new URLSearchParams(location.search).get('tab');
-    if (tab === 'interesses' || tab === 'pessoal') return tab;
+    if (tab === 'interesses' || tab === 'pessoal' || tab === 'midia') return tab;
     return 'geral';
   })();
-  const [profileSubTab, setProfileSubTab] = useState<'geral' | 'pessoal' | 'interesses'>(initialSubTab);
+  const [profileSubTab, setProfileSubTab] = useState<'geral' | 'pessoal' | 'interesses' | 'midia'>(initialSubTab);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -309,8 +312,41 @@ export default function Settings() {
     }
   };
 
+  const loadMyVideos = async () => {
+    if (!user?.id) { setLoadingVideos(false); return; }
+    setLoadingVideos(true);
+    try {
+      const data = await usersService.getUserPosts(String(user.id), { videosOnly: true, limit: 30 });
+      const posts = Array.isArray((data as any)?.posts) ? (data as any).posts : [];
+      const vids = posts.flatMap((post: any) =>
+        (post.media || [])
+          .filter((m: any) => String(m.mimeType || '').startsWith('video/') && m.url)
+          .map((m: any) => ({ id: String(m.id), postId: String(post.id), url: resolveMediaUrl(String(m.url || '')) }))
+      );
+      setMyVideos(vids);
+    } catch {
+      setMyVideos([]);
+    } finally {
+      setLoadingVideos(false);
+    }
+  };
+
+  const handleDeleteVideo = async (mediaId: string) => {
+    setDeletingVideoId(mediaId);
+    try {
+      await feedService.deleteMedia(mediaId);
+      setMyVideos((prev) => prev.filter((v) => v.id !== mediaId));
+      toast({ title: 'Vídeo removido', description: 'O vídeo foi excluído do seu perfil.' });
+    } catch {
+      toast({ title: 'Erro ao remover', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setDeletingVideoId(null);
+    }
+  };
+
   useEffect(() => {
     void loadPhotos();
+    void loadMyVideos();
   }, []);
 
   const handleChangeAvatar = async (file: File) => {
@@ -378,25 +414,30 @@ export default function Settings() {
       <h1 className="text-2xl font-bold mb-6">Configurações</h1>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="w-full grid grid-cols-5">
-          <TabsTrigger value="profile" className="gap-2">
+        <TabsList className="grid h-auto w-full grid-cols-5">
+          <TabsTrigger value="profile" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <User className="w-4 h-4" />
+            <span className="text-[10px] sm:hidden">Perfil</span>
             <span className="hidden sm:inline">Perfil</span>
           </TabsTrigger>
-          <TabsTrigger value="privacy" className="gap-2">
+          <TabsTrigger value="privacy" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <Eye className="w-4 h-4" />
+            <span className="text-[10px] sm:hidden">Privac.</span>
             <span className="hidden sm:inline">Privacidade</span>
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-2">
+          <TabsTrigger value="notifications" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <Bell className="w-4 h-4" />
+            <span className="text-[10px] sm:hidden">Notif.</span>
             <span className="hidden sm:inline">Notificações</span>
           </TabsTrigger>
-          <TabsTrigger value="security" className="gap-2">
+          <TabsTrigger value="security" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <Shield className="w-4 h-4" />
+            <span className="text-[10px] sm:hidden">Segur.</span>
             <span className="hidden sm:inline">Segurança</span>
           </TabsTrigger>
-          <TabsTrigger value="suggestions" className="gap-2">
+          <TabsTrigger value="suggestions" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <Lightbulb className="w-4 h-4" />
+            <span className="text-[10px] sm:hidden">Dicas</span>
             <span className="hidden sm:inline">Sugestões</span>
           </TabsTrigger>
         </TabsList>
@@ -404,10 +445,10 @@ export default function Settings() {
         {/* Profile Tab */}
         <TabsContent value="profile" className="space-y-4">
 
-          {/* ── Sub-navegação Geral / Pessoal / Interesses ── */}
+          {/* ── Sub-navegação Geral / Pessoal / Interesses / Mídia ── */}
           <div className="flex rounded-xl overflow-hidden border border-border">
-            {(['geral', 'pessoal', 'interesses'] as const).map((tab) => {
-              const labels = { geral: 'Geral', pessoal: 'Pessoal', interesses: 'Interesses' };
+            {(['geral', 'pessoal', 'interesses', 'midia'] as const).map((tab) => {
+              const labels = { geral: 'Geral', pessoal: 'Pessoal', interesses: 'Interesses', midia: 'Mídia' };
               return (
                 <button
                   key={tab}
@@ -427,7 +468,7 @@ export default function Settings() {
 
           {/* ══════════════ GERAL ══════════════ */}
           {profileSubTab === 'geral' && (
-            <div className="glass rounded-xl p-6 space-y-5">
+            <div className="glass rounded-xl p-4 sm:p-6 space-y-5">
 
               {/* Foto */}
               <div>
@@ -598,13 +639,42 @@ export default function Settings() {
                 </div>
               </div>
 
+            </div>
+          )}
+
+          {/* ══════════════ MÍDIA ══════════════ */}
+          {profileSubTab === 'midia' && (
+            <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
+              {/* Fotos públicas */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Fotos públicas</h3>
+                <p className="text-xs text-muted-foreground mb-3">Aparecem no seu perfil para todos.</p>
+                {photos.filter((p) => !p.isPrivate).length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+                    <Camera className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                    Nenhuma foto pública ainda. Publique pelo feed para aparecerem aqui.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                    {photos.filter((p) => !p.isPrivate).map((p) => (
+                      <div key={p.id} className="relative aspect-square overflow-hidden rounded-xl">
+                        <img src={resolveMediaUrl(p.url)} alt="" className="h-full w-full object-cover" />
+                        {p.isMain && (
+                          <span className="absolute left-1.5 top-1.5 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold text-primary-foreground">Principal</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="border-t" />
 
               {/* Fotos Privadas */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Fotos Privadas</h3>
                 <p className="text-xs text-muted-foreground mb-3">Visíveis apenas para quem você autorizar.</p>
-                <div className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                   {photos.filter((p) => p.isPrivate).slice(0, 5).map((p) => (
                     <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden">
                       <img src={resolveMediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
@@ -632,15 +702,46 @@ export default function Settings() {
                 />
               </div>
 
-              <Button onClick={handleSaveProfile} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90" disabled={isLoading}>
-                {isLoading ? 'Salvando...' : 'Salvar Alterações'}
-              </Button>
+              <div className="border-t" />
+
+              {/* Meus vídeos */}
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Meus vídeos</h3>
+                <p className="text-xs text-muted-foreground mb-3">Vídeos que você publicou no seu perfil.</p>
+                {loadingVideos ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Carregando vídeos...
+                  </div>
+                ) : myVideos.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/60 p-6 text-center text-sm text-muted-foreground">
+                    <Film className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                    Você ainda não publicou vídeos. Publique pelo feed para aparecerem aqui.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {myVideos.map((v) => (
+                      <div key={v.id} className="group relative aspect-[9/16] overflow-hidden rounded-xl bg-black">
+                        <video src={v.url} className="h-full w-full object-cover" preload="metadata" playsInline controls />
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteVideo(v.id)}
+                          disabled={deletingVideoId === v.id}
+                          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition hover:bg-destructive disabled:opacity-50"
+                          aria-label="Remover vídeo"
+                        >
+                          {deletingVideoId === v.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* ══════════════ PESSOAL ══════════════ */}
           {profileSubTab === 'pessoal' && (
-            <div className="glass rounded-xl p-6 space-y-5">
+            <div className="glass rounded-xl p-4 sm:p-6 space-y-5">
 
               {/* Toggle Pessoa 1 / Pessoa 2 (só para casais) */}
               {isCoupleProfile && (
@@ -904,15 +1005,12 @@ export default function Settings() {
                 </>
               )}
 
-              <Button onClick={handleSaveProfile} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90" disabled={isLoading}>
-                {isLoading ? 'Salvando...' : 'Salvar Alterações'}
-              </Button>
             </div>
           )}
 
           {/* ══════════════ INTERESSES ══════════════ */}
           {profileSubTab === 'interesses' && (
-            <div className="glass rounded-xl p-6 space-y-6">
+            <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
 
               {/* Perfis que busca */}
               <div className="space-y-3">
@@ -1061,7 +1159,17 @@ export default function Settings() {
                 )}
               </div>
 
-              <Button onClick={handleSaveProfile} className="w-full sm:w-auto bg-gradient-primary hover:opacity-90" disabled={isLoading}>
+            </div>
+          )}
+
+          {/* Botão Salvar fixo (some na aba Mídia, que salva automaticamente) */}
+          {profileSubTab !== 'midia' && (
+            <div className="sticky bottom-16 z-30 -mx-1 mt-2 rounded-xl border border-border/60 bg-background/95 p-2 backdrop-blur md:bottom-4">
+              <Button
+                onClick={handleSaveProfile}
+                className="w-full gap-2 bg-gradient-primary hover:opacity-90"
+                disabled={isLoading}
+              >
                 {isLoading ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </div>
@@ -1071,7 +1179,7 @@ export default function Settings() {
 
         {/* Privacy Tab */}
         <TabsContent value="privacy" className="space-y-6">
-          <div className="glass rounded-xl p-6 space-y-6">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
             <h3 className="font-semibold">Visibilidade do Perfil</h3>
 
             <div className="flex items-center justify-between">
@@ -1119,7 +1227,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold">Quem pode enviar mensagens</h3>
             <Select
               value={privacy.allowMessages}
@@ -1160,7 +1268,7 @@ export default function Settings() {
 
         {/* Notifications Tab */}
         <TabsContent value="notifications" className="space-y-6">
-          <div className="glass rounded-xl p-6 space-y-6">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
             <h3 className="font-semibold">Notificações no App</h3>
 
             <div className="flex items-center justify-between">
@@ -1209,7 +1317,7 @@ export default function Settings() {
           </div>
 
           {/* Appearance */}
-          <div className="glass rounded-xl p-6 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold">Aparência</h3>
             <p className="text-sm text-muted-foreground">Escolha como o NoSigilo aparece para você.</p>
             <div className="grid grid-cols-2 gap-3">
@@ -1250,7 +1358,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-6">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
             <h3 className="font-semibold">Notificações Externas</h3>
 
             <div className="flex items-center justify-between">
@@ -1370,7 +1478,7 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
-          <div className="glass rounded-xl p-6 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-semibold">Convites e padrinhos</h3>
@@ -1397,7 +1505,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold">Alterar Senha</h3>
 
             <div className="space-y-4">
@@ -1474,7 +1582,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-4">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <h3 className="font-semibold">Sessões Ativas</h3>
             <p className="text-sm text-muted-foreground">
               Você está logado neste dispositivo. Clique abaixo para sair de todas as sessões.
@@ -1485,7 +1593,7 @@ export default function Settings() {
             </Button>
           </div>
 
-          <div className="glass rounded-xl p-6 space-y-6 border border-destructive/20">
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-6 border border-destructive/20">
             <h3 className="font-semibold text-destructive">Zona de Perigo</h3>
 
             {/* Deactivate profile */}
@@ -1614,7 +1722,7 @@ function SuggestionsTab() {
   return (
     <div className="space-y-6">
       {/* Composer */}
-      <div className="glass rounded-xl p-6 space-y-4">
+      <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
         <div className="flex items-center gap-2">
           <MessageSquarePlus className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">Enviar sugestão ou feedback</h3>
@@ -1668,7 +1776,7 @@ function SuggestionsTab() {
       </div>
 
       {/* History */}
-      <div className="glass rounded-xl p-6 space-y-4">
+      <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
         <h3 className="font-semibold">Minhas sugestões</h3>
         {isLoadingHistory && <p className="text-sm text-muted-foreground">Carregando...</p>}
         {!isLoadingHistory && history.length === 0 && (

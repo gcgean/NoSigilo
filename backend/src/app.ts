@@ -6624,6 +6624,25 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           size: req.file.size,
         };
 
+    // Idempotência: evita duplicar a mesma mídia em uploads repetidos (toque duplo
+    // ou retry de rede). Se o mesmo arquivo (nome + tamanho) já foi enviado por este
+    // usuário nos últimos 60s, retorna a mídia existente em vez de criar outra.
+    const dupSince = new Date(Date.now() - 60_000).toISOString();
+    const dup = (await queryOne(
+      db,
+      'SELECT id, filename FROM media WHERE user_id = ? AND original_name = ? AND size = ? AND is_private = ? AND created_at >= ? ORDER BY created_at DESC LIMIT 1',
+      [req.auth!.userId, req.file.originalname, storedFile.size, isPrivate ? 1 : 0, dupSince]
+    )) as any;
+    if (dup?.id) {
+      if (isPrivate) {
+        const token = jwt.sign({ mediaId: String(dup.id) }, env.JWT_SECRET, { expiresIn: '30m' });
+        res.json({ id: dup.id, url: `/private-uploads/${dup.id}?token=${encodeURIComponent(token)}` });
+      } else {
+        res.json({ id: dup.id, url: `/uploads/${String(dup.filename)}` });
+      }
+      return;
+    }
+
     const id = randomUUID();
     await run(
       db,
