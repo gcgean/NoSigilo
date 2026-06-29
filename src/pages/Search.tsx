@@ -65,6 +65,9 @@ export default function SearchPage() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string; avatar: string | null; gender: string | null; city: string | null; state: string | null }>>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const suggestDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Results / pagination state
   const [results, setResults] = useState<any[]>([]);
@@ -265,6 +268,17 @@ export default function SearchPage() {
       .finally(() => setPrefsReady(true));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Autocomplete: sugere perfis pelo nome enquanto digita ───────────────────
+  useEffect(() => {
+    const q = search.trim();
+    if (suggestDebounceRef.current) clearTimeout(suggestDebounceRef.current);
+    if (q.length < 2) { setSuggestions([]); return; }
+    suggestDebounceRef.current = setTimeout(() => {
+      usersService.suggestUsers(q).then((r) => setSuggestions(r.users || [])).catch(() => setSuggestions([]));
+    }, 250);
+    return () => { if (suggestDebounceRef.current) clearTimeout(suggestDebounceRef.current); };
+  }, [search]);
 
   // ── React to filter changes (debounce text, immediate for dropdowns) ───────
   useEffect(() => {
@@ -878,15 +892,40 @@ export default function SearchPage() {
           <Input
             placeholder="Buscar por nome ou cidade..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
+                setShowSuggestions(false);
                 if (debounceRef.current) clearTimeout(debounceRef.current);
                 void fetchFirstPage();
               }
             }}
             className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
           />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
+              <p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
+                >
+                  <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{s.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex sm:flex-row">
           <Button

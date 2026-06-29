@@ -601,6 +601,11 @@ export const usersService = {
     return response.data;
   },
 
+  suggestUsers: async (q: string): Promise<{ users: Array<{ id: string; name: string; avatar: string | null; gender: string | null; city: string | null; state: string | null }> }> => {
+    const response = await apiClient.get('/users/suggest', { params: { q } });
+    return response.data;
+  },
+
   getUserPhotos: async (userId: string, visibility: 'public' | 'private') => {
     const response = await apiClient.get(`/users/${userId}/photos`, { params: { visibility } });
     return response.data;

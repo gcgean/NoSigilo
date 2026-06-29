@@ -86,6 +86,51 @@ export async function sendPasswordResetCodeEmail(
   return { skipped: false as const };
 }
 
+// ─── E-mail de moderação (banimento, advertência, retorno de denúncia) ────────
+
+type ModerationEmailOptions = { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string };
+
+export async function sendModerationEmail(
+  options: ModerationEmailOptions,
+  payload: { to: string; userName?: string | null; subject: string; heading: string; lines: string[] }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+  const appName = options.appName || 'NoSigilo';
+  const safeName = payload.userName ? escapeHtml(String(payload.userName).split(' ')[0]) : '';
+  const greeting = safeName ? `Olá, ${safeName}.` : 'Olá.';
+  const paragraphs = payload.lines
+    .map((l) => `<p style="font-size:15px; line-height:1.7; margin:0 0 14px; color:#3a2630;">${escapeHtml(l)}</p>`)
+    .join('');
+  const html = `
+    <div style="font-family: Arial, sans-serif; background:#fff7fa; padding:24px; color:#2b1720;">
+      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #f4c7d7; border-radius:18px; padding:32px;">
+        <h1 style="margin:0 0 16px; font-size:24px; color:#e83e68;">${appName}</h1>
+        <h2 style="margin:0 0 14px; font-size:19px; color:#2b1720;">${escapeHtml(payload.heading)}</h2>
+        <p style="font-size:15px; line-height:1.7; margin:0 0 14px; color:#3a2630;">${greeting}</p>
+        ${paragraphs}
+        <p style="font-size:12px; line-height:1.6; margin:22px 0 0; color:#9a7e88;">${appName} — aviso automático da moderação.</p>
+      </div>
+    </div>
+  `.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject: payload.subject, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_moderation_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Re-engagement email ──────────────────────────────────────────────────────
 
 type ReengagementOptions = {

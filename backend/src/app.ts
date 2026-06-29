@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -5824,6 +5824,43 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
   });
 
+  // Autocomplete de perfis por nome (dropdown na busca). Ignora distância/gênero —
+  // procura no Brasil todo. Prioriza nome exato > começa com > contém.
+  // IMPORTANTE: definida antes de /api/users/:userId para não ser capturada como id.
+  app.get('/api/users/suggest', requireAuth(env, db), async (req, res) => {
+    const viewerId = req.auth!.userId;
+    const q = req.query.q ? String(req.query.q).trim() : '';
+    if (q.length < 2) { res.json({ users: [] }); return; }
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.gender, u.city, u.state
+       FROM users u
+       WHERE u.id != ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND (u.is_admin = 0 OR u.is_admin IS NULL)
+         AND u.name LIKE ?
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+       ORDER BY CASE WHEN LOWER(u.name) = LOWER(?) THEN 0 WHEN LOWER(u.name) LIKE LOWER(?) THEN 1 ELSE 2 END, u.name ASC
+       LIMIT 8`,
+      [viewerId, `%${q}%`, viewerId, viewerId, q, `${q}%`]
+    )) as any[];
+    res.json({
+      users: rows.map((r: any) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ?? null,
+        gender: r.gender ?? null,
+        city: r.city ?? null,
+        state: r.state ?? null,
+      })),
+    });
+  });
+
   app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
     const viewerId = req.auth!.userId;
@@ -5953,7 +5990,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // ─── Search / browse users ───────────────────────────────────────────────
-app.get('/api/users', requireAuth(env, db), async (req, res) => {
+  app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon FROM users WHERE id = ?', [viewerId])) as any;
     const viewerIsAdmin = Number(viewerRow?.is_admin || 0) === 1;
@@ -5997,7 +6034,9 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
       params.push(`%${city}%`, `%${city}%`);
     }
 
-    if (genders.length > 0) {
+    // Busca por nome/cidade ignora o filtro de gênero — ao procurar um perfil
+    // específico, o usuário quer encontrá-lo independentemente do tipo de perfil.
+    if (!search && genders.length > 0) {
       conditions.push(`u.gender IN (${genders.map(() => '?').join(',')})`);
       params.push(...genders);
     }
@@ -6026,7 +6065,8 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
 
     let viewerLat: number | null = viewerRow?.lat != null ? Number(viewerRow.lat) : null;
     let viewerLon: number | null = viewerRow?.lon != null ? Number(viewerRow.lon) : null;
-    if (radarKm !== null) {
+    // Busca por nome ignora o raio de distância (procura no Brasil todo).
+    if (!search && radarKm !== null) {
       if (viewerLat !== null && viewerLon !== null) {
         const latDelta = radarKm / 111;
         const lonDelta = radarKm / (111 * Math.cos((viewerLat * Math.PI) / 180));
@@ -10967,12 +11007,40 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         }
       };
 
+      const emailOpts = {
+        apiKey: env.RESEND_API_KEY,
+        fromEmail: env.RESEND_FROM_EMAIL,
+        appName: env.APP_NAME || 'NoSigilo',
+        siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net',
+      };
+      const emailUser = async (userId: string | null, subject: string, heading: string, lines: string[]) => {
+        if (!userId) return;
+        try {
+          const u = (await queryOne(db, 'SELECT email, name FROM users WHERE id = ?', [userId])) as any;
+          if (u?.email) {
+            await sendModerationEmail(emailOpts, { to: String(u.email), userName: u.name, subject, heading, lines });
+          }
+        } catch (err) {
+          console.error('[admin/reports/resolve] e-mail de moderação falhou', err);
+        }
+      };
+
       // Executa a ação de moderação
       if (action === 'ban' && ownerId) {
         await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, ownerId]);
-        // Usuário banido não é notificado (perde acesso à plataforma)
+        // Banido não recebe notificação in-app (perde acesso), mas recebe um e-mail
+        // informando a decisão — exceção transacional à regra de não enviar a banidos.
+        await emailUser(ownerId, `${emailOpts.appName}: sua conta foi banida`, 'Sua conta foi banida', [
+          note || 'Após análise de uma denúncia, sua conta foi banida por violar as regras da comunidade.',
+          'O acesso à plataforma foi encerrado. Se você acredita que houve um engano, responda este e-mail para falar com a moderação.',
+        ]);
       } else if (action === 'warn') {
-        await notify(ownerId, 'moderation.warning', 'Você recebeu uma advertência', note || 'Um conteúdo seu foi reportado e analisado pela moderação. Reveja as regras da comunidade para evitar uma suspensão.');
+        const warnMsg = note || 'Um conteúdo seu foi reportado e analisado pela moderação. Reveja as regras da comunidade para evitar uma suspensão.';
+        await notify(ownerId, 'moderation.warning', 'Você recebeu uma advertência', warnMsg);
+        await emailUser(ownerId, `${emailOpts.appName}: você recebeu uma advertência`, 'Você recebeu uma advertência', [
+          warnMsg,
+          'Reveja as diretrizes da comunidade. Novas violações podem levar à suspensão da conta.',
+        ]);
       } else if (action === 'remove_content') {
         if (targetType === 'post') {
           await run(db, 'DELETE FROM likes WHERE target_type = ? AND target_id = ?', ['post', targetId]);
@@ -10983,7 +11051,12 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
         } else if (targetType === 'message') {
           await run(db, 'UPDATE messages SET deleted_for_all = 1, content = NULL, media_id = NULL WHERE id = ?', [targetId]);
         }
-        await notify(ownerId, 'moderation.content_removed', 'Conteúdo removido', note || 'Um conteúdo seu foi removido por violar as regras da comunidade.');
+        const removeMsg = note || 'Um conteúdo seu foi removido por violar as regras da comunidade.';
+        await notify(ownerId, 'moderation.content_removed', 'Conteúdo removido', removeMsg);
+        await emailUser(ownerId, `${emailOpts.appName}: um conteúdo seu foi removido`, 'Conteúdo removido', [
+          removeMsg,
+          'Reveja as diretrizes da comunidade para evitar advertências ou suspensão.',
+        ]);
       }
       // dismiss: apenas resolve a denúncia (improcedente)
 
@@ -10999,6 +11072,15 @@ app.get('/api/users', requireAuth(env, db), async (req, res) => {
           ? 'Analisamos sua denúncia e, desta vez, não identificamos violação das regras. Obrigado por ajudar a manter a comunidade segura.'
           : 'Analisamos sua denúncia e tomamos as medidas necessárias. Obrigado por ajudar a manter a comunidade segura.';
         await notify(reporterId, 'report.reviewed', 'Sua denúncia foi analisada', outcome);
+
+        // No banimento, também envia e-mail ao denunciante — preservando o sigilo
+        // total da identidade dele (o perfil banido nunca sabe quem denunciou).
+        if (action === 'ban') {
+          await emailUser(reporterId, `${emailOpts.appName}: sua denúncia foi analisada`, 'Tomamos as medidas necessárias', [
+            'Analisamos a denúncia que você enviou e o perfil foi banido da plataforma.',
+            'Sua identidade é mantida em total sigilo: o perfil denunciado não tem como saber que a denúncia partiu de você. Obrigado por ajudar a manter a comunidade segura.',
+          ]);
+        }
       }
 
       await persist();
