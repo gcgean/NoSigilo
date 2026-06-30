@@ -841,6 +841,37 @@ function shouldUseHubBilling(env: Env) {
   return isHubBillingEnabled(getHubConfig(env));
 }
 
+// Verifica se um nome está na lista negra (perfis banidos). Case-insensitive.
+async function isNameBlacklisted(db: DbHandle, name: string): Promise<boolean> {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n) return false;
+  const row = await queryOne(db, 'SELECT name_lower FROM banned_names WHERE name_lower = ? LIMIT 1', [n]);
+  return !!row;
+}
+
+// Bane um usuário de forma COMPLETA: marca is_banned, joga o nome na lista negra
+// (ninguém mais cria perfil com esse nome) e remove o conteúdo que ainda apareceria
+// em consultas (stories ativos e broadcasts de radar). As demais listagens já
+// filtram is_banned, então o perfil some de buscas, feed, chat, etc.
+async function banUserEverywhere(db: DbHandle, userId: string, adminId: string | null) {
+  const u = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId ?? null, userId]);
+
+  const name = String(u?.name || '').trim();
+  if (name) {
+    const nameLower = name.toLowerCase();
+    if (db.mode === 'pg') {
+      await run(db, 'INSERT INTO banned_names (name_lower, original_name, banned_user_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (name_lower) DO NOTHING', [nameLower, name, userId, nowIso()]);
+    } else {
+      await run(db, 'INSERT OR IGNORE INTO banned_names (name_lower, original_name, banned_user_id, created_at) VALUES (?, ?, ?, ?)', [nameLower, name, userId, nowIso()]);
+    }
+  }
+
+  // Conteúdo que não é filtrado por JOIN com users: remove explicitamente.
+  await run(db, 'DELETE FROM stories WHERE user_id = ?', [userId]);
+  await run(db, 'UPDATE radar_broadcasts SET deactivated_at = ? WHERE user_id = ? AND deactivated_at IS NULL', [nowIso(), userId]);
+}
+
 async function syncHubAccessForUser(
   db: DbHandle,
   userId: string,
@@ -2379,6 +2410,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const existingName = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?)', [name]);
     if (existingName) {
       res.status(409).json({ error: 'name_in_use' });
+      return;
+    }
+    // Nome em lista negra (perfil banido) não pode ser reutilizado.
+    if (await isNameBlacklisted(db, name)) {
+      res.status(409).json({ error: 'name_blacklisted' });
       return;
     }
 
@@ -4223,6 +4259,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        LEFT JOIN media m ON m.id = s.media_id
        JOIN users u ON u.id = s.user_id
        WHERE s.expires_at > ? AND s.user_id != ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
        ORDER BY s.created_at DESC`,
       [now, userId]
     )) as any[];
@@ -5702,6 +5740,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const data = parsed.data;
 
+    // Não permite trocar para um nome em lista negra (de perfil banido).
+    if (typeof data.name === 'string' && await isNameBlacklisted(db, data.name)) {
+      res.status(409).json({ error: 'name_blacklisted' });
+      return;
+    }
+
     // Tipo de perfil (gênero) é imutável: definido uma vez no cadastro, não muda mais.
     if ('gender' in data) {
       const cur = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
@@ -6037,6 +6081,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     if (viewerId !== userId && Number((row as any).is_admin || 0) === 1 && Number(viewerRow?.is_admin || 0) !== 1) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    // Perfil banido ou desativado some das consultas (exceto para o próprio dono e admins).
+    if (
+      viewerId !== userId &&
+      Number(viewerRow?.is_admin || 0) !== 1 &&
+      (Number((row as any).is_banned || 0) === 1 || Number((row as any).is_deactivated || 0) === 1)
+    ) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
@@ -8266,7 +8319,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         FROM conversations c
         JOIN users ua ON ua.id = c.user_a_id
         JOIN users ub ON ub.id = c.user_b_id
-        WHERE c.user_a_id = ? OR c.user_b_id = ?
+        WHERE (c.user_a_id = ? OR c.user_b_id = ?)
+          AND (ua.is_banned = 0 OR ua.is_banned IS NULL)
+          AND (ub.is_banned = 0 OR ub.is_banned IS NULL)
+          AND (ua.is_deactivated = 0 OR ua.is_deactivated IS NULL)
+          AND (ub.is_deactivated = 0 OR ub.is_deactivated IS NULL)
       ) conversations_with_meta
       ORDER BY is_highlighted DESC, COALESCE(last_message_at, created_at) DESC
     `,
@@ -10410,10 +10467,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.put('/api/admin/users/:userId/ban', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const { userId } = req.params;
-      const adminId = (req as any).userId as string;
+      const adminId = req.auth!.userId;
       const target = await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId]);
       if (!target) { res.status(404).json({ error: 'not_found' }); return; }
-      await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, userId]);
+      await banUserEverywhere(db, userId, adminId);
       await persist();
       res.json({ ok: true, userId, banned: true });
     } catch (err) {
@@ -11173,7 +11230,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       // Executa a ação de moderação
       if (action === 'ban' && ownerId) {
-        await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, ownerId]);
+        await banUserEverywhere(db, ownerId, adminId);
         // Bloqueia o pHash de todas as imagens do banido — impede que as MESMAS fotos
         // (ex.: uso indevido de imagem) sejam reenviadas, mesmo por uma conta nova.
         await blockUserMediaHashes(ownerId, `ban:${reportId}`, adminId);

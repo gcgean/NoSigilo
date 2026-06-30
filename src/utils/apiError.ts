@@ -20,6 +20,8 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'E-mail já em uso', description: 'Use outro e-mail ou faça login.' };
     case 'name_in_use':
       return { title: 'Nome de usuário já em uso', description: 'Escolha outro nome para continuar.' };
+    case 'name_blacklisted':
+      return { title: 'Nome indisponível', description: 'Este nome não está disponível para uso na plataforma. Escolha outro.' };
     case 'invalid_input':
       return { title: 'Dados inválidos', description: 'Verifique os campos e tente novamente.' };
     case 'invalid_invite':
