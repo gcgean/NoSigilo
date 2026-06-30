@@ -1069,7 +1069,12 @@ export default function Feed() {
         navigate('/feed', { replace: true });
       }
     } catch (e: any) {
-      toast({ title: 'Erro ao publicar', description: e?.message || 'Tente novamente.', variant: 'destructive' });
+      const blocked = e?.response?.status === 403 && e?.response?.data?.error === 'blocked_content';
+      toast({
+        title: blocked ? 'Imagem bloqueada' : 'Erro ao publicar',
+        description: e?.response?.data?.message || e?.message || 'Tente novamente.',
+        variant: 'destructive',
+      });
     } finally {
       setIsPublishing(false);
       publishGuardRef.current = false;

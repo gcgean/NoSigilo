@@ -57,6 +57,7 @@ export type PublicUser = {
   name: string;
   avatar?: string | null;
   bio?: string | null;
+  bioLink?: string | null;
   status?: string | null;
   city?: string | null;
   state?: string | null;
@@ -1235,6 +1236,49 @@ async function compressUploadedVideo(file: Express.Multer.File) {
   };
 }
 
+// ── pHash (difference hash) para imagens — bloqueio de reenvio de conteúdo ────
+// Distância de Hamming <= este valor (de 64 bits) é considerada "mesma imagem".
+const PHASH_MATCH_THRESHOLD = 10;
+
+// Gera o dHash 9x8 (64 bits) via ffmpeg (sem dependência extra). Retorna 16 hex.
+async function computeImagePHash(filePath: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const ff = spawn('ffmpeg', ['-y', '-i', filePath, '-vf', 'scale=9:8,format=gray', '-f', 'rawvideo', '-'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      const chunks: Buffer[] = [];
+      ff.stdout.on('data', (d) => chunks.push(d as Buffer));
+      ff.on('error', () => resolve(null));
+      ff.on('close', () => {
+        const buf = Buffer.concat(chunks);
+        if (buf.length < 72) { resolve(null); return; }
+        let bits = '';
+        for (let row = 0; row < 8; row++) {
+          for (let col = 0; col < 8; col++) {
+            bits += buf[row * 9 + col] < buf[row * 9 + col + 1] ? '1' : '0';
+          }
+        }
+        let hex = '';
+        for (let i = 0; i < 64; i += 4) hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
+        resolve(hex);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+function hammingHex(a: string, b: string): number {
+  if (!a || !b || a.length !== b.length) return 64;
+  let dist = 0;
+  for (let i = 0; i < a.length; i++) {
+    let x = (parseInt(a[i], 16) ^ parseInt(b[i], 16)) & 0xf;
+    while (x) { dist += x & 1; x >>= 1; }
+  }
+  return dist;
+}
+
 async function compressUploadedImage(file: Express.Multer.File) {
   const currentPath = file.path;
   const tempOutputPath = `${currentPath}.compressed.webp`;
@@ -1532,6 +1576,7 @@ function rowToPublicUser(
     name: String(row.name),
     avatar: row.avatar ?? null,
     bio: row.bio ?? null,
+    bioLink: row.bio_link ?? null,
     status: row.status ?? null,
     city: row.city ?? null,
     state: row.state ?? null,
@@ -1979,6 +2024,53 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     return media;
+  };
+
+  // Resolve o caminho físico de uma mídia (público/privado, com fallbacks legados).
+  const resolveMediaFilePath = (filename: string, isPrivate: boolean): string | null => {
+    const dirs = isPrivate ? [privateUploadsDir, ...legacyPrivateUploadsDirCandidates] : [uploadsDir, ...legacyUploadsDirCandidates];
+    for (const dir of dirs) {
+      const p = path.join(dir, filename);
+      if (existsSync(p)) return p;
+    }
+    return null;
+  };
+
+  // Verdadeiro se o pHash informado bate com alguma mídia bloqueada (tolerância).
+  const isHashBlocked = async (phash: string | null): Promise<boolean> => {
+    if (!phash) return false;
+    const rows = (await queryAll(db, 'SELECT phash FROM blocked_media_hashes', [])) as any[];
+    for (const r of rows) {
+      if (hammingHex(phash, String(r.phash || '')) <= PHASH_MATCH_THRESHOLD) return true;
+    }
+    return false;
+  };
+
+  // Adiciona o pHash de uma mídia (por id) à lista de bloqueio. Calcula se faltar.
+  const blockMediaHashByMediaId = async (mediaId: string, reason: string, adminId: string | null) => {
+    try {
+      const m = (await queryOne(db, 'SELECT id, filename, is_private, phash, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
+      if (!m || !String(m.mime_type || '').startsWith('image/')) return; // só imagens por enquanto
+      let phash = m.phash ? String(m.phash) : null;
+      if (!phash) {
+        const fp = resolveMediaFilePath(String(m.filename || ''), Number(m.is_private || 0) === 1);
+        if (fp) phash = await computeImagePHash(fp);
+        if (phash) await run(db, 'UPDATE media SET phash = ? WHERE id = ?', [phash, mediaId]);
+      }
+      if (!phash) return;
+      const exists = await queryOne(db, 'SELECT 1 AS x FROM blocked_media_hashes WHERE phash = ? LIMIT 1', [phash]);
+      if (exists) return;
+      await run(db, 'INSERT INTO blocked_media_hashes (id, phash, reason, source_media_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), phash, reason, mediaId, adminId, nowIso()]);
+    } catch (err) {
+      console.error('[blockMediaHash] falhou', err);
+    }
+  };
+
+  // Bloqueia o pHash de todas as imagens de um usuário (ao banir por uso de imagem).
+  const blockUserMediaHashes = async (userId: string, reason: string, adminId: string | null) => {
+    const rows = (await queryAll(db, "SELECT id FROM media WHERE user_id = ? AND mime_type LIKE 'image/%'", [userId])) as any[];
+    for (const r of rows) await blockMediaHashByMediaId(String(r.id), reason, adminId);
+    await persist();
   };
 
   app.get('/uploads/:filename', async (req, res) => {
@@ -5562,6 +5654,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         name: z.string().min(1).max(60).optional(),
         avatar: z.string().url().max(500).optional().nullable(),
         bio: z.string().max(500).optional().nullable(),
+        bioLink: z.string().max(200).optional().nullable(),
         status: z.string().max(150).optional().nullable(),
         city: z.string().max(100).optional().nullable(),
         state: z.string().max(50).optional().nullable(),
@@ -5670,6 +5763,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         setParts.push(`${col} = ?`);
         values.push(key === 'city' ? sanitizeCityValue((data as any)[key]) : (data as any)[key]);
       }
+    }
+    if ('bioLink' in data) {
+      // Normaliza e valida o link da bio (só http/https; bloqueia javascript:, etc.)
+      const raw = String(data.bioLink ?? '').trim();
+      let normalized: string | null = null;
+      if (raw) {
+        let url = raw;
+        if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+        try {
+          const u = new URL(url);
+          if (u.protocol === 'http:' || u.protocol === 'https:') normalized = u.toString();
+        } catch { normalized = null; }
+      }
+      setParts.push('bio_link = ?');
+      values.push(normalized);
     }
     if ('lookingFor' in data) {
       setParts.push('looking_for_json = ?');
@@ -6708,11 +6816,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
+    // pHash: bloqueia o reenvio de imagens marcadas (uso indevido de imagem / NCII).
+    let imagePhash: string | null = null;
+    if (mime.startsWith('image/')) {
+      const fp = resolveMediaFilePath(storedFile.filename, isPrivate);
+      if (fp) imagePhash = await computeImagePHash(fp);
+      if (await isHashBlocked(imagePhash)) {
+        if (fp) { try { unlinkSync(fp); } catch { /* noop */ } }
+        res.status(403).json({ error: 'blocked_content', message: 'Esta imagem foi bloqueada por uso indevido e não pode ser publicada.' });
+        return;
+      }
+    }
+
     const id = randomUUID();
     await run(
       db,
-      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)',
-      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, nowIso()]
+      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, phash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
+      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, imagePhash, nowIso()]
     );
     await persist();
     if (mediaSource === 'profile' && mime.startsWith('image/')) {
@@ -11054,6 +11174,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Executa a ação de moderação
       if (action === 'ban' && ownerId) {
         await run(db, 'UPDATE users SET is_banned = 1, banned_at = ?, banned_by = ? WHERE id = ?', [nowIso(), adminId, ownerId]);
+        // Bloqueia o pHash de todas as imagens do banido — impede que as MESMAS fotos
+        // (ex.: uso indevido de imagem) sejam reenviadas, mesmo por uma conta nova.
+        await blockUserMediaHashes(ownerId, `ban:${reportId}`, adminId);
         // Banido não recebe notificação in-app (perde acesso), mas recebe um e-mail
         // informando a decisão — exceção transacional à regra de não enviar a banidos.
         await emailUser(ownerId, `${emailOpts.appName}: sua conta foi banida`, 'Sua conta foi banida', [
@@ -11073,6 +11196,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           await run(db, 'DELETE FROM comments WHERE target_type = ? AND target_id = ?', ['post', targetId]);
           await run(db, 'DELETE FROM posts WHERE id = ?', [targetId]);
         } else if (targetType === 'photo') {
+          // Bloqueia o pHash ANTES de apagar o arquivo (depois ele não existe mais).
+          await blockMediaHashByMediaId(targetId, `removed:${reportId}`, adminId);
           await deleteStoredMedia(targetId);
         } else if (targetType === 'message') {
           await run(db, 'UPDATE messages SET deleted_for_all = 1, content = NULL, media_id = NULL WHERE id = ?', [targetId]);

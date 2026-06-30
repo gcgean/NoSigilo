@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -1008,6 +1008,18 @@ export default function Profile() {
                   {profileData.bio || 'Adicione uma descrição para aparecer no seu perfil.'}
                 </p>
               )}
+              {(profileData as any)?.bioLink ? (
+                <a
+                  href={String((profileData as any).bioLink)}
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  className="mt-3 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+                >
+                  <Link2 className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\//, '')}</span>
+                  <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 opacity-70" />
+                </a>
+              ) : null}
             </div>
 
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-center sm:justify-start gap-3">

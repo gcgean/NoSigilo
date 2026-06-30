@@ -93,6 +93,7 @@ export default function Settings() {
     zodiacSign: user?.zodiacSign || '',
     status: user?.status || '',
     bio: user?.bio || '',
+    bioLink: (user as any)?.bioLink || '',
     city: user?.city || '',
     state: user?.state || '',
     lookingFor: (user?.lookingFor || []) as string[],
@@ -226,6 +227,7 @@ export default function Settings() {
         zodiacSign: profile.zodiacSign || undefined,
         status: profile.status.trim() || undefined,
         bio: profile.bio.trim() || undefined,
+        bioLink: profile.bioLink.trim(),
         city: profile.city.trim() || undefined,
         state: profile.state.trim() || undefined,
         lookingFor: profile.lookingFor,
@@ -634,6 +636,17 @@ export default function Settings() {
                       onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
                       placeholder="Conte sobre vocês, o que buscam e o que oferecem..."
                       rows={5}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="bioLink">Link da bio <span className="text-xs text-muted-foreground font-normal">(aparece como botão no seu perfil)</span></Label>
+                    <Input
+                      id="bioLink"
+                      type="url"
+                      inputMode="url"
+                      value={profile.bioLink}
+                      onChange={(e) => setProfile({ ...profile, bioLink: e.target.value })}
+                      placeholder="instagram.com/seuperfil, onlyfans.com/..., seu site..."
                     />
                   </div>
                 </div>

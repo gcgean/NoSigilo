@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift, Zap } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -1106,6 +1106,19 @@ export default function UserProfile() {
                 </p>
                 <p className="text-[15px] leading-relaxed text-primary">{profile.bio}</p>
               </div>
+            ) : null}
+
+            {(profile as any)?.bioLink ? (
+              <a
+                href={String((profile as any).bioLink)}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="mb-4 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
+              >
+                <Link2 className="h-4 w-4 shrink-0" />
+                <span className="truncate">{String((profile as any).bioLink).replace(/^https?:\/\//, '')}</span>
+                <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 opacity-70" />
+              </a>
             ) : null}
 
             {!isSelf ? (
