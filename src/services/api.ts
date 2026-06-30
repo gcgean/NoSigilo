@@ -253,7 +253,11 @@ export const profileService = {
     return response.data;
   },
 
-  uploadMedia: async (file: File, options?: { isPrivate?: boolean; source?: 'post' | 'chat' | 'profile' }) => {
+  uploadMedia: async (
+    file: File,
+    options?: { isPrivate?: boolean; source?: 'post' | 'chat' | 'profile' },
+    onProgress?: (percent: number) => void
+  ) => {
     let uploadFile = file;
     if (file.type.startsWith('image/')) {
       uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82 });
@@ -267,6 +271,9 @@ export const profileService = {
         maxContentLength: Infinity,
         maxBodyLength: Infinity,
         timeout: 10 * 60 * 1000,
+        onUploadProgress: (e) => {
+          if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+        },
       });
       return response.data;
     } catch (error) {

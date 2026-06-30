@@ -267,6 +267,7 @@ export default function Feed() {
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null); // 0–100 durante upload; 100 = processando no servidor
   const publishGuardRef = useRef(false); // trava síncrona contra toque duplo (evita post/foto duplicada)
   const [storyPromptMediaId, setStoryPromptMediaId] = useState<string | null>(null);
   const [isPublishingExperience, setIsPublishingExperience] = useState(false);
@@ -980,16 +981,24 @@ export default function Feed() {
     if (publishGuardRef.current) return; // bloqueia 2ª execução por toque duplo
     publishGuardRef.current = true;
     setIsPublishing(true);
+    setUploadProgress(attachments.length > 0 ? 0 : null);
     try {
       let completedFirstPostStep = false;
       const mediaIds: string[] = [];
-      for (const a of attachments) {
+      const totalFiles = attachments.length;
+      for (let i = 0; i < attachments.length; i++) {
+        const a = attachments[i];
         if (a.file.type.startsWith('video/') && !premiumAccess) {
           throw new Error('Vídeos são Premium após o teste grátis.');
         }
-        const uploaded = await profileService.uploadMedia(a.file);
+        const uploaded = await profileService.uploadMedia(a.file, undefined, (p) => {
+          // Progresso combinado entre os anexos (cada arquivo é 1/total da barra)
+          setUploadProgress(Math.round(((i + p / 100) / totalFiles) * 100));
+        });
         if (uploaded?.id) mediaIds.push(String(uploaded.id));
       }
+      // Upload concluído — barra cheia enquanto o servidor finaliza o post.
+      if (totalFiles > 0) setUploadProgress(100);
       const hasVideo = attachments.some((a) => a.file.type.startsWith('video/'));
       const wasReelsOnly = hasVideo && reelsOnly;
       const created = await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
@@ -1077,6 +1086,7 @@ export default function Feed() {
       });
     } finally {
       setIsPublishing(false);
+      setUploadProgress(null);
       publishGuardRef.current = false;
     }
   };
@@ -1912,9 +1922,36 @@ export default function Feed() {
                 onClick={handlePublish}
               >
                 <Send className="w-4 h-4" />
-                {isPublishing ? 'Publicando...' : 'Publicar'}
+                {isPublishing
+                  ? (uploadProgress !== null && uploadProgress < 100 ? `Enviando ${uploadProgress}%` : 'Publicando...')
+                  : 'Publicar'}
               </Button>
             </div>
+
+            {/* Barra de progresso animada do envio */}
+            {isPublishing && (
+              <div className="mt-3">
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                  {uploadProgress !== null && uploadProgress < 100 ? (
+                    // Determinada: cresce conforme o upload, com brilho passando por cima
+                    <div
+                      className="relative h-full overflow-hidden rounded-full bg-gradient-to-r from-rose-500 via-primary to-violet-500 transition-[width] duration-300 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    >
+                      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/40 to-transparent" />
+                    </div>
+                  ) : (
+                    // Indeterminada: servidor finalizando/processando o vídeo
+                    <div className="absolute top-0 h-full animate-progress-indeterminate rounded-full bg-gradient-to-r from-rose-500 via-primary to-violet-500" />
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  {uploadProgress !== null && uploadProgress < 100
+                    ? `Enviando mídia… ${uploadProgress}%`
+                    : 'Processando e publicando…'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
         <input

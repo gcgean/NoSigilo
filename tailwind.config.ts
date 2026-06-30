@@ -92,6 +92,13 @@ export default {
         "swipe-left": {
           to: { transform: "translateX(-150%) rotate(-20deg)", opacity: "0" },
         },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+        "progress-indeterminate": {
+          "0%": { left: "-40%", width: "40%" },
+          "100%": { left: "100%", width: "40%" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -101,6 +108,8 @@ export default {
         "scale-in": "scale-in 0.2s ease-out",
         "swipe-right": "swipe-right 0.3s ease-out forwards",
         "swipe-left": "swipe-left 0.3s ease-out forwards",
+        shimmer: "shimmer 1.4s infinite",
+        "progress-indeterminate": "progress-indeterminate 1.1s ease-in-out infinite",
       },
     },
   },
