@@ -1516,7 +1516,7 @@ export default function Admin() {
                 <div>
                   <h3 className="font-semibold">Cidades em crescimento 🔥</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    % de novos usuários nos últimos {visitAnalytics.growthPeriodDays} dias sobre o total da cidade (mín. 5 usuários). Quanto maior a taxa, mais a cidade está crescendo — invista nessas.
+                    Ordenado pelo nº de novos usuários nos últimos {visitAnalytics.growthPeriodDays} dias (mín. 5 usuários na cidade). A % mostra quanto isso representa do total da cidade.
                   </p>
                 </div>
               </div>
@@ -1543,8 +1543,8 @@ export default function Admin() {
                             </p>
                           </div>
                           <div className={`text-right shrink-0 ${textClass}`}>
-                            <p className="text-lg font-bold leading-none">{arrow} {Math.abs(city.growth)}%</p>
-                            <p className="text-[10px] mt-1 text-muted-foreground">novos no período</p>
+                            <p className="text-lg font-bold leading-none">{arrow} {city.novos}</p>
+                            <p className="text-[10px] mt-1 text-muted-foreground">novos · {Math.abs(city.growth)}% da cidade</p>
                           </div>
                         </div>
                       </div>

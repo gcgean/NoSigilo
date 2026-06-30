@@ -10883,7 +10883,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               const growth = Math.round((e.novos / e.total) * 100);
               return { label, novos: e.novos, total: e.total, growth };
             })
-            .sort((x, y) => y.growth - x.growth || y.novos - x.novos)
+            // Ordena pelo NÚMERO de novos cadastros nos últimos 30 dias (taxa só desempata)
+            .sort((x, y) => y.novos - x.novos || y.growth - x.growth)
             .slice(0, 30);
         })(),
       });
