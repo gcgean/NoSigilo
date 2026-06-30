@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { authService, experienceService, feedService, friendsService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
+import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
@@ -351,7 +351,6 @@ export default function Feed() {
     const v = localStorage.getItem('nosigilo_feed_filter');
     return v === 'favorites' || v === 'experiences' || v === 'friends' ? v : 'all';
   });
-  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
@@ -409,31 +408,13 @@ export default function Feed() {
   }, [user]);
 
   const visiblePosts = useMemo(() => {
+    // 'friends' é filtrado no backend (amigos + curtidos), então usa os posts como vieram
     if (feedFilter === 'favorites') {
       const favIds = new Set(favorites.map((f) => String(f.id)));
       return allPosts.filter((p) => favIds.has(String(p.author.id)));
     }
-    if (feedFilter === 'friends') {
-      // Amigos: posts de amigos OU de perfis curtidos
-      const allowed = new Set<string>(friendIds);
-      for (const f of favorites) allowed.add(String(f.id));
-      return allPosts.filter((p) => allowed.has(String(p.author.id)));
-    }
     return allPosts;
-  }, [allPosts, feedFilter, favorites, friendIds]);
-
-  // Carrega os IDs dos amigos para o filtro "Amigos"
-  useEffect(() => {
-    let cancelled = false;
-    friendsService.getFriends()
-      .then((data: any) => {
-        if (cancelled) return;
-        const ids = Array.isArray(data?.friends) ? data.friends.map((f: any) => String(f.id)) : [];
-        setFriendIds(new Set(ids));
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  }, [allPosts, feedFilter, favorites]);
 
   const feedInsightsSummary = useMemo(() => {
     if (!feedInsights) return null;
@@ -585,6 +566,7 @@ export default function Feed() {
       const feedParams: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (nearbyRadius !== null) feedParams.maxDistanceKm = nearbyRadius;
       if (cityOnly) feedParams.cityOnly = true;
+      if (feedFilter === 'friends') feedParams.filter = 'friends';
       // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
@@ -640,6 +622,17 @@ export default function Feed() {
     void reload();
     void reloadExperiences();
   }, []);
+
+  // Recarrega o feed do servidor ao entrar/sair do modo "Amigos" (filtro é server-side).
+  const prevServerFilterRef = useRef<'friends' | 'none'>(feedFilter === 'friends' ? 'friends' : 'none');
+  useEffect(() => {
+    if (feedFilter === 'experiences') return; // experiências usam outra lista
+    const sf = feedFilter === 'friends' ? 'friends' : 'none';
+    if (sf !== prevServerFilterRef.current) {
+      prevServerFilterRef.current = sf;
+      void reload();
+    }
+  }, [feedFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Open experience form when coming from WeekendAdventureModal (works even if already on /feed)
   useEffect(() => {
@@ -777,6 +770,7 @@ export default function Feed() {
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
       if (cityOnly) moreParams.cityOnly = true;
+      if (feedFilter === 'friends') moreParams.filter = 'friends';
       const feed = await feedService.getFeed(moreParams);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];

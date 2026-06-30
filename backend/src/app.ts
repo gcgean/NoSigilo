@@ -3515,6 +3515,30 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
     }
 
+    // Filtro "Amigos": só posts de amigos (friend_requests aceitos) ou perfis curtidos.
+    // Ignora a preferência de gênero — amigos/curtidos são escolhas explícitas do usuário.
+    let friendsAuthorFilter = '';
+    const friendsAuthorParams: string[] = [];
+    if (String(req.query.filter || '') === 'friends') {
+      const meId = req.auth!.userId;
+      const [friendRows, likedRows] = await Promise.all([
+        queryAll(db, `SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END AS uid FROM friend_requests WHERE (from_user_id = ? OR to_user_id = ?) AND status = 'accepted'`, [meId, meId, meId]) as Promise<any[]>,
+        queryAll(db, `SELECT target_id AS uid FROM likes WHERE user_id = ? AND target_type = 'user'`, [meId]) as Promise<any[]>,
+      ]);
+      const ids = new Set<string>();
+      for (const r of friendRows) if (r.uid) ids.add(String(r.uid));
+      for (const r of likedRows) if (r.uid) ids.add(String(r.uid));
+      if (ids.size === 0) {
+        res.json({ posts: [], hasMore: false, insights: null });
+        return;
+      }
+      const list = Array.from(ids);
+      friendsAuthorFilter = `AND p.user_id IN (${list.map(() => '?').join(', ')})`;
+      friendsAuthorParams.push(...list);
+      genderFilter = '';
+      genderParams.length = 0;
+    }
+
     const rows = await queryAll(
       db,
       `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
@@ -3535,12 +3559,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
          )
          ${genderFilter}
+         ${friendsAuthorFilter}
          ${reelsOnlyFilter}
        ORDER BY p.created_at DESC
        ${includeReelsOnly ? 'LIMIT ? OFFSET ?' : 'LIMIT ? OFFSET 0'}`,
       includeReelsOnly
-        ? [req.auth!.userId, req.auth!.userId, ...genderParams, limit, offset]
-        : [req.auth!.userId, req.auth!.userId, ...genderParams, fetchLimit]
+        ? [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, limit, offset]
+        : [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, fetchLimit]
     );
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
