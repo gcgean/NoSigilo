@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
+import { authService, experienceService, feedService, friendsService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
@@ -347,10 +347,11 @@ export default function Feed() {
   const longPressExpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredExpIdRef = useRef<string | null>(null);
 
-  const [feedFilter, setFeedFilter] = useState<'all' | 'favorites' | 'experiences'>(() => {
+  const [feedFilter, setFeedFilter] = useState<'all' | 'friends' | 'favorites' | 'experiences'>(() => {
     const v = localStorage.getItem('nosigilo_feed_filter');
-    return v === 'favorites' || v === 'experiences' ? v : 'all';
+    return v === 'favorites' || v === 'experiences' || v === 'friends' ? v : 'all';
   });
+  const [friendIds, setFriendIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
@@ -408,10 +409,31 @@ export default function Feed() {
   }, [user]);
 
   const visiblePosts = useMemo(() => {
-    if (feedFilter !== 'favorites') return allPosts;
-    const favIds = new Set(favorites.map((f) => String(f.id)));
-    return allPosts.filter((p) => favIds.has(String(p.author.id)));
-  }, [allPosts, feedFilter, favorites]);
+    if (feedFilter === 'favorites') {
+      const favIds = new Set(favorites.map((f) => String(f.id)));
+      return allPosts.filter((p) => favIds.has(String(p.author.id)));
+    }
+    if (feedFilter === 'friends') {
+      // Amigos: posts de amigos OU de perfis curtidos
+      const allowed = new Set<string>(friendIds);
+      for (const f of favorites) allowed.add(String(f.id));
+      return allPosts.filter((p) => allowed.has(String(p.author.id)));
+    }
+    return allPosts;
+  }, [allPosts, feedFilter, favorites, friendIds]);
+
+  // Carrega os IDs dos amigos para o filtro "Amigos"
+  useEffect(() => {
+    let cancelled = false;
+    friendsService.getFriends()
+      .then((data: any) => {
+        if (cancelled) return;
+        const ids = Array.isArray(data?.friends) ? data.friends.map((f: any) => String(f.id)) : [];
+        setFriendIds(new Set(ids));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const feedInsightsSummary = useMemo(() => {
     if (!feedInsights) return null;
@@ -1910,7 +1932,7 @@ export default function Feed() {
         {/* Posts Feed */}
         <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
           <DailyMissions />
-          <Card className="overflow-hidden px-3 py-2.5 glass">
+          <Card className="overflow-hidden px-3 py-2.5 glass border-2 border-primary/30 ring-1 ring-primary/10 shadow-[0_2px_16px_rgba(139,92,246,0.18)]">
             {/* Tab bar container */}
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {/* Segmented pill group */}
@@ -1926,6 +1948,19 @@ export default function Feed() {
                   )}
                 >
                   Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter('friends')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
+                    feedFilter === 'friends'
+                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  )}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Amigos
                 </button>
                 <button
                   type="button"
@@ -2437,6 +2472,12 @@ export default function Feed() {
             <MobileState
               title="Nenhuma publicação dos curtidos"
               description="Quando as pessoas que você curtiu publicarem algo, aparece aqui."
+            />
+          ) : null}
+          {feedFilter === 'friends' && !isLoading && visiblePosts.length === 0 ? (
+            <MobileState
+              title="Nada de amigos por aqui ainda"
+              description="Mostra só publicações de amigos e perfis que você curtiu. Curta perfis e faça amigos para encher esta aba."
             />
           ) : null}
           {feedFilter !== 'experiences' && !isLoading && (nearbyRadius !== null || cityOnly) && allPosts.length === 0 ? (
