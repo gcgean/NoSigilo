@@ -466,9 +466,15 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   comment: { points: 3,  dailyCap: 10 },
   photo:   { points: 10, dailyCap: 3 },
   story:   { points: 8,  dailyCap: 3 },
-  post:    { points: 10, dailyCap: 3 },
+  post:    { points: 5,  dailyCap: 3 },
   checkin: { points: 5,  dailyCap: 1 },
 };
+
+// Só perfis de mulheres e casais recebem tokens por postagem feita.
+function genderEarnsPostTokens(gender: unknown): boolean {
+  const g = String(gender || '').trim().toLowerCase();
+  return g === 'mulher' || g.startsWith('casal') || g === 'couple';
+}
 const POINTS_PER_FREE_DAY = 100;
 // Destaque de perfil (sink de tokens): custo e duração.
 const BOOST_COST = 30;
@@ -5000,7 +5006,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       nowIso(),
     ]);
     await persist();
-    await awardTokens(db, req.auth!.userId, 'post', id, req.app.get('io'));
+    // Só perfis de mulheres e casais ganham tokens por postagem.
+    const poster = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    if (genderEarnsPostTokens(poster?.gender)) {
+      await awardTokens(db, req.auth!.userId, 'post', id, req.app.get('io'));
+    }
     res.json({ id });
   });
 
