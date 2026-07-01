@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { feedService, interactionsService } from '@/services/api';
+import { interactionsService, videoSearchService } from '@/services/api';
+import { readVideoFilters, videoFiltersToSearchParams } from '@/lib/videoFilters';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -121,22 +122,21 @@ export default function Reels() {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  const mapPostsToReels = useCallback((posts: FeedPost[]) => {
-    return posts.flatMap((post) =>
-      (post.media || [])
-        .filter((media) => String(media.mimeType || '').startsWith('video/') && media.url)
-        .map((media) => ({
-          id: String(media.id),
-          postId: String(post.id),
-          url: resolveServerUrl(media.url || ''),
-          author: post.author,
-          content: String(post.content || ''),
-          createdAt: String(post.createdAt || ''),
-          likesCount: Number(post.likesCount || 0),
-          commentsCount: Number(post.commentsCount || 0),
-          likedByMe: post.likedByMe === true,
-        }))
-    ) as ReelItem[];
+  // Vídeos vindos do videoSearchService (mesma fonte/filtros da Busca de Vídeos).
+  const mapVideosToReels = useCallback((videos: Awaited<ReturnType<typeof videoSearchService.search>>['videos']) => {
+    return videos
+      .filter((v) => v.videoUrl)
+      .map((v) => ({
+        id: String(v.mediaId),
+        postId: String(v.postId),
+        url: resolveServerUrl(v.videoUrl),
+        author: v.author,
+        content: String(v.content || ''),
+        createdAt: String(v.createdAt || ''),
+        likesCount: Number(v.likesCount || 0),
+        commentsCount: Number(v.commentsCount || 0),
+        likedByMe: false,
+      })) as ReelItem[];
   }, []);
 
   const appendReels = useCallback((nextItems: ReelItem[]) => {
@@ -265,31 +265,26 @@ export default function Reels() {
           return map;
         });
 
+        // Usa os MESMOS filtros (salvos no dispositivo) da Busca de Vídeos:
+        // tipo de perfil / cidade / distância / ordenação.
+        const filters = readVideoFilters();
         let currentPage = 1;
         let hasMore = true;
         let foundAnyReel = false;
-        let foundLockedVideo = false;
         // Proteção contra loop infinito: se o backend devolver páginas sem fim
         // (hasMore sempre true) e nenhuma trouxer vídeo, paramos após um limite
-        // generoso. No fluxo normal os vídeos já vêm na 1ª página, então o
-        // usuário nunca esbarra nesse teto.
+        // generoso. No fluxo normal os vídeos já vêm na 1ª página.
         const MAX_INITIAL_PAGES = 25;
         let pagesScanned = 0;
 
         while (hasMore && !foundAnyReel && pagesScanned < MAX_INITIAL_PAGES) {
           pagesScanned += 1;
-          const data = await feedService.getFeed({ page: currentPage, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
+          const data = await videoSearchService.search(videoFiltersToSearchParams(filters, currentPage, REELS_PAGE_SIZE));
           if (cancelled) return;
 
-          const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
-          const pageReels = mapPostsToReels(posts);
-
-          const containsLockedVideo = posts.some((post) =>
-            (post.media || []).some(
-              (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
-            )
-          );
-          if (containsLockedVideo) foundLockedVideo = true;
+          const list = Array.isArray(data?.videos) ? data.videos : [];
+          // Dedup contra o que já veio na fila da Busca de Vídeos.
+          const pageReels = mapVideosToReels(list).filter((r) => !loadedReelIdsRef.current.has(r.id));
 
           if (pageReels.length > 0) {
             appendReels(pageReels);
@@ -300,7 +295,6 @@ export default function Reels() {
           if (!foundAnyReel && hasMore) currentPage += 1;
         }
 
-        if (foundLockedVideo) setHasLockedVideos(true);
         setReelsPage(currentPage);
         setHasMoreReels(hasMore);
       } catch {
@@ -315,31 +309,25 @@ export default function Reels() {
     })();
 
     return () => { cancelled = true; };
-  }, [appendReels, mapPostsToReels, targetReelId]);
+  }, [appendReels, mapVideosToReels, targetReelId]);
 
   const loadMoreReels = useCallback(async () => {
     if (isLoading || isLoadingMoreReels || !hasMoreReels) return;
     setIsLoadingMoreReels(true);
     try {
+      const filters = readVideoFilters();
       let page = reelsPage;
       let more = true;
       let addedAny = false;
       let guard = 0;
-      // O feed é misto (muitos posts não são vídeo); continua avançando páginas
-      // até trazer novos reels ou o backend indicar que acabou.
+      // Continua avançando páginas até trazer novos reels ou o backend indicar fim.
       while (more && !addedAny && guard < 8) {
         guard += 1;
         page += 1;
-        const data = await feedService.getFeed({ page, limit: REELS_PAGE_SIZE, includeReelsOnly: true });
-        const posts = Array.isArray(data?.posts) ? (data.posts as FeedPost[]) : [];
-        const containsLockedVideo = posts.some((post) =>
-          (post.media || []).some(
-            (media) => String(media?.mimeType || '').startsWith('video/') && media?.isLocked === true
-          )
-        );
-        if (containsLockedVideo) setHasLockedVideos(true);
-        const pageReels = mapPostsToReels(posts);
-        // Considera só vídeos ainda não carregados (a paginação do feed tem sobreposição)
+        const data = await videoSearchService.search(videoFiltersToSearchParams(filters, page, REELS_PAGE_SIZE));
+        const list = Array.isArray(data?.videos) ? data.videos : [];
+        const pageReels = mapVideosToReels(list);
+        // Considera só vídeos ainda não carregados (a paginação pode ter sobreposição)
         const newReels = pageReels.filter((r) => !loadedReelIdsRef.current.has(r.id));
         if (newReels.length > 0) { appendReels(newReels); addedAny = true; }
         more = Boolean(data?.hasMore);
@@ -355,7 +343,7 @@ export default function Reels() {
     } finally {
       setIsLoadingMoreReels(false);
     }
-  }, [appendReels, hasMoreReels, isLoading, isLoadingMoreReels, mapPostsToReels, reelsPage, toast]);
+  }, [appendReels, hasMoreReels, isLoading, isLoadingMoreReels, mapVideosToReels, reelsPage, toast]);
 
   const orderedReels = useMemo(() => {
     const seenIds = new Set(initialSeenReelIds);

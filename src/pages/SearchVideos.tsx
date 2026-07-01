@@ -16,6 +16,7 @@ import { useProfileGate } from '@/contexts/ProfileGateContext';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import MobileState from '@/components/MobileState';
 import { cn } from '@/lib/utils';
+import { readVideoFilters, writeVideoFilters } from '@/lib/videoFilters';
 
 const genderOptions = [
   { value: 'Mulher',            label: 'Mulher solteira' },
@@ -294,14 +295,21 @@ export default function SearchVideos() {
   const { requireFields } = useProfileGate();
   const [paywallOpen, setPaywallOpen] = useState(false);
 
-  const [cityFilter,     setCityFilter]     = useState('');
+  // Último filtro escolhido fica salvo no dispositivo (localStorage).
+  const [savedFilters] = useState(() => readVideoFilters());
+  const [cityFilter,     setCityFilter]     = useState(savedFilters.city);
   // 'prefs' = só os tipos de perfil que o usuário curte (padrão); 'all' = todos; ou um gênero específico
-  const [genderFilter,   setGenderFilter]   = useState('prefs');
-  const [distanceFilter, setDistanceFilter] = useState('all');
-  const [sortFilter,     setSortFilter]     = useState<SortOption>('recent');
+  const [genderFilter,   setGenderFilter]   = useState(savedFilters.gender);
+  const [distanceFilter, setDistanceFilter] = useState(savedFilters.distance);
+  const [sortFilter,     setSortFilter]     = useState<SortOption>(savedFilters.sort);
   const [showFilters,    setShowFilters]    = useState(false);
-  const [onlyUnseen,     setOnlyUnseen]     = useState(false);
+  const [onlyUnseen,     setOnlyUnseen]     = useState(savedFilters.onlyUnseen);
   const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds());
+
+  // Persiste os filtros sempre que mudarem.
+  useEffect(() => {
+    writeVideoFilters({ gender: genderFilter, city: cityFilter, distance: distanceFilter, sort: sortFilter, onlyUnseen });
+  }, [genderFilter, cityFilter, distanceFilter, sortFilter, onlyUnseen]);
 
   const [videos,         setVideos]         = useState<VideoItem[]>([]);
   const [page,           setPage]           = useState(1);
@@ -507,7 +515,7 @@ export default function SearchVideos() {
         {showFilters && (
           <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/50 bg-muted/30 p-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <p className="text-xs font-medium text-muted-foreground">Tipo de perfil</p>
+              <p className="text-xs font-medium text-muted-foreground">Publicado por (tipo de perfil)</p>
               <Select value={genderFilter} onValueChange={setGenderFilter}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
