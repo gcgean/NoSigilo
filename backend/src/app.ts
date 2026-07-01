@@ -562,6 +562,14 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
   }
 }
 
+// Concede tokens de conteúdo (post/vídeo/foto/story) SÓ para mulheres e casais.
+// Homens e demais tipos de perfil não pontuam ao publicar conteúdo.
+async function awardContentTokensIfEligible(db: DbHandle, userId: string, actionType: string, refId: string | null, io?: SocketIOServer) {
+  const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  if (!genderEarnsPostTokens(u?.gender)) return;
+  await awardTokens(db, userId, actionType, refId, io);
+}
+
 // Debita pontos por uma ação que CONSOME tokens (ex.: Coração Quente no story).
 // Idempotente por (userId, actionType, refId): se já houve cobrança para o mesmo
 // alvo, retorna { ok:true, charged:false } sem cobrar de novo. Se faltar saldo,
@@ -4526,7 +4534,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [id, userId, mediaId || '', isText ? text : null, isText ? (background || 'sunset') : null, now, expiresAt],
     );
     await persist();
-    await awardTokens(db, userId, 'story', id, req.app.get('io'));
+    // Só mulheres e casais ganham tokens por story.
+    await awardContentTokensIfEligible(db, userId, 'story', id, req.app.get('io'));
     res.json({ id, expiresAt });
   });
 
@@ -5007,10 +5016,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     ]);
     await persist();
     // Só perfis de mulheres e casais ganham tokens por postagem.
-    const poster = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
-    if (genderEarnsPostTokens(poster?.gender)) {
-      await awardTokens(db, req.auth!.userId, 'post', id, req.app.get('io'));
-    }
+    await awardContentTokensIfEligible(db, req.auth!.userId, 'post', id, req.app.get('io'));
     res.json({ id });
   });
 
@@ -6899,7 +6905,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     await persist();
     if (mediaSource === 'profile' && mime.startsWith('image/')) {
-      await awardTokens(db, req.auth!.userId, 'photo', id, req.app.get('io'));
+      // Só mulheres e casais ganham tokens por foto.
+      await awardContentTokensIfEligible(db, req.auth!.userId, 'photo', id, req.app.get('io'));
     }
     if (isPrivate) {
       const token = jwt.sign({ mediaId: id }, env.JWT_SECRET, { expiresIn: '30m' });
