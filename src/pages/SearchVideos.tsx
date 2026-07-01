@@ -17,6 +17,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import MobileState from '@/components/MobileState';
 import { cn } from '@/lib/utils';
 import { readVideoFilters, writeVideoFilters } from '@/lib/videoFilters';
+import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 
 const genderOptions = [
   { value: 'Mulher',            label: 'Mulher solteira' },
@@ -72,27 +73,6 @@ function formatDistanceKm(d: number | null) {
 }
 
 const PAGE_SIZE = 24;
-const SEEN_VIDEOS_LS_KEY = 'nosigilo:seen-video-ids';
-const SEEN_VIDEOS_MAX = 500;
-
-function readSeenVideoIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(SEEN_VIDEOS_LS_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return new Set();
-    return new Set(arr.filter((x): x is string => typeof x === 'string'));
-  } catch { return new Set(); }
-}
-
-function addSeenVideoId(id: string) {
-  try {
-    const set = readSeenVideoIds();
-    set.add(id);
-    const arr = Array.from(set).slice(-SEEN_VIDEOS_MAX);
-    localStorage.setItem(SEEN_VIDEOS_LS_KEY, JSON.stringify(arr));
-  } catch {}
-}
 
 // ─── VideoCard com lazy-load + canvas thumbnail ───────────────────────────────
 function VideoCard({
@@ -304,7 +284,7 @@ export default function SearchVideos() {
   const [sortFilter,     setSortFilter]     = useState<SortOption>(savedFilters.sort);
   const [showFilters,    setShowFilters]    = useState(false);
   const [onlyUnseen,     setOnlyUnseen]     = useState(savedFilters.onlyUnseen);
-  const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds());
+  const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds(user?.id));
 
   // Persiste os filtros sempre que mudarem.
   useEffect(() => {
@@ -404,7 +384,7 @@ export default function SearchVideos() {
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
     // Mark as seen
-    addSeenVideoId(item.mediaId);
+    addSeenVideoId(item.mediaId, user?.id);
     setSeenIds((prev) => { const next = new Set(prev); next.add(item.mediaId); return next; });
     // Salva no sessionStorage para o Reels: o item clicado (renderiza na hora)
     // e a fila completa de vídeos que o usuário estava vendo, para ele conseguir

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { interactionsService, videoSearchService } from '@/services/api';
 import { readVideoFilters, videoFiltersToSearchParams } from '@/lib/videoFilters';
+import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -60,9 +61,6 @@ type ReelComment = {
   createdAt: string;
   user?: { id: string; name: string; avatar?: string | null };
 };
-function getSeenRapStorageKey(userId?: string | null) {
-  return `nosigilo:rap:seen:${userId || 'anon'}`;
-}
 
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
@@ -92,6 +90,8 @@ export default function Reels() {
   const [reels, setReels] = useState<ReelItem[]>([]);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
+  // "Não vistos" salvo na Busca de Vídeos: quando ligado, o Reels pula os já vistos.
+  const [skipSeen] = useState(() => readVideoFilters().onlyUnseen);
   const [isLoading, setIsLoading] = useState(true);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [hasLockedVideos, setHasLockedVideos] = useState(false);
@@ -169,16 +169,9 @@ export default function Reels() {
   }, []);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(getSeenRapStorageKey(user?.id));
-      const parsed = raw ? JSON.parse(raw) : [];
-      const nextSeenIds = Array.isArray(parsed) ? parsed.map((item) => String(item)) : [];
-      setInitialSeenReelIds(nextSeenIds);
-      setSeenReelIds(nextSeenIds);
-    } catch {
-      setInitialSeenReelIds([]);
-      setSeenReelIds([]);
-    }
+    const ids = Array.from(readSeenVideoIds(user?.id));
+    setInitialSeenReelIds(ids);
+    setSeenReelIds(ids);
   }, [user?.id]);
 
   // Carrega reel alvo pré-salvo pelo SearchVideos e injeta na posição 0
@@ -349,28 +342,23 @@ export default function Reels() {
     const seenIds = new Set(initialSeenReelIds);
     const unseen = reels.filter((item) => !seenIds.has(item.id));
     const seen   = reels.filter((item) => seenIds.has(item.id));
-    const base   = [...unseen, ...seen];
+    // "Não vistos" ligado: pula os já vistos (usa a lista do início da sessão,
+    // então o vídeo que você está assistindo agora não some da fila).
+    const base   = skipSeen ? unseen : [...unseen, ...seen];
     // Se há um reel pré-carregado (vindo de SearchVideos), coloca no índice 0
+    // — mesmo com "Não vistos", pois foi ele que o usuário clicou para ver.
     if (preloadedReel) {
       const withoutTarget = base.filter((r) => r.id !== preloadedReel.id);
       return [preloadedReel, ...withoutTarget];
     }
     return base;
-  }, [initialSeenReelIds, reels, preloadedReel]);
+  }, [initialSeenReelIds, reels, preloadedReel, skipSeen]);
 
   const markReelAsSeen = useCallback((reelId: string) => {
     if (!reelId) return;
 
-    setSeenReelIds((prev) => {
-      if (prev.includes(reelId)) return prev;
-      const next = [...prev, reelId];
-      try {
-        localStorage.setItem(getSeenRapStorageKey(user?.id), JSON.stringify(next));
-      } catch {
-        // Falha de persistencia local nao pode quebrar o player
-      }
-      return next;
-    });
+    addSeenVideoId(reelId, user?.id); // lista única compartilhada com a Busca de Vídeos
+    setSeenReelIds((prev) => (prev.includes(reelId) ? prev : [...prev, reelId]));
   }, [user?.id]);
 
   useEffect(() => {
