@@ -299,6 +299,7 @@ export default function Admin() {
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
+  const [accessPeriod, setAccessPeriod] = useState<'all' | '7' | '30' | '90'>('all');
   const cpuUsagePercent = resourcesStatus
     ? clampPercent(
         resourcesStatus.cpu.usagePercent || (
@@ -475,7 +476,8 @@ export default function Admin() {
   useEffect(() => {
     let cancelled = false;
     const periodDays = cityUsersPeriod === 'all' ? undefined : Number(cityUsersPeriod);
-    adminService.getVisitAnalytics(120, periodDays)
+    const accessDays = accessPeriod === 'all' ? undefined : Number(accessPeriod);
+    adminService.getVisitAnalytics(120, periodDays, accessDays)
       .then((rawVisitAnalytics) => {
         if (cancelled) return;
         setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
@@ -487,7 +489,7 @@ export default function Admin() {
     return () => {
       cancelled = true;
     };
-  }, [cityUsersPeriod]);
+  }, [cityUsersPeriod, accessPeriod]);
 
   const loadMoreUsers = async () => {
     if (isLoadingMoreUsers || !hasMoreUsers) return;
@@ -1668,9 +1670,33 @@ export default function Admin() {
             </div>
 
             {/* ── Região / Cidade de acesso / Ranking cadastros ── */}
+            {/* Seletor de período para os acessos por região e cidade */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">Período dos acessos:</span>
+              {[
+                { value: 'all' as const, label: 'Todos' },
+                { value: '7' as const, label: '7 dias' },
+                { value: '30' as const, label: '30 dias' },
+                { value: '90' as const, label: '90 dias' },
+              ].map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={accessPeriod === option.value ? 'default' : 'outline'}
+                  className="h-8 px-3 text-xs"
+                  onClick={() => setAccessPeriod(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
             <div className="grid gap-4 xl:grid-cols-3 xl:gap-6">
               <Card className="p-4 glass sm:p-6">
-                <h3 className="mb-4 font-semibold">Acessos por região</h3>
+                <h3 className="mb-4 font-semibold">
+                  Acessos por região
+                  {accessPeriod !== 'all' && <span className="ml-1 text-xs font-normal text-muted-foreground">· últimos {accessPeriod} dias</span>}
+                </h3>
                 <div className="space-y-2">
                   {visitAnalytics.byRegion.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem dados por região ainda.</p>
@@ -1686,7 +1712,10 @@ export default function Admin() {
               </Card>
 
               <Card className="p-4 glass sm:p-6">
-                <h3 className="mb-4 font-semibold">Acessos por cidade (ranking)</h3>
+                <h3 className="mb-4 font-semibold">
+                  Acessos por cidade (ranking)
+                  {accessPeriod !== 'all' && <span className="ml-1 text-xs font-normal text-muted-foreground">· últimos {accessPeriod} dias</span>}
+                </h3>
                 <div className="space-y-2">
                   {visitAnalytics.byAccessCity.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem dados por cidade ainda.</p>

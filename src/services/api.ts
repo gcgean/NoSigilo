@@ -1011,11 +1011,12 @@ export const adminService = {
     return response.data;
   },
 
-  getVisitAnalytics: async (limit = 120, cityUsersPeriodDays?: number) => {
+  getVisitAnalytics: async (limit = 120, cityUsersPeriodDays?: number, accessPeriodDays?: number) => {
     const response = await apiClient.get('/admin/analytics/visits', {
       params: {
         limit,
         ...(cityUsersPeriodDays ? { cityUsersPeriodDays } : {}),
+        ...(accessPeriodDays ? { accessPeriodDays } : {}),
       },
     });
     return response.data;

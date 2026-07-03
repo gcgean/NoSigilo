@@ -10796,6 +10796,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const cityUsersFromIso = cityUsersPeriodDays
         ? new Date(Date.now() - cityUsersPeriodDays * 24 * 60 * 60 * 1000).toISOString()
         : null;
+      // Período opcional para "Acessos por região" e "Acessos por cidade".
+      const requestedAccessPeriodDays = Number(req.query.accessPeriodDays || 0);
+      const accessPeriodDays = [7, 30, 90, 365].includes(requestedAccessPeriodDays)
+        ? requestedAccessPeriodDays
+        : null;
+      const accessFromIso = accessPeriodDays
+        ? new Date(Date.now() - accessPeriodDays * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+      const accessWhere = accessFromIso ? 'WHERE sv.created_at >= ?' : '';
+      const accessParams = accessFromIso ? [accessFromIso] : [];
       const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const sevenDaysAgoIso  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
       const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
@@ -10843,9 +10853,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              COUNT(*) AS c
            FROM site_visits sv
            LEFT JOIN users u ON u.id = sv.user_id
+           ${accessWhere}
            GROUP BY region_label
            ORDER BY c DESC
-           LIMIT 10`
+           LIMIT 10`,
+          accessParams
         ),
         queryAll(
           db,
@@ -10859,9 +10871,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              COUNT(*) AS c
            FROM site_visits sv
            LEFT JOIN users u ON u.id = sv.user_id
+           ${accessWhere}
            GROUP BY city_label
            ORDER BY c DESC
-           LIMIT 20`
+           LIMIT 20`,
+          accessParams
         ),
         queryAll(
           db,
@@ -11047,6 +11061,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         }),
         cityUsersTotal: totalUsersByCity,
         cityUsersPeriodDays,
+        accessPeriodDays,
         topUsers: (topUsersRows as any[]).map((row: any) => {
           const accesses = Number(row.accesses || 0);
           const activeDays = Math.max(1, Number(row.active_days || 1));
