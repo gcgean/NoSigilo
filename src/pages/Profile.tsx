@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -342,6 +342,10 @@ export default function Profile() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
+  const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [stats, setStats] = useState({ likes: 0, visits: 0, matches: 0 });
   const [isLoadingStats, setIsLoadingStats] = useState(false);
@@ -476,8 +480,41 @@ export default function Profile() {
     }
   };
 
+  const loadMyVideos = async () => {
+    if (!user?.id) return;
+    setIsLoadingVideos(true);
+    try {
+      const data = await usersService.getUserPosts(String(user.id), { videosOnly: true, limit: 30 });
+      const posts = Array.isArray((data as any)?.posts) ? (data as any).posts : [];
+      const vids = posts.flatMap((post: any) =>
+        (post.media || [])
+          .filter((m: any) => String(m.mimeType || '').startsWith('video/') && m.url)
+          .map((m: any) => ({ id: String(m.id), postId: String(post.id), url: resolveMediaUrl(String(m.url || '')) }))
+      );
+      setMyVideos(vids);
+    } catch {
+      setMyVideos([]);
+    } finally {
+      setIsLoadingVideos(false);
+    }
+  };
+
+  const handleDeleteVideo = async (mediaId: string) => {
+    setDeletingVideoId(mediaId);
+    try {
+      await profileService.deleteMedia(mediaId);
+      setMyVideos((prev) => prev.filter((v) => v.id !== mediaId));
+      toast({ title: 'Vídeo removido' });
+    } catch {
+      toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setDeletingVideoId(null);
+    }
+  };
+
   useEffect(() => {
     void loadPhotos();
+    void loadMyVideos();
   }, []);
 
   const loadNotifications = async () => {
@@ -1399,6 +1436,10 @@ export default function Profile() {
               )}
             </span>
           </TabsTrigger>
+          <TabsTrigger value="videos" className="flex-1 gap-2">
+            <Video className="w-4 h-4" />
+            Vídeos{myVideos.length > 0 ? ` (${myVideos.length})` : ''}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="photos">
@@ -1580,6 +1621,58 @@ export default function Profile() {
             </div>
           </div>
 
+        </TabsContent>
+
+        <TabsContent value="videos">
+          {isLoadingVideos ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando vídeos...
+            </div>
+          ) : myVideos.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center">
+              <Video className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Você ainda não publicou vídeos. Publique pelo feed para aparecerem aqui.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {myVideos.map((v) => (
+                <div
+                  key={v.id}
+                  className="group relative aspect-[9/16] cursor-pointer overflow-hidden rounded-xl bg-black"
+                  onClick={() => setPlayingVideoId(playingVideoId === v.id ? null : v.id)}
+                >
+                  <video
+                    src={v.url}
+                    className="h-full w-full object-cover"
+                    playsInline
+                    muted
+                    loop
+                    preload="metadata"
+                    ref={(el) => {
+                      if (!el) return;
+                      if (playingVideoId === v.id) {
+                        void el.play().catch(() => {});
+                      } else {
+                        el.pause();
+                        el.currentTime = 0;
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); void handleDeleteVideo(v.id); }}
+                    disabled={deletingVideoId === v.id}
+                    aria-label="Remover vídeo"
+                    className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm transition hover:bg-destructive disabled:opacity-50"
+                  >
+                    {deletingVideoId === v.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
