@@ -2081,6 +2081,36 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     return null;
   };
 
+  // Garante que o arquivo físico esteja na pasta correspondente ao is_private atual
+  // do registro. Corrige o descompasso causado pelo toggle público/privado antigo
+  // (que só atualizava o banco, sem mover o arquivo) — tanto ao alternar quanto ao
+  // servir/consultar a mídia (auto-cura de registros já quebrados). Retorna o
+  // caminho final do arquivo, ou null se ele não existir em lugar nenhum.
+  const ensureMediaFileInExpectedDir = (filename: string, isPrivate: boolean): string | null => {
+    if (!filename) return null;
+    const expectedDir = isPrivate ? privateUploadsDir : uploadsDir;
+    const expectedPath = path.join(expectedDir, filename);
+    if (existsSync(expectedPath)) return expectedPath;
+
+    // Procura em todas as pastas conhecidas (pública, privada e legadas)
+    const allDirs = [uploadsDir, privateUploadsDir, ...legacyUploadsDirCandidates, ...legacyPrivateUploadsDirCandidates];
+    for (const dir of allDirs) {
+      if (dir === expectedDir) continue;
+      const found = path.join(dir, filename);
+      if (existsSync(found)) {
+        try {
+          mkdirSync(expectedDir, { recursive: true });
+          renameSync(found, expectedPath);
+          return expectedPath;
+        } catch (err) {
+          console.error('[ensureMediaFileInExpectedDir] falha ao mover', filename, err);
+          return found; // ao menos serve de onde está
+        }
+      }
+    }
+    return null;
+  };
+
   // Verdadeiro se o pHash informado bate com alguma mídia bloqueada (tolerância).
   const isHashBlocked = async (phash: string | null): Promise<boolean> => {
     if (!phash) return false;
@@ -2129,14 +2159,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).end();
       return;
     }
-    const filePath = path.join(uploadsDir, filename);
-    if (!existsSync(filePath)) {
-      for (const legacyDir of legacyUploadsDirCandidates) {
-        const legacyPath = path.join(legacyDir, filename);
-        if (!existsSync(legacyPath)) continue;
-        sendLocalFile(req, res, { filePath: legacyPath, mimeType: media.mime_type ? String(media.mime_type) : null });
-        return;
-      }
+    // Self-heal: se o arquivo ficou na pasta privada por causa do toggle antigo,
+    // realoca para a pública antes de servir.
+    const filePath = ensureMediaFileInExpectedDir(filename, false);
+    if (!filePath) {
       res.status(404).end();
       return;
     }
@@ -2166,14 +2192,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).end();
       return;
     }
-    const filePath = path.join(privateUploadsDir, String(media.filename));
-    if (!existsSync(filePath)) {
-      for (const legacyDir of legacyPrivateUploadsDirCandidates) {
-        const legacyPath = path.join(legacyDir, String(media.filename));
-        if (!existsSync(legacyPath)) continue;
-        sendLocalFile(req, res, { filePath: legacyPath, mimeType: media.mime_type ? String(media.mime_type) : null });
-        return;
-      }
+    // Self-heal: se o arquivo ficou na pasta pública por causa do toggle antigo
+    // (que não movia o arquivo físico), realoca para a pasta privada antes de servir.
+    const filePath = ensureMediaFileInExpectedDir(String(media.filename), true);
+    if (!filePath) {
       res.status(404).end();
       return;
     }
@@ -5230,11 +5252,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         const filename = String(r.filename || '');
 
         // For private photos, verify file exists on disk before issuing a token.
-        // If the file is missing (e.g. after a server migration), mark it broken
-        // so the frontend can show a proper error instead of a black box.
+        // Self-heal first: se o arquivo ficou na pasta errada (ex.: toggle
+        // público/privado antigo que não movia o arquivo), realoca automaticamente.
+        // Só marca "broken" se realmente não existir em lugar nenhum.
         if (isPrivate) {
-          const allCandidateDirs = [privateUploadsDir, ...legacyPrivateUploadsDirCandidates];
-          const fileExists = allCandidateDirs.some((dir) => existsSync(path.join(dir, filename)));
+          const fileExists = !!ensureMediaFileInExpectedDir(filename, true);
           if (!fileExists) {
             return {
               id: r.id,
@@ -5257,6 +5279,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           };
         }
 
+        // Auto-cura o mesmo descompasso para fotos públicas (arquivo preso na pasta privada).
+        ensureMediaFileInExpectedDir(filename, false);
         return {
           id: r.id,
           url: `/uploads/${filename}`,
@@ -6955,6 +6979,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     await run(db, 'UPDATE media SET is_private = ? WHERE id = ?', [isPrivate ? 1 : 0, mediaId]);
     await persist();
+
+    // Move o arquivo físico entre as pastas pública/privada (o toggle antigo só
+    // atualizava o banco, deixando o arquivo na pasta errada — causa do "arquivo
+    // não encontrado" nas fotos privadas).
+    if (media.filename) ensureMediaFileInExpectedDir(String(media.filename), isPrivate);
 
     if (isPrivate) {
       const token = jwt.sign({ mediaId }, env.JWT_SECRET, { expiresIn: '30m' });

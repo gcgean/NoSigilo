@@ -1099,6 +1099,19 @@ export default function UserProfile() {
               })()}
             </div>
 
+            {(profile as any)?.bioLink ? (
+              <a
+                href={String((profile as any).bioLink)}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition-transform hover:scale-[1.02]"
+              >
+                <Link2 className="h-4 w-4 shrink-0" />
+                <span className="truncate">{String((profile as any).bioLink).replace(/^https?:\/\//, '')}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              </a>
+            ) : null}
+
             {profile?.bio ? (
               <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
                 <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
@@ -1106,19 +1119,6 @@ export default function UserProfile() {
                 </p>
                 <p className="text-[15px] leading-relaxed text-primary">{profile.bio}</p>
               </div>
-            ) : null}
-
-            {(profile as any)?.bioLink ? (
-              <a
-                href={String((profile as any).bioLink)}
-                target="_blank"
-                rel="noopener noreferrer nofollow"
-                className="mb-4 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
-              >
-                <Link2 className="h-4 w-4 shrink-0" />
-                <span className="truncate">{String((profile as any).bioLink).replace(/^https?:\/\//, '')}</span>
-                <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 opacity-70" />
-              </a>
             ) : null}
 
             {!isSelf ? (

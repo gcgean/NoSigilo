@@ -264,7 +264,12 @@ function PhotoItem({
                 variant="secondary"
                 className="h-10 flex-1 justify-center text-xs"
                 disabled={photo.isMain || photo.isPrivate}
-                onClick={() => { void onSetMain(photo.id); setIsPreviewOpen(false); }}
+                onClick={() => {
+                  if (window.confirm('Definir esta foto como sua foto de perfil?')) {
+                    void onSetMain(photo.id);
+                    setIsPreviewOpen(false);
+                  }
+                }}
               >
                 {photo.isMain ? 'Principal' : 'Definir principal'}
               </Button>
@@ -309,7 +314,16 @@ function PhotoItem({
 
       {/* Hover overlay — desktop only */}
       <div className="absolute inset-0 bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 pointer-events-none sm:group-hover:pointer-events-auto">
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => void onSetMain(photo.id)}>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="text-white pointer-events-auto"
+          aria-label="Definir como foto de perfil"
+          onClick={() => {
+            if (window.confirm('Definir esta foto como sua foto de perfil?')) void onSetMain(photo.id);
+          }}
+        >
           <Edit2 className="w-4 h-4" />
         </Button>
         <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) void onDelete(photo.id); }}>
@@ -987,6 +1001,19 @@ export default function Profile() {
               </div>
             )}
 
+            {(profileData as any)?.bioLink ? (
+              <a
+                href={String((profileData as any).bioLink)}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition-transform hover:scale-[1.02]"
+              >
+                <Link2 className="h-4 w-4 shrink-0" />
+                <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\//, '')}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-80" />
+              </a>
+            ) : null}
+
             <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
@@ -1045,18 +1072,6 @@ export default function Profile() {
                   {profileData.bio || 'Adicione uma descrição para aparecer no seu perfil.'}
                 </p>
               )}
-              {(profileData as any)?.bioLink ? (
-                <a
-                  href={String((profileData as any).bioLink)}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  className="mt-3 flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/10"
-                >
-                  <Link2 className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\//, '')}</span>
-                  <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 opacity-70" />
-                </a>
-              ) : null}
             </div>
 
             <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-center sm:justify-start gap-3">
