@@ -481,6 +481,15 @@ export default function UserProfile() {
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [maximizedVideoIndex, setMaximizedVideoIndex] = useState<number | null>(null);
   const maximizedTouchStartRef = useRef<{ x: number; y: number } | null>(null);
+  // Curtir/comentar vídeo — mesmo alvo (post) usado no Feed/Reels para vídeos.
+  const [videoLikesCount, setVideoLikesCount] = useState(0);
+  const [videoLikedByMe, setVideoLikedByMe] = useState(false);
+  const [videoComments, setVideoComments] = useState<PhotoComment[]>([]);
+  const [videoCommentDraft, setVideoCommentDraft] = useState('');
+  const [editingVideoCommentId, setEditingVideoCommentId] = useState<string | null>(null);
+  const [editVideoCommentDraft, setEditVideoCommentDraft] = useState('');
+  const [isLoadingVideoInteractions, setIsLoadingVideoInteractions] = useState(false);
+  const [isSendingVideoComment, setIsSendingVideoComment] = useState(false);
   const [testimonialDraft, setTestimonialDraft] = useState('');
   const [isSendingTestimonial, setIsSendingTestimonial] = useState(false);
   const [testimonialPhotos, setTestimonialPhotos] = useState<File[]>([]);
@@ -677,6 +686,15 @@ export default function UserProfile() {
       });
     return () => { cancelled = true; };
   }, [activeTab, userId]);
+
+  // Carrega curtidas/comentários ao abrir o vídeo maximizado (mesmo alvo do Feed/Reels).
+  useEffect(() => {
+    if (maximizedVideoIndex === null) return;
+    const postId = userVideos[maximizedVideoIndex]?.postId;
+    setVideoCommentDraft('');
+    setEditingVideoCommentId(null);
+    if (postId) void loadVideoInteractions(postId);
+  }, [maximizedVideoIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!userId) return;
@@ -882,6 +900,92 @@ export default function UserProfile() {
       goToNextMaximizedVideo();
     } else {
       goToPrevMaximizedVideo();
+    }
+  };
+
+  const loadVideoInteractions = async (postId: string) => {
+    if (!postId) return;
+    setIsLoadingVideoInteractions(true);
+    try {
+      const [likes, commentsList] = await Promise.all([
+        interactionsService.getLikes('post', postId),
+        interactionsService.getComments('post', postId),
+      ]);
+      const likesArray = Array.isArray(likes) ? likes : [];
+      const commentsArray = Array.isArray(commentsList) ? commentsList : [];
+      setVideoLikesCount(likesArray.length);
+      setVideoLikedByMe(likesArray.some((l: any) => String(l?.user?.id || '') === String(me?.id || '')));
+      setVideoComments(commentsArray);
+    } catch {
+      toast({ title: 'Falha ao carregar interações do vídeo', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsLoadingVideoInteractions(false);
+    }
+  };
+
+  const toggleVideoLike = async (postId: string) => {
+    if (!postId) return;
+    const nextLiked = !videoLikedByMe;
+    setVideoLikedByMe(nextLiked);
+    setVideoLikesCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
+    try {
+      if (nextLiked) {
+        await interactionsService.like('post', postId);
+      } else {
+        await interactionsService.unlike('post', postId);
+      }
+    } catch {
+      setVideoLikedByMe(!nextLiked);
+      setVideoLikesCount((prev) => Math.max(0, prev + (nextLiked ? -1 : 1)));
+      toast({ title: 'Falha ao curtir vídeo', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const sendVideoComment = async (postId: string) => {
+    if (!postId) return;
+    const content = videoCommentDraft.trim();
+    if (!content) return;
+    setIsSendingVideoComment(true);
+    try {
+      await interactionsService.comment('post', postId, content);
+      setVideoCommentDraft('');
+      await loadVideoInteractions(postId);
+    } catch {
+      toast({ title: 'Falha ao comentar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsSendingVideoComment(false);
+    }
+  };
+
+  const startEditingVideoComment = (comment: PhotoComment) => {
+    setEditingVideoCommentId(comment.id);
+    setEditVideoCommentDraft(comment.content || '');
+  };
+
+  const cancelEditingVideoComment = () => {
+    setEditingVideoCommentId(null);
+    setEditVideoCommentDraft('');
+  };
+
+  const saveEditedVideoComment = async (commentId: string, postId: string) => {
+    const content = editVideoCommentDraft.trim();
+    if (!content) return;
+    try {
+      await interactionsService.updateComment(commentId, content);
+      setEditingVideoCommentId(null);
+      setEditVideoCommentDraft('');
+      await loadVideoInteractions(postId);
+    } catch {
+      toast({ title: 'Falha ao editar comentário', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
+  const removeVideoComment = async (commentId: string, postId: string) => {
+    try {
+      await interactionsService.deleteComment(commentId);
+      await loadVideoInteractions(postId);
+    } catch {
+      toast({ title: 'Falha ao excluir comentário', description: 'Tente novamente.', variant: 'destructive' });
     }
   };
 
@@ -1638,66 +1742,183 @@ export default function UserProfile() {
         }}
       >
         <DialogContent className="h-[100dvh] w-screen max-w-none rounded-none border-0 bg-black p-0 sm:h-[96dvh] sm:max-w-[96vw] sm:rounded-xl sm:border sm:border-white/15">
-          <Button
-            type="button"
-            size="icon"
-            variant="secondary"
-            className="absolute right-3 top-3 z-[70] h-10 w-10 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
-            aria-label="Fechar vídeo"
-            onClick={closeMaximizedVideo}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-          {userVideos.length > 1 ? (
-            <>
-              <Button
-                type="button"
-                size="icon"
-                variant="secondary"
-                className="absolute left-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
-                aria-label="Vídeo anterior"
-                onClick={goToPrevMaximizedVideo}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <Button
-                type="button"
-                size="icon"
-                variant="secondary"
-                className="absolute right-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
-                aria-label="Próximo vídeo"
-                onClick={goToNextMaximizedVideo}
-              >
-                <ChevronRight className="h-5 w-5" />
-              </Button>
-            </>
-          ) : null}
-          {maximizedVideo ? (
-            <div
-              className="relative flex h-full w-full items-center justify-center bg-black"
-              onTouchStart={handleMaximizedTouchStart}
-              onTouchEnd={handleMaximizedTouchEnd}
+          <div className="relative flex h-full w-full flex-col">
+            <Button
+              type="button"
+              size="icon"
+              variant="secondary"
+              className="absolute right-3 top-3 z-[70] h-10 w-10 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+              aria-label="Fechar vídeo"
+              onClick={closeMaximizedVideo}
             >
-              <video
-                src={maximizedVideo.url || ''}
-                className="h-full w-full bg-black object-contain"
-                controls
-                autoPlay
-                playsInline
-                preload="metadata"
-              />
-              {userVideos.length > 1 && maximizedVideoIndex !== null ? (
-                <div className="absolute top-4 left-1/2 z-[65] -translate-x-1/2 rounded-full border border-white/20 bg-black/55 px-3 py-1 text-xs text-white/90">
-                  {maximizedVideoIndex + 1}/{userVideos.length}
+              <X className="h-4 w-4" />
+            </Button>
+            {userVideos.length > 1 ? (
+              <>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="absolute left-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+                  aria-label="Vídeo anterior"
+                  onClick={goToPrevMaximizedVideo}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="absolute right-3 top-1/2 z-[70] h-10 w-10 -translate-y-1/2 rounded-full border border-white/20 bg-black/65 text-white hover:bg-black/80"
+                  aria-label="Próximo vídeo"
+                  onClick={goToNextMaximizedVideo}
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
+              </>
+            ) : null}
+            {maximizedVideo ? (
+              <>
+                <div
+                  className="relative flex min-h-0 flex-1 items-center justify-center bg-black"
+                  onTouchStart={handleMaximizedTouchStart}
+                  onTouchEnd={handleMaximizedTouchEnd}
+                >
+                  <video
+                    src={maximizedVideo.url || ''}
+                    className="max-h-full max-w-full bg-black object-contain"
+                    controls
+                    autoPlay
+                    playsInline
+                    preload="metadata"
+                  />
+                  {userVideos.length > 1 && maximizedVideoIndex !== null ? (
+                    <div className="absolute top-4 left-1/2 z-[65] -translate-x-1/2 rounded-full border border-white/20 bg-black/55 px-3 py-1 text-xs text-white/90">
+                      {maximizedVideoIndex + 1}/{userVideos.length}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-              {maximizedVideo.content ? (
-                <div className="pointer-events-none absolute bottom-4 left-4 right-4 rounded-xl border border-white/15 bg-black/55 p-2.5 backdrop-blur-sm">
-                  <p className="line-clamp-3 text-sm text-white/90">{maximizedVideo.content}</p>
+
+                {/* Curtir / comentar — mesmo alvo (post) usado no Feed/Reels para vídeos */}
+                <div className="max-h-[42dvh] shrink-0 overflow-y-auto border-t border-white/10 bg-black/90 p-3 text-white">
+                  {maximizedVideo.content ? (
+                    <p className="mb-2 line-clamp-3 text-sm text-white/90">{maximizedVideo.content}</p>
+                  ) : null}
+                  <div className="mb-3 flex items-center gap-4">
+                    <button
+                      type="button"
+                      className={cn('flex items-center gap-2 text-sm transition-colors', videoLikedByMe ? 'text-primary' : 'text-white/85')}
+                      onClick={() => void toggleVideoLike(maximizedVideo.postId)}
+                    >
+                      <Heart className={cn('h-4 w-4', videoLikedByMe && 'fill-current')} />
+                      {videoLikesCount}
+                    </button>
+                    <div className="flex items-center gap-2 text-sm text-white/85">
+                      <MessageCircle className="h-4 w-4" />
+                      {videoComments.length}
+                    </div>
+                    {isLoadingVideoInteractions ? <span className="text-xs text-white/60">Atualizando...</span> : null}
+                  </div>
+
+                  <div className="mb-3 space-y-2">
+                    {videoComments.length === 0 ? <p className="text-sm text-white/70">Sem comentários ainda.</p> : null}
+                    {videoComments.map((c) => (
+                      <div key={c.id} className="rounded-lg bg-white/5 p-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-white">{String(c.user?.name || 'Usuário')}</p>
+                          {String(c.user?.id || '') === String(me?.id || '') ? (
+                            <div className="ml-auto flex items-center gap-2">
+                              <button
+                                type="button"
+                                className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
+                                onClick={() => startEditingVideoComment(c)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                                onClick={() => void removeVideoComment(c.id, maximizedVideo.postId)}
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                        {editingVideoCommentId === c.id ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <Input
+                              value={editVideoCommentDraft}
+                              onChange={(e) => setEditVideoCommentDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void saveEditedVideoComment(c.id, maximizedVideo.postId);
+                              }}
+                              className={COMMENT_INLINE_INPUT_CLASS}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              className={COMMENT_SAVE_BUTTON_CLASS}
+                              onClick={() => void saveEditedVideoComment(c.id, maximizedVideo.postId)}
+                              disabled={!editVideoCommentDraft.trim()}
+                            >
+                              Salvar
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className={COMMENT_CANCEL_BUTTON_CLASS}
+                              onClick={cancelEditingVideoComment}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-white/85">{c.content}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        value={videoCommentDraft}
+                        onChange={(e) => setVideoCommentDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') void sendVideoComment(maximizedVideo.postId);
+                        }}
+                        placeholder="Comentar vídeo..."
+                        className="border-white/15 bg-white/5 text-white placeholder:text-white/50"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="bg-gradient-primary hover:opacity-90"
+                        disabled={isSendingVideoComment || !videoCommentDraft.trim()}
+                        onClick={() => void sendVideoComment(maximizedVideo.postId)}
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {COMMENT_QUICK_EMOJIS.map((emoji) => (
+                        <button
+                          key={`video-emoji-${emoji}`}
+                          type="button"
+                          onClick={() => setVideoCommentDraft((prev) => `${prev}${emoji}`)}
+                          className={COMMENT_EMOJI_CHIP_CLASS}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              ) : null}
-            </div>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
 

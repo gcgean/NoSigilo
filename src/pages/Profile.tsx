@@ -434,8 +434,10 @@ export default function Profile() {
     return resolveMediaUrl(main?.url || any?.url || user?.avatar || '');
   }, [photos, user?.avatar]);
 
+  // Notificações de "visitou seu perfil" já aparecem no widget de visitantes
+  // recentes (com o botão "Ver visitante") — exclui daqui para não duplicar.
   const unreadNotifications = useMemo(
-    () => notifications.filter((n) => !n.isRead),
+    () => notifications.filter((n) => !n.isRead && n.type !== 'profile.visited'),
     [notifications]
   );
 
@@ -1412,8 +1414,7 @@ export default function Profile() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-              <InfoRow label="Gênero" value={user?.gender} />
-              <InfoRow label={String(user?.gender || '').startsWith('Casal') ? 'Idades' : 'Idade'} value={profileData.ageLabel} />
+              {/* Gênero e Idade já aparecem no topo do perfil — omitidos aqui para não duplicar */}
               <InfoRow label="Estado civil" value={user?.maritalStatus} />
           <InfoRow label="Orientação Sexual" value={user?.sexualOrientation} />
           <InfoRow label="Profissão" value={user?.profession} />
