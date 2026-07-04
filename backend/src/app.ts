@@ -10846,7 +10846,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, uniqueLastHourRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows] = await Promise.all([
+      // created_at é texto ISO em UTC. Para "hora/dia local" (horário de Brasília,
+      // UTC-3) nos gráficos de pico e de únicos por dia, convertemos por dialeto.
+      const localHourExpr = db.mode === 'pg'
+        ? `EXTRACT(HOUR FROM (sv.created_at)::timestamptz AT TIME ZONE 'America/Sao_Paulo')::int`
+        : `CAST(strftime('%H', datetime(sv.created_at, '-3 hours')) AS INTEGER)`;
+      const localDayExpr = db.mode === 'pg'
+        ? `to_char((sv.created_at)::timestamptz AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD')`
+        : `strftime('%Y-%m-%d', datetime(sv.created_at, '-3 hours'))`;
+      // Identificador de usuário único: prioriza user_id, depois ip_hash, senão a visita.
+      const uniqueUserExpr = `COUNT(DISTINCT COALESCE(NULLIF(sv.user_id, ''), NULLIF(sv.ip_hash, ''), sv.id))`;
+
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, uniqueLastHourRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows, uniqueByDayRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
@@ -10956,20 +10967,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            GROUP BY device_label
            ORDER BY c DESC`
         ),
-        // Acessos por hora do dia (últimos 30 dias).
-        // SUBSTR pos 12 = hora em ISO '2024-01-15T10:30:00Z'. Guarda LENGTH >= 13
-        // para não quebrar (ou virar NULL) em registros com created_at malformado
-        // ou só com a data; agrupa pelo ALIAS (hour_num) — idêntico ao SELECT,
-        // sem depender de o otimizador casar sub-expressões entre motores.
+        // Usuários únicos por (dia local, hora local) nos últimos 30 dias. Depois,
+        // no JS, tiramos a média por hora (soma ÷ nº de dias) para saber quantos
+        // únicos ficavam online em média a cada hora — o horário de pico.
         queryAll(
           db,
-          `SELECT
-             CASE WHEN LENGTH(sv.created_at) >= 13 THEN CAST(SUBSTR(sv.created_at, 12, 2) AS INTEGER) ELSE NULL END AS hour_num,
-             COUNT(*) AS c
+          `SELECT ${localHourExpr} AS hour_num,
+                  ${localDayExpr} AS day,
+                  ${uniqueUserExpr} AS cnt
            FROM site_visits sv
-           WHERE sv.created_at >= ?
-           GROUP BY hour_num
-           ORDER BY hour_num ASC NULLS LAST`,
+           WHERE sv.created_at >= ? AND LENGTH(sv.created_at) >= 13
+           GROUP BY hour_num, day`,
           [thirtyDaysAgoIso]
         ),
         // Novos cadastros por dia (últimos 30 dias)
@@ -10996,6 +11004,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              AND TRIM(COALESCE(u.city, '')) != ''
            GROUP BY TRIM(COALESCE(u.city, '')), UPPER(TRIM(COALESCE(u.state, '')))`,
           [growthFromIso]
+        ),
+        // Usuários únicos que acessaram por dia (local), últimos 30 dias.
+        queryAll(
+          db,
+          `SELECT ${localDayExpr} AS day, ${uniqueUserExpr} AS c
+           FROM site_visits sv
+           WHERE sv.created_at >= ? AND LENGTH(sv.created_at) >= 13
+           GROUP BY day
+           ORDER BY day ASC`,
+          [thirtyDaysAgoIso]
         ),
       ]);
 
@@ -11050,11 +11068,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
       const totalVisits = Number((totalRow as any)?.c || 0);
-      const byHourFinal = Array.from({ length: 24 }, (_, h) => {
-        const row = (hourlyRows as any[]).find((r: any) => Number(r.hour_num) === h);
-        return { hour: h, count: row ? Number(row.c || 0) : 0 };
-      });
-      console.log('[admin/analytics/visits] byHourFinal (enviado ao front)', byHourFinal.slice(0, 5), 'total_de_registros:', hourlyRows.length);
+      // Média de usuários únicos por hora (soma dos únicos/dia ÷ nº de dias observados).
+      const hourSum = new Array(24).fill(0);
+      const daysWithData = new Set<string>();
+      for (const r of hourlyRows as any[]) {
+        const h = Number(r.hour_num);
+        if (!Number.isInteger(h) || h < 0 || h > 23) continue;
+        hourSum[h] += Number(r.cnt || 0);
+        if (r.day) daysWithData.add(String(r.day));
+      }
+      const numDays = Math.max(1, daysWithData.size);
+      const byHourFinal = Array.from({ length: 24 }, (_, h) => ({
+        hour: h,
+        count: Math.round((hourSum[h] / numDays) * 10) / 10, // média de únicos por hora
+      }));
       res.json({
         total: totalVisits,
         today: Number((todayRow as any)?.c || 0),
@@ -11151,6 +11178,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),
         history,
         byHour: byHourFinal,
+        // Usuários únicos que acessaram por dia (local), últimos 30 dias.
+        uniqueUsersByDay: (uniqueByDayRows as any[]).map((row: any) => ({
+          label: String(row.day || ''),
+          count: Number(row.c || 0),
+        })),
         newUsersByDay: (newUsersByDayRows as any[]).map((row: any) => ({
           label: String(row.reg_day || ''),
           count: Number(row.c || 0),

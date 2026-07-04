@@ -174,6 +174,7 @@ type VisitAnalytics = {
   byPage: VisitBreakdown[];
   history: VisitHistoryItem[];
   byHour: Array<{ hour: number; count: number }>;
+  uniqueUsersByDay: VisitBreakdown[];
   newUsersByDay: VisitBreakdown[];
   growingCities: GrowingCity[];
   growthPeriodDays: number;
@@ -211,6 +212,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   byPage: [],
   history: [],
   byHour: [],
+  uniqueUsersByDay: [],
   newUsersByDay: [],
   growingCities: [],
   growthPeriodDays: 30,
@@ -1554,34 +1556,87 @@ export default function Admin() {
               );
             })()}
 
-            {/* ── Tráfego por hora do dia ── */}
-            {visitAnalytics.byHour.length > 0 && (
+            {/* ── Usuários únicos online por hora (média, horário de pico) ── */}
+            {visitAnalytics.byHour.some((h) => h.count > 0) && (
               <Card className="p-5 glass">
-                <h3 className="font-semibold mb-1">Tráfego por hora do dia</h3>
-                <p className="text-xs text-muted-foreground mb-4">Últimos 30 dias — identifique os horários de pico para campanhas</p>
+                <h3 className="font-semibold mb-1">Usuários únicos online por hora (média)</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Média de usuários únicos a cada hora do dia (horário de Brasília), considerando os últimos 30 dias — mostra o horário de pico de gente online.
+                </p>
                 {(() => {
                   const max = Math.max(1, ...visitAnalytics.byHour.map(h => h.count));
+                  const peakHour = visitAnalytics.byHour.reduce((a, b) => (b.count > a.count ? b : a), visitAnalytics.byHour[0]);
                   return (
-                    <div className="flex items-end gap-0.5 h-24">
-                      {visitAnalytics.byHour.map((h) => {
-                        const pct = (h.count / max) * 100;
-                        const isPeak = h.count === max;
-                        return (
-                          <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
-                              {h.hour}h: {h.count}
+                    <>
+                      <p className="mb-3 text-sm">
+                        <span className="text-muted-foreground">Horário de pico: </span>
+                        <span className="font-semibold text-foreground">{peakHour.hour}h</span>
+                        <span className="text-muted-foreground"> · ~{peakHour.count} únicos/hora em média</span>
+                      </p>
+                      <div className="flex items-end gap-0.5 h-24">
+                        {visitAnalytics.byHour.map((h) => {
+                          const pct = (h.count / max) * 100;
+                          const isPeak = h.count === max;
+                          return (
+                            <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
+                              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                                {h.hour}h: {h.count} únicos/h
+                              </div>
+                              <div
+                                className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
+                                style={{ height: `${Math.max(2, pct)}%` }}
+                              />
+                              <span className="text-[9px] text-muted-foreground tabular-nums">
+                                {h.hour % 6 === 0 ? `${h.hour}h` : ''}
+                              </span>
                             </div>
-                            <div
-                              className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
-                              style={{ height: `${Math.max(2, pct)}%` }}
-                            />
-                            <span className="text-[9px] text-muted-foreground tabular-nums">
-                              {h.hour % 6 === 0 ? `${h.hour}h` : ''}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+              </Card>
+            )}
+
+            {/* ── Usuários únicos por dia (últimos 30 dias) ── */}
+            {visitAnalytics.uniqueUsersByDay.length > 0 && (
+              <Card className="p-5 glass">
+                <h3 className="font-semibold mb-1">Usuários únicos por dia (últimos 30 dias)</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Quantos usuários únicos acessaram a plataforma em cada dia (horário de Brasília).
+                </p>
+                {(() => {
+                  const items = visitAnalytics.uniqueUsersByDay;
+                  const max = Math.max(1, ...items.map((d) => d.count));
+                  const avg = Math.round(items.reduce((s, d) => s + d.count, 0) / Math.max(1, items.length));
+                  return (
+                    <>
+                      <p className="mb-3 text-sm">
+                        <span className="text-muted-foreground">Média diária: </span>
+                        <span className="font-semibold text-foreground">{avg.toLocaleString('pt-BR')}</span>
+                        <span className="text-muted-foreground"> usuários únicos/dia</span>
+                      </p>
+                      <div className="flex items-end gap-0.5 h-28">
+                        {items.map((d) => {
+                          const pct = (d.count / max) * 100;
+                          const isPeak = d.count === max;
+                          const dayNum = d.label.slice(8, 10);
+                          return (
+                            <div key={d.label} className="flex-1 flex flex-col items-center gap-1 group relative">
+                              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                                {d.label.split('-').reverse().join('/')}: {d.count.toLocaleString('pt-BR')} únicos
+                              </div>
+                              <div
+                                className={`w-full rounded-sm transition-all ${isPeak ? 'bg-emerald-500' : 'bg-emerald-500/40'}`}
+                                style={{ height: `${Math.max(2, pct)}%` }}
+                              />
+                              <span className="text-[9px] text-muted-foreground tabular-nums">{dayNum}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
                   );
                 })()}
               </Card>
