@@ -1554,6 +1554,39 @@ export default function Admin() {
               );
             })()}
 
+            {/* ── Tráfego por hora do dia ── */}
+            {visitAnalytics.byHour.length > 0 && (
+              <Card className="p-5 glass">
+                <h3 className="font-semibold mb-1">Tráfego por hora do dia</h3>
+                <p className="text-xs text-muted-foreground mb-4">Últimos 7 dias — identifique os horários de pico para campanhas</p>
+                {(() => {
+                  const max = Math.max(1, ...visitAnalytics.byHour.map(h => h.count));
+                  return (
+                    <div className="flex items-end gap-0.5 h-24">
+                      {visitAnalytics.byHour.map((h) => {
+                        const pct = (h.count / max) * 100;
+                        const isPeak = h.count === max;
+                        return (
+                          <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
+                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                              {h.hour}h: {h.count}
+                            </div>
+                            <div
+                              className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
+                              style={{ height: `${Math.max(2, pct)}%` }}
+                            />
+                            <span className="text-[9px] text-muted-foreground tabular-nums">
+                              {h.hour % 6 === 0 ? `${h.hour}h` : ''}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </Card>
+            )}
+
             {/* ── Cidades em crescimento ── */}
             <Card className="p-5 glass">
               <div className="flex items-start justify-between gap-4 mb-1">
@@ -1597,39 +1630,6 @@ export default function Admin() {
                 </div>
               )}
             </Card>
-
-            {/* ── Tráfego por hora do dia ── */}
-            {visitAnalytics.byHour.length > 0 && (
-              <Card className="p-5 glass">
-                <h3 className="font-semibold mb-1">Tráfego por hora do dia</h3>
-                <p className="text-xs text-muted-foreground mb-4">Últimos 7 dias — identifique os horários de pico para campanhas</p>
-                {(() => {
-                  const max = Math.max(1, ...visitAnalytics.byHour.map(h => h.count));
-                  return (
-                    <div className="flex items-end gap-0.5 h-24">
-                      {visitAnalytics.byHour.map((h) => {
-                        const pct = (h.count / max) * 100;
-                        const isPeak = h.count === max;
-                        return (
-                          <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
-                              {h.hour}h: {h.count}
-                            </div>
-                            <div
-                              className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
-                              style={{ height: `${Math.max(2, pct)}%` }}
-                            />
-                            <span className="text-[9px] text-muted-foreground tabular-nums">
-                              {h.hour % 6 === 0 ? `${h.hour}h` : ''}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-              </Card>
-            )}
 
             {/* ── Origem / País / Páginas / Dispositivo ── */}
             <div className="grid gap-4 xl:grid-cols-4 xl:gap-6">

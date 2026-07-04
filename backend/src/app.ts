@@ -10956,16 +10956,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            GROUP BY device_label
            ORDER BY c DESC`
         ),
-        // Acessos por hora do dia (últimos 7 dias)
-        // SUBSTR pos 12 = hour in ISO '2024-01-15T10:30:00Z'
+        // Acessos por hora do dia (últimos 7 dias).
+        // SUBSTR pos 12 = hora em ISO '2024-01-15T10:30:00Z'. Guarda LENGTH >= 13
+        // para não quebrar (ou virar NULL) em registros com created_at malformado
+        // ou só com a data; agrupa pelo ALIAS (hour_num) — idêntico ao SELECT,
+        // sem depender de o otimizador casar sub-expressões entre motores.
         queryAll(
           db,
-          `SELECT CAST(SUBSTR(sv.created_at, 12, 2) AS INTEGER) AS hour_num,
-                  COUNT(*) AS c
+          `SELECT
+             CASE WHEN LENGTH(sv.created_at) >= 13 THEN CAST(SUBSTR(sv.created_at, 12, 2) AS INTEGER) ELSE NULL END AS hour_num,
+             COUNT(*) AS c
            FROM site_visits sv
            WHERE sv.created_at >= ?
-           GROUP BY SUBSTR(sv.created_at, 12, 2)
-           ORDER BY 1 ASC`,
+           GROUP BY hour_num
+           ORDER BY hour_num ASC NULLS LAST`,
           [sevenDaysAgoIso]
         ),
         // Novos cadastros por dia (últimos 30 dias)
@@ -10994,6 +10998,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           [growthFromIso]
         ),
       ]);
+
+      // Diagnóstico temporário: confirma no log do servidor se a query de
+      // tráfego por hora está retornando dados (remover depois de confirmado).
+      if (!Array.isArray(hourlyRows) || hourlyRows.length === 0) {
+        console.warn('[admin/analytics/visits] hourlyRows veio vazio', {
+          sevenDaysAgoIso,
+          sampleCreatedAt: (rows as any[])[0]?.created_at ?? null,
+        });
+      } else {
+        console.log('[admin/analytics/visits] hourlyRows amostra', (hourlyRows as any[]).slice(0, 3));
+      }
 
       const history = rows.map((row: any) => ({
         id: String(row.id),
