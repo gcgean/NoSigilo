@@ -158,6 +158,7 @@ type VisitAnalytics = {
   today: number;
   last7Days: number;
   uniqueToday: number;
+  uniqueLastHour: number;
   onlineNow: number;
   byDay: VisitBreakdown[];
   byRegion: VisitBreakdown[];
@@ -193,6 +194,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   today: 0,
   last7Days: 0,
   uniqueToday: 0,
+  uniqueLastHour: 0,
   onlineNow: 0,
   byDay: [],
   byRegion: [],
@@ -1426,12 +1428,13 @@ export default function Admin() {
         <TabsContent value="visits">
           <div className="space-y-6">
             {/* ── KPI row ── */}
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-6">
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-7">
               {[
                 { icon: Globe2,           color: 'text-primary',        bg: 'bg-primary/10',       value: visitAnalytics.total.toLocaleString('pt-BR'),       label: 'Total de visitas' },
                 { icon: MousePointerClick,color: 'text-amber-500',      bg: 'bg-amber-500/10',     value: visitAnalytics.today.toLocaleString('pt-BR'),       label: 'Últimas 24h' },
                 { icon: TrendingUp,       color: 'text-emerald-600',    bg: 'bg-emerald-500/10',   value: visitAnalytics.last7Days.toLocaleString('pt-BR'),   label: 'Últimos 7 dias' },
                 { icon: Users,            color: 'text-blue-600',       bg: 'bg-blue-500/10',      value: visitAnalytics.uniqueToday.toLocaleString('pt-BR'), label: 'Únicos (24h)' },
+                { icon: Users,            color: 'text-sky-600',        bg: 'bg-sky-500/10',       value: visitAnalytics.uniqueLastHour.toLocaleString('pt-BR'), label: 'Únicos (última hora)' },
                 { icon: Users,            color: 'text-emerald-600',    bg: 'bg-emerald-500/15',   value: visitAnalytics.onlineNow.toString(),                label: 'Online agora' },
                 { icon: TrendingUp,       color: 'text-purple-600',     bg: 'bg-purple-500/10',    value: visitAnalytics.byDay.length.toString(),             label: 'Dias c/ dados (30d)' },
               ].map(({ icon: Icon, color, bg, value, label }) => (

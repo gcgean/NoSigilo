@@ -10836,6 +10836,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const accessWhere = accessFromIso ? 'WHERE sv.created_at >= ?' : '';
       const accessParams = accessFromIso ? [accessFromIso] : [];
       const todayIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const oneHourAgoIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
       const sevenDaysAgoIso  = new Date(Date.now() -  7 * 24 * 60 * 60 * 1000).toISOString();
       const fourteenDaysAgoIso = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -10845,7 +10846,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows] = await Promise.all([
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, uniqueLastHourRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows] = await Promise.all([
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
         queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
@@ -10855,6 +10856,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            FROM site_visits
            WHERE created_at >= ?`,
           [todayIso]
+        ),
+        queryOne(
+          db,
+          `SELECT COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) as c
+           FROM site_visits
+           WHERE created_at >= ?`,
+          [oneHourAgoIso]
         ),
         queryAll(
           db,
@@ -11032,6 +11040,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         today: Number((todayRow as any)?.c || 0),
         last7Days: Number((last7DaysRow as any)?.c || 0),
         uniqueToday: Number((uniqueTodayRow as any)?.c || 0),
+        uniqueLastHour: Number((uniqueLastHourRow as any)?.c || 0),
         onlineNow: presence?.countOnline ? Number(presence.countOnline()) : 0,
         byDay: (dailyRows as any[]).map((row: any) => ({
           label: String(row.day || ''),
