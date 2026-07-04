@@ -20,6 +20,9 @@ const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { backgroundCss } from '@/lib/storyBackgrounds';
 import { PHOTO_REACTIONS, REACTION_EMOJI, type PhotoReaction } from '@/lib/reactions';
+
+// Emojis "safados" de acesso rápido no topo do seletor de emoji do chat.
+const SPICY_EMOJIS = ['😈','🔥','💦','🍆','🍑','👅','💋','😏','🥵','🤤','😍','👄','🫦','🍒','🌶️','❤️‍🔥','😉','🙈','🛏️','👙','🩲','🔞','🍌','🥴','😜','🫣','👀','🤭','😻','💐','🤙','💥'];
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
@@ -1579,10 +1582,27 @@ export default function Chat() {
                       align="center"
                       sideOffset={8}
                       collisionPadding={8}
-                      className="p-0 border-none w-auto max-h-[min(380px,45svh)] overflow-hidden"
+                      className="flex max-h-[min(420px,50svh)] w-auto flex-col overflow-hidden border-none p-0"
                     >
+                      {/* Safados — acesso rápido aos emojis picantes */}
+                      <div className="shrink-0 border-b bg-background p-2">
+                        <p className="mb-1.5 px-1 text-[11px] font-semibold text-muted-foreground">🔥 Safados</p>
+                        <div className="grid grid-cols-8 gap-0.5">
+                          {SPICY_EMOJIS.map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => setMessage((prev) => prev + e)}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-xl transition-transform hover:scale-125 hover:bg-secondary active:scale-110"
+                              aria-label={`Inserir ${e}`}
+                            >
+                              {e}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Carregando…</div>}>
-                        <div className="overflow-y-auto max-h-[min(380px,45svh)]">
+                        <div className="overflow-y-auto">
                           <EmojiPicker
                             onEmojiClick={(emojiData: { emoji: string }) => setMessage(prev => prev + emojiData.emoji)}
                             theme={theme as any}
