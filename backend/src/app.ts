@@ -11046,6 +11046,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           label: String(row.day || ''),
           count: Number(row.c || 0),
         })),
+        // Acessos por dia da semana (soma dos últimos 30 dias, derivado do mesmo
+        // dailyRows já buscado acima — sem query nova, sem risco de dialeto SQL).
+        byWeekday: (() => {
+          const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+          const totals = new Array(7).fill(0);
+          for (const row of dailyRows as any[]) {
+            const day = String(row.day || '');
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+            const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+            totals[weekday] += Number(row.c || 0);
+          }
+          return WEEKDAY_LABELS.map((label, weekday) => ({ weekday, label, count: totals[weekday] }));
+        })(),
         byRegion: (regionRows as any[]).map((row: any) => ({
           label: String(row.region_label || 'Desconhecido'),
           count: Number(row.c || 0),

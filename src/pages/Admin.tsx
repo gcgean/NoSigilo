@@ -161,6 +161,7 @@ type VisitAnalytics = {
   uniqueLastHour: number;
   onlineNow: number;
   byDay: VisitBreakdown[];
+  byWeekday: Array<{ weekday: number; label: string; count: number }>;
   byRegion: VisitBreakdown[];
   byAccessCity: VisitBreakdown[];
   byUserCity: VisitBreakdown[];
@@ -197,6 +198,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   uniqueLastHour: 0,
   onlineNow: 0,
   byDay: [],
+  byWeekday: [],
   byRegion: [],
   byAccessCity: [],
   byUserCity: [],
@@ -1514,6 +1516,43 @@ export default function Admin() {
                 );
               })()}
             </div>
+
+            {/* ── Acessos por dia da semana ── */}
+            {(() => {
+              // Reordena Segunda→Domingo (mais natural para leitura); dado vem 0=Domingo..6=Sábado
+              const order = [1, 2, 3, 4, 5, 6, 0];
+              const items = order
+                .map((w) => visitAnalytics.byWeekday.find((d) => d.weekday === w))
+                .filter((d): d is { weekday: number; label: string; count: number } => !!d);
+              const max = Math.max(1, ...items.map((d) => d.count));
+              const todayWeekday = new Date().getDay();
+              return (
+                <Card className="p-5 glass">
+                  <h3 className="font-semibold mb-1">Acessos por dia da semana</h3>
+                  <p className="text-xs text-muted-foreground mb-4">Soma dos últimos 30 dias, por dia da semana</p>
+                  {items.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem dados ainda.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {items.map((d) => (
+                        <div key={d.weekday} className="flex items-center gap-2 text-xs">
+                          <span className={cn('w-20 shrink-0 tabular-nums', d.weekday === todayWeekday ? 'font-semibold text-foreground' : 'text-muted-foreground')}>
+                            {d.label}
+                          </span>
+                          <div className="flex-1 h-5 bg-secondary/40 rounded overflow-hidden">
+                            <div
+                              className={cn('h-full rounded transition-all', d.weekday === todayWeekday ? 'bg-amber-500/80' : 'bg-primary/70')}
+                              style={{ width: `${(d.count / max) * 100}%` }}
+                            />
+                          </div>
+                          <span className="w-12 text-right shrink-0 font-medium tabular-nums">{d.count.toLocaleString('pt-BR')}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              );
+            })()}
 
             {/* ── Cidades em crescimento ── */}
             <Card className="p-5 glass">
