@@ -1008,11 +1008,11 @@ export default function Profile() {
                 href={String((profileData as any).bioLink)}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="mb-4 inline-flex max-w-full items-center gap-2 rounded-full bg-gradient-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition-transform hover:scale-[1.02]"
+                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
               >
                 <Link2 className="h-4 w-4 shrink-0" />
-                <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\//, '')}</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70" />
               </a>
             ) : null}
 
