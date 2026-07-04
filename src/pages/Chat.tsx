@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -104,6 +104,7 @@ type Message = {
   isDeletedForAll?: boolean;
   isDeletedForMe?: boolean;
   replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null; text?: string | null; background?: string | null } | null;
+  replyTo?: { id: string; senderId: string; content: string | null; hasMedia: boolean } | null;
   reaction?: string | null;
   createdAt: string;
   isSending?: boolean;
@@ -160,6 +161,7 @@ export default function Chat() {
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
   // Long-press menu na lista de conversas
   const [convListMenu, setConvListMenu] = useState<{ id: string; name: string } | null>(null);
@@ -691,6 +693,12 @@ export default function Chat() {
     }
   }, [messages, toast]);
 
+  const handleReplyToMessage = useCallback((messageId: string) => {
+    setContextMenu(null);
+    const target = messages.find((m) => m.id === messageId);
+    if (target) setReplyingTo(target);
+  }, [messages]);
+
   const openContextMenu = useCallback((e: React.MouseEvent, messageId: string) => {
     e.preventDefault();
     setContextMenu({ messageId, x: e.clientX, y: e.clientY });
@@ -731,7 +739,8 @@ export default function Chat() {
 
     const clientId = Math.random().toString(36).substring(7);
     const msgContent = content?.trim() || null;
-    
+    const replySource = replyingTo;
+
     // Optimistic update
     const tempMsg: Message = {
       id: `temp-${clientId}`,
@@ -746,17 +755,22 @@ export default function Chat() {
       isRead: false,
       isSending: true,
       createdAt: new Date().toISOString(),
+      replyTo: replySource
+        ? { id: replySource.id, senderId: replySource.senderId, content: replySource.content, hasMedia: !!replySource.mediaId }
+        : null,
     };
 
     setMessages((prev) => [...prev, tempMsg]);
     if (!mediaId) setMessage('');
+    setReplyingTo(null);
 
     try {
-      const sent = await chatService.sendMessage(selectedChat, { 
-        content: msgContent || undefined, 
+      const sent = await chatService.sendMessage(selectedChat, {
+        content: msgContent || undefined,
         mediaId: mediaId || undefined,
         clientId,
-        isViewOnce: isViewOnceEnabled 
+        isViewOnce: isViewOnceEnabled,
+        replyToMessageId: replySource && !replySource.id.startsWith('temp-') ? replySource.id : undefined,
       });
       
       if (sent?.id) {
@@ -1435,6 +1449,21 @@ export default function Chat() {
                               </span>
                             </div>
                           )}
+                          {msg.replyTo && (
+                            <div className={cn(
+                              'mb-1 rounded-lg border-l-2 px-2 py-1',
+                              isMine ? 'border-primary-foreground/50 bg-black/15' : 'border-primary bg-foreground/5'
+                            )}>
+                              <p className={cn('text-[11px] font-semibold', isMine ? 'text-primary-foreground/90' : 'text-primary')}>
+                                {msg.replyTo.senderId === user?.id ? 'Você' : (activeConversation?.user?.name || 'Mensagem')}
+                              </p>
+                              <p className="truncate text-[12px] opacity-75">
+                                {msg.replyTo.content
+                                  ? msg.replyTo.content
+                                  : msg.replyTo.hasMedia ? '📷 Mídia' : 'Mensagem'}
+                              </p>
+                            </div>
+                          )}
                           {msg.content && (
                             <p
                               className={cn(
@@ -1524,6 +1553,29 @@ export default function Chat() {
                 <Lock className="h-4 w-4 text-destructive" />
               </button>
             )}
+            {/* Reply preview — mensagem sendo respondida */}
+            {replyingTo && (
+              <div className="mb-1.5 flex items-center gap-2 rounded-xl border-l-2 border-primary bg-secondary/50 px-3 py-2">
+                <Reply className="h-3.5 w-3.5 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-primary">
+                    Respondendo a {replyingTo.senderId === user?.id ? 'você' : (activeConversation?.user?.name || 'mensagem')}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {replyingTo.content ? replyingTo.content : (replyingTo.mediaId ? '📷 Mídia' : 'Mensagem')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-secondary"
+                  aria-label="Cancelar resposta"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* View-once active banner */}
             {isViewOnceEnabled && (
               <div className="mb-1.5 flex items-center gap-2 rounded-xl border border-yellow-400/40 bg-yellow-400/10 px-3 py-2">
@@ -1740,10 +1792,18 @@ export default function Chat() {
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+                onClick={() => handleReplyToMessage(contextMenu.messageId)}
+              >
+                <Reply className="h-4 w-4 text-muted-foreground" />
+                Responder
+              </button>
               {canCopyText && (
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2.5 px-4 py-3 text-sm hover:bg-secondary transition-colors"
+                  className="flex w-full items-center gap-2.5 border-t px-4 py-3 text-sm hover:bg-secondary transition-colors"
                   onClick={() => void handleCopyMessageText(contextMenu.messageId)}
                 >
                   <Copy className="h-4 w-4 text-muted-foreground" />

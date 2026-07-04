@@ -440,7 +440,7 @@ export const chatService = {
     return response.data;
   },
 
-  sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean }) => {
+  sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean; replyToMessageId?: string }) => {
     const response = await apiClient.post(`/conversations/${conversationId}/messages`, data);
     return response.data;
   },

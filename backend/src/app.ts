@@ -8521,14 +8521,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
-             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction,
+             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction, m.reply_to_message_id,
              med.filename as media_filename, med.mime_type as media_mime_type,
              smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
-             s.text as story_text, s.background as story_background
+             s.text as story_text, s.background as story_background,
+             rm.sender_id as reply_sender_id, rm.content as reply_content, rm.media_id as reply_media_id
       FROM messages m
       LEFT JOIN media med ON med.id = m.media_id
       LEFT JOIN stories s ON s.id = m.story_id
       LEFT JOIN media smed ON smed.id = s.media_id
+      LEFT JOIN messages rm ON rm.id = m.reply_to_message_id
       WHERE m.conversation_id = ?
       ORDER BY m.created_at ASC
       LIMIT 200
@@ -8562,6 +8564,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             background: m.story_background ?? null,
           },
           reaction: deletedForMe ? null : (m.reaction ?? null),
+          replyTo: (deletedForMe || !m.reply_to_message_id) ? null : {
+            id: String(m.reply_to_message_id),
+            senderId: m.reply_sender_id ? String(m.reply_sender_id) : '',
+            content: m.reply_content ? String(m.reply_content) : null,
+            hasMedia: !!m.reply_media_id,
+          },
           createdAt: m.created_at,
           isRead: !!m.is_read,
           isDeletedForAll: deletedForAll,
@@ -8756,6 +8764,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       mediaId: z.string().optional(),
       clientId: z.string().max(100).optional(),
       isViewOnce: z.boolean().optional(),
+      replyToMessageId: z.string().max(100).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -8767,6 +8776,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!conv || (conv.user_a_id !== req.auth!.userId && conv.user_b_id !== req.auth!.userId)) {
       res.status(404).json({ error: 'not_found' });
       return;
+    }
+
+    // Mensagem citada (resposta): só vale se for da MESMA conversa.
+    let replyTo: { id: string; senderId: string; content: string | null; hasMedia: boolean } | null = null;
+    if (parsed.data.replyToMessageId) {
+      const rm = (await queryOne(
+        db,
+        'SELECT id, conversation_id, sender_id, content, media_id FROM messages WHERE id = ? LIMIT 1',
+        [parsed.data.replyToMessageId]
+      )) as any;
+      if (rm && String(rm.conversation_id) === conversationId) {
+        replyTo = {
+          id: String(rm.id),
+          senderId: String(rm.sender_id),
+          content: rm.content ? String(rm.content) : null,
+          hasMedia: !!rm.media_id,
+        };
+      }
     }
     const otherId = conv.user_a_id === req.auth!.userId ? String(conv.user_b_id) : String(conv.user_a_id);
     const canMessage = await canSendMessage({ db }, { fromUserId: req.auth!.userId, toUserId: otherId });
@@ -8786,7 +8813,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const id = randomUUID();
     const createdAt = nowIso();
-    await run(db, 'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    await run(db, 'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
       id,
       conversationId,
       req.auth!.userId,
@@ -8795,6 +8822,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       isViewOnce,
       1, // is_delivered
       createdAt,
+      replyTo?.id ?? null,
     ]);
     await persist();
     let mediaUrl = null;
@@ -8819,7 +8847,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       clientId: parsed.data.clientId || null,
       isViewOnce: !!isViewOnce,
       isDelivered: true,
-      createdAt 
+      createdAt,
+      replyTo,
     });
     const sender = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const senderName = sender?.name ? String(sender.name) : 'Nova mensagem';
