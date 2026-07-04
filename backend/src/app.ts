@@ -11068,19 +11068,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
       const totalVisits = Number((totalRow as any)?.c || 0);
-      // Média de usuários únicos por hora (soma dos únicos/dia ÷ nº de dias observados).
+      // Média de usuários únicos por hora: soma dos únicos/dia ÷ 30 (janela fixa).
       const hourSum = new Array(24).fill(0);
-      const daysWithData = new Set<string>();
       for (const r of hourlyRows as any[]) {
         const h = Number(r.hour_num);
         if (!Number.isInteger(h) || h < 0 || h > 23) continue;
         hourSum[h] += Number(r.cnt || 0);
-        if (r.day) daysWithData.add(String(r.day));
       }
-      const numDays = Math.max(1, daysWithData.size);
+      const HOUR_AVG_DAYS = 30;
       const byHourFinal = Array.from({ length: 24 }, (_, h) => ({
         hour: h,
-        count: Math.round((hourSum[h] / numDays) * 10) / 10, // média de únicos por hora
+        count: Math.round((hourSum[h] / HOUR_AVG_DAYS) * 10) / 10, // média de únicos por hora
       }));
       res.json({
         total: totalVisits,
