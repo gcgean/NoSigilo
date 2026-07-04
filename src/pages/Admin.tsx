@@ -1558,7 +1558,7 @@ export default function Admin() {
             {visitAnalytics.byHour.length > 0 && (
               <Card className="p-5 glass">
                 <h3 className="font-semibold mb-1">Tráfego por hora do dia</h3>
-                <p className="text-xs text-muted-foreground mb-4">Últimos 7 dias — identifique os horários de pico para campanhas</p>
+                <p className="text-xs text-muted-foreground mb-4">Últimos 30 dias — identifique os horários de pico para campanhas</p>
                 {(() => {
                   const max = Math.max(1, ...visitAnalytics.byHour.map(h => h.count));
                   return (

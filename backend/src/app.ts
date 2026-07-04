@@ -10956,7 +10956,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            GROUP BY device_label
            ORDER BY c DESC`
         ),
-        // Acessos por hora do dia (últimos 7 dias).
+        // Acessos por hora do dia (últimos 30 dias).
         // SUBSTR pos 12 = hora em ISO '2024-01-15T10:30:00Z'. Guarda LENGTH >= 13
         // para não quebrar (ou virar NULL) em registros com created_at malformado
         // ou só com a data; agrupa pelo ALIAS (hour_num) — idêntico ao SELECT,
@@ -10970,7 +10970,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            WHERE sv.created_at >= ?
            GROUP BY hour_num
            ORDER BY hour_num ASC NULLS LAST`,
-          [sevenDaysAgoIso]
+          [thirtyDaysAgoIso]
         ),
         // Novos cadastros por dia (últimos 30 dias)
         queryAll(
@@ -11050,6 +11050,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
       const totalVisits = Number((totalRow as any)?.c || 0);
+      const byHourFinal = Array.from({ length: 24 }, (_, h) => {
+        const row = (hourlyRows as any[]).find((r: any) => Number(r.hour_num) === h);
+        return { hour: h, count: row ? Number(row.c || 0) : 0 };
+      });
+      console.log('[admin/analytics/visits] byHourFinal (enviado ao front)', byHourFinal.slice(0, 5), 'total_de_registros:', hourlyRows.length);
       res.json({
         total: totalVisits,
         today: Number((todayRow as any)?.c || 0),
@@ -11145,10 +11150,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         byCountry: groupCounts(history.map((item) => item.country), 'Desconhecido'),
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),
         history,
-        byHour: Array.from({ length: 24 }, (_, h) => {
-          const row = (hourlyRows as any[]).find((r: any) => Number(r.hour_num) === h);
-          return { hour: h, count: row ? Number(row.c || 0) : 0 };
-        }),
+        byHour: byHourFinal,
         newUsersByDay: (newUsersByDayRows as any[]).map((row: any) => ({
           label: String(row.reg_day || ''),
           count: Number(row.c || 0),
