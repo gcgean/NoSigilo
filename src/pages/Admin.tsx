@@ -1578,20 +1578,24 @@ export default function Admin() {
                           const pct = (h.count / max) * 100;
                           const isPeak = h.count === max;
                           return (
-                            <div key={h.hour} className="flex-1 flex flex-col items-center gap-1 group relative">
-                              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                            <div key={h.hour} className="group relative flex h-full flex-1 items-end">
+                              <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
                                 {h.hour}h: {h.count} únicos/h
                               </div>
                               <div
                                 className={`w-full rounded-sm transition-all ${isPeak ? 'bg-primary' : 'bg-primary/40'}`}
                                 style={{ height: `${Math.max(2, pct)}%` }}
                               />
-                              <span className="text-[9px] text-muted-foreground tabular-nums">
-                                {h.hour % 6 === 0 ? `${h.hour}h` : ''}
-                              </span>
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="mt-1 flex gap-0.5">
+                        {visitAnalytics.byHour.map((h) => (
+                          <span key={h.hour} className="flex-1 text-center text-[9px] text-muted-foreground tabular-nums">
+                            {h.hour % 6 === 0 ? `${h.hour}h` : ''}
+                          </span>
+                        ))}
                       </div>
                     </>
                   );
@@ -1621,20 +1625,25 @@ export default function Admin() {
                         {items.map((d) => {
                           const pct = (d.count / max) * 100;
                           const isPeak = d.count === max;
-                          const dayNum = d.label.slice(8, 10);
                           return (
-                            <div key={d.label} className="flex-1 flex flex-col items-center gap-1 group relative">
-                              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                            <div key={d.label} className="group relative flex h-full flex-1 items-end">
+                              <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
                                 {d.label.split('-').reverse().join('/')}: {d.count.toLocaleString('pt-BR')} únicos
                               </div>
                               <div
                                 className={`w-full rounded-sm transition-all ${isPeak ? 'bg-emerald-500' : 'bg-emerald-500/40'}`}
                                 style={{ height: `${Math.max(2, pct)}%` }}
                               />
-                              <span className="text-[9px] text-muted-foreground tabular-nums">{dayNum}</span>
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="mt-1 flex gap-0.5">
+                        {items.map((d) => (
+                          <span key={d.label} className="flex-1 text-center text-[9px] text-muted-foreground tabular-nums">
+                            {d.label.slice(8, 10)}
+                          </span>
+                        ))}
                       </div>
                     </>
                   );
