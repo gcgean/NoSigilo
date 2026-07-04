@@ -4602,7 +4602,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `SELECT u.id, u.name,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
-              sv.viewed_at
+              sv.viewed_at,
+              (SELECT COALESCE(sl.reaction, 'heart') FROM story_likes sl WHERE sl.story_id = sv.story_id AND sl.liker_id = u.id LIMIT 1) as reaction,
+              (SELECT sc.text FROM story_comments sc WHERE sc.story_id = sv.story_id AND sc.commenter_id = u.id ORDER BY sc.created_at DESC LIMIT 1) as comment_text
        FROM story_views sv
        JOIN users u ON u.id = sv.viewer_id
        WHERE sv.story_id = ?
@@ -4615,6 +4617,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         name: String(r.name),
         avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
         viewedAt: String(r.viewed_at),
+        reaction: r.reaction ? String(r.reaction) : null,
+        comment: r.comment_text ? String(r.comment_text) : null,
       })),
     });
   });

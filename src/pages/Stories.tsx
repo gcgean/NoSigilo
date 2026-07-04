@@ -62,7 +62,7 @@ type FeedStory = {
   };
 };
 
-type Viewer   = { id: string; name: string; avatar: string | null; viewedAt: string };
+type Viewer   = { id: string; name: string; avatar: string | null; viewedAt: string; reaction: string | null; comment: string | null };
 type Comment  = { id: string; text: string; createdAt: string; commenter: { id: string; name: string; avatar: string | null } };
 
 function timeLeft(expiresAt: string) {
@@ -518,8 +518,19 @@ function StatsModal({
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate hover:underline">{v.name}</p>
-                          <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="min-w-0 truncate text-sm font-medium hover:underline">{v.name}</p>
+                            {v.reaction && (
+                              <span className="shrink-0 text-sm" title="Reagiu">
+                                {v.reaction === 'hot' ? '❤️‍🔥' : (REACTION_EMOJI[v.reaction] ?? '💜')}
+                              </span>
+                            )}
+                          </div>
+                          {v.comment ? (
+                            <p className="truncate text-xs text-foreground/80">💬 "{v.comment}"</p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
+                          )}
                         </div>
                       </button>
                       <button

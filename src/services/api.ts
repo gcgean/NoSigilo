@@ -1257,7 +1257,7 @@ export const storiesService = {
   },
   getViewers: async (id: string) => {
     const res = await apiClient.get(`/stories/${id}/viewers`);
-    return res.data as { viewers: Array<{ id: string; name: string; avatar: string | null; viewedAt: string }> };
+    return res.data as { viewers: Array<{ id: string; name: string; avatar: string | null; viewedAt: string; reaction: string | null; comment: string | null }> };
   },
   addComment: async (id: string, text: string) => {
     const res = await apiClient.post(`/stories/${id}/comments`, { text });
