@@ -500,34 +500,58 @@ function StatsModal({
                 viewers.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma visualização ainda.</p>
                 ) : (
-                  viewers.map((v) => (
+                  // Destaque: Coração Quente primeiro, depois quem curtiu, depois o resto.
+                  [...viewers].sort((a, b) => {
+                    const rank = (r: string | null) => (r === 'hot' ? 0 : r ? 1 : 2);
+                    return rank(a.reaction) - rank(b.reaction);
+                  }).map((v) => {
+                    const isHot = v.reaction === 'hot';
+                    return (
                     <div
                       key={v.id}
-                      className="flex w-full items-center gap-3 px-5 py-3 border-b last:border-0 hover:bg-secondary/40 transition-colors"
+                      className={cn(
+                        'flex w-full items-center gap-3 px-5 py-3 border-b last:border-0 transition-colors',
+                        isHot
+                          ? 'border-amber-400/30 bg-amber-400/10 hover:bg-amber-400/15'
+                          : v.reaction
+                            ? 'bg-primary/5 hover:bg-primary/10'
+                            : 'hover:bg-secondary/40'
+                      )}
                     >
                       <button
                         type="button"
                         onClick={() => { onClose(); navigate(`/users/${v.id}`); }}
                         className="flex flex-1 min-w-0 items-center gap-3 text-left"
                       >
-                        {v.avatar ? (
-                          <img src={resolveServerUrl(v.avatar)} alt={v.name} className="h-9 w-9 rounded-full object-cover shrink-0" />
-                        ) : (
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-bold">
-                            {v.name.charAt(0)}
-                          </div>
-                        )}
+                        <div className="relative shrink-0">
+                          {v.avatar ? (
+                            <img src={resolveServerUrl(v.avatar)} alt={v.name} className={cn('h-9 w-9 rounded-full object-cover', isHot && 'ring-2 ring-amber-400')} />
+                          ) : (
+                            <div className={cn('flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-bold', isHot && 'ring-2 ring-amber-400')}>
+                              {v.name.charAt(0)}
+                            </div>
+                          )}
+                          {v.reaction && (
+                            <span className="absolute -bottom-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full border border-background bg-background text-[11px] leading-none">
+                              {isHot ? HOT_HEART : (REACTION_EMOJI[v.reaction] ?? '💜')}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <p className="min-w-0 truncate text-sm font-medium hover:underline">{v.name}</p>
-                            {v.reaction && (
-                              <span className="shrink-0 text-sm" title="Reagiu">
-                                {v.reaction === 'hot' ? '❤️‍🔥' : (REACTION_EMOJI[v.reaction] ?? '💜')}
+                            {isHot && (
+                              <span className="shrink-0 rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">
+                                {HOT_HEART} Coração Quente
                               </span>
                             )}
                           </div>
                           {v.comment ? (
                             <p className="truncate text-xs text-foreground/80">💬 "{v.comment}"</p>
+                          ) : isHot ? (
+                            <p className="text-xs font-medium text-amber-600">Mandou um Coração Quente 🔥</p>
+                          ) : v.reaction ? (
+                            <p className="text-xs text-primary">Curtiu seu story</p>
                           ) : (
                             <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
                           )}
@@ -541,7 +565,8 @@ function StatsModal({
                         <Send className="h-3.5 w-3.5" /> Mensagem
                       </button>
                     </div>
-                  ))
+                    );
+                  })
                 )
               ) : (
                 comments.length === 0 ? (
