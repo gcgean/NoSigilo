@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
-  Lock, Crown, Sparkles, ImageIcon,
+  Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -104,6 +104,7 @@ function StoryViewer({
   const [likeAnim, setLikeAnim] = useState(false);
   const [myReaction, setMyReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
+  const [muted, setMuted] = useState(true); // começa mudo (política de autoplay); som liga com o botão
   const story = stories[idx];
 
   // Sincroniza like ao trocar de story. Sem auto-avanço: a barra fica cheia
@@ -213,6 +214,16 @@ function StoryViewer({
           <p className="text-sm font-semibold text-white truncate">{story.author.name}</p>
           <p className="text-xs text-white/60">{timeLeft(story.expiresAt)}</p>
         </div>
+        {story.mimeType.startsWith('video/') && (
+          <button
+            type="button"
+            onClick={() => setMuted((v) => !v)}
+            className="text-white/80 hover:text-white p-1"
+            aria-label={muted ? 'Ativar som' : 'Silenciar'}
+          >
+            {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+          </button>
+        )}
         <button type="button" onClick={onClose} className="text-white/80 hover:text-white p-1">
           <X className="h-5 w-5" />
         </button>
@@ -233,7 +244,7 @@ function StoryViewer({
             key={story.id}
             src={resolveServerUrl(story.mediaUrl || '')}
             className="h-full w-full object-cover"
-            autoPlay muted playsInline loop
+            autoPlay muted={muted} playsInline loop
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (v.duration > 0) setProgress(Math.min((v.currentTime / v.duration) * 100, 100));
@@ -613,6 +624,7 @@ export default function Stories() {
   const [uploading,    setUploading]    = useState(false);
   const [viewerIdx,    setViewerIdx]    = useState<number | null>(null);
   const [previewIdx,   setPreviewIdx]   = useState<number | null>(null); // preview own stories
+  const [ownMuted, setOwnMuted] = useState(true); // som ao revisar os próprios stories
   const [statsStoryId, setStatsStoryId] = useState<string | null>(null);
   const [statsOpen,    setStatsOpen]    = useState(false);
   const [deleting,     setDeleting]     = useState<string | null>(null); // storyId being deleted
@@ -996,6 +1008,16 @@ export default function Stories() {
                 <p className="text-sm font-semibold text-white truncate">{user?.name}</p>
                 <p className="text-xs text-white/60">{timeLeft(s.expiresAt)}</p>
               </div>
+              {s.mimeType.startsWith('video/') && (
+                <button
+                  type="button"
+                  onClick={() => setOwnMuted((v) => !v)}
+                  className="text-white/80 hover:text-white p-1"
+                  aria-label={ownMuted ? 'Ativar som' : 'Silenciar'}
+                >
+                  {ownMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                </button>
+              )}
               <button type="button" onClick={() => setPreviewIdx(null)} className="text-white/80 hover:text-white p-1">
                 <X className="h-5 w-5" />
               </button>
@@ -1007,7 +1029,7 @@ export default function Stories() {
                   <p className="text-2xl font-bold leading-snug text-white break-words">{s.text}</p>
                 </div>
               ) : s.mimeType.startsWith('video/') ? (
-                <video key={s.id} src={resolveServerUrl(s.mediaUrl || '')} className="h-full w-full object-cover" autoPlay muted playsInline onEnded={() => goOwn(1)} />
+                <video key={s.id} src={resolveServerUrl(s.mediaUrl || '')} className="h-full w-full object-cover" autoPlay muted={ownMuted} playsInline onEnded={() => goOwn(1)} />
               ) : (
                 <img key={s.id} src={resolveServerUrl(s.mediaUrl || '')} alt="" className="h-full w-full object-cover" />
               )}
