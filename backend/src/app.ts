@@ -1221,7 +1221,7 @@ async function compressUploadedVideo(file: Express.Multer.File) {
   const tempOutputPath = `${currentPath}.compressed.mp4`;
   const nextFilename = replaceFileExtension(file.filename, '.mp4');
   const nextPath = path.join(path.dirname(currentPath), nextFilename);
-  const VIDEO_MAX_DURATION_SECONDS = 120; // 2 minutes
+  const VIDEO_MAX_DURATION_SECONDS = 300; // 5 minutes
 
   const args = [
     '-y',
@@ -2221,7 +2221,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   const IMAGE_MAX_BYTES = 20 * 1024 * 1024;  // 20 MB for images
-  const VIDEO_MAX_BYTES = 200 * 1024 * 1024; // 200 MB for videos
+  const VIDEO_MAX_BYTES = 500 * 1024 * 1024; // 500 MB for videos (compactado no upload para ~100MB ou menos)
 
   const upload = multer({
     storage,

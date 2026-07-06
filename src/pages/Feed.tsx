@@ -152,7 +152,7 @@ const WEEKLY_THEME = {
 };
 
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
-const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -942,7 +942,7 @@ export default function Feed() {
       if (f.type.startsWith('video/') && f.size > VIDEO_MAX_BYTES) {
         toast({
           title: 'Vídeo muito grande',
-          description: 'O tamanho máximo permitido é 200 MB por vídeo.',
+          description: 'O tamanho máximo permitido é 500 MB por vídeo.',
           variant: 'destructive',
         });
         return false;
