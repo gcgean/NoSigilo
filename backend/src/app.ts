@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -3228,7 +3228,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id AND pc.period = ?
          WHERE p.status = 'active'
            AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-         GROUP BY p.user_id`,
+         GROUP BY p.user_id, p.full_name, p.contact_email, u.email`,
         [period]
       )) as any[];
 
@@ -3263,6 +3263,55 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.json({ sent, errors, skipped, total: rows.length, period, dueDate: dueDateStr });
     } catch (err) {
       console.error('[admin/promoters/send-monthly-summary]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Incentivo aos promotores ativos: e-mail motivacional (não é o resumo mensal
+  // de comissões) reforçando o engajamento com estatísticas pessoais (indicações
+  // e ganhos até hoje) + CTA para o painel de promotor.
+  app.post('/api/admin/promoters/send-incentive', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const rows = (await queryAll(
+        db,
+        `SELECT p.user_id, p.full_name,
+          COALESCE(p.contact_email, u.email) AS notify_email,
+          COUNT(DISTINCT pc.subscriber_user_id) AS total_referred,
+          COALESCE(SUM(CASE WHEN pc.status != 'cancelled' THEN pc.commission_amount ELSE 0 END), 0) AS total_earned_cents
+         FROM promoters p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id
+         WHERE p.status = 'active'
+           AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         GROUP BY p.user_id, p.full_name, p.contact_email, u.email`,
+        []
+      )) as any[];
+
+      let sent = 0; let errors = 0; let skipped = 0;
+      for (const row of rows) {
+        const email = String(row.notify_email || '');
+        if (!email) { skipped++; continue; }
+        try {
+          const result = await sendPromoterIncentiveEmail(
+            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+            {
+              to: email,
+              promoterName: String(row.full_name || 'Promotor'),
+              totalReferred: Number(row.total_referred || 0),
+              totalEarnedCents: Number(row.total_earned_cents || 0),
+            }
+          );
+          if ((result as any)?.skipped) { skipped++; continue; }
+          sent++;
+        } catch (e: any) {
+          console.error('[send-incentive] error for', row.user_id, e?.message);
+          errors++;
+        }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      res.json({ sent, errors, skipped, total: rows.length });
+    } catch (err) {
+      console.error('[admin/promoters/send-incentive]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

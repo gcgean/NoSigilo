@@ -3201,6 +3201,10 @@ function AdminPromotersTab() {
   const [isSendingSummary, setIsSendingSummary] = useState(false);
   const [summaryResult, setSummaryResult] = useState<{ sent: number; errors: number; skipped: number; total: number; dueDate: string } | null>(null);
 
+  // Incentive email (para promotores já ativos, reforça o engajamento)
+  const [isSendingIncentive, setIsSendingIncentive] = useState(false);
+  const [incentiveResult, setIncentiveResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
+
   // Support chat state
   const [selectedChat, setSelectedChat] = useState<PromoterRow | null>(null);
   const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
@@ -3294,6 +3298,18 @@ function AdminPromotersTab() {
       toast({ title: `📧 ${result.sent} e-mail(s) enviado(s) para promotores`, description: result.errors > 0 ? `${result.errors} erro(s).` : 'Resumo enviado com sucesso!' });
     } catch { toast({ title: 'Erro ao enviar resumo', variant: 'destructive' }); }
     finally { setIsSendingSummary(false); }
+  };
+
+  const handleSendIncentive = async () => {
+    if (!confirm('Enviar e-mail de incentivo (indicar a plataforma) para todos os promotores ativos?')) return;
+    setIsSendingIncentive(true);
+    setIncentiveResult(null);
+    try {
+      const result = await adminPromoterService.sendIncentive();
+      setIncentiveResult(result);
+      toast({ title: `📧 ${result.sent} e-mail(s) de incentivo enviado(s)`, description: result.errors > 0 ? `${result.errors} erro(s).` : 'Incentivo enviado com sucesso!' });
+    } catch { toast({ title: 'Erro ao enviar incentivo', variant: 'destructive' }); }
+    finally { setIsSendingIncentive(false); }
   };
 
   // Group commissions by period
@@ -3418,6 +3434,39 @@ function AdminPromotersTab() {
             >
               {isSendingSummary ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {isSendingSummary ? 'Enviando...' : `Enviar para ${promoters.length} promotor(es)`}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Incentive Email */}
+      <div className="glass rounded-xl overflow-hidden border border-emerald-500/30">
+        <div className="bg-gradient-to-r from-emerald-600/10 to-green-600/10 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <BadgeDollarSign className="w-4 h-4 text-emerald-500" />
+              <h4 className="font-semibold">Incentivo para indicar a plataforma</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Envia um e-mail motivacional para todos os promotores ativos, com as indicações e o valor já ganho por cada um, incentivando a continuar divulgando o link.
+            </p>
+            {incentiveResult && (
+              <p className={`text-sm font-medium ${incentiveResult.errors > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                ✓ {incentiveResult.sent} enviado(s)
+                {incentiveResult.errors > 0 && ` · ${incentiveResult.errors} erro(s)`}
+                {incentiveResult.skipped > 0 && ` · ${incentiveResult.skipped} sem e-mail`}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              onClick={handleSendIncentive}
+              disabled={isSendingIncentive || promoters.length === 0}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              size="sm"
+            >
+              {isSendingIncentive ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {isSendingIncentive ? 'Enviando...' : `Enviar para ${promoters.length} promotor(es)`}
             </Button>
           </div>
         </div>

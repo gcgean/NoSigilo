@@ -807,6 +807,10 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoters/send-monthly-summary', { period }, { timeout: 10 * 60 * 1000 });
     return response.data;
   },
+  sendIncentive: async (): Promise<{ sent: number; errors: number; skipped: number; total: number }> => {
+    const response = await apiClient.post('/admin/promoters/send-incentive', {}, { timeout: 10 * 60 * 1000 });
+    return response.data;
+  },
 };
 
 export const promoterSupportService = {

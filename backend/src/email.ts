@@ -473,6 +473,127 @@ export async function sendPromoterCampaignEmail(
   return { skipped: false as const };
 }
 
+// ─── Promoter Incentive Email (para quem JÁ é promotor — reforça o engajamento) ──
+export async function sendPromoterIncentiveEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: {
+    to: string;
+    promoterName: string;
+    totalReferred: number;
+    totalEarnedCents: number;
+  }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const dashboardUrl = `${siteUrl}/promoter`;
+  const safeName = escapeHtml(payload.promoterName.split(' ')[0] || payload.promoterName);
+  const earnedBRL = (payload.totalEarnedCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const hasHistory = payload.totalReferred > 0;
+
+  const subjects = hasHistory
+    ? [
+        `🚀 ${safeName}, você já ganhou ${earnedBRL} — continue indicando!`,
+        `💰 Faltam poucos passos para o próximo Pix, ${safeName}`,
+        `🔥 Seu link já rendeu ${payload.totalReferred} assinatura(s) — bora fazer mais?`,
+      ]
+    : [
+        `💰 ${safeName}, seu link de promotor está esperando a primeira indicação`,
+        `🚀 Ainda não ganhou sua primeira comissão? Vamos mudar isso, ${safeName}`,
+        `👋 ${safeName}, compartilhe seu link e comece a ganhar hoje`,
+      ];
+  const subject = subjects[Math.floor(Math.random() * subjects.length)];
+
+  const statsHtml = hasHistory
+    ? `
+    <div style="display:flex;gap:12px;margin:0 0 24px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;background:#dcfce7;border-radius:12px;padding:16px;text-align:center;border:1px solid #86efac;">
+        <p style="font-size:22px;font-weight:800;color:#15803d;margin:0;">${payload.totalReferred}</p>
+        <p style="font-size:12px;color:#166534;margin:4px 0 0;">assinatura(s) indicada(s)</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:#fef9c3;border-radius:12px;padding:16px;text-align:center;border:1px solid #fde047;">
+        <p style="font-size:22px;font-weight:800;color:#854d0e;margin:0;">${earnedBRL}</p>
+        <p style="font-size:12px;color:#713f12;margin:4px 0 0;">já ganho no total</p>
+      </div>
+    </div>`
+    : `
+    <div style="background:#fef9c3;border:1px solid #fde047;border-radius:14px;padding:16px 20px;margin:0 0 24px;text-align:center;">
+      <p style="font-size:14px;color:#713f12;margin:0;">Você ainda não teve nenhuma indicação confirmada — mas seu link já está pronto e cada assinatura vale <strong>R$1,98 recorrente</strong> todo mês.</p>
+    </div>`;
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:white;border-radius:20px;border:1px solid #bbf7d0;padding:36px 32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:48px;margin-bottom:8px;">${hasHistory ? '🚀' : '👋'}</div>
+      <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#15803d;">
+        ${hasHistory ? `Continue ganhando, ${safeName}!` : `Vamos começar, ${safeName}?`}
+      </h1>
+      <p style="font-size:15px;color:#4b5563;margin:0;">
+        ${hasHistory
+          ? 'Seu link de promotor já está gerando resultado. Compartilhar mais é o caminho mais rápido para o próximo Pix.'
+          : 'Seu link de promotor já está ativo — falta só compartilhar para começar a receber comissões todo mês.'}
+      </p>
+    </div>
+
+    ${statsHtml}
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:20px;margin:0 0 24px;">
+      <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0 0 12px;">💡 Ideias rápidas para indicar hoje</p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">1</span>
+          <span>Poste seu link nos stories e grupos de WhatsApp/Telegram</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">2</span>
+          <span>Comente em fóruns e comunidades do meio liberal</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">3</span>
+          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, todo mês via Pix</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
+        🔗 Ver meu link e indicar agora →
+      </a>
+      <p style="font-size:12px;color:#6b7280;margin-top:10px;">Acesse seu painel de promotor para copiar o link e compartilhar.</p>
+    </div>
+
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
+      <p style="font-size:12px;color:#9ca3af;margin:0;">Você recebe este e-mail por ser promotor(a) ativo(a) no ${appName}.<br>
+      <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">${appName.toLowerCase()}</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_promoter_incentive_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Promoter Monthly Summary Email ──────────────────────────────────────────
 export async function sendPromoterMonthlySummaryEmail(
   options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
