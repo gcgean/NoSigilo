@@ -318,6 +318,10 @@ export default function Feed() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredPostIdRef = useRef<string | null>(null);
+  // Hover-intent (desktop): abre/fecha o seletor de reações ao passar o mouse.
+  // Ignorado em telas de toque (lá vale o long-press).
+  const reactionHoverOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reactionHoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstAccessPostMode = new URLSearchParams(location.search).get('firstAccess') === 'post';
   const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
   const [showProfilePhotoGate, setShowProfilePhotoGate] = useState(false);
@@ -1367,6 +1371,59 @@ export default function Feed() {
     setOpenReactionPickerPostId(null);
   };
 
+  // ─── Reações no desktop: hover-intent (mantém o long-press para toque) ───────
+  // Só ativa em ponteiro fino com hover (mouse) — em touch os handlers saem cedo.
+  const isHoverPointer = () =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  const clearReactionHoverTimers = () => {
+    if (reactionHoverOpenTimerRef.current) { clearTimeout(reactionHoverOpenTimerRef.current); reactionHoverOpenTimerRef.current = null; }
+    if (reactionHoverCloseTimerRef.current) { clearTimeout(reactionHoverCloseTimerRef.current); reactionHoverCloseTimerRef.current = null; }
+  };
+
+  const handlePostReactionHoverEnter = (post: FeedPost) => {
+    if (!isHoverPointer()) return;
+    const photoId = getPrimaryPhotoId(post);
+    if (!photoId) return; // posts só-texto não têm reações
+    if (reactionHoverCloseTimerRef.current) { clearTimeout(reactionHoverCloseTimerRef.current); reactionHoverCloseTimerRef.current = null; }
+    if (reactionHoverOpenTimerRef.current) clearTimeout(reactionHoverOpenTimerRef.current);
+    reactionHoverOpenTimerRef.current = setTimeout(() => {
+      setOpenReactionPickerExpId(null);
+      setOpenReactionPickerPostId(post.id);
+      if (!photoReactionCounts[photoId]) void loadPhotoReactions(photoId);
+    }, 220);
+  };
+
+  const handleExpReactionHoverEnter = (expId: string) => {
+    if (!isHoverPointer()) return;
+    if (reactionHoverCloseTimerRef.current) { clearTimeout(reactionHoverCloseTimerRef.current); reactionHoverCloseTimerRef.current = null; }
+    if (reactionHoverOpenTimerRef.current) clearTimeout(reactionHoverOpenTimerRef.current);
+    reactionHoverOpenTimerRef.current = setTimeout(() => {
+      setOpenReactionPickerPostId(null);
+      setOpenReactionPickerExpId(expId);
+      if (!expReactionCounts[expId]) void loadExpReactions(expId);
+    }, 220);
+  };
+
+  // Fecha com um pequeno atraso, para o mouse conseguir cruzar o vão de 8px até
+  // o seletor sem que ele suma. keepReactionPickerOpen cancela esse fechamento.
+  const scheduleReactionHoverClose = () => {
+    if (!isHoverPointer()) return;
+    if (reactionHoverOpenTimerRef.current) { clearTimeout(reactionHoverOpenTimerRef.current); reactionHoverOpenTimerRef.current = null; }
+    if (reactionHoverCloseTimerRef.current) clearTimeout(reactionHoverCloseTimerRef.current);
+    reactionHoverCloseTimerRef.current = setTimeout(() => {
+      setOpenReactionPickerPostId(null);
+      setOpenReactionPickerExpId(null);
+    }, 180);
+  };
+
+  const keepReactionPickerOpen = () => {
+    if (!isHoverPointer()) return;
+    if (reactionHoverCloseTimerRef.current) { clearTimeout(reactionHoverCloseTimerRef.current); reactionHoverCloseTimerRef.current = null; }
+  };
+
   const startLikeLongPress = (post: FeedPost) => {
     const photoId = getPrimaryPhotoId(post);
     if (!photoId) return;
@@ -1418,6 +1475,7 @@ export default function Feed() {
   }, [openReactionPickerPostId]);
 
   useEffect(() => () => cancelLikeLongPress(), []);
+  useEffect(() => () => clearReactionHoverTimers(), []);
 
   const openReactionsModal = async (postId: string) => {
     setReactionsModalPostId(postId);
@@ -2340,7 +2398,12 @@ export default function Feed() {
                     <div className="flex items-center justify-between border-t p-3 sm:p-4">
                       <div className="flex items-center gap-4">
                         {/* Reaction picker */}
-                        <div className="relative" data-reaction-picker-root="true">
+                        <div
+                          className="relative"
+                          data-reaction-picker-root="true"
+                          onMouseEnter={() => handleExpReactionHoverEnter(experience.id)}
+                          onMouseLeave={scheduleReactionHoverClose}
+                        >
                           <button
                             onMouseDown={() => startExpLikeLongPress(experience.id)}
                             onMouseUp={cancelExpLikeLongPress}
@@ -2363,7 +2426,11 @@ export default function Feed() {
                             </span>
                           </button>
                           {openReactionPickerExpId === experience.id ? (
-                            <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[240px] rounded-xl border border-white/10 bg-black/90 p-3 shadow-xl backdrop-blur-sm">
+                            <div
+                              className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[240px] rounded-xl border border-white/10 bg-black/90 p-3 shadow-xl backdrop-blur-sm"
+                              onMouseEnter={keepReactionPickerOpen}
+                              onMouseLeave={scheduleReactionHoverClose}
+                            >
                               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">Como você reagiu?</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 {EXP_REACTIONS.map((item) => {
@@ -2677,8 +2744,13 @@ export default function Feed() {
               {/* Post Actions */}
               <div className="flex items-center justify-between border-t p-3 sm:p-4">
                 <div className="flex items-center gap-4">
-                  {/* Like button with long-press reaction picker */}
-                  <div className="relative" data-reaction-picker-root="true">
+                  {/* Like button with long-press (touch) / hover (desktop) reaction picker */}
+                  <div
+                    className="relative"
+                    data-reaction-picker-root="true"
+                    onMouseEnter={() => handlePostReactionHoverEnter(item.post)}
+                    onMouseLeave={scheduleReactionHoverClose}
+                  >
                     <button
                       type="button"
                       aria-label={item.post.likedByMe ? 'Remover curtida' : 'Curtir publicação'}
@@ -2697,7 +2769,11 @@ export default function Feed() {
                       <Heart className={cn('w-5 h-5', item.post.likedByMe && 'fill-current')} />
                     </button>
                     {openReactionPickerPostId === item.post.id ? (
-                      <div className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm">
+                      <div
+                        className="absolute bottom-[calc(100%+8px)] left-0 z-20 min-w-[220px] rounded-xl border border-white/10 bg-black/85 p-2 shadow-lg backdrop-blur-sm"
+                        onMouseEnter={keepReactionPickerOpen}
+                        onMouseLeave={scheduleReactionHoverClose}
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           {PHOTO_REACTIONS.map((reaction) => {
                             const photoId = getPrimaryPhotoId(item.post);
