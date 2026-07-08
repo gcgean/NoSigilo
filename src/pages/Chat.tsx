@@ -166,6 +166,9 @@ export default function Chat() {
   // Long-press menu na lista de conversas
   const [convListMenu, setConvListMenu] = useState<{ id: string; name: string } | null>(null);
   const convLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Marca que o long-press abriu o menu, para suprimir o clique sintético que o
+  // iOS dispara ao soltar o dedo (senão abriria a conversa por cima do menu).
+  const convLongPressFired = useRef(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
@@ -830,7 +833,9 @@ export default function Chat() {
 
   // Long-press handlers para a lista de conversas
   const startConvLongPress = (conv: Conversation) => {
+    convLongPressFired.current = false;
     convLongPressTimer.current = setTimeout(() => {
+      convLongPressFired.current = true;
       setConvListMenu({ id: conv.id, name: conv.user.name });
     }, 500);
   };
@@ -1028,7 +1033,12 @@ export default function Chat() {
             return (
               <div
               key={conversation.id}
-              onClick={() => { cancelConvLongPress(); setSelectedChat(conversation.id); }}
+              onClick={() => {
+                cancelConvLongPress();
+                // Se o long-press já abriu o menu, ignora o clique sintético
+                if (convLongPressFired.current) { convLongPressFired.current = false; return; }
+                setSelectedChat(conversation.id);
+              }}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(conversation.id); }}
@@ -1094,7 +1104,7 @@ export default function Chat() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8.5 w-8.5 shrink-0 rounded-full md:hidden"
+                className="h-9 w-9 shrink-0 rounded-full md:hidden"
                 onClick={() => {
                   // Dismiss the keyboard BEFORE clearing selectedChat so iOS
                   // doesn't trigger a simultaneous keyboard-close + layout-change
@@ -1105,7 +1115,7 @@ export default function Chat() {
                   setSelectedChat(null);
                 }}
               >
-                <ArrowLeft className="w-4.5 h-4.5" />
+                <ArrowLeft className="h-5 w-5" />
               </Button>
               <div className="shrink-0">
                 <UserAvatar user={activeConversation?.user} className="h-9 w-9 sm:h-10 sm:w-10" />
@@ -1152,23 +1162,23 @@ export default function Chat() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8.5 w-8.5 rounded-full"
+                className="h-9 w-9 rounded-full"
                 onClick={() => toast({ title: '🎙️ Em breve', description: 'Chamadas de voz estão chegando em breve.' })}
               >
-                <Phone className="h-4.5 w-4.5" />
+                <Phone className="h-5 w-5" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                className="hidden h-8.5 w-8.5 rounded-full sm:inline-flex"
+                className="hidden h-9 w-9 rounded-full sm:inline-flex"
                 onClick={() => toast({ title: '📹 Em breve', description: 'Chamadas de vídeo estão chegando em breve.' })}
               >
-                <Video className="h-4.5 w-4.5" />
+                <Video className="h-5 w-5" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8.5 w-8.5 rounded-full">
-                    <MoreVertical className="h-4.5 w-4.5" />
+                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                    <MoreVertical className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -1712,7 +1722,7 @@ export default function Chat() {
                 }}
                 rows={1}
                 className={cn(
-                  "min-h-[48px] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[15px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
+                  "min-h-[48px] w-full min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border-2 px-3.5 py-3 text-[16px] leading-5 outline-none transition-all duration-200 focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-60 placeholder:text-muted-foreground/90 md:min-h-[40px] md:rounded-md md:border-input md:px-3 md:py-2 md:text-sm",
                   isViewOnceEnabled
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
@@ -1732,7 +1742,7 @@ export default function Chat() {
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
               >
-                <Send className="w-5.5 h-5.5 md:w-5 md:h-5" />
+                <Send className="h-5 w-5" />
               </Button>
               </div>
             </div>
