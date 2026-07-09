@@ -12432,10 +12432,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         queryAll(db, `SELECT DATE(u.created_at) as day, COUNT(*) as c FROM users u WHERE u.created_at >= ? ${baseWhere} GROUP BY day ORDER BY day`, [ago(30)]),
         // ── By gender
         queryAll(db, `SELECT u.gender, COUNT(*) as c FROM users u WHERE 1=1 ${baseWhere} GROUP BY u.gender ORDER BY c DESC LIMIT 20`, []),
-        // ── By city (top 20)
-        queryAll(db, `SELECT u.city, COUNT(*) as c FROM users u WHERE u.city IS NOT NULL AND u.city != '' ${baseWhere} GROUP BY u.city ORDER BY c DESC LIMIT 20`, []),
-        // ── By state (top 30)
-        queryAll(db, `SELECT u.state, COUNT(*) as c FROM users u WHERE u.state IS NOT NULL AND u.state != '' ${baseWhere} GROUP BY u.state ORDER BY c DESC LIMIT 30`, []),
+        // ── By city (completo — agrupa por cidade+UF para não juntar homônimas de UFs diferentes)
+        queryAll(db, `SELECT TRIM(u.city) as city, UPPER(TRIM(COALESCE(u.state, ''))) as uf, COUNT(*) as c FROM users u WHERE u.city IS NOT NULL AND TRIM(u.city) != '' ${baseWhere} GROUP BY TRIM(u.city), UPPER(TRIM(COALESCE(u.state, ''))) ORDER BY c DESC LIMIT 2000`, []),
+        // ── By state (completo — 27 UFs)
+        queryAll(db, `SELECT UPPER(TRIM(u.state)) as state, COUNT(*) as c FROM users u WHERE u.state IS NOT NULL AND TRIM(u.state) != '' ${baseWhere} GROUP BY UPPER(TRIM(u.state)) ORDER BY c DESC LIMIT 60`, []),
         // ── By origin (utm_source / referrer)
         queryAll(db, `SELECT origin_type, COUNT(*) as c FROM site_visits WHERE origin_type IS NOT NULL GROUP BY origin_type ORDER BY c DESC LIMIT 20`, []),
         // ── Active today (last_seen_at today)
@@ -12489,7 +12489,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           last30days: n(registrations30),
           byDay: (regByDay30 as any[]).map((r) => ({ date: String(r.day), count: Number(r.c) })),
           byGender: (regByGender as any[]).map((r) => ({ gender: r.gender || 'Não informado', count: Number(r.c) })),
-          byCity: (regByCity as any[]).map((r) => ({ city: r.city, count: Number(r.c) })),
+          byCity: (regByCity as any[]).map((r) => ({ city: r.city, uf: r.uf || '', count: Number(r.c) })),
           byState: (regByState as any[]).map((r) => ({ state: r.state, count: Number(r.c) })),
           byOrigin: (regByOrigin as any[]).map((r) => ({ origin: r.origin_type, count: Number(r.c) })),
         },

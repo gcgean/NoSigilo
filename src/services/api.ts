@@ -1153,7 +1153,7 @@ export const adminService = {
         total: number; today: number; last7days: number; last30days: number;
         byDay: { date: string; count: number }[];
         byGender: { gender: string; count: number }[];
-        byCity: { city: string; count: number }[];
+        byCity: { city: string; uf?: string; count: number }[];
         byState: { state: string; count: number }[];
         byOrigin: { origin: string; count: number }[];
       };

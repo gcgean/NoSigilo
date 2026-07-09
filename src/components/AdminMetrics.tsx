@@ -65,6 +65,7 @@ export default function AdminMetrics() {
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [gender, setGender] = useState('');
+  const [cityQuery, setCityQuery] = useState(''); // busca dentro da lista completa de cidades
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -101,6 +102,16 @@ export default function AdminMetrics() {
 
   // Chart: registrations per day
   const dayMax = Math.max(...m.acquisition.byDay.map((d) => d.count), 1);
+
+  // Contagem exata por estado/cidade: somas para descobrir os "não informados"
+  const stateSum = m.acquisition.byState.reduce((acc, s) => acc + s.count, 0);
+  const citySum = m.acquisition.byCity.reduce((acc, c) => acc + c.count, 0);
+  const stateNoInfo = Math.max(0, total - stateSum);
+  const cityNoInfo = Math.max(0, total - citySum);
+  const cityQ = cityQuery.trim().toLowerCase();
+  const filteredCities = cityQ
+    ? m.acquisition.byCity.filter((c) => `${c.city} ${c.uf || ''}`.toLowerCase().includes(cityQ))
+    : m.acquisition.byCity;
 
   return (
     <div className="space-y-8">
@@ -175,7 +186,7 @@ export default function AdminMetrics() {
           <div className="rounded-xl border p-4 space-y-2">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><MapPin className="h-3 w-3" />Top Cidades</p>
             {m.acquisition.byCity.slice(0, 10).map((c) => (
-              <Bar key={c.city} label={c.city} value={c.count} max={maxCity} color="bg-emerald-500" />
+              <Bar key={`${c.city}-${c.uf || ''}`} label={c.uf ? `${c.city}/${c.uf}` : c.city} value={c.count} max={maxCity} color="bg-emerald-500" />
             ))}
           </div>
           {/* By State */}
@@ -191,6 +202,85 @@ export default function AdminMetrics() {
             {m.acquisition.byOrigin.slice(0, 10).map((o) => (
               <Bar key={o.origin} label={o.origin || 'Direto'} value={o.count} max={maxOrigin} color="bg-amber-500" />
             ))}
+          </div>
+        </div>
+
+        {/* ── Contagem exata por estado e cidade ── */}
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* Por estado — completo */}
+          <div className="rounded-xl border p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                <MapPin className="h-3 w-3" /> Usuários por estado — contagem exata
+              </p>
+              <span className="text-[11px] text-muted-foreground">{m.acquisition.byState.length} UF(s)</span>
+            </div>
+            <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+              {m.acquisition.byState.map((s, i) => (
+                <div key={s.state} className="flex items-center justify-between gap-3 rounded-lg bg-secondary/30 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="mr-2 text-xs text-muted-foreground">#{i + 1}</span>
+                    {s.state}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-semibold tabular-nums">{s.count.toLocaleString('pt-BR')}</span>
+                    <span className="w-12 text-right text-[11px] text-muted-foreground tabular-nums">{pct(s.count, total)}</span>
+                  </span>
+                </div>
+              ))}
+              {stateNoInfo > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  <span>Não informado</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-semibold tabular-nums">{stateNoInfo.toLocaleString('pt-BR')}</span>
+                    <span className="w-12 text-right text-[11px] tabular-nums">{pct(stateNoInfo, total)}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Por cidade — completo + busca */}
+          <div className="rounded-xl border p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                <MapPin className="h-3 w-3" /> Usuários por cidade — contagem exata
+              </p>
+              <span className="text-[11px] text-muted-foreground">{m.acquisition.byCity.length} cidade(s)</span>
+            </div>
+            <Input
+              placeholder="Buscar cidade ou UF…"
+              value={cityQuery}
+              onChange={(e) => setCityQuery(e.target.value)}
+              className="mb-3 h-8 text-sm"
+            />
+            <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+              {filteredCities.length === 0 ? (
+                <p className="px-1 py-4 text-sm text-muted-foreground">Nenhuma cidade encontrada.</p>
+              ) : (
+                filteredCities.map((c, i) => (
+                  <div key={`${c.city}-${c.uf || ''}`} className="flex items-center justify-between gap-3 rounded-lg bg-secondary/30 px-3 py-2 text-sm">
+                    <span className="min-w-0 truncate">
+                      <span className="mr-2 text-xs text-muted-foreground">#{i + 1}</span>
+                      {c.uf ? `${c.city}/${c.uf}` : c.city}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="font-semibold tabular-nums">{c.count.toLocaleString('pt-BR')}</span>
+                      <span className="w-12 text-right text-[11px] text-muted-foreground tabular-nums">{pct(c.count, total)}</span>
+                    </span>
+                  </div>
+                ))
+              )}
+              {!cityQ && cityNoInfo > 0 && (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                  <span>Não informado</span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="font-semibold tabular-nums">{cityNoInfo.toLocaleString('pt-BR')}</span>
+                    <span className="w-12 text-right text-[11px] tabular-nums">{pct(cityNoInfo, total)}</span>
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
