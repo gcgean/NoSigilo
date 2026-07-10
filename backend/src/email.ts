@@ -704,6 +704,104 @@ export async function sendPromoterMonthlySummaryEmail(
   return { skipped: false as const };
 }
 
+// ─── Recibo de pagamento ao promotor — enviado ao marcar comissões como pagas ──
+export async function sendPromoterPaymentReceiptEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: {
+    to: string;
+    promoterName: string;
+    promoterPix: string;
+    period: string;      // 'YYYY-MM'
+    count: number;       // nº de comissões/parcelas pagas nesta operação
+    totalCents: number;  // total pago em centavos
+    paidAtStr: string;   // data do pagamento 'dd/mm/aaaa'
+    receiptNo: string;   // nº do recibo
+  }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = escapeHtml(payload.promoterName || 'Promotor');
+  const safePix = escapeHtml(payload.promoterPix || '—');
+  const [year, month] = payload.period.split('-');
+  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const monthLabel = month ? `${monthNames[parseInt(month, 10) - 1]} / ${year}` : payload.period;
+  const fmt = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const total = fmt(payload.totalCents);
+
+  const subject = `🧾 Recibo de pagamento — ${total} (${appName})`;
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:white;border-radius:20px;border:1px solid #bbf7d0;padding:36px 32px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin:0 0 8px;">
+      <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0;">🧾 Recibo de Pagamento</p>
+      <p style="font-size:12px;color:#9ca3af;margin:0;">Nº ${escapeHtml(payload.receiptNo)}</p>
+    </div>
+    <h1 style="font-size:22px;font-weight:800;color:#1f2937;margin:0 0 6px;">Pagamento confirmado ✅</h1>
+    <p style="font-size:15px;color:#6b7280;margin:0 0 24px;">Oi, ${safeName}! Confirmamos o pagamento das suas comissões de indicação.</p>
+
+    <!-- Valor pago -->
+    <div style="background:linear-gradient(135deg,#16a34a,#15803d);border-radius:16px;padding:24px;text-align:center;margin:0 0 24px;">
+      <p style="color:rgba(255,255,255,0.8);font-size:13px;margin:0 0 4px;">Valor pago via Pix</p>
+      <p style="color:white;font-size:38px;font-weight:900;margin:0 0 4px;">${total}</p>
+      <p style="color:rgba(255,255,255,0.75);font-size:13px;margin:0;">${payload.count} comissão${payload.count !== 1 ? 'ões' : ''} de indicação</p>
+    </div>
+
+    <!-- Detalhes do recibo -->
+    <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
+      <tbody>
+        <tr><td style="padding:8px 12px;font-size:14px;color:#6b7280;">Período de referência</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#1f2937;text-align:right;">${monthLabel}</td></tr>
+        <tr style="background:#f9fafb;"><td style="padding:8px 12px;font-size:14px;color:#6b7280;">Chave Pix creditada</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#1f2937;text-align:right;">${safePix}</td></tr>
+        <tr><td style="padding:8px 12px;font-size:14px;color:#6b7280;">Data do pagamento</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#1f2937;text-align:right;">${escapeHtml(payload.paidAtStr)}</td></tr>
+        <tr style="background:#f9fafb;"><td style="padding:8px 12px;font-size:14px;color:#6b7280;">Qtd. de comissões</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#1f2937;text-align:right;">${payload.count}</td></tr>
+        <tr style="border-top:2px solid #16a34a;"><td style="padding:10px 12px;font-size:15px;font-weight:700;color:#15803d;">Total recebido</td><td style="padding:10px 12px;font-size:15px;font-weight:900;color:#15803d;text-align:right;">${total}</td></tr>
+      </tbody>
+    </table>
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px;margin:0 0 24px;">
+      <p style="font-size:13px;color:#166534;margin:0;">Recebemos de <strong>${appName}</strong> a importância de <strong>${total}</strong>, referente a ${payload.count} comissão${payload.count !== 1 ? 'ões' : ''} de indicação do período <strong>${monthLabel}</strong>, paga via Pix na chave acima em ${escapeHtml(payload.paidAtStr)}. Este e-mail serve como recibo do pagamento.</p>
+    </div>
+
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${siteUrl}/promoter" style="display:inline-block;background:#e83e68;color:white;font-size:16px;font-weight:700;padding:15px 36px;border-radius:14px;text-decoration:none;">
+        Ver meu painel de comissões →
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
+      <p style="font-size:12px;color:#9ca3af;margin:0;">
+        Você recebe este recibo por ser promotor do ${appName}.<br>
+        Dúvidas? Acesse <a href="${siteUrl}/promoter" style="color:#e83e68;text-decoration:none;">seu painel de promotor</a>.
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_promoter_receipt_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Win-back Campaign Email (usuários que entraram 1x e não voltaram) ───────
 type WinbackOptions = {
   apiKey?: string;

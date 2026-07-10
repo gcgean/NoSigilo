@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -3187,17 +3187,77 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // Admin: batch pay commissions (mark all approved as paid)
   app.post('/api/admin/promoter-commissions/batch-pay', requireAuth(env, db), requireAdmin(), async (req, res) => {
-    const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional(), promoterUserId: z.string().optional() });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
-    const now = nowIso();
-    let q = "UPDATE promoter_commissions SET status = 'paid', paid_at = ? WHERE status = 'approved'";
-    const params: any[] = [now];
-    if (parsed.data.period) { q += ' AND period = ?'; params.push(parsed.data.period); }
-    if (parsed.data.promoterUserId) { q += ' AND promoter_user_id = ?'; params.push(parsed.data.promoterUserId); }
-    await run(db, q, params);
-    await persist();
-    res.json({ ok: true });
+    try {
+      const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional(), promoterUserId: z.string().optional() });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      const now = nowIso();
+
+      // 1. Coleta as comissões aprovadas que serão pagas AGORA (com dados do promotor),
+      //    para saber os totais por promotor e emitir o recibo depois do UPDATE.
+      let selectQ = `SELECT pc.id, pc.commission_amount, pc.promoter_user_id, pc.period,
+          p.full_name AS promoter_name, p.pix_key AS promoter_pix,
+          COALESCE(p.contact_email, u.email) AS notify_email
+        FROM promoter_commissions pc
+        JOIN promoters p ON p.user_id = pc.promoter_user_id
+        JOIN users u ON u.id = pc.promoter_user_id
+        WHERE pc.status = 'approved'`;
+      const selParams: any[] = [];
+      if (parsed.data.period) { selectQ += ' AND pc.period = ?'; selParams.push(parsed.data.period); }
+      if (parsed.data.promoterUserId) { selectQ += ' AND pc.promoter_user_id = ?'; selParams.push(parsed.data.promoterUserId); }
+      const toPay = (await queryAll(db, selectQ, selParams)) as any[];
+
+      if (toPay.length === 0) { res.json({ ok: true, paid: 0, promotersPaid: 0, receiptsSent: 0 }); return; }
+
+      // 2. Marca como pagas.
+      let q = "UPDATE promoter_commissions SET status = 'paid', paid_at = ? WHERE status = 'approved'";
+      const params: any[] = [now];
+      if (parsed.data.period) { q += ' AND period = ?'; params.push(parsed.data.period); }
+      if (parsed.data.promoterUserId) { q += ' AND promoter_user_id = ?'; params.push(parsed.data.promoterUserId); }
+      await run(db, q, params);
+      await persist();
+
+      // 3. Agrupa por promotor+período e envia um recibo por grupo (best-effort).
+      const groups = new Map<string, { name: string; pix: string; email: string; period: string; count: number; totalCents: number }>();
+      for (const r of toPay) {
+        const key = `${String(r.promoter_user_id)}|${String(r.period || '')}`;
+        if (!groups.has(key)) {
+          groups.set(key, {
+            name: String(r.promoter_name || 'Promotor'),
+            pix: String(r.promoter_pix || ''),
+            email: String(r.notify_email || ''),
+            period: String(r.period || ''),
+            count: 0,
+            totalCents: 0,
+          });
+        }
+        const g = groups.get(key)!;
+        g.count += 1;
+        g.totalCents += Number(r.commission_amount || 0);
+      }
+
+      const paidAtStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      let receiptsSent = 0;
+      for (const g of groups.values()) {
+        if (!g.email) continue;
+        try {
+          const receiptNo = `${g.period || 'X'}-${randomUUID().slice(0, 8).toUpperCase()}`;
+          const result = await sendPromoterPaymentReceiptEmail(
+            { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+            { to: g.email, promoterName: g.name, promoterPix: g.pix, period: g.period, count: g.count, totalCents: g.totalCents, paidAtStr, receiptNo }
+          );
+          if (!(result as any)?.skipped) receiptsSent++;
+        } catch (e: any) {
+          console.error('[batch-pay receipt]', g.email, e?.message);
+        }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+
+      res.json({ ok: true, paid: toPay.length, promotersPaid: groups.size, receiptsSent });
+    } catch (err) {
+      console.error('[promoter-commissions/batch-pay]', err);
+      res.status(500).json({ error: 'internal' });
+    }
   });
 
   // Admin: enviar resumo mensal de comissões para todos os promotores ativos

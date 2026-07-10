@@ -3280,11 +3280,20 @@ function AdminPromotersTab() {
   const handleBatchPay = async (period?: string, promoterUserId?: string) => {
     setIsBusy(true);
     try {
-      await adminPromoterService.batchPay({ period, promoterUserId });
-      toast({ title: 'Comissões marcadas como pagas' });
+      const r = await adminPromoterService.batchPay({ period, promoterUserId });
+      toast({
+        title: `${r.paid} comissão(ões) marcada(s) como paga(s)`,
+        description: r.receiptsSent > 0 ? `🧾 ${r.receiptsSent} recibo(s) enviado(s) por e-mail.` : 'Nenhum recibo enviado (promotor sem e-mail).',
+      });
       void loadAll();
     } catch { toast({ title: 'Erro', variant: 'destructive' }); }
     finally { setIsBusy(false); }
+  };
+
+  // Paga TODAS as comissões aprovadas de um promotor num período (com recibo por e-mail).
+  const handlePayPromoter = async (period: string, promoterUserId: string, promoterName: string, totalLabel: string) => {
+    if (!confirm(`Confirmar pagamento de ${totalLabel} para ${promoterName} (${period})?\n\nTodas as parcelas aprovadas ficarão como pagas e um recibo será enviado por e-mail ao promotor.`)) return;
+    await handleBatchPay(period, promoterUserId);
   };
 
   const handleSendMonthlySummary = async () => {
@@ -3601,39 +3610,87 @@ function AdminPromotersTab() {
                 </div>
               </div>
 
-              {/* Commission rows */}
+              {/* Agrupado por promotor: Pix + total + pagar tudo dele (com recibo) */}
               <div className="divide-y">
-                {items.map((c) => {
-                  const statusMeta = COMM_STATUS_LABELS[c.status] ?? COMM_STATUS_LABELS.pending;
-                  return (
-                    <div key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{c.promoterName}</p>
-                        <p className="text-xs text-muted-foreground">Pix: {c.promoterPix}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-emerald-600">{formatBRLAdmin(c.commissionAmount)}</p>
-                        <p className="text-xs text-muted-foreground">{formatBRLAdmin(c.subscriptionAmount)} assinatura</p>
-                      </div>
-                      <span className={`text-xs rounded-full px-2.5 py-0.5 border font-medium ${statusMeta.color}`}>
-                        {statusMeta.label}
-                      </span>
-                      {c.paidAt && <span className="text-xs text-muted-foreground">Pago em {formatDateAdmin(c.paidAt)}</span>}
-                      {/* Action buttons */}
-                      {c.status === 'pending' && (
-                        <div className="flex gap-1">
-                          <button onClick={() => handleCommStatus(c.id, 'approved')} className="text-[11px] rounded-lg bg-blue-500/10 text-blue-600 border border-blue-400/30 px-2 py-1 hover:bg-blue-500/20">Aprovar</button>
-                          <button onClick={() => handleCommStatus(c.id, 'cancelled')} className="text-[11px] rounded-lg bg-red-500/10 text-red-500 border border-red-400/30 px-2 py-1 hover:bg-red-500/20">Cancelar</button>
+                {(() => {
+                  const byPromoter = new Map<string, CommissionRow[]>();
+                  for (const c of items) {
+                    if (!byPromoter.has(c.promoterUserId)) byPromoter.set(c.promoterUserId, []);
+                    byPromoter.get(c.promoterUserId)!.push(c);
+                  }
+                  const groups = Array.from(byPromoter.entries())
+                    .map(([uid, list]) => {
+                      const approved = list.filter((c) => c.status === 'approved');
+                      const approvedCents = approved.reduce((s, c) => s + c.commissionAmount, 0);
+                      const totalCents = list.reduce((s, c) => s + c.commissionAmount, 0);
+                      const paidCount = list.filter((c) => c.status === 'paid').length;
+                      const pendingCount = list.filter((c) => c.status === 'pending').length;
+                      return { uid, name: list[0].promoterName, pix: list[0].promoterPix, list, approved, approvedCents, totalCents, paidCount, pendingCount };
+                    })
+                    .sort((a, b) => b.approvedCents - a.approvedCents || b.totalCents - a.totalCents);
+
+                  return groups.map((g) => (
+                    <div key={g.uid}>
+                      {/* Cabeçalho do promotor */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-secondary/20">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{g.name}</p>
+                          <p className="text-xs text-muted-foreground">Pix: {g.pix}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {g.list.length} parcela(s) · {g.approved.length} aprovada(s) · {g.paidCount} paga(s) · {g.pendingCount} pendente(s)
+                          </p>
                         </div>
-                      )}
-                      {c.status === 'approved' && (
-                        <button onClick={() => handleCommStatus(c.id, 'paid')} className="text-[11px] rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-400/30 px-2 py-1 hover:bg-emerald-500/20">
-                          Marcar paga
-                        </button>
-                      )}
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <p className="text-[11px] text-muted-foreground leading-tight">Aprovado a pagar</p>
+                            <p className="font-bold text-emerald-600 leading-tight">{formatBRLAdmin(g.approvedCents)}</p>
+                            <p className="text-[11px] text-muted-foreground leading-tight">Total período: {formatBRLAdmin(g.totalCents)}</p>
+                          </div>
+                          {g.approvedCents > 0 && (
+                            <button
+                              onClick={() => handlePayPromoter(period, g.uid, g.name, formatBRLAdmin(g.approvedCents))}
+                              disabled={isBusy}
+                              className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-2 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1 shrink-0 font-medium"
+                            >
+                              <Check className="w-3.5 h-3.5" /> Pagar {formatBRLAdmin(g.approvedCents)} ({g.approved.length})
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* Parcelas individuais do promotor */}
+                      <div className="divide-y bg-background/40">
+                        {g.list.map((c) => {
+                          const statusMeta = COMM_STATUS_LABELS[c.status] ?? COMM_STATUS_LABELS.pending;
+                          return (
+                            <div key={c.id} className="flex flex-wrap items-center gap-3 px-6 py-2 text-sm">
+                              <div className="text-right">
+                                <p className="font-semibold text-emerald-600">{formatBRLAdmin(c.commissionAmount)}</p>
+                                <p className="text-[11px] text-muted-foreground">{formatBRLAdmin(c.subscriptionAmount)} assinatura</p>
+                              </div>
+                              <span className={`text-xs rounded-full px-2.5 py-0.5 border font-medium ${statusMeta.color}`}>
+                                {statusMeta.label}
+                              </span>
+                              {c.paidAt && <span className="text-xs text-muted-foreground">Pago em {formatDateAdmin(c.paidAt)}</span>}
+                              <div className="ml-auto flex gap-1">
+                                {c.status === 'pending' && (
+                                  <>
+                                    <button onClick={() => handleCommStatus(c.id, 'approved')} className="text-[11px] rounded-lg bg-blue-500/10 text-blue-600 border border-blue-400/30 px-2 py-1 hover:bg-blue-500/20">Aprovar</button>
+                                    <button onClick={() => handleCommStatus(c.id, 'cancelled')} className="text-[11px] rounded-lg bg-red-500/10 text-red-500 border border-red-400/30 px-2 py-1 hover:bg-red-500/20">Cancelar</button>
+                                  </>
+                                )}
+                                {c.status === 'approved' && (
+                                  <button onClick={() => handleCommStatus(c.id, 'paid')} className="text-[11px] rounded-lg bg-emerald-500/10 text-emerald-600 border border-emerald-400/30 px-2 py-1 hover:bg-emerald-500/20">
+                                    Marcar paga
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  );
-                })}
+                  ));
+                })()}
               </div>
             </div>
           );
