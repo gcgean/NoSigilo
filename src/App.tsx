@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,47 +16,56 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import SiteVisitTracker from "@/components/SiteVisitTracker";
 
-// Public Pages
+// Páginas do funil de entrada ficam no bundle inicial (carregam na hora, sem flash).
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
-import ForgotPassword from "./pages/ForgotPassword";
 import Register from "./pages/Register";
-import PendingApproval from "./pages/PendingApproval";
-import AuthCallback from "./pages/AuthCallback";
-import Subscriptions from "./pages/Subscriptions";
-import Terms from "./pages/Terms";
-import Privacy from "./pages/Privacy";
-import Guidelines from "./pages/Guidelines";
-import DevTest from "./pages/DevTest";
-import InviteLanding from "./pages/InviteLanding";
-
-// Protected Pages
-import Feed from "./pages/Feed";
-import Match from "./pages/Match";
-import Radar from "./pages/Radar";
-import Stories from "./pages/Stories";
-import Profile from "./pages/Profile";
-import ProfileVisitors from "./pages/ProfileVisitors";
-import Chat from "./pages/Chat";
-import Search from "./pages/Search";
-import Reels from "./pages/Reels";
-import SearchVideos from "./pages/SearchVideos";
-import Notifications from "./pages/Notifications";
-import FriendRequests from "./pages/FriendRequests";
-import Friends from "./pages/Friends";
-import Favorites from "./pages/Favorites";
-import Events from "./pages/Events";
-import Invites from "./pages/Invites";
-import Promoter from "./pages/Promoter";
-import PromoterLanding from "./pages/PromoterLanding";
-import Tokens from "./pages/Tokens";
-import Settings from "./pages/Settings";
-import Admin from "./pages/Admin";
-import UserProfile from "./pages/UserProfile";
-
 import NotFound from "./pages/NotFound";
 
+// Demais páginas são carregadas sob demanda (code-splitting por rota) para deixar
+// o bundle inicial pequeno — especialmente a Landing pública (página de vendas).
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const PendingApproval = lazy(() => import("./pages/PendingApproval"));
+const AuthCallback = lazy(() => import("./pages/AuthCallback"));
+const Subscriptions = lazy(() => import("./pages/Subscriptions"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Guidelines = lazy(() => import("./pages/Guidelines"));
+const DevTest = lazy(() => import("./pages/DevTest"));
+const InviteLanding = lazy(() => import("./pages/InviteLanding"));
+const Feed = lazy(() => import("./pages/Feed"));
+const Match = lazy(() => import("./pages/Match"));
+const Radar = lazy(() => import("./pages/Radar"));
+const Stories = lazy(() => import("./pages/Stories"));
+const Profile = lazy(() => import("./pages/Profile"));
+const ProfileVisitors = lazy(() => import("./pages/ProfileVisitors"));
+const Chat = lazy(() => import("./pages/Chat"));
+const Search = lazy(() => import("./pages/Search"));
+const Reels = lazy(() => import("./pages/Reels"));
+const SearchVideos = lazy(() => import("./pages/SearchVideos"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const FriendRequests = lazy(() => import("./pages/FriendRequests"));
+const Friends = lazy(() => import("./pages/Friends"));
+const Favorites = lazy(() => import("./pages/Favorites"));
+const Events = lazy(() => import("./pages/Events"));
+const Invites = lazy(() => import("./pages/Invites"));
+const Promoter = lazy(() => import("./pages/Promoter"));
+const PromoterLanding = lazy(() => import("./pages/PromoterLanding"));
+const Tokens = lazy(() => import("./pages/Tokens"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Admin = lazy(() => import("./pages/Admin"));
+const UserProfile = lazy(() => import("./pages/UserProfile"));
+
 const queryClient = new QueryClient();
+
+// Fallback leve enquanto o chunk da rota carrega.
+function PageFallback() {
+  return (
+    <div className="flex min-h-[60vh] w-full items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+    </div>
+  );
+}
 
 const App = () => (
   <ThemeProvider>
@@ -72,6 +82,7 @@ const App = () => (
                 <Sonner />
                 <BrowserRouter>
                   <SiteVisitTracker />
+                  <Suspense fallback={<PageFallback />}>
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Landing />} />
@@ -121,6 +132,7 @@ const App = () => (
                     {/* Catch-all */}
                     <Route path="*" element={<NotFound />} />
                   </Routes>
+                  </Suspense>
                 </BrowserRouter>
                 </ActivityTrackerProvider>
               </FriendsProvider>
