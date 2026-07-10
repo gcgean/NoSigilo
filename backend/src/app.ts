@@ -2459,7 +2459,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // Todos os outros perfis (Mulher, Casal, Transexual, etc.) recebem o trial completo.
     const registeredGender = String(parsed.data.gender || '').trim().toLowerCase();
     const isMaleProfile = registeredGender === 'homem' || registeredGender.startsWith('homem ');
-    const trialEndsAt = isMaleProfile ? createdAt : addDaysIso(createdAt, env.TRIAL_DAYS);
+    const isFemaleProfile = registeredGender === 'mulher' || registeredGender.startsWith('mulher ');
+    // Convites vindos de PROMOTORES entram em cobrança direta (sem trial), para
+    // monetizar imediatamente — EXCETO perfis de mulher, que mantêm o trial.
+    // (Homem nunca tem trial.) Vale só para links cujo dono é um promotor ATIVO.
+    let fromPromoter = false;
+    if (invite?.inviter_user_id) {
+      const promoterRow = await queryOne(
+        db,
+        "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1",
+        [invite.inviter_user_id]
+      );
+      fromPromoter = !!promoterRow;
+    }
+    const trialEndsAt = (isMaleProfile || (fromPromoter && !isFemaleProfile))
+      ? createdAt
+      : addDaysIso(createdAt, env.TRIAL_DAYS);
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
