@@ -6271,7 +6271,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // ─── Search / browse users ───────────────────────────────────────────────
   app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
-    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon FROM users WHERE id = ?', [viewerId])) as any;
+    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city FROM users WHERE id = ?', [viewerId])) as any;
     const viewerIsAdmin = Number(viewerRow?.is_admin || 0) === 1;
     const page   = Math.max(1, Number(req.query.page  || 1));
     const limit  = Math.min(40, Math.max(1, Number(req.query.limit || 20)));
@@ -6363,6 +6363,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ABS(u.lat - ${viewerLat}) + ABS(u.lon - ${viewerLon}) ASC,`
         : '';
 
+    // Mesma cidade primeiro (nome igual, ignorando caixa/espaços). Inline-escapado
+    // como o distanceOrderBy — a cidade vem do nosso DB, não de input do usuário.
+    const viewerCity = viewerRow?.city ? String(viewerRow.city).trim() : '';
+    const sameCityOrderBy = viewerCity
+      ? `CASE WHEN u.city IS NOT NULL AND LOWER(TRIM(u.city)) = LOWER('${viewerCity.replace(/'/g, "''")}') THEN 0 ELSE 1 END ASC,`
+      : '';
+
     let orderBy: string;
     if (sort === 'new') {
       orderBy = 'u.created_at DESC';
@@ -6384,12 +6391,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         u.last_seen_at DESC
       `;
     } else {
-      // 'nearby' — online first, then distance, then last_seen, then newest
+      // 'nearby' — mesma cidade primeiro, depois distância, depois online, recência.
       const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       params.push(onlineThresholdIso);
       orderBy = `
-        CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
+        ${sameCityOrderBy}
         ${distanceOrderBy}
+        CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
         CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
         u.last_seen_at DESC,
         u.created_at DESC
@@ -7243,11 +7251,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ORDER BY
         ${boostPrioritySql}
         ${cityPrioritySql}
+        ${myLat !== null && myLon !== null
+          ? `ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) ASC,`
+          : ''}
         CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
         ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
-        ${myLat !== null && myLon !== null 
-          ? `ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) ASC,` 
-          : ''}
         u.created_at DESC
       LIMIT 100
     `,

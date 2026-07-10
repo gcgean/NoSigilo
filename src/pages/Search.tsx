@@ -371,20 +371,32 @@ export default function SearchPage() {
 
   type ProfileGroup = { label: string; profiles: any[] };
   const groupedResults: ProfileGroup[] = (() => {
-    if (!hasDistanceData || onlyLiked || sort !== 'nearby' || availableOnly) return [];
-    const city_: any[]    = [];
+    if (onlyLiked || sort !== 'nearby' || availableOnly) return [];
+    const viewerCity = String(user?.city || '').trim().toLowerCase();
+    if (!hasDistanceData && !viewerCity) return [];
+    const sameCity: any[] = [];
     const near: any[]     = [];
     const distant: any[]  = [];
     const unknown: any[]  = [];
     for (const p of displayResults) {
+      // Mesma cidade (por nome) vem primeiro, independente da distância — dois
+      // perfis da mesma cidade grande (ex.: São Paulo) podem estar a 20 km.
+      const pCity = String(p.city || '').trim().toLowerCase();
+      if (viewerCity && pCity && pCity === viewerCity) { sameCity.push(p); continue; }
       const d = p.distanceKm;
       if (typeof d !== 'number') { unknown.push(p); continue; }
-      if (d <= 5)  city_.push(p);
-      else if (d <= 50) near.push(p);
+      if (d <= 50) near.push(p);
       else distant.push(p);
     }
+    // Dentro de cada grupo, ordena por distância crescente (sem distância vai ao fim).
+    const byDistance = (a: any, b: any) => {
+      const da = typeof a.distanceKm === 'number' ? a.distanceKm : Infinity;
+      const dbv = typeof b.distanceKm === 'number' ? b.distanceKm : Infinity;
+      return da - dbv;
+    };
+    sameCity.sort(byDistance); near.sort(byDistance); distant.sort(byDistance);
     const groups: ProfileGroup[] = [];
-    if (city_.length)    groups.push({ label: 'Na sua cidade', profiles: city_ });
+    if (sameCity.length) groups.push({ label: 'Na sua cidade', profiles: sameCity });
     if (near.length)     groups.push({ label: 'Até 50 km',     profiles: near });
     if (distant.length)  groups.push({ label: 'Mais distantes', profiles: distant });
     if (unknown.length)  groups.push({ label: 'Outros',         profiles: unknown });
@@ -970,7 +982,7 @@ export default function SearchPage() {
           <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km']] as const).map(([v, l]) => (
+              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km'],['100','100 km']] as const).map(([v, l]) => (
                 <button
                   key={v}
                   type="button"
