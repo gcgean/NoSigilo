@@ -18,9 +18,57 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
 
-type StoryLike = { mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null };
+// Cores do texto sobre a mídia (deve casar com a whitelist do backend).
+const OVERLAY_COLORS = ['#ffffff', '#000000', '#ec4899', '#facc15', '#22d3ee'];
 
-/** Renderiza o conteúdo de um story: texto com fundo, vídeo ou imagem. */
+// Overlay: x/y em % (0-100) do container, cor e tamanho. `pos` é o formato antigo
+// (topo/centro/rodapé) mantido para retrocompatibilidade dos stories já criados.
+type TextOverlay = { pos?: string; color: string; x?: number; y?: number; size?: string };
+type StoryLike = { mediaUrl: string | null; mimeType: string; text?: string | null; background?: string | null; textOverlay?: TextOverlay | null };
+
+// Fração da largura do container por tamanho de fonte (escala igual em qualquer tela).
+const OVERLAY_SIZE_FRAC: Record<string, number> = { sm: 0.055, md: 0.08, lg: 0.11, xl: 0.145 };
+
+/** Normaliza o overlay: converte o formato antigo {pos} para x/y e aplica defaults. */
+function normalizeOverlay(o?: TextOverlay | null) {
+  const color = o?.color || '#ffffff';
+  const sizeFrac = OVERLAY_SIZE_FRAC[o?.size || 'md'] ?? OVERLAY_SIZE_FRAC.md;
+  const x = typeof o?.x === 'number' ? Math.min(100, Math.max(0, o.x)) : 50;
+  const y = typeof o?.y === 'number'
+    ? Math.min(100, Math.max(0, o.y))
+    : (o?.pos === 'top' ? 18 : o?.pos === 'bottom' ? 82 : 50);
+  return { x, y, color, sizeFrac };
+}
+
+/** Texto posicionado (x/y%) e dimensionado (proporcional à largura da mídia) — só leitura. */
+function StoryTextOverlay({ text, overlay }: { text: string; overlay?: TextOverlay | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const parent = ref.current?.parentElement;
+    if (!parent) return;
+    const update = () => setBoxW(parent.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
+  const { x, y, color, sizeFrac } = normalizeOverlay(overlay);
+  const fontSize = Math.max(9, boxW * sizeFrac);
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none absolute"
+      style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)', width: 'max-content', maxWidth: '86%' }}
+    >
+      <p className="text-center font-bold leading-snug break-words [text-shadow:_0_2px_8px_rgba(0,0,0,0.85)]" style={{ color, fontSize }}>
+        {text}
+      </p>
+    </div>
+  );
+}
+
+/** Renderiza o conteúdo de um story: texto com fundo, vídeo ou imagem (com overlay de texto opcional). */
 function StoryContent({ story, thumb = false }: { story: StoryLike; thumb?: boolean }) {
   if (!story.mediaUrl && story.text) {
     return (
@@ -34,23 +82,32 @@ function StoryContent({ story, thumb = false }: { story: StoryLike; thumb?: bool
       </div>
     );
   }
-  if (story.mimeType.startsWith('video/')) {
-    return <video src={resolveServerUrl(story.mediaUrl || '')} className="h-full w-full object-cover" muted playsInline {...(thumb ? {} : { autoPlay: true, loop: true })} />;
+  const media = story.mimeType.startsWith('video/')
+    ? <video src={resolveServerUrl(story.mediaUrl || '')} className="h-full w-full object-cover" muted playsInline {...(thumb ? {} : { autoPlay: true, loop: true })} />
+    : <img src={resolveServerUrl(story.mediaUrl || '')} alt="" className="h-full w-full object-cover" />;
+
+  if (story.mediaUrl && story.text) {
+    return (
+      <div className="relative h-full w-full">
+        {media}
+        <StoryTextOverlay text={story.text} overlay={story.textOverlay} />
+      </div>
+    );
   }
-  return <img src={resolveServerUrl(story.mediaUrl || '')} alt="" className="h-full w-full object-cover" />;
+  return media;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MyStory = {
   id: string; mediaUrl: string | null; mimeType: string;
-  text?: string | null; background?: string | null;
+  text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
   createdAt: string; expiresAt: string;
   viewCount: number; commentCount: number; likeCount: number;
 };
 
 type FeedStory = {
   id: string; mediaUrl: string | null; mimeType: string;
-  text?: string | null; background?: string | null;
+  text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
   author: {
@@ -258,6 +315,13 @@ function StoryViewer({
             className="h-full w-full object-cover"
           />
         )}
+
+        {/* Texto por cima da mídia (estilo Instagram) */}
+        {story.mediaUrl && story.text ? (
+          <div className="pointer-events-none absolute inset-0 z-[5]">
+            <StoryTextOverlay text={story.text} overlay={story.textOverlay} />
+          </div>
+        ) : null}
 
         {/* Navigation tap zones — só na metade superior para não bloquear os botões */}
         <button
@@ -636,6 +700,19 @@ export default function Stories() {
   const [storyText, setStoryText] = useState('');
   const [storyBg,   setStoryBg]   = useState(STORY_BACKGROUNDS[0].id);
 
+  // Editor de mídia — texto por cima da foto/vídeo (estilo Instagram)
+  const [editorFile,    setEditorFile]    = useState<File | null>(null);
+  const [editorUrl,     setEditorUrl]     = useState<string | null>(null);
+  const [editorIsVideo, setEditorIsVideo] = useState(false);
+  const [ovText,  setOvText]  = useState('');
+  const [ovColor, setOvColor] = useState<string>(OVERLAY_COLORS[0]);
+  const [ovX,     setOvX]     = useState(50);   // posição X do texto em % (arrastável)
+  const [ovY,     setOvY]     = useState(50);   // posição Y do texto em %
+  const [ovSize,  setOvSize]  = useState<'sm' | 'md' | 'lg' | 'xl'>('md');
+  const editorBoxRef = useRef<HTMLDivElement>(null);       // caixa de preview da mídia
+  const [editorBoxW, setEditorBoxW] = useState(0);         // largura medida (fonte proporcional)
+  const draggingOv = useRef(false);
+
   const fileRef    = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const videoRef   = useRef<HTMLInputElement>(null);
@@ -711,11 +788,35 @@ export default function Stories() {
         return;
       }
     }
+    // Abre o editor para o usuário adicionar texto sobre a mídia antes de publicar.
+    if (editorUrl) URL.revokeObjectURL(editorUrl);
+    setEditorFile(file);
+    setEditorUrl(URL.createObjectURL(file));
+    setEditorIsVideo(file.type.startsWith('video/'));
+    setOvText('');
+    setOvColor(OVERLAY_COLORS[0]);
+    setOvX(50);
+    setOvY(50);
+    setOvSize('md');
+  };
+
+  const closeEditor = () => {
+    if (editorUrl) URL.revokeObjectURL(editorUrl);
+    setEditorFile(null);
+    setEditorUrl(null);
+    setEditorIsVideo(false);
+    setOvText('');
+  };
+
+  const handlePublishMedia = async () => {
+    if (!editorFile) return;
     setUploading(true);
     try {
-      const media = await profileService.uploadMedia(file, { isPrivate: false, source: 'post' });
-      await storiesService.create(String(media.id));
+      const media = await profileService.uploadMedia(editorFile, { isPrivate: false, source: 'post' });
+      const text = ovText.trim();
+      await storiesService.create(String(media.id), text ? { text, textOverlay: { x: ovX, y: ovY, color: ovColor, size: ovSize } } : undefined);
       toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
+      closeEditor();
       await load();
     } catch (err) {
       handleUploadError(err);
@@ -723,6 +824,33 @@ export default function Stories() {
       setUploading(false);
     }
   };
+
+  // Mede a largura da caixa de preview do editor (para a fonte proporcional do overlay).
+  useEffect(() => {
+    if (!editorUrl) return;
+    const el = editorBoxRef.current;
+    if (!el) return;
+    const update = () => setEditorBoxW(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [editorUrl]);
+
+  // Arrastar o texto livremente pela mídia (pointer = mouse + toque).
+  const onOvPointerDown = (e: React.PointerEvent) => {
+    draggingOv.current = true;
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch {}
+  };
+  const onOvPointerMove = (e: React.PointerEvent) => {
+    if (!draggingOv.current) return;
+    const box = editorBoxRef.current;
+    if (!box) return;
+    const rect = box.getBoundingClientRect();
+    setOvX(Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100)));
+    setOvY(Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100)));
+  };
+  const onOvPointerUp = () => { draggingOv.current = false; };
 
   const handleCreateText = async () => {
     const text = storyText.trim();
@@ -1071,6 +1199,99 @@ export default function Stories() {
           onClose={() => { setStatsOpen(false); setStatsStoryId(null); }}
           onUpgrade={() => { setStatsOpen(false); setStatsStoryId(null); navigate('/subscriptions'); }}
         />
+      )}
+
+      {/* Editor de mídia — texto por cima da foto/vídeo (estilo Instagram) */}
+      {editorUrl && (
+        <div className="fixed inset-0 z-[9997] flex flex-col bg-black/95">
+          {/* topo */}
+          <div className="flex shrink-0 items-center justify-between p-4">
+            <button type="button" onClick={() => { if (!uploading) closeEditor(); }} disabled={uploading} className="text-white/80 hover:text-white">
+              <X className="h-6 w-6" />
+            </button>
+            <span className="text-sm text-white/70">Adicione um texto</span>
+            <button
+              type="button"
+              onClick={() => void handlePublishMedia()}
+              disabled={uploading}
+              className="rounded-full bg-primary px-4 py-1.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
+            >
+              {uploading ? 'Publicando...' : 'Publicar'}
+            </button>
+          </div>
+
+          {/* preview com overlay ao vivo */}
+          <div className="relative mx-auto flex w-full max-w-sm flex-1 items-center justify-center overflow-hidden px-4">
+            <div ref={editorBoxRef} className="relative aspect-[9/16] max-h-full w-full touch-none overflow-hidden rounded-2xl bg-black">
+              {editorIsVideo ? (
+                <video src={editorUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+              ) : (
+                <img src={editorUrl} alt="" className="h-full w-full object-cover" />
+              )}
+              {ovText.trim() ? (
+                <div
+                  className="absolute cursor-move touch-none select-none"
+                  style={{ left: `${ovX}%`, top: `${ovY}%`, transform: 'translate(-50%, -50%)', width: 'max-content', maxWidth: '86%' }}
+                  onPointerDown={onOvPointerDown}
+                  onPointerMove={onOvPointerMove}
+                  onPointerUp={onOvPointerUp}
+                  onPointerCancel={onOvPointerUp}
+                >
+                  <p
+                    className="text-center font-bold leading-snug break-words [text-shadow:_0_2px_8px_rgba(0,0,0,0.85)]"
+                    style={{ color: ovColor, fontSize: Math.max(12, editorBoxW * OVERLAY_SIZE_FRAC[ovSize]) }}
+                  >
+                    {ovText}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* controles */}
+          <div className="shrink-0 space-y-3 p-4">
+            <textarea
+              value={ovText}
+              onChange={(e) => setOvText(e.target.value.slice(0, 280))}
+              placeholder="Escreva um texto sobre a mídia (opcional)"
+              rows={2}
+              className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:ring-2 focus:ring-primary/50"
+            />
+            {ovText.trim() ? (
+              <p className="text-center text-[11px] text-white/50">✋ Arraste o texto sobre a mídia para posicionar</p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* tamanho da fonte */}
+              <div className="flex items-center gap-1">
+                {(['sm', 'md', 'lg', 'xl'] as const).map((s, i) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setOvSize(s)}
+                    aria-label={`Tamanho ${s}`}
+                    className={cn('flex h-8 w-8 items-center justify-center rounded-full font-bold leading-none transition-colors', ovSize === s ? 'bg-primary text-white' : 'bg-white/10 text-white/70 hover:bg-white/20')}
+                    style={{ fontSize: 11 + i * 3 }}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+              {/* cor */}
+              <div className="flex gap-1.5">
+                {OVERLAY_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setOvColor(c)}
+                    className={cn('h-7 w-7 rounded-full ring-2 ring-offset-2 ring-offset-black transition-all', ovColor === c ? 'scale-110 ring-white' : 'ring-transparent')}
+                    style={{ background: c }}
+                    aria-label={`Cor ${c}`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Composer de story de texto */}

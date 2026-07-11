@@ -1243,8 +1243,12 @@ export const storiesService = {
     const res = await apiClient.get('/stories');
     return res.data as { stories: StoryFeedItem[] };
   },
-  create: async (mediaId: string) => {
-    const res = await apiClient.post('/stories', { mediaId });
+  create: async (mediaId: string, opts?: { text?: string; textOverlay?: { x: number; y: number; color: string; size: string } }) => {
+    const res = await apiClient.post('/stories', {
+      mediaId,
+      ...(opts?.text ? { text: opts.text } : {}),
+      ...(opts?.text && opts?.textOverlay ? { textOverlay: opts.textOverlay } : {}),
+    });
     return res.data as { id: string; expiresAt: string };
   },
   createText: async (text: string, background: string) => {

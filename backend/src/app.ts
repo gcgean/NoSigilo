@@ -4360,7 +4360,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.media_id, s.text, s.background, s.created_at, s.expires_at,
+      `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
               m.filename, m.mime_type
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
@@ -4382,6 +4382,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         mimeType: String(s.mime_type || ''),
         text: s.text ? String(s.text) : null,
         background: s.background ? String(s.background) : null,
+        textOverlay: s.text_overlay ? (safeJsonParse(s.text_overlay) as any) : null,
         createdAt: String(s.created_at),
         expiresAt: String(s.expires_at),
         viewCount: Number(viewCount?.c || 0),
@@ -4408,7 +4409,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Busca stories ativos de outros usuários
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.created_at, s.expires_at,
+      `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
               m.filename, m.mime_type,
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
@@ -4475,6 +4476,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         mimeType: String(r.mime_type || ''),
         text: r.text ? String(r.text) : null,
         background: r.background ? String(r.background) : null,
+        textOverlay: r.text_overlay ? (safeJsonParse(r.text_overlay) as any) : null,
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         viewed: viewedSet.has(String(r.id)),
@@ -4654,10 +4656,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const { mediaId } = req.body as { mediaId?: string };
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
     const background = typeof req.body?.background === 'string' ? req.body.background.trim() : '';
-    const isText = !mediaId && text.length > 0;
+    const isText = !mediaId && text.length > 0;         // story de texto puro (fundo colorido)
+    const hasOverlay = !!mediaId && text.length > 0;    // texto por cima da mídia (estilo Instagram)
 
     if (!mediaId && !isText) { res.status(400).json({ error: 'mediaId_or_text_required' }); return; }
-    if (isText && text.length > 280) { res.status(400).json({ error: 'text_too_long', message: 'O texto deve ter no máximo 280 caracteres.' }); return; }
+    if (text.length > 280) { res.status(400).json({ error: 'text_too_long', message: 'O texto deve ter no máximo 280 caracteres.' }); return; }
+
+    // Estilo do overlay de texto sobre a mídia: posição livre (x/y em %), cor e
+    // tamanho, com valores em whitelist / clamp para segurança.
+    const OVERLAY_COLORS = ['#ffffff', '#000000', '#ec4899', '#facc15', '#22d3ee'];
+    const OVERLAY_SIZES = ['sm', 'md', 'lg', 'xl'];
+    let textOverlayJson: string | null = null;
+    if (hasOverlay) {
+      const raw = (req.body?.textOverlay || {}) as { x?: number; y?: number; color?: string; size?: string };
+      const clampPct = (v: any, d: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : d; };
+      const color = OVERLAY_COLORS.includes(String(raw.color)) ? String(raw.color) : '#ffffff';
+      const size = OVERLAY_SIZES.includes(String(raw.size)) ? String(raw.size) : 'md';
+      textOverlayJson = JSON.stringify({ x: clampPct(raw.x, 50), y: clampPct(raw.y, 50), color, size });
+    }
 
     if (mediaId) {
       const media = (await queryOne(db, 'SELECT id, user_id, filename FROM media WHERE id = ? AND user_id = ?', [mediaId, userId])) as any;
@@ -4674,10 +4690,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const id = randomUUID();
     const expiresAt = storyExpiresAt(now);
+    // `text` acompanha tanto o story de texto puro quanto o overlay sobre a mídia.
+    // `background` só no texto puro; `text_overlay` só quando há texto sobre a mídia.
+    const storyText = (isText || hasOverlay) ? text : null;
     await run(
       db,
-      'INSERT INTO stories (id, user_id, media_id, text, background, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [id, userId, mediaId || '', isText ? text : null, isText ? (background || 'sunset') : null, now, expiresAt],
+      'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, now, expiresAt],
     );
     await persist();
     // Só mulheres e casais ganham tokens por story.

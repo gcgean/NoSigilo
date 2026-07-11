@@ -93,6 +93,8 @@ export default function Reels() {
   // "Não vistos" salvo na Busca de Vídeos: quando ligado, o Reels pula os já vistos.
   const [skipSeen] = useState(() => readVideoFilters().onlyUnseen);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);   // falha ao carregar (≠ "sem vídeos")
+  const [reloadTick, setReloadTick] = useState(0);      // re-dispara a carga (retry / ao reabrir)
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [hasLockedVideos, setHasLockedVideos] = useState(false);
   const [reelsPage, setReelsPage] = useState(1);
@@ -220,6 +222,7 @@ export default function Reels() {
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
+    setLoadError(false);
 
     (async () => {
       try {
@@ -295,6 +298,7 @@ export default function Reels() {
         setReels([]);
         setHasLockedVideos(false);
         setHasMoreReels(false);
+        setLoadError(true);
       } finally {
         if (cancelled) return;
         setIsLoading(false);
@@ -302,7 +306,19 @@ export default function Reels() {
     })();
 
     return () => { cancelled = true; };
-  }, [appendReels, mapVideosToReels, targetReelId]);
+  }, [appendReels, mapVideosToReels, targetReelId, reloadTick]);
+
+  // Recarrega ao reabrir o app/aba (visibilitychange) se a lista está vazia —
+  // cura o caso de uma falha transitória (ex.: cold start) ter deixado "sem vídeos".
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !isLoading && reels.length === 0) {
+        setReloadTick((t) => t + 1);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [isLoading, reels.length]);
 
   const loadMoreReels = useCallback(async () => {
     if (isLoading || isLoadingMoreReels || !hasMoreReels) return;
@@ -849,6 +865,28 @@ export default function Reels() {
   }
 
   if (reelsWithMeta.length === 0) {
+    if (loadError) {
+      return (
+        <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl border bg-card p-6 text-center shadow-sm">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+              <Clapperboard className="h-6 w-6 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold">Não foi possível carregar os vídeos</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pode ter sido uma instabilidade momentânea de conexão. Tente novamente.
+            </p>
+            <Button
+              type="button"
+              className="mt-5 w-full gap-2 bg-gradient-primary text-white hover:opacity-90"
+              onClick={() => setReloadTick((t) => t + 1)}
+            >
+              Tentar novamente
+            </Button>
+          </div>
+        </div>
+      );
+    }
     if (hasLockedVideos) {
       return (
         <div className="flex h-[calc(100dvh-8.75rem)] items-center justify-center px-4">
