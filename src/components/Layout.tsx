@@ -632,10 +632,10 @@ export default function Layout() {
               </NavLink>
             )}
 
-            {/* Rap (player) — mobile-only header icon */}
-            <NavLink to="/reels" className="shrink-0 md:hidden" aria-label="Rap">
+            {/* Radar — mobile-only header icon */}
+            <NavLink to="/radar" className="shrink-0 md:hidden" aria-label="Radar">
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
-                <Clapperboard className="h-4.5 w-4.5" />
+                <Radio className="h-4.5 w-4.5" />
               </Button>
             </NavLink>
 
