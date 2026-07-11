@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -106,6 +106,7 @@ type Message = {
   replyStory?: { id: string; mediaUrl: string | null; mimeType: string | null; text?: string | null; background?: string | null } | null;
   replyTo?: { id: string; senderId: string; content: string | null; hasMedia: boolean } | null;
   reaction?: string | null;
+  viaRadar?: boolean;
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
@@ -1355,6 +1356,23 @@ export default function Chat() {
                         </button>
                       ) : (
                         <div className="flex flex-col gap-2">
+                          {msg.viaRadar && !isMine && (
+                            <div className="rounded-lg border border-primary/30 bg-primary/10 p-2">
+                              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+                                <Radio className="h-3.5 w-3.5" /> Contato via Radar de Disponibilidade
+                              </p>
+                              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                                Quer ativar o seu radar também para encontrar pessoas próximas?
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => navigate('/radar')}
+                                className="mt-1.5 w-full rounded-md bg-gradient-primary px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
+                              >
+                                Ativar meu radar
+                              </button>
+                            </div>
+                          )}
                           {isMutualMatchMessage && (
                             <div className="flex items-center justify-center gap-2 text-primary">
                               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12">

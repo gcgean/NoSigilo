@@ -7853,8 +7853,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const messageCreatedAt = nowIso();
       await run(
         db,
-        'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [messageId, String(conversation.id), req.auth!.userId, radarMessage, null, 0, 1, messageCreatedAt]
+        'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, via_radar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [messageId, String(conversation.id), req.auth!.userId, radarMessage, null, 0, 1, 1, messageCreatedAt]
       );
       io?.to(String(conversation.id)).emit('message.created', {
         id: messageId,
@@ -7867,6 +7867,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         clientId: null,
         isViewOnce: false,
         isDelivered: true,
+        viaRadar: true,
         createdAt: messageCreatedAt,
       });
 
@@ -8680,7 +8681,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
-             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction, m.reply_to_message_id,
+             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction, m.reply_to_message_id, m.via_radar,
              med.filename as media_filename, med.mime_type as media_mime_type,
              smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
              s.text as story_text, s.background as story_background,
@@ -8714,6 +8715,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           isViewOnce: !!m.is_view_once,
           isViewed: !!m.is_viewed,
           isDelivered: !!m.is_delivered,
+          viaRadar: !!m.via_radar,
           isLocked: !deletedForMe && !canViewReceived && m.sender_id !== viewerId,
           replyStory: deletedForMe || !m.story_id ? null : {
             id: String(m.story_id),
