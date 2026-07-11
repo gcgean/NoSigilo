@@ -1,7 +1,7 @@
 // Filtros da Busca de Vídeos — compartilhados entre a página de busca e o Reels,
 // e persistidos no dispositivo (localStorage) para lembrar a última escolha.
 
-export type VideoSort = 'recent' | 'liked' | 'commented';
+export type VideoSort = 'random' | 'recent' | 'liked' | 'commented';
 
 export type VideoFilters = {
   gender: string;   // 'prefs' (meus interesses) | 'all' (todos) | gênero específico
@@ -15,8 +15,8 @@ export const DEFAULT_VIDEO_FILTERS: VideoFilters = {
   gender: 'prefs',
   city: '',
   distance: 'all',
-  sort: 'recent',
-  onlyUnseen: false,
+  sort: 'random', // ordem aleatória por padrão (mistura novos, antigos, curtidos…)
+  onlyUnseen: true, // "não vistos" marcado por padrão: mostra vídeos ainda não assistidos
 };
 
 const STORAGE_KEY = 'nosigilo:video-filters';
@@ -26,7 +26,7 @@ export function readVideoFilters(): VideoFilters {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_VIDEO_FILTERS };
     const p = JSON.parse(raw) as Partial<VideoFilters>;
-    const sort: VideoSort = (['recent', 'liked', 'commented'] as const).includes(p.sort as VideoSort)
+    const sort: VideoSort = (['random', 'recent', 'liked', 'commented'] as const).includes(p.sort as VideoSort)
       ? (p.sort as VideoSort)
       : DEFAULT_VIDEO_FILTERS.sort;
     return {

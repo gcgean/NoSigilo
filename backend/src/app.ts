@@ -4987,7 +4987,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const filterGender = typeof req.query.gender === 'string' ? req.query.gender.trim() : '';
     const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
     const filterMaxKm  = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
-    const sortParam    = ['recent', 'liked', 'commented'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
+    const sortParam    = ['recent', 'liked', 'commented', 'random'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
 
     const params: (string | number)[] = [myId, myId];
     let whereExtra = '';
@@ -5018,6 +5018,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } else if (sortParam === 'commented') {
       aggregateJoins = `LEFT JOIN (SELECT target_id, COUNT(*) as agg_cnt FROM comments WHERE target_type = 'post' GROUP BY target_id) agg ON agg.target_id = p.id`;
       orderByClause = 'COALESCE(agg.agg_cnt, 0) DESC, p.created_at DESC';
+    } else if (sortParam === 'random') {
+      // Ordem aleatória: mistura vídeos novos, antigos, curtidos e não curtidos.
+      // random() existe no SQLite e no PostgreSQL. Como a ordem muda a cada consulta,
+      // a paginação por offset não se aplica — zeramos o offset e o cliente deduplica
+      // pelos ids já carregados, sacando novos vídeos aleatórios a cada página.
+      orderByClause = 'random()';
     } else {
       orderByClause = 'p.created_at DESC';
     }
@@ -5025,6 +5031,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // params termina com (limit+1, offset); troca o limit+1 pelo scanLimit real da varredura
     const scanParams = [...params];
     scanParams[scanParams.length - 2] = scanLimit;
+    // Ordem aleatória amostra do conjunto todo a cada página (offset não faz sentido).
+    if (sortParam === 'random') scanParams[scanParams.length - 1] = 0;
 
     const rows = await queryAll(
       db,

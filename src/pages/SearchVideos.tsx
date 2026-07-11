@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Clapperboard, SlidersHorizontal, MapPin, Heart, Play,
-  X, Search, Clock, MessageCircle, Flame, Eye, EyeOff,
+  X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,7 +39,7 @@ const distanceOptions = [
   { value: '250', label: 'Até 250 km' },
 ];
 
-type SortOption = 'recent' | 'liked' | 'commented';
+type SortOption = 'random' | 'recent' | 'liked' | 'commented';
 
 type VideoItem = {
   mediaId: string;
@@ -61,6 +61,7 @@ type VideoItem = {
 };
 
 const sortOptions: { value: SortOption; label: string; icon: React.ElementType }[] = [
+  { value: 'random',    label: 'Aleatório',      icon: Shuffle },
   { value: 'recent',    label: 'Recentes',       icon: Clock },
   { value: 'liked',     label: 'Mais curtidos',  icon: Flame },
   { value: 'commented', label: 'Mais comentados',icon: MessageCircle },
@@ -536,7 +537,7 @@ export default function SearchVideos() {
                     setCityFilter('');
                     setGenderFilter('prefs');
                     setDistanceFilter('all');
-                    setSortFilter('recent');
+                    setSortFilter('random');
                   }}
                 >
                   <X className="h-3.5 w-3.5" /> Limpar filtros
