@@ -93,7 +93,7 @@ function VideoPreviewGate({
         className="h-full w-full object-contain sm:object-cover bg-black/70"
         muted
         playsInline
-        preload="auto"
+        preload="metadata"
         controlsList="nodownload noremoteplayback"
         disablePictureInPicture
         onContextMenu={(e) => e.preventDefault()}
@@ -219,6 +219,8 @@ export function PostMediaCarousel({
           src={resolveUrl(m.url)}
           alt=""
           draggable={false}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full bg-black object-contain sm:object-cover select-none"
           style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
           onContextMenu={(e) => e.preventDefault()}

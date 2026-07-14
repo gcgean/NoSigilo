@@ -93,6 +93,17 @@ apiClient.interceptors.response.use(
     }
     // Auto-retry once on 503/502 for safe methods (cold-start / transient overload)
     const status = error.response?.status as number | undefined;
+
+    // Log detalhado de 400 para localizar a chamada culpada (ex.: erro elusivo em /settings).
+    if (status === 400) {
+      const cfg = (error.config || {}) as { method?: string; url?: string; params?: unknown };
+      console.warn('[api] 400 Bad Request', {
+        method: String(cfg.method || '').toUpperCase(),
+        url: cfg.url,
+        params: cfg.params,
+        response: error.response?.data,
+      });
+    }
     if (status === 503 || status === 502) {
       const config = (error.config || {}) as typeof error.config & { __serverRetry?: boolean };
       if (!config.__serverRetry && isSafeRetryMethod(config.method)) {

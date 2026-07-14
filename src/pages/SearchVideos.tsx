@@ -568,11 +568,22 @@ export default function SearchVideos() {
 
       {/* Empty state */}
       {!isLoading && !fetchError && videos.length === 0 && (
-        <MobileState
-          icon={Clapperboard}
-          title="Nenhum vídeo encontrado"
-          description="Tente ajustar os filtros ou remover a cidade para ver mais resultados."
-        />
+        <div className="flex flex-col items-center gap-3">
+          <MobileState
+            icon={Clapperboard}
+            title="Nenhum vídeo encontrado"
+            description={
+              sortFilter === 'random'
+                ? 'A ordem aleatória não trouxe vídeos agora — mas pode haver conteúdo em outras ordenações. Toque em "Recentes" ou ajuste os filtros.'
+                : 'Tente ajustar os filtros ou remover a cidade para ver mais resultados.'
+            }
+          />
+          {sortFilter !== 'recent' && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSortFilter('recent')}>
+              <Clock className="h-4 w-4" /> Ver vídeos recentes
+            </Button>
+          )}
+        </div>
       )}
 
       {/* Video grid */}

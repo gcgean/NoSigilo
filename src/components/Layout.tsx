@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -1039,7 +1039,15 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            <Outlet />
+            <Suspense
+              fallback={
+                <div className="flex min-h-[50vh] w-full items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
             <PhotoGateOverlay pathname={location.pathname} />
             <ScreenGuard />
             <RadarNightPrompt />

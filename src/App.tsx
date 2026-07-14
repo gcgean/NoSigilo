@@ -98,7 +98,6 @@ const App = () => (
                     <Route path="/privacy" element={<Privacy />} />
                     <Route path="/guidelines" element={<Guidelines />} />
                     <Route path="/dev-test" element={<DevTest />} />
-                    <Route path="/favorites" element={<Favorites />} />
 
                     {/* Protected Routes */}
                     <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -123,6 +122,7 @@ const App = () => (
                       <Route path="/tokens" element={<Tokens />} />
                       <Route path="/ambassador" element={<Navigate to="/invites?tab=ambassador" replace />} />
                       <Route path="/rap" element={<Navigate to="/reels" replace />} />
+                      <Route path="/favorites" element={<Favorites />} />
                       <Route path="/likes" element={<Navigate to="/favorites" replace />} />
                       <Route path="/subscriptions" element={<Subscriptions />} />
                       <Route path="/settings" element={<Settings />} />
