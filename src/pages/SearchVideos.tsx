@@ -255,11 +255,6 @@ function VideoCard({
               {item.commentsCount}
             </Badge>
           )}
-          {item.author.city && (
-            <Badge className="hidden gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0 sm:flex">
-              {item.author.city}{item.author.state ? `, ${item.author.state}` : ''}
-            </Badge>
-          )}
         </div>
       </div>
     </button>
