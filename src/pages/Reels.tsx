@@ -9,7 +9,6 @@ import { readVideoFilters, videoFiltersToSearchParams } from '@/lib/videoFilters
 import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
-import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -839,7 +838,7 @@ export default function Reels() {
     () =>
       orderedReels.map((item) => ({
         ...item,
-        identityLine: formatProfileIdentityLine(item.author),
+        identityLine: String(item.author.gender || '').trim(), // sem localização (só gênero)
         when: item.createdAt ? formatWhen(item.createdAt) : '',
         stats: statsByPostId[item.postId] ?? {
           likesCount: item.likesCount,

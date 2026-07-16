@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -1993,6 +1993,79 @@ const isTest = process.env.NODE_ENV === 'test';
 const noop: express.RequestHandler = (_req, _res, next) => next();
 const authRateLimiter = isTest ? noop : createRateLimiter(10, 60_000);   // 10 req/min
 const uploadRateLimiter = isTest ? noop : createRateLimiter(30, 60_000); // 30 uploads/min
+
+// ─── Agendador: e-mail de engajamento (sexta e sábado às 20h, horário de Brasília) ──
+let weekendBlastRunning = false;
+
+async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
+  if (weekendBlastRunning) return;
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return; // sem provedor de e-mail
+  // Kill-switch opcional: system_settings.weekend_engagement_enabled = 'false' desliga.
+  try {
+    const enabled = await getSystemSetting(db, 'weekend_engagement_enabled');
+    if (enabled != null && String(enabled) === 'false') return;
+  } catch { /* segue no padrão (ligado) */ }
+
+  // Início do dia atual em Brasília (00:00 BRT = 03:00 UTC) → dedup "já rodou hoje".
+  const br = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const startOfBrDayUtcIso = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate(), 3, 0, 0)).toISOString();
+  const ran = (await queryOne(db, "SELECT COUNT(*) as c FROM reengagement_emails WHERE campaign = 'weekend' AND sent_at >= ?", [startOfBrDayUtcIso])) as any;
+  if (Number(ran?.c || 0) > 0) return; // já disparou hoje
+
+  weekendBlastRunning = true;
+  try {
+    const users = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.email FROM users u
+       WHERE u.email IS NOT NULL AND u.email != '' AND u.email NOT LIKE '%@nosigilo.internal'
+         AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)'}`,
+      []
+    )) as any[];
+
+    let sent = 0; let errors = 0;
+    for (const user of users) {
+      let status: 'sent' | 'skipped' | 'error' = 'error';
+      let errorMsg: string | null = null;
+      try {
+        const r = await sendWeekendEngagementEmail(
+          { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+          { to: String(user.email), userName: String(user.name || 'você') }
+        );
+        status = (r as any)?.skipped ? 'skipped' : 'sent';
+        if (status === 'sent') sent++;
+      } catch (e: any) {
+        status = 'error'; errorMsg = String(e?.message ?? e); errors++;
+      }
+      if (status !== 'skipped') {
+        try {
+          await run(db, `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message, campaign) VALUES (?, ?, ?, ?, ?, ?)`,
+            [randomUUID(), String(user.id), nowIso(), status, errorMsg, 'weekend']);
+        } catch (dbErr) { console.error('[weekend-engagement] record fail', user.id, dbErr); }
+      }
+      await new Promise((res) => setTimeout(res, 120)); // ~8/s: respeita rate-limit do Resend
+    }
+    try { await db.persist(); } catch { /* non-fatal */ }
+    console.log(`[weekend-engagement] blast concluído: enviados=${sent} erros=${errors} de ${users.length}`);
+  } finally {
+    weekendBlastRunning = false;
+  }
+}
+
+// Verifica a cada 5 min; dispara uma vez quando entra na janela sex/sáb 20h (BRT).
+export function startWeekendEngagementScheduler(db: DbHandle, env: Env) {
+  const check = () => {
+    const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // horário de Brasília (UTC-3)
+    const day = now.getUTCDay();   // 5 = sexta, 6 = sábado
+    const hour = now.getUTCHours();
+    if ((day === 5 || day === 6) && hour === 20) {
+      void runWeekendEngagementBlast(db, env);
+    }
+  };
+  setInterval(check, 5 * 60 * 1000);
+  check(); // já checa no boot (caso o processo reinicie dentro da janela)
+  console.log('[weekend-engagement] agendador ativo (sex/sáb 20h BRT)');
+}
 
 export function createApp(options: { db: DbHandle; env: Env }) {
   const { db, env } = options;

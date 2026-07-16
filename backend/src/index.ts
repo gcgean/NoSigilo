@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
-import { createApp, ensureAdministrativeAccess, seedDemo } from './app.js';
+import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -498,6 +498,7 @@ async function main() {
   await ensureAdministrativeAccess(db);
 
   const app = createApp({ db, env });
+  startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
   const httpServer = createServer(app);
   const onlineCounts = new Map<string, number>();
   const io = new SocketIOServer(httpServer, {

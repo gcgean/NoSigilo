@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Clapperboard, SlidersHorizontal, MapPin, Heart, Play,
+  Clapperboard, SlidersHorizontal, Heart, Play,
   X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -67,11 +67,6 @@ const sortOptions: { value: SortOption; label: string; icon: React.ElementType }
   { value: 'commented', label: 'Mais comentados',icon: MessageCircle },
 ];
 
-function formatDistanceKm(d: number | null) {
-  if (d === null || !Number.isFinite(d) || d < 0) return null;
-  if (d < 1) return '< 1 km';
-  return `${d.toLocaleString('pt-BR', { maximumFractionDigits: d < 10 ? 1 : 0 })} km`;
-}
 
 const PAGE_SIZE = 24;
 
@@ -237,12 +232,6 @@ function VideoCard({
         )}
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          {item.distanceKm !== null && (
-            <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-              <MapPin className="h-2.5 w-2.5" />
-              {formatDistanceKm(item.distanceKm)}
-            </Badge>
-          )}
           {item.likesCount > 0 && (
             <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
               <Heart className="h-2.5 w-2.5 fill-rose-400 text-rose-400" />

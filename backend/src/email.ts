@@ -301,6 +301,121 @@ export async function sendReengagementEmail(
   return { skipped: false as const };
 }
 
+// ─── Weekend Engagement Email (sexta e sábado à noite) ────────────────────────
+// E-mail automático de fim de semana. Rotaciona entre alguns temas para incentivar
+// o usuário a se exibir, conferir reações, ver o que perdeu ou puxar conversa.
+export async function sendWeekendEngagementEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: { to: string; userName: string }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = escapeHtml((payload.userName || 'você').split(' ')[0] || payload.userName || 'você');
+
+  type Variant = { subject: string; emoji: string; headline: string; body: string; ctaLabel: string; ctaPath: string; second?: { label: string; path: string } };
+  const variants: Variant[] = [
+    {
+      subject: `🔥 ${safeName}, é noite de aparecer no ${appName}`,
+      emoji: '🔥',
+      headline: 'Hora de se exibir 😈',
+      body: 'O fim de semana é quando a rede mais ferve. Poste uma foto ou um vídeo agora e apareça para quem está online e procurando alguém como você.',
+      ctaLabel: 'Publicar agora →',
+      ctaPath: '/feed?firstAccess=post',
+      second: { label: 'Ativar meu Radar', path: '/radar' },
+    },
+    {
+      subject: `👀 ${safeName}, veja quem reagiu ao que você postou`,
+      emoji: '👀',
+      headline: 'Alguém andou de olho em você',
+      body: 'Enquanto você tocava a vida, seu perfil e seus posts podem ter recebido curtidas, comentários e visitas. Volte e veja o que rolou — e responda quem demonstrou interesse.',
+      ctaLabel: 'Ver minhas notificações →',
+      ctaPath: '/notifications',
+      second: { label: 'Ver meu perfil', path: '/profile' },
+    },
+    {
+      subject: `💤 ${safeName}, você perdeu movimento no ${appName}`,
+      emoji: '💤',
+      headline: 'Rolou coisa boa enquanto você esteve fora',
+      body: 'Novos perfis entraram, gente da sua região ficou disponível e o feed encheu de novidade. Dá uma olhada no que apareceu — pode ter alguém perfeito pra hoje.',
+      ctaLabel: 'Ver as novidades →',
+      ctaPath: '/feed',
+      second: { label: 'Buscar perto de mim', path: '/search' },
+    },
+    {
+      subject: `💬 ${safeName}, que tal marcar algo gostoso pra hoje?`,
+      emoji: '💬',
+      headline: 'Puxa conversa e marca a brincadeira',
+      body: 'Sexta e sábado à noite são os melhores momentos pra combinar um encontro. Encontre alguém do seu interesse, mande a primeira mensagem e deixe rolar 🔥',
+      ctaLabel: 'Encontrar alguém →',
+      ctaPath: '/match',
+      second: { label: 'Abrir o Chat', path: '/chat' },
+    },
+  ];
+  const v = variants[Math.floor(Math.random() * variants.length)];
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#1a0f14;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:#25141b;border-radius:20px;border:1px solid #4a2230;padding:36px 32px;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-size:48px;margin-bottom:8px;">${v.emoji}</div>
+      <h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#ffffff;">${v.headline}</h1>
+      <p style="font-size:14px;color:#c99aab;margin:0;">Oi, ${safeName}! É fim de semana no ${appName} 🌙</p>
+    </div>
+
+    <p style="font-size:16px;line-height:1.6;color:#e8d3db;margin:0 0 24px;text-align:center;">
+      ${v.body}
+    </p>
+
+    <div style="text-align:center;margin-bottom:16px;">
+      <a href="${siteUrl}${v.ctaPath}" style="display:inline-block;background:linear-gradient(135deg,#e83e68,#c0264a);color:white;font-size:17px;font-weight:800;padding:17px 40px;border-radius:14px;text-decoration:none;box-shadow:0 6px 20px rgba(232,62,104,0.4);">
+        ${v.ctaLabel}
+      </a>
+    </div>
+    ${v.second ? `
+    <div style="text-align:center;margin-bottom:8px;">
+      <a href="${siteUrl}${v.second.path}" style="display:inline-block;color:#e8a7bb;font-size:14px;font-weight:600;text-decoration:none;">
+        ${v.second.label} →
+      </a>
+    </div>` : ''}
+
+    <p style="font-size:12px;color:#9a6b7a;text-align:center;margin:20px 0 0;">
+      🔒 Discreto, seguro e real. Sua diversão, do seu jeito.
+    </p>
+  </div>
+
+  <div style="text-align:center;margin-top:20px;">
+    <p style="font-size:12px;color:#7a5462;line-height:1.6;margin:0;">
+      Você recebe este e-mail por ter conta no ${appName.toLowerCase()}.<br>
+      <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">${appName.toLowerCase()}</a>
+    </p>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject: v.subject, html: withUnsubscribe(html, payload.to) }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_weekend_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Weekly Summary Email ─────────────────────────────────────────────────────
 
 export type WeeklySummaryOptions = {

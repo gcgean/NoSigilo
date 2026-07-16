@@ -24,7 +24,6 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
-import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import { PostMediaCarousel } from '@/components/PostMediaCarousel';
 import MobileState from '@/components/MobileState';
@@ -505,8 +504,9 @@ export default function Feed() {
     return items;
   }, [feedFilter, feedSessionBaseline, visiblePosts]);
 
+  // No feed não exibimos a localização (cidade/estado) do autor — apenas o gênero.
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
-    formatProfileIdentityLine(profile);
+    String(profile?.gender || '').trim();
 
   // Gender badge: label + Tailwind color classes per profile type
   const getProfileTypeBadge = (gender?: string | null): { label: string; cls: string; emoji: string } | null => {

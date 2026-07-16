@@ -349,28 +349,11 @@ function StoryViewer({
               </span>
             </div>
 
-            {/* Linha 2: Gênero - Cidade/Estado */}
-            {(story.author.gender || story.author.city) && (
+            {/* Linha 2: apenas o gênero (sem localização) */}
+            {story.author.gender && (
               <p className="text-sm text-white/80 mt-0.5">
-                {[story.author.gender, [story.author.city, story.author.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                {story.author.gender}
               </p>
-            )}
-
-            {/* Linha 3: Pin + cidade + distância (igual Match) */}
-            {(story.author.city || story.author.distanceKm != null) && (
-              <div className="flex items-center gap-2 mt-1 flex-wrap">
-                {story.author.city && (
-                  <span className="flex items-center gap-1 text-xs text-white/70">
-                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-                    {[story.author.city, story.author.state].filter(Boolean).join(', ')}
-                  </span>
-                )}
-                {story.author.distanceKm != null && (
-                  <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs text-white font-medium">
-                    {story.author.distanceKm < 1 ? '< 1 km' : `${story.author.distanceKm} km`}
-                  </span>
-                )}
-              </div>
             )}
 
             {/* Fetiches + intenções */}
