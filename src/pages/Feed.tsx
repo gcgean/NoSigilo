@@ -18,6 +18,7 @@ import FeedGreeting from '@/components/FeedGreeting';
 import TopDayBar from '@/components/TopDayBar';
 import NearbyActivityStrip from '@/components/NearbyActivityStrip';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -251,6 +252,7 @@ export default function Feed() {
   const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const streakState = useDailyCheckin(!!user?.id);
   const { registerActivity } = useActivityTracker();
   const { favorites, isFavorite, toggleFavorite } = useFavorites();
@@ -868,6 +870,15 @@ export default function Feed() {
     if (v === 'square') return { aspectRatio: '1 / 1' as any };
     return { aspectRatio: '16 / 9' as any };
   };
+
+  // No desktop, mídia vertical no feed ocupa um quadro horizontal (16/9) em vez
+  // de esticar o post para baixo. A imagem aparece inteira (object-contain) e as
+  // laterais recebem uma cópia borrada dela — nada é cortado.
+  // No celular o comportamento original é mantido: retrato continua 9/16.
+  const feedMediaIsFitted = (key: string) => !isMobile && aspectByKey[key] === 'portrait';
+
+  const feedAspectStyleForKey = (key: string) =>
+    feedMediaIsFitted(key) ? { aspectRatio: '16 / 9' as any } : aspectStyleForKey(key);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -2733,8 +2744,9 @@ export default function Feed() {
                       .filter((m) => !!m.url)
                       .map((m) => ({ id: m.id, url: m.url as string, mimeType: m.mimeType ?? '' }))}
                     resolveUrl={resolveMediaUrl}
-                    aspectStyle={aspectStyleForKey}
+                    aspectStyle={feedAspectStyleForKey}
                     onAspectLoaded={setAspectForKey}
+                    fitToFrame={feedMediaIsFitted}
                     premiumAccess={premiumAccess}
                     onPremiumGate={() => setPaywallOpen(true)}
                   />

@@ -16,6 +16,12 @@ interface PostMediaCarouselProps {
   aspectStyle?: (id: string) => React.CSSProperties;
   premiumAccess?: boolean;
   onPremiumGate?: () => void;
+  /**
+   * Quando true, a mídia é exibida inteira dentro de um quadro horizontal e as
+   * laterais vazias recebem uma cópia borrada da própria imagem. Usado no feed
+   * em desktop para que retratos não fiquem altos demais — sem cortar a foto.
+   */
+  fitToFrame?: (id: string) => boolean;
 }
 
 // ─── Preview Gate (3s play → paywall) ────────────────────────────────────────
@@ -159,6 +165,7 @@ export function PostMediaCarousel({
   aspectStyle,
   premiumAccess = false,
   onPremiumGate,
+  fitToFrame,
 }: PostMediaCarouselProps) {
   const [index, setIndex] = useState(0);
   const touchStartX = useRef<number | null>(null);
@@ -183,6 +190,7 @@ export function PostMediaCarousel({
 
   function renderSlide(m: PostMediaItem) {
     const isVideo = String(m.mimeType || '').startsWith('video/');
+    const fitted = fitToFrame?.(m.id) ?? false;
 
     if (isVideo) {
       if (!premiumAccess) {
@@ -197,10 +205,13 @@ export function PostMediaCarousel({
         );
       }
       return (
-        <div className="relative w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
+        <div className="relative w-full overflow-hidden" style={aspectStyle ? aspectStyle(m.id) : {}}>
           <VideoWithPreview
             src={resolveUrl(m.url)}
-            className="h-full w-full bg-black object-contain sm:object-cover"
+            className={cn(
+              'relative h-full w-full bg-black',
+              fitted ? 'object-contain' : 'object-contain sm:object-cover'
+            )}
             controls
             muted
             playsInline
@@ -214,14 +225,28 @@ export function PostMediaCarousel({
     }
 
     return (
-      <div className="relative w-full" style={aspectStyle ? aspectStyle(m.id) : {}}>
+      <div className="relative w-full overflow-hidden" style={aspectStyle ? aspectStyle(m.id) : {}}>
+        {fitted && (
+          <img
+            src={resolveUrl(m.url)}
+            alt=""
+            aria-hidden
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+          />
+        )}
         <img
           src={resolveUrl(m.url)}
           alt=""
           draggable={false}
           loading="lazy"
           decoding="async"
-          className="h-full w-full bg-black object-contain sm:object-cover select-none"
+          className={cn(
+            'relative h-full w-full select-none',
+            fitted ? 'object-contain' : 'bg-black object-contain sm:object-cover'
+          )}
           style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
           onContextMenu={(e) => e.preventDefault()}
           onLoad={(e) =>
