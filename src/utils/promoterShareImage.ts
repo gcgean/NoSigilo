@@ -56,7 +56,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-/** Arte base fornecida (story pronto). O QR do convite é desenhado por cima. */
+/** Arte de divulgação pronta, entregue ao promotor exatamente como está. */
 const BACKGROUND_ART = '/promo-match.png';
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -65,71 +65,21 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   });
 }
 
-/** Compõe o QR do convite sobre a arte base (mantém o visual e a atribuição). */
-async function composeOnBackground(bgImg: HTMLImageElement, inviteUrl: string, promoterName?: string): Promise<Blob> {
-  const cw = bgImg.naturalWidth || bgImg.width;
-  const ch = bgImg.naturalHeight || bgImg.height;
-  const canvas = document.createElement('canvas');
-  canvas.width = cw;
-  canvas.height = ch;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('Canvas não suportado');
-
-  ctx.drawImage(bgImg, 0, 0, cw, ch);
-
-  // QR num cartão branco no canto SUPERIOR DIREITO (área livre; rodapé tem botões/tagline).
-  // Posições em proporção da largura — fácil de ajustar de canto se precisar.
-  const margin = Math.round(cw * 0.04);
-  const card = Math.round(cw * 0.26);
-  const cardX = cw - card - margin;
-  const cardY = margin;
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.55)';
-  ctx.shadowBlur = Math.round(cw * 0.03);
-  ctx.fillStyle = '#ffffff';
-  roundRect(ctx, cardX, cardY, card, card, Math.round(card * 0.10));
-  ctx.fill();
-  ctx.restore();
-
-  const qrPad = Math.round(card * 0.09);
-  const qrSize = card - qrPad * 2;
-  const qrDataUrl = await QRCode.toDataURL(inviteUrl, {
-    margin: 0,
-    width: qrSize * 2,
-    errorCorrectionLevel: 'M',
-    color: { dark: '#0d0710', light: '#ffffff' },
-  });
-  const qrImg = await loadImage(qrDataUrl);
-  if (qrImg) ctx.drawImage(qrImg, cardX + qrPad, cardY + qrPad, qrSize, qrSize);
-
-  // Legenda ABAIXO do cartão (QR está no topo)
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0,0,0,0.9)';
-  ctx.shadowBlur = Math.round(cw * 0.02);
-  ctx.font = `700 ${Math.round(cw * 0.028)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-  ctx.fillText('Aponte a câmera', cardX + card / 2, cardY + card + Math.round(cw * 0.05));
-  ctx.font = `500 ${Math.round(cw * 0.022)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-  ctx.fillText('e entre agora', cardX + card / 2, cardY + card + Math.round(cw * 0.085));
-  if (promoterName) {
-    ctx.font = `500 ${Math.round(cw * 0.020)}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-    ctx.fillText(`Convite de ${promoterName}`, cardX + card / 2, cardY + card + Math.round(cw * 0.12));
-  }
-  ctx.restore();
-
-  return canvasToBlob(canvas);
-}
-
 export async function generatePromoterStoryImage(
   inviteUrl: string,
   promoterName?: string,
 ): Promise<Blob> {
-  // Se a arte base existir em /public, usa-a como fundo e sobrepõe o QR.
-  const baseArt = await loadImage(BACKGROUND_ART);
-  if (baseArt && (baseArt.naturalWidth || baseArt.width)) {
-    return composeOnBackground(baseArt, inviteUrl, promoterName);
+  // Arte fixa: entrega o arquivo exatamente como está, sem sobrepor QR nem
+  // legenda. Baixar os bytes originais (em vez de redesenhar no canvas) evita
+  // reencode e preserva a qualidade da arte.
+  try {
+    const res = await fetch(BACKGROUND_ART);
+    if (res.ok) {
+      const blob = await res.blob();
+      if (blob.size > 0 && blob.type.startsWith('image/')) return blob;
+    }
+  } catch {
+    // arte indisponível — cai no fallback gerado abaixo
   }
 
   // Fallback: arte gerada do zero (caso o arquivo ainda não exista).
@@ -244,7 +194,5 @@ export async function generatePromoterStoryImage(
     ctx.fillText(`Convite de ${promoterName}`, W / 2, H - 56);
   }
 
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Falha ao gerar imagem'))), 'image/png', 0.95);
-  });
+  return await canvasToBlob(canvas);
 }

@@ -455,15 +455,15 @@ export default function Promoter() {
               "Entre para a plataforma pelo meu convite exclusivo e faça parte da comunidade: [link]"
             </p>
 
-            {/* Imagem de divulgação (story 9:16) com QR do convite */}
+            {/* Arte de divulgação pronta da marca (sem QR — o link vai à parte) */}
             <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
               <div className="flex items-start gap-2">
                 <ImageIcon className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-semibold">Imagem para Instagram e WhatsApp</p>
                   <p className="text-xs text-muted-foreground">
-                    Gera uma arte de story com a marca <strong>NoSigilo.net</strong> e o <strong>QR Code do seu convite</strong> —
-                    quem escaneia entra já vinculado a você (sua comissão é preservada).
+                    Arte pronta com a marca <strong>NoSigilo.net</strong> para postar no story ou enviar no WhatsApp.
+                    Envie <strong>seu link de convite</strong> junto para que a indicação seja creditada a você.
                   </p>
                 </div>
               </div>
