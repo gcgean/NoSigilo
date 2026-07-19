@@ -33,6 +33,9 @@ import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 
+// Quantas conversas são renderizadas por "página" da rolagem infinita da lista.
+const CONVERSATIONS_PAGE_SIZE = 20;
+
 type Conversation = {
   id: string;
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null; isOnline?: boolean; lastSeenAt?: string | null };
@@ -176,6 +179,10 @@ export default function Chat() {
   const [highlightColorDraft, setHighlightColorDraft] = useState<'rose' | 'amber' | 'violet' | 'sky'>('rose');
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
   const [showMessageSearch, setShowMessageSearch] = useState(false);
+  // Rolagem infinita da lista de conversas (renderização incremental)
+  const [visibleConversationsCount, setVisibleConversationsCount] = useState(CONVERSATIONS_PAGE_SIZE);
+  const conversationsScrollRef = useRef<HTMLDivElement>(null);
+  const conversationsSentinelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null); // for auto-scroll-to-bottom
@@ -436,6 +443,39 @@ export default function Chat() {
       );
     });
   }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew]);
+
+  // Renderiza a lista em blocos: só o trecho visível vai para o DOM e o restante
+  // entra conforme o usuário rola. Filtros, busca e contadores continuam
+  // trabalhando sobre a lista completa.
+  const visibleConversations = useMemo(
+    () => filteredConversations.slice(0, visibleConversationsCount),
+    [filteredConversations, visibleConversationsCount]
+  );
+
+  const hasMoreConversations = filteredConversations.length > visibleConversations.length;
+
+  // Ao mudar filtro/busca, volta para a primeira página e sobe a rolagem.
+  useEffect(() => {
+    setVisibleConversationsCount(CONVERSATIONS_PAGE_SIZE);
+    conversationsScrollRef.current?.scrollTo({ top: 0 });
+  }, [search, conversationTab, showOnlyHighlighted]);
+
+  useEffect(() => {
+    if (!hasMoreConversations) return;
+    const sentinel = conversationsSentinelRef.current;
+    const root = conversationsScrollRef.current;
+    if (!sentinel || !root) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisibleConversationsCount((prev) => prev + CONVERSATIONS_PAGE_SIZE);
+        }
+      },
+      { root, rootMargin: '400px', threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreConversations, isLoadingConversations]);
 
   const filteredMessages = useMemo(() => {
     const q = messageSearch.trim().toLowerCase();
@@ -1008,6 +1048,7 @@ export default function Chat() {
 
         {/* Native div – Radix ScrollArea has known issues with dynamic height on iOS/Android */}
         <div
+          ref={conversationsScrollRef}
           className="flex-1 overflow-y-auto overscroll-y-contain"
           style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
         >
@@ -1029,7 +1070,7 @@ export default function Chat() {
               />
             </div>
           ) : null}
-          {!isLoadingConversations && (USE_MOCKS ? [] : filteredConversations).map((conversation) => {
+          {!isLoadingConversations && (USE_MOCKS ? [] : visibleConversations).map((conversation) => {
             const highlightMeta = getHighlightColorMeta(conversation.highlightColor);
             return (
               <div
@@ -1093,6 +1134,11 @@ export default function Chat() {
               </div>
             );
           })}
+          {!isLoadingConversations && !USE_MOCKS && hasMoreConversations && (
+            <div ref={conversationsSentinelRef} className="flex items-center justify-center py-4">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+            </div>
+          )}
         </div>
       </div>
 
