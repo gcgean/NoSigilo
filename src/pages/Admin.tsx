@@ -38,6 +38,8 @@ type AdminUser = {
   avatar?: string | null;
   isPremium?: boolean;
   isAdmin?: boolean;
+  city?: string | null;
+  state?: string | null;
   createdAt?: string;
   lastSeenAt?: string | null;
   trialEndsAt?: string | null;
@@ -352,6 +354,8 @@ export default function Admin() {
           avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
           isPremium: !!item.isPremium,
           isAdmin: !!item.isAdmin,
+          city: item.city ? String(item.city) : null,
+          state: item.state ? String(item.state) : null,
           createdAt: item.createdAt ? String(item.createdAt) : undefined,
           lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
           trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
@@ -522,6 +526,8 @@ export default function Admin() {
           avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
           isPremium: !!item.isPremium,
           isAdmin: !!item.isAdmin,
+          city: item.city ? String(item.city) : null,
+          state: item.state ? String(item.state) : null,
           createdAt: item.createdAt ? String(item.createdAt) : undefined,
           lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
           trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
@@ -1115,6 +1121,10 @@ export default function Admin() {
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        {entry.city || entry.state ? (
+                          <span>Local: {[entry.city, entry.state].filter(Boolean).join('/')}</span>
+                        ) : null}
+                        {entry.createdAt ? <span>Cadastro: {formatDateTime(entry.createdAt)}</span> : null}
                         <span>Último acesso: {entry.isOnline ? 'Online agora' : formatDateTime(entry.lastSeenAt)}</span>
                         <span>
                           {entry.isPremium ? 'Assinatura' : 'Trial'}: <strong className="text-foreground">{formatAccessRemaining(entry)}</strong>
