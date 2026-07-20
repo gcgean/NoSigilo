@@ -24,8 +24,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="NoSigilo.net" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" type="image/jpeg" href="/icon.jpg" />
-    <link rel="shortcut icon" href="/icon.jpg" />
+    <!-- Favicon: o Google exige quadrado e multiplo de 48px para exibir o icone
+         nos resultados de busca. O .ico cobre o /favicon.ico que ele busca por padrao. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icon-48.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/icon.jpg" />
     <link rel="apple-touch-icon-precomposed" href="/icon.jpg" />
 
