@@ -143,7 +143,7 @@ export async function generatePromoterStoryImage(
   // --- Headline ---
   ctx.fillStyle = '#ffffff';
   ctx.font = '800 92px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-  let y = drawWrapped(ctx, 'A rede social liberal que mais cresce no Brasil', W / 2, 560, 920, 104);
+  let y = drawWrapped(ctx, 'A comunidade liberal que mais cresce no Brasil', W / 2, 560, 920, 104);
 
   ctx.fillStyle = PINK;
   ctx.font = '700 50px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
@@ -160,7 +160,8 @@ export async function generatePromoterStoryImage(
 
   const cardSize = 660;
   const cardX = W / 2 - cardSize / 2;
-  const cardY = 980;
+  // Cartão sobe um pouco para caber a chamada + o rodapé sem sobreposição.
+  const cardY = 930;
   ctx.fillStyle = '#ffffff';
   ctx.shadowColor = 'rgba(235,71,120,0.45)';
   ctx.shadowBlur = 60;
@@ -175,10 +176,10 @@ export async function generatePromoterStoryImage(
   // --- Chamada do QR ---
   ctx.fillStyle = '#ffffff';
   ctx.font = '700 48px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-  ctx.fillText('Aponte a câmera e entre agora', W / 2, cardY + cardSize + 90);
+  ctx.fillText('Aponte a câmera e entre agora', W / 2, cardY + cardSize + 78);
   ctx.fillStyle = 'rgba(255,255,255,0.6)';
   ctx.font = '500 38px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-  ctx.fillText('Cadastro gratuito • 100% discreto • +18', W / 2, cardY + cardSize + 150);
+  ctx.fillText('Cadastro gratuito • 100% discreto • +18', W / 2, cardY + cardSize + 134);
 
   // --- Rodapé: marca + crédito do promotor ---
   ctx.font = '800 66px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
@@ -187,11 +188,11 @@ export async function generatePromoterStoryImage(
   footGrad.addColorStop(0, '#EB4763');
   footGrad.addColorStop(1, '#DD3C71');
   ctx.fillStyle = footGrad;
-  ctx.fillText('nosigilo.net', W / 2, H - 110);
+  ctx.fillText('nosigilo.net', W / 2, H - 88);
   if (promoterName) {
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = '500 36px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
-    ctx.fillText(`Convite de ${promoterName}`, W / 2, H - 56);
+    ctx.fillText(`Convite de ${promoterName}`, W / 2, H - 36);
   }
 
   return await canvasToBlob(canvas);
