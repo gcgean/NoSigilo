@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio, Star, Mail } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -9,10 +9,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { chatService, profileService } from '@/services/api';
+import { chatService, profileService, matchService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFavorites } from '@/contexts/FavoritesContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -149,6 +150,7 @@ export default function Chat() {
   const { emit, on, off, isConnected } = useSocket();
   const { toast } = useToast();
   const { registerActivity } = useActivityTracker();
+  const { isFavorite, addFavorite } = useFavorites();
   const location = useLocation();
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null);
@@ -174,6 +176,9 @@ export default function Chat() {
   // iOS dispara ao soltar o dedo (senão abriria a conversa por cima do menu).
   const convLongPressFired = useRef(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  // Estrela do cabeçalho: amarela quando o perfil já foi curtido.
+  const [activeProfileLiked, setActiveProfileLiked] = useState(false);
+  const [isTogglingLike, setIsTogglingLike] = useState(false);
   const [highlightDialogOpen, setHighlightDialogOpen] = useState(false);
   const [highlightNoteDraft, setHighlightNoteDraft] = useState('');
   const [highlightColorDraft, setHighlightColorDraft] = useState<'rose' | 'amber' | 'violet' | 'sky'>('rose');
@@ -369,6 +374,78 @@ export default function Chat() {
 
   const goToUserProfile = (userId?: string) => {
     navigate(getUserProfileHref(userId, user?.id, '/chat'));
+  };
+
+  // Carrega o status de curtida do outro usuário quando a conversa é aberta,
+  // para a estrela do cabeçalho refletir (amarela = já curtido).
+  const activeUserId = activeConversation?.user.id;
+  useEffect(() => {
+    if (!activeUserId) {
+      setActiveProfileLiked(false);
+      return;
+    }
+    let cancelled = false;
+    setActiveProfileLiked(false);
+    matchService
+      .getLikeStatus(activeUserId)
+      .then((s) => { if (!cancelled) setActiveProfileLiked(!!s?.liked); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeUserId]);
+
+  // Estrela: favorita localmente e curte o perfil (se ainda não curtido).
+  // Curtir exige premium — em 403 abre o paywall, como em UserProfile. Nunca
+  // descurte pela estrela (poderia desfazer um match/amizade).
+  const handleToggleFavoriteLike = async () => {
+    const target = activeConversation?.user;
+    if (!target?.id || isTogglingLike) return;
+
+    if (!isFavorite(target.id)) {
+      addFavorite({ id: target.id, name: target.name, avatar: target.avatar || undefined, addedAt: new Date().toISOString() });
+    }
+
+    if (activeProfileLiked) {
+      toast({ title: '⭐ Perfil já curtido', description: `${target.name} está nos seus favoritos.` });
+      return;
+    }
+
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    setIsTogglingLike(true);
+    try {
+      const res = await matchService.like(target.id);
+      setActiveProfileLiked(true);
+      if (res?.mutual) {
+        toast({ title: '💞 É um match!', description: `Você e ${target.name} se curtiram. Agora são amigos!` });
+      } else {
+        toast({ title: '⭐ Perfil curtido e favoritado', description: `${target.name} foi notificado(a).` });
+      }
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 403) setPaywallOpen(true);
+      else toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsTogglingLike(false);
+    }
+  };
+
+  const handleMarkConversationUnread = async () => {
+    if (!selectedChat) return;
+    const convId = selectedChat;
+    try {
+      const res = await chatService.markAsUnread(convId);
+      if (res?.unread === false) {
+        toast({ title: 'Nada para marcar', description: 'Esta conversa ainda não tem mensagens recebidas.' });
+        return;
+      }
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, unreadCount: Math.max(1, c.unreadCount || 0) } : c))
+      );
+      setSelectedChat(null);
+      setMessages([]);
+      toast({ title: 'Marcada como não lida' });
+    } catch {
+      toast({ title: 'Erro ao marcar como não lida', variant: 'destructive' });
+    }
   };
 
   // Scroll to bottom when messages change – uses native scrollTop on the container div
@@ -1210,6 +1287,22 @@ export default function Chat() {
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 rounded-full"
+                disabled={isTogglingLike}
+                onClick={() => void handleToggleFavoriteLike()}
+                aria-label={activeProfileLiked ? 'Perfil curtido' : 'Favoritar e curtir perfil'}
+                title={activeProfileLiked ? 'Perfil curtido' : 'Favoritar e curtir perfil'}
+              >
+                <Star
+                  className={cn(
+                    'h-5 w-5 transition-colors',
+                    activeProfileLiked ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'
+                  )}
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 rounded-full"
                 onClick={() => toast({ title: '🎙️ Em breve', description: 'Chamadas de voz estão chegando em breve.' })}
               >
                 <Phone className="h-5 w-5" />
@@ -1249,6 +1342,10 @@ export default function Chat() {
                       Remover destaque
                     </DropdownMenuItem>
                   ) : null}
+                  <DropdownMenuItem onClick={() => void handleMarkConversationUnread()}>
+                    <Mail className="w-4 h-4 mr-2" />
+                    Marcar como não lida
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
                     onClick={() => setConfirmDeleteConv(true)}

@@ -8732,6 +8732,35 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
+  // Marca a conversa como não lida para quem visualiza: reabre a última mensagem
+  // recebida (is_read = 0). Não emite 'message.read' — é uma ação local do leitor,
+  // o remetente não deve receber "não lido de novo".
+  app.post('/api/conversations/:conversationId/unread', requireAuth(env, db), async (req, res) => {
+    const conversationId = req.params.conversationId;
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [conversationId])) as any;
+
+    if (!conv || (conv.user_a_id !== req.auth!.userId && conv.user_b_id !== req.auth!.userId)) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+
+    const lastIncoming = (await queryOne(
+      db,
+      'SELECT id FROM messages WHERE conversation_id = ? AND sender_id != ? ORDER BY created_at DESC LIMIT 1',
+      [conversationId, req.auth!.userId]
+    )) as any;
+
+    if (!lastIncoming) {
+      res.json({ ok: true, unread: false });
+      return;
+    }
+
+    await run(db, 'UPDATE messages SET is_read = 0 WHERE id = ?', [String(lastIncoming.id)]);
+    await persist();
+
+    res.json({ ok: true, unread: true });
+  });
+
   app.get('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {
     const conversationId = req.params.conversationId;
     const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [conversationId])) as any;

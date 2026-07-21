@@ -468,6 +468,11 @@ export const chatService = {
     return response.data;
   },
 
+  markAsUnread: async (conversationId: string) => {
+    const response = await apiClient.post(`/conversations/${conversationId}/unread`);
+    return response.data;
+  },
+
   deleteMessage: async (messageId: string, forEveryone: boolean) => {
     const response = await apiClient.delete(`/messages/${messageId}`, { data: { forEveryone } });
     return response.data;
