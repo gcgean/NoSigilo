@@ -1315,13 +1315,17 @@ export default function Chat() {
               >
                 <Video className="h-5 w-5" />
               </Button>
-              <DropdownMenu>
+              {/* modal={false}: o scroll-lock do Radix (react-remove-scroll) trava o
+                  pointer-events do body dentro do container position:fixed do chat
+                  mobile, deixando o menu "sem ação". Mesmo motivo pelo qual os outros
+                  overlays desta tela foram reescritos sem Radix Dialog. */}
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
                     <MoreVertical className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" collisionPadding={8}>
                   <DropdownMenuItem onClick={() => navigate(getUserProfileHref(activeConversation?.user.id, user?.id, '/chat'))}>
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
