@@ -294,6 +294,7 @@ export default function Admin() {
   const [isLoadingMoreUsers, setIsLoadingMoreUsers] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
+  const [pixAbandon, setPixAbandon] = useState<Awaited<ReturnType<typeof adminService.getPixAbandonment>> | null>(null);
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -376,7 +377,7 @@ export default function Admin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult, rawRevenue] = await Promise.all([
+        const [rawPhotos, rawUsersResult, rawLogs, rawFinance, rawSettings, rawReportsResult, rawRevenue, rawPixAbandon] = await Promise.all([
           adminService.getPendingPhotos().catch(() => []),
           adminService.getUsers({ page: 1, limit: USERS_PAGE_SIZE }).catch(() => []),
           adminService.getLogs().catch(() => []),
@@ -384,6 +385,7 @@ export default function Admin() {
           adminService.getSettings().catch(() => null),
           adminService.getReports('pending').catch(() => []),
           adminService.getRevenueReport().catch(() => null),
+          adminService.getPixAbandonment().catch(() => null),
         ]);
         const rawReports = rawReportsResult;
 
@@ -443,6 +445,7 @@ export default function Admin() {
         );
         setFinance(isRecord(rawFinance) ? { ...DEFAULT_FINANCE, ...rawFinance } as FinanceSummary : DEFAULT_FINANCE);
         setRevenueReport(rawRevenue ?? null);
+        setPixAbandon(rawPixAbandon ?? null);
         setSettings({
           subscriptionsEnabled: rawSettings?.subscriptionsEnabled !== false,
         });
@@ -1356,6 +1359,39 @@ export default function Admin() {
               </div>
             </Card>
           </div>
+
+          {/* Abandono de PIX — gerou o código mas não pagou (carência de 24h) */}
+          <Card className="p-6 glass mt-6">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Abandono de PIX</h3>
+                <p className="text-xs text-muted-foreground">
+                  Usuários que geraram o PIX há mais de {pixAbandon?.graceHours ?? 24}h e ainda não assinaram.
+                </p>
+              </div>
+            </div>
+            {pixAbandon && pixAbandon.eligibleUsers > 0 ? (
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                <div className="rounded-lg bg-secondary/30 p-4">
+                  <p className="text-3xl font-bold text-destructive">{pixAbandon.abandonmentRate}%</p>
+                  <p className="text-xs text-muted-foreground">Taxa de abandono</p>
+                </div>
+                <div className="rounded-lg bg-secondary/30 p-4">
+                  <p className="text-3xl font-bold text-foreground">{pixAbandon.abandonedUsers}</p>
+                  <p className="text-xs text-muted-foreground">Desistiram (de {pixAbandon.eligibleUsers} que geraram)</p>
+                </div>
+                <div className="rounded-lg bg-secondary/30 p-4">
+                  <p className="text-3xl font-bold text-success">{pixAbandon.convertedUsers}</p>
+                  <p className="text-xs text-muted-foreground">Geraram e assinaram</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-muted-foreground">
+                Ainda sem dados elegíveis. A métrica passa a contar as gerações de PIX a partir de agora
+                (gerações com menos de 24h ficam em carência).
+              </p>
+            )}
+          </Card>
 
           {/* Relatório de MRR — histórico + projeção 12 meses */}
           {revenueReport && (() => {

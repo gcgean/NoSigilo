@@ -994,6 +994,18 @@ export const adminService = {
     return response.data;
   },
 
+  getPixAbandonment: async (): Promise<{
+    eligibleUsers: number;
+    convertedUsers: number;
+    abandonedUsers: number;
+    abandonmentRate: number;
+    totalGenerations: number;
+    graceHours: number;
+  }> => {
+    const response = await apiClient.get('/admin/finance/pix-abandonment');
+    return response.data;
+  },
+
   getRevenueReport: async (): Promise<{
     currency: string;
     planPriceCents: number;

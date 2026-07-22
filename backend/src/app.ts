@@ -10328,6 +10328,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
       await persist();
 
+      // Registro best-effort da geração para a métrica de abandono no admin.
+      // Envolto em try/catch próprio: falha aqui NUNCA pode quebrar o checkout.
+      try {
+        await run(
+          db,
+          'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [randomUUID(), req.auth!.userId, planId, parsed.data.billingType || 'PIX', String(orderId), nowIso()]
+        );
+        await persist();
+      } catch (logErr) {
+        console.warn('[checkout] falha ao registrar checkout_generation (ignorado):', (logErr as Error).message);
+      }
+
       res.json({
         ok: true,
         mode: 'hub',
@@ -10993,6 +11006,52 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } catch (error) {
       console.error('[admin/finance/summary]', error);
       res.status(500).json({ error: 'finance_summary_unavailable' });
+    }
+  });
+
+  // Abandono de PIX: dos usuários que geraram um checkout, quantos NÃO viraram
+  // assinantes. Métrica vale a partir do deploy da tabela checkout_generations —
+  // gerações anteriores não existem. Carência de 24h: só conta como abandono quem
+  // gerou há mais de 24h (quem gerou agora ainda pode estar pagando). Conversão é
+  // derivada do estado atual do usuário (is_premium / licensed), não do webhook.
+  app.get('/api/admin/finance/pix-abandonment', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const graceCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      // Usuários distintos que geraram PIX antes da carência (elegíveis à métrica).
+      const eligibleRow = (await queryOne(
+        db,
+        'SELECT COUNT(DISTINCT user_id) as c FROM checkout_generations WHERE user_id IS NOT NULL AND created_at <= ?',
+        [graceCutoffIso]
+      )) as any;
+      // Desses, quantos converteram (hoje são premium ou licenciados).
+      const convertedRow = (await queryOne(
+        db,
+        `SELECT COUNT(DISTINCT cg.user_id) as c
+           FROM checkout_generations cg
+           JOIN users u ON u.id = cg.user_id
+          WHERE cg.created_at <= ?
+            AND (u.is_premium = 1 OR u.hub_access_status = 'licensed')`,
+        [graceCutoffIso]
+      )) as any;
+      // Total de gerações (tentativas), incluindo repetições do mesmo usuário.
+      const totalGenRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM checkout_generations')) as any;
+
+      const eligibleUsers = Number(eligibleRow?.c || 0);
+      const convertedUsers = Number(convertedRow?.c || 0);
+      const abandonedUsers = Math.max(0, eligibleUsers - convertedUsers);
+      const abandonmentRate = eligibleUsers > 0 ? Math.round((abandonedUsers / eligibleUsers) * 1000) / 10 : 0;
+
+      res.json({
+        eligibleUsers,
+        convertedUsers,
+        abandonedUsers,
+        abandonmentRate,
+        totalGenerations: Number(totalGenRow?.c || 0),
+        graceHours: 24,
+      });
+    } catch (error) {
+      console.error('[admin/finance/pix-abandonment]', error);
+      res.status(500).json({ error: 'pix_abandonment_unavailable' });
     }
   });
 
