@@ -73,6 +73,11 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const isPending = String(checkout?.status || '').toLowerCase() === 'pending';
   const pixCode = checkout?.pixCode || checkout?.pixPayload || '';
   const qrSrc = normalizePixQrCode(checkout?.pixQrCode);
+  // Gateways de checkout hospedado (ex.: LivePix) não retornam PIX inline — só uma
+  // URL para onde o cliente é redirecionado para concluir o pagamento.
+  const checkoutUrl = String(checkout?.checkoutUrl || '').trim();
+  const hasInlinePix = !!(pixCode || qrSrc);
+  const useHostedCheckout = !hasInlinePix && !!checkoutUrl;
 
   // Preço mensal de destaque — menor preço por mês entre os planos (fallback 9,90).
   const monthlyPrices = plans.map((p) => p.price / Math.max(1, p.intervalCount || 1)).filter((v) => v > 0);
@@ -261,7 +266,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
                   ) : (
                     <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
                       <div className="flex items-center gap-2">
-                        <Badge className="bg-gradient-primary text-xs">Pix gerado</Badge>
+                        <Badge className="bg-gradient-primary text-xs">
+                          {useHostedCheckout ? 'Cobrança gerada' : 'Pix gerado'}
+                        </Badge>
                         <span className="text-xs text-muted-foreground">Aprovação imediata após pagamento</span>
                       </div>
 
@@ -281,6 +288,14 @@ export default function SubscribeModal({ open, onClose }: Props) {
 
                       {/* Actions */}
                       <div className="grid gap-2">
+                        {useHostedCheckout && (
+                          <Button
+                            onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}
+                            className="w-full gap-2 bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 font-bold"
+                          >
+                            <QrCode className="w-4 h-4" /> Ir para o pagamento
+                          </Button>
+                        )}
                         {pixCode && (
                           <Button onClick={copyPix} className="w-full gap-2 bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 font-bold">
                             <Copy className="w-4 h-4" /> Copiar código PIX
@@ -297,7 +312,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
                       </div>
 
                       <p className="text-xs text-muted-foreground text-center">
-                        Abra o app do banco → Pix → Pagar → Cole o código ou escaneie o QR
+                        {useHostedCheckout
+                          ? 'Você será levado para uma página segura para concluir o pagamento. Depois volte aqui e clique em "Já paguei — verificar".'
+                          : 'Abra o app do banco → Pix → Pagar → Cole o código ou escaneie o QR'}
                       </p>
 
                       <button
@@ -305,7 +322,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
                         onClick={() => setCheckout(null)}
                         className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Trocar plano ou gerar novo PIX
+                        {useHostedCheckout ? 'Trocar plano ou gerar nova cobrança' : 'Trocar plano ou gerar novo PIX'}
                       </button>
                     </div>
                   )}
