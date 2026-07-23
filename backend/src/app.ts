@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities } from './seedCities.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
   createHubCheckout,
   createHubOrder,
@@ -3269,6 +3269,26 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, targetUserId, 'admin', req.auth!.userId, parsed.data.message, now]);
     await persist();
     res.json({ ok: true, id });
+
+    // Best-effort, em background: avisa por e-mail, caso o usuário não esteja
+    // logado quando a resposta chegar. Nunca bloqueia nem derruba a resposta
+    // do admin se o envio falhar (mesmo padrão do webhook de pagamento).
+    try {
+      const target = (await queryOne(db, 'SELECT email, name FROM users WHERE id = ?', [targetUserId])) as any;
+      if (target?.email) {
+        await sendSupportReplyEmail(
+          {
+            apiKey: env.RESEND_API_KEY,
+            fromEmail: env.RESEND_FROM_EMAIL,
+            appName: env.APP_NAME || 'NoSigilo',
+            siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net',
+          },
+          { to: String(target.email), userName: target.name, message: parsed.data.message }
+        );
+      }
+    } catch (err) {
+      console.error('[admin/promoter-support] e-mail de resposta falhou:', err);
+    }
   });
 
   // Admin: batch approve commissions (by period)

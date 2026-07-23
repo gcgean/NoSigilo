@@ -1075,6 +1075,56 @@ export async function sendWinbackEmail(options: WinbackOptions, payload: Winback
   return { skipped: false as const };
 }
 
+// ─── E-mail de resposta do suporte ─────────────────────────────────────────
+// Transacional: é resposta direta a algo que o próprio usuário escreveu, não
+// marketing — por isso não leva rodapé de descadastro (mesmo critério de
+// sendModerationEmail).
+
+type SupportReplyEmailOptions = { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string };
+
+export async function sendSupportReplyEmail(
+  options: SupportReplyEmailOptions,
+  payload: { to: string; userName?: string | null; message: string }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = payload.userName ? escapeHtml(String(payload.userName).split(' ')[0]) : '';
+  const greeting = safeName ? `Olá, ${safeName}.` : 'Olá.';
+  const safeMessage = escapeHtml(payload.message).replace(/\n/g, '<br/>');
+  const html = `
+    <div style="font-family: Arial, sans-serif; background:#fff7fa; padding:24px; color:#2b1720;">
+      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #f4c7d7; border-radius:18px; padding:32px;">
+        <h1 style="margin:0 0 16px; font-size:24px; color:#e83e68;">${appName}</h1>
+        <h2 style="margin:0 0 14px; font-size:19px; color:#2b1720;">Nosso suporte respondeu você</h2>
+        <p style="font-size:15px; line-height:1.7; margin:0 0 14px; color:#3a2630;">${greeting}</p>
+        <div style="font-size:15px; line-height:1.7; margin:0 0 20px; padding:16px; border-radius:12px; background:#fff1f5; color:#2b1720;">
+          ${safeMessage}
+        </div>
+        <a href="${siteUrl}/subscriptions" style="display:inline-block; padding:12px 22px; border-radius:999px; background:#e83e68; color:white; text-decoration:none; font-weight:700; font-size:14px;">Abrir o ${appName}</a>
+        <p style="font-size:12px; line-height:1.6; margin:22px 0 0; color:#9a7e88;">${appName} — resposta do nosso suporte.</p>
+      </div>
+    </div>
+  `.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${options.apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject: `${appName}: nosso suporte respondeu você`, html }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_support_reply_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Admin Alert Email ────────────────────────────────────────────────────────
 export async function sendAdminAlertEmail(
   options: { apiKey?: string; fromEmail?: string; appName?: string },
