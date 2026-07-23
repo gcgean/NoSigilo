@@ -7424,6 +7424,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const distanceOrderSql = distExpr
       ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0 THEN ${distExpr} ELSE 1e18 END ASC,`
       : '';
+    // Banda de proximidade (~100km): perfis de distância "parecida" ficam no mesmo
+    // grupo, e o boost (destaque pago) só desempata DENTRO da banda — a proximidade
+    // sempre vence entre bandas diferentes.
+    const bandDegrees = 0.9; // ~100km por banda
+    const distanceBandSql = distExpr
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0
+             THEN CAST((ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) * ${lonScale}) / ${bandDegrees} AS INTEGER)
+             ELSE 999999 END ASC,`
+      : '';
 
     const cityPrioritySql = myCity
       ? "CASE WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
@@ -7474,8 +7483,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       FROM users u
       WHERE ${whereClause}
       ORDER BY
-        ${boostPrioritySql}
         ${hasRealDistanceSql}
+        ${distanceBandSql}
+        ${boostPrioritySql}
         ${distanceOrderSql}
         ${cityPrioritySql}
         ${statePrioritySql}
