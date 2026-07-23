@@ -28,6 +28,7 @@ const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const PendingApproval = lazy(() => import("./pages/PendingApproval"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Subscriptions = lazy(() => import("./pages/Subscriptions"));
+const Welcome = lazy(() => import("./pages/Welcome"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Guidelines = lazy(() => import("./pages/Guidelines"));
@@ -128,6 +129,9 @@ const App = () => (
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />
                     </Route>
+
+                    {/* Boas-vindas pós-pagamento (full-screen, requer login) */}
+                    <Route path="/bem-vindo" element={<ProtectedRoute><Welcome /></ProtectedRoute>} />
 
                     {/* Catch-all */}
                     <Route path="*" element={<NotFound />} />

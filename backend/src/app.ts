@@ -10375,7 +10375,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Para onde o cliente volta após pagar em checkout hospedado (ex: LivePix).
       // Aponta para o próprio NoSigilo — sem isso, o Hub usa o endereço dele e o
       // cliente cai na tela de login do painel administrativo.
-      const returnUrl = `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/subscriptions`;
+      const returnUrl = `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/bem-vindo`;
       const checkout = await createHubCheckout(hubConfig, {
         orderId,
         billingType: parsed.data.billingType || 'PIX',
