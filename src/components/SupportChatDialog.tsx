@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
 type Props = {
   open: boolean;
   onClose: () => void;
+  /** Preenche o campo de mensagem ao abrir (usuário revisa/edita antes de enviar). */
+  initialMessage?: string;
 };
 
 /**
@@ -15,7 +17,7 @@ type Props = {
  * Overlay custom (não Radix Dialog) para evitar o freeze mobile conhecido e para
  * empilhar acima do modal do PIX (z-[90] > z-[80]).
  */
-export default function SupportChatDialog({ open, onClose }: Props) {
+export default function SupportChatDialog({ open, onClose, initialMessage }: Props) {
   const { toast } = useToast();
   const [messages, setMessages] = useState<SupportMessage[]>([]);
   const [input, setInput] = useState('');
@@ -36,7 +38,11 @@ export default function SupportChatDialog({ open, onClose }: Props) {
   }, []);
 
   useEffect(() => {
-    if (open) void load();
+    if (open) {
+      void load();
+      if (initialMessage) setInput(initialMessage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, load]);
 
   useEffect(() => {

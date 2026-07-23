@@ -65,6 +65,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutPayload | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // Código de erro do último checkout falho (ex.: 'hub_customer_already_linked'),
+  // para exibir uma ação específica além do toast — que some sozinho.
+  const [checkoutErrorCode, setCheckoutErrorCode] = useState<string | null>(null);
 
   const isPaid = String(checkout?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkout?.status || '').toLowerCase() === 'pending';
@@ -159,6 +162,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
     }
     setIsCheckingOut(true);
     setCheckout(null);
+    setCheckoutErrorCode(null);
     preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, 'PIX', {
@@ -171,11 +175,18 @@ export default function SubscribeModal({ open, onClose }: Props) {
       updateUser(me);
       toast({ title: 'PIX gerado!', description: 'Escaneie o QR Code ou copie o código.' });
     } catch (error: any) {
+      const code = error?.response?.data?.error;
+      if (typeof code === 'string') setCheckoutErrorCode(code);
       toast({ title: 'Falha ao gerar PIX', description: getErrorMessage(error), variant: 'destructive' });
     } finally {
       setIsCheckingOut(false);
     }
   };
+
+  const selectedPlanName = plans.find((p) => p.id === selectedPlanId)?.name;
+  const supportInitialMessage = selectedPlanName
+    ? `Tentei assinar o plano "${selectedPlanName}" e recebi a mensagem: "CPF/CNPJ já vinculado a outro cadastro". Pode me ajudar a resolver?`
+    : 'Tentei assinar e recebi a mensagem: "CPF/CNPJ já vinculado a outro cadastro". Pode me ajudar a resolver?';
 
   const copyPix = async () => {
     await navigator.clipboard.writeText(pixCode);
@@ -385,6 +396,29 @@ export default function SubscribeModal({ open, onClose }: Props) {
                     </div>
                   </div>
 
+                  {/* CPF já vinculado a outra conta — ação persistente além do toast,
+                      que some sozinho e não dá ao usuário um próximo passo. */}
+                  {checkoutErrorCode === 'hub_customer_already_linked' && (
+                    <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 space-y-2.5">
+                      <p className="text-sm font-medium text-destructive">
+                        Este CPF/CNPJ já está vinculado a outro cadastro no NoSigilo.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Se você já tem uma conta com esse documento, nossa equipe pode verificar e liberar o pagamento.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setSupportOpen(true)}
+                      >
+                        <LifeBuoy className="w-4 h-4" />
+                        Falar com o suporte
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Generate PIX */}
                   <Button
                     className="w-full py-6 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 gap-2"
@@ -408,7 +442,11 @@ export default function SubscribeModal({ open, onClose }: Props) {
         </div>
       </div>
     </div>
-    <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
+    <SupportChatDialog
+      open={supportOpen}
+      onClose={() => setSupportOpen(false)}
+      initialMessage={checkoutErrorCode === 'hub_customer_already_linked' ? supportInitialMessage : undefined}
+    />
     </>
   );
 }

@@ -10305,12 +10305,36 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       )) as any;
 
       if (existingCustomerOwner) {
-        res.status(409).json({
-          error: 'hub_customer_already_linked',
-          message:
-            'Este CPF/CNPJ ja esta vinculado a outro cadastro no NoSigilo. Use os dados do titular correto para gerar o PIX.',
-        });
-        return;
+        // Só reatribui automaticamente quando o e-mail das duas contas é idêntico —
+        // sinal forte de que é a mesma pessoa (users.email é UNIQUE e normalizado em
+        // lowercase em todo cadastro, então isso só ocorre em anomalia de dados
+        // legada, não em uso normal). CPF sozinho NÃO é prova de identidade — não é
+        // segredo, e qualquer pessoa que soubesse o CPF de outro usuário poderia
+        // digitá-lo numa conta nova. Sem o e-mail batendo, cai no bloqueio normal e
+        // o caso vai para o suporte, que verifica manualmente antes de mexer no
+        // acesso pago de alguém.
+        const oldEmail = String(existingCustomerOwner.email || '').trim().toLowerCase();
+        const newEmail = String(user.email || '').trim().toLowerCase();
+        const sameOwner = !!oldEmail && oldEmail === newEmail;
+
+        if (!sameOwner) {
+          res.status(409).json({
+            error: 'hub_customer_already_linked',
+            message:
+              'Este CPF/CNPJ ja esta vinculado a outro cadastro no NoSigilo. Use os dados do titular correto para gerar o PIX.',
+          });
+          return;
+        }
+
+        await run(
+          db,
+          'UPDATE users SET is_premium = 0, hub_access_status = NULL, hub_customer_id = NULL WHERE id = ?',
+          [String(existingCustomerOwner.id)]
+        );
+        await persist();
+        console.log(
+          `[checkout] hub_customer_id ${customerId} reatribuido de ${existingCustomerOwner.id} para ${req.auth!.userId} (mesmo e-mail: ${newEmail})`
+        );
       }
 
       await run(db, 'UPDATE users SET hub_customer_id = ?, hub_product_id = ? WHERE id = ?', [
