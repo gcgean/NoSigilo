@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Crown } from 'lucide-react';
+import { Heart, Crown, Lock } from 'lucide-react';
 import { radarService, type TopDayPost } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPremiumAccess } from '@/utils/premium';
 
 const RANK_STYLE: Record<number, string> = {
   1: 'text-amber-400',
@@ -17,6 +19,8 @@ const RANK_STYLE: Record<number, string> = {
  */
 export default function TopDayBar() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const premium = hasPremiumAccess(user);
   const [posts, setPosts] = useState<TopDayPost[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -45,18 +49,31 @@ export default function TopDayBar() {
           <button
             key={p.id}
             type="button"
-            onClick={() => navigate(`/feed?postId=${encodeURIComponent(p.id)}&u=${encodeURIComponent(p.author.id)}`)}
+            onClick={() =>
+              premium
+                ? navigate(`/feed?postId=${encodeURIComponent(p.id)}&u=${encodeURIComponent(p.author.id)}`)
+                : navigate('/subscriptions')
+            }
             className="group relative w-28 shrink-0 overflow-hidden rounded-2xl bg-black"
-            title={`${p.author.name} · ${p.likeCount} curtidas`}
+            title={premium ? `${p.author.name} · ${p.likeCount} curtidas` : 'Assine o Premium para ver o Top do Dia'}
           >
             <div className="aspect-[3/4] w-full">
               {p.mediaUrl && p.mimeType?.startsWith('video/') ? (
-                <video src={resolveServerUrl(p.mediaUrl)} className="h-full w-full object-cover" muted playsInline />
+                <video
+                  src={resolveServerUrl(p.mediaUrl)}
+                  className={cn('h-full w-full object-cover', !premium && 'scale-110 blur-lg')}
+                  muted
+                  playsInline
+                />
               ) : p.mediaUrl ? (
-                <img src={resolveServerUrl(p.mediaUrl)} alt={p.author.name} className="h-full w-full object-cover" />
+                <img
+                  src={resolveServerUrl(p.mediaUrl)}
+                  alt={premium ? p.author.name : 'Top do Dia'}
+                  className={cn('h-full w-full object-cover', !premium && 'scale-110 blur-lg')}
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-secondary text-lg font-bold">
-                  {p.author.name[0]}
+                  {premium ? p.author.name[0] : '★'}
                 </div>
               )}
             </div>
@@ -76,9 +93,21 @@ export default function TopDayBar() {
               <span className="text-[10px] font-bold text-white">{p.likeCount}</span>
             </div>
 
+            {/* Cadeado premium (não-assinante) */}
+            {!premium && (
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
+                  <Lock className="h-4 w-4 text-amber-300" />
+                </div>
+                <span className="rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
+                  Premium
+                </span>
+              </div>
+            )}
+
             {/* Autor */}
             <p className="absolute bottom-1.5 left-1.5 right-1.5 truncate text-[11px] font-semibold text-white">
-              {p.author.name}
+              {premium ? p.author.name : 'Assine para ver'}
             </p>
           </button>
         ))}
