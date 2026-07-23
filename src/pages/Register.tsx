@@ -89,6 +89,9 @@ export default function Register() {
     state: '',
     acceptTerms: false,
   });
+  // A cidade só é "confirmada" (caixa travada) quando vem do GPS ou de uma seleção
+  // da lista. Enquanto o usuário digita manualmente, o campo permanece editável.
+  const [cityConfirmed, setCityConfirmed] = useState(false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -163,7 +166,7 @@ export default function Register() {
             geo?.address?.state_code ||
             geo?.address?.ISO3166_2_lvl4?.replace('BR-', '') ||
             '';
-          if (city) updateField('city', city);
+          if (city) { updateField('city', city); setCityConfirmed(true); }
           if (state) updateField('state', state.slice(0, 2).toUpperCase());
           if (city)
             toast({
@@ -630,7 +633,7 @@ export default function Register() {
                     )}
                   </Button>
 
-                  {formData.city ? (
+                  {formData.city && cityConfirmed ? (
                     <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 animate-fade-in">
                       <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
                       <span className="text-sm text-muted-foreground">
@@ -639,7 +642,7 @@ export default function Register() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => { updateField('city', ''); updateField('state', ''); }}
+                        onClick={() => { updateField('city', ''); updateField('state', ''); setCityConfirmed(false); }}
                         className="ml-auto text-xs text-muted-foreground hover:text-foreground"
                       >
                         Alterar
@@ -654,10 +657,11 @@ export default function Register() {
                       </div>
                       <CitySearch
                         value={formData.city}
-                        onChange={(val) => updateField('city', val)}
+                        onChange={(val) => { updateField('city', val); setCityConfirmed(false); }}
                         onSelect={(city, state) => {
                           updateField('city', city);
                           updateField('state', state);
+                          setCityConfirmed(true);
                         }}
                       />
                     </div>
