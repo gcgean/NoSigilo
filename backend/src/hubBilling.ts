@@ -239,15 +239,19 @@ export async function createHubCheckout(
     billingType?: 'PIX' | 'BOLETO' | 'CREDIT_CARD';
     payerName?: string | null;
     payerDocument?: string | null;
+    returnUrl?: string | null;
   }
 ) {
   // The deployed Hub checkout currently rejects payerName/payerDocument.
   // Send only the billing type and let the Hub resolve payer data server-side.
+  // returnUrl controla para onde o cliente volta após pagar em gateways de
+  // checkout hospedado (ex: LivePix) — precisa apontar para o próprio NoSigilo.
   return requestJson<HubCheckoutResult>(buildUrl(config, `/orders/${data.orderId}/checkout`), {
     method: 'POST',
     headers: await adminHeaders(config),
     body: JSON.stringify({
       billingType: data.billingType || 'PIX',
+      ...(data.returnUrl ? { returnUrl: data.returnUrl } : {}),
     }),
   });
 }
