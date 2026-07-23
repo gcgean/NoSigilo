@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Eye } from 'lucide-react';
+import { Plus, Eye, Crown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { hasPremiumAccess } from '@/utils/premium';
 
 type BarFeedStory = {
   id: string;
@@ -31,6 +32,7 @@ export default function StoriesBar() {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const premium = hasPremiumAccess(user);
 
   const [groups, setGroups] = useState<AuthorGroup[]>([]);
   const [myCount, setMyCount] = useState(0);
@@ -148,29 +150,37 @@ export default function StoriesBar() {
           <button
             key={g.authorId}
             type="button"
-            onClick={() => navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed`)}
+            onClick={() =>
+              premium
+                ? navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed`)
+                : navigate('/subscriptions')
+            }
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
-            <div className={cn('h-16 w-16 rounded-full p-[2px]', g.allViewed ? ringMuted : ringActive)}>
+            <div className={cn('h-16 w-16 rounded-full p-[2px]', !premium ? 'bg-gradient-to-tr from-yellow-400 to-amber-500' : g.allViewed ? ringMuted : ringActive)}>
               <div className="relative h-full w-full overflow-hidden rounded-full bg-background p-[2px]">
-                {/* Avatar — borrado nos não-vistos p/ gerar curiosidade */}
-                <div className={cn('h-full w-full overflow-hidden rounded-full', !g.allViewed && 'scale-110 blur-[5px] brightness-90')}>
+                {/* Avatar — borrado p/ não-assinante (Premium) ou não-vistos (curiosidade) */}
+                <div className={cn('h-full w-full overflow-hidden rounded-full', (!premium || !g.allViewed) && 'scale-110 blur-[5px] brightness-90')}>
                   {g.avatar ? (
-                    <img src={resolveServerUrl(g.avatar)} alt={g.name} className="h-full w-full rounded-full object-cover" />
+                    <img src={resolveServerUrl(g.avatar)} alt={premium ? g.name : 'Premium'} className="h-full w-full rounded-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
-                      {g.name[0]}
+                      {premium ? g.name[0] : '★'}
                     </div>
                   )}
                 </div>
-                {!g.allViewed && (
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  {!premium ? (
+                    <Crown className="h-4 w-4 text-yellow-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
+                  ) : !g.allViewed ? (
                     <Eye className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]" />
-                  </div>
-                )}
+                  ) : null}
+                </div>
               </div>
             </div>
-            <span className="w-full truncate text-center text-[11px] text-muted-foreground">{g.name}</span>
+            <span className={cn('w-full truncate text-center text-[11px]', !premium ? 'font-semibold text-yellow-500' : 'text-muted-foreground')}>
+              {premium ? g.name : 'Premium'}
+            </span>
           </button>
         ))}
       </div>
