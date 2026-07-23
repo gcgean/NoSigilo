@@ -224,8 +224,14 @@ export function PostMediaCarousel({
       );
     }
 
+    const locked = !premiumAccess;
+
     return (
-      <div className="relative w-full overflow-hidden" style={aspectStyle ? aspectStyle(m.id) : {}}>
+      <div
+        className={cn('relative w-full overflow-hidden', locked && 'cursor-pointer')}
+        style={aspectStyle ? aspectStyle(m.id) : {}}
+        onClick={locked ? (e) => { e.stopPropagation(); onPremiumGate?.(); } : undefined}
+      >
         {fitted && (
           <img
             src={resolveUrl(m.url)}
@@ -245,7 +251,10 @@ export function PostMediaCarousel({
           decoding="async"
           className={cn(
             'relative h-full w-full select-none',
-            fitted ? 'object-contain' : 'bg-black object-contain sm:object-cover'
+            fitted ? 'object-contain' : 'bg-black object-contain sm:object-cover',
+            // Não-assinante vê a foto borrada (dá pra perceber que tem conteúdo,
+            // mas sem detalhes) — teaser para converter em Premium.
+            locked && 'scale-105 blur-xl'
           )}
           style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
           onContextMenu={(e) => e.preventDefault()}
@@ -253,6 +262,19 @@ export function PostMediaCarousel({
             onAspectLoaded?.(m.id, e.currentTarget.naturalWidth, e.currentTarget.naturalHeight)
           }
         />
+
+        {/* Overlay Premium (não-assinante) */}
+        {locked && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/25">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/50">
+              <Crown className="h-7 w-7 text-yellow-400 drop-shadow" />
+            </div>
+            <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-bold uppercase tracking-wide text-black shadow">
+              Premium
+            </span>
+            <span className="text-xs font-medium text-white/85 drop-shadow">Assine para ver sem borrão</span>
+          </div>
+        )}
       </div>
     );
   }
