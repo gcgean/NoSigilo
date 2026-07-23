@@ -3252,11 +3252,14 @@ function AdminPromotersTab() {
   const [incentiveResult, setIncentiveResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
 
   // Support chat state
-  const [selectedChat, setSelectedChat] = useState<PromoterRow | null>(null);
+  // Alvo mínimo do chat — atende tanto PromoterRow quanto um usuário comum de suporte.
+  type ChatTarget = { userId: string; fullName: string; pixKey: string; userEmail: string };
+  const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
   const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
+  const [supportChats, setSupportChats] = useState<Awaited<ReturnType<typeof adminPromoterService.listSupportChats>>['chats']>([]);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const loadAll = async () => {
@@ -3272,6 +3275,7 @@ function AdminPromotersTab() {
       const map: Record<string, number> = {};
       for (const c of (chatRes.chats ?? [])) map[c.userId] = c.unreadCount;
       setUnreadMap(map);
+      setSupportChats(chatRes.chats ?? []);
     } catch { /* silent */ }
     finally { setIsLoading(false); }
   };
@@ -3282,13 +3286,13 @@ function AdminPromotersTab() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const openChat = async (promoter: PromoterRow) => {
-    setSelectedChat(promoter);
+  const openChat = async (target: ChatTarget) => {
+    setSelectedChat(target);
     setChatMessages([]);
     try {
-      const data = await adminPromoterService.getSupportMessages(promoter.userId);
+      const data = await adminPromoterService.getSupportMessages(target.userId);
       setChatMessages(data.messages);
-      setUnreadMap((prev) => ({ ...prev, [promoter.userId]: 0 }));
+      setUnreadMap((prev) => ({ ...prev, [target.userId]: 0 }));
     } catch {}
   };
 
@@ -3394,7 +3398,9 @@ function AdminPromotersTab() {
           </button>
           <div>
             <p className="font-semibold">{selectedChat.fullName}</p>
-            <p className="text-xs text-muted-foreground">{selectedChat.userEmail} · Pix: {selectedChat.pixKey}</p>
+            <p className="text-xs text-muted-foreground">
+              {selectedChat.userEmail}{selectedChat.pixKey ? ` · Pix: ${selectedChat.pixKey}` : ''}
+            </p>
           </div>
         </div>
 
@@ -3417,7 +3423,7 @@ function AdminPromotersTab() {
         <div className="flex gap-2">
           <input
             className="flex-1 rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            placeholder="Responder ao promotor..."
+            placeholder="Responder..."
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat(); }}}
@@ -3526,6 +3532,41 @@ function AdminPromotersTab() {
           </div>
         </div>
       </div>
+
+      {/* Suporte — conversas de usuários comuns (não-promotores). Promotores já
+          têm acesso ao chat pela própria lista abaixo. */}
+      {(() => {
+        const userChats = supportChats.filter((c) => !c.isPromoter);
+        if (userChats.length === 0) return null;
+        return (
+          <div className="glass rounded-xl p-5 space-y-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Users className="w-4 h-4 text-primary" />
+              Suporte — Usuários ({userChats.length})
+            </h3>
+            <div className="space-y-2">
+              {userChats.map((c) => (
+                <button
+                  key={c.userId}
+                  onClick={() => void openChat({ userId: c.userId, fullName: c.fullName, pixKey: c.pixKey, userEmail: c.userEmail })}
+                  className="w-full flex items-center justify-between gap-3 rounded-xl border bg-secondary/20 p-3 text-left hover:bg-secondary/40 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{c.fullName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{c.userEmail}</p>
+                    {c.lastMessage && <p className="text-xs text-muted-foreground truncate">{c.lastMessage}</p>}
+                  </div>
+                  {(unreadMap[c.userId] ?? c.unreadCount) > 0 && (
+                    <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                      {unreadMap[c.userId] ?? c.unreadCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Promoters list */}
       <div className="glass rounded-xl p-5 space-y-4">

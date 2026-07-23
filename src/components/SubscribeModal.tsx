@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, QrCode, Copy, RefreshCw, Crown, CheckCircle2 } from 'lucide-react';
+import { X, QrCode, Copy, RefreshCw, Crown, CheckCircle2, LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import SupportChatDialog from '@/components/SupportChatDialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +56,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const pixRef = useRef<HTMLDivElement>(null);
   const preCheckoutLicenseRef = useRef<string | null>(null);
 
+  const [supportOpen, setSupportOpen] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoadingPlans, setIsLoadingPlans] = useState(true);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -188,6 +190,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
   if (!open) return null;
 
   return (
+    <>
     <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
@@ -275,6 +278,10 @@ export default function SubscribeModal({ open, onClose }: Props) {
                         <Button variant="outline" onClick={() => void refreshStatus()} disabled={isRefreshing} className="w-full gap-2">
                           <RefreshCw className={cn('w-4 h-4', isRefreshing && 'animate-spin')} />
                           {isRefreshing ? 'Verificando...' : 'Já paguei — verificar'}
+                        </Button>
+                        <Button variant="ghost" onClick={() => setSupportOpen(true)} className="w-full gap-2 text-muted-foreground hover:text-foreground">
+                          <LifeBuoy className="w-4 h-4" />
+                          Falar com o suporte
                         </Button>
                       </div>
 
@@ -401,5 +408,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
         </div>
       </div>
     </div>
+    <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
+    </>
   );
 }

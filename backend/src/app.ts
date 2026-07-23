@@ -3191,10 +3191,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   // ── Suporte ao Promotor (chat) ─────────────────────────────────────────────
 
   // Promotor: listar mensagens do próprio suporte
+  // Suporte disponível para QUALQUER usuário autenticado (não só promotores).
+  // A tabela promoter_support_messages é chaveada por user_id; o mesmo canal
+  // atende promotores e usuários comuns (ex.: dúvida de pagamento no PIX).
   app.get('/api/promoter/support', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
-    const promoter = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
-    if (!promoter) { res.status(403).json({ error: 'not_a_promoter' }); return; }
     const msgs = (await queryAll(
       db,
       'SELECT * FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at ASC',
@@ -3205,11 +3206,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
   });
 
-  // Promotor: enviar mensagem para suporte
+  // Enviar mensagem para o suporte (qualquer usuário autenticado, ver acima).
   app.post('/api/promoter/support', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
-    const promoter = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
-    if (!promoter) { res.status(403).json({ error: 'not_a_promoter' }); return; }
     const schema = z.object({ message: z.string().min(1).max(2000) });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
@@ -3222,19 +3221,28 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // Admin: listar todos os chats de suporte (com última mensagem + não lidas)
   app.get('/api/admin/promoter-support', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    // Lista TODOS os usuários com histórico de suporte (promotor ou não). Parte
+    // dos user_ids distintos que já enviaram/receberam mensagem; LEFT JOIN em
+    // promoters preenche nome/pix quando existir, senão cai no nome/e-mail do user.
     const rows = (await queryAll(
       db,
-      `SELECT p.user_id, p.full_name, p.pix_key, u.email as user_email, u.avatar as user_avatar,
-         (SELECT message FROM promoter_support_messages WHERE promoter_user_id = p.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
-         (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = p.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
-         (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = p.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count
-       FROM promoters p
-       JOIN users u ON u.id = p.user_id
+      `SELECT s.user_id,
+         COALESCE(p.full_name, u.name) as full_name,
+         COALESCE(p.pix_key, '') as pix_key,
+         CASE WHEN p.user_id IS NULL THEN 0 ELSE 1 END as is_promoter,
+         u.email as user_email, u.avatar as user_avatar,
+         (SELECT message FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
+         (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
+         (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count
+       FROM (SELECT DISTINCT promoter_user_id as user_id FROM promoter_support_messages) s
+       JOIN users u ON u.id = s.user_id
+       LEFT JOIN promoters p ON p.user_id = s.user_id
        ORDER BY last_message_at DESC NULLS LAST`,
       []
     )) as any[];
     res.json({ chats: rows.map((r) => ({
-      userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
+      userId: String(r.user_id), fullName: String(r.full_name || 'Usuário'), pixKey: String(r.pix_key || ''),
+      isPromoter: Number(r.is_promoter || 0) === 1,
       userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
       lastMessage: r.last_message ?? null, lastMessageAt: r.last_message_at ?? null,
       unreadCount: Number(r.unread_count || 0),

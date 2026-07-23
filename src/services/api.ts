@@ -796,7 +796,7 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
     return response.data;
   },
-  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }> }> => {
+  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; isPromoter?: boolean; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }> }> => {
     const response = await apiClient.get('/admin/promoter-support');
     return response.data;
   },
@@ -828,6 +828,10 @@ export const promoterSupportService = {
     return response.data;
   },
 };
+
+// Suporte geral (qualquer usuário) — mesmos endpoints, agora sem gate de promotor.
+// Nome próprio para leitura clara fora do contexto de promotor (ex.: modal do PIX).
+export const supportService = promoterSupportService;
 
 export const testimonialsService = {
   create: async (profileUserId: string, content: string, mediaIds?: string[]) => {
