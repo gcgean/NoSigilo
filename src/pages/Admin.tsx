@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
-import { adminService, adminPromoterService, type SupportMessage } from '@/services/api';
+import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -296,6 +296,9 @@ export default function Admin() {
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
   const [pixAbandon, setPixAbandon] = useState<Awaited<ReturnType<typeof adminService.getPixAbandonment>> | null>(null);
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
+  const [subAnalytics, setSubAnalytics] = useState<SubscriptionAnalytics | null>(null);
+  const [subAnalyticsLoading, setSubAnalyticsLoading] = useState(true);
+  const [subAnalyticsError, setSubAnalyticsError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
@@ -485,6 +488,19 @@ export default function Admin() {
       cancelled = true;
     };
   }, [toast]);
+
+  // Analytics de assinaturas (dados reais do Hub) — carrega em separado para não
+  // travar o load principal do admin (a chamada ao Hub pode levar alguns segundos).
+  useEffect(() => {
+    let cancelled = false;
+    setSubAnalyticsLoading(true);
+    setSubAnalyticsError(false);
+    adminService.getSubscriptionAnalytics()
+      .then((data) => { if (!cancelled) setSubAnalytics(data); })
+      .catch(() => { if (!cancelled) { setSubAnalytics(null); setSubAnalyticsError(true); } })
+      .finally(() => { if (!cancelled) setSubAnalyticsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1312,6 +1328,109 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="finance">
+          {/* Painel de Assinaturas — dados reais de billing (Hub) */}
+          <Card className="p-6 glass mb-6">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+              <h3 className="font-semibold text-lg">Painel de Assinaturas</h3>
+              {subAnalytics && (
+                <span className="text-xs text-muted-foreground">
+                  {subAnalytics.product?.name ?? 'NoSigilo'} · atualizado {new Date(subAnalytics.generatedAt).toLocaleString('pt-BR')}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Faturamento, churn, retenção e projeção — com valores reais de pagamentos.</p>
+
+            {subAnalyticsLoading ? (
+              <div className="flex justify-center py-10">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+              </div>
+            ) : (subAnalyticsError || !subAnalytics) ? (
+              <p className="py-6 text-sm text-muted-foreground">
+                Não foi possível carregar os dados de billing do Hub agora. Tente recarregar em instantes.
+              </p>
+            ) : (() => {
+              const a = subAnalytics;
+              const brl = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+              const maxRev = Math.max(1, ...a.monthly.map((m) => m.revenueCents));
+              const maxProj = Math.max(1, ...a.projection.map((m) => m.projectedRevenueCents));
+              const fmtMonth = (m: string) => { const [y, mo] = m.split('-'); return `${mo}/${y.slice(2)}`; };
+              const kpis = [
+                { label: 'Assinantes ativos', value: String(a.summary.activeSubscribers), tone: 'text-foreground' },
+                { label: 'MRR (receita mensal)', value: brl(a.summary.mrrCents), tone: 'text-success' },
+                { label: 'Faturamento 12 meses', value: brl(a.summary.revenueLast12moCents), tone: 'text-success' },
+                { label: 'Projeção próximos 12m', value: brl(a.summary.projectedNext12moCents), tone: 'text-primary' },
+                { label: 'Novos (12m)', value: `+${a.summary.newLast12mo}`, tone: 'text-primary' },
+                { label: 'Não renovaram (12m)', value: String(a.summary.churnedLast12mo), tone: 'text-destructive' },
+                { label: 'Churn / Retenção', value: `${a.summary.churnRatePct}% / ${a.summary.retentionRatePct}%`, tone: 'text-foreground' },
+                { label: 'Ticket médio (ARPU)', value: brl(a.summary.arpuCents), tone: 'text-foreground' },
+              ];
+              return (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {kpis.map((k) => (
+                      <div key={k.label} className="rounded-xl bg-secondary/30 p-4">
+                        <p className={`text-xl font-bold ${k.tone}`}>{k.value}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{k.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div>
+                    <h4 className="mb-2 text-sm font-semibold">Faturamento — últimos 12 meses</h4>
+                    <div className="flex h-40 items-end gap-1.5">
+                      {a.monthly.map((m) => (
+                        <div key={m.month} className="flex flex-1 flex-col items-center gap-1" title={`${fmtMonth(m.month)}: ${brl(m.revenueCents)}`}>
+                          <div className="w-full rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400" style={{ height: `${Math.max(2, (m.revenueCents / maxRev) * 100)}%` }} />
+                          <span className="text-[9px] text-muted-foreground">{fmtMonth(m.month)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
+                          <th className="py-2 pr-3">Mês</th>
+                          <th className="px-3 py-2 text-right">Faturamento</th>
+                          <th className="px-3 py-2 text-right">Novos</th>
+                          <th className="px-3 py-2 text-right">Renovações</th>
+                          <th className="px-3 py-2 text-right">Não renovaram</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {a.monthly.map((m) => (
+                          <tr key={m.month} className="border-b border-border/30">
+                            <td className="py-1.5 pr-3">{fmtMonth(m.month)}</td>
+                            <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
+                            <td className="px-3 py-1.5 text-right text-primary">+{m.newCustomers}</td>
+                            <td className="px-3 py-1.5 text-right">{m.renewals}</td>
+                            <td className="px-3 py-1.5 text-right text-destructive">{m.churned}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div>
+                    <h4 className="mb-1 text-sm font-semibold">Projeção — próximos 12 meses</h4>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      Estimativa a partir do MRR atual e do crescimento líquido recente ({a.summary.netMonthlyGrowthPct}%/mês). É projeção, não garantia.
+                    </p>
+                    <div className="flex h-32 items-end gap-1.5">
+                      {a.projection.map((m) => (
+                        <div key={m.month} className="flex flex-1 flex-col items-center gap-1" title={`${fmtMonth(m.month)}: ${brl(m.projectedRevenueCents)}`}>
+                          <div className="w-full rounded-t bg-gradient-to-t from-primary/70 to-primary/30" style={{ height: `${Math.max(2, (m.projectedRevenueCents / maxProj) * 100)}%` }} />
+                          <span className="text-[9px] text-muted-foreground">{fmtMonth(m.month)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </Card>
+
           <div className="grid gap-6 md:grid-cols-2">
             <Card className="p-6 glass">
               <h3 className="font-semibold mb-4">Resumo Financeiro</h3>

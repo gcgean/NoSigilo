@@ -216,6 +216,13 @@ export async function upsertHubCustomer(
   );
 }
 
+export async function getHubSubscriptionAnalytics(config: HubConfig) {
+  return requestJson<unknown>(
+    buildUrl(config, '/admin/subscription-analytics', { productId: config.productId }),
+    { method: 'GET', headers: await adminHeaders(config) }
+  );
+}
+
 export async function createHubOrder(
   config: HubConfig,
   data: { customerId: string; planId: string; contractedAmount: number }

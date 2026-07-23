@@ -20,6 +20,7 @@ import {
   createHubCheckout,
   createHubOrder,
   getHubAccessStatus,
+  getHubSubscriptionAnalytics,
   isHubBillingEnabled,
   listHubPlans,
   resolveHubAccess,
@@ -11121,6 +11122,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } catch (error) {
       console.error('[admin/finance/summary]', error);
       res.status(500).json({ error: 'finance_summary_unavailable' });
+    }
+  });
+
+  // Analytics completo de assinaturas (faturamento 12m, novos, churn, retenção,
+  // projeção). Os dados reais vivem no Hub (billing); aqui só repassamos.
+  app.get('/api/admin/finance/subscription-analytics', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    if (!shouldUseHubBilling(env)) {
+      res.status(503).json({ error: 'hub_billing_disabled' });
+      return;
+    }
+    try {
+      const hubConfig = getHubConfig(env);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('HubBilling timeout')), 15000)
+      );
+      const analytics = await Promise.race([getHubSubscriptionAnalytics(hubConfig), timeout]);
+      res.json(analytics);
+    } catch (error) {
+      console.error('[admin/finance/subscription-analytics]', (error as Error).message);
+      res.status(502).json({ error: 'analytics_unavailable', message: (error as Error).message });
     }
   });
 

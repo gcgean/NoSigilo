@@ -942,6 +942,27 @@ export const reportsService = {
   },
 };
 
+export type SubscriptionAnalytics = {
+  product: { id: string; code: string; name: string };
+  currency: string;
+  generatedAt: string;
+  summary: {
+    activeSubscribers: number;
+    payingCustomersAllTime: number;
+    newLast12mo: number;
+    churnedLast12mo: number;
+    revenueLast12moCents: number;
+    mrrCents: number;
+    arpuCents: number;
+    churnRatePct: number;
+    retentionRatePct: number;
+    projectedNext12moCents: number;
+    netMonthlyGrowthPct: number;
+  };
+  monthly: Array<{ month: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
+  projection: Array<{ month: string; projectedRevenueCents: number }>;
+};
+
 export const adminService = {
   getPendingPhotos: async () => {
     const response = await apiClient.get('/admin/photos');
@@ -995,6 +1016,11 @@ export const adminService = {
 
   getFinanceSummary: async () => {
     const response = await apiClient.get('/admin/finance/summary');
+    return response.data;
+  },
+
+  getSubscriptionAnalytics: async (): Promise<SubscriptionAnalytics> => {
+    const response = await apiClient.get('/admin/finance/subscription-analytics');
     return response.data;
   },
 
