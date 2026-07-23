@@ -2127,6 +2127,32 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (media.is_main && !media.is_private) {
       await run(db, 'UPDATE users SET avatar = NULL WHERE id = ?', [String(media.user_id)]);
     }
+
+    // Remove a mídia das referências do feed (posts) e dos stories, para que ela
+    // suma de TODA a plataforma — sem deixar post/story fantasma apontando pra ela.
+    const referencingPosts = (await queryAll(
+      db,
+      'SELECT id, content, media_ids_json FROM posts WHERE media_ids_json LIKE ?',
+      [`%${mediaId}%`]
+    )) as any[];
+    for (const post of referencingPosts) {
+      const parsed = safeJsonParse(post.media_ids_json);
+      const ids = Array.isArray(parsed) ? (parsed as any[]) : [];
+      if (!ids.some((id) => String(id) === String(mediaId))) continue; // falso-positivo do LIKE
+      const remaining = ids.filter((id) => String(id) !== String(mediaId));
+      const hasText = String(post.content || '').trim().length > 0;
+      if (remaining.length === 0 && !hasText) {
+        // Post que só tinha essa foto → some do feed inteiro.
+        await run(db, 'DELETE FROM posts WHERE id = ?', [String(post.id)]);
+      } else {
+        // Post com outras fotos/texto → mantém, só tira essa mídia.
+        await run(db, 'UPDATE posts SET media_ids_json = ? WHERE id = ?', [JSON.stringify(remaining), String(post.id)]);
+      }
+    }
+
+    // Stories que usam essa mídia deixam de existir.
+    await run(db, 'DELETE FROM stories WHERE media_id = ?', [mediaId]);
+
     await persist();
 
     const filename = String(media.filename || '');

@@ -642,7 +642,7 @@ export default function Admin() {
   };
 
   const handleDeletePhoto = async (photoId: string) => {
-    if (!window.confirm('Remover esta foto da plataforma? Essa ação oculta a mídia para todos os usuários.')) return;
+    if (!window.confirm('Remover esta foto permanentemente de toda a plataforma? A imagem sai do feed, stories e perfil, e o arquivo é apagado. Esta ação não pode ser desfeita.')) return;
     setBusyPhotoId(photoId);
     try {
       await adminService.deletePhoto(photoId);
