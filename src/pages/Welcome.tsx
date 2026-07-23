@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Crown, Sparkles, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,17 @@ import { authService } from '@/services/api';
 export default function Welcome() {
   const navigate = useNavigate();
   const { user, updateUser } = useAuth();
+  const [ready, setReady] = useState(false);
 
-  // Ao voltar do pagamento, atualiza o usuário para refletir o Premium recém-ativado.
+  // Ao voltar do pagamento, recarrega a página UMA vez (guardado por ?refreshed=1)
+  // para que todo o app reflita o novo status Premium; só então exibe o obrigado.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('refreshed') !== '1') {
+      window.location.replace(`${window.location.pathname}?refreshed=1`);
+      return;
+    }
+    setReady(true);
     let active = true;
     authService
       .getMe()
@@ -26,6 +34,16 @@ export default function Welcome() {
   }, []);
 
   const firstName = String(user?.name || '').trim().split(' ')[0] || '';
+
+  // Enquanto recarrega (antes do ?refreshed=1), mostra só um loader — evita piscar
+  // a tela de obrigado antes do reload.
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center justify-center overflow-hidden bg-background px-6 py-12 text-center">
