@@ -295,6 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', result.token);
     saveUserToStorage(mergedUser);
     setUser(mergedUser);
+    localStorage.setItem('nosigilo_feed_filter', 'all'); // sempre abrir o feed em "Todos" ao logar
     silentlyUpdateLocation(); // always capture on explicit login
     return mergedUser;
   };
@@ -327,6 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('token', result.token);
       saveUserToStorage(mergedUser);
       setUser(mergedUser);
+      localStorage.setItem('nosigilo_feed_filter', 'all'); // novo usuário abre o feed em "Todos"
       silentlyUpdateLocation(); // capture location on first registration too
       return { ...result, user: mergedUser };
     }
