@@ -7329,10 +7329,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    const me = (await queryOne(db, 'SELECT lat, lon, city, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const me = (await queryOne(db, 'SELECT lat, lon, city, state, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
     const myCity = String(me?.city || '').trim() || null;
+    const myState = String(me?.state || '').trim() || null;
     const myLookingFor = Array.isArray(safeJsonParse(me?.looking_for_json)) ? safeJsonParse(me?.looking_for_json) as string[] : [];
     const viewerIsAdmin = Number(me?.is_admin || 0) === 1;
 
@@ -7408,10 +7409,31 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const boostPrioritySql = "CASE WHEN u.boost_until IS NOT NULL AND u.boost_until > ? THEN 0 ELSE 1 END,";
     params.push(nowIso());
 
+    // Proximidade real: distância euclidiana ao quadrado com escala de longitude
+    // (proxy monotônico de km). Usada para ordenar do mais próximo ao mais distante,
+    // o que naturalmente cobre "cidade → estado → estados vizinhos" pela geografia.
+    const lonScale = myLat !== null ? Math.cos((myLat * Math.PI) / 180) : 1;
+    const distExpr = myLat !== null && myLon !== null
+      ? `((u.lat - ${myLat}) * (u.lat - ${myLat}) + (u.lon - ${myLon}) * (u.lon - ${myLon}) * ${lonScale * lonScale})`
+      : null;
+    // Perfis com distância real > 0 vêm primeiro (0km / sem-localização caem no fim,
+    // onde são ordenados por cidade e estado).
+    const hasRealDistanceSql = distExpr
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0 THEN 0 ELSE 1 END,`
+      : '';
+    const distanceOrderSql = distExpr
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0 THEN ${distExpr} ELSE 1e18 END ASC,`
+      : '';
+
     const cityPrioritySql = myCity
       ? "CASE WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
       : '';
     if (myCity) params.push(myCity);
+
+    const statePrioritySql = myState
+      ? "CASE WHEN LOWER(TRIM(COALESCE(u.state, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
+      : '';
+    if (myState) params.push(myState);
 
     params.push(nowIso());
     const audiencePriority = buildAudiencePriorityOrder('u.gender', effectiveGenders);
@@ -7453,10 +7475,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       WHERE ${whereClause}
       ORDER BY
         ${boostPrioritySql}
+        ${hasRealDistanceSql}
+        ${distanceOrderSql}
         ${cityPrioritySql}
-        ${myLat !== null && myLon !== null
-          ? `ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) ASC,`
-          : ''}
+        ${statePrioritySql}
         CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
         ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
         u.created_at DESC
