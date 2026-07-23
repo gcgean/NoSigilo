@@ -359,7 +359,7 @@ export default function Subscriptions() {
                         {useHostedCheckout && (
                           <Button
                             onClick={() => window.open(hostedCheckoutUrl, '_blank', 'noopener,noreferrer')}
-                            className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90"
+                            className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
                           >
                             <ExternalLink className="w-5 h-5" /> Pagar agora
                           </Button>

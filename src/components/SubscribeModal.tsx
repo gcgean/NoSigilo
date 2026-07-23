@@ -291,9 +291,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
                         {useHostedCheckout && (
                           <Button
                             onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}
-                            className="w-full gap-2 bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 font-bold"
+                            className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
                           >
-                            <QrCode className="w-4 h-4" /> Ir para o pagamento
+                            <QrCode className="w-5 h-5" /> Ir para o pagamento
                           </Button>
                         )}
                         {pixCode && (
