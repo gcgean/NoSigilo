@@ -99,6 +99,11 @@ export default function Subscriptions() {
   const qrImageSrc = normalizePixQrCode(checkoutResult?.pixQrCode);
   const hasPixCode = !!(checkoutResult?.pixCode || checkoutResult?.pixPayload);
   const pixCodeValue = checkoutResult?.pixCode || checkoutResult?.pixPayload || '';
+  // Gateways de checkout hospedado (ex.: LivePix) não retornam PIX inline — só a URL
+  // para onde o cliente é redirecionado. Nesses casos exibimos o botão "Pagar agora"
+  // em vez do QR/código.
+  const hostedCheckoutUrl = String(checkoutResult?.checkoutUrl || '').trim();
+  const useHostedCheckout = !hasPixCode && !qrImageSrc && !!hostedCheckoutUrl;
 
   // Load plans and status
   useEffect(() => {
@@ -351,6 +356,14 @@ export default function Subscriptions() {
                             {pixCodeValue}
                           </div>
                         )}
+                        {useHostedCheckout && (
+                          <Button
+                            onClick={() => window.open(hostedCheckoutUrl, '_blank', 'noopener,noreferrer')}
+                            className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90"
+                          >
+                            <ExternalLink className="w-5 h-5" /> Pagar agora
+                          </Button>
+                        )}
                         <div className="flex flex-wrap gap-2">
                           {hasPixCode && (
                             <Button onClick={copyPix} className="gap-2 bg-gradient-primary flex-1 sm:flex-none">
@@ -362,27 +375,31 @@ export default function Subscriptions() {
                             {isRefreshingStatus ? 'Verificando...' : 'Já paguei'}
                           </Button>
                         </div>
-                        {checkoutResult.checkoutUrl && (
+                        {!useHostedCheckout && checkoutResult.checkoutUrl && (
                           <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
                             <ExternalLink className="w-3 h-3" /> Abrir página de checkout
                           </a>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          Abra o app do seu banco → Pix → Pagar → Cole o código ou escaneie o QR Code.
+                          {useHostedCheckout
+                            ? 'Clique em "Pagar agora" para abrir a página segura de pagamento. Depois volte aqui e clique em "Já paguei".'
+                            : 'Abra o app do seu banco → Pix → Pagar → Cole o código ou escaneie o QR Code.'}
                         </p>
                       </div>
 
-                      {/* Right: QR Code */}
-                      <div className="flex items-center justify-center sm:justify-end">
-                        {qrImageSrc ? (
-                          <img src={qrImageSrc} alt="QR Code PIX" className="w-40 h-40 rounded-xl border bg-white object-contain p-1" />
-                        ) : (
-                          <div className="w-40 h-40 rounded-xl border bg-background flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                            <QrCode className="w-10 h-10" />
-                            <span className="text-xs text-center">QR indisponível</span>
-                          </div>
-                        )}
-                      </div>
+                      {/* Right: QR Code — oculto no checkout hospedado (sem QR inline) */}
+                      {!useHostedCheckout && (
+                        <div className="flex items-center justify-center sm:justify-end">
+                          {qrImageSrc ? (
+                            <img src={qrImageSrc} alt="QR Code PIX" className="w-40 h-40 rounded-xl border bg-white object-contain p-1" />
+                          ) : (
+                            <div className="w-40 h-40 rounded-xl border bg-background flex flex-col items-center justify-center gap-2 text-muted-foreground">
+                              <QrCode className="w-10 h-10" />
+                              <span className="text-xs text-center">QR indisponível</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
