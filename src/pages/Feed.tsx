@@ -29,6 +29,7 @@ import VideoWithPreview from '@/components/VideoWithPreview';
 import { PostMediaCarousel } from '@/components/PostMediaCarousel';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import SeekingYouModal from '@/components/SeekingYouModal';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -274,6 +275,19 @@ export default function Feed() {
   const [isPublishingExperience, setIsPublishingExperience] = useState(false);
   const publishExperienceGuardRef = useRef(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [showSeekingYou, setShowSeekingYou] = useState(false);
+
+  // Banner "X perfis procuram alguém como você" — uma vez por usuário (1º acesso).
+  useEffect(() => {
+    if (!user?.id) return;
+    const key = `nosigilo:seeking-you-seen:${user.id}`;
+    if (localStorage.getItem(key)) return;
+    const t = setTimeout(() => {
+      setShowSeekingYou(true);
+      try { localStorage.setItem(key, '1'); } catch { /* ignora */ }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [user?.id]);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
@@ -3401,6 +3415,7 @@ export default function Feed() {
         })()}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <SeekingYouModal open={showSeekingYou} onClose={() => setShowSeekingYou(false)} />
 
       {/* Pergunta se quer postar a imagem nos stories também */}
       <AlertDialog open={!!storyPromptMediaId} onOpenChange={(open) => { if (!open) setStoryPromptMediaId(null); }}>

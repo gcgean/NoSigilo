@@ -5292,6 +5292,39 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ videos, hasMore });
   });
 
+  // GET /api/discovery/seeking-me — quantos perfis procuram alguém do gênero do
+  // usuário (o inverso do interesse dele). Alimenta o banner de conversão do
+  // primeiro acesso ("X perfis procuram alguém como você"). A LISTA em si é
+  // premium (o count é o gancho, aberto a todos).
+  app.get('/api/discovery/seeking-me', requireAuth(env, db), async (req, res) => {
+    const viewer = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const g = String(viewer?.gender || '').trim();
+    if (!g) { res.json({ count: 0, previews: [] }); return; }
+    const isCouple = g.toLowerCase().startsWith('casal');
+    // Perfil "procura por mim" se não tem preferência (procura todos) ou lista o meu gênero.
+    const prefCond = isCouple
+      ? `(u.looking_for_json IS NULL OR u.looking_for_json = '[]' OR u.looking_for_json LIKE '%Casal%' OR u.looking_for_json LIKE '%casal%')`
+      : `(u.looking_for_json IS NULL OR u.looking_for_json = '[]' OR u.looking_for_json LIKE ?)`;
+    const params: any[] = [req.auth!.userId];
+    if (!isCouple) params.push(`%"${g}"%`);
+    const base = `FROM users u
+       WHERE u.id <> ?
+         AND (u.is_admin = 0 OR u.is_admin IS NULL)
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND ${prefCond}`;
+    const countRow = (await queryOne(db, `SELECT COUNT(*) as c ${base}`, params)) as any;
+    const previewRows = (await queryAll(
+      db,
+      `SELECT u.avatar ${base} AND u.avatar IS NOT NULL AND u.avatar <> '' ORDER BY u.last_seen_at DESC NULLS LAST LIMIT 8`,
+      params
+    )) as any[];
+    res.json({
+      count: Number(countRow?.c || 0),
+      previews: previewRows.map((r) => (r.avatar ? String(r.avatar) : null)).filter(Boolean),
+    });
+  });
+
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       content: z.string().max(5000).optional(),

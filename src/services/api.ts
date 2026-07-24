@@ -133,6 +133,14 @@ export const videoSearchService = {
   },
 };
 
+export const discoveryService = {
+  // Quantos perfis procuram alguém do gênero do usuário (+ prévias de avatar).
+  getSeekingMe: async (): Promise<{ count: number; previews: string[] }> => {
+    const response = await apiClient.get('/discovery/seeking-me');
+    return response.data;
+  },
+};
+
 export const feedService = {
   getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number; cityOnly?: boolean; filter?: string }) => {
     if (USE_MOCKS) {
