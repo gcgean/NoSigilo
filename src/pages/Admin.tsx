@@ -301,6 +301,7 @@ export default function Admin() {
   const [funnelLoading, setFunnelLoading] = useState(true);
   const [funnelPeriod, setFunnelPeriod] = useState<'all' | '7' | '30' | '90'>('all');
   const [showcaseProfiles, setShowcaseProfiles] = useState<Awaited<ReturnType<typeof adminService.getShowcaseProfiles>>['profiles']>([]);
+  const [showOnlyShowcase, setShowOnlyShowcase] = useState(false);
   const loadShowcase = async () => {
     try { const d = await adminService.getShowcaseProfiles(); setShowcaseProfiles(d.profiles); } catch { /* ignora */ }
   };
@@ -750,12 +751,14 @@ export default function Admin() {
     }
   };
 
+  const showcaseIds = useMemo(() => new Set(showcaseProfiles.map((p) => p.id)), [showcaseProfiles]);
   const filteredUsers = useMemo(
     () =>
       users.filter((u) =>
-        [u.name, u.email || ''].some((value) => value.toLowerCase().includes(searchQuery.toLowerCase()))
+        [u.name, u.email || ''].some((value) => value.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        (!showOnlyShowcase || showcaseIds.has(u.id))
       ),
-    [users, searchQuery]
+    [users, searchQuery, showOnlyShowcase, showcaseIds]
   );
 
   if (!user?.isAdmin) {
@@ -1343,9 +1346,13 @@ export default function Admin() {
                   className="pl-9"
                 />
               </div>
-              <Button variant="outline" className="gap-2" disabled>
-                <Filter className="w-4 h-4" />
-                Filtros
+              <Button
+                variant={showOnlyShowcase ? 'default' : 'outline'}
+                className={cn('gap-2', showOnlyShowcase && 'bg-amber-500 hover:bg-amber-600 text-white')}
+                onClick={() => setShowOnlyShowcase((v) => !v)}
+              >
+                <span>★</span>
+                Só vitrine
               </Button>
             </div>
 
