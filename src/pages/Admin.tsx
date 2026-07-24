@@ -300,6 +300,10 @@ export default function Admin() {
   const [funnel, setFunnel] = useState<ConversionFunnel | null>(null);
   const [funnelLoading, setFunnelLoading] = useState(true);
   const [funnelPeriod, setFunnelPeriod] = useState<'all' | '7' | '30' | '90'>('all');
+  const [showcaseProfiles, setShowcaseProfiles] = useState<Awaited<ReturnType<typeof adminService.getShowcaseProfiles>>['profiles']>([]);
+  const loadShowcase = async () => {
+    try { const d = await adminService.getShowcaseProfiles(); setShowcaseProfiles(d.profiles); } catch { /* ignora */ }
+  };
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
@@ -625,6 +629,9 @@ export default function Admin() {
     }
   };
 
+  // Perfis de vitrine — carrega uma vez.
+  useEffect(() => { void loadShowcase(); }, []);
+
   // Funil de conversão (cadastro → uso → paywall → PIX → assinatura).
   useEffect(() => {
     let cancelled = false;
@@ -858,6 +865,32 @@ export default function Admin() {
       toast({ title: 'Conta desativada pela administração' });
     } catch {
       toast({ title: 'Erro ao desativar conta', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleMarkShowcase = async (userId: string) => {
+    setBusyUserId(userId);
+    try {
+      await adminService.setShowcase(userId, true);
+      await loadShowcase();
+      toast({ title: 'Perfil marcado como vitrine', description: 'Ele some do Match/Radar/Busca e entra no revezamento do feed/stories.' });
+    } catch {
+      toast({ title: 'Erro ao marcar vitrine', variant: 'destructive' });
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleRemoveShowcase = async (userId: string) => {
+    setBusyUserId(userId);
+    try {
+      await adminService.setShowcase(userId, false);
+      await loadShowcase();
+      toast({ title: 'Perfil removido da vitrine' });
+    } catch {
+      toast({ title: 'Erro ao remover da vitrine', variant: 'destructive' });
     } finally {
       setBusyUserId(null);
     }
@@ -1254,6 +1287,51 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="users">
+          {/* ── Perfis de vitrine (seed/manada) ── */}
+          <div className="glass rounded-xl p-6 mb-4">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-amber-500">★</span>
+              <h3 className="font-semibold">Perfis de vitrine ({showcaseProfiles.length})</h3>
+            </div>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Conteúdo curado que mantém o feed/stories vivos (efeito manada). Não aparecem no Match/Radar/Busca e respondem DM com um aviso honesto.
+              O sistema <strong>reveza automaticamente</strong> os stories (mantém 3 ativos por perfil) e resurge 1 post por perfil em horários de pico (09/13/17/20/23h).
+              Marque um perfil pela lista de usuários abaixo (botão <strong>☆ Vitrine</strong>) — suba fotos/vídeos e posts nesse perfil normalmente.
+            </p>
+            {showcaseProfiles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhum perfil de vitrine ainda. Crie perfis normais e marque-os como vitrine na lista abaixo.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {showcaseProfiles.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 rounded-xl border border-amber-400/25 bg-amber-400/5 p-3">
+                    <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-secondary">
+                      {p.avatar ? (
+                        <img src={resolveServerUrl(p.avatar)} alt={p.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted-foreground">{(p.name || '?')[0]}</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {p.mediaCount} mídia(s) · {p.postsCount} post(s) · {p.storiesActive} story ativo(s)
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 text-xs text-muted-foreground hover:text-destructive"
+                      disabled={busyUserId === p.id}
+                      onClick={() => void handleRemoveShowcase(p.id)}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="glass rounded-xl p-6">
             <div className="flex items-center gap-4 mb-4">
               <div className="relative flex-1">
@@ -1328,6 +1406,26 @@ export default function Admin() {
                         onClick={() => void handleDeactivateUser(entry.id)}
                       >
                         Desativar conta
+                      </Button>
+                    )}
+                    {showcaseProfiles.some((p) => p.id === entry.id) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-amber-400/50 text-amber-600 hover:bg-amber-400/10"
+                        disabled={busyUserId === entry.id}
+                        onClick={() => void handleRemoveShowcase(entry.id)}
+                      >
+                        ★ Remover vitrine
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busyUserId === entry.id || entry.isAdmin}
+                        onClick={() => void handleMarkShowcase(entry.id)}
+                      >
+                        ☆ Vitrine
                       </Button>
                     )}
                     {entry.status === 'banned' ? (

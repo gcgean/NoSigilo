@@ -6372,6 +6372,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND (u.is_admin = 0 OR u.is_admin IS NULL)
+         AND (u.is_showcase = 0 OR u.is_showcase IS NULL)
          AND u.name LIKE ?
          AND NOT EXISTS (
            SELECT 1 FROM blocks b
@@ -6565,6 +6566,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!viewerIsAdmin) {
       conditions.push('(u.is_admin = 0 OR u.is_admin IS NULL)');
     }
+    // Perfis de vitrine não aparecem na busca de usuários (só no feed/stories).
+    conditions.push('(u.is_showcase = 0 OR u.is_showcase IS NULL)');
 
     if (search) {
       conditions.push('(u.name LIKE ? OR u.city LIKE ? OR u.state LIKE ?)');
@@ -7424,6 +7427,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!viewerIsAdmin) {
       whereClause += ' AND (u.is_admin = 0 OR u.is_admin IS NULL)';
     }
+    // Perfis de vitrine não aparecem no Match (evita "match fantasma").
+    whereClause += ' AND (u.is_showcase = 0 OR u.is_showcase IS NULL)';
     const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {
@@ -9255,6 +9260,37 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     // Referral action tracking: bit1 = sent_message
     void markInviteeAction(db, io, req.auth!.userId, 0b010, env).catch(() => {});
+
+    // Perfil de vitrine responde UMA vez, de forma honesta (sem fingir ser real).
+    try {
+      const recipient = (await queryOne(db, 'SELECT is_showcase FROM users WHERE id = ? LIMIT 1', [otherId])) as any;
+      if (recipient && Number(recipient.is_showcase || 0) === 1) {
+        const alreadyReplied = (await queryOne(
+          db,
+          'SELECT 1 AS x FROM messages WHERE conversation_id = ? AND sender_id = ? LIMIT 1',
+          [conversationId, otherId]
+        )) as any;
+        if (!alreadyReplied) {
+          const autoId = randomUUID();
+          const autoAt = nowIso();
+          const autoText = 'Oi! Este é um perfil de vitrine do NoSigilo — usamos ele só para mostrar conteúdo da plataforma, então não respondo pessoalmente. 😊 Aproveite para explorar os perfis reais no Match e no Radar!';
+          await run(
+            db,
+            'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [autoId, conversationId, otherId, autoText, 1, autoAt]
+          );
+          await persist();
+          io?.to(conversationId).emit('message.created', {
+            id: autoId, conversationId, senderId: otherId, content: autoText,
+            mediaId: null, mediaUrl: null, mediaMimeType: null, clientId: null,
+            isViewOnce: false, isDelivered: true, createdAt: autoAt,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[showcase auto-reply]', err);
+    }
+
     res.json({ id });
   });
 
@@ -11096,6 +11132,60 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.json({ ok: true, userId, banned: false });
     } catch (err) {
       console.error('[admin/users/unban]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ─── Perfis de vitrine (seed/manada) ────────────────────────────────────────
+  // Lista os perfis marcados como vitrine, com contagem de posts e stories ativos.
+  app.get('/api/admin/showcase', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const nowStr = nowIso();
+      const rows = (await queryAll(
+        db,
+        `SELECT u.id, u.name, u.email, u.avatar, u.gender, u.city, u.state,
+                (SELECT COUNT(*) FROM posts p WHERE p.user_id = u.id) AS posts_count,
+                (SELECT COUNT(*) FROM stories s WHERE s.user_id = u.id) AS stories_total,
+                (SELECT COUNT(*) FROM stories s WHERE s.user_id = u.id AND s.expires_at > ?) AS stories_active,
+                (SELECT COUNT(*) FROM media m WHERE m.user_id = u.id AND m.is_private = 0) AS media_count
+         FROM users u
+         WHERE COALESCE(u.is_showcase, 0) = 1
+         ORDER BY u.name ASC`,
+        [nowStr]
+      )) as any[];
+      res.json({
+        profiles: rows.map((r) => ({
+          id: String(r.id),
+          name: String(r.name || ''),
+          email: r.email ? String(r.email) : null,
+          avatar: r.avatar ? String(r.avatar) : null,
+          gender: r.gender ? String(r.gender) : null,
+          city: r.city ? String(r.city) : null,
+          state: r.state ? String(r.state) : null,
+          postsCount: Number(r.posts_count || 0),
+          storiesTotal: Number(r.stories_total || 0),
+          storiesActive: Number(r.stories_active || 0),
+          mediaCount: Number(r.media_count || 0),
+        })),
+      });
+    } catch (err) {
+      console.error('[admin/showcase] list', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Marca/desmarca um perfil como vitrine.
+  app.put('/api/admin/users/:userId/showcase', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const enable = req.body?.showcase !== false; // default: marcar
+      const target = (await queryOne(db, 'SELECT id FROM users WHERE id = ?', [userId])) as any;
+      if (!target) { res.status(404).json({ error: 'not_found' }); return; }
+      await run(db, 'UPDATE users SET is_showcase = ? WHERE id = ?', [enable ? 1 : 0, userId]);
+      await persist();
+      res.json({ ok: true, userId, showcase: enable });
+    } catch (err) {
+      console.error('[admin/users/showcase]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

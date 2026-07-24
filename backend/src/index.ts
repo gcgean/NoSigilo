@@ -19,6 +19,7 @@ let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
 let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
 let lastTopDayDate = '';       // "YYYY-MM-DD" — "você está no Top do Dia" notification
 let lastExpirePremiumDate = ''; // "YYYY-MM-DD" — limpa is_premium de licenças vencidas
+let lastShowcaseRotationKey = ''; // "YYYY-MM-DD:HH" — revezamento de perfis de vitrine
 
 // Helper: given a user's looking_for_json array, build a SQL WHERE fragment
 // that matches profile genders the user is interested in.
@@ -400,6 +401,52 @@ async function runTopDayNotifications(db: DbHandle) {
   console.log(`[scheduler] Top do Dia notified ${sent} authors`);
 }
 
+// Revezamento dos perfis de vitrine: mantém stories sempre ativos (recria a
+// partir da mídia do perfil) e resurge 1 post por perfil (bump created_at), pra
+// deixar o feed/stories vivos e gerar o "efeito manada".
+async function runShowcaseRotation(db: DbHandle) {
+  const now = new Date();
+  const nowStr = now.toISOString();
+  const expiresStr = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const showcase = (await db.queryAll('SELECT id FROM users WHERE COALESCE(is_showcase, 0) = 1')) as any[];
+  if (!Array.isArray(showcase) || showcase.length === 0) return;
+
+  const STORY_TARGET = 3;
+  let storiesCreated = 0;
+  let postsBumped = 0;
+
+  for (const u of showcase) {
+    const uid = String(u.id);
+    // 1) Mantém stories ativos: se tem menos que o alvo, cria a partir da mídia
+    //    pública do perfil que ainda não está num story ativo (revezando).
+    const activeRow = (await db.queryOne('SELECT COUNT(*) AS c FROM stories WHERE user_id = ? AND expires_at > ?', [uid, nowStr])) as any;
+    const need = STORY_TARGET - Number(activeRow?.c || 0);
+    if (need > 0) {
+      const media = (await db.queryAll(
+        `SELECT m.id FROM media m
+         WHERE m.user_id = ? AND m.is_private = 0
+           AND (m.mime_type LIKE 'image/%' OR m.mime_type LIKE 'video/%')
+           AND NOT EXISTS (SELECT 1 FROM stories s WHERE s.media_id = m.id AND s.expires_at > ?)
+         ORDER BY (SELECT MAX(s2.created_at) FROM stories s2 WHERE s2.media_id = m.id) ASC NULLS FIRST, m.created_at ASC
+         LIMIT ?`,
+        [uid, nowStr, need]
+      )) as any[];
+      for (const m of media) {
+        await db.run('INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [randomUUID(), uid, String(m.id), nowStr, expiresStr]);
+        storiesCreated++;
+      }
+    }
+    // 2) Resurge o post mais antigo do perfil (bump da data) — revezando a cada rodada.
+    const post = (await db.queryOne('SELECT id FROM posts WHERE user_id = ? ORDER BY created_at ASC LIMIT 1', [uid])) as any;
+    if (post) {
+      await db.run('UPDATE posts SET created_at = ? WHERE id = ?', [nowStr, String(post.id)]);
+      postsBumped++;
+    }
+  }
+  await db.persist();
+  console.log(`[scheduler] Vitrine: +${storiesCreated} stories, ${postsBumped} posts resurgidos (${showcase.length} perfis)`);
+}
+
 async function runExpirePremiumFlags(db: DbHandle) {
   const now = new Date().toISOString();
   // Quem tem licença paga vencida deixa de ser is_premium no banco. O acesso por
@@ -462,6 +509,16 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
       runNightlyRitualPush(db).catch(err => console.error('[scheduler/nightly] fatal', err));
     }
 
+    // Revezamento dos perfis de vitrine — em horários espalhados pelo dia (pico),
+    // uma vez por hora-alvo. Mantém stories vivos e resurge posts.
+    if ([9, 13, 17, 20, 23].includes(hour)) {
+      const rotationKey = `${dateStr}:${hour}`;
+      if (lastShowcaseRotationKey !== rotationKey) {
+        lastShowcaseRotationKey = rotationKey;
+        runShowcaseRotation(db).catch(err => console.error('[scheduler/showcase] fatal', err));
+      }
+    }
+
     // Push: "users online in your region" — every day at 20:00 UTC (prime time)
     // Only fires if there are 5+ users online
     if (hour === 20 && lastOnlinePushDate !== dateStr) {
@@ -479,7 +536,9 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   check().catch(() => {});
   // Limpa flags de premium vencido já na subida (não espera as 01h)
   runExpirePremiumFlags(db).catch(err => console.error('[scheduler/expire-premium] startup', err));
-  console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-day 11:00, nightly push 19:30, online push 20:00');
+  // Revezamento de vitrine já na subida (efeito imediato ao marcar perfis)
+  runShowcaseRotation(db).catch(err => console.error('[scheduler/showcase] startup', err));
+  console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-day 11:00, nightly push 19:30, online push 20:00, vitrine 09/13/17/20/23');
 }
 
 async function main() {

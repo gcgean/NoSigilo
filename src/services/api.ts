@@ -1041,6 +1041,16 @@ export const adminService = {
     return response.data;
   },
 
+  // Perfis de vitrine (seed/manada)
+  getShowcaseProfiles: async (): Promise<{ profiles: Array<{ id: string; name: string; email: string | null; avatar: string | null; gender: string | null; city: string | null; state: string | null; postsCount: number; storiesTotal: number; storiesActive: number; mediaCount: number }> }> => {
+    const response = await apiClient.get('/admin/showcase');
+    return response.data;
+  },
+  setShowcase: async (userId: string, showcase: boolean) => {
+    const response = await apiClient.put(`/admin/users/${userId}/showcase`, { showcase });
+    return response.data;
+  },
+
   reactivateUser: async (userId: string) => {
     const response = await apiClient.put(`/admin/users/${userId}/reactivate`);
     return response.data;
