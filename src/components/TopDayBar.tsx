@@ -45,35 +45,38 @@ export default function TopDayBar() {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {posts.map((p) => (
+        {posts.map((p, i) => {
+          // Gostinho grátis: o 1º item fica liberado mesmo para não-assinante; o resto bloqueia.
+          const unlocked = premium || i === 0;
+          return (
           <button
             key={p.id}
             type="button"
             onClick={() =>
-              premium
+              unlocked
                 ? navigate(`/feed?postId=${encodeURIComponent(p.id)}&u=${encodeURIComponent(p.author.id)}`)
                 : navigate('/subscriptions')
             }
             className="group relative w-28 shrink-0 overflow-hidden rounded-2xl bg-black"
-            title={premium ? `${p.author.name} · ${p.likeCount} curtidas` : 'Assine o Premium para ver o Top do Dia'}
+            title={unlocked ? `${p.author.name} · ${p.likeCount} curtidas` : 'Assine o Premium para ver o Top do Dia'}
           >
             <div className="aspect-[3/4] w-full">
               {p.mediaUrl && p.mimeType?.startsWith('video/') ? (
                 <video
                   src={resolveServerUrl(p.mediaUrl)}
-                  className={cn('h-full w-full object-cover', !premium && 'scale-110 blur-lg')}
+                  className={cn('h-full w-full object-cover', !unlocked && 'scale-110 blur-lg')}
                   muted
                   playsInline
                 />
               ) : p.mediaUrl ? (
                 <img
                   src={resolveServerUrl(p.mediaUrl)}
-                  alt={premium ? p.author.name : 'Top do Dia'}
-                  className={cn('h-full w-full object-cover', !premium && 'scale-110 blur-lg')}
+                  alt={unlocked ? p.author.name : 'Top do Dia'}
+                  className={cn('h-full w-full object-cover', !unlocked && 'scale-110 blur-lg')}
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center bg-secondary text-lg font-bold">
-                  {premium ? p.author.name[0] : '★'}
+                  {unlocked ? p.author.name[0] : '★'}
                 </div>
               )}
             </div>
@@ -93,8 +96,15 @@ export default function TopDayBar() {
               <span className="text-[10px] font-bold text-white">{p.likeCount}</span>
             </div>
 
-            {/* Cadeado premium (não-assinante) */}
-            {!premium && (
+            {/* Selo "amostra grátis" no item liberado (não-assinante) */}
+            {!premium && unlocked && (
+              <div className="absolute left-1.5 bottom-6 rounded-full bg-emerald-500/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                Amostra grátis
+              </div>
+            )}
+
+            {/* Cadeado premium (itens bloqueados) */}
+            {!unlocked && (
               <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 backdrop-blur-sm">
                   <Lock className="h-4 w-4 text-amber-300" />
@@ -107,10 +117,11 @@ export default function TopDayBar() {
 
             {/* Autor */}
             <p className="absolute bottom-1.5 left-1.5 right-1.5 truncate text-[11px] font-semibold text-white">
-              {premium ? p.author.name : 'Assine para ver'}
+              {unlocked ? p.author.name : 'Assine para ver'}
             </p>
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

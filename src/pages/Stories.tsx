@@ -175,10 +175,12 @@ function StoryViewer({
   }, [story.id, story.mimeType]);
 
   const go = useCallback((delta: number) => {
+    // Amostra grátis: não-assinante vê só 1 story; ao tentar avançar, vai pro paywall.
+    if (!isPremium) { onClose(); navigate('/subscriptions'); return; }
     const next = idx + delta;
     if (next < 0 || next >= stories.length) { onClose(); return; }
     setIdx(next);
-  }, [idx, stories.length, onClose]);
+  }, [idx, stories.length, onClose, isPremium, navigate]);
 
   // Registrar view
   useEffect(() => {
@@ -751,9 +753,14 @@ export default function Stories() {
     }
     if (openId) {
       const idx = feed.findIndex((s) => s.id === openId);
-      if (idx >= 0) void handleOpenStory(idx);
+      if (idx >= 0) {
+        // Amostra grátis vinda da barra do feed: abre mesmo sem premium (o viewer
+        // trava ao avançar). Caso normal segue pelo gate do handleOpenStory.
+        if (!isPremium && params.get('taste') === '1') setViewerIdx(idx);
+        else void handleOpenStory(idx);
+      }
     }
-  }, [loading, feed, myStories, handleOpenStory]);
+  }, [loading, feed, myStories, handleOpenStory, isPremium]);
 
   const handleUpload = async (file: File) => {
     if (!file) return;
