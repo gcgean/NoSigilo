@@ -277,17 +277,21 @@ export default function Feed() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [showSeekingYou, setShowSeekingYou] = useState(false);
 
-  // Banner "X perfis procuram alguém como você" — uma vez por usuário (1º acesso).
+  // Banner "X perfis procuram alguém como você" — mostra a cada login/sessão para
+  // quem NÃO é assinante pagante (inclui trial e expirados — são quem convertemos).
+  // sessionStorage limpa no logout e ao fechar a aba, então reaparece no próximo login.
+  const isPaidSubscriber = !!user?.isPremium && premiumAccess;
   useEffect(() => {
     if (!user?.id) return;
-    const key = `nosigilo:seeking-you-seen:${user.id}`;
-    if (localStorage.getItem(key)) return;
+    if (isPaidSubscriber) return; // assinante pagante não vê (não há o que converter)
+    const key = 'nosigilo:seeking-you-session';
+    if (sessionStorage.getItem(key)) return;
     const t = setTimeout(() => {
       setShowSeekingYou(true);
-      try { localStorage.setItem(key, '1'); } catch { /* ignora */ }
+      try { sessionStorage.setItem(key, '1'); } catch { /* ignora */ }
     }, 1200);
     return () => clearTimeout(t);
-  }, [user?.id]);
+  }, [user?.id, isPaidSubscriber]);
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');

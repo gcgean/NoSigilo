@@ -338,6 +338,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem('nosigilo_user');
     localStorage.removeItem('token');
+    // Limpa o flag do banner "quem procura por mim" para reaparecer no próximo login.
+    try { sessionStorage.removeItem('nosigilo:seeking-you-session'); } catch { /* ignora */ }
     setUser(null);
     window.location.href = '/login';
   };
