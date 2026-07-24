@@ -299,6 +299,7 @@ export default function Admin() {
   const [pixAbandonersLoading, setPixAbandonersLoading] = useState(false);
   const [funnel, setFunnel] = useState<ConversionFunnel | null>(null);
   const [funnelLoading, setFunnelLoading] = useState(true);
+  const [funnelPeriod, setFunnelPeriod] = useState<'all' | '7' | '30' | '90'>('all');
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
@@ -628,12 +629,13 @@ export default function Admin() {
   useEffect(() => {
     let cancelled = false;
     setFunnelLoading(true);
-    adminService.getConversionFunnel()
+    const days = funnelPeriod === 'all' ? undefined : Number(funnelPeriod);
+    adminService.getConversionFunnel(days)
       .then((data) => { if (!cancelled) setFunnel(data); })
       .catch(() => { if (!cancelled) setFunnel(null); })
       .finally(() => { if (!cancelled) setFunnelLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [funnelPeriod]);
 
   // Analytics de assinaturas (dados reais do Hub) — carrega em separado para não
   // travar o load principal do admin (a chamada ao Hub pode levar alguns segundos).
@@ -1631,10 +1633,38 @@ export default function Admin() {
 
           {/* Funil de conversão: cadastro → uso → paywall → PIX → assinatura */}
           <Card className="p-6 glass mt-6">
-            <h3 className="font-semibold">Funil de conversão</h3>
-            <p className="text-xs text-muted-foreground">
-              Onde os usuários caem fora entre cadastrar e assinar — para saber onde investir para aumentar a conversão.
-            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="font-semibold">Funil de conversão</h3>
+                <p className="text-xs text-muted-foreground">
+                  Onde os usuários caem fora entre cadastrar e assinar — para saber onde investir para aumentar a conversão.
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {[
+                  { value: 'all' as const, label: 'Todos' },
+                  { value: '7' as const, label: '7 dias' },
+                  { value: '30' as const, label: '30 dias' },
+                  { value: '90' as const, label: '90 dias' },
+                ].map((option) => (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    size="sm"
+                    variant={funnelPeriod === option.value ? 'default' : 'outline'}
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setFunnelPeriod(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            {funnelPeriod !== 'all' && (
+              <p className="mt-1 text-xs text-primary">
+                Mostrando apenas quem se cadastrou nos últimos {funnelPeriod} dias (coorte).
+              </p>
+            )}
 
             {funnelLoading ? (
               <div className="flex justify-center py-10">

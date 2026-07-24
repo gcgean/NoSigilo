@@ -11368,9 +11368,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
-  app.get('/api/admin/finance/conversion-funnel', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+  app.get('/api/admin/finance/conversion-funnel', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const nowIso2 = nowIso();
+      // Filtro opcional por coorte de cadastro (últimos N dias) para comparar
+      // se as estratégias recentes melhoraram a conversão.
+      const requestedDays = Number(req.query.periodDays || 0);
+      const periodDays = [7, 30, 90, 365].includes(requestedDays) ? requestedDays : null;
+      const createdFromIso = periodDays ? new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString() : null;
+      const createdCond = createdFromIso ? 'AND u.created_at >= ?' : '';
+      const funnelParams = createdFromIso ? [nowIso2, createdFromIso] : [nowIso2];
       const [row] = (await queryAll(
         db,
         `WITH b AS (
@@ -11382,7 +11389,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               OR EXISTS(SELECT 1 FROM messages m WHERE m.sender_id=u.id)) AS engaged,
              EXISTS(SELECT 1 FROM checkout_generations cg WHERE cg.user_id=u.id) AS gen_pix
            FROM users u
-           WHERE COALESCE(u.is_banned,0)=0 AND COALESCE(u.is_deactivated,0)=0
+           WHERE COALESCE(u.is_banned,0)=0 AND COALESCE(u.is_deactivated,0)=0 ${createdCond}
          )
          SELECT
            COUNT(*) AS registered,
@@ -11399,7 +11406,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            SUM(CASE WHEN NOT engaged THEN 1 ELSE 0 END) AS noeng_total,
            SUM(CASE WHEN NOT engaged AND converted THEN 1 ELSE 0 END) AS noeng_conv
          FROM b`,
-        [nowIso2]
+        funnelParams
       )) as any[];
 
       const n = (v: any) => Number(v || 0);
@@ -11411,6 +11418,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
 
       res.json({
+        periodDays,
         funnel: [
           { stage: 'Cadastraram', count: registered },
           { stage: 'Usaram o app', count: engaged },

@@ -1066,8 +1066,10 @@ export const adminService = {
     return response.data;
   },
 
-  getConversionFunnel: async (): Promise<ConversionFunnel> => {
-    const response = await apiClient.get('/admin/finance/conversion-funnel');
+  getConversionFunnel: async (periodDays?: number): Promise<ConversionFunnel> => {
+    const response = await apiClient.get('/admin/finance/conversion-funnel', {
+      params: periodDays ? { periodDays } : {},
+    });
     return response.data;
   },
 
