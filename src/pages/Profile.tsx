@@ -382,22 +382,33 @@ export default function Profile() {
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleAddVideoFromProfile = async (file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith('video/')) { toast({ title: 'Selecione um vídeo', variant: 'destructive' }); return; }
-    try {
-      setIsUploading(true);
-      const uploaded = await profileService.uploadMedia(file, { isPrivate: false, source: 'post' });
-      if (uploaded?.id) {
-        await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
-        toast({ title: 'Vídeo publicado!', description: 'Ele aparece aqui e no feed.' });
-        await loadMyVideos();
+  // Publica um ou VÁRIOS vídeos de uma vez (cada vídeo vira um post).
+  const handleAddVideoFromProfile = async (input: File | File[] | null) => {
+    const files = (input == null ? [] : Array.isArray(input) ? input : [input]).filter((f) => f.type.startsWith('video/'));
+    if (files.length === 0) { toast({ title: 'Selecione um vídeo', variant: 'destructive' }); return; }
+    setIsUploading(true);
+    let ok = 0;
+    let fail = 0;
+    for (const file of files) {
+      try {
+        const uploaded = await profileService.uploadMedia(file, { isPrivate: false, source: 'post' });
+        if (uploaded?.id) {
+          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
+          ok++;
+        } else {
+          fail++;
+        }
+      } catch {
+        fail++;
       }
-    } catch (e: any) {
-      toast({ title: 'Erro ao publicar vídeo', description: e?.response?.data?.message || e?.message || 'Tente novamente.', variant: 'destructive' });
-    } finally {
-      setIsUploading(false);
-      if (videoInputRef.current) videoInputRef.current.value = '';
+    }
+    setIsUploading(false);
+    if (videoInputRef.current) videoInputRef.current.value = '';
+    await loadMyVideos();
+    if (ok > 0) {
+      toast({ title: `${ok} vídeo${ok > 1 ? 's' : ''} publicado${ok > 1 ? 's' : ''}!`, description: fail > 0 ? `${fail} falharam.` : 'Aparecem aqui e no feed.' });
+    } else {
+      toast({ title: 'Erro ao publicar vídeo', variant: 'destructive' });
     }
   };
   // Track whether the first photo load has completed so subsequent reloads
@@ -1686,8 +1697,9 @@ export default function Profile() {
               ref={videoInputRef}
               type="file"
               accept="video/*"
+              multiple
               className="hidden"
-              onChange={(e) => { void handleAddVideoFromProfile(e.target.files?.[0] ?? null); }}
+              onChange={(e) => { void handleAddVideoFromProfile(Array.from(e.target.files ?? [])); }}
             />
             <Button
               size="sm"
@@ -1696,7 +1708,7 @@ export default function Profile() {
               onClick={() => videoInputRef.current?.click()}
             >
               {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
-              {isUploading ? 'Publicando...' : 'Publicar vídeo'}
+              {isUploading ? 'Publicando...' : 'Publicar vídeo(s)'}
             </Button>
           </div>
           {isLoadingVideos ? (

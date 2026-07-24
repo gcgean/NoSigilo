@@ -1050,6 +1050,10 @@ export const adminService = {
     const response = await apiClient.put(`/admin/users/${userId}/showcase`, { showcase });
     return response.data;
   },
+  runShowcaseRotation: async (): Promise<{ ok: boolean; profiles: number; storiesCreated: number; postsBumped: number }> => {
+    const response = await apiClient.post('/admin/showcase/run-rotation');
+    return response.data;
+  },
 
   reactivateUser: async (userId: string) => {
     const response = await apiClient.put(`/admin/users/${userId}/reactivate`);

@@ -15,6 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
+import { runShowcaseRotation } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
   createHubCheckout,
@@ -11170,6 +11171,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
     } catch (err) {
       console.error('[admin/showcase] list', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Roda o revezamento da vitrine AGORA (mesma função dos horários programados).
+  app.post('/api/admin/showcase/run-rotation', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const result = await runShowcaseRotation(db);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      console.error('[admin/showcase/run-rotation]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

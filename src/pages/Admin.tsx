@@ -886,6 +886,23 @@ export default function Admin() {
     }
   };
 
+  const [runningRotation, setRunningRotation] = useState(false);
+  const handleRunRotation = async () => {
+    setRunningRotation(true);
+    try {
+      const r = await adminService.runShowcaseRotation();
+      await loadShowcase();
+      toast({
+        title: 'Revezamento executado ✅',
+        description: `${r.profiles} perfil(is) · +${r.storiesCreated} stories · ${r.postsBumped} post(s) resurgido(s).`,
+      });
+    } catch {
+      toast({ title: 'Erro ao rodar o revezamento', variant: 'destructive' });
+    } finally {
+      setRunningRotation(false);
+    }
+  };
+
   const handleRemoveShowcase = async (userId: string) => {
     setBusyUserId(userId);
     try {
@@ -1292,9 +1309,20 @@ export default function Admin() {
         <TabsContent value="users">
           {/* ── Perfis de vitrine (seed/manada) ── */}
           <div className="glass rounded-xl p-6 mb-4">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-amber-500">★</span>
-              <h3 className="font-semibold">Perfis de vitrine ({showcaseProfiles.length})</h3>
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-500">★</span>
+                <h3 className="font-semibold">Perfis de vitrine ({showcaseProfiles.length})</h3>
+              </div>
+              <Button
+                size="sm"
+                className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+                disabled={runningRotation || showcaseProfiles.length === 0}
+                onClick={() => void handleRunRotation()}
+              >
+                {runningRotation ? <Loader2 className="h-4 w-4 animate-spin" /> : <span>▶</span>}
+                {runningRotation ? 'Rodando...' : 'Ativar revezamento agora'}
+              </Button>
             </div>
             <p className="mb-4 text-xs text-muted-foreground">
               Conteúdo curado que mantém o feed/stories vivos (efeito manada). Não aparecem no Match/Radar/Busca e respondem DM com um aviso honesto.
