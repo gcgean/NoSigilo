@@ -942,6 +942,16 @@ export const reportsService = {
   },
 };
 
+export type ConversionFunnel = {
+  funnel: Array<{ stage: string; count: number }>;
+  overallConversionPct: number;
+  nonConverters: { total: number; neverEngaged: number; engagedNoPix: number; generatedPixNoPay: number };
+  conversionByEngagement: {
+    engaged: { total: number; converted: number; ratePct: number };
+    notEngaged: { total: number; converted: number; ratePct: number };
+  };
+};
+
 export type PixAbandoner = {
   id: string;
   name: string;
@@ -1045,6 +1055,11 @@ export const adminService = {
 
   getPixAbandoners: async (): Promise<{ users: PixAbandoner[]; total: number }> => {
     const response = await apiClient.get('/admin/finance/pix-abandoners');
+    return response.data;
+  },
+
+  getConversionFunnel: async (): Promise<ConversionFunnel> => {
+    const response = await apiClient.get('/admin/finance/conversion-funnel');
     return response.data;
   },
 

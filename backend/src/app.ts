@@ -11332,6 +11332,77 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
+  // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
+  // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  app.get('/api/admin/finance/conversion-funnel', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const nowIso2 = nowIso();
+      const [row] = (await queryAll(
+        db,
+        `WITH b AS (
+           SELECT u.id,
+             (COALESCE(u.is_premium,0)=1 OR COALESCE(u.hub_access_status,'')='licensed') AS converted,
+             (u.trial_ends_at IS NOT NULL AND u.trial_ends_at < ?) AS paywall,
+             (EXISTS(SELECT 1 FROM posts p WHERE p.user_id=u.id)
+              OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id=u.id)
+              OR EXISTS(SELECT 1 FROM messages m WHERE m.sender_id=u.id)) AS engaged,
+             EXISTS(SELECT 1 FROM checkout_generations cg WHERE cg.user_id=u.id) AS gen_pix
+           FROM users u
+           WHERE COALESCE(u.is_banned,0)=0 AND COALESCE(u.is_deactivated,0)=0
+         )
+         SELECT
+           COUNT(*) AS registered,
+           SUM(CASE WHEN engaged THEN 1 ELSE 0 END) AS engaged,
+           SUM(CASE WHEN paywall THEN 1 ELSE 0 END) AS paywall,
+           SUM(CASE WHEN gen_pix THEN 1 ELSE 0 END) AS generated_pix,
+           SUM(CASE WHEN converted THEN 1 ELSE 0 END) AS converted,
+           SUM(CASE WHEN paywall AND NOT converted THEN 1 ELSE 0 END) AS pw_not_conv,
+           SUM(CASE WHEN paywall AND NOT converted AND NOT engaged THEN 1 ELSE 0 END) AS pw_never_engaged,
+           SUM(CASE WHEN paywall AND NOT converted AND engaged AND NOT gen_pix THEN 1 ELSE 0 END) AS pw_engaged_no_pix,
+           SUM(CASE WHEN paywall AND NOT converted AND gen_pix THEN 1 ELSE 0 END) AS pw_pix_no_pay,
+           SUM(CASE WHEN engaged THEN 1 ELSE 0 END) AS eng_total,
+           SUM(CASE WHEN engaged AND converted THEN 1 ELSE 0 END) AS eng_conv,
+           SUM(CASE WHEN NOT engaged THEN 1 ELSE 0 END) AS noeng_total,
+           SUM(CASE WHEN NOT engaged AND converted THEN 1 ELSE 0 END) AS noeng_conv
+         FROM b`,
+        [nowIso2]
+      )) as any[];
+
+      const n = (v: any) => Number(v || 0);
+      const registered = n(row?.registered);
+      const engaged = n(row?.engaged);
+      const paywall = n(row?.paywall);
+      const generatedPix = n(row?.generated_pix);
+      const converted = n(row?.converted);
+      const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+
+      res.json({
+        funnel: [
+          { stage: 'Cadastraram', count: registered },
+          { stage: 'Usaram o app', count: engaged },
+          { stage: 'Trial expirou (viram o paywall)', count: paywall },
+          { stage: 'Geraram PIX', count: generatedPix },
+          { stage: 'Assinaram', count: converted },
+        ],
+        overallConversionPct: pct(converted, registered),
+        nonConverters: {
+          total: n(row?.pw_not_conv),
+          neverEngaged: n(row?.pw_never_engaged),
+          engagedNoPix: n(row?.pw_engaged_no_pix),
+          generatedPixNoPay: n(row?.pw_pix_no_pay),
+        },
+        conversionByEngagement: {
+          engaged: { total: n(row?.eng_total), converted: n(row?.eng_conv), ratePct: pct(n(row?.eng_conv), n(row?.eng_total)) },
+          notEngaged: { total: n(row?.noeng_total), converted: n(row?.noeng_conv), ratePct: pct(n(row?.noeng_conv), n(row?.noeng_total)) },
+        },
+      });
+    } catch (error) {
+      console.error('[admin/finance/conversion-funnel]', error);
+      res.status(500).json({ error: 'conversion_funnel_unavailable' });
+    }
+  });
+
   // Relatório de receita recorrente (MRR): histórico + projeção 12 meses.
   // Sem ledger de pagamentos: MRR real é registrado mês a mês a partir de agora
   // (revenue_snapshots); meses anteriores são ESTIMADOS pela data de cadastro dos

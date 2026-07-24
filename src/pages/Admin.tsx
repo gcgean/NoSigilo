@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
-import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner } from '@/services/api';
+import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -297,6 +297,8 @@ export default function Admin() {
   const [pixAbandon, setPixAbandon] = useState<Awaited<ReturnType<typeof adminService.getPixAbandonment>> | null>(null);
   const [pixAbandoners, setPixAbandoners] = useState<PixAbandoner[] | null>(null);
   const [pixAbandonersLoading, setPixAbandonersLoading] = useState(false);
+  const [funnel, setFunnel] = useState<ConversionFunnel | null>(null);
+  const [funnelLoading, setFunnelLoading] = useState(true);
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
@@ -621,6 +623,17 @@ export default function Admin() {
       setStatesBusy(false);
     }
   };
+
+  // Funil de conversão (cadastro → uso → paywall → PIX → assinatura).
+  useEffect(() => {
+    let cancelled = false;
+    setFunnelLoading(true);
+    adminService.getConversionFunnel()
+      .then((data) => { if (!cancelled) setFunnel(data); })
+      .catch(() => { if (!cancelled) setFunnel(null); })
+      .finally(() => { if (!cancelled) setFunnelLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // Analytics de assinaturas (dados reais do Hub) — carrega em separado para não
   // travar o load principal do admin (a chamada ao Hub pode levar alguns segundos).
@@ -1615,6 +1628,93 @@ export default function Admin() {
               </div>
             </Card>
           </div>
+
+          {/* Funil de conversão: cadastro → uso → paywall → PIX → assinatura */}
+          <Card className="p-6 glass mt-6">
+            <h3 className="font-semibold">Funil de conversão</h3>
+            <p className="text-xs text-muted-foreground">
+              Onde os usuários caem fora entre cadastrar e assinar — para saber onde investir para aumentar a conversão.
+            </p>
+
+            {funnelLoading ? (
+              <div className="flex justify-center py-10">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+              </div>
+            ) : !funnel ? (
+              <p className="mt-4 text-sm text-muted-foreground">Não foi possível carregar o funil agora.</p>
+            ) : (() => {
+              const f = funnel;
+              const max = Math.max(1, ...f.funnel.map((s) => s.count));
+              const nc = f.nonConverters;
+              return (
+                <div className="mt-4 space-y-6">
+                  {/* Funil visual */}
+                  <div className="space-y-2">
+                    {f.funnel.map((s, i) => {
+                      const pctOfMax = Math.max(4, Math.round((s.count / max) * 100));
+                      const dropFromPrev = i > 0 ? f.funnel[i - 1].count - s.count : 0;
+                      return (
+                        <div key={s.stage}>
+                          <div className="flex items-center justify-between text-xs mb-0.5">
+                            <span className="text-muted-foreground">{s.stage}</span>
+                            <span className="font-semibold">{s.count}</span>
+                          </div>
+                          <div className="h-6 w-full rounded-md bg-secondary/30 overflow-hidden">
+                            <div
+                              className="h-full rounded-md bg-gradient-to-r from-primary/60 to-primary"
+                              style={{ width: `${pctOfMax}%` }}
+                            />
+                          </div>
+                          {i > 0 && dropFromPrev > 0 && (
+                            <p className="mt-0.5 text-[10px] text-destructive">−{dropFromPrev} não avançaram desta etapa</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-secondary/30 p-4">
+                      <p className="text-2xl font-bold text-primary">{f.overallConversionPct}%</p>
+                      <p className="text-xs text-muted-foreground">Conversão geral (cadastro → assinante)</p>
+                    </div>
+                    <div className="rounded-xl bg-secondary/30 p-4">
+                      <p className="text-2xl font-bold text-foreground">{f.conversionByEngagement.engaged.ratePct}% <span className="text-sm text-muted-foreground font-normal">vs</span> {f.conversionByEngagement.notEngaged.ratePct}%</p>
+                      <p className="text-xs text-muted-foreground">Converte quem usa o app (postou/curtiu/mandou msg) vs quem não usa</p>
+                    </div>
+                  </div>
+
+                  {/* Comportamento de quem viu o paywall e não assinou */}
+                  <div>
+                    <h4 className="mb-2 text-sm font-semibold">
+                      Viram que precisam pagar e não assinaram: <span className="text-destructive">{nc.total}</span> usuário(s)
+                    </h4>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-lg bg-secondary/30 p-3">
+                        <p className="text-xl font-bold text-destructive">{nc.neverEngaged}</p>
+                        <p className="text-xs text-muted-foreground">Nunca usaram o app de verdade — cadastraram e sumiram</p>
+                      </div>
+                      <div className="rounded-lg bg-secondary/30 p-3">
+                        <p className="text-xl font-bold text-amber-500">{nc.engagedNoPix}</p>
+                        <p className="text-xs text-muted-foreground">Usaram o app, viram o paywall, mas nem tentaram pagar</p>
+                      </div>
+                      <div className="rounded-lg bg-secondary/30 p-3">
+                        <p className="text-xl font-bold text-orange-500">{nc.generatedPixNoPay}</p>
+                        <p className="text-xs text-muted-foreground">Chegaram a gerar o PIX, mas não pagaram</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Leitura: se <strong>"nunca usaram"</strong> for o maior grupo, o problema é o produto não engajar antes do trial acabar
+                      (onboarding/primeira experiência). Se for <strong>"usaram e não tentaram pagar"</strong>, o preço/oferta não convenceu
+                      quem já viu valor — teste preço, trial mais longo ou oferta de desconto na hora do paywall. Se for
+                      <strong> "gerou PIX e não pagou"</strong>, é fricção no checkout — use a lista de "Quem gerou o PIX e não pagou" abaixo
+                      para recuperar diretamente.
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
+          </Card>
 
           {/* Abandono de PIX — gerou o código mas não pagou (carência de 24h) */}
           <Card className="p-6 glass mt-6">
