@@ -11294,6 +11294,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Lista dos usuários que geraram PIX (há mais de 24h) e NÃO pagaram — para
+  // recuperação/remarketing. Não-pagante = não é premium nem licenciado hoje.
+  app.get('/api/admin/finance/pix-abandoners', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const graceCutoffIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const rows = (await queryAll(
+        db,
+        `SELECT cg.user_id AS id, u.name, u.email, u.city, u.state,
+                COUNT(*) AS attempts, MAX(cg.created_at) AS last_generated_at
+           FROM checkout_generations cg
+           JOIN users u ON u.id = cg.user_id
+          WHERE cg.created_at <= ?
+            AND COALESCE(u.is_premium, 0) != 1
+            AND COALESCE(u.hub_access_status, '') != 'licensed'
+            AND COALESCE(u.is_banned, 0) = 0
+          GROUP BY cg.user_id, u.name, u.email, u.city, u.state
+          ORDER BY last_generated_at DESC`,
+        [graceCutoffIso]
+      )) as any[];
+
+      res.json({
+        users: rows.map((r) => ({
+          id: String(r.id),
+          name: String(r.name || ''),
+          email: String(r.email || ''),
+          city: String(r.city || ''),
+          state: String(r.state || ''),
+          attempts: Number(r.attempts || 0),
+          lastGeneratedAt: r.last_generated_at ?? null,
+        })),
+        total: rows.length,
+      });
+    } catch (error) {
+      console.error('[admin/finance/pix-abandoners]', error);
+      res.status(500).json({ error: 'pix_abandoners_unavailable' });
+    }
+  });
+
   // Relatório de receita recorrente (MRR): histórico + projeção 12 meses.
   // Sem ledger de pagamentos: MRR real é registrado mês a mês a partir de agora
   // (revenue_snapshots); meses anteriores são ESTIMADOS pela data de cadastro dos

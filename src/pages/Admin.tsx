@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
-import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser } from '@/services/api';
+import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -295,6 +295,8 @@ export default function Admin() {
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
   const [pixAbandon, setPixAbandon] = useState<Awaited<ReturnType<typeof adminService.getPixAbandonment>> | null>(null);
+  const [pixAbandoners, setPixAbandoners] = useState<PixAbandoner[] | null>(null);
+  const [pixAbandonersLoading, setPixAbandonersLoading] = useState(false);
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
@@ -493,6 +495,37 @@ export default function Admin() {
       cancelled = true;
     };
   }, [toast]);
+
+  // ── Quem gerou PIX e não pagou (lista para recuperação) ─────────────────────
+  const loadPixAbandoners = async () => {
+    setPixAbandonersLoading(true);
+    try {
+      const data = await adminService.getPixAbandoners();
+      setPixAbandoners(data.users ?? []);
+    } catch {
+      toast({ title: 'Erro ao carregar a lista', variant: 'destructive' });
+    } finally {
+      setPixAbandonersLoading(false);
+    }
+  };
+
+  const handleExportAbandonersCsv = () => {
+    if (!pixAbandoners || pixAbandoners.length === 0) return;
+    const cell = (v: string) => { const s = String(v ?? ''); return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const header = ['nome', 'email', 'cidade', 'uf', 'tentativas', 'ultima_geracao'];
+    const lines = pixAbandoners.map((u) => [
+      u.name, u.email, u.city, u.state, String(u.attempts),
+      u.lastGeneratedAt ? new Date(u.lastGeneratedAt).toLocaleString('pt-BR') : '',
+    ].map(cell).join(';'));
+    const csv = '﻿' + [header.join(';'), ...lines].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gerou-pix-nao-pagou-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── Cidades sem UF: carga, preenchimento automático, export/import CSV ──────
   const loadMissingStates = async () => {
@@ -1614,6 +1647,70 @@ export default function Admin() {
                 (gerações com menos de 24h ficam em carência).
               </p>
             )}
+
+            {/* Lista: quem gerou o PIX e não pagou (recuperação) */}
+            <div className="mt-5 border-t border-border/40 pt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">Quem gerou o PIX e não pagou</p>
+                  <p className="text-xs text-muted-foreground">Lista de usuários para recuperar (não são premium/licenciados hoje).</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => void loadPixAbandoners()} disabled={pixAbandonersLoading}>
+                    <RefreshCw className={`w-4 h-4 ${pixAbandonersLoading ? 'animate-spin' : ''}`} /> Ver lista
+                  </Button>
+                  {pixAbandoners && pixAbandoners.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleExportAbandonersCsv}>
+                      <ExternalLink className="w-4 h-4" /> Exportar
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {pixAbandonersLoading ? (
+                <div className="flex justify-center py-6">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                </div>
+              ) : pixAbandoners === null ? null : pixAbandoners.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Ninguém pendente — todos que geraram PIX (há +24h) já pagaram. 🎉</p>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm">
+                    <strong className="text-destructive">{pixAbandoners.length}</strong> usuário(s) geraram o PIX e não pagaram.
+                  </p>
+                  <div className="mt-2 overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
+                          <th className="py-2 pr-3">Usuário</th>
+                          <th className="px-3 py-2">Cidade</th>
+                          <th className="px-3 py-2 text-right">Tentativas</th>
+                          <th className="px-3 py-2 text-right">Última geração</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pixAbandoners.slice(0, 200).map((u) => (
+                          <tr key={u.id} className="border-b border-border/30">
+                            <td className="py-1.5 pr-3">
+                              <span className="font-medium">{u.name || '—'}</span>
+                              <span className="block text-xs text-muted-foreground">{u.email}</span>
+                            </td>
+                            <td className="px-3 py-1.5">{[u.city, u.state].filter(Boolean).join(', ') || '—'}</td>
+                            <td className="px-3 py-1.5 text-right">{u.attempts}</td>
+                            <td className="px-3 py-1.5 text-right text-xs text-muted-foreground">
+                              {u.lastGeneratedAt ? new Date(u.lastGeneratedAt).toLocaleString('pt-BR') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {pixAbandoners.length > 200 && (
+                    <p className="mt-2 text-xs text-muted-foreground">Mostrando 200 de {pixAbandoners.length}. O "Exportar" traz todos.</p>
+                  )}
+                </>
+              )}
+            </div>
           </Card>
 
           {/* Relatório de MRR — histórico + projeção 12 meses */}

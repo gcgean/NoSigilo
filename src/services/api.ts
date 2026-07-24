@@ -942,6 +942,16 @@ export const reportsService = {
   },
 };
 
+export type PixAbandoner = {
+  id: string;
+  name: string;
+  email: string;
+  city: string;
+  state: string;
+  attempts: number;
+  lastGeneratedAt: string | null;
+};
+
 export type MissingStateUser = {
   id: string;
   name: string;
@@ -1030,6 +1040,11 @@ export const adminService = {
 
   getSubscriptionAnalytics: async (): Promise<SubscriptionAnalytics> => {
     const response = await apiClient.get('/admin/finance/subscription-analytics');
+    return response.data;
+  },
+
+  getPixAbandoners: async (): Promise<{ users: PixAbandoner[]; total: number }> => {
+    const response = await apiClient.get('/admin/finance/pix-abandoners');
     return response.data;
   },
 
