@@ -380,6 +380,26 @@ export default function Profile() {
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleAddVideoFromProfile = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) { toast({ title: 'Selecione um vídeo', variant: 'destructive' }); return; }
+    try {
+      setIsUploading(true);
+      const uploaded = await profileService.uploadMedia(file, { isPrivate: false, source: 'post' });
+      if (uploaded?.id) {
+        await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
+        toast({ title: 'Vídeo publicado!', description: 'Ele aparece aqui e no feed.' });
+        await loadMyVideos();
+      }
+    } catch (e: any) {
+      toast({ title: 'Erro ao publicar vídeo', description: e?.response?.data?.message || e?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsUploading(false);
+      if (videoInputRef.current) videoInputRef.current.value = '';
+    }
+  };
   // Track whether the first photo load has completed so subsequent reloads
   // (after upload / delete / toggle) happen silently — no blinking "Carregando..."
   const photosInitialLoadDone = useRef(false);
@@ -625,6 +645,26 @@ export default function Profile() {
       setIsUploading(false);
     }
   };
+
+  // Colar (Ctrl+V) foto/vídeo direto na página do perfil: foto vai pra galeria,
+  // vídeo é publicado. Usa ref para sempre chamar os handlers mais recentes.
+  const pasteHandlersRef = useRef({ handleUpload, handleAddVideoFromProfile });
+  pasteHandlersRef.current = { handleUpload, handleAddVideoFromProfile };
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files || []);
+      const media = files.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+      if (media.length === 0) return;
+      e.preventDefault();
+      const f = media[0];
+      const ext = f.type.split('/')[1] || (f.type.startsWith('video/') ? 'mp4' : 'png');
+      const named = f.name && f.name.includes('.') ? f : new File([f], `paste-${Date.now()}.${ext}`, { type: f.type });
+      if (named.type.startsWith('video/')) void pasteHandlersRef.current.handleAddVideoFromProfile(named);
+      else void pasteHandlersRef.current.handleUpload(named);
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
 
   const handleCancelBioEdit = () => {
     setBioDraft(user?.bio || '');
@@ -1640,6 +1680,25 @@ export default function Profile() {
         </TabsContent>
 
         <TabsContent value="videos">
+          {/* Botão de publicar vídeo direto do perfil */}
+          <div className="mb-3 flex justify-end">
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(e) => { void handleAddVideoFromProfile(e.target.files?.[0] ?? null); }}
+            />
+            <Button
+              size="sm"
+              className="gap-2 bg-gradient-primary"
+              disabled={isUploading}
+              onClick={() => videoInputRef.current?.click()}
+            >
+              {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Video className="h-4 w-4" />}
+              {isUploading ? 'Publicando...' : 'Publicar vídeo'}
+            </Button>
+          </div>
           {isLoadingVideos ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Carregando vídeos...
@@ -1648,7 +1707,7 @@ export default function Profile() {
             <div className="glass rounded-xl p-8 text-center">
               <Video className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Você ainda não publicou vídeos. Publique pelo feed para aparecerem aqui.
+                Você ainda não publicou vídeos. Toque em <strong>Publicar vídeo</strong> acima ou publique pelo feed.
               </p>
             </div>
           ) : (

@@ -948,25 +948,37 @@ export default function Feed() {
   };
 
   const handlePasteOnComposer = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = Array.from(e.clipboardData?.items || []);
-    const imageItems = items.filter((item) => item.type.startsWith('image/'));
-    if (imageItems.length === 0) return;
-    e.preventDefault();
-    const files = imageItems
-      .map((item) => item.getAsFile())
+    // Aceita colar (Ctrl+V) FOTOS e VÍDEOS — tanto arquivo copiado do explorador
+    // (clipboardData.files) quanto imagem/vídeo copiado de outra tela (items).
+    const fromFiles = Array.from(e.clipboardData?.files || []);
+    const fromItems = Array.from(e.clipboardData?.items || [])
+      .filter((it) => it.kind === 'file')
+      .map((it) => it.getAsFile())
       .filter((f): f is File => f !== null);
-    if (files.length === 0) return;
-    const list = files.map((f) => {
-      const ext = f.type.split('/')[1] || 'png';
-      const namedFile = new File([f], `paste-${Date.now()}.${ext}`, { type: f.type });
+    const raw = (fromFiles.length ? fromFiles : fromItems)
+      .filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
+    if (raw.length === 0) return;
+    e.preventDefault();
+    const accepted = raw.filter((f) => {
+      if (f.type.startsWith('video/') && f.size > VIDEO_MAX_BYTES) {
+        toast({ title: 'Vídeo muito grande', description: 'O tamanho máximo é 500 MB por vídeo.', variant: 'destructive' });
+        return false;
+      }
+      return true;
+    });
+    if (accepted.length === 0) return;
+    const list = accepted.map((f) => {
+      const isVideo = f.type.startsWith('video/');
+      const ext = f.type.split('/')[1] || (isVideo ? 'mp4' : 'png');
+      const named = f.name && f.name.includes('.') ? f : new File([f], `paste-${Date.now()}.${ext}`, { type: f.type });
       return {
         id: `paste-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        file: namedFile,
-        url: URL.createObjectURL(namedFile),
+        file: named,
+        url: URL.createObjectURL(named),
       };
     });
     setAttachments((prev) => [...prev, ...list]);
-    toast({ title: 'Imagem colada', description: `${list.length} imagem${list.length > 1 ? 's' : ''} adicionada${list.length > 1 ? 's' : ''} ao post.` });
+    toast({ title: 'Mídia colada', description: `${list.length} arquivo(s) adicionado(s) ao post. Toque em Publicar.` });
   };
 
   const handleFilesSelected = (files: FileList | null) => {
