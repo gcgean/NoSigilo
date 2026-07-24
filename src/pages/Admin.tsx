@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Link, Navigate } from 'react-router-dom';
-import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics } from '@/services/api';
+import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -296,6 +296,11 @@ export default function Admin() {
   const [finance, setFinance] = useState<FinanceSummary>(DEFAULT_FINANCE);
   const [pixAbandon, setPixAbandon] = useState<Awaited<ReturnType<typeof adminService.getPixAbandonment>> | null>(null);
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
+  const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
+  const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
+  const [missingStateLoading, setMissingStateLoading] = useState(false);
+  const [statesBusy, setStatesBusy] = useState(false);
+  const statesFileRef = useRef<HTMLInputElement>(null);
   const [subAnalytics, setSubAnalytics] = useState<SubscriptionAnalytics | null>(null);
   const [subAnalyticsLoading, setSubAnalyticsLoading] = useState(true);
   const [subAnalyticsError, setSubAnalyticsError] = useState(false);
@@ -488,6 +493,101 @@ export default function Admin() {
       cancelled = true;
     };
   }, [toast]);
+
+  // ── Cidades sem UF: carga, preenchimento automático, export/import CSV ──────
+  const loadMissingStates = async () => {
+    setMissingStateLoading(true);
+    try {
+      const data = await adminService.getUsersMissingState();
+      setMissingState(data.users ?? []);
+      setMissingStateMeta({
+        total: Number(data.total || 0),
+        withSuggestion: Number(data.withSuggestion || 0),
+        ambiguous: Number(data.ambiguous || 0),
+      });
+    } catch {
+      toast({ title: 'Erro ao carregar cidades sem UF', variant: 'destructive' });
+    } finally {
+      setMissingStateLoading(false);
+    }
+  };
+
+  const handleAutofillStates = async () => {
+    setStatesBusy(true);
+    try {
+      const r = await adminService.autofillUserStates();
+      toast({ title: `${r.updated} usuário(s) corrigido(s)`, description: `${r.remaining} ainda precisam de correção manual.` });
+      await loadMissingStates();
+    } catch {
+      toast({ title: 'Erro ao preencher automaticamente', variant: 'destructive' });
+    } finally {
+      setStatesBusy(false);
+    }
+  };
+
+  const csvCell = (v: string) => {
+    const s = String(v ?? '');
+    return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const handleExportStatesCsv = () => {
+    const header = ['id', 'nome', 'email', 'cidade', 'uf_sugerida', 'uf'];
+    const lines = missingState.map((u) =>
+      [u.id, u.name, u.email, u.city, u.suggestedState ?? '', u.suggestedState ?? ''].map(csvCell).join(';')
+    );
+    // BOM + ';' para o Excel pt-BR abrir com acentuação e colunas corretas.
+    const csv = '﻿' + [header.join(';'), ...lines].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cidades-sem-uf-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportStatesCsv = async (file: File) => {
+    setStatesBusy(true);
+    try {
+      const text = (await file.text()).replace(/^﻿/, '');
+      const rows = text.split(/\r?\n/).filter((l) => l.trim());
+      if (rows.length < 2) throw new Error('Planilha vazia');
+      const delim = (rows[0].match(/;/g)?.length ?? 0) >= (rows[0].match(/,/g)?.length ?? 0) ? ';' : ',';
+      const splitRow = (line: string) => {
+        const out: string[] = [];
+        let cur = '', inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i];
+          if (c === '"') {
+            if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ;
+          } else if (c === delim && !inQ) { out.push(cur); cur = ''; } else cur += c;
+        }
+        out.push(cur);
+        return out.map((s) => s.trim());
+      };
+      const header = splitRow(rows[0]).map((h) => h.toLowerCase());
+      const idIdx = header.indexOf('id');
+      const ufIdx = header.lastIndexOf('uf');
+      if (idIdx < 0 || ufIdx < 0) throw new Error('A planilha precisa ter as colunas "id" e "uf"');
+
+      const updates: Array<{ userId: string; state: string }> = [];
+      for (let i = 1; i < rows.length; i++) {
+        const cols = splitRow(rows[i]);
+        const userId = cols[idIdx];
+        const uf = String(cols[ufIdx] || '').toUpperCase();
+        if (userId && /^[A-Z]{2}$/.test(uf)) updates.push({ userId, state: uf });
+      }
+      if (updates.length === 0) throw new Error('Nenhuma linha com UF válida (2 letras) encontrada');
+
+      const r = await adminService.applyUserStates(updates);
+      toast({ title: `${r.updated} usuário(s) atualizado(s)`, description: r.skipped ? `${r.skipped} linha(s) ignorada(s).` : undefined });
+      await loadMissingStates();
+    } catch (e) {
+      toast({ title: 'Erro ao importar', description: (e as Error).message, variant: 'destructive' });
+    } finally {
+      setStatesBusy(false);
+    }
+  };
 
   // Analytics de assinaturas (dados reais do Hub) — carrega em separado para não
   // travar o load principal do admin (a chamada ao Hub pode levar alguns segundos).
@@ -1015,6 +1115,10 @@ export default function Admin() {
           <TabsTrigger value="finance" className="gap-2">
             <DollarSign className="w-4 h-4" />
             Finanças
+          </TabsTrigger>
+          <TabsTrigger value="states" className="gap-2">
+            <MapPin className="w-4 h-4" />
+            Cidades sem UF
           </TabsTrigger>
           <TabsTrigger value="visits" className="gap-2">
             <Globe2 className="w-4 h-4" />
@@ -1592,6 +1696,108 @@ export default function Admin() {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="states">
+          <Card className="p-6 glass">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Cidades sem estado (UF)</h3>
+                <p className="text-xs text-muted-foreground">
+                  Usuários com cidade preenchida mas sem UF. A maioria é resolvida automaticamente pela base de cidades;
+                  o resto você corrige na planilha e importa de volta.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={() => void loadMissingStates()} disabled={missingStateLoading || statesBusy}>
+                  <RefreshCw className={`w-4 h-4 ${missingStateLoading ? 'animate-spin' : ''}`} /> Carregar
+                </Button>
+                <Button size="sm" onClick={() => void handleAutofillStates()} disabled={statesBusy || missingStateMeta.withSuggestion === 0}>
+                  <CheckSquare className="w-4 h-4" /> Preencher automático ({missingStateMeta.withSuggestion})
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportStatesCsv} disabled={missingState.length === 0}>
+                  <ExternalLink className="w-4 h-4" /> Exportar planilha
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => statesFileRef.current?.click()} disabled={statesBusy}>
+                  <FileText className="w-4 h-4" /> Importar planilha
+                </Button>
+                <input
+                  ref={statesFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportStatesCsv(f); e.target.value = ''; }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="rounded-lg bg-secondary/30 p-3">
+                <p className="text-2xl font-bold">{missingStateMeta.total}</p>
+                <p className="text-xs text-muted-foreground">Sem UF</p>
+              </div>
+              <div className="rounded-lg bg-secondary/30 p-3">
+                <p className="text-2xl font-bold text-success">{missingStateMeta.withSuggestion}</p>
+                <p className="text-xs text-muted-foreground">Resolvem automático</p>
+              </div>
+              <div className="rounded-lg bg-secondary/30 p-3">
+                <p className="text-2xl font-bold text-destructive">{missingStateMeta.ambiguous}</p>
+                <p className="text-xs text-muted-foreground">Ambíguas (mesma cidade em UFs diferentes)</p>
+              </div>
+            </div>
+
+            <p className="mt-3 text-xs text-muted-foreground">
+              Na planilha, preencha a coluna <strong>uf</strong> (2 letras, ex: CE) e importe de volta. As colunas
+              <strong> id</strong> e <strong>uf</strong> são as únicas usadas — não apague o <strong>id</strong>.
+            </p>
+
+            <div className="mt-4 overflow-x-auto">
+              {missingStateLoading ? (
+                <div className="flex justify-center py-10">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                </div>
+              ) : missingState.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  {missingStateMeta.total === 0 ? 'Clique em "Carregar" para buscar os usuários sem UF.' : 'Nenhum usuário sem UF. 🎉'}
+                </p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
+                      <th className="py-2 pr-3">Usuário</th>
+                      <th className="px-3 py-2">Cidade</th>
+                      <th className="px-3 py-2">UF sugerida</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {missingState.slice(0, 300).map((u) => (
+                      <tr key={u.id} className="border-b border-border/30">
+                        <td className="py-1.5 pr-3">
+                          <span className="font-medium">{u.name || '—'}</span>
+                          <span className="block text-xs text-muted-foreground">{u.email}</span>
+                        </td>
+                        <td className="px-3 py-1.5">{u.city}</td>
+                        <td className="px-3 py-1.5">
+                          {u.suggestedState ? (
+                            <span className="rounded bg-success/15 px-2 py-0.5 text-xs font-semibold text-success">{u.suggestedState}</span>
+                          ) : u.ambiguous ? (
+                            <span className="text-xs text-destructive">ambígua — preencha manualmente</span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">não encontrada</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {missingState.length > 300 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Mostrando 300 de {missingState.length}. A planilha exporta todos.
+                </p>
+              )}
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="visits">

@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
-import { nearestCity, searchCities } from './seedCities.js';
+import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
   createHubCheckout,
@@ -10931,6 +10931,109 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
     } catch (err) {
       console.error('[admin/users]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ── Cidades sem estado ─────────────────────────────────────────────────────
+  // Usuários que têm cidade preenchida mas ficaram sem o estado (UF). A tabela
+  // `cities` resolve a maioria automaticamente; o que for ambíguo (mesmo nome de
+  // cidade em UFs diferentes) ou desconhecido fica para correção manual via CSV.
+
+  const listUsersMissingState = async () => {
+    const rows = (await queryAll(
+      db,
+      `SELECT id, name, email, city FROM users
+       WHERE city IS NOT NULL AND TRIM(city) != '' AND (state IS NULL OR TRIM(state) = '')
+       ORDER BY city COLLATE NOCASE, name COLLATE NOCASE`
+    )) as any[];
+
+    // Resolve os estados em lote (uma consulta por cidade distinta, não por usuário).
+    const distinctNorms = Array.from(new Set(rows.map((r) => normalizeText(String(r.city || '')))))
+      .filter(Boolean);
+    const stateByNorm = new Map<string, { state: string | null; ambiguous: boolean }>();
+    for (const norm of distinctNorms) {
+      const matches = (await queryAll(db, 'SELECT DISTINCT state FROM cities WHERE name_norm = ?', [norm])) as any[];
+      if (matches.length === 1) stateByNorm.set(norm, { state: String(matches[0].state), ambiguous: false });
+      else if (matches.length > 1) stateByNorm.set(norm, { state: null, ambiguous: true });
+      else stateByNorm.set(norm, { state: null, ambiguous: false });
+    }
+
+    return rows.map((r) => {
+      const info = stateByNorm.get(normalizeText(String(r.city || ''))) ?? { state: null, ambiguous: false };
+      return {
+        id: String(r.id),
+        name: String(r.name || ''),
+        email: String(r.email || ''),
+        city: String(r.city || ''),
+        suggestedState: info.state,
+        ambiguous: info.ambiguous,
+      };
+    });
+  };
+
+  app.get('/api/admin/users/missing-state', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const users = await listUsersMissingState();
+      res.json({
+        users,
+        total: users.length,
+        withSuggestion: users.filter((u) => u.suggestedState).length,
+        ambiguous: users.filter((u) => u.ambiguous).length,
+      });
+    } catch (err) {
+      console.error('[admin/users/missing-state]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Preenche automaticamente quem tem correspondência única na tabela de cidades.
+  app.post('/api/admin/users/autofill-states', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const users = await listUsersMissingState();
+      let updated = 0;
+      for (const u of users) {
+        if (!u.suggestedState) continue;
+        await run(db, 'UPDATE users SET state = ? WHERE id = ?', [u.suggestedState, u.id]);
+        updated++;
+      }
+      if (updated > 0) await persist();
+      const remaining = users.length - updated;
+      res.json({ updated, remaining });
+    } catch (err) {
+      console.error('[admin/users/autofill-states]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Aplica correções vindas da planilha: [{ userId, state }]
+  app.post('/api/admin/users/apply-states', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({
+      updates: z.array(z.object({
+        userId: z.string().min(1),
+        state: z.string().trim().min(2).max(2),
+      })).min(1).max(5000),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input', message: 'Envie updates: [{ userId, state }] com UF de 2 letras.' });
+      return;
+    }
+    try {
+      let updated = 0;
+      const skipped: string[] = [];
+      for (const item of parsed.data.updates) {
+        const uf = item.state.toUpperCase();
+        if (!/^[A-Z]{2}$/.test(uf)) { skipped.push(item.userId); continue; }
+        const exists = (await queryOne(db, 'SELECT id FROM users WHERE id = ? LIMIT 1', [item.userId])) as any;
+        if (!exists?.id) { skipped.push(item.userId); continue; }
+        await run(db, 'UPDATE users SET state = ? WHERE id = ?', [uf, item.userId]);
+        updated++;
+      }
+      if (updated > 0) await persist();
+      res.json({ updated, skipped: skipped.length });
+    } catch (err) {
+      console.error('[admin/users/apply-states]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

@@ -942,6 +942,15 @@ export const reportsService = {
   },
 };
 
+export type MissingStateUser = {
+  id: string;
+  name: string;
+  email: string;
+  city: string;
+  suggestedState: string | null;
+  ambiguous: boolean;
+};
+
 export type SubscriptionAnalytics = {
   product: { id: string; code: string; name: string };
   currency: string;
@@ -1021,6 +1030,26 @@ export const adminService = {
 
   getSubscriptionAnalytics: async (): Promise<SubscriptionAnalytics> => {
     const response = await apiClient.get('/admin/finance/subscription-analytics');
+    return response.data;
+  },
+
+  getUsersMissingState: async (): Promise<{
+    users: MissingStateUser[];
+    total: number;
+    withSuggestion: number;
+    ambiguous: number;
+  }> => {
+    const response = await apiClient.get('/admin/users/missing-state');
+    return response.data;
+  },
+
+  autofillUserStates: async (): Promise<{ updated: number; remaining: number }> => {
+    const response = await apiClient.post('/admin/users/autofill-states');
+    return response.data;
+  },
+
+  applyUserStates: async (updates: Array<{ userId: string; state: string }>): Promise<{ updated: number; skipped: number }> => {
+    const response = await apiClient.post('/admin/users/apply-states', { updates });
     return response.data;
   },
 

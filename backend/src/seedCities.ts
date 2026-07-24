@@ -2,7 +2,7 @@ import { City } from 'country-state-city';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 
-function normalizeText(value: string) {
+export function normalizeText(value: string) {
   return value
     .toLowerCase()
     .normalize('NFD')
