@@ -51,24 +51,39 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
   return { profiles: showcase.length, storiesCreated, postsBumped };
 }
 
-// Mensagens de abertura da vitrine (voz feminina/casal, provocante sem explícito).
-const OPENING_LINES = [
-  'Oi 😏 gostei do seu perfil… você faz meu tipo.',
-  'Vi que você é novo por aqui 👀 me chamou atenção.',
-  'Oii, tudo bem? Achei você bem interessante 🔥',
-  'Confesso que fiquei curiosa com o seu perfil 😌',
-  'Você por aqui… que sorte a minha 😈',
-  'Bateu uma vontade de te conhecer melhor 🔥',
+// Mensagens de abertura da vitrine para um HOMEM. Escolhidas conforme o gênero
+// de quem envia: CASAL fala como casal (esposa + eu); MULHER fala como mulher
+// interessada nele. Tom quente (plataforma adulta), sem passar de convite.
+const COUPLE_LINES = [
+  'Oi, gostei do seu perfil, é do tipo que estou procurando pra uma brincadeira gostosa com a minha esposa 🔥',
+  'Olá, gostei do seu perfil… curte uma brincadeira em off com a minha esposa e eu assistindo? 😈',
+  'Olá, gostei do perfil, curte fazer uma DP na minha esposa comigo? 🥵',
+  'Olá, gostei do perfil… curte comer a minha esposa comigo junto? 😏',
+  'Olá, gostei do seu perfil, toparia um ménage gostoso com a gente? 🔥',
+];
+const WOMAN_LINES = [
+  'Oi 😏 gostei muito do seu perfil… tô doida por um homem de verdade pra brincar hoje 🔥',
+  'Olá gato, seu perfil me deixou com vontade 🥵 curte um encontro bem discreto?',
+  'Oi… adorei o que vi 😈 tô precisando de alguém pra me satisfazer, topa?',
+  'Gostei demais de você 🔥 topa me conhecer sem compromisso e sem sigilo entre nós? 😏',
+  'Oi 😏 seu perfil me deixou curiosa (e safada)… vem me conhecer?',
 ];
 
 // Perfis de vitrine mulher/casal — a fonte crível do sinal para um homem.
 async function showcaseSourcesForMen(db: DbHandle): Promise<any[]> {
   const rows = (await db.queryAll(
-    `SELECT id, name FROM users
+    `SELECT id, name, gender FROM users
       WHERE COALESCE(is_showcase, 0) = 1
         AND (LOWER(COALESCE(gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(gender,'')) LIKE 'casal%')`
   )) as any[];
   return Array.isArray(rows) ? rows : [];
+}
+
+// Frase de abertura conforme o gênero da vitrine que está enviando.
+function openingLineFor(gender: unknown): string {
+  const isCouple = String(gender || '').toLowerCase().startsWith('casal');
+  const lines = isCouple ? COUPLE_LINES : WOMAN_LINES;
+  return lines[Math.floor(Math.random() * lines.length)];
 }
 
 // Aplica os sinais de interesse (visita + like + notificação de match e,
@@ -128,7 +143,7 @@ async function applyInterestSignals(
           convId = randomUUID();
           await db.run('INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [convId, pair[0], pair[1], nowStr]);
         }
-        const line = OPENING_LINES[Math.floor(Math.random() * OPENING_LINES.length)];
+        const line = openingLineFor(sc.gender);
         await db.run(
           'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, NULL, 0, 1, ?)',
           [randomUUID(), convId, scId, line, nowStr]
