@@ -1402,7 +1402,9 @@ export default function Chat() {
             <div className="flex-1 shrink-0" />
             <div className="flex flex-col gap-2.5 px-2.5 py-3 md:gap-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
-              {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation && (
+              {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation
+                && !activeConversation.lastMessageAt
+                && !((activeConversation.unreadCount || 0) > 0) && (
                 <div className="flex flex-col items-center gap-3 py-6 px-2">
                   <div className="text-center">
                     <p className="text-sm font-medium text-foreground">Comece a conversa</p>
