@@ -107,6 +107,17 @@ export default function Register() {
   const updateField = (field: string, value: unknown) =>
     setFormData((prev) => ({ ...prev, [field]: value }));
 
+  // Erro vindo do OAuth (ex.: Google sem escolher o tipo de perfil).
+  useEffect(() => {
+    if (searchParams.get('error') === 'profile_type_required') {
+      toast({
+        title: 'Escolha o tipo de perfil',
+        description: 'Informe se é Homem, Mulher, Casal ou outro perfil para continuar o cadastro.',
+        variant: 'destructive',
+      });
+    }
+  }, [searchParams, toast]);
+
   // ── Social proof ticker ───────────────────────────────────────────────────
   useEffect(() => {
     const t = setInterval(

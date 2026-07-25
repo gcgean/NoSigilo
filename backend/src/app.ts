@@ -2535,6 +2535,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       return;
     }
 
+    // Tipo de perfil (gênero) é OBRIGATÓRIO no cadastro e imutável depois.
+    if (!String(parsed.data.gender || '').trim()) {
+      res.status(400).json({ error: 'profile_type_required' });
+      return;
+    }
+
     const email = parsed.data.email.toLowerCase();
     const name = parsed.data.name.trim();
     const inviteToken = parsed.data.inviteToken?.trim() || '';
@@ -3721,6 +3727,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
         // Use hints from state (chosen by user in Register step 1) or fall back to Google data
         const gender = stateClaims.gender || null;
+        // Tipo de perfil é OBRIGATÓRIO. Se veio via Google sem escolher o perfil
+        // (ex.: entrou direto pelo login), manda para o cadastro escolher o tipo.
+        if (!String(gender || '').trim()) {
+          res.redirect(`${frontendOrigin}/register?error=profile_type_required`);
+          return;
+        }
         // Trial por tipo de perfil: Homem 1h · Casal 15d · Mulher 30d · Outros 7d.
         const trialEndsAt = trialEndForGender(createdAt, gender, env.TRIAL_DAYS);
         const name   = stateClaims.name
