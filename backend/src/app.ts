@@ -479,12 +479,13 @@ function genderEarnsPostTokens(gender: unknown): boolean {
 }
 
 // Data-fim do trial grátis por tipo de perfil:
-//  Homem: 20 minutos · Casal: 15 dias · Mulher: 30 dias (env.TRIAL_DAYS) · Outros
+//  Homem: SEM trial (bloqueado já no cadastro — precisa pagar; vê só a amostra
+//  grátis do app) · Casal: 15 dias · Mulher: 30 dias (env.TRIAL_DAYS) · Outros
 //  (trans, CD, travesti, etc.): 7 dias.
 function trialEndForGender(createdAtIso: string, gender: unknown, womanDays: number): string {
   const g = String(gender || '').trim().toLowerCase();
   if (g === 'homem' || g.startsWith('homem ')) {
-    return new Date(new Date(createdAtIso).getTime() + 20 * 60 * 1000).toISOString(); // 20 minutos
+    return new Date(createdAtIso).toISOString(); // sem trial: expira no próprio cadastro
   }
   if (g.startsWith('casal')) return addDaysIso(createdAtIso, 15);
   if (g === 'mulher' || g.startsWith('mulher ')) return addDaysIso(createdAtIso, womanDays);
