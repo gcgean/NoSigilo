@@ -3883,10 +3883,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [req.auth!.userId]
     );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
-    // Usuário NOVO (cadastro há ≤ 3 dias): para dar boas-vindas com feed cheio, os
+    // Usuário NOVO (cadastro há ≤ 24h): para dar boas-vindas com feed cheio, os
     // posts de vitrine aparecem no TOPO. Para os demais, ficam por último (reais primeiro).
     const viewerCreatedMs = (() => { const t = new Date(String((viewerRow as any)?.created_at || '')).getTime(); return Number.isNaN(t) ? 0 : t; })();
-    const viewerIsNew = viewerCreatedMs > 0 && (Date.now() - viewerCreatedMs) <= 3 * 24 * 60 * 60 * 1000;
+    const viewerIsNew = viewerCreatedMs > 0 && (Date.now() - viewerCreatedMs) <= 24 * 60 * 60 * 1000;
     const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
     const viewerLookingForRaw = safeJsonParse((viewerRow as any)?.looking_for_json);
     const viewerLookingFor = Array.isArray(viewerLookingForRaw) ? (viewerLookingForRaw as string[]) : [];
