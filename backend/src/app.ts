@@ -15,7 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
-import { runShowcaseRotation } from './showcase.js';
+import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
   createHubCheckout,
@@ -2724,6 +2724,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       subscriptionsEnabled,
     });
 
+    // Isca imediata: se for homem, a vitrine já visita/curte/manda DM no cadastro
+    // para ele não sair sem assinar. Não bloqueia o cadastro se falhar.
+    try { await seedInterestForNewUser(db, id); } catch (e) { console.error('[register] seedInterest falhou', e); }
+
     res.status(201).json({
       token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }),
       user,
@@ -3764,6 +3768,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         );
         await persist();
         userRow = (await queryOne(db, 'SELECT * FROM users WHERE id = ? LIMIT 1', [id])) as any;
+        // Isca imediata da vitrine (homem) — mesmo comportamento do cadastro por e-mail.
+        try { await seedInterestForNewUser(db, id); } catch (e) { console.error('[oauth] seedInterest falhou', e); }
       }
 
       // ── Issue JWT and redirect to frontend ───────────────────────────────
