@@ -4572,10 +4572,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
 
-    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon FROM users WHERE id = ?', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
     const myLat = me?.lat != null ? Number(me.lat) : null;
     const myLon = me?.lon != null ? Number(me.lon) : null;
+    // Ver story (foto) é livre; assistir VÍDEO de story é premium.
+    const subscriptionsEnabledStories = await getSubscriptionsEnabled(db);
+    const viewerHasPremiumStories = hasPremiumAccess(me, subscriptionsEnabledStories, env.BILLING_TEST_EMAILS);
 
     // Busca stories ativos de outros usuários
     const rows = (await queryAll(
@@ -4641,10 +4644,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         queryOne(db, "SELECT COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?", [r.id, userId]) as Promise<any>,
         queryAll(db, "SELECT COALESCE(reaction, 'heart') AS reaction, COUNT(*) AS c FROM story_likes WHERE story_id = ? GROUP BY COALESCE(reaction, 'heart')", [r.id]) as Promise<any[]>,
       ]);
+      const isVideoStory = String(r.mime_type || '').startsWith('video/');
+      const videoLocked = isVideoStory && !viewerHasPremiumStories;
       return {
         id: String(r.id),
-        mediaUrl: r.filename ? `/uploads/${r.filename}` : null,
+        mediaUrl: r.filename && !videoLocked ? `/uploads/${r.filename}` : null,
         mimeType: String(r.mime_type || ''),
+        isVideoLocked: videoLocked || undefined,
         text: r.text ? String(r.text) : null,
         background: r.background ? String(r.background) : null,
         textOverlay: r.text_overlay ? (safeJsonParse(r.text_overlay) as any) : null,
@@ -4940,6 +4946,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // POST /api/stories/:id/comments — comentar em story (privado, só o autor vê)
   app.post('/api/stories/:id/comments', requireAuth(env, db), async (req, res) => {
     const commenterId = req.auth!.userId;
+    // Comentar em story é interação premium (ver e curtir são livres).
+    if (!(await userHasPremiumAccess(db, commenterId))) { res.status(403).json({ error: 'premium_required' }); return; }
     const storyId = req.params.id;
     const io = req.app.get('io') as SocketIOServer | undefined;
     const { text } = req.body as { text?: string };
@@ -9568,6 +9576,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
+    // Comentar (feed/foto/perfil/experiência) é interação premium; curtir é livre.
+    if (!(await userHasPremiumAccess(db, req.auth!.userId))) { res.status(403).json({ error: 'premium_required' }); return; }
     const schema = z.object({
       targetType: z.enum(['post', 'user', 'photo', 'experience']),
       targetId: z.string().min(1),

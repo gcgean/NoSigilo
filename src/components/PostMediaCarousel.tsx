@@ -224,7 +224,10 @@ export function PostMediaCarousel({
       );
     }
 
-    const locked = !premiumAccess;
+    // Foto é livre para todos (só VÍDEO exige premium — tratado no ramo isVideo
+    // acima). Assim o usuário novo vê os perfis e o conteúdo; interações
+    // (comentar, mensagem, vídeo) é que exigem assinatura.
+    const locked = false;
 
     return (
       <div

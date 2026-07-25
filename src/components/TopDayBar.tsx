@@ -46,8 +46,9 @@ export default function TopDayBar() {
 
       <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {posts.map((p, i) => {
-          // Gostinho grátis: o 1º item fica liberado mesmo para não-assinante; o resto bloqueia.
-          const unlocked = premium || i === 0;
+          // Ver o Top do Dia é livre para todos (interações que exigem premium
+          // ficam nos destinos: assistir vídeo, comentar, mandar mensagem).
+          const unlocked = true;
           return (
           <button
             key={p.id}
