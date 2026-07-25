@@ -477,6 +477,15 @@ function genderEarnsPostTokens(gender: unknown): boolean {
   const g = String(gender || '').trim().toLowerCase();
   return g === 'mulher' || g.startsWith('casal') || g === 'couple';
 }
+
+// Dias de trial grátis por tipo de perfil: Homem 24h (1 dia), Casal 15 dias,
+// Mulher e demais perfis 30 dias (env.TRIAL_DAYS).
+function trialDaysForGender(gender: unknown, trialDaysDefault: number): number {
+  const g = String(gender || '').trim().toLowerCase();
+  if (g === 'homem' || g.startsWith('homem ')) return 1;
+  if (g.startsWith('casal')) return 15;
+  return trialDaysDefault;
+}
 const POINTS_PER_FREE_DAY = 100;
 // Destaque de perfil (sink de tokens): custo e duração.
 const BOOST_COST = 30;
@@ -2566,14 +2575,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
 
     const createdAt = nowIso();
-    // Homens não recebem período de trial — precisam assinar para ter acesso.
-    // Todos os outros perfis (Mulher, Casal, Transexual, etc.) recebem o trial completo.
+    // Trial grátis por tipo de perfil: Homem 24h · Casal 15 dias · Mulher e demais 30 dias.
     const registeredGender = String(parsed.data.gender || '').trim().toLowerCase();
-    const isMaleProfile = registeredGender === 'homem' || registeredGender.startsWith('homem ');
     const isFemaleProfile = registeredGender === 'mulher' || registeredGender.startsWith('mulher ');
     // Convites vindos de PROMOTORES entram em cobrança direta (sem trial), para
     // monetizar imediatamente — EXCETO perfis de mulher, que mantêm o trial.
-    // (Homem nunca tem trial.) Vale só para links cujo dono é um promotor ATIVO.
+    // Vale só para links cujo dono é um promotor ATIVO.
     let fromPromoter = false;
     if (invite?.inviter_user_id) {
       const promoterRow = await queryOne(
@@ -2583,9 +2590,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       );
       fromPromoter = !!promoterRow;
     }
-    const trialEndsAt = (isMaleProfile || (fromPromoter && !isFemaleProfile))
+    const trialEndsAt = (fromPromoter && !isFemaleProfile)
       ? createdAt
-      : addDaysIso(createdAt, env.TRIAL_DAYS);
+      : addDaysIso(createdAt, trialDaysForGender(registeredGender, env.TRIAL_DAYS));
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
@@ -3710,10 +3717,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
         // Use hints from state (chosen by user in Register step 1) or fall back to Google data
         const gender = stateClaims.gender || null;
-        // Homens não recebem trial — precisam assinar para ter acesso
-        const oauthGender = String(gender || '').trim().toLowerCase();
-        const isMaleOauth = oauthGender === 'homem' || oauthGender.startsWith('homem ');
-        const trialEndsAt = isMaleOauth ? createdAt : addDaysIso(createdAt, env.TRIAL_DAYS);
+        // Trial por tipo de perfil: Homem 24h · Casal 15 dias · Mulher e demais 30 dias.
+        const trialEndsAt = addDaysIso(createdAt, trialDaysForGender(gender, env.TRIAL_DAYS));
         const name   = stateClaims.name
           ? await uniqueGoogleName(stateClaims.name)
           : await uniqueGoogleName(googleName);
