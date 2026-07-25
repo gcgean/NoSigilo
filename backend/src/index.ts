@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
-import { runShowcaseRotation, seedInterestForNewMen } from './showcase.js';
+import { runShowcaseRotation, seedInterestForNewUsers } from './showcase.js';
 import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
@@ -464,9 +464,9 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
       runNightlyRitualPush(db).catch(err => console.error('[scheduler/nightly] fatal', err));
     }
 
-    // Semeia sinal de interesse (vitrine visita/curte) para homens novos sem
-    // nenhum sinal — a cada tick (30 min), pra pegar o cara ainda na 1ª sessão.
-    seedInterestForNewMen(db).catch(err => console.error('[scheduler/seed-interest] fatal', err));
+    // Semeia sinal de interesse (vitrine compatível visita/curte/DM) para usuários
+    // novos (homem/mulher/casal) sem sinal — a cada tick (30 min), rede de segurança.
+    seedInterestForNewUsers(db).catch(err => console.error('[scheduler/seed-interest] fatal', err));
 
     // Revezamento dos perfis de vitrine — em horários espalhados pelo dia (pico),
     // uma vez por hora-alvo. Mantém stories vivos e resurge posts.
@@ -498,7 +498,7 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   // Revezamento de vitrine já na subida (efeito imediato ao marcar perfis)
   runShowcaseRotation(db).catch(err => console.error('[scheduler/showcase] startup', err));
   // Semeia sinal para homens novos já na subida
-  seedInterestForNewMen(db).catch(err => console.error('[scheduler/seed-interest] startup', err));
+  seedInterestForNewUsers(db).catch(err => console.error('[scheduler/seed-interest] startup', err));
   console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-day 11:00, nightly push 19:30, online push 20:00, vitrine 09/13/17/20/23');
 }
 

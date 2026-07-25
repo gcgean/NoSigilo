@@ -51,58 +51,123 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
   return { profiles: showcase.length, storiesCreated, postsBumped };
 }
 
-// Mensagens de abertura da vitrine para um HOMEM. Escolhidas conforme o gênero
-// de quem envia: CASAL fala como casal (esposa + eu); MULHER fala como mulher
-// interessada nele. Tom quente (plataforma adulta), sem passar de convite.
-const COUPLE_LINES = [
+// Mensagens de abertura da vitrine, por combinação (quem envia → quem recebe).
+// Tom quente (plataforma adulta), sem passar de convite explícito.
+const COUPLE_TO_MAN = [
   'Oi, gostei do seu perfil, é do tipo que estou procurando pra uma brincadeira gostosa com a minha esposa 🔥',
   'Olá, gostei do seu perfil… curte uma brincadeira em off com a minha esposa e eu assistindo? 😈',
   'Olá, gostei do perfil, curte fazer uma DP na minha esposa comigo? 🥵',
   'Olá, gostei do perfil… curte comer a minha esposa comigo junto? 😏',
   'Olá, gostei do seu perfil, toparia um ménage gostoso com a gente? 🔥',
 ];
-const WOMAN_LINES = [
+const WOMAN_TO_MAN = [
   'Oi 😏 gostei muito do seu perfil… tô doida por um homem de verdade pra brincar hoje 🔥',
   'Olá gato, seu perfil me deixou com vontade 🥵 curte um encontro bem discreto?',
   'Oi… adorei o que vi 😈 tô precisando de alguém pra me satisfazer, topa?',
-  'Gostei demais de você 🔥 topa me conhecer sem compromisso e sem sigilo entre nós? 😏',
+  'Gostei demais de você 🔥 topa me conhecer sem compromisso e no sigilo? 😏',
   'Oi 😏 seu perfil me deixou curiosa (e safada)… vem me conhecer?',
 ];
+const MAN_TO_WOMAN = [
+  'Oi gata 😏 gostei muito do seu perfil… topa um encontro bem discreto e gostoso comigo?',
+  'Olá linda 🔥 adorei você… curte um homem que sabe te dar prazer no sigilo?',
+  'Oi 😈 seu perfil me deixou louco… vamos marcar algo bem safado só nós dois?',
+  'Gostei demais de você 🥵 me deixa te satisfazer do jeitinho que você merece?',
+  'Oi 😏 tô muito a fim de te conhecer… topa uma aventura gostosa comigo?',
+];
+const COUPLE_TO_COUPLE = [
+  'Gostei de vocês 🔥 bem que poderíamos marcar uma brincadeira gostosa, topam?',
+  'Gostamos do casal 😏 vamos conversar melhor?',
+  'Estamos a fim de um casal pra brincar com a gente no mesmo ambiente… topam? 🥵',
+  'Queremos um casal pra uma brincadeira hoje, que tal? 🔥',
+  'Queremos vocês 😈 topam aprontar com a gente hoje?',
+  'Estamos muito a fim de aprontar hoje… vamos? 🔥',
+];
 
-// Perfis de vitrine mulher/casal — a fonte crível do sinal para um homem.
-async function showcaseSourcesForMen(db: DbHandle): Promise<any[]> {
+// Normaliza o gênero para um dos três tokens principais.
+function genderToken(g: unknown): 'homem' | 'mulher' | 'casal' | '' {
+  const l = String(g || '').toLowerCase();
+  if (l.startsWith('homem')) return 'homem';
+  if (l.startsWith('mulher')) return 'mulher';
+  if (l.startsWith('casal')) return 'casal';
+  return '';
+}
+
+// Quem pode enviar sinal para um destinatário deste gênero (perfis que ele
+// tipicamente curte). Trans/CD/etc. ('') ficam de fora por ora.
+function allowedSenderTokens(recipient: 'homem' | 'mulher' | 'casal' | ''): Array<'homem' | 'mulher' | 'casal'> {
+  if (recipient === 'homem') return ['mulher', 'casal'];
+  if (recipient === 'mulher') return ['homem'];
+  if (recipient === 'casal') return ['casal'];
+  return [];
+}
+
+// O destinatário "curte" o gênero de quem envia? (looking_for_json). Sem
+// preferência declarada = curte todos.
+function recipientLikesGender(lookingForJson: unknown, senderToken: string): boolean {
+  let arr: string[] = [];
+  try { arr = JSON.parse(String(lookingForJson || '[]')); } catch { /* ignore */ }
+  if (!Array.isArray(arr) || arr.length === 0) return true;
+  return arr.some((p) => {
+    const l = String(p || '').toLowerCase().trim();
+    if (senderToken === 'homem') return l.startsWith('hom') || l === 'man' || l === 'male';
+    if (senderToken === 'mulher') return l.startsWith('mul') || l === 'woman' || l === 'female';
+    if (senderToken === 'casal') return l.startsWith('cas') || l === 'couple';
+    return false;
+  });
+}
+
+// Frase de abertura conforme (quem envia → quem recebe).
+function openingLine(senderToken: string, recipientToken: string): string {
+  let lines: string[] = MAN_TO_WOMAN;
+  if (recipientToken === 'homem') lines = senderToken === 'casal' ? COUPLE_TO_MAN : WOMAN_TO_MAN;
+  else if (recipientToken === 'mulher') lines = MAN_TO_WOMAN;
+  else if (recipientToken === 'casal') lines = COUPLE_TO_COUPLE;
+  return lines[Math.floor(Math.random() * lines.length)];
+}
+
+// Todos os perfis de vitrine (id, nome, gênero) — filtrados por compatibilidade
+// depois, por destinatário.
+async function allShowcaseProfiles(db: DbHandle): Promise<any[]> {
   const rows = (await db.queryAll(
     `SELECT id, name, gender FROM users
       WHERE COALESCE(is_showcase, 0) = 1
-        AND (LOWER(COALESCE(gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(gender,'')) LIKE 'casal%')`
+        AND (LOWER(COALESCE(gender,'')) LIKE 'homem%'
+          OR LOWER(COALESCE(gender,'')) LIKE 'mulher%'
+          OR LOWER(COALESCE(gender,'')) LIKE 'casal%')`
   )) as any[];
   return Array.isArray(rows) ? rows : [];
 }
 
-// Frase de abertura conforme o gênero da vitrine que está enviando.
-function openingLineFor(gender: unknown): string {
-  const isCouple = String(gender || '').toLowerCase().startsWith('casal');
-  const lines = isCouple ? COUPLE_LINES : WOMAN_LINES;
-  return lines[Math.floor(Math.random() * lines.length)];
+// Perfis de vitrine compatíveis para ENVIAR sinal a um destinatário: o gênero de
+// quem envia precisa estar entre os que o destinatário curte E existir uma
+// combinação de mensagem válida (quem envia → quem recebe).
+function compatibleSenders(recipientToken: 'homem' | 'mulher' | 'casal' | '', lookingForJson: unknown, showcase: any[]): any[] {
+  const allowed = new Set(allowedSenderTokens(recipientToken));
+  if (allowed.size === 0) return [];
+  return showcase.filter((sc) => {
+    const st = genderToken(sc.gender);
+    return st !== '' && allowed.has(st) && recipientLikesGender(lookingForJson, st);
+  });
 }
 
 // Aplica os sinais de interesse (visita + like + notificação de match e,
-// opcionalmente, uma DM de abertura) de 1–2 perfis de vitrine para UM homem.
+// opcionalmente, uma DM de abertura) de 1–2 perfis de vitrine para UM usuário.
 async function applyInterestSignals(
   db: DbHandle,
-  manId: string,
-  showcase: any[],
+  recipientId: string,
+  recipientToken: string,
+  senders: any[],
   nowStr: string,
   withMessage: boolean
 ): Promise<{ visits: number; likes: number; messaged: number }> {
-  const pick = () => showcase[Math.floor(Math.random() * showcase.length)];
+  const pick = () => senders[Math.floor(Math.random() * senders.length)];
   let visits = 0;
   let likes = 0;
   let messaged = 0;
 
   const primary = pick();
   const chosen = [primary];
-  if (showcase.length > 1 && Math.random() < 0.45) {
+  if (senders.length > 1 && Math.random() < 0.45) {
     let second = pick();
     let tries = 0;
     while (second.id === primary.id && tries < 4) { second = pick(); tries++; }
@@ -116,25 +181,25 @@ async function applyInterestSignals(
     // Visita (sinal silencioso, alimenta o contador).
     await db.run(
       'INSERT INTO profile_visits (id, visitor_user_id, visited_user_id, created_at) VALUES (?, ?, ?, ?)',
-      [randomUUID(), scId, manId, nowStr]
+      [randomUUID(), scId, recipientId, nowStr]
     );
     visits++;
     if (i === 0) {
       // Curte → notificação real de match (gancho de volta).
       await db.run(
         'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        [randomUUID(), scId, 'user', manId, nowStr]
+        [randomUUID(), scId, 'user', recipientId, nowStr]
       );
       likes++;
       await db.run(
         `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
          VALUES (?, ?, 'profile.liked', ?, ?, ?, 0, ?)`,
-        [randomUUID(), manId, 'Você recebeu um match', `${actorName} deu match com você.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
+        [randomUUID(), recipientId, 'Você recebeu um match', `${actorName} deu match com você.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
       );
       // Abre conversa com uma DM — ele vê "1 mensagem não lida" (travada p/ não
       // premium: ver mensagem recebida é premium). É o gancho mais forte.
       if (withMessage) {
-        const pair = [manId, scId].sort((a, b) => a.localeCompare(b));
+        const pair = [recipientId, scId].sort((a, b) => a.localeCompare(b));
         let convId: string;
         const existing = (await db.queryOne('SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
         if (existing?.id) {
@@ -143,7 +208,7 @@ async function applyInterestSignals(
           convId = randomUUID();
           await db.run('INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [convId, pair[0], pair[1], nowStr]);
         }
-        const line = openingLineFor(sc.gender);
+        const line = openingLine(genderToken(sc.gender), recipientToken);
         await db.run(
           'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, NULL, 0, 1, ?)',
           [randomUUID(), convId, scId, line, nowStr]
@@ -155,75 +220,78 @@ async function applyInterestSignals(
   return { visits, likes, messaged };
 }
 
-// Semeia SINAL DE INTERESSE para UM homem recém-cadastrado — chamado no momento
-// do cadastro, para a vitrine "se comunicar" com ele na hora e não deixar ele
-// sair sem assinar. No-op se o perfil não for homem ou não houver vitrine.
+// Semeia SINAL DE INTERESSE para UM usuário recém-cadastrado (homem, mulher ou
+// casal) — chamado no momento do cadastro, para a vitrine "se comunicar" com ele
+// na hora e não deixar sair sem assinar. Só envia de perfis COMPATÍVEIS (que ele
+// curta). No-op se o perfil for de tipo não suportado ou não houver vitrine.
 export async function seedInterestForNewUser(
   db: DbHandle,
   userId: string
 ): Promise<{ seeded: boolean; visits: number; likes: number; messaged: number }> {
-  const u = (await db.queryOne('SELECT id, gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-  if (!u || !String(u.gender || '').toLowerCase().startsWith('homem')) {
-    return { seeded: false, visits: 0, likes: 0, messaged: 0 };
-  }
-  const showcase = await showcaseSourcesForMen(db);
-  if (showcase.length === 0) return { seeded: false, visits: 0, likes: 0, messaged: 0 };
+  const u = (await db.queryOne('SELECT id, gender, looking_for_json FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const recipientToken = genderToken(u?.gender);
+  if (!u || recipientToken === '') return { seeded: false, visits: 0, likes: 0, messaged: 0 };
 
-  const r = await applyInterestSignals(db, String(u.id), showcase, new Date().toISOString(), true);
+  const showcase = await allShowcaseProfiles(db);
+  const senders = compatibleSenders(recipientToken, u.looking_for_json, showcase);
+  if (senders.length === 0) return { seeded: false, visits: 0, likes: 0, messaged: 0 };
+
+  const r = await applyInterestSignals(db, String(u.id), recipientToken, senders, new Date().toISOString(), true);
   await db.persist();
-  console.log(`[showcase] Sinal semeado no cadastro do homem ${userId}: +${r.visits} visitas, +${r.likes} likes, +${r.messaged} DMs`);
+  console.log(`[showcase] Sinal semeado no cadastro (${recipientToken}) ${userId}: +${r.visits} visitas, +${r.likes} likes, +${r.messaged} DMs`);
   return { seeded: true, ...r };
 }
 
-// Semeia SINAL DE INTERESSE para homens recém-cadastrados que ainda não
-// receberam nenhum sinal de mulher/casal (rede de segurança do scheduler, caso
-// o seeding no cadastro tenha falhado ou não havia vitrine na hora). Os dados
-// mostram que homem que recebe ao menos 1 sinal converte ~5x mais (17,5% vs
-// 3,4%) e 2/3 nunca recebem nada. Idempotente: só age em quem tem ZERO sinal.
-export async function seedInterestForNewMen(
+// Rede de segurança do scheduler: semeia sinal para usuários novos (homem,
+// mulher ou casal) que ainda NÃO receberam nenhum like de um perfil de vitrine
+// (idempotente — quem já foi semeado tem esse like e é pulado). Cada um recebe
+// apenas de perfis compatíveis que curta.
+export async function seedInterestForNewUsers(
   db: DbHandle,
-  opts: { windowHours?: number; maxMen?: number } = {}
+  opts: { windowHours?: number; maxUsers?: number } = {}
 ): Promise<{ seeded: number; visits: number; likes: number }> {
   const windowHours = opts.windowHours ?? 72;
-  const maxMen = opts.maxMen ?? 300;
+  const maxUsers = opts.maxUsers ?? 400;
   const nowStr = new Date().toISOString();
   const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
-  const showcase = await showcaseSourcesForMen(db);
+  const showcase = await allShowcaseProfiles(db);
   if (showcase.length === 0) return { seeded: 0, visits: 0, likes: 0 };
 
-  // Homens novos (janela) SEM nenhum sinal de mulher/casal (visita OU like).
-  const men = (await db.queryAll(
-    `SELECT u.id FROM users u
-      WHERE LOWER(COALESCE(u.gender,'')) LIKE 'homem%'
+  const candidates = (await db.queryAll(
+    `SELECT u.id, u.gender, u.looking_for_json FROM users u
+      WHERE (LOWER(COALESCE(u.gender,'')) LIKE 'homem%'
+          OR LOWER(COALESCE(u.gender,'')) LIKE 'mulher%'
+          OR LOWER(COALESCE(u.gender,'')) LIKE 'casal%')
         AND u.created_at >= ?
         AND (u.is_banned = 0 OR u.is_banned IS NULL)
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND COALESCE(u.is_showcase, 0) = 0
         AND NOT EXISTS (
           SELECT 1 FROM likes l JOIN users lu ON lu.id = l.user_id
-           WHERE l.target_type = 'user' AND l.target_id = u.id
-             AND (LOWER(COALESCE(lu.gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(lu.gender,'')) LIKE 'casal%'))
-        AND NOT EXISTS (
-          SELECT 1 FROM profile_visits pv JOIN users vu ON vu.id = pv.visitor_user_id
-           WHERE pv.visited_user_id = u.id
-             AND (LOWER(COALESCE(vu.gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(vu.gender,'')) LIKE 'casal%'))
+           WHERE l.target_type = 'user' AND l.target_id = u.id AND COALESCE(lu.is_showcase, 0) = 1)
       ORDER BY u.created_at DESC
       LIMIT ?`,
-    [sinceStr, maxMen]
+    [sinceStr, maxUsers]
   )) as any[];
-  if (!Array.isArray(men) || men.length === 0) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
     return { seeded: 0, visits: 0, likes: 0 };
   }
 
+  let seeded = 0;
   let visits = 0;
   let likes = 0;
-  for (const m of men) {
-    const r = await applyInterestSignals(db, String(m.id), showcase, nowStr, true);
+  for (const c of candidates) {
+    const recipientToken = genderToken(c.gender);
+    const senders = compatibleSenders(recipientToken, c.looking_for_json, showcase);
+    if (senders.length === 0) continue;
+    const r = await applyInterestSignals(db, String(c.id), recipientToken, senders, nowStr, true);
+    seeded++;
     visits += r.visits;
     likes += r.likes;
   }
 
   await db.persist();
-  console.log(`[showcase] Sinal semeado p/ homens novos: ${men.length} homens, +${visits} visitas, +${likes} likes (${showcase.length} perfis vitrine)`);
-  return { seeded: men.length, visits, likes };
+  console.log(`[showcase] Sinal semeado p/ novos usuários: ${seeded} usuários, +${visits} visitas, +${likes} likes (${showcase.length} perfis vitrine)`);
+  return { seeded, visits, likes };
 }
