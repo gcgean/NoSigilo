@@ -593,6 +593,8 @@ export default function Chat() {
   useEffect(() => {
     const targetUserId = new URLSearchParams(location.search).get('userId');
     if (!targetUserId) return;
+    // Iniciar conversa é premium: abre a tela de pagamento em vez de falhar calado.
+    if (!premiumAccess) { setPaywallOpen(true); return; }
     (async () => {
       try {
         const data = await chatService.createConversation(targetUserId);

@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 import { chatService, invitesService, notificationsService, privatePhotosService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 type NotificationItem = {
   id: string;
@@ -31,7 +34,10 @@ function timeAgo(iso: string) {
 
 export default function Notifications() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const premiumAccess = hasPremiumAccess(user);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -148,6 +154,8 @@ export default function Notifications() {
   const handleNotificationClick = async (notification: NotificationItem) => {
     if (!notification) return;
     if (notification.type === 'profile.liked' && notification?.data?.actorId) {
+      // Abrir a conversa do match é premium: mostra a tela de pagamento.
+      if (!premiumAccess) { setPaywallOpen(true); return; }
       try {
         const actorId = String(notification.data.actorId);
         const conversation = await chatService.createConversation(actorId);
@@ -271,6 +279,7 @@ export default function Notifications() {
             );
           })}
       </div>
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

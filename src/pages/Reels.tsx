@@ -748,6 +748,8 @@ export default function Reels() {
   }, [handleDoubleTapLike, handleReelClick]);
 
   const handleSubmitComment = useCallback(async () => {
+    // Comentar é premium: abre a tela de pagamento em vez de errar.
+    if (!premiumAccess) { setPaywallOpen(true); return; }
     if (!commentsOpenFor || !commentDraft.trim()) return;
 
     setIsSendingComment(true);
@@ -777,7 +779,7 @@ export default function Reels() {
     } finally {
       setIsSendingComment(false);
     }
-  }, [commentDraft, commentsOpenFor, loadComments, toast]);
+  }, [commentDraft, commentsOpenFor, loadComments, toast, premiumAccess]);
 
   const startEditingComment = (comment: ReelComment) => {
     setEditingCommentId(comment.id);

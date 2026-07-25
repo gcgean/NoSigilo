@@ -16,6 +16,8 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import MobileState from '@/components/MobileState';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
+import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -33,6 +35,8 @@ export default function FriendsPage() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const premiumAccess = hasPremiumAccess(user);
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [tab, setTab] = useState<'friends' | 'requests'>('friends');
   const [search, setSearch] = useState('');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
@@ -86,6 +90,8 @@ export default function FriendsPage() {
   };
 
   const handleStartChat = async (friendId: string) => {
+    // Enviar mensagem é premium: abre a tela de pagamento em vez de errar.
+    if (!premiumAccess) { setPaywallOpen(true); return; }
     try {
       const { id } = await chatService.createConversation(friendId);
       navigate(`/chat?conversationId=${encodeURIComponent(id)}`);
@@ -496,6 +502,7 @@ export default function FriendsPage() {
           </section>
         </div>
       )}
+      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }
