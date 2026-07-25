@@ -3978,7 +3978,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${genderFilter}
          ${friendsAuthorFilter}
          ${reelsOnlyFilter}
-       ORDER BY p.created_at DESC
+       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC, p.created_at DESC
        ${includeReelsOnly ? 'LIMIT ? OFFSET ?' : 'LIMIT ? OFFSET 0'}`,
       includeReelsOnly
         ? [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, limit, offset]
@@ -4551,7 +4551,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        WHERE s.expires_at > ? AND s.user_id != ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-       ORDER BY s.created_at DESC`,
+       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC, s.created_at DESC`,
       [now, userId]
     )) as any[];
 
