@@ -5362,6 +5362,37 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // GET /api/discovery/interest-in-me — SINAL REAL recebido: quantas pessoas
+  // curtiram OU visitaram meu perfil (+ prévias de avatar). É a isca mais forte
+  // do paywall ("X te querem / já estão de olho em você"). O count é aberto; a
+  // identidade (ver quem) é premium.
+  app.get('/api/discovery/interest-in-me', requireAuth(env, db), async (req, res) => {
+    const me = req.auth!.userId;
+    const actorsUnion = `(
+        SELECT l.user_id AS actor_id FROM likes l
+          WHERE l.target_type = 'user' AND l.target_id = ?
+        UNION
+        SELECT pv.visitor_user_id AS actor_id FROM profile_visits pv
+          WHERE pv.visited_user_id = ?
+      ) act
+      JOIN users u ON u.id = act.actor_id
+      WHERE u.id <> ?
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND (u.is_admin = 0 OR u.is_admin IS NULL)`;
+    const countRow = (await queryOne(db, `SELECT COUNT(*) AS c FROM ${actorsUnion}`, [me, me, me])) as any;
+    const previewRows = (await queryAll(
+      db,
+      `SELECT u.avatar FROM ${actorsUnion} AND u.avatar IS NOT NULL AND u.avatar <> ''
+       ORDER BY u.last_seen_at DESC NULLS LAST LIMIT 8`,
+      [me, me, me]
+    )) as any[];
+    res.json({
+      count: Number(countRow?.c || 0),
+      previews: previewRows.map((r) => (r.avatar ? String(r.avatar) : null)).filter(Boolean),
+    });
+  });
+
   app.post('/api/posts', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       content: z.string().max(5000).optional(),

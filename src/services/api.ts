@@ -145,6 +145,11 @@ export const discoveryService = {
     const response = await apiClient.get('/discovery/seeking-me');
     return response.data;
   },
+  // Sinal REAL recebido: quantas pessoas curtiram/visitaram meu perfil.
+  getInterestInMe: async (): Promise<{ count: number; previews: string[] }> => {
+    const response = await apiClient.get('/discovery/interest-in-me');
+    return response.data;
+  },
 };
 
 export const feedService = {

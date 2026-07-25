@@ -18,14 +18,36 @@ export default function SeekingYouModal({ open, onClose }: { open: boolean; onCl
   const premium = hasPremiumAccess(user);
   const [count, setCount] = useState<number | null>(null);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [realInterest, setRealInterest] = useState(false); // sinal recebido (curtiu/visitou) vs pool genérico
   const [paywallOpen, setPaywallOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    discoveryService.getSeekingMe()
-      .then((d) => { if (!cancelled) { setCount(d.count); setPreviews(d.previews || []); } })
-      .catch(() => { if (!cancelled) setCount(0); });
+    // Prioriza o sinal REAL recebido (quem curtiu/visitou você) — isca mais forte.
+    // Só cai no pool genérico ("procuram alguém como você") se não houver sinal real.
+    discoveryService.getInterestInMe()
+      .then((real) => {
+        if (cancelled) return;
+        if (real && real.count > 0) {
+          setRealInterest(true);
+          setCount(real.count);
+          setPreviews(real.previews || []);
+          return;
+        }
+        return discoveryService.getSeekingMe().then((d) => {
+          if (cancelled) return;
+          setRealInterest(false);
+          setCount(d.count);
+          setPreviews(d.previews || []);
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        discoveryService.getSeekingMe()
+          .then((d) => { if (!cancelled) { setRealInterest(false); setCount(d.count); setPreviews(d.previews || []); } })
+          .catch(() => { if (!cancelled) setCount(0); });
+      });
     return () => { cancelled = true; };
   }, [open]);
 
@@ -68,7 +90,9 @@ export default function SeekingYouModal({ open, onClose }: { open: boolean; onCl
               </div>
               <p className="text-4xl font-extrabold leading-none">{count.toLocaleString('pt-BR')}</p>
               <p className="mt-2 text-sm font-medium text-white/90">
-                perfis estão procurando alguém como você para uma brincadeira no sigilo 🔥
+                {realInterest
+                  ? (count > 1 ? 'pessoas já estão de olho em você — curtiram ou visitaram seu perfil 🔥' : 'pessoa já está de olho em você — curtiu ou visitou seu perfil 🔥')
+                  : 'perfis estão procurando alguém como você para uma brincadeira no sigilo 🔥'}
               </p>
             </div>
 
@@ -98,7 +122,7 @@ export default function SeekingYouModal({ open, onClose }: { open: boolean; onCl
                 className="w-full gap-2 bg-gradient-to-r from-rose-500 via-primary to-violet-500 py-6 text-base font-bold shadow-glow hover:opacity-90"
               >
                 {premium ? <Eye className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
-                Ver quem procura por mim
+                {realInterest ? 'Ver quem curtiu você' : 'Ver quem procura por mim'}
               </Button>
               {!premium && (
                 <p className="mt-2 text-center text-xs text-muted-foreground">
