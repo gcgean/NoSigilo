@@ -73,6 +73,7 @@ export default function Register() {
   const [showOthers, setShowOthers] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'blacklisted'>('idle');
   const [loadingLabel, setLoadingLabel] = useState('Criando sua conta...');
   const [gpsLoading, setGpsLoading] = useState(false);
   const [proofIndex, setProofIndex] = useState(0);
@@ -114,6 +115,27 @@ export default function Register() {
     );
     return () => clearInterval(t);
   }, []);
+
+  // ── Checa disponibilidade do nome em tempo real (com debounce) ────────────
+  useEffect(() => {
+    const name = formData.name.trim();
+    if (name.length < 2) { setNameStatus('idle'); return; }
+    setNameStatus('checking');
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { available, reason } = await authService.checkName(name);
+        if (cancelled) return;
+        if (available === true) setNameStatus('available');
+        else if (reason === 'blacklisted') setNameStatus('blacklisted');
+        else if (available === false) setNameStatus('taken');
+        else setNameStatus('idle');
+      } catch {
+        if (!cancelled) setNameStatus('idle');
+      }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [formData.name]);
 
   // ── Load suggestions when reaching step 3 ────────────────────────────────
   useEffect(() => {
@@ -223,6 +245,35 @@ export default function Register() {
           variant: 'destructive',
         });
         return;
+      }
+      if (nameStatus === 'taken' || nameStatus === 'blacklisted') {
+        toast({
+          title: nameStatus === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso',
+          description: 'Escolha outro nome para continuar.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      // Se ainda não confirmou disponível, valida agora antes de avançar.
+      if (nameStatus !== 'available') {
+        try {
+          setIsLoading(true);
+          const { available, reason } = await authService.checkName(formData.name.trim());
+          if (!available) {
+            setNameStatus(reason === 'blacklisted' ? 'blacklisted' : 'taken');
+            toast({
+              title: reason === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso',
+              description: 'Escolha outro nome para continuar.',
+              variant: 'destructive',
+            });
+            return;
+          }
+          setNameStatus('available');
+        } catch {
+          // Se a checagem falhar, deixa seguir — o cadastro final ainda valida.
+        } finally {
+          setIsLoading(false);
+        }
       }
       setCurrentStep(2);
       return;
@@ -522,12 +573,30 @@ export default function Register() {
                     placeholder={isCouple ? 'Apelido do casal (ex: Casal SP)' : 'Seu apelido ou nome'}
                     value={formData.name}
                     onChange={(e) => updateField('name', e.target.value)}
-                    className="h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm"
+                    className={cn(
+                      'h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm',
+                      nameStatus === 'available' && 'border-emerald-500 focus-visible:ring-emerald-500/40',
+                      (nameStatus === 'taken' || nameStatus === 'blacklisted') && 'border-destructive focus-visible:ring-destructive/40'
+                    )}
                     autoComplete="nickname"
                   />
-                  <p className="px-1 text-xs text-muted-foreground/70">
-                    É o nome visível no seu perfil. Pode ser apelido — sem sobrenome necessário.
-                  </p>
+                  {nameStatus === 'checking' && (
+                    <p className="px-1 text-xs text-muted-foreground">Verificando disponibilidade…</p>
+                  )}
+                  {nameStatus === 'available' && (
+                    <p className="px-1 text-xs font-medium text-emerald-600">✓ Nome disponível</p>
+                  )}
+                  {nameStatus === 'taken' && (
+                    <p className="px-1 text-xs font-medium text-destructive">Esse nome já está em uso. Escolha outro.</p>
+                  )}
+                  {nameStatus === 'blacklisted' && (
+                    <p className="px-1 text-xs font-medium text-destructive">Esse nome não está disponível. Escolha outro.</p>
+                  )}
+                  {nameStatus === 'idle' && (
+                    <p className="px-1 text-xs text-muted-foreground/70">
+                      É o nome visível no seu perfil. Pode ser apelido — sem sobrenome necessário.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

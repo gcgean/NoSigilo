@@ -61,6 +61,12 @@ export const authService = {
     return response.data;
   },
 
+  checkName: async (name: string): Promise<{ available: boolean | null; reason?: string }> => {
+    if (USE_MOCKS) return { available: true };
+    const response = await apiClient.get('/auth/check-name', { params: { name } });
+    return response.data;
+  },
+
   getInviteInfo: async (token: string) => {
     const response = await apiClient.get(`/invites/public/${encodeURIComponent(token)}`);
     return response.data;

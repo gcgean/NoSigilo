@@ -2493,6 +2493,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     });
   });
 
+  // Checagem em tempo real de disponibilidade do nome (usada no cadastro).
+  app.get('/api/auth/check-name', async (req, res) => {
+    const name = String(req.query.name || '').trim();
+    if (name.length < 2) { res.json({ available: null }); return; }
+    const existing = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
+    if (existing) { res.json({ available: false, reason: 'in_use' }); return; }
+    if (await isNameBlacklisted(db, name)) { res.json({ available: false, reason: 'blacklisted' }); return; }
+    res.json({ available: true });
+  });
+
   app.post('/api/auth/register', authRateLimiter, async (req, res) => {
     try {
     const schema = z.object({
