@@ -38,6 +38,7 @@ type AdminUser = {
   avatar?: string | null;
   isPremium?: boolean;
   isAdmin?: boolean;
+  gender?: string | null;
   city?: string | null;
   state?: string | null;
   createdAt?: string;
@@ -373,6 +374,7 @@ export default function Admin() {
           avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
           isPremium: !!item.isPremium,
           isAdmin: !!item.isAdmin,
+          gender: item.gender ? String(item.gender) : null,
           city: item.city ? String(item.city) : null,
           state: item.state ? String(item.state) : null,
           createdAt: item.createdAt ? String(item.createdAt) : undefined,
@@ -701,6 +703,7 @@ export default function Admin() {
           avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
           isPremium: !!item.isPremium,
           isAdmin: !!item.isAdmin,
+          gender: item.gender ? String(item.gender) : null,
           city: item.city ? String(item.city) : null,
           state: item.state ? String(item.state) : null,
           createdAt: item.createdAt ? String(item.createdAt) : undefined,
@@ -1396,8 +1399,19 @@ export default function Admin() {
                       <AvatarFallback>{entry.name[0]}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{entry.name}</p>
+                        {entry.gender && (
+                          <Badge variant="outline" className="text-xs">
+                            {(() => {
+                              const g = entry.gender.toLowerCase();
+                              if (g.startsWith('casal')) return '👫 Casal';
+                              if (g === 'homem' || g.startsWith('homem')) return '👨 Homem';
+                              if (g === 'mulher' || g.startsWith('mulher')) return '👩 Mulher';
+                              return `⚧ ${entry.gender}`;
+                            })()}
+                          </Badge>
+                        )}
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
