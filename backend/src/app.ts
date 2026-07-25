@@ -3879,10 +3879,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
       db,
-      'SELECT email, is_premium, trial_ends_at, hub_license_end_at, gender, looking_for_json, is_admin, lat, lon, city, state, last_seen_at FROM users WHERE id = ?',
+      'SELECT email, is_premium, trial_ends_at, hub_license_end_at, gender, looking_for_json, is_admin, lat, lon, city, state, last_seen_at, created_at FROM users WHERE id = ?',
       [req.auth!.userId]
     );
     const viewerHasPremium = hasPremiumAccess(viewerRow, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
+    // Usuário NOVO (cadastro há ≤ 3 dias): para dar boas-vindas com feed cheio, os
+    // posts de vitrine aparecem no TOPO. Para os demais, ficam por último (reais primeiro).
+    const viewerCreatedMs = (() => { const t = new Date(String((viewerRow as any)?.created_at || '')).getTime(); return Number.isNaN(t) ? 0 : t; })();
+    const viewerIsNew = viewerCreatedMs > 0 && (Date.now() - viewerCreatedMs) <= 3 * 24 * 60 * 60 * 1000;
     const viewerIsAdmin = Number((viewerRow as any)?.is_admin || 0) === 1;
     const viewerLookingForRaw = safeJsonParse((viewerRow as any)?.looking_for_json);
     const viewerLookingFor = Array.isArray(viewerLookingForRaw) ? (viewerLookingForRaw as string[]) : [];
@@ -4009,7 +4013,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${genderFilter}
          ${friendsAuthorFilter}
          ${reelsOnlyFilter}
-       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC, p.created_at DESC
+       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC
        ${includeReelsOnly ? 'LIMIT ? OFFSET ?' : 'LIMIT ? OFFSET 0'}`,
       includeReelsOnly
         ? [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, limit, offset]
