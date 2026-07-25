@@ -478,13 +478,17 @@ function genderEarnsPostTokens(gender: unknown): boolean {
   return g === 'mulher' || g.startsWith('casal') || g === 'couple';
 }
 
-// Dias de trial grátis por tipo de perfil: Homem 24h (1 dia), Casal 15 dias,
-// Mulher e demais perfis 30 dias (env.TRIAL_DAYS).
-function trialDaysForGender(gender: unknown, trialDaysDefault: number): number {
+// Data-fim do trial grátis por tipo de perfil:
+//  Homem: 1 hora · Casal: 15 dias · Mulher: 30 dias (env.TRIAL_DAYS) · Outros
+//  (trans, CD, travesti, etc.): 7 dias.
+function trialEndForGender(createdAtIso: string, gender: unknown, womanDays: number): string {
   const g = String(gender || '').trim().toLowerCase();
-  if (g === 'homem' || g.startsWith('homem ')) return 1;
-  if (g.startsWith('casal')) return 15;
-  return trialDaysDefault;
+  if (g === 'homem' || g.startsWith('homem ')) {
+    return new Date(new Date(createdAtIso).getTime() + 60 * 60 * 1000).toISOString(); // 1 hora
+  }
+  if (g.startsWith('casal')) return addDaysIso(createdAtIso, 15);
+  if (g === 'mulher' || g.startsWith('mulher ')) return addDaysIso(createdAtIso, womanDays);
+  return addDaysIso(createdAtIso, 7); // demais perfis
 }
 const POINTS_PER_FREE_DAY = 100;
 // Destaque de perfil (sink de tokens): custo e duração.
@@ -2592,7 +2596,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
     const trialEndsAt = (fromPromoter && !isFemaleProfile)
       ? createdAt
-      : addDaysIso(createdAt, trialDaysForGender(registeredGender, env.TRIAL_DAYS));
+      : trialEndForGender(createdAt, registeredGender, env.TRIAL_DAYS);
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
@@ -3717,8 +3721,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
         // Use hints from state (chosen by user in Register step 1) or fall back to Google data
         const gender = stateClaims.gender || null;
-        // Trial por tipo de perfil: Homem 24h · Casal 15 dias · Mulher e demais 30 dias.
-        const trialEndsAt = addDaysIso(createdAt, trialDaysForGender(gender, env.TRIAL_DAYS));
+        // Trial por tipo de perfil: Homem 1h · Casal 15d · Mulher 30d · Outros 7d.
+        const trialEndsAt = trialEndForGender(createdAt, gender, env.TRIAL_DAYS);
         const name   = stateClaims.name
           ? await uniqueGoogleName(stateClaims.name)
           : await uniqueGoogleName(googleName);
