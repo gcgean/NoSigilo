@@ -17,6 +17,7 @@ import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import SeekingYouModal from '@/components/SeekingYouModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { enablePushNotifications, getPushActivationState } from '@/utils/pushNotifications';
 import { calcProfileCompletion } from '@/utils/profileCompletion';
@@ -96,6 +97,18 @@ export default function Match() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const premiumAccess = hasPremiumAccess(user);
   const { requireFields } = useProfileGate();
+
+  // Banner "X perfis procuram alguém como você" — aparece ao entrar no Match para
+  // quem NÃO é assinante pagante (trial/expirado incluídos), 1x por sessão.
+  const [showSeekingYou, setShowSeekingYou] = useState(false);
+  const isPaidSubscriber = !!user?.isPremium && premiumAccess;
+  useEffect(() => {
+    if (!user?.id || isPaidSubscriber) return;
+    const key = 'nosigilo:seeking-you-session';
+    if (sessionStorage.getItem(key)) return;
+    setShowSeekingYou(true);
+    try { sessionStorage.setItem(key, '1'); } catch { /* ignora */ }
+  }, [user?.id, isPaidSubscriber]);
   const { percent: profilePercent, missing: profileMissing } = useMemo(() => calcProfileCompletion({
     avatar: user?.avatar ?? null,
     bio: user?.bio ?? null,
@@ -699,6 +712,7 @@ export default function Match() {
       <p className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <SeekingYouModal open={showSeekingYou} onClose={() => setShowSeekingYou(false)} />
     </div>
   );
 }
