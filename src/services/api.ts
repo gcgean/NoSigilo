@@ -247,6 +247,15 @@ export const profileService = {
     return response.data;
   },
 
+  requestNameChange: async (name: string, reason?: string) => {
+    const response = await apiClient.post('/profile/name-change-request', { name, reason });
+    return response.data;
+  },
+  getNameChangeStatus: async (): Promise<{ request: { requestedName: string; status: string; createdAt: string; reviewedAt: string | null } | null }> => {
+    const response = await apiClient.get('/profile/name-change-request');
+    return response.data;
+  },
+
   generateTelegramLink: async (): Promise<{ url: string }> => {
     const response = await apiClient.post('/profile/telegram/link');
     return response.data;
@@ -1058,6 +1067,18 @@ export const adminService = {
   },
   runShowcaseRotation: async (): Promise<{ ok: boolean; profiles: number; storiesCreated: number; postsBumped: number }> => {
     const response = await apiClient.post('/admin/showcase/run-rotation');
+    return response.data;
+  },
+  getNameChangeRequests: async (): Promise<{ requests: Array<{ id: string; userId: string; currentName: string | null; requestedName: string; reason: string | null; email: string | null; avatar: string | null; gender: string | null; createdAt: string }> }> => {
+    const response = await apiClient.get('/admin/name-change-requests');
+    return response.data;
+  },
+  approveNameChange: async (id: string) => {
+    const response = await apiClient.post(`/admin/name-change-requests/${id}/approve`);
+    return response.data;
+  },
+  rejectNameChange: async (id: string) => {
+    const response = await apiClient.post(`/admin/name-change-requests/${id}/reject`);
     return response.data;
   },
 

@@ -67,6 +67,38 @@ export default function Settings() {
 
   const [profilePerson, setProfilePerson] = useState<1 | 2>(1);
 
+  // ── Solicitação de mudança de nome (aprovação do admin) ──────────────────
+  const [nameReqOpen, setNameReqOpen] = useState(false);
+  const [nameReqValue, setNameReqValue] = useState('');
+  const [nameReqBusy, setNameReqBusy] = useState(false);
+  const [nameReqPending, setNameReqPending] = useState<string | null>(null);
+  useEffect(() => {
+    profileService.getNameChangeStatus()
+      .then((d) => { if (d.request?.status === 'pending') setNameReqPending(d.request.requestedName); })
+      .catch(() => {});
+  }, []);
+  const handleRequestNameChange = async () => {
+    const name = nameReqValue.trim();
+    if (!name) return;
+    setNameReqBusy(true);
+    try {
+      await profileService.requestNameChange(name);
+      setNameReqPending(name);
+      setNameReqOpen(false);
+      setNameReqValue('');
+      toast({ title: 'Solicitação enviada', description: 'Seu novo nome será aplicado após a aprovação do suporte.' });
+    } catch (e: any) {
+      const err = e?.response?.data?.error;
+      toast({
+        title: err === 'name_in_use' ? 'Nome já em uso' : err === 'already_pending' ? 'Já existe uma solicitação' : err === 'name_blacklisted' ? 'Nome indisponível' : 'Erro ao solicitar',
+        description: err === 'already_pending' ? 'Você já tem uma solicitação em análise.' : 'Escolha outro nome e tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setNameReqBusy(false);
+    }
+  };
+
   const [profile, setProfile] = useState({
     name: user?.name || '',
     email: user?.email || '',
@@ -521,10 +553,40 @@ export default function Settings() {
                       <Input
                         id="name"
                         value={profile.name}
-                        onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                        className="pl-9"
+                        readOnly
+                        className="pl-9 cursor-not-allowed opacity-80"
                       />
                     </div>
+                    {nameReqPending ? (
+                      <p className="text-xs text-amber-600">
+                        Solicitação em análise: <strong>"{nameReqPending}"</strong> — aguardando aprovação do suporte.
+                      </p>
+                    ) : nameReqOpen ? (
+                      <div className="space-y-2 rounded-lg border bg-secondary/30 p-3">
+                        <p className="text-xs text-muted-foreground">Digite o novo nome desejado. Ele passará por aprovação do suporte.</p>
+                        <Input
+                          value={nameReqValue}
+                          onChange={(e) => setNameReqValue(e.target.value)}
+                          placeholder="Novo nome"
+                          maxLength={60}
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" disabled={nameReqBusy || !nameReqValue.trim()} onClick={() => void handleRequestNameChange()}>
+                            {nameReqBusy ? 'Enviando...' : 'Enviar solicitação'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => { setNameReqOpen(false); setNameReqValue(''); }}>Cancelar</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline"
+                        onClick={() => setNameReqOpen(true)}
+                      >
+                        Solicitar mudança de nome
+                      </button>
+                    )}
+                    <p className="text-[11px] text-muted-foreground/70">O nome só pode ser alterado com aprovação do suporte.</p>
                   </div>
 
                   <div className="space-y-2">

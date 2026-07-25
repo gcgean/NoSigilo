@@ -303,6 +303,18 @@ export default function Admin() {
   const [funnelPeriod, setFunnelPeriod] = useState<'all' | '7' | '30' | '90'>('all');
   const [showcaseProfiles, setShowcaseProfiles] = useState<Awaited<ReturnType<typeof adminService.getShowcaseProfiles>>['profiles']>([]);
   const [showOnlyShowcase, setShowOnlyShowcase] = useState(false);
+  const [nameRequests, setNameRequests] = useState<Awaited<ReturnType<typeof adminService.getNameChangeRequests>>['requests']>([]);
+  const loadNameRequests = async () => {
+    try { const d = await adminService.getNameChangeRequests(); setNameRequests(d.requests); } catch { /* ignora */ }
+  };
+  const handleApproveNameChange = async (id: string) => {
+    try { await adminService.approveNameChange(id); await loadNameRequests(); toast({ title: 'Nome aprovado e alterado' }); }
+    catch { toast({ title: 'Erro ao aprovar (nome pode estar em uso)', variant: 'destructive' }); }
+  };
+  const handleRejectNameChange = async (id: string) => {
+    try { await adminService.rejectNameChange(id); await loadNameRequests(); toast({ title: 'Solicitação rejeitada' }); }
+    catch { toast({ title: 'Erro ao rejeitar', variant: 'destructive' }); }
+  };
   const loadShowcase = async () => {
     try { const d = await adminService.getShowcaseProfiles(); setShowcaseProfiles(d.profiles); } catch { /* ignora */ }
   };
@@ -632,8 +644,8 @@ export default function Admin() {
     }
   };
 
-  // Perfis de vitrine — carrega uma vez.
-  useEffect(() => { void loadShowcase(); }, []);
+  // Perfis de vitrine + solicitações de nome — carrega uma vez.
+  useEffect(() => { void loadShowcase(); void loadNameRequests(); }, []);
 
   // Funil de conversão (cadastro → uso → paywall → PIX → assinatura).
   useEffect(() => {
@@ -1310,6 +1322,40 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="users">
+          {/* ── Solicitações de mudança de nome ── */}
+          {nameRequests.length > 0 && (
+            <div className="glass rounded-xl p-6 mb-4">
+              <h3 className="mb-1 font-semibold">Solicitações de mudança de nome ({nameRequests.length})</h3>
+              <p className="mb-4 text-xs text-muted-foreground">Aprove ou rejeite os pedidos de troca de nome de perfil.</p>
+              <div className="space-y-2">
+                {nameRequests.map((r) => (
+                  <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
+                    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary">
+                      {r.avatar ? (
+                        <img src={resolveServerUrl(r.avatar)} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted-foreground">{(r.currentName || r.requestedName || '?')[0]}</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm">
+                        <span className="text-muted-foreground line-through">{r.currentName || '—'}</span>
+                        <span className="mx-2">→</span>
+                        <span className="font-semibold text-foreground">{r.requestedName}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">{r.email || 'sem e-mail'} · {formatDateTime(r.createdAt)}</p>
+                      {r.reason ? <p className="text-xs text-muted-foreground">Motivo: {r.reason}</p> : null}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => void handleApproveNameChange(r.id)}>Aprovar</Button>
+                      <Button size="sm" variant="outline" onClick={() => void handleRejectNameChange(r.id)}>Rejeitar</Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Perfis de vitrine (seed/manada) ── */}
           <div className="glass rounded-xl p-6 mb-4">
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">

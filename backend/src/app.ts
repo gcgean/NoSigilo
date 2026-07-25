@@ -6128,10 +6128,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const data = parsed.data;
 
-    // Não permite trocar para um nome em lista negra (de perfil banido).
-    if (typeof data.name === 'string' && await isNameBlacklisted(db, data.name)) {
-      res.status(409).json({ error: 'name_blacklisted' });
-      return;
+    // Nome só muda via solicitação ao suporte + aprovação do admin — nunca pelo
+    // update direto do perfil. Ignora silenciosamente qualquer 'name' enviado.
+    if ('name' in data) {
+      delete (data as any).name;
     }
 
     // Tipo de perfil (gênero) é imutável: definido uma vez no cadastro, não muda mais.
@@ -6321,6 +6321,47 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // Deactivate profile
+  // Solicitação de mudança de nome (vai para aprovação do admin).
+  app.post('/api/profile/name-change-request', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const parsed = z.object({ name: z.string().min(1).max(60), reason: z.string().max(300).optional() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const requested = parsed.data.name.trim();
+    const me = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    if (me?.name && String(me.name).trim().toLowerCase() === requested.toLowerCase()) {
+      res.status(400).json({ error: 'same_name' }); return;
+    }
+    const inUse = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1', [requested]);
+    if (inUse) { res.status(409).json({ error: 'name_in_use' }); return; }
+    if (await isNameBlacklisted(db, requested)) { res.status(409).json({ error: 'name_blacklisted' }); return; }
+    const pending = await queryOne(db, "SELECT id FROM name_change_requests WHERE user_id = ? AND status = 'pending' LIMIT 1", [userId]);
+    if (pending) { res.status(409).json({ error: 'already_pending', message: 'Você já tem uma solicitação em análise.' }); return; }
+    await run(
+      db,
+      'INSERT INTO name_change_requests (id, user_id, current_name, requested_name, status, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), userId, me?.name ? String(me.name) : null, requested, 'pending', parsed.data.reason?.trim() || null, nowIso()]
+    );
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Status da solicitação de nome do usuário (pendente/aprovada/rejeitada mais recente).
+  app.get('/api/profile/name-change-request', requireAuth(env, db), async (req, res) => {
+    const row = (await queryOne(
+      db,
+      'SELECT requested_name, status, created_at, reviewed_at FROM name_change_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    res.json({
+      request: row ? {
+        requestedName: String(row.requested_name),
+        status: String(row.status),
+        createdAt: String(row.created_at),
+        reviewedAt: row.reviewed_at ? String(row.reviewed_at) : null,
+      } : null,
+    });
+  });
+
   app.put('/api/profile/deactivate', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
@@ -9293,36 +9334,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Referral action tracking: bit1 = sent_message
     void markInviteeAction(db, io, req.auth!.userId, 0b010, env).catch(() => {});
 
-    // Perfil de vitrine responde UMA vez, de forma honesta (sem fingir ser real).
-    try {
-      const recipient = (await queryOne(db, 'SELECT is_showcase FROM users WHERE id = ? LIMIT 1', [otherId])) as any;
-      if (recipient && Number(recipient.is_showcase || 0) === 1) {
-        const alreadyReplied = (await queryOne(
-          db,
-          'SELECT 1 AS x FROM messages WHERE conversation_id = ? AND sender_id = ? LIMIT 1',
-          [conversationId, otherId]
-        )) as any;
-        if (!alreadyReplied) {
-          const autoId = randomUUID();
-          const autoAt = nowIso();
-          const autoText = 'Oi! Este é um perfil de vitrine do NoSigilo — usamos ele só para mostrar conteúdo da plataforma, então não respondo pessoalmente. 😊 Aproveite para explorar os perfis reais no Match e no Radar!';
-          await run(
-            db,
-            'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [autoId, conversationId, otherId, autoText, 1, autoAt]
-          );
-          await persist();
-          io?.to(conversationId).emit('message.created', {
-            id: autoId, conversationId, senderId: otherId, content: autoText,
-            mediaId: null, mediaUrl: null, mediaMimeType: null, clientId: null,
-            isViewOnce: false, isDelivered: true, createdAt: autoAt,
-          });
-        }
-      }
-    } catch (err) {
-      console.error('[showcase auto-reply]', err);
-    }
-
     res.json({ id });
   });
 
@@ -11202,6 +11213,84 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
     } catch (err) {
       console.error('[admin/showcase] list', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // ── Solicitações de mudança de nome (aprovação do admin) ────────────────────
+  app.get('/api/admin/name-change-requests', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      const rows = (await queryAll(
+        db,
+        `SELECT r.id, r.user_id, r.current_name, r.requested_name, r.reason, r.created_at,
+                u.email AS user_email, u.avatar AS user_avatar, u.gender AS user_gender
+         FROM name_change_requests r
+         JOIN users u ON u.id = r.user_id
+         WHERE r.status = 'pending'
+         ORDER BY r.created_at ASC`
+      )) as any[];
+      res.json({
+        requests: rows.map((r) => ({
+          id: String(r.id),
+          userId: String(r.user_id),
+          currentName: r.current_name ? String(r.current_name) : null,
+          requestedName: String(r.requested_name),
+          reason: r.reason ? String(r.reason) : null,
+          email: r.user_email ? String(r.user_email) : null,
+          avatar: r.user_avatar ? String(r.user_avatar) : null,
+          gender: r.user_gender ? String(r.user_gender) : null,
+          createdAt: String(r.created_at),
+        })),
+      });
+    } catch (err) {
+      console.error('[admin/name-change-requests] list', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  app.post('/api/admin/name-change-requests/:id/approve', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const reqRow = (await queryOne(db, "SELECT id, user_id, requested_name, status FROM name_change_requests WHERE id = ? LIMIT 1", [req.params.id])) as any;
+      if (!reqRow || String(reqRow.status) !== 'pending') { res.status(404).json({ error: 'not_found' }); return; }
+      const requested = String(reqRow.requested_name).trim();
+      // Revalida disponibilidade na hora de aprovar.
+      const inUse = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?) AND id <> ? LIMIT 1', [requested, String(reqRow.user_id)]);
+      if (inUse) { res.status(409).json({ error: 'name_in_use' }); return; }
+      await run(db, 'UPDATE users SET name = ? WHERE id = ?', [requested, String(reqRow.user_id)]);
+      await run(db, "UPDATE name_change_requests SET status = 'approved', reviewed_at = ?, reviewed_by = ? WHERE id = ?", [nowIso(), req.auth!.userId, String(reqRow.id)]);
+      await persist();
+      try {
+        await createNotification({ db, io: req.app.get('io') }, {
+          userId: String(reqRow.user_id),
+          type: 'name_change.approved',
+          title: '✅ Mudança de nome aprovada',
+          description: `Seu novo nome de perfil é "${requested}".`,
+        });
+      } catch { /* non-fatal */ }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[admin/name-change-requests] approve', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  app.post('/api/admin/name-change-requests/:id/reject', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const reqRow = (await queryOne(db, "SELECT id, user_id, status FROM name_change_requests WHERE id = ? LIMIT 1", [req.params.id])) as any;
+      if (!reqRow || String(reqRow.status) !== 'pending') { res.status(404).json({ error: 'not_found' }); return; }
+      await run(db, "UPDATE name_change_requests SET status = 'rejected', reviewed_at = ?, reviewed_by = ? WHERE id = ?", [nowIso(), req.auth!.userId, String(reqRow.id)]);
+      await persist();
+      try {
+        await createNotification({ db, io: req.app.get('io') }, {
+          userId: String(reqRow.user_id),
+          type: 'name_change.rejected',
+          title: 'Mudança de nome não aprovada',
+          description: 'Sua solicitação de troca de nome foi recusada. Você pode enviar outra.',
+        });
+      } catch { /* non-fatal */ }
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[admin/name-change-requests] reject', err);
       res.status(500).json({ error: 'internal' });
     }
   });
