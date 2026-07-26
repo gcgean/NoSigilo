@@ -35,6 +35,8 @@ export default function WelcomeModal() {
   const dismiss = () => {
     try { localStorage.setItem(WELCOME_KEY, new Date().toISOString()); } catch { /* noop */ }
     setOpen(false);
+    // Encadeia o interstitial do sinal (alguém já curtiu/mandou mensagem).
+    try { window.dispatchEvent(new Event('nosigilo:open-welcome-signal')); } catch { /* noop */ }
   };
 
   return (
