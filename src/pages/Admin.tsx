@@ -338,6 +338,8 @@ export default function Admin() {
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
+  const [menConv, setMenConv] = useState<Awaited<ReturnType<typeof adminService.getMenConversion>> | null>(null);
+  const [menConvPeriod, setMenConvPeriod] = useState<1 | 7 | 30>(7);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
   const [accessPeriod, setAccessPeriod] = useState<'all' | '7' | '30' | '90'>('all');
   const cpuUsagePercent = resourcesStatus
@@ -689,6 +691,14 @@ export default function Admin() {
       cancelled = true;
     };
   }, [cityUsersPeriod, accessPeriod]);
+
+  useEffect(() => {
+    let cancelled = false;
+    adminService.getMenConversion(menConvPeriod)
+      .then((d) => { if (!cancelled) setMenConv(d); })
+      .catch(() => { if (!cancelled) setMenConv(null); });
+    return () => { cancelled = true; };
+  }, [menConvPeriod]);
 
   const loadMoreUsers = async () => {
     if (isLoadingMoreUsers || !hasMoreUsers) return;
@@ -2246,6 +2256,82 @@ export default function Admin() {
                 </Card>
               ))}
             </div>
+
+            {/* ── Conversão de Homens (funil, retorno, sinal, ação) ── */}
+            <Card className="p-5 glass">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Conversão de Homens</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Homens cadastrados no período · por que não assinam e se a isca (sinal da vitrine) está convertendo
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  {([[1, 'Hoje'], [7, '7 dias'], [30, '30 dias']] as Array<[1 | 7 | 30, string]>).map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setMenConvPeriod(v)}
+                      className={`rounded-lg px-3 py-1 text-xs font-medium transition-colors ${menConvPeriod === v ? 'bg-primary text-primary-foreground' : 'bg-secondary/50 text-muted-foreground hover:bg-secondary'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!menConv ? (
+                <p className="text-sm text-muted-foreground">Carregando…</p>
+              ) : menConv.funnel.homens === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhum homem cadastrado no período.</p>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {/* Funil */}
+                  <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Funil</p>
+                    <p className="text-3xl font-bold leading-none">{menConv.funnel.conversaoPct ?? 0}%</p>
+                    <p className="mb-3 text-xs text-muted-foreground">{menConv.funnel.assinaram} de {menConv.funnel.homens} assinaram</p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      <li className="flex justify-between"><span>Não assinaram</span><span className="font-semibold text-foreground">{menConv.funnel.naoAssinaram}</span></li>
+                      <li className="flex justify-between"><span>Abriram checkout</span><span className="font-semibold text-foreground">{menConv.funnel.abriramCheckout}</span></li>
+                      <li className="flex justify-between"><span>Gerou Pix, não pagou</span><span className="font-semibold text-foreground">{menConv.funnel.gerouPixNaoPagou}</span></li>
+                      <li className="flex justify-between"><span>Nunca abriu checkout</span><span className="font-semibold text-amber-500">{menConv.funnel.nuncaAbriuCheckout}</span></li>
+                    </ul>
+                  </div>
+                  {/* Sinal */}
+                  <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-rose-500">Sinal recebido</p>
+                    <p className="text-3xl font-bold leading-none">{menConv.sinal.comSinal}</p>
+                    <p className="mb-3 text-xs text-muted-foreground">com sinal · {menConv.sinal.semSinal} sem sinal</p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      <li className="flex justify-between"><span>Conv. c/ sinal</span><span className="font-semibold text-emerald-600">{menConv.sinal.convPctComSinal ?? 0}%</span></li>
+                      <li className="flex justify-between"><span>Conv. s/ sinal</span><span className="font-semibold text-foreground">{menConv.sinal.convPctSemSinal ?? 0}%</span></li>
+                    </ul>
+                  </div>
+                  {/* Retorno */}
+                  <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-500">Retorno</p>
+                    <p className="text-3xl font-bold leading-none">{menConv.retorno.churnPct ?? 0}%</p>
+                    <p className="mb-3 text-xs text-muted-foreground">sumiram na 1ª sessão</p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      <li className="flex justify-between"><span>Não assinantes</span><span className="font-semibold text-foreground">{menConv.retorno.naoAssinantes}</span></li>
+                      <li className="flex justify-between"><span>Sumiram 1ª sessão</span><span className="font-semibold text-amber-500">{menConv.retorno.sumiram1aSessao}</span></li>
+                      <li className="flex justify-between"><span>Voltaram</span><span className="font-semibold text-emerald-600">{menConv.retorno.voltaram}</span></li>
+                    </ul>
+                  </div>
+                  {/* Ação */}
+                  <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-500">Engajamento (não assinantes)</p>
+                    <p className="text-3xl font-bold leading-none">{menConv.acao.engajouNaoPagou}</p>
+                    <p className="mb-3 text-xs text-muted-foreground">engajaram mas não pagaram</p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      <li className="flex justify-between"><span>Não fez nada</span><span className="font-semibold text-foreground">{menConv.acao.naoFezNada}</span></li>
+                      <li className="flex justify-between"><span>Explorou pouco (1–5)</span><span className="font-semibold text-foreground">{menConv.acao.explorouPouco}</span></li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </Card>
 
             {/* ── Acessos por dia + Novos usuários por dia (bar charts) ── */}
             <div className="grid gap-4 xl:grid-cols-2">

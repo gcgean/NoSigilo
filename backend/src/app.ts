@@ -11830,6 +11830,76 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Análise de conversão dos HOMENS (funil, retorno 1ª sessão, sinal recebido,
+  // engajamento) — a mesma que rodávamos por SQL, agora na dashboard admin.
+  app.get('/api/admin/analytics/men-conversion', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const reqDays = Number(req.query.periodDays || 7);
+      const periodDays = [1, 7, 30].includes(reqDays) ? reqDays : 7;
+      const sinceIso = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
+      const rows = (await queryAll(
+        db,
+        `SELECT u.id, u.created_at, u.last_seen_at, u.is_premium, u.hub_access_status, u.hub_license_end_at,
+           (SELECT COUNT(*) FROM profile_visits pv JOIN users vu ON vu.id = pv.visitor_user_id
+             WHERE pv.visited_user_id = u.id
+               AND (LOWER(COALESCE(vu.gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(vu.gender,'')) LIKE 'casal%')) AS visitas_recebidas,
+           (SELECT COUNT(*) FROM messages m JOIN conversations c ON c.id = m.conversation_id JOIN users su ON su.id = m.sender_id
+             WHERE m.sender_id <> u.id AND (c.user_a_id = u.id OR c.user_b_id = u.id)
+               AND (LOWER(COALESCE(su.gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(su.gender,'')) LIKE 'casal%')) AS msgs_recebidas,
+           (SELECT COUNT(*) FROM likes lk JOIN users lu ON lu.id = lk.user_id
+             WHERE lk.target_type = 'user' AND lk.target_id = u.id
+               AND (LOWER(COALESCE(lu.gender,'')) LIKE 'mulher%' OR LOWER(COALESCE(lu.gender,'')) LIKE 'casal%')) AS likes_recebidos,
+           (SELECT COUNT(*) FROM messages m2 WHERE m2.sender_id = u.id) AS msgs_enviadas,
+           (SELECT COUNT(*) FROM likes lk2 WHERE lk2.user_id = u.id) AS likes_dados,
+           (SELECT COUNT(*) FROM profile_visits p2 WHERE p2.visitor_user_id = u.id) AS visitas_feitas,
+           (SELECT COUNT(*) FROM checkout_generations cg WHERE cg.user_id = u.id) AS checkouts
+         FROM users u
+         WHERE LOWER(COALESCE(u.gender,'')) LIKE 'homem%' AND u.created_at >= ?`,
+        [sinceIso]
+      )) as any[];
+
+      const now = Date.now();
+      const parseMs = (v: any) => { if (!v) return null; const t = new Date(String(v)).getTime(); return Number.isNaN(t) ? null : t; };
+      let homens = 0, assinaram = 0, abriram = 0, gerouNaoPagou = 0, nuncaAbriu = 0;
+      let naoAss = 0, sumiram = 0, voltaram = 0;
+      let semSinal = 0, comSinal = 0, semSinalPagou = 0, comSinalPagou = 0;
+      let nadaFez = 0, explorou = 0, engajou = 0;
+      for (const r of rows) {
+        homens++;
+        const paid = Number(r.is_premium) === 1
+          || String(r.hub_access_status || '').toLowerCase().startsWith('active')
+          || (parseMs(r.hub_license_end_at) !== null && (parseMs(r.hub_license_end_at) as number) > now);
+        const createdMs = parseMs(r.created_at) || 0;
+        const seenMs = parseMs(r.last_seen_at);
+        const sinal = Number(r.visitas_recebidas) + Number(r.msgs_recebidas) + Number(r.likes_recebidos);
+        const acao = Number(r.msgs_enviadas) + Number(r.likes_dados) + Number(r.visitas_feitas);
+        const hasCheckout = Number(r.checkouts) > 0;
+        if (paid) assinaram++;
+        if (hasCheckout) abriram++;
+        if (hasCheckout && !paid) gerouNaoPagou++;
+        if (!hasCheckout && !paid) nuncaAbriu++;
+        if (!paid) {
+          naoAss++;
+          if (seenMs === null || (createdMs && seenMs <= createdMs + 30 * 60 * 1000)) sumiram++;
+          else voltaram++;
+          if (acao === 0) nadaFez++; else if (acao <= 5) explorou++; else engajou++;
+        }
+        if (sinal === 0) { semSinal++; if (paid) semSinalPagou++; } else { comSinal++; if (paid) comSinalPagou++; }
+      }
+      const pct = (n: number, d: number) => (d > 0 ? Math.round((1000 * n) / d) / 10 : null);
+      res.json({
+        periodDays,
+        funnel: { homens, assinaram, conversaoPct: pct(assinaram, homens), naoAssinaram: homens - assinaram, abriramCheckout: abriram, gerouPixNaoPagou: gerouNaoPagou, nuncaAbriuCheckout: nuncaAbriu },
+        retorno: { naoAssinantes: naoAss, sumiram1aSessao: sumiram, voltaram, churnPct: pct(sumiram, naoAss) },
+        sinal: { semSinal, comSinal, convPctSemSinal: pct(semSinalPagou, semSinal), convPctComSinal: pct(comSinalPagou, comSinal) },
+        acao: { naoFezNada: nadaFez, explorouPouco: explorou, engajouNaoPagou: engajou },
+      });
+    } catch (error) {
+      console.error('[admin/men-conversion]', error);
+      res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const requestedLimit = Number(req.query.limit || 120);

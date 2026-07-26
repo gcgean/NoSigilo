@@ -1188,6 +1188,17 @@ export const adminService = {
     return response.data;
   },
 
+  getMenConversion: async (periodDays: number = 7): Promise<{
+    periodDays: number;
+    funnel: { homens: number; assinaram: number; conversaoPct: number | null; naoAssinaram: number; abriramCheckout: number; gerouPixNaoPagou: number; nuncaAbriuCheckout: number };
+    retorno: { naoAssinantes: number; sumiram1aSessao: number; voltaram: number; churnPct: number | null };
+    sinal: { semSinal: number; comSinal: number; convPctSemSinal: number | null; convPctComSinal: number | null };
+    acao: { naoFezNada: number; explorouPouco: number; engajouNaoPagou: number };
+  }> => {
+    const response = await apiClient.get('/admin/analytics/men-conversion', { params: { periodDays } });
+    return response.data;
+  },
+
   getSettings: async () => {
     const response = await apiClient.get('/admin/settings');
     return response.data;
