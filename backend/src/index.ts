@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
-import { runShowcaseRotation, seedInterestForNewUsers } from './showcase.js';
+import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes } from './showcase.js';
 import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
@@ -491,6 +491,10 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
 
   // Check every 30 minutes
   setInterval(check, 30 * 60 * 1000);
+  // Curtidas de engajamento da vitrine — a cada 5 min, 1–2 posts por vez (natural).
+  setInterval(() => {
+    runShowcaseFeedLikes(db).catch(err => console.error('[scheduler/showcase-likes] fatal', err));
+  }, 5 * 60 * 1000);
   // Also run once on startup (will be a no-op unless it's the right hour)
   check().catch(() => {});
   // Limpa flags de premium vencido já na subida (não espera as 01h)

@@ -295,3 +295,71 @@ export async function seedInterestForNewUsers(
   console.log(`[showcase] Sinal semeado p/ novos usuários: ${seeded} usuários, +${visits} visitas, +${likes} likes (${showcase.length} perfis vitrine)`);
   return { seeded, visits, likes };
 }
+
+// Curtidas de engajamento: perfis de vitrine curtem posts (últimas 24h) de
+// autores COMPATÍVEIS que ainda não receberam like de vitrine. Roda a cada ~5
+// min e curte só 1–2 posts por rodada, um a um, de vitrines aleatórias, para
+// parecer natural (não em massa). Gera a notificação real "Curtiram sua
+// publicação" no autor.
+export async function runShowcaseFeedLikes(
+  db: DbHandle,
+  opts: { windowHours?: number; maxPerRun?: number } = {}
+): Promise<{ liked: number }> {
+  const windowHours = opts.windowHours ?? 24;
+  const maxPerRun = opts.maxPerRun ?? (1 + Math.floor(Math.random() * 2)); // 1 ou 2
+  const nowStr = new Date().toISOString();
+  const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+
+  const showcase = await allShowcaseProfiles(db);
+  if (showcase.length === 0) return { liked: 0 };
+
+  // Posts recentes de autores NÃO-vitrine que ainda não têm like de nenhuma vitrine.
+  const posts = (await db.queryAll(
+    `SELECT p.id, p.user_id, u.gender AS author_gender, u.looking_for_json AS author_looking
+       FROM posts p JOIN users u ON u.id = p.user_id
+      WHERE p.created_at >= ?
+        AND COALESCE(u.is_showcase, 0) = 0
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM likes l JOIN users lu ON lu.id = l.user_id
+           WHERE l.target_type = 'post' AND l.target_id = p.id AND COALESCE(lu.is_showcase, 0) = 1)
+      ORDER BY p.created_at DESC
+      LIMIT 80`,
+    [sinceStr]
+  )) as any[];
+  if (!Array.isArray(posts) || posts.length === 0) return { liked: 0 };
+
+  // Embaralha para espalhar as curtidas (não pega sempre os mesmos posts).
+  for (let i = posts.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [posts[i], posts[j]] = [posts[j], posts[i]];
+  }
+
+  let liked = 0;
+  for (const post of posts) {
+    if (liked >= maxPerRun) break;
+    const authorToken = genderToken(post.author_gender);
+    const senders = compatibleSenders(authorToken, post.author_looking, showcase);
+    if (senders.length === 0) continue;
+    const sc = senders[Math.floor(Math.random() * senders.length)];
+    const scId = String(sc.id);
+    if (scId === String(post.user_id)) continue;
+
+    await db.run(
+      'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), scId, 'post', String(post.id), nowStr]
+    );
+    const actorName = sc?.name ? String(sc.name) : 'Alguém';
+    await db.run(
+      `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+       VALUES (?, ?, 'post.liked', ?, ?, ?, 0, ?)`,
+      [randomUUID(), String(post.user_id), 'Curtiram sua publicação', `${actorName} curtiu sua publicação.`, JSON.stringify({ postId: String(post.id), actorId: scId, actorName }), nowStr]
+    );
+    liked++;
+  }
+
+  if (liked > 0) await db.persist();
+  console.log(`[showcase] Likes de engajamento: +${liked} curtidas de vitrine em posts compatíveis`);
+  return { liked };
+}
