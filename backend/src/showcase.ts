@@ -18,8 +18,27 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
   let storiesCreated = 0;
   let postsBumped = 0;
 
+  let dupsRemoved = 0;
+
   for (const u of showcase) {
     const uid = String(u.id);
+    // 0) Limpa duplicatas: mantém apenas 1 story ATIVO por mídia (remove repetidos
+    //    do mesmo story que possam ter surgido por corrida/reinício). Sem isso o
+    //    ring da vitrine mostra a mesma foto várias vezes.
+    const activeStories = (await db.queryAll(
+      'SELECT id, media_id FROM stories WHERE user_id = ? AND expires_at > ? AND media_id IS NOT NULL ORDER BY created_at DESC',
+      [uid, nowStr]
+    )) as any[];
+    const seenMedia = new Set<string>();
+    for (const s of activeStories) {
+      const mid = String(s.media_id);
+      if (seenMedia.has(mid)) {
+        await db.run('DELETE FROM stories WHERE id = ?', [String(s.id)]);
+        dupsRemoved++;
+      } else {
+        seenMedia.add(mid);
+      }
+    }
     // 1) Mantém stories ativos: se tem menos que o alvo, cria a partir da mídia
     //    pública do perfil que ainda não está num story ativo (revezando).
     const activeRow = (await db.queryOne('SELECT COUNT(*) AS c FROM stories WHERE user_id = ? AND expires_at > ?', [uid, nowStr])) as any;
@@ -47,7 +66,7 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
     }
   }
   await db.persist();
-  console.log(`[showcase] Revezamento: +${storiesCreated} stories, ${postsBumped} posts resurgidos (${showcase.length} perfis)`);
+  console.log(`[showcase] Revezamento: +${storiesCreated} stories, ${postsBumped} posts resurgidos, ${dupsRemoved} stories duplicados removidos (${showcase.length} perfis)`);
   return { profiles: showcase.length, storiesCreated, postsBumped };
 }
 
