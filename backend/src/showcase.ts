@@ -296,24 +296,26 @@ export async function seedInterestForNewUsers(
   return { seeded, visits, likes };
 }
 
-// Curtidas de engajamento: perfis de vitrine curtem posts (últimas 24h) de
-// autores COMPATÍVEIS que ainda não receberam like de vitrine. Roda a cada ~5
-// min e curte só 1–2 posts por rodada, um a um, de vitrines aleatórias, para
-// parecer natural (não em massa). Gera a notificação real "Curtiram sua
-// publicação" no autor.
+// Curtidas de engajamento: a cada ~5 min, 1 perfil de vitrine curte 1 post de um
+// autor COMPATÍVEL (posts das últimas 24h), um a um, para parecer natural (não em
+// massa). Dedup POR VITRINE (uma vitrine só curte um post uma vez), permitindo
+// que vitrines diferentes curtam o mesmo post ao longo do tempo — mas com um TETO
+// por post (CAP) pra não virar enxurrada de likes. Gera a notificação real
+// "Curtiram sua publicação" no autor.
 export async function runShowcaseFeedLikes(
   db: DbHandle,
-  opts: { windowHours?: number; maxPerRun?: number } = {}
+  opts: { windowHours?: number; maxPerRun?: number; capPerPost?: number } = {}
 ): Promise<{ liked: number }> {
   const windowHours = opts.windowHours ?? 24;
-  const maxPerRun = opts.maxPerRun ?? (1 + Math.floor(Math.random() * 2)); // 1 ou 2
+  const maxPerRun = opts.maxPerRun ?? 1;   // 1 like por rodada (um a um)
+  const capPerPost = opts.capPerPost ?? 2; // no máx. 2 vitrines por post (crível)
   const nowStr = new Date().toISOString();
   const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
   const showcase = await allShowcaseProfiles(db);
   if (showcase.length === 0) return { liked: 0 };
 
-  // Posts recentes de autores NÃO-vitrine que ainda não têm like de nenhuma vitrine.
+  // Posts recentes de autores NÃO-vitrine que ainda não bateram o teto de likes de vitrine.
   const posts = (await db.queryAll(
     `SELECT p.id, p.user_id, u.gender AS author_gender, u.looking_for_json AS author_looking
        FROM posts p JOIN users u ON u.id = p.user_id
@@ -321,12 +323,11 @@ export async function runShowcaseFeedLikes(
         AND COALESCE(u.is_showcase, 0) = 0
         AND (u.is_banned = 0 OR u.is_banned IS NULL)
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-        AND NOT EXISTS (
-          SELECT 1 FROM likes l JOIN users lu ON lu.id = l.user_id
-           WHERE l.target_type = 'post' AND l.target_id = p.id AND COALESCE(lu.is_showcase, 0) = 1)
+        AND (SELECT count(*) FROM likes l JOIN users lu ON lu.id = l.user_id
+              WHERE l.target_type = 'post' AND l.target_id = p.id AND COALESCE(lu.is_showcase, 0) = 1) < ?
       ORDER BY p.created_at DESC
       LIMIT 80`,
-    [sinceStr]
+    [sinceStr, capPerPost]
   )) as any[];
   if (!Array.isArray(posts) || posts.length === 0) return { liked: 0 };
 
@@ -340,11 +341,20 @@ export async function runShowcaseFeedLikes(
   for (const post of posts) {
     if (liked >= maxPerRun) break;
     const authorToken = genderToken(post.author_gender);
-    const senders = compatibleSenders(authorToken, post.author_looking, showcase);
+    let senders = compatibleSenders(authorToken, post.author_looking, showcase);
     if (senders.length === 0) continue;
+
+    // Dedup POR VITRINE: descarta quem já curtiu ESTE post.
+    const already = (await db.queryAll(
+      `SELECT user_id FROM likes WHERE target_type = 'post' AND target_id = ?`,
+      [String(post.id)]
+    )) as any[];
+    const alreadySet = new Set(already.map((r) => String(r.user_id)));
+    senders = senders.filter((sc) => !alreadySet.has(String(sc.id)) && String(sc.id) !== String(post.user_id));
+    if (senders.length === 0) continue;
+
     const sc = senders[Math.floor(Math.random() * senders.length)];
     const scId = String(sc.id);
-    if (scId === String(post.user_id)) continue;
 
     await db.run(
       'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
@@ -360,6 +370,6 @@ export async function runShowcaseFeedLikes(
   }
 
   if (liked > 0) await db.persist();
-  console.log(`[showcase] Likes de engajamento: +${liked} curtidas de vitrine em posts compatíveis`);
+  console.log(`[showcase] Like de engajamento: +${liked} curtida de vitrine em post compatível`);
   return { liked };
 }
