@@ -207,6 +207,17 @@ export default function Match() {
     return resolveMediaUrl(currentProfile.mainMediaUrl || currentProfile.avatar || '');
   }, [currentProfile]);
 
+  // Fade-in da imagem do card (evita "tela preta" enquanto carrega).
+  const [imgLoaded, setImgLoaded] = useState(false);
+  useEffect(() => { setImgLoaded(false); }, [coverUrl]);
+
+  // Pré-carrega a imagem do PRÓXIMO perfil pra não piscar preto ao passar o card.
+  useEffect(() => {
+    const next = profiles[currentIndex + 1];
+    const url = next ? resolveMediaUrl(next.mainMediaUrl || next.avatar || '') : '';
+    if (url) { const img = new Image(); img.src = url; }
+  }, [profiles, currentIndex]);
+
   const handleEnablePush = async () => {
     setPushLoading(true);
     try {
@@ -509,12 +520,32 @@ export default function Match() {
               swipeDirection === 'left' && 'animate-swipe-left'
             )}
           >
-            {coverUrl ? (
-              <button type="button" className="w-full h-full" onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}>
-                <img src={coverUrl} alt={currentProfile.name} className="w-full h-full object-cover" />
+            {/* Fundo sempre presente (nunca preto): gradiente + inicial do nome.
+                Some enquanto a foto carrega e no caso de perfil sem foto. */}
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/25 via-secondary to-background">
+              <span className="select-none text-7xl font-bold text-white/25">
+                {(currentProfile.name?.[0] || '?').toUpperCase()}
+              </span>
+            </div>
+            {coverUrl && (
+              <button
+                type="button"
+                className="absolute inset-0 h-full w-full"
+                onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
+              >
+                <img
+                  src={coverUrl}
+                  alt={currentProfile.name}
+                  loading="eager"
+                  decoding="async"
+                  onLoad={() => setImgLoaded(true)}
+                  onError={() => setImgLoaded(false)}
+                  className={cn(
+                    'h-full w-full object-cover transition-opacity duration-300',
+                    imgLoaded ? 'opacity-100' : 'opacity-0'
+                  )}
+                />
               </button>
-            ) : (
-              <div className="w-full h-full bg-secondary" />
             )}
 
               <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
