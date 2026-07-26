@@ -207,9 +207,11 @@ export default function Match() {
     return resolveMediaUrl(currentProfile.mainMediaUrl || currentProfile.avatar || '');
   }, [currentProfile]);
 
-  // Fade-in da imagem do card (evita "tela preta" enquanto carrega).
-  const [imgLoaded, setImgLoaded] = useState(false);
-  useEffect(() => { setImgLoaded(false); }, [coverUrl]);
+  // Placeholder (gradiente+inicial) fica ATRÁS e some quando a foto pinta.
+  // Só escondemos a <img> se ela falhar (não usamos gate por onLoad: imagem em
+  // cache dispara load antes do handler e ficaria invisível).
+  const [imgError, setImgError] = useState(false);
+  useEffect(() => { setImgError(false); }, [coverUrl]);
 
   // Pré-carrega a imagem do PRÓXIMO perfil pra não piscar preto ao passar o card.
   useEffect(() => {
@@ -527,7 +529,7 @@ export default function Match() {
                 {(currentProfile.name?.[0] || '?').toUpperCase()}
               </span>
             </div>
-            {coverUrl && (
+            {coverUrl && !imgError && (
               <button
                 type="button"
                 className="absolute inset-0 h-full w-full"
@@ -538,12 +540,8 @@ export default function Match() {
                   alt={currentProfile.name}
                   loading="eager"
                   decoding="async"
-                  onLoad={() => setImgLoaded(true)}
-                  onError={() => setImgLoaded(false)}
-                  className={cn(
-                    'h-full w-full object-cover transition-opacity duration-300',
-                    imgLoaded ? 'opacity-100' : 'opacity-0'
-                  )}
+                  onError={() => setImgError(true)}
+                  className="h-full w-full object-cover"
                 />
               </button>
             )}
