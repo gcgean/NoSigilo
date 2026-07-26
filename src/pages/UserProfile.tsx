@@ -267,7 +267,7 @@ function PhotoItem({
           <img
             src={resolveMediaUrl(currentPhotoUrl)}
             alt=""
-            className="h-full w-full bg-black object-contain transition-transform hover:scale-105 sm:object-cover"
+            className="h-full w-full bg-black object-cover transition-transform hover:scale-105"
           />
         </div>
       </DialogTrigger>
