@@ -215,7 +215,7 @@ export default function Match() {
   useEffect(() => {
     const next = profiles[currentIndex + 1];
     const url = next ? resolveMediaUrl(next.mainMediaUrl || next.avatar || '') : '';
-    if (url) { const img = new Image(); img.src = url; }
+    if (url) { const img = new window.Image(); img.src = url; }
   }, [profiles, currentIndex]);
 
   const handleEnablePush = async () => {
