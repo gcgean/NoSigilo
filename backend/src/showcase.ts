@@ -228,8 +228,10 @@ async function applyInterestSignals(
           await db.run('INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [convId, pair[0], pair[1], nowStr]);
         }
         const line = openingLine(genderToken(sc.gender), recipientToken);
+        // is_view_once/is_delivered são BOOLEAN no Postgres — não passamos inteiros
+        // aqui; deixamos os defaults (FALSE/TRUE). is_read fica 0 (não lida).
         await db.run(
-          'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, created_at) VALUES (?, ?, ?, ?, NULL, 0, 1, ?)',
+          'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)',
           [randomUUID(), convId, scId, line, nowStr]
         );
         messaged++;
