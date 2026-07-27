@@ -315,18 +315,18 @@ export async function seedInterestForNewUsers(
   return { seeded, visits, likes };
 }
 
-// Curtidas de engajamento: a cada ~5 min, 1 perfil de vitrine curte 1 post de um
-// autor COMPATÍVEL (posts das últimas 24h), um a um, para parecer natural (não em
-// massa). Dedup POR VITRINE (uma vitrine só curte um post uma vez), permitindo
-// que vitrines diferentes curtam o mesmo post ao longo do tempo — mas com um TETO
-// por post (CAP) pra não virar enxurrada de likes. Gera a notificação real
-// "Curtiram sua publicação" no autor.
+// Curtidas de engajamento: a cada ~5 min, os perfis de vitrine curtem TODOS os
+// posts elegíveis das últimas 24h de autores COMPATÍVEIS (casal→casal,
+// homem→mulher, mulher/casal→homem). Dedup POR VITRINE (cada vitrine curte um
+// post uma vez só) + TETO por post (CAP) pra não virar enxurrada. Cada post
+// ganha até CAP curtidas de vitrines diferentes ao longo das rodadas. Gera a
+// notificação real "Curtiram sua publicação" no autor.
 export async function runShowcaseFeedLikes(
   db: DbHandle,
   opts: { windowHours?: number; maxPerRun?: number; capPerPost?: number } = {}
 ): Promise<{ liked: number }> {
   const windowHours = opts.windowHours ?? 24;
-  const maxPerRun = opts.maxPerRun ?? 1;   // 1 like por rodada (um a um)
+  const maxPerRun = opts.maxPerRun ?? 150; // limite de segurança por rodada (cobre tudo em 1-2 rodadas)
   const capPerPost = opts.capPerPost ?? 2; // no máx. 2 vitrines por post (crível)
   const nowStr = new Date().toISOString();
   const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
@@ -345,7 +345,7 @@ export async function runShowcaseFeedLikes(
         AND (SELECT count(*) FROM likes l JOIN users lu ON lu.id = l.user_id
               WHERE l.target_type = 'post' AND l.target_id = p.id AND COALESCE(lu.is_showcase, 0) = 1) < ?
       ORDER BY p.created_at DESC
-      LIMIT 80`,
+      LIMIT 400`,
     [sinceStr, capPerPost]
   )) as any[];
   if (!Array.isArray(posts) || posts.length === 0) return { liked: 0 };
