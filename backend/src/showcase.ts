@@ -65,6 +65,8 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
       postsBumped++;
     }
   }
+  // Mantém o "visto por último" das vitrines recente (foram ativadas agora).
+  await bumpSeen(db, showcase.map((u) => String(u.id)), nowStr);
   await db.persist();
   console.log(`[showcase] Revezamento: +${storiesCreated} stories, ${postsBumped} posts resurgidos, ${dupsRemoved} stories duplicados removidos (${showcase.length} perfis)`);
   return { profiles: showcase.length, storiesCreated, postsBumped };
@@ -157,6 +159,16 @@ async function allShowcaseProfiles(db: DbHandle): Promise<any[]> {
   return Array.isArray(rows) ? rows : [];
 }
 
+// Atualiza o "visto por último" das vitrines que acabaram de executar uma ação
+// (visita/like/DM/story) — assim o perfil aparece com o último acesso recente,
+// de acordo com a última vez que foi ativado na plataforma.
+async function bumpSeen(db: DbHandle, ids: Iterable<string>, ts: string): Promise<void> {
+  const arr = Array.from(new Set(Array.from(ids).filter(Boolean)));
+  if (arr.length === 0) return;
+  const placeholders = arr.map(() => '?').join(',');
+  await db.run(`UPDATE users SET last_seen_at = ? WHERE id IN (${placeholders})`, [ts, ...arr]);
+}
+
 // Perfis de vitrine compatíveis para ENVIAR sinal a um destinatário: o gênero de
 // quem envia precisa estar entre os que o destinatário curte E existir uma
 // combinação de mensagem válida (quem envia → quem recebe).
@@ -238,6 +250,8 @@ async function applyInterestSignals(
       }
     }
   }
+  // "Visto por último" das vitrines que agiram = agora.
+  await bumpSeen(db, chosen.map((sc) => String(sc.id)), nowStr);
   return { visits, likes, messaged };
 }
 
@@ -357,6 +371,7 @@ export async function runShowcaseFeedLikes(
   }
 
   let liked = 0;
+  const actedIds = new Set<string>();
   for (const post of posts) {
     if (liked >= maxPerRun) break;
     const authorToken = genderToken(post.author_gender);
@@ -395,12 +410,14 @@ export async function runShowcaseFeedLikes(
          VALUES (?, ?, 'post.liked', ?, ?, ?, 0, ?)`,
         [randomUUID(), String(post.user_id), 'Curtiram sua publicação', `${actorName} curtiu sua publicação.`, JSON.stringify({ postId: String(post.id), actorId: scId, actorName }), nowStr]
       );
+      actedIds.add(scId);
       toAdd--;
       liked++;
     }
   }
 
-  if (liked > 0) await db.persist();
+  await bumpSeen(db, actedIds, nowStr);
+  if (liked > 0 || actedIds.size > 0) await db.persist();
   console.log(`[showcase] Likes de engajamento: +${liked} curtidas de vitrine (teto ${Math.round(capRatio * 100)}% das compatíveis por post)`);
   return { liked };
 }
@@ -438,6 +455,7 @@ export async function runShowcaseStoryEngagement(
   const REACTIONS = ['heart', 'fire', 'love'];
   let views = 0;
   let likes = 0;
+  const actedIds = new Set<string>();
 
   for (const story of stories) {
     const sid = String(story.id);
@@ -452,6 +470,7 @@ export async function runShowcaseStoryEngagement(
         const scId = String(sc.id);
         if (scId === authorId || viewerSet.has(scId)) continue;
         await db.run('INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), sid, scId, nowStr]);
+        actedIds.add(scId);
         views++;
       }
     }
@@ -482,6 +501,7 @@ export async function runShowcaseStoryEngagement(
              VALUES (?, ?, 'story.liked', ?, ?, ?, 0, ?)`,
             [randomUUID(), authorId, 'Reagiram ao seu story', `${actorName} reagiu ao seu story.`, JSON.stringify({ storyId: sid, actorId: scId, actorName, reaction }), nowStr]
           );
+          actedIds.add(scId);
           toAdd--;
           likes++;
         }
@@ -489,7 +509,8 @@ export async function runShowcaseStoryEngagement(
     }
   }
 
-  if (views > 0 || likes > 0) await db.persist();
+  await bumpSeen(db, actedIds, nowStr);
+  if (views > 0 || likes > 0 || actedIds.size > 0) await db.persist();
   console.log(`[showcase] Engajamento de stories: +${views} views, +${likes} likes de vitrine`);
   return { views, likes };
 }
