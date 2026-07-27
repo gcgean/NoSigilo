@@ -402,3 +402,92 @@ export async function runShowcaseFeedLikes(
   console.log(`[showcase] Likes de engajamento: +${liked} curtidas de vitrine (teto ${Math.round(capRatio * 100)}% das compatíveis por post)`);
   return { liked };
 }
+
+// Engajamento em STORIES: TODAS as vitrines VISUALIZAM os stories ativos de
+// perfis reais, e 50% das vitrines COMPATÍVEIS reagem (like) ao story. Views são
+// silenciosas (só inflam o contador de visualizações); likes geram a notificação
+// real "Reagiram ao seu story". Idempotente (dedup por vitrine).
+export async function runShowcaseStoryEngagement(
+  db: DbHandle,
+  opts: { capRatio?: number; maxViewsPerRun?: number; maxLikesPerRun?: number } = {}
+): Promise<{ views: number; likes: number }> {
+  const capRatio = opts.capRatio ?? 0.5;
+  const maxViews = opts.maxViewsPerRun ?? 3000;
+  const maxLikes = opts.maxLikesPerRun ?? 400;
+  const nowStr = new Date().toISOString();
+
+  const showcase = await allShowcaseProfiles(db);
+  if (showcase.length === 0) return { views: 0, likes: 0 };
+
+  // Stories ativos de perfis REAIS (não-vitrine).
+  const stories = (await db.queryAll(
+    `SELECT s.id, s.user_id, u.gender AS author_gender, u.looking_for_json AS author_looking
+       FROM stories s JOIN users u ON u.id = s.user_id
+      WHERE s.expires_at > ?
+        AND COALESCE(u.is_showcase, 0) = 0
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+      ORDER BY s.created_at DESC
+      LIMIT 500`,
+    [nowStr]
+  )) as any[];
+  if (!Array.isArray(stories) || stories.length === 0) return { views: 0, likes: 0 };
+
+  const REACTIONS = ['heart', 'fire', 'love'];
+  let views = 0;
+  let likes = 0;
+
+  for (const story of stories) {
+    const sid = String(story.id);
+    const authorId = String(story.user_id);
+
+    // 1) VIEWS: todas as vitrines visualizam o story (menos quem já viu).
+    if (views < maxViews) {
+      const viewers = (await db.queryAll('SELECT viewer_id FROM story_views WHERE story_id = ?', [sid])) as any[];
+      const viewerSet = new Set(viewers.map((v) => String(v.viewer_id)));
+      for (const sc of showcase) {
+        if (views >= maxViews) break;
+        const scId = String(sc.id);
+        if (scId === authorId || viewerSet.has(scId)) continue;
+        await db.run('INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), sid, scId, nowStr]);
+        views++;
+      }
+    }
+
+    // 2) LIKES: 50% das vitrines COMPATÍVEIS reagem ao story.
+    if (likes < maxLikes) {
+      const authorToken = genderToken(story.author_gender);
+      const senders = compatibleSenders(authorToken, story.author_looking, showcase);
+      if (senders.length > 0) {
+        const target = Math.max(1, Math.round(senders.length * capRatio));
+        const likers = (await db.queryAll('SELECT liker_id FROM story_likes WHERE story_id = ?', [sid])) as any[];
+        const likerSet = new Set(likers.map((l) => String(l.liker_id)));
+        const likedCompatible = senders.filter((sc) => likerSet.has(String(sc.id))).length;
+        const notLiked = senders.filter((sc) => !likerSet.has(String(sc.id)) && String(sc.id) !== authorId);
+        for (let i = notLiked.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [notLiked[i], notLiked[j]] = [notLiked[j], notLiked[i]];
+        }
+        let toAdd = Math.min(target - likedCompatible, notLiked.length);
+        for (const sc of notLiked) {
+          if (toAdd <= 0 || likes >= maxLikes) break;
+          const scId = String(sc.id);
+          const reaction = REACTIONS[Math.floor(Math.random() * REACTIONS.length)];
+          await db.run('INSERT INTO story_likes (id, story_id, liker_id, liked_at, reaction) VALUES (?, ?, ?, ?, ?)', [randomUUID(), sid, scId, nowStr, reaction]);
+          const actorName = sc?.name ? String(sc.name) : 'Alguém';
+          await db.run(
+            `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+             VALUES (?, ?, 'story.liked', ?, ?, ?, 0, ?)`,
+            [randomUUID(), authorId, 'Reagiram ao seu story', `${actorName} reagiu ao seu story.`, JSON.stringify({ storyId: sid, actorId: scId, actorName, reaction }), nowStr]
+          );
+          toAdd--;
+          likes++;
+        }
+      }
+    }
+  }
+
+  if (views > 0 || likes > 0) await db.persist();
+  console.log(`[showcase] Engajamento de stories: +${views} views, +${likes} likes de vitrine`);
+  return { views, likes };
+}
