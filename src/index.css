@@ -12,22 +12,24 @@ html, body {
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 10%;
+    --foreground: 0 0% 8%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 10%;
+    --card-foreground: 0 0% 8%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 10%;
+    --popover-foreground: 0 0% 8%;
 
     --primary: 350 80% 60%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 10%;
+    --secondary-foreground: 0 0% 8%;
 
     --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    /* Texto secundário mais escuro no tema claro (rótulos, valores, legendas)
+       para melhorar a leitura — era 45% (cinza claro demais). */
+    --muted-foreground: 0 0% 32%;
 
     --accent: 350 80% 60%;
     --accent-foreground: 0 0% 100%;
