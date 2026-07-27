@@ -51,6 +51,7 @@ type AdminUser = {
   isDeactivated?: boolean;
   deactivatedAt?: string | null;
   deactivatedByAdmin?: boolean;
+  fromPromoter?: boolean;
   reports: number;
 };
 
@@ -1592,6 +1593,9 @@ export default function Admin() {
                             })()}
                           </Badge>
                         )}
+                        {entry.fromPromoter
+                          ? <Badge className="bg-violet-500/15 text-violet-500 border border-violet-500/30 text-xs">📣 Promotor</Badge>
+                          : <Badge variant="outline" className="text-xs text-muted-foreground">Cadastro direto</Badge>}
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}

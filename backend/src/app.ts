@@ -11097,6 +11097,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         isOnline?: (userId: string) => boolean;
         countOnline?: () => number;
       };
+
+      // "Veio de promotor?" — o convite (invited_by_user_id) pertence a um
+      // promotor ATIVO. Calculado em lote para não consultar 1x por usuário.
+      const inviterIds = Array.from(
+        new Set((rows as any[]).map((r) => r.invited_by_user_id).filter(Boolean).map(String))
+      );
+      const promoterInviterSet = new Set<string>();
+      if (inviterIds.length > 0) {
+        const ph = inviterIds.map(() => '?').join(',');
+        const promRows = (await queryAll(
+          db,
+          `SELECT user_id FROM promoters WHERE status = 'active' AND user_id IN (${ph})`,
+          inviterIds
+        )) as any[];
+        for (const p of promRows) promoterInviterSet.add(String(p.user_id));
+      }
+
       const mappedUsers = rows.map((row) => ({
         ...rowToPublicUser(row, presence?.isOnline ? presence.isOnline(String(row.id)) : false, {
           showEmail: true,
@@ -11107,6 +11124,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         isDeactivated: Number(row.is_deactivated || 0) === 1,
         deactivatedAt: row.deactivated_at ?? null,
         deactivatedByAdmin: Number(row.deactivated_by_admin || 0) === 1,
+        fromPromoter: !!row.invited_by_user_id && promoterInviterSet.has(String(row.invited_by_user_id)),
       }));
 
       res.json({
