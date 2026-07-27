@@ -272,6 +272,9 @@ export default function Layout() {
   }, [clockNow, licenseEnds, subscriptionsEnabled, trialEnds, user]);
 
   const accessBanner = useMemo(() => {
+    // Banner de cobrança/upgrade do topo ocultado a pedido (a conversão fica por
+    // conta dos paywalls contextuais). Para reativar, remova o return null abaixo.
+    return null as null | { href: string; tone: 'trial' | 'inactive'; message: string; cta: string };
     if (!subscriptionsEnabled) return null;
     if (!user || hasPremiumAccess(user)) return null;
 
@@ -902,27 +905,7 @@ export default function Layout() {
                       {accessCountdown.label}
                     </Badge>
                   </NavLink>
-                ) : (
-                  <NavLink
-                    to="/subscriptions"
-                    className={cn(
-                      'flex items-center justify-between rounded-2xl border px-4 py-3',
-                      accessCountdown.tone === 'danger'
-                        ? 'border-destructive/30 bg-destructive/5'
-                        : 'border-gold/30 bg-gradient-to-r from-gold/15 to-primary/10'
-                    )}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">
-                        {accessCountdown.tone === 'danger' ? 'Regularize sua assinatura' : 'Assine um plano'}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {accessCountdown.label}
-                      </p>
-                    </div>
-                    <Crown className="h-5 w-5 shrink-0 text-gold" />
-                  </NavLink>
-                )}
+                ) : null}
               </div>
             )}
             {!isMobileChatRoute && !promoterBannerDismissed && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && (
