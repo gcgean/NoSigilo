@@ -328,6 +328,15 @@ export default function Admin() {
   const [subAnalyticsLoading, setSubAnalyticsLoading] = useState(true);
   const [subAnalyticsError, setSubAnalyticsError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Filtros da lista de usuários — todos aplicados no servidor (combinados com AND),
+  // para valer sobre a base inteira, não só sobre o que já foi carregado.
+  const [filterCity, setFilterCity] = useState('');
+  const [filterState, setFilterState] = useState('');
+  const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
+  const [filterCreatedTo, setFilterCreatedTo] = useState('');
+  const usersFilterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usersFilterMountedRef = useRef(false);
+  const usersSentinelRef = useRef<HTMLDivElement | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [busyPhotoId, setBusyPhotoId] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
@@ -700,57 +709,67 @@ export default function Admin() {
     return () => { cancelled = true; };
   }, [menConvPeriod]);
 
-  const loadMoreUsers = async () => {
-    if (isLoadingMoreUsers || !hasMoreUsers) return;
-    const nextPage = usersPage + 1;
-    setIsLoadingMoreUsers(true);
-    try {
-      const reportCountMap = new Map<string, number>();
-      for (const report of reports) {
-        if (report.targetType !== 'user' || !report.targetId) continue;
-        reportCountMap.set(report.targetId, (reportCountMap.get(report.targetId) || 0) + 1);
-      }
-      const rawUsersResult = await adminService.getUsers({ page: nextPage, limit: USERS_PAGE_SIZE, search: searchQuery || undefined });
-      const usersArray = Array.isArray(rawUsersResult)
-        ? rawUsersResult
-        : isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).users)
-          ? ((rawUsersResult as any).users as unknown[])
-          : [];
-      const mapped = usersArray.map((entry) => {
-        const item = isRecord(entry) ? entry : {};
-        return {
-          id: String(item.id || ''),
-          name: String(item.name || 'Usuário'),
-          email: item.email ? String(item.email) : undefined,
-          avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
-          isPremium: !!item.isPremium,
-          isAdmin: !!item.isAdmin,
-          gender: item.gender ? String(item.gender) : null,
-          city: item.city ? String(item.city) : null,
-          state: item.state ? String(item.state) : null,
-          createdAt: item.createdAt ? String(item.createdAt) : undefined,
-          lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
-          trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
-          hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
-          hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
-          isOnline: !!item.isOnline,
-          status: item.isBanned ? 'banned' as const : 'active' as const,
-          isDeactivated: !!item.isDeactivated,
-          deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
-          deactivatedByAdmin: !!item.deactivatedByAdmin,
-          reports: reportCountMap.get(String(item.id || '')) || 0,
-        } satisfies AdminUser;
-      });
-      const nextHasMore = isRecord(rawUsersResult) && typeof (rawUsersResult as any).hasMore === 'boolean'
-        ? Boolean((rawUsersResult as any).hasMore)
-        : mapped.length >= USERS_PAGE_SIZE;
-      const nextOnlineNow = isRecord(rawUsersResult) && typeof (rawUsersResult as any).onlineNow === 'number'
-        ? Number((rawUsersResult as any).onlineNow)
-        : usersOnlineNow;
-      const nextTotal = isRecord(rawUsersResult) && typeof (rawUsersResult as any).total === 'number'
-        ? Number((rawUsersResult as any).total)
-        : usersTotal;
+  // Busca uma página de usuários já aplicando os filtros ativos (busca, cidade,
+  // estado, data de cadastro — todos combinados no servidor). `mode: 'replace'`
+  // é usado ao trocar filtros (volta pra página 1); `'append'` é a rolagem infinita.
+  const fetchUsersPage = async (page: number, mode: 'append' | 'replace') => {
+    const reportCountMap = new Map<string, number>();
+    for (const report of reports) {
+      if (report.targetType !== 'user' || !report.targetId) continue;
+      reportCountMap.set(report.targetId, (reportCountMap.get(report.targetId) || 0) + 1);
+    }
+    const rawUsersResult = await adminService.getUsers({
+      page,
+      limit: USERS_PAGE_SIZE,
+      search: searchQuery || undefined,
+      city: filterCity || undefined,
+      state: filterState || undefined,
+      createdFrom: filterCreatedFrom || undefined,
+      createdTo: filterCreatedTo || undefined,
+    });
+    const usersArray = Array.isArray(rawUsersResult)
+      ? rawUsersResult
+      : isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).users)
+        ? ((rawUsersResult as any).users as unknown[])
+        : [];
+    const mapped = usersArray.map((entry) => {
+      const item = isRecord(entry) ? entry : {};
+      return {
+        id: String(item.id || ''),
+        name: String(item.name || 'Usuário'),
+        email: item.email ? String(item.email) : undefined,
+        avatar: item.avatar ? resolveServerUrl(String(item.avatar)) : undefined,
+        isPremium: !!item.isPremium,
+        isAdmin: !!item.isAdmin,
+        gender: item.gender ? String(item.gender) : null,
+        city: item.city ? String(item.city) : null,
+        state: item.state ? String(item.state) : null,
+        createdAt: item.createdAt ? String(item.createdAt) : undefined,
+        lastSeenAt: item.lastSeenAt ? String(item.lastSeenAt) : null,
+        trialEndsAt: item.trialEndsAt ? String(item.trialEndsAt) : null,
+        hubLicenseEndAt: item.hubLicenseEndAt ? String(item.hubLicenseEndAt) : null,
+        hubAccessStatus: item.hubAccessStatus ? String(item.hubAccessStatus) : null,
+        isOnline: !!item.isOnline,
+        status: item.isBanned ? 'banned' as const : 'active' as const,
+        isDeactivated: !!item.isDeactivated,
+        deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
+        deactivatedByAdmin: !!item.deactivatedByAdmin,
+        reports: reportCountMap.get(String(item.id || '')) || 0,
+      } satisfies AdminUser;
+    });
+    const nextHasMore = isRecord(rawUsersResult) && typeof (rawUsersResult as any).hasMore === 'boolean'
+      ? Boolean((rawUsersResult as any).hasMore)
+      : mapped.length >= USERS_PAGE_SIZE;
+    const nextOnlineNow = isRecord(rawUsersResult) && typeof (rawUsersResult as any).onlineNow === 'number'
+      ? Number((rawUsersResult as any).onlineNow)
+      : usersOnlineNow;
+    const nextTotal = isRecord(rawUsersResult) && typeof (rawUsersResult as any).total === 'number'
+      ? Number((rawUsersResult as any).total)
+      : usersTotal;
 
+    if (mode === 'replace') {
+      setUsers(mapped);
+    } else {
       setUsers((prev) => {
         const seen = new Set(prev.map((u) => u.id));
         const merged = [...prev];
@@ -761,10 +780,18 @@ export default function Admin() {
         }
         return merged;
       });
-      setUsersPage(nextPage);
-      setHasMoreUsers(nextHasMore);
-      setUsersOnlineNow(nextOnlineNow);
-      setUsersTotal(nextTotal);
+    }
+    setUsersPage(page);
+    setHasMoreUsers(nextHasMore);
+    setUsersOnlineNow(nextOnlineNow);
+    setUsersTotal(nextTotal);
+  };
+
+  const loadMoreUsers = async () => {
+    if (isLoadingMoreUsers || !hasMoreUsers) return;
+    setIsLoadingMoreUsers(true);
+    try {
+      await fetchUsersPage(usersPage + 1, 'append');
     } catch {
       toast({
         title: 'Falha ao carregar mais usuários',
@@ -776,14 +803,48 @@ export default function Admin() {
     }
   };
 
+  // Dispara ao mudar qualquer filtro (busca, cidade, estado, data): sempre volta
+  // para a página 1, filtrando na base inteira (não só no que já foi carregado).
+  useEffect(() => {
+    if (!usersFilterMountedRef.current) {
+      usersFilterMountedRef.current = true;
+      return; // 1ª renderização: o load() inicial já buscou a página 1
+    }
+    if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current);
+    usersFilterDebounceRef.current = setTimeout(() => {
+      setIsLoadingMoreUsers(true);
+      fetchUsersPage(1, 'replace')
+        .catch(() => {
+          toast({ title: 'Falha ao filtrar usuários', description: 'Tente novamente em instantes.', variant: 'destructive' });
+        })
+        .finally(() => setIsLoadingMoreUsers(false));
+    }, 400);
+    return () => { if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo]);
+
+  // Rolagem infinita: observa o sentinel no fim da lista e carrega a próxima
+  // página quando ele entra na viewport.
+  useEffect(() => {
+    if (!hasMoreUsers) return;
+    const sentinel = usersSentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => { if (entries.some((e) => e.isIntersecting)) void loadMoreUsers(); },
+      { root: null, rootMargin: '400px', threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMoreUsers, isLoadingMoreUsers]);
+
   const showcaseIds = useMemo(() => new Set(showcaseProfiles.map((p) => p.id)), [showcaseProfiles]);
+  // Busca, cidade, estado e data de cadastro já vêm filtrados do servidor
+  // (fetchUsersPage). "Só vitrine" continua client-side — depende só da lista
+  // de vitrine já carregada, não precisa ir ao servidor.
   const filteredUsers = useMemo(
-    () =>
-      users.filter((u) =>
-        [u.name, u.email || ''].some((value) => value.toLowerCase().includes(searchQuery.toLowerCase())) &&
-        (!showOnlyShowcase || showcaseIds.has(u.id))
-      ),
-    [users, searchQuery, showOnlyShowcase, showcaseIds]
+    () => users.filter((u) => !showOnlyShowcase || showcaseIds.has(u.id)),
+    [users, showOnlyShowcase, showcaseIds]
   );
 
   if (!user?.isAdmin) {
@@ -1443,6 +1504,69 @@ export default function Admin() {
               </Button>
             </div>
 
+            {/* Filtros: data de cadastro, cidade, estado — combinados com a busca acima */}
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Cadastro de</label>
+                <Input
+                  type="date"
+                  value={filterCreatedFrom}
+                  onChange={(e) => setFilterCreatedFrom(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Cadastro até</label>
+                <Input
+                  type="date"
+                  value={filterCreatedTo}
+                  onChange={(e) => setFilterCreatedTo(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Cidade</label>
+                <Input
+                  placeholder="Ex.: Fortaleza"
+                  value={filterCity}
+                  onChange={(e) => setFilterCity(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Estado (UF)</label>
+                <Input
+                  placeholder="Ex.: CE"
+                  maxLength={2}
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value.toUpperCase())}
+                />
+              </div>
+            </div>
+
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {isLoadingMoreUsers && users.length === 0
+                  ? 'Buscando…'
+                  : <>
+                      <strong className="text-foreground">{usersTotal}</strong> usuário(s) encontrado(s)
+                      {showOnlyShowcase ? <> · {filteredUsers.length} na vitrine</> : null}
+                    </>}
+              </p>
+              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery) && (
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setFilterCity('');
+                    setFilterState('');
+                    setFilterCreatedFrom('');
+                    setFilterCreatedTo('');
+                  }}
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
             <div className="space-y-3">
               {filteredUsers.map((entry) => (
                 <div
@@ -1559,17 +1683,14 @@ export default function Admin() {
               {!isLoading && filteredUsers.length === 0 ? (
                 <div className="text-sm text-muted-foreground">Nenhum usuário encontrado.</div>
               ) : null}
-              {!isLoading && hasMoreUsers && !searchQuery ? (
-                <div className="pt-3">
-                  <Button
-                    variant="outline"
-                    onClick={() => void loadMoreUsers()}
-                    disabled={isLoadingMoreUsers}
-                  >
-                    {isLoadingMoreUsers ? 'Carregando...' : 'Carregar mais usuários'}
-                  </Button>
+              {/* Rolagem infinita: sentinel observado carrega a próxima página sozinho */}
+              {!isLoading && hasMoreUsers && (
+                <div ref={usersSentinelRef} className="flex items-center justify-center py-4">
+                  {isLoadingMoreUsers && (
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+                  )}
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
         </TabsContent>

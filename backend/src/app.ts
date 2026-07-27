@@ -11058,11 +11058,34 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const offset = (page - 1) * limit;
       const search = String(req.query.search || '').trim().toLowerCase();
       const hasSearch = search.length > 0;
+      const cityFilter = String(req.query.city || '').trim();
+      const stateFilter = String(req.query.state || '').trim();
+      const createdFrom = String(req.query.createdFrom || '').trim();
+      const createdTo = String(req.query.createdTo || '').trim();
 
-      const whereSql = hasSearch
-        ? "WHERE LOWER(COALESCE(name, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ?"
-        : '';
-      const whereParams = hasSearch ? [`%${search}%`, `%${search}%`] : [];
+      const conditions: string[] = [];
+      const whereParams: unknown[] = [];
+      if (hasSearch) {
+        conditions.push("(LOWER(COALESCE(name, '')) LIKE ? OR LOWER(COALESCE(email, '')) LIKE ?)");
+        whereParams.push(`%${search}%`, `%${search}%`);
+      }
+      if (cityFilter) {
+        conditions.push("LOWER(COALESCE(city, '')) LIKE ?");
+        whereParams.push(`%${cityFilter.toLowerCase()}%`);
+      }
+      if (stateFilter) {
+        conditions.push("LOWER(COALESCE(state, '')) = ?");
+        whereParams.push(stateFilter.toLowerCase());
+      }
+      if (createdFrom) {
+        conditions.push('created_at >= ?');
+        whereParams.push(`${createdFrom}T00:00:00.000Z`);
+      }
+      if (createdTo) {
+        conditions.push('created_at <= ?');
+        whereParams.push(`${createdTo}T23:59:59.999Z`);
+      }
+      const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const [totalRow, rows] = await Promise.all([
         queryOne(db, `SELECT COUNT(*) as c FROM users ${whereSql}`, whereParams),
