@@ -7,6 +7,7 @@ export interface PostMediaItem {
   id: string;
   url: string;
   mimeType: string;
+  isLocked?: boolean;
 }
 
 interface PostMediaCarouselProps {
@@ -194,6 +195,28 @@ export function PostMediaCarousel({
 
     if (isVideo) {
       if (!premiumAccess) {
+        // Vídeo travado sem URL (servidor não envia o arquivo p/ não-premium):
+        // mostra um card "Vídeo Premium" em vez de sumir com o post.
+        if (!m.url) {
+          return (
+            <div
+              key={m.id}
+              className="relative w-full cursor-pointer overflow-hidden bg-black"
+              style={{ minHeight: 260, ...(aspectStyle ? aspectStyle(m.id) : {}) }}
+              onClick={(e) => { e.stopPropagation(); onPremiumGate?.(); }}
+            >
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-black/40 via-black/60 to-black/85">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/50">
+                  <Crown className="h-7 w-7 text-yellow-400 drop-shadow" />
+                </div>
+                <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-bold uppercase tracking-wide text-black shadow">
+                  Vídeo Premium
+                </span>
+                <span className="text-xs font-medium text-white/85 drop-shadow">Assine para assistir</span>
+              </div>
+            </div>
+          );
+        }
         return (
           <VideoPreviewGate
             key={m.id}

@@ -2757,8 +2757,7 @@ export default function Feed() {
                 <div className="px-3 pb-3 sm:px-4">
                   <PostMediaCarousel
                     media={item.post.media
-                      .filter((m) => !!m.url)
-                      .map((m) => ({ id: m.id, url: m.url as string, mimeType: m.mimeType ?? '' }))}
+                      .map((m) => ({ id: m.id, url: m.url ?? '', mimeType: m.mimeType ?? '', isLocked: m.isLocked }))}
                     resolveUrl={resolveMediaUrl}
                     aspectStyle={feedAspectStyleForKey}
                     onAspectLoaded={setAspectForKey}
