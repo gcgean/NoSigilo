@@ -10439,6 +10439,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       billingLegalName: z.string().min(1).optional(),
       billingDocument: z.string().min(1).optional(),
       billingPersonType: z.enum(['PF', 'PJ']).optional(),
+      pagePath: z.string().max(200).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -10613,8 +10614,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       try {
         await run(
           db,
-          'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [randomUUID(), req.auth!.userId, planId, parsed.data.billingType || 'PIX', String(orderId), nowIso()]
+          'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at, page_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [randomUUID(), req.auth!.userId, planId, parsed.data.billingType || 'PIX', String(orderId), nowIso(), parsed.data.pagePath || null]
         );
         await persist();
       } catch (logErr) {
@@ -11858,6 +11859,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         [sinceIso]
       )) as any[];
 
+      // Por página de origem: de onde vieram os cliques em "assinar" (mesma
+      // populacao — homens cadastrados no periodo). page_path so existe para
+      // geracoes feitas apos o deploy dessa coluna; geracoes antigas caem no
+      // grupo NULL ("antes do rastreamento"). Um usuario que gerou PIX de mais
+      // de uma pagina conta em cada uma — nao ha atribuicao single-touch aqui.
+      const pageRows = (await queryAll(
+        db,
+        `SELECT cg.page_path,
+           COUNT(*) as total_geracoes,
+           COUNT(DISTINCT cg.user_id) as usuarios,
+           COUNT(DISTINCT CASE WHEN u.is_premium = 1 OR u.hub_access_status = 'licensed' THEN cg.user_id END) as convertidos
+         FROM checkout_generations cg
+         JOIN users u ON u.id = cg.user_id
+         WHERE LOWER(COALESCE(u.gender,'')) LIKE 'homem%' AND u.created_at >= ?
+         GROUP BY cg.page_path
+         ORDER BY total_geracoes DESC`,
+        [sinceIso]
+      )) as any[];
+
       const now = Date.now();
       const parseMs = (v: any) => { if (!v) return null; const t = new Date(String(v)).getTime(); return Number.isNaN(t) ? null : t; };
       let homens = 0, assinaram = 0, abriram = 0, gerouNaoPagou = 0, nuncaAbriu = 0;
@@ -11893,6 +11913,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         retorno: { naoAssinantes: naoAss, sumiram1aSessao: sumiram, voltaram, churnPct: pct(sumiram, naoAss) },
         sinal: { semSinal, comSinal, convPctSemSinal: pct(semSinalPagou, semSinal), convPctComSinal: pct(comSinalPagou, comSinal) },
         acao: { naoFezNada: nadaFez, explorouPouco: explorou, engajouNaoPagou: engajou },
+        porPagina: pageRows.map((r) => ({
+          pagePath: r.page_path ? String(r.page_path) : null,
+          geracoes: Number(r.total_geracoes || 0),
+          usuarios: Number(r.usuarios || 0),
+          convertidos: Number(r.convertidos || 0),
+          conversaoPct: pct(Number(r.convertidos || 0), Number(r.usuarios || 0)),
+        })),
       });
     } catch (error) {
       console.error('[admin/men-conversion]', error);

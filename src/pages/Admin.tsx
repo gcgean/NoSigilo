@@ -2331,6 +2331,28 @@ export default function Admin() {
                   </div>
                 </div>
               )}
+
+              {/* Página de origem: de onde vieram os cliques em "assinar" */}
+              {menConv && menConv.porPagina.length > 0 && (
+                <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 p-4">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Página de origem</p>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Onde o usuário estava ao gerar o PIX · mostra pra onde vale mais mandar tráfego masculino
+                  </p>
+                  <div className="space-y-1.5">
+                    {menConv.porPagina.map((p) => (
+                      <div key={p.pagePath ?? '(sem-registro)'} className="flex items-center justify-between gap-3 rounded-lg bg-background/40 px-3 py-2 text-xs">
+                        <span className="font-mono text-foreground">{p.pagePath ?? '(antes do rastreamento)'}</span>
+                        <div className="flex items-center gap-3 text-muted-foreground">
+                          <span>{p.geracoes} geraç{p.geracoes === 1 ? 'ão' : 'ões'}</span>
+                          <span>{p.convertidos}/{p.usuarios} converteram</span>
+                          <span className="w-12 text-right font-semibold text-emerald-600">{p.conversaoPct ?? 0}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
 
             {/* ── Acessos por dia + Novos usuários por dia (bar charts) ── */}

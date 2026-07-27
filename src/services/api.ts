@@ -932,6 +932,7 @@ export const subscriptionsService = {
       billingLegalName?: string;
       billingDocument?: string;
       billingPersonType?: 'PF' | 'PJ';
+      pagePath?: string;
     }
   ) => {
     const response = await apiClient.post('/subscriptions/checkout', {
@@ -1194,6 +1195,7 @@ export const adminService = {
     retorno: { naoAssinantes: number; sumiram1aSessao: number; voltaram: number; churnPct: number | null };
     sinal: { semSinal: number; comSinal: number; convPctSemSinal: number | null; convPctComSinal: number | null };
     acao: { naoFezNada: number; explorouPouco: number; engajouNaoPagou: number };
+    porPagina: Array<{ pagePath: string | null; geracoes: number; usuarios: number; convertidos: number; conversaoPct: number | null }>;
   }> => {
     const response = await apiClient.get('/admin/analytics/men-conversion', { params: { periodDays } });
     return response.data;

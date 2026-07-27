@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { X, QrCode, Copy, RefreshCw, Crown, CheckCircle2, LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SupportChatDialog from '@/components/SupportChatDialog';
@@ -39,6 +39,14 @@ function normalizePixQrCode(value?: string | null) {
   return raw;
 }
 
+// Agrupa perfis de usuário (/users/:id) numa única "página", senão cada
+// perfil visitado vira um bucket distinto e dilui o sinal de qual TELA
+// converte mais.
+function normalizePagePath(pathname: string) {
+  if (/^\/users\/[^/]+$/.test(pathname)) return '/users/:id';
+  return pathname;
+}
+
 function getErrorMessage(error: any) {
   const data = error?.response?.data;
   if (typeof data?.message === 'string') return data.message;
@@ -53,6 +61,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const pixRef = useRef<HTMLDivElement>(null);
   const preCheckoutLicenseRef = useRef<string | null>(null);
 
@@ -174,6 +183,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
         billingLegalName: billingLegalName.trim(),
         billingDocument: billingDocument.trim(),
         billingPersonType: 'PF',
+        pagePath: normalizePagePath(location.pathname),
       });
       if (result?.checkout) setCheckout(result.checkout);
       const me = await authService.getMe();
