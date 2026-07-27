@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
-import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement } from './showcase.js';
+import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs } from './showcase.js';
 import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
@@ -504,6 +504,8 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   runShowcaseRotation(db).catch(err => console.error('[scheduler/showcase] startup', err));
   // Semeia sinal para homens novos já na subida
   seedInterestForNewUsers(db).catch(err => console.error('[scheduler/seed-interest] startup', err));
+  // Correção pontual: preenche DMs órfãs (conversas de vitrine sem mensagem)
+  backfillOrphanShowcaseDMs(db).catch(err => console.error('[scheduler/backfill-dms] startup', err));
   console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-day 11:00, nightly push 19:30, online push 20:00, vitrine 09/13/17/20/23');
 }
 

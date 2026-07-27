@@ -493,3 +493,45 @@ export async function runShowcaseStoryEngagement(
   console.log(`[showcase] Engajamento de stories: +${views} views, +${likes} likes de vitrine`);
   return { views, likes };
 }
+
+// Correção pontual (idempotente): preenche a DM de abertura em conversas
+// vitrine↔usuário-real que ficaram SEM mensagem (órfãs do bug do INSERT boolean).
+// Só toca em conversas sem nenhuma mensagem — rodar de novo é seguro.
+export async function backfillOrphanShowcaseDMs(db: DbHandle): Promise<{ filled: number }> {
+  const convos = (await db.queryAll(
+    `SELECT c.id AS conv_id, c.created_at AS conv_created, c.user_a_id, c.user_b_id,
+            ua.gender AS a_gender, COALESCE(ua.is_showcase, 0) AS a_sc, ua.name AS a_name,
+            ub.gender AS b_gender, COALESCE(ub.is_showcase, 0) AS b_sc, ub.name AS b_name
+       FROM conversations c
+       JOIN users ua ON ua.id = c.user_a_id
+       JOIN users ub ON ub.id = c.user_b_id
+      WHERE (
+              (COALESCE(ua.is_showcase, 0) = 1 AND COALESCE(ub.is_showcase, 0) = 0)
+           OR (COALESCE(ua.is_showcase, 0) = 0 AND COALESCE(ub.is_showcase, 0) = 1)
+            )
+        AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+      LIMIT 5000`
+  )) as any[];
+  if (!Array.isArray(convos) || convos.length === 0) return { filled: 0 };
+
+  let filled = 0;
+  for (const c of convos) {
+    const aIsSc = Number(c.a_sc) === 1;
+    const showcaseId = aIsSc ? String(c.user_a_id) : String(c.user_b_id);
+    const showcaseGender = aIsSc ? c.a_gender : c.b_gender;
+    const recipientGender = aIsSc ? c.b_gender : c.a_gender;
+    const recipientToken = genderToken(recipientGender);
+    if (recipientToken === '') continue; // sem linha compatível para "outros"
+    const line = openingLine(genderToken(showcaseGender), recipientToken);
+    const ts = c.conv_created ? String(c.conv_created) : new Date().toISOString();
+    await db.run(
+      'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, created_at) VALUES (?, ?, ?, ?, NULL, ?)',
+      [randomUUID(), String(c.conv_id), showcaseId, line, ts]
+    );
+    filled++;
+  }
+
+  await db.persist();
+  console.log(`[showcase] Backfill de DMs órfãs: ${filled} mensagens preenchidas em conversas de vitrine`);
+  return { filled };
+}
