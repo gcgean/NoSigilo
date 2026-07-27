@@ -327,7 +327,7 @@ export async function runShowcaseFeedLikes(
 ): Promise<{ liked: number }> {
   const windowHours = opts.windowHours ?? 24;
   const maxPerRun = opts.maxPerRun ?? 150; // limite de segurança por rodada (cobre tudo em 1-2 rodadas)
-  const capPerPost = opts.capPerPost ?? 2; // no máx. 2 vitrines por post (crível)
+  const capPerPost = opts.capPerPost ?? 5; // no máx. 5 vitrines por post (crível)
   const nowStr = new Date().toISOString();
   const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
