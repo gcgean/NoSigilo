@@ -181,15 +181,17 @@ function compatibleSenders(recipientToken: 'homem' | 'mulher' | 'casal' | '', lo
   });
 }
 
-// Aplica os sinais de interesse (visita + like + notificação de match e,
-// opcionalmente, uma DM de abertura) de 1–2 perfis de vitrine para UM usuário.
+// Aplica os sinais de interesse de 1–2 perfis de vitrine para UM usuário.
+// opts.like = curtir o perfil (match) — só quando o usuário já tem post.
+// opts.message = abrir DM. A visita é sempre feita e gera notificação "X visitou
+// seu perfil".
 async function applyInterestSignals(
   db: DbHandle,
   recipientId: string,
   recipientToken: string,
   senders: any[],
   nowStr: string,
-  withMessage: boolean
+  opts: { like: boolean; message: boolean }
 ): Promise<{ visits: number; likes: number; messaged: number }> {
   const pick = () => senders[Math.floor(Math.random() * senders.length)];
   let visits = 0;
@@ -209,27 +211,34 @@ async function applyInterestSignals(
     const sc = chosen[i];
     const scId = String(sc.id);
     const actorName = sc?.name ? String(sc.name) : 'Alguém';
-    // Visita (sinal silencioso, alimenta o contador).
+    // Visita + notificação "X visitou seu perfil".
     await db.run(
       'INSERT INTO profile_visits (id, visitor_user_id, visited_user_id, created_at) VALUES (?, ?, ?, ?)',
       [randomUUID(), scId, recipientId, nowStr]
     );
     visits++;
+    await db.run(
+      `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+       VALUES (?, ?, 'profile.visited', ?, ?, ?, 0, ?)`,
+      [randomUUID(), recipientId, 'Visitaram seu perfil', `${actorName} visitou seu perfil.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
+    );
     if (i === 0) {
-      // Curte → notificação real de match (gancho de volta).
-      await db.run(
-        'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        [randomUUID(), scId, 'user', recipientId, nowStr]
-      );
-      likes++;
-      await db.run(
-        `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
-         VALUES (?, ?, 'profile.liked', ?, ?, ?, 0, ?)`,
-        [randomUUID(), recipientId, 'Você recebeu um match', `${actorName} deu match com você.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
-      );
+      // Curte → notificação real de match. Só quando permitido (usuário já postou).
+      if (opts.like) {
+        await db.run(
+          'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
+          [randomUUID(), scId, 'user', recipientId, nowStr]
+        );
+        likes++;
+        await db.run(
+          `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+           VALUES (?, ?, 'profile.liked', ?, ?, ?, 0, ?)`,
+          [randomUUID(), recipientId, 'Você recebeu um match', `${actorName} deu match com você.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
+        );
+      }
       // Abre conversa com uma DM — ele vê "1 mensagem não lida" (travada p/ não
       // premium: ver mensagem recebida é premium). É o gancho mais forte.
-      if (withMessage) {
+      if (opts.message) {
         const pair = [recipientId, scId].sort((a, b) => a.localeCompare(b));
         let convId: string;
         const existing = (await db.queryOne('SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
@@ -271,9 +280,11 @@ export async function seedInterestForNewUser(
   const senders = compatibleSenders(recipientToken, u.looking_for_json, showcase);
   if (senders.length === 0) return { seeded: false, visits: 0, likes: 0, messaged: 0 };
 
-  const r = await applyInterestSignals(db, String(u.id), recipientToken, senders, new Date().toISOString(), true);
+  // No cadastro: visita (com notificação) + DM. SEM like — o like/match só é dado
+  // depois, para perfis que já postaram (runShowcaseProfileLikes).
+  const r = await applyInterestSignals(db, String(u.id), recipientToken, senders, new Date().toISOString(), { like: false, message: true });
   await db.persist();
-  console.log(`[showcase] Sinal semeado no cadastro (${recipientToken}) ${userId}: +${r.visits} visitas, +${r.likes} likes, +${r.messaged} DMs`);
+  console.log(`[showcase] Sinal semeado no cadastro (${recipientToken}) ${userId}: +${r.visits} visitas, +${r.messaged} DMs`);
   return { seeded: true, ...r };
 }
 
@@ -303,8 +314,8 @@ export async function seedInterestForNewUsers(
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
         AND COALESCE(u.is_showcase, 0) = 0
         AND NOT EXISTS (
-          SELECT 1 FROM likes l JOIN users lu ON lu.id = l.user_id
-           WHERE l.target_type = 'user' AND l.target_id = u.id AND COALESCE(lu.is_showcase, 0) = 1)
+          SELECT 1 FROM profile_visits pv JOIN users vu ON vu.id = pv.visitor_user_id
+           WHERE pv.visited_user_id = u.id AND COALESCE(vu.is_showcase, 0) = 1)
       ORDER BY u.created_at DESC
       LIMIT ?`,
     [sinceStr, maxUsers]
@@ -320,7 +331,7 @@ export async function seedInterestForNewUsers(
     const recipientToken = genderToken(c.gender);
     const senders = compatibleSenders(recipientToken, c.looking_for_json, showcase);
     if (senders.length === 0) continue;
-    const r = await applyInterestSignals(db, String(c.id), recipientToken, senders, nowStr, true);
+    const r = await applyInterestSignals(db, String(c.id), recipientToken, senders, nowStr, { like: false, message: true });
     seeded++;
     visits += r.visits;
     likes += r.likes;
@@ -329,6 +340,63 @@ export async function seedInterestForNewUsers(
   await db.persist();
   console.log(`[showcase] Sinal semeado p/ novos usuários: ${seeded} usuários, +${visits} visitas, +${likes} likes (${showcase.length} perfis vitrine)`);
   return { seeded, visits, likes };
+}
+
+// LIKE de perfil (match) da vitrine — SÓ para perfis que JÁ POSTARAM algo (não
+// faz sentido curtir um perfil vazio). Dá 1 like de uma vitrine compatível a
+// cada usuário recente que postou e ainda não recebeu like de vitrine no perfil.
+export async function runShowcaseProfileLikes(
+  db: DbHandle,
+  opts: { windowDays?: number; maxPerRun?: number } = {}
+): Promise<{ liked: number }> {
+  const windowDays = opts.windowDays ?? 30;
+  const maxPerRun = opts.maxPerRun ?? 400;
+  const nowStr = new Date().toISOString();
+  const sinceStr = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const showcase = await allShowcaseProfiles(db);
+  if (showcase.length === 0) return { liked: 0 };
+
+  const users = (await db.queryAll(
+    `SELECT u.id, u.gender, u.looking_for_json FROM users u
+      WHERE COALESCE(u.is_showcase, 0) = 0
+        AND u.created_at >= ?
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND EXISTS (SELECT 1 FROM posts p WHERE p.user_id = u.id)
+        AND NOT EXISTS (
+          SELECT 1 FROM likes l JOIN users lu ON lu.id = l.user_id
+           WHERE l.target_type = 'user' AND l.target_id = u.id AND COALESCE(lu.is_showcase, 0) = 1)
+      ORDER BY u.created_at DESC
+      LIMIT ?`,
+    [sinceStr, maxPerRun]
+  )) as any[];
+  if (!Array.isArray(users) || users.length === 0) return { liked: 0 };
+
+  let liked = 0;
+  for (const u of users) {
+    const recipientToken = genderToken(u.gender);
+    const senders = compatibleSenders(recipientToken, u.looking_for_json, showcase);
+    if (senders.length === 0) continue;
+    const sc = senders[Math.floor(Math.random() * senders.length)];
+    const scId = String(sc.id);
+    const actorName = sc?.name ? String(sc.name) : 'Alguém';
+    await db.run(
+      'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), scId, 'user', String(u.id), nowStr]
+    );
+    await db.run(
+      `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+       VALUES (?, ?, 'profile.liked', ?, ?, ?, 0, ?)`,
+      [randomUUID(), String(u.id), 'Você recebeu um match', `${actorName} deu match com você.`, JSON.stringify({ actorId: scId, actorName }), nowStr]
+    );
+    await bumpSeen(db, [scId], nowStr);
+    liked++;
+  }
+
+  if (liked > 0) await db.persist();
+  console.log(`[showcase] Likes de perfil (só quem postou): +${liked} matches de vitrine`);
+  return { liked };
 }
 
 // Curtidas de engajamento: a cada ~5 min, os perfis de vitrine curtem TODOS os

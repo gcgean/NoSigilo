@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
-import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs } from './showcase.js';
+import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
 import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
@@ -495,6 +495,8 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   setInterval(() => {
     runShowcaseFeedLikes(db).catch(err => console.error('[scheduler/showcase-likes] fatal', err));
     runShowcaseStoryEngagement(db).catch(err => console.error('[scheduler/showcase-stories] fatal', err));
+    // Like/match de perfil só para quem já postou algo.
+    runShowcaseProfileLikes(db).catch(err => console.error('[scheduler/showcase-profile-likes] fatal', err));
   }, 5 * 60 * 1000);
   // Also run once on startup (will be a no-op unless it's the right hour)
   check().catch(() => {});

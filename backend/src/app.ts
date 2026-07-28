@@ -10217,7 +10217,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         let description = n.description;
 
         // Censor for non-premium
-        if (!isPremium && (type === 'profile.liked' || type === 'post.liked' || type === 'comment.liked')) {
+        if (!isPremium && (type === 'profile.liked' || type === 'post.liked' || type === 'comment.liked' || type === 'profile.visited')) {
           if (data && data.actorName) {
             data.actorName = 'Alguém';
           }
