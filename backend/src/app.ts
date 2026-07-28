@@ -11949,9 +11949,45 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         if (sinal === 0) { semSinal++; if (paid) semSinalPagou++; } else { comSinal++; if (paid) comSinalPagou++; }
       }
       const pct = (n: number, d: number) => (d > 0 ? Math.round((1000 * n) / d) / 10 : null);
+
+      // Jornada (até onde vão): dos homens que NÃO assinaram, quantos ALCANÇARAM
+      // cada página (site_visits). Mostra a profundidade antes de sair sem pagar.
+      const nowIsoJ = new Date().toISOString();
+      const jr = (await queryOne(
+        db,
+        `SELECT
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/search%' THEN u.id END) AS busca,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/users/%' THEN u.id END) AS abriu_perfil,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/match%' THEN u.id END) AS match_,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/videos%' THEN u.id END) AS videos,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/stories%' THEN u.id END) AS stories,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/chat%' THEN u.id END) AS chat,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/feed%' THEN u.id END) AS feed,
+           COUNT(DISTINCT CASE WHEN sv.page_path LIKE '/subscriptions%' THEN u.id END) AS planos
+         FROM users u JOIN site_visits sv ON sv.user_id = u.id
+         WHERE LOWER(COALESCE(u.gender,'')) LIKE 'homem%' AND u.created_at >= ?
+           AND NOT (u.is_premium = 1 OR LOWER(COALESCE(u.hub_access_status,'')) LIKE 'active%'
+                    OR (u.hub_license_end_at IS NOT NULL AND u.hub_license_end_at > ?))`,
+        [sinceIso, nowIsoJ]
+      )) as any;
+
       res.json({
         periodDays,
         funnel: { homens, assinaram, conversaoPct: pct(assinaram, homens), naoAssinaram: homens - assinaram, abriramCheckout: abriram, gerouPixNaoPagou: gerouNaoPagou, nuncaAbriuCheckout: nuncaAbriu },
+        jornada: {
+          base: naoAss,
+          etapas: [
+            { key: 'busca', label: 'Abriu a Busca', men: Number(jr?.busca || 0) },
+            { key: 'perfil', label: 'Abriu um perfil', men: Number(jr?.abriu_perfil || 0) },
+            { key: 'match', label: 'Foi ao Match', men: Number(jr?.match_ || 0) },
+            { key: 'videos', label: 'Foi aos Vídeos', men: Number(jr?.videos || 0) },
+            { key: 'stories', label: 'Foi aos Stories', men: Number(jr?.stories || 0) },
+            { key: 'chat', label: 'Abriu o Chat', men: Number(jr?.chat || 0) },
+            { key: 'feed', label: 'Foi ao Feed', men: Number(jr?.feed || 0) },
+            { key: 'planos', label: 'Viu os Planos', men: Number(jr?.planos || 0) },
+            { key: 'checkout', label: 'Abriu o checkout', men: gerouNaoPagou },
+          ],
+        },
         retorno: { naoAssinantes: naoAss, sumiram1aSessao: sumiram, voltaram, churnPct: pct(sumiram, naoAss) },
         sinal: { semSinal, comSinal, convPctSemSinal: pct(semSinalPagou, semSinal), convPctComSinal: pct(comSinalPagou, comSinal) },
         acao: { naoFezNada: nadaFez, explorouPouco: explorou, engajouNaoPagou: engajou },

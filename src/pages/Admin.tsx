@@ -2457,6 +2457,30 @@ export default function Admin() {
                 </div>
               )}
 
+              {/* Jornada: até onde os que NÃO assinaram chegam antes de sair */}
+              {menConv && menConv.jornada && menConv.jornada.base > 0 && (
+                <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 p-4">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sky-500">Até onde vão (não assinantes)</p>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    Dos {menConv.jornada.base} homens que não assinaram, quantos alcançaram cada tela antes de sair
+                  </p>
+                  <div className="space-y-1.5">
+                    {menConv.jornada.etapas.map((e) => {
+                      const p = menConv.jornada.base > 0 ? Math.round((1000 * e.men) / menConv.jornada.base) / 10 : 0;
+                      return (
+                        <div key={e.key} className="flex items-center gap-3 text-xs">
+                          <span className="w-28 shrink-0 truncate text-muted-foreground">{e.label}</span>
+                          <div className="relative h-4 flex-1 overflow-hidden rounded-full bg-background/50">
+                            <div className="h-full rounded-full bg-sky-500/70" style={{ width: `${Math.min(100, p)}%` }} />
+                          </div>
+                          <span className="w-20 shrink-0 text-right font-semibold text-foreground">{e.men} · {p}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Página de origem: de onde vieram os cliques em "assinar" */}
               {menConv && menConv.porPagina.length > 0 && (
                 <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 p-4">
