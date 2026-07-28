@@ -53,8 +53,11 @@ export default function AuthCallback() {
           );
         }
       }
+      // Homem recém-cadastrado cai direto na aba de Vídeos (estímulo visual =
+      // maior gatilho p/ assinar). Demais vão para o feed.
+      const isMan = String((user as any)?.gender || '').toLowerCase().startsWith('homem');
       // Force full page reload so AuthContext re-initialises with new token/user
-      window.location.replace(isNew ? '/feed' : '/feed');
+      window.location.replace(isNew && isMan ? '/videos' : '/feed');
     }).catch(() => {
       // Even if getMe fails, the token is stored — the app will retry on load
       window.location.replace('/feed');

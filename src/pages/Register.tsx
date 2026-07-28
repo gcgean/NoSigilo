@@ -407,7 +407,9 @@ export default function Register() {
       }
       confirmAge(); // user accepted 18+ terms during registration
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
-      navigate('/feed');
+      // Homem cai direto na aba de Vídeos (estímulo visual = maior gatilho p/ assinar).
+      const isMan = String(formData.gender || '').toLowerCase().startsWith('homem');
+      navigate(isMan ? '/videos' : '/feed');
     } catch (error) {
       const info = getApiErrorInfo(error, {
         title: 'Erro ao criar conta',
