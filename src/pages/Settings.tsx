@@ -30,6 +30,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { CitySearch } from '@/components/CitySearch';
+import MySubscriptionCard from '@/components/MySubscriptionCard';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import {
   disablePushNotifications,
@@ -446,6 +447,12 @@ export default function Settings() {
   return (
     <div className="max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold mb-6">Configurações</h1>
+
+      {/* Assinatura em destaque, fora das abas — é o que os usuários mais
+          procuram aqui (status e cancelamento), e some se ficar dentro de uma aba. */}
+      <div className="mb-6">
+        <MySubscriptionCard />
+      </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="grid h-auto w-full grid-cols-5">
