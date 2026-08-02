@@ -96,8 +96,8 @@ export default function Subscriptions() {
   // Billing form (inline, no dialog)
   const [billingLegalName, setBillingLegalName] = useState('');
   const [billingDocument, setBillingDocument] = useState('');
-  const [billingMethod, setBillingMethod] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('PIX');
-  const [checkoutBillingType, setCheckoutBillingType] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('PIX');
+  const [billingMethod, setBillingMethod] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('CREDIT_CARD');
+  const [checkoutBillingType, setCheckoutBillingType] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('CREDIT_CARD');
 
   const isPaid = String(checkoutResult?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkoutResult?.status || '').toLowerCase() === 'pending';
@@ -509,8 +509,8 @@ export default function Subscriptions() {
               {/* Payment method selector */}
               <div className="grid grid-cols-3 gap-2">
                 {([
-                  { value: 'PIX' as const, label: 'PIX', icon: QrCode },
                   { value: 'CREDIT_CARD' as const, label: 'Cartão', icon: CreditCard },
+                  { value: 'PIX' as const, label: 'PIX', icon: QrCode },
                   { value: 'BOLETO' as const, label: 'Boleto', icon: FileText },
                 ]).map(({ value, label, icon: Icon }) => {
                   const sel = billingMethod === value;
