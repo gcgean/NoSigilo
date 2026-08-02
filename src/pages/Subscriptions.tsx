@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Copy, Crown, Gift, QrCode, Star, Users, Zap, Radar, Video, Calendar, Lock, ExternalLink, RefreshCw, CheckCircle2, ArrowRight, CreditCard, FileText, Repeat } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -96,6 +96,8 @@ export default function Subscriptions() {
   // Billing form (inline, no dialog)
   const [billingLegalName, setBillingLegalName] = useState('');
   const [billingDocument, setBillingDocument] = useState('');
+  const [billingMethod, setBillingMethod] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('PIX');
+  const [checkoutBillingType, setCheckoutBillingType] = useState<'PIX' | 'CREDIT_CARD' | 'BOLETO'>('PIX');
 
   const isPaid = String(checkoutResult?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkoutResult?.status || '').toLowerCase() === 'pending';
@@ -106,7 +108,11 @@ export default function Subscriptions() {
   // para onde o cliente é redirecionado. Nesses casos exibimos o botão "Pagar agora"
   // em vez do QR/código.
   const hostedCheckoutUrl = String(checkoutResult?.checkoutUrl || '').trim();
-  const useHostedCheckout = !hasPixCode && !qrImageSrc && !!hostedCheckoutUrl;
+  // Alguns gateways (ex.: Asaas) devolvem o boleto pronto direto num link, sem
+  // precisar de checkout hospedado.
+  const boletoDirectUrl = String(checkoutResult?.boletoUrl || '').trim();
+  const useHostedCheckout = !hasPixCode && !qrImageSrc && !boletoDirectUrl && !!hostedCheckoutUrl;
+  const hostedCheckoutLabel = checkoutBillingType === 'BOLETO' ? 'Gerar boleto' : 'Pagar agora';
 
   // Load plans and status
   useEffect(() => {
@@ -228,7 +234,7 @@ export default function Subscriptions() {
     }
   };
 
-  const handleGeneratePix = async () => {
+  const handleCheckout = async () => {
     if (!selectedPlanId) return;
     if (!billingLegalName.trim() || !billingDocument.trim()) {
       toast({ title: 'Preencha nome e CPF/CNPJ', variant: 'destructive' });
@@ -236,9 +242,10 @@ export default function Subscriptions() {
     }
     setIsCheckingOut(true);
     setCheckoutResult(null);
+    setCheckoutBillingType(billingMethod);
     preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
-      const result = await subscriptionsService.checkout(selectedPlanId, 'PIX', {
+      const result = await subscriptionsService.checkout(selectedPlanId, billingMethod, {
         billingLegalName: billingLegalName.trim(),
         billingDocument: billingDocument.trim(),
         billingPersonType: 'PF',
@@ -246,10 +253,20 @@ export default function Subscriptions() {
       if (result?.checkout) setCheckoutResult(result.checkout);
       const me = await authService.getMe();
       updateUser(me);
-      toast({ title: 'PIX gerado!', description: 'Escaneie o QR Code ou copie o código.' });
+      const messages: Record<typeof billingMethod, string> = {
+        PIX: 'PIX gerado! Escaneie o QR Code ou copie o código.',
+        CREDIT_CARD: 'Clique em "Pagar agora" para cadastrar o cartão e ativar a recorrência.',
+        BOLETO: 'Boleto gerado! Abra o link para visualizar e pagar.',
+      };
+      toast({ title: 'Cobrança gerada!', description: messages[billingMethod] });
     } catch (error: any) {
       if (error?.response?.data?.error === 'subscriptions_disabled') updateUser({ subscriptionsEnabled: false });
-      toast({ title: 'Falha ao gerar PIX', description: getCheckoutErrorMessage(error), variant: 'destructive' });
+      const titles: Record<typeof billingMethod, string> = {
+        PIX: 'Falha ao gerar PIX',
+        CREDIT_CARD: 'Falha ao iniciar assinatura no cartão',
+        BOLETO: 'Falha ao gerar boleto',
+      };
+      toast({ title: titles[billingMethod], description: getCheckoutErrorMessage(error), variant: 'destructive' });
     } finally {
       setIsCheckingOut(false);
     }
@@ -398,8 +415,12 @@ export default function Subscriptions() {
                 ) : (
                   <>
                     <div className="flex items-center gap-2 mb-4">
-                      <Badge className="bg-gradient-primary">Pague com PIX</Badge>
-                      <span className="text-sm text-muted-foreground">Aprovação em segundos</span>
+                      <Badge className="bg-gradient-primary">
+                        {checkoutBillingType === 'CREDIT_CARD' ? 'Assinatura no cartão' : checkoutBillingType === 'BOLETO' ? 'Pague com Boleto' : 'Pague com PIX'}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {checkoutBillingType === 'CREDIT_CARD' ? 'Cobrança automática todo mês' : 'Aprovação em segundos'}
+                      </span>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
@@ -415,8 +436,18 @@ export default function Subscriptions() {
                             onClick={() => window.open(hostedCheckoutUrl, '_blank', 'noopener,noreferrer')}
                             className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
                           >
-                            <ExternalLink className="w-5 h-5" /> Pagar agora
+                            <ExternalLink className="w-5 h-5" /> {hostedCheckoutLabel}
                           </Button>
+                        )}
+                        {boletoDirectUrl && (
+                          <a
+                            href={boletoDirectUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center justify-center gap-2 w-full h-12 rounded-md text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
+                          >
+                            <FileText className="w-5 h-5" /> Abrir boleto
+                          </a>
                         )}
                         <div className="flex flex-wrap gap-2">
                           {hasPixCode && (
@@ -426,23 +457,27 @@ export default function Subscriptions() {
                           )}
                           <Button variant="outline" onClick={() => void refreshPaymentStatus()} disabled={isRefreshingStatus} className="gap-2 flex-1 sm:flex-none">
                             <RefreshCw className={cn('w-4 h-4', isRefreshingStatus && 'animate-spin')} />
-                            {isRefreshingStatus ? 'Verificando...' : 'Já paguei'}
+                            {isRefreshingStatus ? 'Verificando...' : checkoutBillingType === 'CREDIT_CARD' ? 'Verificar status' : 'Já paguei'}
                           </Button>
                         </div>
-                        {!useHostedCheckout && checkoutResult.checkoutUrl && (
+                        {!useHostedCheckout && !boletoDirectUrl && checkoutResult.checkoutUrl && (
                           <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
                             <ExternalLink className="w-3 h-3" /> Abrir página de checkout
                           </a>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {useHostedCheckout
-                            ? 'Clique em "Pagar agora" para abrir a página segura de pagamento. Depois volte aqui e clique em "Já paguei".'
-                            : 'Abra o app do seu banco → Pix → Pagar → Cole o código ou escaneie o QR Code.'}
+                          {checkoutBillingType === 'CREDIT_CARD'
+                            ? `Clique em "${hostedCheckoutLabel}" para cadastrar o cartão. A partir daí a cobrança é automática todo mês, sem precisar gerar nada de novo.`
+                            : boletoDirectUrl
+                              ? 'Clique em "Abrir boleto" para visualizar, imprimir ou copiar o código de barras.'
+                              : useHostedCheckout
+                                ? `Clique em "${hostedCheckoutLabel}" para abrir a página segura de pagamento. Depois volte aqui e clique em "Já paguei".`
+                                : 'Abra o app do seu banco → Pix → Pagar → Cole o código ou escaneie o QR Code.'}
                         </p>
                       </div>
 
                       {/* Right: QR Code — oculto no checkout hospedado (sem QR inline) */}
-                      {!useHostedCheckout && (
+                      {!useHostedCheckout && !boletoDirectUrl && (
                         <div className="flex items-center justify-center sm:justify-end">
                           {qrImageSrc ? (
                             <img src={qrImageSrc} alt="QR Code PIX" className="w-40 h-40 rounded-xl border bg-white object-contain p-1" />
@@ -466,10 +501,40 @@ export default function Subscriptions() {
             <Card className="p-6 border-2 border-primary/20 space-y-5">
               <div className="space-y-1">
                 <h2 className="text-lg font-bold flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-gold" /> Gerar PIX de pagamento
+                  <Crown className="w-5 h-5 text-gold" /> Assine o Premium
                 </h2>
-                <p className="text-sm text-muted-foreground">Escolha o plano, preencha seus dados e gere o PIX. Aprovação imediata.</p>
+                <p className="text-sm text-muted-foreground">Escolha a forma de pagamento, o plano, preencha seus dados e finalize.</p>
               </div>
+
+              {/* Payment method selector */}
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: 'PIX' as const, label: 'PIX', icon: QrCode },
+                  { value: 'CREDIT_CARD' as const, label: 'Cartão', icon: CreditCard },
+                  { value: 'BOLETO' as const, label: 'Boleto', icon: FileText },
+                ]).map(({ value, label, icon: Icon }) => {
+                  const sel = billingMethod === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setBillingMethod(value)}
+                      className={cn(
+                        'flex flex-col items-center gap-1.5 rounded-2xl border-2 py-3 text-sm font-semibold transition-all',
+                        sel ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/40 text-muted-foreground'
+                      )}
+                    >
+                      <Icon className="w-5 h-5" />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {billingMethod === 'CREDIT_CARD' && (
+                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Repeat className="w-3.5 h-3.5" /> Cartão salvo com cobrança automática mensal — cancele quando quiser.
+                </p>
+              )}
 
               {/* Plan selector */}
               {paidPlans.length > 1 && (
@@ -540,14 +605,18 @@ export default function Subscriptions() {
                 </div>
               </div>
 
-              {/* Generate PIX button */}
+              {/* Generate checkout button */}
               <Button
                 className="w-full py-6 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 shadow-glow gap-2"
                 disabled={isCheckingOut || !selectedPlanId || !billingLegalName.trim() || !billingDocument.trim()}
-                onClick={() => void handleGeneratePix()}
+                onClick={() => void handleCheckout()}
               >
                 {isCheckingOut ? (
-                  <><RefreshCw className="w-5 h-5 animate-spin" /> Gerando PIX...</>
+                  <><RefreshCw className="w-5 h-5 animate-spin" /> Gerando...</>
+                ) : billingMethod === 'CREDIT_CARD' ? (
+                  <><CreditCard className="w-5 h-5" /> Assinar com cartão</>
+                ) : billingMethod === 'BOLETO' ? (
+                  <><FileText className="w-5 h-5" /> Gerar boleto</>
                 ) : (
                   <><QrCode className="w-5 h-5" /> Gerar PIX agora</>
                 )}
@@ -555,10 +624,10 @@ export default function Subscriptions() {
             </Card>
           )}
 
-          {/* New checkout button (after PIX generated) */}
+          {/* New checkout button */}
           {checkoutResult && !isPaid && (
             <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setCheckoutResult(null)}>
-              Trocar plano ou gerar novo PIX
+              Trocar plano ou forma de pagamento
             </Button>
           )}
 
