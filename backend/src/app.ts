@@ -10751,7 +10751,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
     } catch (error) {
       console.error('Hub Billing checkout failed:', error);
-      res.status(502).json({ error: 'hub_checkout_failed', message: error instanceof Error ? error.message : 'Falha no checkout' });
+      // 400 em vez de 502: o nginx substitui o corpo de respostas 5xx por uma
+      // página HTML genérica, e a mensagem real do Hub/gateway nunca chega ao
+      // usuário — só um "status code 502" inútil no toast.
+      res.status(400).json({ error: 'hub_checkout_failed', message: error instanceof Error ? error.message : 'Falha no checkout' });
     }
   });
 
