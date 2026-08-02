@@ -119,7 +119,7 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
               </Button>
 
               <p className="text-[11px] text-muted-foreground text-center">
-                Pagamento seguro via PIX. Cancele quando quiser, sem fidelidade.
+                Pagamento seguro via PIX, cartão ou boleto. Cancele quando quiser, sem fidelidade.
               </p>
             </div>
 
