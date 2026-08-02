@@ -18,10 +18,14 @@ import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
+  cancelHubSubscription,
   createHubCheckout,
   createHubOrder,
+  createHubRecurringCheckout,
+  createHubSubscription,
   getHubAccessStatus,
   getHubSubscriptionAnalytics,
+  getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
   listHubPlans,
   resolveHubAccess,
@@ -10394,7 +10398,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const globalEnabled = await getSubscriptionsEnabled(db);
     const row = (await queryOne(
       db,
-      'SELECT id, email, hub_customer_id, hub_product_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, email, hub_customer_id, hub_product_id, hub_subscription_id, hub_access_status, hub_access_reason, hub_banner, hub_license_end_at, trial_started_at, trial_ends_at, is_premium FROM users WHERE id = ? LIMIT 1',
       [req.auth!.userId]
     )) as any;
     const subscriptionsEnabled = isBillingEnabledForUser(globalEnabled, String(row?.email || ''), env.BILLING_TEST_EMAILS);
@@ -10410,6 +10414,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.json({
         customerId: row.hub_customer_id ?? null,
         productId: row.hub_product_id ?? null,
+        subscriptionId: row.hub_subscription_id ?? null,
         accessStatus: row.hub_access_status ?? null,
         reason: row.hub_access_reason ?? null,
         banner: row.hub_banner ?? null,
@@ -10426,10 +10431,49 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
       await syncHubAccessForUser(db, req.auth!.userId, status, { io: req.app.get('io') as SocketIOServer | undefined, env });
       await persist();
-      res.json({ ...status, subscriptionsEnabled });
+      res.json({ ...status, subscriptionId: row.hub_subscription_id ?? null, subscriptionsEnabled });
     } catch (error) {
       console.error('Failed to fetch Hub Billing access status:', error);
       res.status(502).json({ error: 'hub_billing_unavailable' });
+    }
+  });
+
+  app.post('/api/subscriptions/cancel', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({ reason: z.string().max(500).optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+
+    const row = (await queryOne(
+      db,
+      'SELECT id, hub_subscription_id FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+
+    const subscriptionId = String(row?.hub_subscription_id || '').trim();
+    if (!subscriptionId) {
+      res.status(404).json({ error: 'no_active_subscription', message: 'Nenhuma assinatura recorrente encontrada para cancelar.' });
+      return;
+    }
+
+    try {
+      await cancelHubSubscription(getHubConfig(env), {
+        subscriptionId,
+        reason: parsed.data.reason || 'Cancelado pelo usuário no NoSigilo',
+      });
+      // Limpa o vínculo local — sem isso o próximo checkout no cartão tentaria
+      // reativar recorrência numa assinatura que já foi cancelada no gateway.
+      await run(db, 'UPDATE users SET hub_subscription_id = NULL WHERE id = ?', [req.auth!.userId]);
+      await persist();
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('Hub Billing subscription cancel failed:', error);
+      res.status(502).json({
+        error: 'hub_cancel_failed',
+        message: error instanceof Error ? error.message : 'Falha ao cancelar assinatura',
+      });
     }
   });
 
@@ -10471,7 +10515,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         db,
         `SELECT id, email, name, city, state, billing_document, billing_legal_name, billing_person_type, billing_phone,
                 billing_address_zip, billing_address_street, billing_address_number, billing_address_district,
-                billing_address_complement, billing_address_city, billing_address_state, hub_customer_id
+                billing_address_complement, billing_address_city, billing_address_state, hub_customer_id, hub_subscription_id
          FROM users WHERE id = ? LIMIT 1`,
         [req.auth!.userId]
       )) as any;
@@ -10588,6 +10632,84 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         req.auth!.userId,
       ]);
 
+      // Para onde o cliente volta após pagar em checkout hospedado (ex: LivePix,
+      // Stripe). Aponta para o próprio NoSigilo — sem isso, o Hub usa o endereço
+      // dele e o cliente cai na tela de login do painel administrativo.
+      const returnUrl = `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/bem-vindo`;
+      const billingType = parsed.data.billingType || 'PIX';
+
+      if (billingType === 'CREDIT_CARD') {
+        // Cartão usa recorrência nativa do gateway (Stripe Subscriptions): o
+        // cliente cadastra o cartão uma vez e é cobrado automaticamente todo
+        // ciclo, sem precisar gerar um novo checkout a cada mês.
+        let subscriptionId = String(user.hub_subscription_id || '').trim();
+
+        if (!subscriptionId) {
+          try {
+            const created = await createHubSubscription(hubConfig, {
+              customerId,
+              planId,
+              contractedAmount: Number(selectedPlan.amount || 0),
+            });
+            subscriptionId = String(created.id || created.subscriptionId || '');
+          } catch (createErr) {
+            // Se já existe assinatura ativa no Hub (ex: hub_subscription_id local
+            // foi perdido), recupera o id existente em vez de falhar o checkout.
+            const existing = await getHubSubscriptionsByCustomer(hubConfig, customerId).catch(() => []);
+            const match = existing.find(
+              (s) => String(s.productId) === String(hubConfig.productId) && ['active', 'trialing', 'overdue', 'pending'].includes(String(s.status))
+            );
+            if (!match) throw createErr;
+            subscriptionId = String(match.id);
+          }
+        }
+
+        if (!subscriptionId) {
+          throw new Error('Hub Billing nao retornou subscriptionId');
+        }
+
+        await run(db, 'UPDATE users SET hub_subscription_id = ? WHERE id = ?', [subscriptionId, req.auth!.userId]);
+
+        const recurring = await createHubRecurringCheckout(hubConfig, {
+          subscriptionId,
+          returnUrl,
+        });
+        await persist();
+
+        try {
+          await run(
+            db,
+            'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at, page_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [randomUUID(), req.auth!.userId, planId, billingType, subscriptionId, nowIso(), parsed.data.pagePath || null]
+          );
+          await persist();
+        } catch (logErr) {
+          console.warn('[checkout] falha ao registrar checkout_generation (ignorado):', (logErr as Error).message);
+        }
+
+        res.json({
+          ok: true,
+          mode: 'hub',
+          subscriptionId,
+          planId,
+          customerId,
+          checkout: {
+            chargeId: null,
+            externalChargeId: recurring.externalSubscriptionId,
+            status: 'pending',
+            checkoutUrl: recurring.checkoutUrl || recurring.initPoint || null,
+            pixCode: null,
+            pixQrCode: null,
+            pixPayload: null,
+            boletoUrl: null,
+            amount: Number(selectedPlan.amount || 0),
+            currency: 'BRL',
+            dueDate: recurring.nextDueDate || null,
+          },
+        });
+        return;
+      }
+
       const order = await createHubOrder(hubConfig, {
         customerId,
         planId: planId,
@@ -10597,13 +10719,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (!orderId) {
         throw new Error('Hub Billing nao retornou orderId');
       }
-      // Para onde o cliente volta após pagar em checkout hospedado (ex: LivePix).
-      // Aponta para o próprio NoSigilo — sem isso, o Hub usa o endereço dele e o
-      // cliente cai na tela de login do painel administrativo.
-      const returnUrl = `${String(env.FRONTEND_ORIGIN || '').replace(/\/$/, '')}/bem-vindo`;
       const checkout = await createHubCheckout(hubConfig, {
         orderId,
-        billingType: parsed.data.billingType || 'PIX',
+        billingType,
         payerName: checkoutBilling.legalName,
         payerDocument: checkoutBilling.document || null,
         returnUrl: returnUrl || null,
@@ -10616,7 +10734,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         await run(
           db,
           'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at, page_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [randomUUID(), req.auth!.userId, planId, parsed.data.billingType || 'PIX', String(orderId), nowIso(), parsed.data.pagePath || null]
+          [randomUUID(), req.auth!.userId, planId, billingType, String(orderId), nowIso(), parsed.data.pagePath || null]
         );
         await persist();
       } catch (logErr) {

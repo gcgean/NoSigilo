@@ -50,6 +50,14 @@ export type HubCheckoutResult = {
   dueDate: string | null;
 };
 
+export type HubRecurringCheckoutResult = {
+  externalSubscriptionId: string | null;
+  checkoutUrl: string | null;
+  initPoint?: string | null;
+  cycle?: string | null;
+  nextDueDate: string | null;
+};
+
 type AdminTokenCache = {
   token: string;
   expiresAt: number;
@@ -236,6 +244,56 @@ export async function createHubOrder(
       planId: data.planId,
       contractedAmount: data.contractedAmount,
     }),
+  });
+}
+
+export async function createHubSubscription(
+  config: HubConfig,
+  data: { customerId: string; planId: string; contractedAmount: number }
+) {
+  return requestJson<{ id?: string; subscriptionId?: string }>(buildUrl(config, '/subscriptions'), {
+    method: 'POST',
+    headers: await adminHeaders(config),
+    body: JSON.stringify({
+      customerId: data.customerId,
+      productId: config.productId,
+      planId: data.planId,
+      contractedAmount: data.contractedAmount,
+    }),
+  });
+}
+
+export async function createHubRecurringCheckout(
+  config: HubConfig,
+  data: { subscriptionId: string; returnUrl?: string | null }
+) {
+  // Cria checkout de cartão com cobrança recorrente nativa do gateway (Stripe
+  // Subscriptions): o cliente cadastra o cartão uma vez e o próprio gateway
+  // cobra automaticamente todo ciclo, sem precisar gerar um novo link.
+  return requestJson<HubRecurringCheckoutResult>(buildUrl(config, `/subscriptions/${data.subscriptionId}/recurring-checkout`), {
+    method: 'POST',
+    headers: await adminHeaders(config),
+    body: JSON.stringify({
+      ...(data.returnUrl ? { returnUrl: data.returnUrl } : {}),
+    }),
+  });
+}
+
+export async function getHubSubscriptionsByCustomer(config: HubConfig, customerId: string) {
+  return requestJson<Array<{ id: string; productId: string; status: string }>>(
+    buildUrl(config, `/subscriptions/customer/${customerId}`),
+    { method: 'GET', headers: await adminHeaders(config) }
+  );
+}
+
+export async function cancelHubSubscription(
+  config: HubConfig,
+  data: { subscriptionId: string; reason: string }
+) {
+  return requestJson<unknown>(buildUrl(config, `/subscriptions/${data.subscriptionId}/cancel`), {
+    method: 'PATCH',
+    headers: await adminHeaders(config),
+    body: JSON.stringify({ reason: data.reason, immediate: false }),
   });
 }
 

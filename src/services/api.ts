@@ -942,6 +942,11 @@ export const subscriptionsService = {
     });
     return response.data;
   },
+
+  cancel: async (reason?: string) => {
+    const response = await apiClient.post('/subscriptions/cancel', { reason });
+    return response.data;
+  },
 };
 
 // Events Service

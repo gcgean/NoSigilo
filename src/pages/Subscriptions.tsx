@@ -88,6 +88,9 @@ export default function Subscriptions() {
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState<boolean | null>(null);
   const [referralValidated, setReferralValidated] = useState<number | null>(null);
   const [hubBanner, setHubBanner] = useState<string | null>(user?.hubBanner ?? null);
+  const [hubSubscriptionId, setHubSubscriptionId] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
   const preCheckoutLicenseRef = useRef<string | null>(null);
 
   // Billing form (inline, no dialog)
@@ -129,6 +132,7 @@ export default function Subscriptions() {
         if (statusData.status === 'fulfilled') {
           const status = statusData.value;
           setHubBanner(status?.banner ?? null);
+          setHubSubscriptionId(status?.subscriptionId ?? null);
           if (typeof status?.subscriptionsEnabled === 'boolean') {
             setSubscriptionsEnabled(status.subscriptionsEnabled);
             updateUser({ subscriptionsEnabled: status.subscriptionsEnabled });
@@ -181,6 +185,7 @@ export default function Subscriptions() {
       setIsRefreshingStatus(true);
       const status = await subscriptionsService.getStatus();
       setHubBanner(status?.banner ?? null);
+      setHubSubscriptionId(status?.subscriptionId ?? null);
       const me = await authService.getMe();
       updateUser(me);
 
@@ -203,6 +208,23 @@ export default function Subscriptions() {
       if (!silent) toast({ title: 'Falha ao atualizar status', variant: 'destructive' });
     } finally {
       setIsRefreshingStatus(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setIsCanceling(true);
+    try {
+      await subscriptionsService.cancel();
+      setShowCancelConfirm(false);
+      setHubSubscriptionId(null);
+      toast({
+        title: 'Assinatura cancelada',
+        description: 'A cobrança automática no cartão foi encerrada. Seu acesso Premium continua até o fim do período já pago.',
+      });
+    } catch (error: any) {
+      toast({ title: 'Falha ao cancelar assinatura', description: getCheckoutErrorMessage(error), variant: 'destructive' });
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -299,6 +321,38 @@ export default function Subscriptions() {
               Feed <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
+
+          {hubSubscriptionId && !showCancelConfirm && (
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(true)}
+              className="mt-3 text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive"
+            >
+              Cancelar cobrança automática no cartão
+            </button>
+          )}
+
+          {hubSubscriptionId && showCancelConfirm && (
+            <div className="mt-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+              <p className="text-xs text-foreground">
+                Isso encerra a cobrança automática mensal no seu cartão. Você continua Premium até o fim do período já pago.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={handleCancelSubscription}
+                  disabled={isCanceling}
+                  className="flex-1"
+                >
+                  {isCanceling ? 'Cancelando…' : 'Confirmar cancelamento'}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setShowCancelConfirm(false)} disabled={isCanceling}>
+                  Voltar
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
