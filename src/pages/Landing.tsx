@@ -164,16 +164,16 @@ export default function Landing() {
 
       <main>
         <section className="landing-hero">
-          <div className="landing-hero-image" role="img" aria-label="Três adultos em um encontro sofisticado e discreto" />
+          <div className="landing-hero-image" role="img" aria-label="Quatro adultos mascarados em um encontro social sofisticado e discreto" />
           <div className="landing-hero-vignette" />
           <div className="landing-shell landing-hero-content">
             <div className="landing-hero-copy">
               <h1>
-                O que desperta você <em>não precisa</em> ser público.
+                O que parece proibido lá fora, <em>aqui pode ser vivido.</em>
               </h1>
               <p>
-                Conexões reais para quem valoriza desejo, liberdade e discrição.
-                Um ambiente feito para o meio liberal, em todo o Brasil.
+                Um espaço para adultos que querem observar, ser observados e descobrir
+                novas conexões com liberdade, discrição e sigilo.
               </p>
               <div className="landing-hero-actions">
                 <Button asChild size="lg" className="landing-primary-button">
@@ -183,12 +183,12 @@ export default function Landing() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="landing-secondary-button">
-                  <a href="#experiencia">Conhecer a experiência</a>
+                  <a href="#desejo">Sentir a experiência</a>
                 </Button>
               </div>
               <p className="landing-hero-note">
                 <ShieldCheck aria-hidden="true" />
-                Cadastro gratuito. Você controla o que deseja mostrar.
+                Entre no seu tempo. Mostre apenas o que quiser.
               </p>
             </div>
           </div>
@@ -211,6 +211,50 @@ export default function Landing() {
             <p><strong>100%</strong> gratuito para entrar</p>
             <span aria-hidden="true" />
             <p>Feito para adultos que valorizam <strong>sigilo</strong></p>
+          </div>
+        </section>
+
+        <section id="desejo" className="landing-desire landing-section">
+          <div className="landing-shell landing-desire-grid">
+            <figure className="landing-desire-image landing-desire-lead">
+              <img
+                src="/landing/gaze-couple.png"
+                alt="Homem e mulher adultos, com máscaras, trocando olhares em um salão elegante"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+
+            <div className="landing-desire-copy">
+              <h2>O desejo começa <em>no olhar.</em></h2>
+              <span aria-hidden="true" />
+              <p className="landing-desire-statement">Máscaras escondem rostos. A química revela intenções.</p>
+              <p className="landing-desire-support">Observe. Seja observado. Aproxime-se no seu tempo.</p>
+              <Button asChild variant="link" className="landing-text-link">
+                <Link to="/register">
+                  Quero fazer parte
+                  <ArrowRight data-icon="inline-end" />
+                </Link>
+              </Button>
+            </div>
+
+            <figure className="landing-desire-image landing-desire-portrait">
+              <img
+                src="/landing/masked-woman.png"
+                alt="Mulher adulta com máscara e vestido elegante em um baile privado"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+
+            <figure className="landing-desire-image landing-desire-touch">
+              <img
+                src="/landing/first-touch.png"
+                alt="Homem e mulher adultos mascarados se cumprimentando com elegância"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
           </div>
         </section>
 
