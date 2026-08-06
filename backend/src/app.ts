@@ -3517,7 +3517,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         `SELECT p.user_id, p.full_name,
           COALESCE(p.contact_email, u.email) AS notify_email,
           COUNT(DISTINCT pc.subscriber_user_id) AS total_referred,
-          COALESCE(SUM(CASE WHEN pc.status != 'cancelled' THEN pc.commission_amount ELSE 0 END), 0) AS total_earned_cents
+          COALESCE(SUM(CASE WHEN pc.status != 'cancelled' THEN pc.commission_amount ELSE 0 END), 0) AS total_earned_cents,
+          (SELECT il.invite_token FROM invite_links il
+            WHERE il.inviter_user_id = p.user_id AND il.status = 'created'
+            ORDER BY il.created_at DESC LIMIT 1) AS invite_token
          FROM promoters p
          JOIN users u ON u.id = p.user_id
          LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id
@@ -3527,11 +3530,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         []
       )) as any[];
 
+      const inviteSiteUrl = String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
       let sent = 0; let errors = 0; let skipped = 0;
       for (const row of rows) {
         const email = String(row.notify_email || '');
         if (!email) { skipped++; continue; }
         try {
+          const inviteToken = row.invite_token ? String(row.invite_token) : null;
+          const inviteUrl = inviteToken ? `${inviteSiteUrl}/invite/${encodeURIComponent(inviteToken)}` : null;
           const result = await sendPromoterIncentiveEmail(
             { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
             {
@@ -3539,6 +3545,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
               promoterName: String(row.full_name || 'Promotor'),
               totalReferred: Number(row.total_referred || 0),
               totalEarnedCents: Number(row.total_earned_cents || 0),
+              inviteUrl,
             }
           );
           if ((result as any)?.skipped) { skipped++; continue; }

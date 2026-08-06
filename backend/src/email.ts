@@ -596,6 +596,9 @@ export async function sendPromoterIncentiveEmail(
     promoterName: string;
     totalReferred: number;
     totalEarnedCents: number;
+    /** Link de convite ATIVO do promotor (status 'created'), se existir. Quando
+     *  ausente (promotor ainda não gerou nenhum), o CTA cai no painel de sempre. */
+    inviteUrl?: string | null;
   }
 ) {
   if (!options.apiKey || !options.fromEmail) {
@@ -605,6 +608,8 @@ export async function sendPromoterIncentiveEmail(
   const appName = options.appName || 'NoSigilo';
   const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
   const dashboardUrl = `${siteUrl}/promoter`;
+  const inviteUrl = payload.inviteUrl ? escapeHtml(payload.inviteUrl) : null;
+  const ctaUrl = inviteUrl || dashboardUrl;
   const safeName = escapeHtml(payload.promoterName.split(' ')[0] || payload.promoterName);
   const earnedBRL = (payload.totalEarnedCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const hasHistory = payload.totalReferred > 0;
@@ -663,6 +668,12 @@ export async function sendPromoterIncentiveEmail(
 
     ${statsHtml}
 
+    ${inviteUrl ? `
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:14px;padding:16px 20px;margin:0 0 24px;">
+      <p style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6b7280;margin:0 0 8px;">Seu link de convite</p>
+      <p style="font-size:14px;color:#15803d;margin:0;word-break:break-all;"><a href="${inviteUrl}" style="color:#15803d;text-decoration:none;">${inviteUrl}</a></p>
+    </div>` : ''}
+
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:20px;margin:0 0 24px;">
       <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0 0 12px;">💡 Ideias rápidas para indicar hoje</p>
       <div style="display:flex;flex-direction:column;gap:10px;">
@@ -682,10 +693,12 @@ export async function sendPromoterIncentiveEmail(
     </div>
 
     <div style="text-align:center;margin-bottom:24px;">
-      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
+      <a href="${ctaUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
         🔗 Ver meu link e indicar agora →
       </a>
-      <p style="font-size:12px;color:#6b7280;margin-top:10px;">Acesse seu painel de promotor para copiar o link e compartilhar.</p>
+      <p style="font-size:12px;color:#6b7280;margin-top:10px;">
+        ${inviteUrl ? 'Copie o link acima e compartilhe, ou toque no botão para abri-lo.' : 'Acesse seu painel de promotor para gerar seu link e compartilhar.'}
+      </p>
     </div>
 
     <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
