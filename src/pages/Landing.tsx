@@ -82,24 +82,19 @@ export default function Landing() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
-  const [stats, setStats] = useState<{ totalUsers: number; onlineNow: number } | null>(null);
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    Promise.allSettled([appService.getSettings(), appService.getStats()]).then(([settingsResult, statsResult]) => {
-      if (cancelled) return;
-
-      if (settingsResult.status === 'fulfilled') {
-        setSubscriptionsEnabled(settingsResult.value?.subscriptionsEnabled !== false);
-      }
-
-      if (statsResult.status === 'fulfilled') {
-        setStats(statsResult.value);
-      }
-    });
+    appService.getSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setSubscriptionsEnabled(settings?.subscriptionsEnabled !== false);
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
       cancelled = true;
@@ -111,7 +106,6 @@ export default function Landing() {
   }
 
   const handleEnter = () => navigate('/login');
-  const hasLiveStats = Boolean(stats && (stats.totalUsers > 0 || stats.onlineNow > 0));
 
   return (
     <div className="landing-editorial">
@@ -172,8 +166,9 @@ export default function Landing() {
                 O que parece proibido lá fora, <em>aqui pode ser vivido.</em>
               </h1>
               <p>
-                Um espaço para adultos que querem observar, ser observados e descobrir
-                novas conexões com liberdade, discrição e sigilo.
+                A comunidade liberal para casais e singles que desejam viver swing,
+                troca de casais, ménage e exibicionismo com liberdade, consentimento,
+                discrição e sigilo.
               </p>
               <div className="landing-hero-actions">
                 <Button asChild size="lg" className="landing-primary-button">
@@ -183,7 +178,7 @@ export default function Landing() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="landing-secondary-button">
-                  <a href="#desejo">Sentir a experiência</a>
+                  <a href="#desejo">Entrar</a>
                 </Button>
               </div>
               <p className="landing-hero-note">
@@ -196,22 +191,6 @@ export default function Landing() {
             Descubra
             <ChevronDown aria-hidden="true" />
           </a>
-        </section>
-
-        <section className="landing-proof-rail" aria-label="Destaques da plataforma">
-          <div className="landing-shell landing-proof-content">
-            {hasLiveStats ? (
-              <>
-                <p><strong>{stats?.totalUsers.toLocaleString('pt-BR')}</strong> perfis cadastrados</p>
-                <span aria-hidden="true" />
-                <p className="landing-live"><i /> <strong>{stats?.onlineNow.toLocaleString('pt-BR')}</strong> online agora</p>
-                <span aria-hidden="true" />
-              </>
-            ) : null}
-            <p><strong>100%</strong> gratuito para entrar</p>
-            <span aria-hidden="true" />
-            <p>Feito para adultos que valorizam <strong>sigilo</strong></p>
-          </div>
         </section>
 
         <section id="desejo" className="landing-desire landing-section">
@@ -229,7 +208,7 @@ export default function Landing() {
               <h2>O desejo começa <em>no olhar.</em></h2>
               <span aria-hidden="true" />
               <p className="landing-desire-statement">Máscaras escondem rostos. A química revela intenções.</p>
-              <p className="landing-desire-support">Observe. Seja observado. Aproxime-se no seu tempo.</p>
+              <p className="landing-desire-support">Casais e singles. Swing, ménage e exibicionismo no seu tempo.</p>
               <Button asChild variant="link" className="landing-text-link">
                 <Link to="/register">
                   Quero fazer parte
@@ -265,7 +244,8 @@ export default function Landing() {
             <div className="landing-section-copy">
               <h2>Uma experiência feita para <em>aproximar, sem expor.</em></h2>
               <p className="landing-section-intro">
-                Descubra perfis, compartilhe apenas o que quiser e converse no seu ritmo.
+                Encontre casais e singles para swing, troca de casais, ménage e novas
+                experiências — sempre com consentimento e discrição.
               </p>
 
               <div className="landing-feature-list">

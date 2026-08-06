@@ -264,47 +264,6 @@
   animation: landing-bounce 2s ease-in-out infinite;
 }
 
-.landing-proof-rail {
-  border-bottom: 1px solid var(--landing-line);
-  background: #0d0b0e;
-}
-
-.landing-proof-content {
-  display: flex;
-  min-height: 82px;
-  align-items: center;
-  justify-content: center;
-  gap: 26px;
-  color: var(--landing-muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-.landing-proof-content strong {
-  color: var(--landing-text);
-  font-weight: 600;
-}
-
-.landing-proof-content > span {
-  width: 1px;
-  height: 24px;
-  background: var(--landing-line);
-}
-
-.landing-live {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.landing-live i {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: #66c28b;
-  box-shadow: 0 0 14px rgba(102, 194, 139, 0.7);
-}
-
 .landing-section {
   position: relative;
   padding-block: 128px;
@@ -1171,18 +1130,6 @@
 
   .landing-scroll-cue {
     display: none;
-  }
-
-  .landing-proof-content {
-    min-height: auto;
-    flex-direction: column;
-    gap: 12px;
-    padding-block: 24px;
-  }
-
-  .landing-proof-content > span {
-    width: 42px;
-    height: 1px;
   }
 
   .landing-section {
