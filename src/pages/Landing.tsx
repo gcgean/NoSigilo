@@ -178,7 +178,7 @@ export default function Landing() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="landing-secondary-button">
-                  <a href="#desejo">Entrar</a>
+                  <Link to="/login">Entrar</Link>
                 </Button>
               </div>
               <p className="landing-hero-note">
