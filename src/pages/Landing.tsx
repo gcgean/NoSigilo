@@ -131,7 +131,7 @@ export default function Landing() {
               Entrar
             </Button>
             <Button asChild className="landing-primary-button landing-header-cta">
-              <Link to="/register">Criar perfil</Link>
+              <Link to="/register">Cadastrar</Link>
             </Button>
             <button
               type="button"

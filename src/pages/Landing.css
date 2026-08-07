@@ -1027,8 +1027,13 @@
 
   .landing-nav {
     min-height: 62px;
+    gap: 8px;
     border-radius: 15px;
     padding: 8px 9px 8px 12px;
+  }
+
+  .landing-nav > a {
+    min-width: 0;
   }
 
   .landing-brand-mark {
@@ -1040,13 +1045,28 @@
     font-size: 18px;
   }
 
+  .landing-nav-actions {
+    margin-left: auto;
+    gap: 4px;
+  }
+
   .landing-login,
   .landing-header-cta {
-    display: none !important;
+    display: inline-flex !important;
+    height: 32px;
+    min-width: 0;
+    padding-inline: 7px !important;
+    font-size: 11px;
+  }
+
+  .landing-header-cta {
+    padding-inline: 9px !important;
   }
 
   .landing-menu-button {
     display: flex;
+    width: 38px;
+    height: 38px;
   }
 
   .landing-mobile-menu {
@@ -1280,6 +1300,12 @@
 
   .landing-footer > div > p {
     text-align: center;
+  }
+}
+
+@media (max-width: 430px) {
+  .landing-brand-text {
+    display: none;
   }
 }
 
