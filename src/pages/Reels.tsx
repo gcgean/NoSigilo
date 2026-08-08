@@ -11,7 +11,7 @@ import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import MobileState from '@/components/MobileState';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
@@ -59,6 +59,8 @@ type ReelComment = {
   content: string;
   createdAt: string;
   user?: { id: string; name: string; avatar?: string | null };
+  parentCommentId?: string | null;
+  replies?: ReelComment[];
 };
 
 function formatWhen(iso: string) {
@@ -118,6 +120,7 @@ export default function Reels() {
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentDraft, setEditCommentDraft] = useState('');
+  const [replyingTo, setReplyingTo] = useState<ReelComment | null>(null);
   const [isMobileMaximized, setIsMobileMaximized] = useState(false);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const containerRef = useRef<HTMLDivElement>(null);
@@ -675,6 +678,7 @@ export default function Reels() {
     setCommentDraft('');
     setEditingCommentId(null);
     setEditCommentDraft('');
+    setReplyingTo(null);
     await loadComments(reel);
   }, [loadComments]);
 
@@ -753,22 +757,26 @@ export default function Reels() {
     if (!commentsOpenFor || !commentDraft.trim()) return;
 
     setIsSendingComment(true);
+    const isReply = !!replyingTo;
     try {
-      await interactionsService.comment('post', commentsOpenFor.postId, commentDraft.trim());
+      await interactionsService.comment('post', commentsOpenFor.postId, commentDraft.trim(), replyingTo?.id);
       setCommentDraft('');
-      setStatsByPostId((prev) => {
-        const current = prev[commentsOpenFor.postId] ?? {
-          likesCount: commentsOpenFor.likesCount,
-          commentsCount: commentsOpenFor.commentsCount,
-        };
-        return {
-          ...prev,
-          [commentsOpenFor.postId]: {
-            ...current,
-            commentsCount: current.commentsCount + 1,
-          },
-        };
-      });
+      setReplyingTo(null);
+      if (!isReply) {
+        setStatsByPostId((prev) => {
+          const current = prev[commentsOpenFor.postId] ?? {
+            likesCount: commentsOpenFor.likesCount,
+            commentsCount: commentsOpenFor.commentsCount,
+          };
+          return {
+            ...prev,
+            [commentsOpenFor.postId]: {
+              ...current,
+              commentsCount: current.commentsCount + 1,
+            },
+          };
+        });
+      }
       await loadComments(commentsOpenFor);
     } catch {
       toast({
@@ -779,7 +787,7 @@ export default function Reels() {
     } finally {
       setIsSendingComment(false);
     }
-  }, [commentDraft, commentsOpenFor, loadComments, toast, premiumAccess]);
+  }, [commentDraft, commentsOpenFor, replyingTo, loadComments, toast, premiumAccess]);
 
   const startEditingComment = (comment: ReelComment) => {
     setEditingCommentId(comment.id);
@@ -1180,6 +1188,7 @@ export default function Reels() {
             setCommentDraft('');
             setEditingCommentId(null);
             setEditCommentDraft('');
+            setReplyingTo(null);
           }
         }}
       >
@@ -1198,75 +1207,142 @@ export default function Reels() {
             ) : (
               <div className="space-y-4">
                 {comments.map((comment) => (
-                  <div key={comment.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                    <div className="mb-1 flex items-center gap-3">
-                      {comment.user?.avatar ? (
-                        <img
-                          src={resolveServerUrl(comment.user.avatar)}
-                          alt={comment.user.name}
-                          className="h-9 w-9 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">
-                          {String(comment.user?.name || 'U')[0].toUpperCase()}
+                  <div key={comment.id}>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <div className="mb-1 flex items-center gap-3">
+                        <Link
+                          to={getUserProfileHref(comment.user?.id, user?.id, '/rap')}
+                          className="shrink-0 transition-opacity hover:opacity-90"
+                        >
+                          {comment.user?.avatar ? (
+                            <img
+                              src={resolveServerUrl(comment.user.avatar)}
+                              alt={comment.user.name}
+                              className="h-9 w-9 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-xs font-semibold">
+                              {String(comment.user?.name || 'U')[0].toUpperCase()}
+                            </div>
+                          )}
+                        </Link>
+                        <div className="min-w-0">
+                          <Link
+                            to={getUserProfileHref(comment.user?.id, user?.id, '/rap')}
+                            className="block truncate text-sm font-semibold text-white hover:underline"
+                          >
+                            {comment.user?.name || 'Usuário'}
+                          </Link>
+                          <p className="text-xs text-white/50">{formatWhen(comment.createdAt)}</p>
                         </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-white">
-                          {comment.user?.name || 'Usuário'}
-                        </p>
-                        <p className="text-xs text-white/50">{formatWhen(comment.createdAt)}</p>
-                      </div>
-                      {String(comment.user?.id || '') === String(user?.id || '') ? (
                         <div className="ml-auto flex items-center gap-2">
-                          <button
-                            type="button"
-                            className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
-                            onClick={() => startEditingComment(comment)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
-                            onClick={() => void removeComment(comment.id)}
-                          >
-                            Excluir
-                          </button>
+                          {String(comment.user?.id || '') === String(user?.id || '') ? (
+                            <>
+                              <button
+                                type="button"
+                                className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_EDIT_CLASS}`}
+                                onClick={() => startEditingComment(comment)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                                onClick={() => void removeComment(comment.id)}
+                              >
+                                Excluir
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[11px] text-rose-400 hover:underline"
+                              onClick={() => setReplyingTo((prev) => (prev?.id === comment.id ? null : comment))}
+                            >
+                              {replyingTo?.id === comment.id ? '↩ Cancelar' : '↩ Responder'}
+                            </button>
+                          )}
                         </div>
-                      ) : null}
-                    </div>
-                    {editingCommentId === comment.id ? (
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={editCommentDraft}
-                          onChange={(event) => setEditCommentDraft(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') void saveEditedComment(comment.id);
-                          }}
-                          className={COMMENT_INLINE_INPUT_CLASS}
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          className={COMMENT_SAVE_BUTTON_CLASS}
-                          onClick={() => void saveEditedComment(comment.id)}
-                          disabled={!editCommentDraft.trim()}
-                        >
-                          Salvar
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className={COMMENT_CANCEL_BUTTON_CLASS}
-                          onClick={cancelEditingComment}
-                        >
-                          Cancelar
-                        </Button>
                       </div>
-                    ) : (
-                      <p className="text-sm leading-6 text-white/85">{comment.content}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={editCommentDraft}
+                            onChange={(event) => setEditCommentDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') void saveEditedComment(comment.id);
+                            }}
+                            className={COMMENT_INLINE_INPUT_CLASS}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            className={COMMENT_SAVE_BUTTON_CLASS}
+                            onClick={() => void saveEditedComment(comment.id)}
+                            disabled={!editCommentDraft.trim()}
+                          >
+                            Salvar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className={COMMENT_CANCEL_BUTTON_CLASS}
+                            onClick={cancelEditingComment}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-6 text-white/85">{comment.content}</p>
+                      )}
+                    </div>
+
+                    {/* Respostas */}
+                    {(comment.replies ?? []).length > 0 && (
+                      <div className="ml-11 mt-2 space-y-2 border-l-2 border-white/10 pl-3">
+                        {(comment.replies ?? []).map((reply) => (
+                          <div key={reply.id} className="rounded-xl border border-white/10 bg-white/5 p-2.5">
+                            <div className="mb-1 flex items-center gap-2">
+                              <Link
+                                to={getUserProfileHref(reply.user?.id, user?.id, '/rap')}
+                                className="shrink-0 transition-opacity hover:opacity-90"
+                              >
+                                {reply.user?.avatar ? (
+                                  <img
+                                    src={resolveServerUrl(reply.user.avatar)}
+                                    alt={reply.user.name}
+                                    className="h-6 w-6 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold">
+                                    {String(reply.user?.name || 'U')[0].toUpperCase()}
+                                  </div>
+                                )}
+                              </Link>
+                              <div className="min-w-0 flex-1">
+                                <Link
+                                  to={getUserProfileHref(reply.user?.id, user?.id, '/rap')}
+                                  className="text-xs font-medium text-white hover:underline"
+                                >
+                                  {reply.user?.name || 'Usuário'}
+                                </Link>
+                                <span className="ml-2 text-[10px] text-white/50">{formatWhen(reply.createdAt)}</span>
+                              </div>
+                              {String(reply.user?.id || '') === String(user?.id || '') && (
+                                <button
+                                  type="button"
+                                  className={`${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`}
+                                  onClick={() => void removeComment(reply.id)}
+                                >
+                                  Excluir
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-xs leading-5 text-white/80">{reply.content}</p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 ))}
@@ -1276,11 +1352,23 @@ export default function Reels() {
 
           <div className="border-t border-white/10 px-4 py-3 sm:px-5 sm:py-4">
             <div className="space-y-2">
+              {replyingTo && (
+                <div className="flex items-center gap-2 rounded-lg bg-rose-500/10 px-3 py-1.5 text-xs text-rose-300">
+                  <span>↩ Respondendo <strong>{replyingTo.user?.name || 'Usuário'}</strong></span>
+                  <button
+                    type="button"
+                    className="ml-auto text-white/60 hover:text-white"
+                    onClick={() => setReplyingTo(null)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
               <div className="flex items-end gap-2 sm:gap-3">
                 <Textarea
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}
-                  placeholder="Comentar vídeo..."
+                  placeholder={replyingTo ? `Responder ${replyingTo.user?.name || 'usuário'}...` : 'Comentar vídeo...'}
                   className="min-h-[72px] resize-none rounded-xl border-white/10 bg-white text-base text-zinc-900 placeholder:text-zinc-500 focus-visible:ring-rose-500 sm:min-h-[96px] sm:text-sm"
                 />
                 <Button
