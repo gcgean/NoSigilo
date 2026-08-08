@@ -265,6 +265,25 @@ function clampPercent(value: number) {
   return Math.max(0, Math.min(100, Math.round(value * 100) / 100));
 }
 
+// Converte o código ISO-3166 do país (ex.: "BR", vindo do header cf-ipcountry
+// do Cloudflare) em bandeira + nome legível. "T1" (saída Tor) e "XX"
+// (Cloudflare não conseguiu identificar) não são códigos ISO válidos — caem
+// no fallback e aparecem como estão, sem bandeira.
+function formatCountryLabel(rawCode: string) {
+  const code = String(rawCode || '').trim().toUpperCase();
+  // 'XX' é o código do Cloudflare para "não identificado" — não é um país ISO.
+  if (!code || code === 'DESCONHECIDO' || code === 'XX') return 'Desconhecido';
+  if (!/^[A-Z]{2}$/.test(code)) return code;
+  try {
+    const flag = String.fromCodePoint(...[...code].map((c) => 127397 + c.charCodeAt(0)));
+    const displayNames = new Intl.DisplayNames(['pt-BR'], { type: 'region' });
+    const name = displayNames.of(code);
+    return name && name !== code ? `${flag} ${name}` : `${flag} ${code}`;
+  } catch {
+    return code;
+  }
+}
+
 function formatUptimeLabel(totalSeconds: number) {
   const safeSeconds = Math.max(0, Math.trunc(totalSeconds || 0));
   const days = Math.floor(safeSeconds / 86400);
@@ -2762,22 +2781,31 @@ export default function Admin() {
               </Card>
 
               <Card className="p-4 glass sm:p-6">
-                <h3 className="mb-4 font-semibold">Local das visitas</h3>
-                <div className="space-y-3">
-                  {visitAnalytics.byCountry.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">Ainda sem local identificado.</p>
-                  ) : (
-                    visitAnalytics.byCountry.map((entry) => (
-                      <div key={entry.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-secondary/30 p-3 text-sm">
-                        <span className="flex min-w-0 items-center gap-2">
-                          <MapPin className="h-4 w-4 shrink-0 text-primary" />
-                          <span className="truncate">{entry.label}</span>
-                        </span>
-                        <Badge variant="outline" className="shrink-0">{entry.count}</Badge>
-                      </div>
-                    ))
-                  )}
-                </div>
+                <h3 className="mb-4 font-semibold">Acessos por país</h3>
+                {visitAnalytics.byCountry.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Ainda sem local identificado.</p>
+                ) : (() => {
+                  const max = Math.max(1, ...visitAnalytics.byCountry.map((c) => c.count));
+                  return (
+                    <div className="space-y-2">
+                      {visitAnalytics.byCountry.map((entry) => {
+                        const label = formatCountryLabel(entry.label);
+                        return (
+                          <div key={entry.label} className="flex items-center gap-2 text-xs">
+                            <span className="w-28 shrink-0 truncate" title={label}>{label}</span>
+                            <div className="h-5 flex-1 overflow-hidden rounded bg-secondary/40">
+                              <div
+                                className="h-full rounded bg-primary/70 transition-all"
+                                style={{ width: `${(entry.count / max) * 100}%` }}
+                              />
+                            </div>
+                            <span className="w-8 shrink-0 text-right font-medium tabular-nums">{entry.count}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </Card>
 
               <Card className="p-4 glass sm:p-6">
