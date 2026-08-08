@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
@@ -367,6 +367,8 @@ export default function Admin() {
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
+  const [visitAnalyticsLoading, setVisitAnalyticsLoading] = useState(false);
+  const [visitAnalyticsError, setVisitAnalyticsError] = useState(false);
   const [menConv, setMenConv] = useState<Awaited<ReturnType<typeof adminService.getMenConversion>> | null>(null);
   const [menConvPeriod, setMenConvPeriod] = useState<1 | 7 | 30>(7);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
@@ -703,23 +705,27 @@ export default function Admin() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Endpoint pesado (~17 queries em paralelo sobre site_visits) — em vez de
+  // esconder falha/timeout mostrando cards zerados como se fossem dado real,
+  // guarda o erro visivelmente e permite tentar de novo sem recarregar a página.
+  const loadVisitAnalytics = useCallback(async () => {
     const periodDays = cityUsersPeriod === 'all' ? undefined : Number(cityUsersPeriod);
     const accessDays = accessPeriod === 'all' ? undefined : Number(accessPeriod);
-    adminService.getVisitAnalytics(120, periodDays, accessDays)
-      .then((rawVisitAnalytics) => {
-        if (cancelled) return;
-        setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setVisitAnalytics(DEFAULT_VISIT_ANALYTICS);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setVisitAnalyticsLoading(true);
+    setVisitAnalyticsError(false);
+    try {
+      const rawVisitAnalytics = await adminService.getVisitAnalytics(120, periodDays, accessDays);
+      setVisitAnalytics(isRecord(rawVisitAnalytics) ? { ...DEFAULT_VISIT_ANALYTICS, ...rawVisitAnalytics } as VisitAnalytics : DEFAULT_VISIT_ANALYTICS);
+    } catch {
+      setVisitAnalyticsError(true);
+    } finally {
+      setVisitAnalyticsLoading(false);
+    }
   }, [cityUsersPeriod, accessPeriod]);
+
+  useEffect(() => {
+    void loadVisitAnalytics();
+  }, [loadVisitAnalytics]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2376,6 +2382,26 @@ export default function Admin() {
 
         <TabsContent value="visits">
           <div className="space-y-6">
+            {/* A consulta de visitas é pesada (várias queries agregadas) e pode
+                falhar por timeout — nesse caso os números abaixo NÃO são reais
+                (zerados), então avisamos em vez de deixar parecer que é dado
+                verdadeiro. */}
+            {visitAnalyticsError && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+                <p className="text-sm text-destructive">
+                  Não foi possível carregar os dados de visitas agora (a consulta é pesada e pode ter demorado demais). Os números abaixo estão incompletos.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadVisitAnalytics()}
+                  disabled={visitAnalyticsLoading}
+                >
+                  {visitAnalyticsLoading ? 'Tentando...' : 'Tentar novamente'}
+                </Button>
+              </div>
+            )}
             {/* ── KPI row ── */}
             <div className="grid gap-3 grid-cols-2 lg:grid-cols-7">
               {[

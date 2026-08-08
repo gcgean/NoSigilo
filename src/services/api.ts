@@ -1184,12 +1184,15 @@ export const adminService = {
   },
 
   getVisitAnalytics: async (limit = 120, cityUsersPeriodDays?: number, accessPeriodDays?: number) => {
+    // Endpoint pesado (várias queries agregadas sobre site_visits) — o timeout
+    // padrão de 10s (apiClient) já foi visto derrubando essa chamada em falso.
     const response = await apiClient.get('/admin/analytics/visits', {
       params: {
         limit,
         ...(cityUsersPeriodDays ? { cityUsersPeriodDays } : {}),
         ...(accessPeriodDays ? { accessPeriodDays } : {}),
       },
+      timeout: 30000,
     });
     return response.data;
   },
