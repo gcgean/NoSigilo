@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Crown } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Crown, Loader2 } from 'lucide-react';
 import ActiveNowBar from '@/components/ActiveNowBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -426,7 +426,7 @@ export default function SearchPage() {
       });
 
       await locationService.updateLocation(position.coords.latitude, position.coords.longitude);
-      if (radar === 'all') setRadar('25');
+      if (radar === 'all') setRadar('50');
       await fetchFirstPage();
 
       toast({
@@ -899,45 +899,57 @@ export default function SearchPage() {
 
       {/* Search & Filters */}
       <div className="mb-4 flex flex-col gap-3 sm:mb-5">
-        <div className="relative flex-1">
-          <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nome ou cidade..."
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                setShowSuggestions(false);
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                void fetchFirstPage();
-              }
-            }}
-            className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
-          />
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
-              <p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
-              {suggestions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
-                >
-                  <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{s.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome ou cidade..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setShowSuggestions(false);
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  void fetchFirstPage();
+                }
+              }}
+              className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
+            />
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
+                <p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
+                {suggestions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
+                  >
+                    <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{s.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleUseDeviceRadar()}
+            disabled={isLocating}
+            title="Buscar pessoas próximas por GPS (raio de 50 km)"
+            aria-label="Buscar pessoas próximas por GPS"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-primary/15 bg-background text-primary transition-colors hover:bg-primary/10 disabled:opacity-60 sm:h-10 sm:w-10 sm:rounded-md sm:border-input"
+          >
+            {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <MapPin className="h-5 w-5" />}
+          </button>
         </div>
         <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex sm:flex-row">
           <Button
