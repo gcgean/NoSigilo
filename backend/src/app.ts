@@ -2798,7 +2798,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // Skip HubBilling sync for billing-test whitelist users so manual DB overrides persist
     const isTestUser = isBillingEnabledForUser(false, String(row.email || ''), env.BILLING_TEST_EMAILS)
       && !await getSubscriptionsEnabled(db);
-    if (shouldUseHubBilling(env) && !isTestUser) {
+    // Sem hub_customer_id (nunca assinou) e sem billing_document, o Hub Billing não
+    // tem como identificar o usuário — /access/resolve exige documento com 11+
+    // caracteres e sempre rejeita. Chamar mesmo assim só gera erro no log e até 8s
+    // de espera no login, sem nenhum efeito (o catch abaixo já é um no-op).
+    const hasHubIdentity = !!String(row.hub_customer_id || '').trim() || !!String(row.billing_document || '').trim();
+    if (shouldUseHubBilling(env) && !isTestUser && hasHubIdentity) {
       try {
         const hubLoginTimeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('HubBilling timeout')), 8000)
