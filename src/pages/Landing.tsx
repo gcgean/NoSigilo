@@ -151,7 +151,7 @@ export default function Landing() {
             <a href="#privacidade" onClick={() => setMenuOpen(false)}>Privacidade</a>
             <a href="#relatos" onClick={() => setMenuOpen(false)}>Relatos</a>
             <button type="button" onClick={handleEnter}>Entrar</button>
-            <Link to="/register">Criar perfil grátis</Link>
+            <Link to="/register">Crie o seu perfil</Link>
           </nav>
         ) : null}
       </header>
@@ -173,7 +173,7 @@ export default function Landing() {
               <div className="landing-hero-actions">
                 <Button asChild size="lg" className="landing-primary-button">
                   <Link to="/register">
-                    Criar perfil grátis
+                    Crie o seu perfil
                     <ArrowRight data-icon="inline-end" />
                   </Link>
                 </Button>
@@ -328,7 +328,7 @@ export default function Landing() {
             <div className="landing-final-actions">
               <Button asChild size="lg" className="landing-primary-button">
                 <Link to="/register">
-                  Criar perfil grátis
+                  Crie o seu perfil
                   <ArrowRight data-icon="inline-end" />
                 </Link>
               </Button>
