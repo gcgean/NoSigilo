@@ -26,11 +26,22 @@ export default function TopDayBar() {
 
   useEffect(() => {
     let active = true;
-    radarService.getTopDay()
-      .then((res) => { if (active) setPosts(res.posts); })
-      .catch(() => { if (active) setPosts([]); })
-      .finally(() => { if (active) setLoaded(true); });
-    return () => { active = false; };
+    const fetchTopDay = () => {
+      radarService.getTopDay()
+        .then((res) => { if (active) setPosts(res.posts); })
+        .catch(() => {
+          // Falha num poll periódico não deve apagar uma lista que já estava
+          // valendo — só some se ainda não tínhamos carregado nada com sucesso.
+          if (active) setPosts((prev) => (prev.length > 0 ? prev : []));
+        })
+        .finally(() => { if (active) setLoaded(true); });
+    };
+    fetchTopDay();
+    // Sem isso, quem deixa o feed aberto por horas vê o ranking congelado no
+    // momento em que a página carregou — o ranking em si é sempre calculado
+    // na hora pelo backend, só o front nunca ia buscar de novo.
+    const intervalId = window.setInterval(fetchTopDay, 3 * 60 * 1000);
+    return () => { active = false; window.clearInterval(intervalId); };
   }, []);
 
   // Some enquanto carrega e quando não há nada em alta
