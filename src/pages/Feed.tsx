@@ -310,6 +310,7 @@ export default function Feed() {
   const [myPhotoReactions, setMyPhotoReactions] = useState<Record<string, PhotoReaction | null>>({});
   const [isLoadingPhotoReactions, setIsLoadingPhotoReactions] = useState<Record<string, boolean>>({});
   const [openReactionPickerPostId, setOpenReactionPickerPostId] = useState<string | null>(null);
+  const [heartBurstPostId, setHeartBurstPostId] = useState<string | null>(null);
   const [reactionsModalPostId, setReactionsModalPostId] = useState<string | null>(null);
   const [reactionsModalTab, setReactionsModalTab] = useState<string>('all');
   const [reactionsModalData, setReactionsModalData] = useState<Array<{ id: string; reaction: string | null; user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } }>>([]);
@@ -1345,6 +1346,15 @@ export default function Feed() {
       setAllPosts((prev) => prev.map((p) => (p.id === post.id ? post : p)));
       toast({ title: 'Erro ao curtir', description: 'Tente novamente.', variant: 'destructive' });
     }
+  };
+
+  // Duplo toque/clique na mídia do post — mesmo padrão já usado no Reels
+  // (heart-pop existente em index.css): sempre mostra o coração, mas só curte
+  // se ainda não estava curtido (nunca descurte via duplo toque).
+  const handleMediaDoubleClick = (post: FeedPost) => {
+    setHeartBurstPostId(post.id);
+    window.setTimeout(() => setHeartBurstPostId((cur) => (cur === post.id ? null : cur)), 800);
+    if (!post.likedByMe) void handleToggleLike(post);
   };
 
   const loadPhotoReactions = async (photoId: string) => {
@@ -2754,7 +2764,7 @@ export default function Feed() {
 
               {/* Post Media */}
               {item.post.media?.length > 0 && (
-                <div className="px-3 pb-3 sm:px-4">
+                <div className="relative px-3 pb-3 sm:px-4" onDoubleClick={() => handleMediaDoubleClick(item.post)}>
                   <PostMediaCarousel
                     media={item.post.media
                       .map((m) => ({ id: m.id, url: m.url ?? '', mimeType: m.mimeType ?? '', isLocked: m.isLocked }))}
@@ -2765,6 +2775,15 @@ export default function Feed() {
                     premiumAccess={premiumAccess}
                     onPremiumGate={() => setPaywallOpen(true)}
                   />
+                  {heartBurstPostId === item.post.id && (
+                    <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
+                      <Heart
+                        className="h-24 w-24 text-rose-500 drop-shadow-[0_2px_12px_rgba(0,0,0,0.5)]"
+                        fill="currentColor"
+                        style={{ animation: 'heart-pop 0.8s ease-out forwards' }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
