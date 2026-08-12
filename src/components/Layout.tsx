@@ -31,6 +31,7 @@ import {
   BadgeDollarSign,
   Coins,
   Plus,
+  LifeBuoy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ import CityRequiredModal from '@/components/CityRequiredModal';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
+import SupportChatDialog from '@/components/SupportChatDialog';
 import InviteModal from '@/components/InviteModal';
 import { hasPremiumAccess } from '@/utils/premium';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
@@ -191,6 +193,7 @@ export default function Layout() {
     return localStorage.getItem(INTERESTS_NUDGE_DISMISS_KEY) === today;
   });
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const subscriptionsEnabled = user?.subscriptionsEnabled !== false;
   const trialEnds = parseValidDate(user?.trialEndsAt);
@@ -752,6 +755,17 @@ export default function Layout() {
                 </NavLink>
               );
             })}
+
+            {/* Suporte — mesmo estilo dos itens acima, mas abre o chat direto
+                em vez de navegar (não tem rota própria). */}
+            <button
+              type="button"
+              onClick={() => setSupportOpen(true)}
+              className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
+            >
+              <LifeBuoy className="h-5 w-5" />
+              <span className="font-medium">Suporte</span>
+            </button>
           </nav>
 
           <div className="border-t pt-4 space-y-1">
@@ -1035,6 +1049,7 @@ export default function Layout() {
             <ScreenGuard />
             <RadarNightPrompt />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
+            <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
           </div>
         </main>

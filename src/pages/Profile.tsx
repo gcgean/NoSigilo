@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2 } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2, LifeBuoy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -15,6 +15,7 @@ import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import { REACTION_EMOJI } from '@/lib/reactions';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import SupportChatDialog from '@/components/SupportChatDialog';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService } from '@/services/api';
@@ -354,6 +355,7 @@ export default function Profile() {
   const { socket } = useSocket();
   const [activeTab, setActiveTab] = useState('photos');
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
@@ -1151,6 +1153,16 @@ export default function Profile() {
                   Configurações
                 </Button>
               </NavLink>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full gap-2"
+                onClick={() => setSupportOpen(true)}
+              >
+                <LifeBuoy className="w-4 h-4" />
+                Suporte
+              </Button>
             </div>
           </div>
         </div>
@@ -1796,6 +1808,7 @@ export default function Profile() {
       )}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
     </div>
   );
 }
