@@ -374,20 +374,15 @@ export default function Reels() {
     return base;
   }, [initialSeenReelIds, reels, preloadedReel, skipSeen]);
 
-  const viewedPostIdsRef = useRef<Set<string>>(new Set());
-
   const markReelAsSeen = useCallback((reelId: string) => {
     if (!reelId) return;
 
     addSeenVideoId(reelId, user?.id); // lista única compartilhada com a Busca de Vídeos
     setSeenReelIds((prev) => (prev.includes(reelId) ? prev : [...prev, reelId]));
 
-    // Visualização (dedup no cliente + no servidor) — 1 por post, não por clipe.
+    // Visualização — sem dedup, cada vez que o clipe entra na tela soma.
     const postId = orderedReels.find((r) => r.id === reelId)?.postId;
-    if (postId && !viewedPostIdsRef.current.has(postId)) {
-      viewedPostIdsRef.current.add(postId);
-      void feedService.viewPost(postId).catch(() => { viewedPostIdsRef.current.delete(postId); });
-    }
+    if (postId) void feedService.viewPost(postId).catch(() => {});
   }, [user?.id, orderedReels]);
 
   useEffect(() => {

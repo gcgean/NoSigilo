@@ -509,9 +509,9 @@ export default function Feed() {
   }, [feedFilter, feedSessionBaseline, visiblePosts]);
 
   // Visualizações: um único IntersectionObserver observa todos os cards de post
-  // e dispara 1 view (dedup no cliente + no servidor) quando o post fica >=50%
-  // visível. Reobserva sempre que a lista renderizada muda (nova página, filtro).
-  const viewedPostIdsRef = useRef<Set<string>>(new Set());
+  // e dispara 1 view sempre que o post fica >=50% visível — sem dedup, cada
+  // entrada na tela soma (inclusive ao rolar de volta pro mesmo post). Reobserva
+  // sempre que a lista renderizada muda (nova página, filtro).
   useEffect(() => {
     const cards = document.querySelectorAll<HTMLElement>('[data-post-card][data-post-id]');
     if (cards.length === 0) return;
@@ -520,18 +520,13 @@ export default function Feed() {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           const postId = (entry.target as HTMLElement).dataset.postId;
-          if (!postId || viewedPostIdsRef.current.has(postId)) continue;
-          viewedPostIdsRef.current.add(postId);
-          observer.unobserve(entry.target);
-          void feedService.viewPost(postId).catch(() => { viewedPostIdsRef.current.delete(postId); });
+          if (!postId) continue;
+          void feedService.viewPost(postId).catch(() => {});
         }
       },
       { threshold: 0.5 }
     );
-    cards.forEach((el) => {
-      const postId = el.dataset.postId;
-      if (postId && !viewedPostIdsRef.current.has(postId)) observer.observe(el);
-    });
+    cards.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [feedDisplayItems]);
 

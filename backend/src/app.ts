@@ -5503,18 +5503,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
-  // Registra 1 visualização (dedup por usuário) — feed e vídeos chamam ao ficar
-  // visível na tela. Best-effort: nunca precisa bloquear a UI.
+  // Registra 1 visualização — feed e vídeos chamam ao ficar visível na tela.
+  // Sem dedup: toda visualização soma, mesmo repetida pelo mesmo usuário.
+  // Best-effort: nunca precisa bloquear a UI.
   app.post('/api/posts/:postId/view', requireAuth(env, db), async (req, res) => {
     const postId = String(req.params.postId || '');
     const viewerId = req.auth!.userId;
-    const existing = (await queryOne(db, 'SELECT id FROM post_views WHERE post_id = ? AND viewer_id = ?', [postId, viewerId])) as any;
-    if (!existing?.id) {
-      await run(db, 'INSERT INTO post_views (id, post_id, viewer_id, created_at) VALUES (?, ?, ?, ?)', [
-        randomUUID(), postId, viewerId, nowIso(),
-      ]);
-      await persist();
-    }
+    await run(db, 'INSERT INTO post_views (id, post_id, viewer_id, created_at) VALUES (?, ?, ?, ?)', [
+      randomUUID(), postId, viewerId, nowIso(),
+    ]);
+    await persist();
     const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM post_views WHERE post_id = ?', [postId])) as any;
     res.json({ ok: true, viewsCount: Number(countRow?.c || 0) });
   });
