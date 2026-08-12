@@ -427,7 +427,11 @@ export default function Match() {
       </div>
 
 
-      <div className="relative h-[min(68dvh,520px)] min-h-[390px] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
+      {/* svh (não dvh): dvh recalcula ao vivo conforme a barra de endereço do
+          navegador mobile some/aparece durante o scroll, fazendo o card e tudo
+          abaixo dele mudar de altura e "pular" de posição a cada rolagem. svh
+          usa o menor viewport possível (com a barra visível) e fica estável. */}
+      <div className="relative h-[min(68svh,520px)] min-h-[390px] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && (
           <div className="absolute inset-0">
             <MobileState
