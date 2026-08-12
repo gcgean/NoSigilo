@@ -4487,6 +4487,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       for (const r of likedByMeRows as any[]) likedByMeSet.add(String(r.target_id));
     }
 
+    const viewsCountByPostId = new Map<string, number>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const viewCounts = await queryAll(
+        db,
+        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+        postIds
+      );
+      for (const vr of viewCounts as any[]) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
+    }
+
     // Aggregate reactions per post (reaction type → count, top 3 distinct types)
     const reactionsByPostId = new Map<string, { type: string; count: number }[]>();
     if (postIds.length > 0) {
@@ -4525,6 +4536,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         media: (mediaIdsByPostId.get(String(r.id)) ?? []).map((mid) => mediaById.get(mid)).filter(Boolean),
         likesCount: likesCountByPostId.get(String(r.id)) ?? 0,
         commentsCount: commentsCountByPostId.get(String(r.id)) ?? 0,
+        viewsCount: viewsCountByPostId.get(String(r.id)) ?? 0,
         likedByMe: likedByMeSet.has(String(r.id)),
         reactions: reactionsByPostId.get(String(r.id)) ?? [],
         feedContext: feedContextByPostId.get(String(r.id)) ?? null,
@@ -5313,6 +5325,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       for (const cr of commentCounts) commentsCountByPostId.set(String(cr.target_id), Number(cr.c || 0));
     }
 
+    const viewsCountByPostId = new Map<string, number>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const viewCounts = await queryAll(
+        db,
+        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+        postIds
+      ) as any[];
+      for (const vr of viewCounts) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
+    }
+
     // Build result entries (one per video media item), with distance calc + filter
     const videos: any[] = [];
     for (const r of slice) {
@@ -5344,6 +5367,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           createdAt: String(r.created_at || ''),
           likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
           commentsCount: commentsCountByPostId.get(String(r.post_id)) ?? 0,
+          viewsCount: viewsCountByPostId.get(String(r.post_id)) ?? 0,
           distanceKm,
           author: {
             id: String(r.author_id),
@@ -5477,6 +5501,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await run(db, 'DELETE FROM posts WHERE id = ? AND user_id = ?', [postId, req.auth!.userId]);
     await persist();
     res.json({ ok: true });
+  });
+
+  // Registra 1 visualização (dedup por usuário) — feed e vídeos chamam ao ficar
+  // visível na tela. Best-effort: nunca precisa bloquear a UI.
+  app.post('/api/posts/:postId/view', requireAuth(env, db), async (req, res) => {
+    const postId = String(req.params.postId || '');
+    const viewerId = req.auth!.userId;
+    const existing = (await queryOne(db, 'SELECT id FROM post_views WHERE post_id = ? AND viewer_id = ?', [postId, viewerId])) as any;
+    if (!existing?.id) {
+      await run(db, 'INSERT INTO post_views (id, post_id, viewer_id, created_at) VALUES (?, ?, ?, ?)', [
+        randomUUID(), postId, viewerId, nowIso(),
+      ]);
+      await persist();
+    }
+    const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM post_views WHERE post_id = ?', [postId])) as any;
+    res.json({ ok: true, viewsCount: Number(countRow?.c || 0) });
   });
 
   app.get('/api/feed/experiences', requireAuth(env, db), async (req, res) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -85,6 +85,7 @@ type FeedPost = {
   media: FeedMedia[];
   likesCount: number;
   commentsCount: number;
+  viewsCount?: number;
   likedByMe: boolean;
   reactions?: { type: string; count: number }[];
   feedContext?: FeedContext | null;
@@ -506,6 +507,33 @@ export default function Feed() {
 
     return items;
   }, [feedFilter, feedSessionBaseline, visiblePosts]);
+
+  // Visualizações: um único IntersectionObserver observa todos os cards de post
+  // e dispara 1 view (dedup no cliente + no servidor) quando o post fica >=50%
+  // visível. Reobserva sempre que a lista renderizada muda (nova página, filtro).
+  const viewedPostIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const cards = document.querySelectorAll<HTMLElement>('[data-post-card][data-post-id]');
+    if (cards.length === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const postId = (entry.target as HTMLElement).dataset.postId;
+          if (!postId || viewedPostIdsRef.current.has(postId)) continue;
+          viewedPostIdsRef.current.add(postId);
+          observer.unobserve(entry.target);
+          void feedService.viewPost(postId).catch(() => { viewedPostIdsRef.current.delete(postId); });
+        }
+      },
+      { threshold: 0.5 }
+    );
+    cards.forEach((el) => {
+      const postId = el.dataset.postId;
+      if (postId && !viewedPostIdsRef.current.has(postId)) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [feedDisplayItems]);
 
   // No feed não exibimos a localização (cidade/estado) do autor — apenas o gênero.
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
@@ -2660,7 +2688,7 @@ export default function Feed() {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
             ) : (
-            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card className="overflow-hidden glass" style={{ contain: 'paint' }}>
+            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card data-post-id={item.post.id} className="overflow-hidden glass" style={{ contain: 'paint' }}>
               {/* Post Header */}
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link
@@ -2858,6 +2886,14 @@ export default function Feed() {
                     <MessageCircle className="w-5 h-5" />
                     <span className="text-sm font-medium">{item.post.commentsCount}</span>
                   </button>
+
+                  {/* Visualizações */}
+                  {!!item.post.viewsCount && item.post.viewsCount > 0 && (
+                    <span className="flex items-center gap-1.5 text-muted-foreground" title="Visualizações">
+                      <Eye className="w-4.5 h-4.5" />
+                      <span className="text-sm font-medium">{item.post.viewsCount}</span>
+                    </span>
+                  )}
                 </div>
 
                 {/* Reactions summary — right side */}

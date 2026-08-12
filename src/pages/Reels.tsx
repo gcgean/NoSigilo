@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Search } from 'lucide-react';
+import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Search, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { interactionsService, videoSearchService } from '@/services/api';
+import { interactionsService, videoSearchService, feedService } from '@/services/api';
 import { readVideoFilters, videoFiltersToSearchParams } from '@/lib/videoFilters';
 import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
@@ -50,6 +50,7 @@ type ReelItem = {
   createdAt: string;
   likesCount: number;
   commentsCount: number;
+  viewsCount: number;
   likedByMe: boolean;
 };
 
@@ -139,6 +140,7 @@ export default function Reels() {
         createdAt: String(v.createdAt || ''),
         likesCount: Number(v.likesCount || 0),
         commentsCount: Number(v.commentsCount || 0),
+        viewsCount: Number(v.viewsCount || 0),
         likedByMe: false,
       })) as ReelItem[];
   }, []);
@@ -372,12 +374,21 @@ export default function Reels() {
     return base;
   }, [initialSeenReelIds, reels, preloadedReel, skipSeen]);
 
+  const viewedPostIdsRef = useRef<Set<string>>(new Set());
+
   const markReelAsSeen = useCallback((reelId: string) => {
     if (!reelId) return;
 
     addSeenVideoId(reelId, user?.id); // lista única compartilhada com a Busca de Vídeos
     setSeenReelIds((prev) => (prev.includes(reelId) ? prev : [...prev, reelId]));
-  }, [user?.id]);
+
+    // Visualização (dedup no cliente + no servidor) — 1 por post, não por clipe.
+    const postId = orderedReels.find((r) => r.id === reelId)?.postId;
+    if (postId && !viewedPostIdsRef.current.has(postId)) {
+      viewedPostIdsRef.current.add(postId);
+      void feedService.viewPost(postId).catch(() => { viewedPostIdsRef.current.delete(postId); });
+    }
+  }, [user?.id, orderedReels]);
 
   useEffect(() => {
     if (orderedReels.length === 0) {
@@ -1077,6 +1088,16 @@ export default function Reels() {
               </div>
               <span className="text-xs font-medium text-white/85">{reel.stats.commentsCount}</span>
             </button>
+
+            {/* Visualizações */}
+            {reel.viewsCount > 0 && (
+              <div className="flex flex-col items-center gap-1 text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 backdrop-blur-sm sm:h-11 sm:w-11">
+                  <Eye className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-medium text-white/85">{reel.viewsCount}</span>
+              </div>
+            )}
           </div>
 
           {/* Bottom info */}

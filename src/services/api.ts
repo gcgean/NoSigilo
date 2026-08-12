@@ -122,6 +122,7 @@ export const videoSearchService = {
       createdAt: string;
       likesCount: number;
       commentsCount: number;
+      viewsCount: number;
       distanceKm: number | null;
       author: {
         id: string;
@@ -168,6 +169,13 @@ export const feedService = {
 
   deletePost: async (postId: string) => {
     const response = await apiClient.delete(`/posts/${postId}`);
+    return response.data;
+  },
+
+  // Registra 1 visualização (dedup por usuário no servidor) — chamar quando o
+  // post fica visível na tela (feed) ou o vídeo entra no viewport (reels).
+  viewPost: async (postId: string): Promise<{ viewsCount: number }> => {
+    const response = await apiClient.post(`/posts/${postId}/view`);
     return response.data;
   },
 
