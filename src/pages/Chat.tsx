@@ -63,6 +63,23 @@ function formatLastSeen(lastSeenAt: string | null | undefined, isOnline?: boolea
   return '';
 }
 
+// Hora compacta da última mensagem para a lista de conversas (estilo WhatsApp).
+function formatConvTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const t = d.getTime();
+  if (Number.isNaN(t)) return '';
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h`;
+  const days = Math.floor(h / 24);
+  if (days === 1) return 'ontem';
+  if (days < 7) return `${days}d`;
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
 function generateIceBreakers(
   partnerName: string,
   partnerCity: string | null | undefined,
@@ -1180,7 +1197,7 @@ export default function Chat() {
                 <UserAvatar user={conversation.user} className="h-11 w-11 sm:h-10 sm:w-10" />
               </div>
               <div className="min-w-0 flex-1 text-left">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
                     {conversation.isHighlighted ? (
                       <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />
@@ -1189,11 +1206,21 @@ export default function Chat() {
                       {conversation.user.name}
                     </span>
                   </div>
-                  {conversation.unreadCount && conversation.unreadCount > 0 && (
-                    <Badge variant="destructive" className="flex h-5 min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold">
-                      {conversation.unreadCount}
-                    </Badge>
-                  )}
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {conversation.lastMessageAt ? (
+                      <span className={cn(
+                        'text-[11px] leading-none',
+                        conversation.unreadCount && conversation.unreadCount > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'
+                      )}>
+                        {formatConvTime(conversation.lastMessageAt)}
+                      </span>
+                    ) : null}
+                    {conversation.unreadCount && conversation.unreadCount > 0 ? (
+                      <Badge variant="destructive" className="flex h-5 min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold">
+                        {conversation.unreadCount}
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
                 {getIdentityLine(conversation.user) ? (
                   <p className="text-xs truncate text-muted-foreground">{getIdentityLine(conversation.user)}</p>
