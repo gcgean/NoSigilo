@@ -164,6 +164,18 @@ export default function SearchPage() {
             if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
             if (ageRange === '45+' && age < 45) return false;
           }
+          // Radar (distância): perfis sem distância conhecida saem quando um
+          // raio está ativo — igual à busca normal, evita falso positivo.
+          if (radar !== 'all') {
+            const maxKm = Number(radar);
+            if (typeof p?.distanceKm !== 'number' || p.distanceKm > maxKm) return false;
+          }
+          // Modo Encontro Hoje: só perfis com disponibilidade ativa (mesma
+          // regra do backend — exclui vazio e "not_looking").
+          if (availableOnly) {
+            const status = p?.availabilityStatus;
+            if (!status || status === 'not_looking') return false;
+          }
           return true;
         })
         .sort((a, b) => {
@@ -173,7 +185,7 @@ export default function SearchPage() {
           return String(b?.likedAt || '').localeCompare(String(a?.likedAt || ''));
         });
     },
-    [search, city, ageRange, selectedGenders]
+    [search, city, ageRange, selectedGenders, radar, availableOnly]
   );
 
   // ── fetch first page (reset) ───────────────────────────────────────────────
@@ -994,7 +1006,7 @@ export default function SearchPage() {
           <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
               <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km'],['100','100 km']] as const).map(([v, l]) => (
+              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km'],['100','100 km'],['500','500 km']] as const).map(([v, l]) => (
                 <button
                   key={v}
                   type="button"
