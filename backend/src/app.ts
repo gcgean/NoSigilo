@@ -11070,17 +11070,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   app.get('/api/events', requireAuth(env, db), async (req, res) => {
     const myEvents = String(req.query.myEvents || '') === 'true';
+    const viewerId = req.auth!.userId;
     const rows = await queryAll(
       db,
       `
-      SELECT e.id, e.payload_json, e.created_at, u.name as user_name
+      SELECT e.id, e.payload_json, e.created_at, u.name as user_name,
+        (SELECT COUNT(*) FROM event_attendees ea WHERE ea.event_id = e.id) as attendees_count,
+        EXISTS (SELECT 1 FROM event_attendees ea2 WHERE ea2.event_id = e.id AND ea2.user_id = ?) as is_going,
+        (SELECT eg.id FROM event_groups eg WHERE eg.event_id = e.id) as group_id
       FROM events e
       JOIN users u ON u.id = e.user_id
       WHERE (? = 0 OR e.user_id = ?)
       ORDER BY e.created_at DESC
       LIMIT 200
     `,
-      [myEvents ? 1 : 0, req.auth!.userId]
+      [viewerId, myEvents ? 1 : 0, viewerId]
     );
     res.json(
       rows.map((r: any) => ({
@@ -11088,8 +11092,299 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         ...(safeJsonParse(r.payload_json) ?? {}),
         createdAt: r.created_at,
         createdBy: r.user_name,
+        attendees: Number(r.attendees_count || 0),
+        isGoing: Number(r.is_going) === 1 || r.is_going === true,
+        groupId: r.group_id ? String(r.group_id) : null,
       }))
     );
+  });
+
+  // ── Grupo-por-evento ────────────────────────────────────────────────────────
+  // Confirmar presença cria (ou entra n)o grupo de chat do evento; desconfirmar
+  // sai do grupo. O grupo expira alguns dias após a data do evento (scheduler).
+  const EVENT_GROUP_EXPIRE_BUFFER_DAYS = 3;
+  const EVENT_GROUP_FALLBACK_DAYS = 30; // se a data do evento não puder ser lida
+
+  function computeEventGroupExpiry(payload: any): string {
+    const dateStr = String(payload?.date || '');
+    const timeStr = String(payload?.time || '00:00');
+    const parsed = dateStr ? new Date(`${dateStr}T${timeStr.length === 5 ? timeStr : '00:00'}`) : null;
+    const baseMs = parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : Date.now() + EVENT_GROUP_FALLBACK_DAYS * 86400000;
+    return new Date(baseMs + EVENT_GROUP_EXPIRE_BUFFER_DAYS * 86400000).toISOString();
+  }
+
+  async function getOrCreateEventGroup(eventId: string, organizerId: string, payload: any): Promise<string> {
+    const existing = (await queryOne(db, 'SELECT id FROM event_groups WHERE event_id = ?', [eventId])) as any;
+    if (existing?.id) return String(existing.id);
+    const groupId = randomUUID();
+    const ts = nowIso();
+    await run(db, 'INSERT INTO event_groups (id, event_id, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [
+      groupId, eventId, organizerId, ts, computeEventGroupExpiry(payload),
+    ]);
+    // O organizador entra automaticamente como admin do grupo.
+    await run(db, 'INSERT INTO event_group_members (id, group_id, user_id, role, joined_at) VALUES (?, ?, ?, ?, ?)', [
+      randomUUID(), groupId, organizerId, 'organizer', ts,
+    ]);
+    return groupId;
+  }
+
+  app.post('/api/events/:eventId/attend', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const eventId = String(req.params.eventId || '');
+    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+    const event = (await queryOne(db, 'SELECT id, user_id, payload_json FROM events WHERE id = ? LIMIT 1', [eventId])) as any;
+    if (!event) { res.status(404).json({ error: 'not_found' }); return; }
+    const payload = safeJsonParse(event.payload_json) ?? {};
+
+    const already = (await queryOne(db, 'SELECT id FROM event_attendees WHERE event_id = ? AND user_id = ?', [eventId, userId])) as any;
+    if (!already?.id) {
+      await run(db, 'INSERT INTO event_attendees (id, event_id, user_id, created_at) VALUES (?, ?, ?, ?)', [
+        randomUUID(), eventId, userId, nowIso(),
+      ]);
+    }
+
+    const groupId = await getOrCreateEventGroup(eventId, String(event.user_id), payload);
+    const alreadyMember = (await queryOne(db, 'SELECT id FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
+    if (!alreadyMember?.id) {
+      await run(db, 'INSERT INTO event_group_members (id, group_id, user_id, role, joined_at) VALUES (?, ?, ?, ?, ?)', [
+        randomUUID(), groupId, userId, 'member', nowIso(),
+      ]);
+    }
+    await persist();
+
+    const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM event_attendees WHERE event_id = ?', [eventId])) as any;
+    res.json({ ok: true, groupId, attendeesCount: Number(countRow?.c || 0) });
+  });
+
+  app.delete('/api/events/:eventId/attend', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const eventId = String(req.params.eventId || '');
+    await run(db, 'DELETE FROM event_attendees WHERE event_id = ? AND user_id = ?', [eventId, userId]);
+    const group = (await queryOne(db, 'SELECT id FROM event_groups WHERE event_id = ?', [eventId])) as any;
+    if (group?.id) {
+      // Organizador não sai do próprio grupo desconfirmando (ele o criou);
+      // membros comuns saem ao desconfirmar presença.
+      const isOrganizer = (await queryOne(db, "SELECT id FROM event_group_members WHERE group_id = ? AND user_id = ? AND role = 'organizer'", [String(group.id), userId])) as any;
+      if (!isOrganizer?.id) {
+        await run(db, 'DELETE FROM event_group_members WHERE group_id = ? AND user_id = ?', [String(group.id), userId]);
+      }
+    }
+    await persist();
+    const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM event_attendees WHERE event_id = ?', [eventId])) as any;
+    res.json({ ok: true, attendeesCount: Number(countRow?.c || 0) });
+  });
+
+  app.get('/api/events/:eventId/attendees', requireAuth(env, db), async (req, res) => {
+    const eventId = String(req.params.eventId || '');
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.is_verified FROM event_attendees ea
+        JOIN users u ON u.id = ea.user_id
+        WHERE ea.event_id = ? AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        ORDER BY ea.created_at ASC LIMIT 300`,
+      [eventId]
+    )) as any[];
+    res.json(rows.map((r) => ({ id: String(r.id), name: String(r.name || ''), avatar: r.avatar ?? null, isVerified: Number(r.is_verified || 0) === 1 })));
+  });
+
+  // Meus grupos (um por evento em que confirmei presença), mais recente primeiro.
+  app.get('/api/groups', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const rows = (await queryAll(
+      db,
+      `SELECT eg.id AS group_id, eg.event_id, eg.expires_at, e.payload_json, e.user_id AS organizer_id,
+              (SELECT COUNT(*) FROM event_group_members m2 WHERE m2.group_id = eg.id) AS member_count,
+              (SELECT gm2.created_at FROM event_group_messages gm2 WHERE gm2.group_id = eg.id ORDER BY gm2.created_at DESC LIMIT 1) AS last_message_at,
+              (SELECT gm3.content FROM event_group_messages gm3 WHERE gm3.group_id = eg.id ORDER BY gm3.created_at DESC LIMIT 1) AS last_message_content
+         FROM event_group_members m
+         JOIN event_groups eg ON eg.id = m.group_id
+         JOIN events e ON e.id = eg.event_id
+        WHERE m.user_id = ?
+        ORDER BY COALESCE(last_message_at, eg.created_at) DESC
+        LIMIT 200`,
+      [userId]
+    )) as any[];
+    res.json(
+      rows.map((r) => {
+        const payload = safeJsonParse(r.payload_json) ?? {};
+        return {
+          groupId: String(r.group_id),
+          eventId: String(r.event_id),
+          title: String((payload as any)?.title || 'Evento'),
+          image: (payload as any)?.image || null,
+          date: (payload as any)?.date || null,
+          location: (payload as any)?.location || null,
+          isOrganizer: String(r.organizer_id) === userId,
+          memberCount: Number(r.member_count || 0),
+          expiresAt: r.expires_at,
+          lastMessageAt: r.last_message_at || null,
+          lastMessagePreview: r.last_message_content != null ? String(r.last_message_content) : null,
+        };
+      })
+    );
+  });
+
+  async function requireGroupMember(groupId: string, userId: string): Promise<{ isMember: boolean; isOrganizer: boolean }> {
+    const row = (await queryOne(db, 'SELECT role FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
+    if (!row) return { isMember: false, isOrganizer: false };
+    return { isMember: true, isOrganizer: String(row.role) === 'organizer' };
+  }
+
+  app.get('/api/groups/:groupId', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const { isMember } = await requireGroupMember(groupId, userId);
+    if (!isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    const group = (await queryOne(
+      db,
+      `SELECT eg.id, eg.event_id, eg.expires_at, e.payload_json FROM event_groups eg JOIN events e ON e.id = eg.event_id WHERE eg.id = ?`,
+      [groupId]
+    )) as any;
+    if (!group) { res.status(404).json({ error: 'not_found' }); return; }
+    const members = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, m.role FROM event_group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.role = 'organizer' DESC, m.joined_at ASC`,
+      [groupId]
+    )) as any[];
+    const payload = safeJsonParse(group.payload_json) ?? {};
+    res.json({
+      groupId: String(group.id),
+      eventId: String(group.event_id),
+      title: String((payload as any)?.title || 'Evento'),
+      image: (payload as any)?.image || null,
+      date: (payload as any)?.date || null,
+      location: (payload as any)?.location || null,
+      expiresAt: group.expires_at,
+      members: members.map((m) => ({ id: String(m.id), name: String(m.name || ''), avatar: m.avatar ?? null, isOrganizer: String(m.role) === 'organizer' })),
+    });
+  });
+
+  app.get('/api/groups/:groupId/messages', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const { isMember } = await requireGroupMember(groupId, userId);
+    if (!isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    const rows = (await queryAll(
+      db,
+      `SELECT gm.id, gm.sender_id, gm.content, gm.media_id, gm.created_at, u.name AS sender_name, u.avatar AS sender_avatar,
+              med.filename AS media_filename, med.mime_type AS media_mime_type
+         FROM event_group_messages gm
+         JOIN users u ON u.id = gm.sender_id
+         LEFT JOIN media med ON med.id = gm.media_id
+        WHERE gm.group_id = ?
+        ORDER BY gm.created_at ASC
+        LIMIT 300`,
+      [groupId]
+    )) as any[];
+    res.json(
+      rows.map((r) => ({
+        id: String(r.id),
+        senderId: String(r.sender_id),
+        senderName: String(r.sender_name || ''),
+        senderAvatar: r.sender_avatar ?? null,
+        content: r.content != null ? String(r.content) : null,
+        mediaUrl: r.media_filename ? `/uploads/${r.media_filename}` : null,
+        mediaMimeType: r.media_mime_type ? String(r.media_mime_type) : null,
+        createdAt: String(r.created_at),
+      }))
+    );
+  });
+
+  app.post('/api/groups/:groupId/messages', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS))) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+    const { isMember } = await requireGroupMember(groupId, userId);
+    if (!isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const content = parsed.data.content?.trim() || null;
+    const mediaId = parsed.data.mediaId || null;
+    if (!content && !mediaId) { res.status(400).json({ error: 'empty_message' }); return; }
+
+    const id = randomUUID();
+    const createdAt = nowIso();
+    await run(db, 'INSERT INTO event_group_messages (id, group_id, sender_id, content, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      id, groupId, userId, content, mediaId, createdAt,
+    ]);
+    await persist();
+
+    let mediaUrl: string | null = null;
+    let mediaMimeType: string | null = null;
+    if (mediaId) {
+      const med = (await queryOne(db, 'SELECT filename, mime_type FROM media WHERE id = ?', [mediaId])) as any;
+      if (med?.filename) { mediaUrl = `/uploads/${med.filename}`; mediaMimeType = med.mime_type ?? null; }
+    }
+    const sender = (await queryOne(db, 'SELECT name, avatar FROM users WHERE id = ?', [userId])) as any;
+
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const payloadOut = {
+      id, groupId, senderId: userId,
+      senderName: sender?.name ? String(sender.name) : '',
+      senderAvatar: sender?.avatar ?? null,
+      content, mediaUrl, mediaMimeType, createdAt,
+    };
+    io?.to(`group:${groupId}`).emit('group.message.new', payloadOut);
+
+    // Notifica os demais membros (best-effort, não bloqueia a resposta).
+    (async () => {
+      try {
+        const members = (await queryAll(db, 'SELECT user_id FROM event_group_members WHERE group_id = ? AND user_id != ?', [groupId, userId])) as any[];
+        const senderName = sender?.name ? String(sender.name) : 'Alguém';
+        for (const m of members) {
+          await sendPushToUser({ db, env }, {
+            userId: String(m.user_id),
+            payload: { title: `${senderName} (grupo)`, body: content || 'Enviou uma mídia', url: `/chat/group/${groupId}`, tag: `group.message:${groupId}` },
+          });
+        }
+      } catch { /* best-effort */ }
+    })();
+
+    res.json({ id, createdAt });
+  });
+
+  app.post('/api/groups/:groupId/leave', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const group = (await queryOne(db, 'SELECT event_id FROM event_groups WHERE id = ?', [groupId])) as any;
+    await run(db, 'DELETE FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId]);
+    if (group?.event_id) {
+      await run(db, 'DELETE FROM event_attendees WHERE event_id = ? AND user_id = ?', [String(group.event_id), userId]);
+    }
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/groups/:groupId/members/:userId', requireAuth(env, db), async (req, res) => {
+    const requesterId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const targetUserId = String(req.params.userId || '');
+    const { isOrganizer } = await requireGroupMember(groupId, requesterId);
+    if (!isOrganizer) { res.status(403).json({ error: 'forbidden' }); return; }
+    await run(db, 'DELETE FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, targetUserId]);
+    const group = (await queryOne(db, 'SELECT event_id FROM event_groups WHERE id = ?', [groupId])) as any;
+    if (group?.event_id) {
+      await run(db, 'DELETE FROM event_attendees WHERE event_id = ? AND user_id = ?', [String(group.event_id), targetUserId]);
+    }
+    await persist();
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.member.removed', { groupId, userId: targetUserId });
+    res.json({ ok: true });
+  });
+
+  // Admin: apaga o grupo inteiro (moderação — denúncia de conteúdo no grupo).
+  app.delete('/api/admin/groups/:groupId', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const groupId = String(req.params.groupId || '');
+    await run(db, 'DELETE FROM event_groups WHERE id = ?', [groupId]);
+    await persist();
+    res.json({ ok: true });
   });
 
   // ── Feed: atividade "Perto de você" (radares + eventos compatíveis) ───────

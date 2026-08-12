@@ -109,16 +109,18 @@ export const eventsService = {
     return response.data;
   },
 
-  // Attend event
-  attendEvent: async (eventId: string): Promise<void> => {
-    if (USE_MOCKS) return;
-    await apiClient.post(`/events/${eventId}/attend`);
+  // Attend event — confirma presença e entra no chat do grupo do evento.
+  attendEvent: async (eventId: string): Promise<{ groupId: string; attendeesCount: number }> => {
+    if (USE_MOCKS) return { groupId: '', attendeesCount: 1 };
+    const response = await apiClient.post(`/events/${eventId}/attend`);
+    return response.data;
   },
 
-  // Leave event
-  leaveEvent: async (eventId: string): Promise<void> => {
-    if (USE_MOCKS) return;
-    await apiClient.delete(`/events/${eventId}/attend`);
+  // Leave event — desconfirma presença (sai do grupo, exceto o organizador).
+  leaveEvent: async (eventId: string): Promise<{ attendeesCount: number }> => {
+    if (USE_MOCKS) return { attendeesCount: 0 };
+    const response = await apiClient.delete(`/events/${eventId}/attend`);
+    return response.data;
   },
 
   // Get event invites (notifications received)

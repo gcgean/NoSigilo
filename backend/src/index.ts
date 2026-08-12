@@ -20,6 +20,7 @@ let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
 let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
 let lastTopDayDate = '';       // "YYYY-MM-DD" — "você está no Top do Dia" notification
 let lastExpirePremiumDate = ''; // "YYYY-MM-DD" — limpa is_premium de licenças vencidas
+let lastExpireEventGroupsDate = ''; // "YYYY-MM-DD" — remove grupos-por-evento vencidos
 let lastShowcaseRotationKey = ''; // "YYYY-MM-DD:HH" — revezamento de perfis de vitrine
 
 // Helper: given a user's looking_for_json array, build a SQL WHERE fragment
@@ -424,6 +425,19 @@ async function runExpirePremiumFlags(db: DbHandle) {
   console.log(`[scheduler] Expired premium flags cleared: ${count}`);
 }
 
+// Apaga grupos-por-evento vencidos (alguns dias após a data do evento). O
+// FOREIGN KEY ON DELETE CASCADE cuida de membros e mensagens automaticamente.
+async function runExpireEventGroups(db: DbHandle) {
+  const now = new Date().toISOString();
+  const expired = (await db.queryAll('SELECT id FROM event_groups WHERE expires_at <= ?', [now])) as any[];
+  if (!Array.isArray(expired) || expired.length === 0) return;
+  for (const g of expired) {
+    await db.run('DELETE FROM event_groups WHERE id = ?', [String(g.id)]);
+  }
+  await db.persist();
+  console.log(`[scheduler] Grupos de evento expirados removidos: ${expired.length}`);
+}
+
 function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) {
   const check = async () => {
     const now = new Date();
@@ -448,6 +462,12 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     if (hour === 1 && lastExpirePremiumDate !== dateStr) {
       lastExpirePremiumDate = dateStr;
       runExpirePremiumFlags(db).catch(err => console.error('[scheduler/expire-premium] fatal', err));
+    }
+
+    // Remove grupos-por-evento vencidos — diariamente às 02h.
+    if (hour === 2 && lastExpireEventGroupsDate !== dateStr) {
+      lastExpireEventGroupsDate = dateStr;
+      runExpireEventGroups(db).catch(err => console.error('[scheduler/expire-event-groups] fatal', err));
     }
 
     // "Você está no Top do Dia" — diariamente às 11h. Notifica autores que
@@ -584,6 +604,22 @@ async function main() {
         );
         if (conv) {
           socket.join(conversationId);
+        }
+      } catch {
+        // ignore db errors in socket handler
+      }
+    });
+
+    socket.on('join.group', async (groupId: string) => {
+      if (typeof groupId !== 'string' || groupId.length === 0) return;
+      if (!userId) return;
+      try {
+        const member = await db.queryOne(
+          'SELECT id FROM event_group_members WHERE group_id = ? AND user_id = ?',
+          [groupId, userId]
+        );
+        if (member) {
+          socket.join(`group:${groupId}`);
         }
       } catch {
         // ignore db errors in socket handler

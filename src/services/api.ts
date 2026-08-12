@@ -1532,3 +1532,68 @@ export const nearbyActivityService = {
     return res.data;
   },
 };
+
+// ── Grupos por evento ────────────────────────────────────────────────────────
+export interface GroupSummary {
+  groupId: string;
+  eventId: string;
+  title: string;
+  image: string | null;
+  date: string | null;
+  location: string | null;
+  isOrganizer: boolean;
+  memberCount: number;
+  expiresAt: string;
+  lastMessageAt: string | null;
+  lastMessagePreview: string | null;
+}
+export interface GroupMember {
+  id: string;
+  name: string;
+  avatar: string | null;
+  isOrganizer: boolean;
+}
+export interface GroupDetail {
+  groupId: string;
+  eventId: string;
+  title: string;
+  image: string | null;
+  date: string | null;
+  location: string | null;
+  expiresAt: string;
+  members: GroupMember[];
+}
+export interface GroupMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string | null;
+  content: string | null;
+  mediaUrl: string | null;
+  mediaMimeType: string | null;
+  createdAt: string;
+}
+export const groupsService = {
+  getGroups: async (): Promise<GroupSummary[]> => {
+    const res = await apiClient.get('/groups');
+    return res.data;
+  },
+  getGroup: async (groupId: string): Promise<GroupDetail> => {
+    const res = await apiClient.get(`/groups/${groupId}`);
+    return res.data;
+  },
+  getMessages: async (groupId: string): Promise<GroupMessage[]> => {
+    const res = await apiClient.get(`/groups/${groupId}/messages`);
+    return res.data;
+  },
+  sendMessage: async (groupId: string, content?: string, mediaId?: string): Promise<{ id: string; createdAt: string }> => {
+    const res = await apiClient.post(`/groups/${groupId}/messages`, { content, mediaId });
+    return res.data;
+  },
+  leave: async (groupId: string): Promise<void> => {
+    await apiClient.post(`/groups/${groupId}/leave`);
+  },
+  removeMember: async (groupId: string, userId: string): Promise<void> => {
+    await apiClient.delete(`/groups/${groupId}/members/${userId}`);
+  },
+};

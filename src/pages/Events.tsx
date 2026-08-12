@@ -8,6 +8,7 @@ import {
   Image as ImageIcon, 
   Sparkles,
   Send,
+  MessageCircle,
   Bell,
   Check,
   ChevronRight,
@@ -74,6 +75,7 @@ interface Event {
   isPrivate?: boolean;
   notificationsSent?: number;
   createdBy?: string;
+  groupId?: string | null;
 }
 
 const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600';
@@ -94,6 +96,7 @@ const normalizeEvent = (raw: any): Event => {
     isPrivate: !!raw?.isPrivate,
     notificationsSent: raw?.notificationsSent ? Number(raw.notificationsSent) : undefined,
     createdBy: raw?.createdBy ? String(raw.createdBy) : undefined,
+    groupId: raw?.groupId ? String(raw.groupId) : null,
   };
 };
 
@@ -218,16 +221,23 @@ export default function Events() {
     customMessage: '',
   });
 
-  const handleToggleAttendance = (eventId: string) => {
-    setEvents(events.map(event => 
-      event.id === eventId 
-        ? { 
-            ...event, 
-            isGoing: !event.isGoing,
-            attendees: event.isGoing ? event.attendees - 1 : event.attendees + 1
-          }
-        : event
-    ));
+  const handleToggleAttendance = async (eventId: string) => {
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    const target = events.find((e) => e.id === eventId);
+    if (!target) return;
+    try {
+      if (target.isGoing) {
+        const { attendeesCount } = await eventsService.leaveEvent(eventId);
+        setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, isGoing: false, attendees: attendeesCount ?? Math.max(0, e.attendees - 1) } : e));
+      } else {
+        const { groupId, attendeesCount } = await eventsService.attendEvent(eventId);
+        setEvents((prev) => prev.map((e) => e.id === eventId ? { ...e, isGoing: true, attendees: attendeesCount ?? e.attendees + 1, groupId } : e));
+        toast({ title: 'Presença confirmada!', description: 'Você entrou no chat do grupo desse evento.' });
+      }
+    } catch (err: any) {
+      if (err?.response?.status === 403) { setPaywallOpen(true); return; }
+      toast({ title: 'Não foi possível confirmar presença', description: 'Tente novamente.', variant: 'destructive' });
+    }
   };
 
   const handleNextStep = () => {
@@ -915,15 +925,24 @@ export default function Events() {
               </div>
 
               <Button
-                onClick={() => handleToggleAttendance(event.id)}
-                className={event.isGoing 
-                  ? "w-full" 
+                onClick={() => void handleToggleAttendance(event.id)}
+                className={event.isGoing
+                  ? "w-full"
                   : "w-full bg-gradient-primary hover:opacity-90"
                 }
                 variant={event.isGoing ? "outline" : "default"}
               >
                 {event.isGoing ? 'Cancelar Presença' : 'Confirmar Presença'}
               </Button>
+              {event.isGoing && event.groupId && (
+                <Button
+                  variant="secondary"
+                  className="mt-2 w-full gap-2"
+                  onClick={() => navigate(`/chat/group/${event.groupId}`)}
+                >
+                  <MessageCircle className="h-4 w-4" /> Ir para o chat do grupo
+                </Button>
+              )}
             </div>
           </Card>
         ))}

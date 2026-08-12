@@ -49,6 +49,8 @@ const FriendRequests = lazy(() => import("./pages/FriendRequests"));
 const Friends = lazy(() => import("./pages/Friends"));
 const Favorites = lazy(() => import("./pages/Favorites"));
 const Events = lazy(() => import("./pages/Events"));
+const GroupsList = lazy(() => import("./pages/GroupsList"));
+const GroupChat = lazy(() => import("./pages/GroupChat"));
 const Invites = lazy(() => import("./pages/Invites"));
 const Promoter = lazy(() => import("./pages/Promoter"));
 const PromoterLanding = lazy(() => import("./pages/PromoterLanding"));
@@ -117,6 +119,8 @@ const App = () => (
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/friends" element={<Friends />} />
                       <Route path="/events" element={<Events />} />
+                      <Route path="/chat/groups" element={<GroupsList />} />
+                      <Route path="/chat/group/:groupId" element={<GroupChat />} />
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/promoter" element={<Promoter />} />
                       <Route path="/ganhe" element={<PromoterLanding />} />
