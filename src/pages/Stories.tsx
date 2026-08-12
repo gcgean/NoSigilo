@@ -162,7 +162,33 @@ function StoryViewer({
   const [myReaction, setMyReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
   const [muted, setMuted] = useState(true); // começa mudo (política de autoplay); som liga com o botão
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const heldRef = useRef(false);       // true quando foi "segurar" (não é toque)
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const story = stories[idx];
+
+  // Mantém o ref em sincronia (o loop de animação lê o ref, não o estado).
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
+  // Pausa/retoma o vídeo conforme o "segurar".
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (paused) v.pause(); else void v.play().catch(() => {});
+  }, [paused]);
+
+  // Segurar-para-pausar (estilo Instagram). Um toque rápido navega (tap zones);
+  // segurar > 180ms pausa; ao soltar, retoma.
+  const startHold = useCallback(() => {
+    heldRef.current = false;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => { heldRef.current = true; setPaused(true); }, 180);
+  }, []);
+  const endHold = useCallback(() => {
+    if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    setPaused(false);
+  }, []);
 
   // Sincroniza like ao trocar de story e zera o progresso.
   useEffect(() => {
@@ -188,12 +214,17 @@ function StoryViewer({
     if (story.mimeType.startsWith('video/')) return; // vídeo: progresso pelo player
     if (!isPremium) { setProgress(100); return; }
     const DURATION = 5000;
-    const start = performance.now();
     let raf = 0;
+    let acc = 0;                       // ms acumulados (não avança enquanto pausado)
+    let last = performance.now();
     const tick = (now: number) => {
-      const pct = Math.min(((now - start) / DURATION) * 100, 100);
-      setProgress(pct);
-      if (pct >= 100) { go(1); return; }
+      const dt = now - last; last = now;
+      if (!pausedRef.current) {
+        acc += dt;
+        const pct = Math.min((acc / DURATION) * 100, 100);
+        setProgress(pct);
+        if (pct >= 100) { go(1); return; }
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -307,7 +338,13 @@ function StoryViewer({
       </div>
 
       {/* Media */}
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center">
+      <div
+        className="flex-1 relative overflow-hidden flex items-center justify-center"
+        onPointerDown={startHold}
+        onPointerUp={endHold}
+        onPointerLeave={endHold}
+        onPointerCancel={endHold}
+      >
         {!story.mediaUrl && story.text ? (
           <div
             key={story.id}
@@ -319,6 +356,7 @@ function StoryViewer({
         ) : story.mimeType.startsWith('video/') ? (
           <video
             key={story.id}
+            ref={videoRef}
             src={resolveServerUrl(story.mediaUrl || '')}
             className="h-full w-full object-cover"
             autoPlay muted={muted} playsInline
@@ -348,13 +386,13 @@ function StoryViewer({
         <button
           type="button"
           className="absolute left-0 top-0 h-3/5 w-1/3 z-10"
-          onClick={() => go(-1)}
+          onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(-1); }}
           aria-label="Anterior"
         />
         <button
           type="button"
           className="absolute right-0 top-0 h-3/5 w-1/3 z-10"
-          onClick={() => go(1)}
+          onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(1); }}
           aria-label="Próximo"
         />
 
