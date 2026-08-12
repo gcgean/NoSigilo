@@ -2882,13 +2882,12 @@ export default function Feed() {
                     <span className="text-sm font-medium">{item.post.commentsCount}</span>
                   </button>
 
-                  {/* Visualizações */}
-                  {!!item.post.viewsCount && item.post.viewsCount > 0 && (
-                    <span className="flex items-center gap-1.5 text-muted-foreground" title="Visualizações">
-                      <Eye className="w-4.5 h-4.5" />
-                      <span className="text-sm font-medium">{item.post.viewsCount}</span>
-                    </span>
-                  )}
+                  {/* Visualizações — sempre visível (mesmo em 0), pra deixar
+                      claro que a contagem existe e está ativa. */}
+                  <span className="flex items-center gap-1.5 text-muted-foreground" title="Visualizações">
+                    <Eye className="w-4.5 h-4.5" />
+                    <span className="text-sm font-medium">{item.post.viewsCount ?? 0}</span>
+                  </span>
                 </div>
 
                 {/* Reactions summary — right side */}

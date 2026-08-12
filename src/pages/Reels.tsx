@@ -1084,15 +1084,13 @@ export default function Reels() {
               <span className="text-xs font-medium text-white/85">{reel.stats.commentsCount}</span>
             </button>
 
-            {/* Visualizações */}
-            {reel.viewsCount > 0 && (
-              <div className="flex flex-col items-center gap-1 text-white">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 backdrop-blur-sm sm:h-11 sm:w-11">
-                  <Eye className="h-5 w-5" />
-                </div>
-                <span className="text-xs font-medium text-white/85">{reel.viewsCount}</span>
+            {/* Visualizações — sempre visível (mesmo em 0). */}
+            <div className="flex flex-col items-center gap-1 text-white">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/45 backdrop-blur-sm sm:h-11 sm:w-11">
+                <Eye className="h-5 w-5" />
               </div>
-            )}
+              <span className="text-xs font-medium text-white/85">{reel.viewsCount}</span>
+            </div>
           </div>
 
           {/* Bottom info */}

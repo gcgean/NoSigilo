@@ -245,12 +245,10 @@ function VideoCard({
               {item.commentsCount}
             </Badge>
           )}
-          {item.viewsCount > 0 && (
-            <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
-              <Eye className="h-2.5 w-2.5 text-white/70" />
-              {item.viewsCount}
-            </Badge>
-          )}
+          <Badge className="gap-0.5 bg-black/50 px-1.5 py-0 text-[10px] font-medium text-white/90 backdrop-blur-sm border-0">
+            <Eye className="h-2.5 w-2.5 text-white/70" />
+            {item.viewsCount}
+          </Badge>
         </div>
       </div>
     </button>
