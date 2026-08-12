@@ -691,24 +691,39 @@ export default function Chat() {
         
         const updated = [...prev];
         const conv = updated[index];
-        
+
+        // Atualiza o preview (última mensagem + hora) em tempo real. Conteúdo
+        // recebido fica travado para não-premium (igual à lista do servidor).
+        const isMine = msg.senderId === user?.id;
+        const locked = !isMine && !premiumAccess;
+        const lastMessage = {
+          senderId: msg.senderId,
+          content: locked ? null : (msg.content ?? null),
+          hasMedia: !!msg.mediaId,
+          locked,
+        };
+        const lastMessageAt = msg.createdAt || new Date().toISOString();
+        const base = { ...conv, lastMessage, lastMessageAt };
+
         if (msg.conversationId !== selectedChat) {
-          updated[index] = { ...conv, unreadCount: (conv.unreadCount || 0) + 1 };
-          
+          updated[index] = { ...base, unreadCount: (conv.unreadCount || 0) + 1 };
+
           // Notify user about new message in another conversation
           if (msg.senderId !== user?.id) {
             toast({
               title: `Nova mensagem de ${conv.user.name}`,
-              description: msg.content || (msg.mediaId ? 'Mídia enviada' : 'Nova mensagem'),
+              description: locked ? '🔒 Assine para ler' : (msg.content || (msg.mediaId ? 'Mídia enviada' : 'Nova mensagem')),
               onClick: () => setSelectedChat(msg.conversationId)
             });
           }
+        } else {
+          updated[index] = base;
         }
-        
+
         // Move to top
         const [removed] = updated.splice(index, 1);
         updated.unshift(removed);
-        
+
         return updated;
       });
 
