@@ -5,26 +5,30 @@ import { API_URL as RESOLVED_API_URL } from '@/utils/serverUrl';
 export const API_URL = RESOLVED_API_URL;
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 const NETWORK_TOAST_COOLDOWN_MS = 8000;
-const RESUME_NETWORK_GRACE_MS = 12000;
+const RESUME_NETWORK_GRACE_MS = 20000; // janela pós-retomada em que erros de rede são silenciosos
 const RESUME_RETRY_DELAY_MS = 1200;
+const MAX_RESUME_RETRIES = 2;
 let lastNetworkToastAt = 0;
 let lastPremiumToastAt = 0;
 let isHandlingUnauthorized = false;
 const SERVER_RETRY_DELAY_MS = 2000;
 let lastVisibilityResumeAt = typeof Date !== 'undefined' ? Date.now() : 0;
 
+// Qualquer sinal de "voltei" (desbloqueou o celular, reconectou a rede, focou a
+// aba) reinicia a janela de silêncio — a 1ª request depois disso costuma falhar
+// enquanto a rede volta, e não deve assustar o usuário com "servidor indisponível".
+function markResume() { lastVisibilityResumeAt = Date.now(); }
+
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      lastVisibilityResumeAt = Date.now();
-    }
+    if (document.visibilityState === 'visible') markResume();
   });
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('pageshow', () => {
-    lastVisibilityResumeAt = Date.now();
-  });
+  window.addEventListener('pageshow', markResume);
+  window.addEventListener('focus', markResume);
+  window.addEventListener('online', markResume);
 }
 
 function isSafeRetryMethod(method?: string) {
@@ -34,6 +38,10 @@ function isSafeRetryMethod(method?: string) {
 
 function shouldSuppressNetworkToast() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    return true;
+  }
+  // Offline (sem rede) não é "servidor indisponível" — não alarma.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return true;
   }
   return Date.now() - lastVisibilityResumeAt < RESUME_NETWORK_GRACE_MS;
@@ -68,15 +76,16 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (!error.response) {
-      const config = (error.config || {}) as typeof error.config & { __resumeRetry?: boolean };
+      const config = (error.config || {}) as typeof error.config & { __resumeRetries?: number };
+      const resumeRetries = config.__resumeRetries || 0;
       const canRetryAfterResume =
-        !config.__resumeRetry &&
+        resumeRetries < MAX_RESUME_RETRIES &&
         shouldSuppressNetworkToast() &&
         isSafeRetryMethod(config.method) &&
         (typeof navigator === 'undefined' || navigator.onLine !== false);
 
       if (canRetryAfterResume) {
-        config.__resumeRetry = true;
+        config.__resumeRetries = resumeRetries + 1;
         await wait(RESUME_RETRY_DELAY_MS);
         return apiClient.request(config);
       }
