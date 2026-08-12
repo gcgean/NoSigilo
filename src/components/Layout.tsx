@@ -922,7 +922,7 @@ export default function Layout() {
                 ) : null}
               </div>
             )}
-            {!isMobileChatRoute && !promoterBannerDismissed && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && location.pathname !== '/match' && (
+            {false && !isMobileChatRoute && !promoterBannerDismissed && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && location.pathname !== '/match' && (
               <div className="mb-4">
                 <div className="relative flex items-center justify-between gap-2 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)]">
                   <button

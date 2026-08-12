@@ -164,14 +164,13 @@ function StoryViewer({
   const [muted, setMuted] = useState(true); // começa mudo (política de autoplay); som liga com o botão
   const story = stories[idx];
 
-  // Sincroniza like ao trocar de story. Sem auto-avanço: a barra fica cheia
-  // em imagens (passa só quando o usuário toca) e reflete o tempo em vídeos.
+  // Sincroniza like ao trocar de story e zera o progresso.
   useEffect(() => {
     setLiked(story.likedByMe ?? false);
     setLikeCount(story.likeCount ?? 0);
     setMyReaction(story.myReaction ?? null);
     setShowReactions(false);
-    setProgress(story.mimeType.startsWith('video/') ? 0 : 100);
+    setProgress(0);
   }, [story.id, story.mimeType]);
 
   const go = useCallback((delta: number) => {
@@ -181,6 +180,25 @@ function StoryViewer({
     if (next < 0 || next >= stories.length) { onClose(); return; }
     setIdx(next);
   }, [idx, stories.length, onClose, isPremium, navigate]);
+
+  // Auto-avanço estilo Instagram: imagem/texto enchem a barra em ~5s e passam
+  // para o próximo. Vídeo é controlado pelo tempo do próprio vídeo (onTimeUpdate
+  // + onEnded). Não-assinante não auto-avança (fica na amostra até tocar).
+  useEffect(() => {
+    if (story.mimeType.startsWith('video/')) return; // vídeo: progresso pelo player
+    if (!isPremium) { setProgress(100); return; }
+    const DURATION = 5000;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const pct = Math.min(((now - start) / DURATION) * 100, 100);
+      setProgress(pct);
+      if (pct >= 100) { go(1); return; }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [story.id, story.mimeType, isPremium, go]);
 
   // Registrar view
   useEffect(() => {
@@ -303,11 +321,12 @@ function StoryViewer({
             key={story.id}
             src={resolveServerUrl(story.mediaUrl || '')}
             className="h-full w-full object-cover"
-            autoPlay muted={muted} playsInline loop
+            autoPlay muted={muted} playsInline
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (v.duration > 0) setProgress(Math.min((v.currentTime / v.duration) * 100, 100));
             }}
+            onEnded={() => go(1)}
           />
         ) : (
           <img
