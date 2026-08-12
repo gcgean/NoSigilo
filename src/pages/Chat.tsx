@@ -42,6 +42,7 @@ type Conversation = {
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null; isOnline?: boolean; lastSeenAt?: string | null };
   createdAt?: string;
   lastMessageAt?: string | null;
+  lastMessage?: { senderId: string; content: string | null; hasMedia?: boolean; locked?: boolean } | null;
   unreadCount?: number;
   isHighlighted?: boolean;
   highlightNote?: string | null;
@@ -1234,7 +1235,15 @@ export default function Chat() {
                   "truncate text-[13px] sm:text-sm",
                   conversation.unreadCount && conversation.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
                 )}>
-                  {conversation.unreadCount && conversation.unreadCount > 0 ? 'Nova mensagem' : 'Toque para abrir'}
+                  {(() => {
+                    const lm = conversation.lastMessage;
+                    if (!lm) return 'Toque para abrir';
+                    if (lm.senderId === user?.id) {
+                      return `Você: ${lm.content || (lm.hasMedia ? '📷 Mídia' : '')}`.trim();
+                    }
+                    if (lm.locked) return '🔒 Nova mensagem — assine para ler';
+                    return lm.content || (lm.hasMedia ? '📷 Mídia' : 'Nova mensagem');
+                  })()}
                 </p>
               </div>
               </div>

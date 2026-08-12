@@ -8847,9 +8847,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/conversations', requireAuth(env, db), async (req, res) => {
-    const viewer = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const viewer = (await queryOne(db, 'SELECT lat, lon, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const viewerLat = viewer?.lat != null ? Number(viewer.lat) : null;
     const viewerLon = viewer?.lon != null ? Number(viewer.lon) : null;
+    const convSubsEnabled = await getSubscriptionsEnabled(db);
+    const viewerHasPremiumConv = hasPremiumAccess(viewer, convSubsEnabled, env.BILLING_TEST_EMAILS);
     const rows = await queryAll(
       db,
       `
@@ -8867,7 +8869,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             SELECT m2.created_at FROM messages m2
             WHERE m2.conversation_id = c.id
             ORDER BY m2.created_at DESC LIMIT 1
-          ) as last_message_at
+          ) as last_message_at,
+          (
+            SELECT m3.content FROM messages m3
+            WHERE m3.conversation_id = c.id
+            ORDER BY m3.created_at DESC LIMIT 1
+          ) as last_message_content,
+          (
+            SELECT m3.sender_id FROM messages m3
+            WHERE m3.conversation_id = c.id
+            ORDER BY m3.created_at DESC LIMIT 1
+          ) as last_message_sender,
+          (
+            SELECT m3.media_id FROM messages m3
+            WHERE m3.conversation_id = c.id
+            ORDER BY m3.created_at DESC LIMIT 1
+          ) as last_message_media
         FROM conversations c
         JOIN users ua ON ua.id = c.user_a_id
         JOIN users ub ON ub.id = c.user_b_id
@@ -8924,11 +8941,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false,
                 lastSeenAt: r.user_a_last_seen_at ?? null,
               };
-        return { 
-          id: r.id, 
-          user: other, 
+        const lmSender = r.last_message_sender ? String(r.last_message_sender) : null;
+        const lmMine = !!lmSender && lmSender === req.auth!.userId;
+        // Ver mensagem RECEBIDA é premium: mascara o conteúdo p/ não-premium.
+        const lmLocked = !!lmSender && !lmMine && !viewerHasPremiumConv;
+        const lastMessage = lmSender
+          ? {
+              senderId: lmSender,
+              content: lmLocked ? null : (r.last_message_content != null ? String(r.last_message_content) : null),
+              hasMedia: !!r.last_message_media,
+              locked: lmLocked,
+            }
+          : null;
+        return {
+          id: r.id,
+          user: other,
           createdAt: r.created_at,
           lastMessageAt: r.last_message_at || null,
+          lastMessage,
           unreadCount: Number(r.unread_count || 0),
           isHighlighted: Number(r.is_highlighted || 0) === 1,
           highlightNote: typeof r.highlight_note === 'string' ? r.highlight_note : null,
