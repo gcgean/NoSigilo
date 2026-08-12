@@ -4,7 +4,7 @@ import {
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -4402,6 +4402,22 @@ function AdminPromotersTab() {
     await handleBatchPay(period, promoterUserId);
   };
 
+  // Lista pronta pra colar no WhatsApp: nome, chave Pix e valor de cada
+  // promotor com comissão aprovada no período — pra quem paga manualmente.
+  const handleCopyApprovedList = async (period: string, groups: Array<{ name: string; pix: string; approvedCents: number }>) => {
+    const approvedGroups = groups.filter((g) => g.approvedCents > 0);
+    if (approvedGroups.length === 0) return;
+    const lines = approvedGroups.map((g) => `${g.name}\nPix: ${g.pix}\nValor: ${formatBRLAdmin(g.approvedCents)}`);
+    const totalCents = approvedGroups.reduce((s, g) => s + g.approvedCents, 0);
+    const text = `Comissões aprovadas — ${period}\n\n${lines.join('\n\n')}\n\nTotal: ${formatBRLAdmin(totalCents)}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ title: 'Lista copiada!', description: 'Cole no WhatsApp.' });
+    } catch {
+      toast({ title: 'Não foi possível copiar', description: 'Tente novamente.', variant: 'destructive' });
+    }
+  };
+
   const handleSendMonthlySummary = async () => {
     if (!summaryPeriod.match(/^\d{4}-\d{2}$/)) { toast({ title: 'Período inválido (use AAAA-MM)', variant: 'destructive' }); return; }
     if (!confirm(`Enviar resumo mensal de comissões de ${summaryPeriod} para todos os promotores ativos?`)) return;
@@ -4717,6 +4733,26 @@ function AdminPromotersTab() {
           const totalCents = items.reduce((s, c) => s + c.commissionAmount, 0);
           const pendingItems = items.filter((c) => c.status === 'pending');
           const approvedItems = items.filter((c) => c.status === 'approved');
+
+          // Agrupado por promotor: Pix + total + pagar tudo dele (com recibo).
+          // Calculado uma vez aqui — reaproveitado pela lista renderizada abaixo
+          // e pelo botão "Copiar lista" (WhatsApp), sem duplicar a lógica.
+          const byPromoter = new Map<string, CommissionRow[]>();
+          for (const c of items) {
+            if (!byPromoter.has(c.promoterUserId)) byPromoter.set(c.promoterUserId, []);
+            byPromoter.get(c.promoterUserId)!.push(c);
+          }
+          const groups = Array.from(byPromoter.entries())
+            .map(([uid, list]) => {
+              const approved = list.filter((c) => c.status === 'approved');
+              const approvedCents = approved.reduce((s, c) => s + c.commissionAmount, 0);
+              const groupTotalCents = list.reduce((s, c) => s + c.commissionAmount, 0);
+              const paidCount = list.filter((c) => c.status === 'paid').length;
+              const pendingCount = list.filter((c) => c.status === 'pending').length;
+              return { uid, name: list[0].promoterName, pix: list[0].promoterPix, list, approved, approvedCents, totalCents: groupTotalCents, paidCount, pendingCount };
+            })
+            .sort((a, b) => b.approvedCents - a.approvedCents || b.totalCents - a.totalCents);
+
           return (
             <div key={period} className="rounded-xl border bg-card">
               {/* Period header */}
@@ -4750,29 +4786,21 @@ function AdminPromotersTab() {
                       <Check className="w-3 h-3" /> Pagar aprovadas ({approvedItems.length})
                     </button>
                   )}
+                  {approvedItems.length > 0 && (
+                    <button
+                      onClick={() => void handleCopyApprovedList(period, groups)}
+                      className="text-xs rounded-lg bg-secondary text-foreground border px-3 py-1.5 hover:bg-secondary/70 flex items-center gap-1"
+                      title="Copiar nome, Pix e valor de cada promotor aprovado — pronto pra colar no WhatsApp"
+                    >
+                      <Copy className="w-3 h-3" /> Copiar lista (WhatsApp)
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Agrupado por promotor: Pix + total + pagar tudo dele (com recibo) */}
               <div className="divide-y">
-                {(() => {
-                  const byPromoter = new Map<string, CommissionRow[]>();
-                  for (const c of items) {
-                    if (!byPromoter.has(c.promoterUserId)) byPromoter.set(c.promoterUserId, []);
-                    byPromoter.get(c.promoterUserId)!.push(c);
-                  }
-                  const groups = Array.from(byPromoter.entries())
-                    .map(([uid, list]) => {
-                      const approved = list.filter((c) => c.status === 'approved');
-                      const approvedCents = approved.reduce((s, c) => s + c.commissionAmount, 0);
-                      const totalCents = list.reduce((s, c) => s + c.commissionAmount, 0);
-                      const paidCount = list.filter((c) => c.status === 'paid').length;
-                      const pendingCount = list.filter((c) => c.status === 'pending').length;
-                      return { uid, name: list[0].promoterName, pix: list[0].promoterPix, list, approved, approvedCents, totalCents, paidCount, pendingCount };
-                    })
-                    .sort((a, b) => b.approvedCents - a.approvedCents || b.totalCents - a.totalCents);
-
-                  return groups.map((g) => (
+                {groups.map((g) => (
                     <div key={g.uid}>
                       {/* Cabeçalho do promotor */}
                       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-secondary/20">
@@ -4832,8 +4860,7 @@ function AdminPromotersTab() {
                         })}
                       </div>
                     </div>
-                  ));
-                })()}
+                ))}
               </div>
             </div>
           );
