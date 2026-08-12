@@ -32,6 +32,7 @@ import {
   Coins,
   Plus,
   LifeBuoy,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -71,7 +72,8 @@ type BeforeInstallPromptEvent = Event & {
 const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
   { path: '/match', icon: Heart, label: 'Match' },
-  { path: '/radar', icon: Radio, label: 'Radar' },
+  { path: '/radar', icon: Radio, label: 'Radar', accentClass: 'text-rose-500' },
+  { path: '/events', icon: Calendar, label: 'Eventos', accentClass: 'text-amber-500' },
   { path: '/chat', icon: MessageCircle, label: 'Chat' },
   { path: '/friends', icon: Users, label: 'Amigos' },
   { path: '/tokens', icon: Coins, label: 'Tokens' },
@@ -92,7 +94,7 @@ const extraNavItems = [
   { path: '/search', icon: Search, label: 'Buscar' },
   { path: '/reels', icon: Clapperboard, label: 'Rap' },
   { path: '/videos', icon: Search, label: 'Buscar Vídeos' },
-  { path: '/events', icon: Calendar, label: 'Eventos' },
+  { path: '/chat/groups', icon: UsersRound, label: 'Grupos', highlight: true },
   { path: '/favorites', icon: Heart, label: 'Curtidos' },
   { path: '/subscriptions', icon: Crown, label: 'Planos' },
 ];
@@ -638,10 +640,16 @@ export default function Layout() {
               </NavLink>
             )}
 
-            {/* Radar — mobile-only header icon */}
+            {/* Radar + Eventos — mobile-only header icons, destacados com cor
+                própria (Radar=rose, Eventos=amber) para não passarem despercebidos. */}
             <NavLink to="/radar" className="shrink-0 md:hidden" aria-label="Radar">
               <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
-                <Radio className="h-4.5 w-4.5" />
+                <Radio className="h-4.5 w-4.5 text-rose-500" />
+              </Button>
+            </NavLink>
+            <NavLink to="/events" className="shrink-0 md:hidden" aria-label="Eventos">
+              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
+                <Calendar className="h-4.5 w-4.5 text-amber-500" />
               </Button>
             </NavLink>
 
@@ -713,7 +721,7 @@ export default function Layout() {
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                   )}
                 >
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className={cn("w-5 h-5", !isActive && (item as any).accentClass)} />
                   <span className="font-medium">{item.label}</span>
                   {item.path === '/match' && hasUnreadMatch && (
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-destructive animate-pulse" />
