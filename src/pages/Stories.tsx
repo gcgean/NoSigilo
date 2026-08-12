@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
@@ -291,7 +292,7 @@ function StoryViewer({
     if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
   };
 
-  return (
+  return createPortal((
     <div
       className="fixed inset-0 z-[9995] flex flex-col bg-black"
       onTouchStart={handleTouchStart}
@@ -531,7 +532,7 @@ function StoryViewer({
         </div>
       )}
     </div>
-  );
+  ), document.body);
 }
 
 // ─── Stats Modal (viewers + comments) ────────────────────────────────────────
