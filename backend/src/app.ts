@@ -4768,11 +4768,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ profiles: out });
   });
 
-  // GET /api/feed/top-day — posts mais curtidos das últimas 24h (com mídia).
-  // Vitrine global no topo do feed; renova diariamente para gerar mais dinâmica.
+  // GET /api/feed/top-day — posts com mais curtidas RECEBIDAS nas últimas 24h
+  // (não "publicados nas últimas 24h" — um post de dias atrás que voltou a
+  // bombar hoje também entra). Vitrine global no topo do feed, recalculada a
+  // cada chamada. A janela de 30 dias no filtro de posts é só limite de
+  // performance (evita varrer a tabela inteira conforme ela cresce) — nada
+  // realisticamente "bomba" do zero depois de 30 dias parado.
   app.get('/api/feed/top-day', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const postWindowAgo = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
 
     const rows = (await queryAll(
       db,
@@ -4781,7 +4786,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
               CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
               u.gender as author_gender,
-              (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'post' AND l.target_id = p.id) as like_count
+              (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'post' AND l.target_id = p.id AND l.created_at >= ?) as like_count
        FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE p.created_at >= ?
@@ -4796,7 +4801,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          )
        ORDER BY like_count DESC, p.created_at DESC
        LIMIT 40`,
-      [dayAgo, userId, userId]
+      [dayAgo, postWindowAgo, userId, userId]
     )) as any[];
 
     // Top do Dia é vitrine global: mostra para todos, independente do
