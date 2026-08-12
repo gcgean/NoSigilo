@@ -446,35 +446,26 @@ export default function Radar() {
               </div>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Uso de hoje</div>
-                <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
-                  <div>
-                    <div className="text-2xl font-bold">{usage.dailyRemaining}</div>
-                    <div className="text-xs text-muted-foreground">restante de {usage.dailyLimit}</div>
-                  </div>
-                  <Badge className="shrink-0" variant={usage.dailyRemaining > 0 ? 'secondary' : 'destructive'}>
-                    {usage.dailyUsed}/{usage.dailyLimit} usados
-                  </Badge>
+            {/* Um único card semanal — o limite diário é só uma trava técnica
+                interna e nunca é o fator que realmente bloqueia (a regra visível
+                ao usuário é "1 por semana"). Mostrar os dois lado a lado gerava
+                contradição: no dia seguinte ao envio, "Uso de hoje" voltava a
+                mostrar "1 restante" enquanto "Uso da semana" seguia zerado. */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Radar da semana</div>
+              <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
+                <div>
+                  <div className="text-2xl font-bold">{usage.weeklyRemaining}</div>
+                  <div className="text-xs text-muted-foreground">restante{usage.weeklyRemaining === 1 ? '' : 's'} de {usage.weeklyLimit}</div>
                 </div>
-              </div>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Uso da semana</div>
-                <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
-                  <div>
-                    <div className="text-2xl font-bold">{usage.weeklyRemaining}</div>
-                    <div className="text-xs text-muted-foreground">restantes de {usage.weeklyLimit}</div>
-                  </div>
-                  <Badge className="shrink-0" variant={usage.weeklyRemaining > 0 ? 'secondary' : 'destructive'}>
-                    {usage.weeklyUsed}/{usage.weeklyLimit} usados
-                  </Badge>
-                </div>
+                <Badge className="shrink-0" variant={usage.weeklyRemaining > 0 ? 'secondary' : 'destructive'}>
+                  {usage.weeklyUsed}/{usage.weeklyLimit} usado{usage.weeklyUsed === 1 ? '' : 's'}
+                </Badge>
               </div>
             </div>
 
             <div className="rounded-lg border bg-secondary/20 p-3 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Regra atual:</span> no maximo 1 radar por semana.
+              <span className="font-medium text-foreground">Regra atual:</span> no maximo {usage.weeklyLimit} radar{usage.weeklyLimit === 1 ? '' : 'es'} por semana.
               {limitReached ? ' Seu limite atual ja foi atingido.' : ' Enquanto houver saldo, o envio segue liberado.'}
             </div>
 
@@ -499,6 +490,13 @@ export default function Radar() {
                   setCityInput(`${nextCity}, ${nextState}`);
                 }}
               />
+              {/* Digitar sem escolher da lista deixa "state" vazio e o botão de
+                  publicar travado sem explicação — este aviso fecha essa lacuna. */}
+              {cityInput.trim().length > 0 && !state && (
+                <p className="text-xs text-amber-500">
+                  Selecione uma cidade da lista de sugestões para continuar.
+                </p>
+              )}
               <Button
                 type="button"
                 variant="outline"
