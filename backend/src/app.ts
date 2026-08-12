@@ -8898,6 +8898,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
+    // Miniatura da mídia da última mensagem (batch, uma consulta só).
+    const lmMediaIds = Array.from(new Set((rows as any[]).map((r) => r.last_message_media).filter(Boolean).map(String)));
+    const lmMediaMap = new Map<string, { url: string; mime: string | null }>();
+    if (lmMediaIds.length > 0) {
+      const ph = lmMediaIds.map(() => '?').join(',');
+      const mrows = (await queryAll(db, `SELECT id, filename, mime_type FROM media WHERE id IN (${ph})`, lmMediaIds)) as any[];
+      for (const m of mrows) lmMediaMap.set(String(m.id), { url: `/uploads/${m.filename}`, mime: m.mime_type ? String(m.mime_type) : null });
+    }
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
     res.json(
       rows.map((r: any) => {
@@ -8945,11 +8953,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         const lmMine = !!lmSender && lmSender === req.auth!.userId;
         // Ver mensagem RECEBIDA é premium: mascara o conteúdo p/ não-premium.
         const lmLocked = !!lmSender && !lmMine && !viewerHasPremiumConv;
+        const lmMedia = r.last_message_media ? lmMediaMap.get(String(r.last_message_media)) : null;
         const lastMessage = lmSender
           ? {
               senderId: lmSender,
               content: lmLocked ? null : (r.last_message_content != null ? String(r.last_message_content) : null),
               hasMedia: !!r.last_message_media,
+              mediaUrl: (!lmLocked && lmMedia) ? lmMedia.url : null,
+              mediaMime: (!lmLocked && lmMedia) ? lmMedia.mime : null,
               locked: lmLocked,
             }
           : null;

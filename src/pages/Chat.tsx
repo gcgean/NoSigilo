@@ -42,7 +42,7 @@ type Conversation = {
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null; isOnline?: boolean; lastSeenAt?: string | null };
   createdAt?: string;
   lastMessageAt?: string | null;
-  lastMessage?: { senderId: string; content: string | null; hasMedia?: boolean; locked?: boolean } | null;
+  lastMessage?: { senderId: string; content: string | null; hasMedia?: boolean; mediaUrl?: string | null; mediaMime?: string | null; locked?: boolean } | null;
   unreadCount?: number;
   isHighlighted?: boolean;
   highlightNote?: string | null;
@@ -700,6 +700,8 @@ export default function Chat() {
           senderId: msg.senderId,
           content: locked ? null : (msg.content ?? null),
           hasMedia: !!msg.mediaId,
+          mediaUrl: locked ? null : (msg.mediaUrl ?? null),
+          mediaMime: locked ? null : (msg.mediaMimeType ?? null),
           locked,
         };
         const lastMessageAt = msg.createdAt || new Date().toISOString();
@@ -1246,20 +1248,34 @@ export default function Chat() {
                     {conversation.highlightNote}
                   </p>
                 ) : null}
-                <p className={cn(
-                  "truncate text-[13px] sm:text-sm",
+                <div className={cn(
+                  "flex items-center gap-1.5 text-[13px] sm:text-sm",
                   conversation.unreadCount && conversation.unreadCount > 0 ? "text-foreground font-medium" : "text-muted-foreground"
                 )}>
                   {(() => {
                     const lm = conversation.lastMessage;
-                    if (!lm) return 'Toque para abrir';
-                    if (lm.senderId === user?.id) {
-                      return `Você: ${lm.content || (lm.hasMedia ? '📷 Mídia' : '')}`.trim();
-                    }
-                    if (lm.locked) return '🔒 Nova mensagem — assine para ler';
-                    return lm.content || (lm.hasMedia ? '📷 Mídia' : 'Nova mensagem');
+                    const isMine = lm?.senderId === user?.id;
+                    const prefix = isMine ? 'Você: ' : '';
+                    const mime = String(lm?.mediaMime || '');
+                    const isImg = !!lm && !lm.locked && !!lm.mediaUrl && mime.startsWith('image/');
+                    const isVid = !!lm && !lm.locked && lm.hasMedia && mime.startsWith('video/');
+                    let text: string;
+                    if (!lm) text = 'Toque para abrir';
+                    else if (lm.locked) text = '🔒 Nova mensagem — assine para ler';
+                    else if (isImg) text = `${prefix}${lm.content || 'Foto'}`;
+                    else if (isVid) text = `${prefix}🎥 ${lm.content || 'Vídeo'}`;
+                    else if (lm.hasMedia) text = `${prefix}📷 Mídia`;
+                    else text = `${prefix}${lm.content || 'Nova mensagem'}`;
+                    return (
+                      <>
+                        {isImg ? (
+                          <img src={resolveServerUrl(lm!.mediaUrl!)} alt="" className="h-6 w-6 shrink-0 rounded object-cover" />
+                        ) : null}
+                        <span className="truncate">{text.trim()}</span>
+                      </>
+                    );
                   })()}
-                </p>
+                </div>
               </div>
               </div>
             );
