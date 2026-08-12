@@ -173,6 +173,10 @@ export default function Chat() {
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null);
   const [message, setMessage] = useState('');
+  const [otherTyping, setOtherTyping] = useState(false);
+  const typingHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingEmitAtRef = useRef(0);
+  const stopTypingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [search, setSearch] = useState('');
   const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
   const [messageSearch, setMessageSearch] = useState('');
@@ -641,7 +645,8 @@ export default function Chat() {
     if (!selectedChat || !user?.id) return;
     setMessageSearch('');
     setShowMessageSearch(false);
-    
+    setOtherTyping(false);
+
     // Reset unread count locally
     setConversations(prev => prev.map(c => 
       c.id === selectedChat ? { ...c, unreadCount: 0 } : c
@@ -781,12 +786,26 @@ export default function Chat() {
       }
     };
 
+    // "Digitando…" do outro participante — some sozinho se parar de emitir
+    // (proteção contra o evento de "parou" se perder).
+    const typingHandler = (payload: { conversationId: string; userId: string; typing: boolean }) => {
+      if (payload?.conversationId !== selectedChat || payload?.userId === user?.id) return;
+      if (typingHideTimer.current) clearTimeout(typingHideTimer.current);
+      if (payload.typing) {
+        setOtherTyping(true);
+        typingHideTimer.current = setTimeout(() => setOtherTyping(false), 4000);
+      } else {
+        setOtherTyping(false);
+      }
+    };
+
     on('message.created', handler);
     on('message.new', handler);
     on('message.read', readHandler);
     on('message.viewed', viewedHandler);
     on('message.deleted', deletedHandler);
     on('message.reaction', reactionHandler);
+    on('typing', typingHandler);
     return () => {
       off('message.created', handler);
       off('message.new', handler);
@@ -794,6 +813,7 @@ export default function Chat() {
       off('message.viewed', viewedHandler);
       off('message.deleted', deletedHandler);
       off('message.reaction', reactionHandler);
+      off('typing', typingHandler);
     };
   }, [on, off, selectedChat, user?.id]);
 
@@ -881,11 +901,31 @@ export default function Chat() {
     }
   }, []);
 
+  // Emite "digitando…" no máx. 1x a cada 2.5s (throttle) e agenda o "parou"
+  // automaticamente 3s depois da última tecla — sem precisar de blur explícito.
+  const notifyTyping = useCallback(() => {
+    if (!selectedChat || !premiumAccess) return;
+    const now = Date.now();
+    if (now - typingEmitAtRef.current > 2500) {
+      typingEmitAtRef.current = now;
+      emit('typing', { conversationId: selectedChat, typing: true });
+    }
+    if (stopTypingTimer.current) clearTimeout(stopTypingTimer.current);
+    stopTypingTimer.current = setTimeout(() => {
+      emit('typing', { conversationId: selectedChat, typing: false });
+      typingEmitAtRef.current = 0;
+    }, 3000);
+  }, [selectedChat, premiumAccess, emit]);
+
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
     if (!premiumAccess) {
       redirectToPlans();
       return;
     }
+    // Envio corta o "digitando…" na hora (não espera o timeout de 3s).
+    if (stopTypingTimer.current) { clearTimeout(stopTypingTimer.current); stopTypingTimer.current = null; }
+    if (selectedChat) emit('typing', { conversationId: selectedChat, typing: false });
+    typingEmitAtRef.current = 0;
     const profileOk = await requireFields(['photo', 'birthDate']);
     if (!profileOk) return;
     if (!content?.trim() && !mediaId) return;
@@ -1332,7 +1372,11 @@ export default function Chat() {
                 <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                   {getIdentityLine(activeConversation?.user) || 'Chat'}
                 </span>
-                {formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline) ? (
+                {otherTyping ? (
+                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                    digitando…
+                  </span>
+                ) : formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline) ? (
                   <span className={cn(
                     "block truncate text-[11px] leading-4 font-medium",
                     activeConversation?.user.isOnline ? "text-success" : "text-muted-foreground"
@@ -1949,6 +1993,7 @@ export default function Chat() {
                 onChange={(e) => {
                   setMessage(e.target.value);
                   adjustMessageInputHeight();
+                  if (e.target.value.trim()) notifyTyping();
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !isMobileViewport) {

@@ -590,6 +590,15 @@ async function main() {
       }
     });
 
+    // "Digitando…" — retransmite para o OUTRO participante (sala da conversa).
+    // Efêmero: não persiste nada, só avisa quem está com o chat aberto.
+    socket.on('typing', (payload: any) => {
+      if (!userId) return;
+      const conversationId = payload?.conversationId;
+      if (typeof conversationId !== 'string' || conversationId.length === 0) return;
+      socket.to(conversationId).emit('typing', { conversationId, userId, typing: !!payload?.typing });
+    });
+
     socket.on('disconnect', async () => {
       if (!userId) return;
       const next = (onlineCounts.get(userId) ?? 1) - 1;
