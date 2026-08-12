@@ -290,6 +290,23 @@ export default function SearchVideos() {
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filtersPanelRef = useRef<HTMLDivElement | null>(null);
+  const filtersButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Clique fora do painel de filtros fecha (consistente com a tela de Busca).
+  useEffect(() => {
+    if (!showFilters) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        filtersPanelRef.current?.contains(target) ||
+        filtersButtonRef.current?.contains(target)
+      ) return;
+      setShowFilters(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showFilters]);
 
   const buildParams = useCallback((p: number) => ({
     page:           p,
@@ -324,7 +341,8 @@ export default function SearchVideos() {
       const status = err?.response?.status;
       const msg = err?.response?.data?.message || err?.message || 'Erro desconhecido';
       console.error('[SearchVideos] fetch error', status, msg, err);
-      setFetchError(`Erro ${status ?? ''}: ${msg}`);
+      // Mensagem amigável para o usuário — o detalhe técnico fica só no console.
+      setFetchError('Não foi possível carregar os vídeos agora. Tente novamente em instantes.');
       setVideos([]);
       setHasMore(false);
     } finally {
@@ -430,6 +448,7 @@ export default function SearchVideos() {
             />
           </div>
           <Button
+            ref={filtersButtonRef}
             type="button"
             variant="outline"
             size="icon"
@@ -484,7 +503,7 @@ export default function SearchVideos() {
 
         {/* Expanded filters */}
         {showFilters && (
-          <div className="grid grid-cols-1 gap-3 rounded-xl border border-border/50 bg-muted/30 p-4 sm:grid-cols-2">
+          <div ref={filtersPanelRef} className="grid grid-cols-1 gap-3 rounded-xl border border-border/50 bg-muted/30 p-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <p className="text-xs font-medium text-muted-foreground">Publicado por (tipo de perfil)</p>
               <Select value={genderFilter} onValueChange={setGenderFilter}>
@@ -549,11 +568,16 @@ export default function SearchVideos() {
 
       {/* Error state */}
       {!isLoading && fetchError && (
-        <MobileState
-          icon={Clapperboard}
-          title="Erro ao carregar vídeos"
-          description={fetchError}
-        />
+        <div className="flex flex-col items-center gap-3">
+          <MobileState
+            icon={Clapperboard}
+            title="Erro ao carregar vídeos"
+            description={fetchError}
+          />
+          <Button variant="outline" size="sm" onClick={() => void fetchFirstPage()}>
+            Tentar novamente
+          </Button>
+        </div>
       )}
 
       {/* Empty state */}
