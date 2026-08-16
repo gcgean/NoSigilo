@@ -4296,6 +4296,9 @@ function AdminPromotersTab() {
   const [commFilter, setCommFilter] = useState<string>('pending');
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
+  // Mínimo acumulado (em centavos) para liberar pagamento — vem do backend
+  // (fonte única da regra), com fallback de R$10 caso a API ainda não retorne o campo.
+  const [minPayoutCents, setMinPayoutCents] = useState(1000);
 
   // Monthly summary email
   const currentPeriod = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
@@ -4327,6 +4330,7 @@ function AdminPromotersTab() {
         adminPromoterService.listSupportChats().catch(() => ({ chats: [] })),
       ]);
       setPromoters(pRes.promoters ?? []);
+      if (pRes.minPayoutCents) setMinPayoutCents(pRes.minPayoutCents);
       setCommissions(cRes.commissions ?? []);
       const map: Record<string, number> = {};
       for (const c of (chatRes.chats ?? [])) map[c.userId] = c.unreadCount;
@@ -4387,19 +4391,28 @@ function AdminPromotersTab() {
     setIsBusy(true);
     try {
       const r = await adminPromoterService.batchPay({ period, promoterUserId });
-      toast({
-        title: `${r.paid} comissão(ões) marcada(s) como paga(s)`,
-        description: r.receiptsSent > 0 ? `🧾 ${r.receiptsSent} recibo(s) enviado(s) por e-mail.` : 'Nenhum recibo enviado (promotor sem e-mail).',
-      });
+      if (r.paid === 0 && r.skippedBelowThreshold > 0) {
+        toast({
+          title: 'Nenhum pagamento liberado',
+          description: `${r.skippedBelowThreshold} promotor(es) ainda não atingiram o mínimo de ${formatBRLAdmin(minPayoutCents)} acumulado.`,
+          variant: 'destructive',
+        });
+      } else {
+        toast({
+          title: `${r.paid} comissão(ões) marcada(s) como paga(s)`,
+          description: r.receiptsSent > 0 ? `🧾 ${r.receiptsSent} recibo(s) enviado(s) por e-mail.` : 'Nenhum recibo enviado (promotor sem e-mail).',
+        });
+      }
       void loadAll();
     } catch { toast({ title: 'Erro', variant: 'destructive' }); }
     finally { setIsBusy(false); }
   };
 
-  // Paga TODAS as comissões aprovadas de um promotor num período (com recibo por e-mail).
-  const handlePayPromoter = async (period: string, promoterUserId: string, promoterName: string, totalLabel: string) => {
-    if (!confirm(`Confirmar pagamento de ${totalLabel} para ${promoterName} (${period})?\n\nTodas as parcelas aprovadas ficarão como pagas e um recibo será enviado por e-mail ao promotor.`)) return;
-    await handleBatchPay(period, promoterUserId);
+  // Paga o saldo aprovado ACUMULADO de um promotor (todos os períodos), desde
+  // que atinja o mínimo de R$10 — com recibo por e-mail cobrindo o(s) período(s) pagos.
+  const handlePayPromoter = async (promoterUserId: string, promoterName: string, totalLabel: string) => {
+    if (!confirm(`Confirmar pagamento de ${totalLabel} para ${promoterName}?\n\nTodas as comissões aprovadas dele (em todos os períodos) ficarão como pagas e um recibo será enviado por e-mail.`)) return;
+    await handleBatchPay(undefined, promoterUserId);
   };
 
   // Lista pronta pra colar no WhatsApp: nome, chave Pix e valor de cada
@@ -4640,15 +4653,25 @@ function AdminPromotersTab() {
         );
       })()}
 
-      {/* Promoters list */}
+      {/* Fila de pagamento — pagamento é sempre pelo saldo aprovado ACUMULADO
+          (todos os períodos) e só é liberado ao atingir o mínimo de minPayoutCents,
+          pra acabar com o Pix picado de comissões pequenas. */}
       <div className="glass rounded-xl p-5 space-y-4">
-        <h3 className="font-semibold flex items-center gap-2">
-          <Users className="w-4 h-4 text-primary" />
-          Promotores ({promoters.length})
-        </h3>
+        <div>
+          <h3 className="font-semibold flex items-center gap-2">
+            <Users className="w-4 h-4 text-primary" />
+            Promotores / Fila de pagamento ({promoters.length})
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Pagamento liberado a partir de <strong>{formatBRLAdmin(minPayoutCents)}</strong> de comissão aprovada acumulada (soma de todos os períodos).
+          </p>
+        </div>
         {promoters.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhum promotor ainda.</p>}
         <div className="space-y-3">
-          {promoters.map((p) => (
+          {promoters.map((p) => {
+            const eligible = p.approvedCents >= minPayoutCents;
+            const missingCents = Math.max(0, minPayoutCents - p.approvedCents);
+            return (
             <div key={p.userId} className="rounded-xl border bg-secondary/20 p-4 flex flex-col sm:flex-row sm:items-center gap-4">
               <div className="flex-1 min-w-0 space-y-0.5">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -4676,20 +4699,28 @@ function AdminPromotersTab() {
                   <p className="text-[10px] text-muted-foreground">pendente</p>
                 </div>
                 <div>
+                  <p className={`text-sm font-bold ${eligible ? 'text-emerald-600' : 'text-blue-600'}`}>{formatBRLAdmin(p.approvedCents)}</p>
+                  <p className="text-[10px] text-muted-foreground">aprovado</p>
+                </div>
+                <div>
                   <p className="text-sm font-bold text-emerald-600">{formatBRLAdmin(p.paidCents)}</p>
                   <p className="text-[10px] text-muted-foreground">pago</p>
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                {p.pendingCents > 0 && (
+                {eligible ? (
                   <button
-                    onClick={() => handleBatchPay(undefined, p.userId)}
+                    onClick={() => handlePayPromoter(p.userId, p.fullName, formatBRLAdmin(p.approvedCents))}
                     disabled={isBusy}
-                    className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1"
+                    className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1 font-medium"
                   >
-                    <Check className="w-3 h-3" /> Pagar tudo
+                    <Check className="w-3 h-3" /> Pagar {formatBRLAdmin(p.approvedCents)}
                   </button>
-                )}
+                ) : p.approvedCents > 0 ? (
+                  <span className="text-[11px] rounded-lg border border-dashed px-2.5 py-1.5 text-muted-foreground text-center leading-tight">
+                    Faltam {formatBRLAdmin(missingCents)}<br />p/ liberar
+                  </span>
+                ) : null}
                 <button
                   onClick={() => openChat(p)}
                   className="relative text-xs rounded-lg border px-3 py-1.5 hover:bg-secondary flex items-center gap-1"
@@ -4703,17 +4734,21 @@ function AdminPromotersTab() {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
       {/* Commissions by period */}
       <div className="glass rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="font-semibold flex items-center gap-2">
-            <DollarSign className="w-4 h-4 text-emerald-500" />
-            Comissões por período
-          </h3>
+          <div>
+            <h3 className="font-semibold flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-emerald-500" />
+              Comissões por período
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">Pagamento é feito por promotor, na Fila de pagamento acima, ao atingir {formatBRLAdmin(minPayoutCents)} acumulados.</p>
+          </div>
           <div className="flex gap-2 flex-wrap">
             {['pending', 'approved', 'paid', 'cancelled', 'all'].map((s) => (
               <button
@@ -4779,15 +4814,6 @@ function AdminPromotersTab() {
                   )}
                   {approvedItems.length > 0 && (
                     <button
-                      onClick={() => handleBatchPay(period)}
-                      disabled={isBusy}
-                      className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-1.5 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1"
-                    >
-                      <Check className="w-3 h-3" /> Pagar aprovadas ({approvedItems.length})
-                    </button>
-                  )}
-                  {approvedItems.length > 0 && (
-                    <button
                       onClick={() => void handleCopyApprovedList(period, groups)}
                       className="text-xs rounded-lg bg-secondary text-foreground border px-3 py-1.5 hover:bg-secondary/70 flex items-center gap-1"
                       title="Copiar nome, Pix e valor de cada promotor aprovado — pronto pra colar no WhatsApp"
@@ -4813,19 +4839,10 @@ function AdminPromotersTab() {
                         </div>
                         <div className="flex items-center gap-3">
                           <div className="text-right">
-                            <p className="text-[11px] text-muted-foreground leading-tight">Aprovado a pagar</p>
+                            <p className="text-[11px] text-muted-foreground leading-tight">Aprovado neste período</p>
                             <p className="font-bold text-emerald-600 leading-tight">{formatBRLAdmin(g.approvedCents)}</p>
                             <p className="text-[11px] text-muted-foreground leading-tight">Total período: {formatBRLAdmin(g.totalCents)}</p>
                           </div>
-                          {g.approvedCents > 0 && (
-                            <button
-                              onClick={() => handlePayPromoter(period, g.uid, g.name, formatBRLAdmin(g.approvedCents))}
-                              disabled={isBusy}
-                              className="text-xs rounded-lg bg-emerald-500 text-white px-3 py-2 hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1 shrink-0 font-medium"
-                            >
-                              <Check className="w-3.5 h-3.5" /> Pagar {formatBRLAdmin(g.approvedCents)} ({g.approved.length})
-                            </button>
-                          )}
                         </div>
                       </div>
                       {/* Parcelas individuais do promotor */}

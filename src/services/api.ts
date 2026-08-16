@@ -790,7 +790,7 @@ export const invitesService = {
 // ── Programa de Indicação (Promotores) ──────────────────────────────────────
 export type PromoterProfile = { id: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null; status: string; activatedAt: string };
 export type PromoterCommission = { id: string; subscriptionAmount: number; commissionAmount: number; status: string; period: string | null; paidAt: string | null; createdAt: string };
-export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number };
+export type PromoterStats = { invitesSent: number; totalSignups: number; totalSubscriptions: number; totalCommissionCents: number; pendingCents: number; approvedCents: number; paidCents: number; minPayoutCents: number };
 export type PromoterReferredStatus = 'subscriber' | 'trial' | 'expired' | 'deactivated' | 'banned';
 export type PromoterReferredUser = { id: string; name: string; avatar: string | null; status: PromoterReferredStatus; joinedAt: string; licenseEndAt: string | null };
 
@@ -812,7 +812,11 @@ export const promoterService = {
 export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; message: string; readAt: string | null; createdAt: string };
 
 export const adminPromoterService = {
-  listPromoters: async () => {
+  listPromoters: async (): Promise<{ promoters: Array<{
+    id: string; userId: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null;
+    status: string; activatedAt: string; userName: string; userEmail: string; userAvatar: string | null;
+    totalSubscriptions: number; pendingCents: number; approvedCents: number; paidCents: number;
+  }>; minPayoutCents: number }> => {
     const response = await apiClient.get('/admin/promoters');
     return response.data;
   },
@@ -828,7 +832,7 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoter-commissions/batch-approve', { period });
     return response.data;
   },
-  batchPay: async (data: { period?: string; promoterUserId?: string }): Promise<{ ok: boolean; paid: number; promotersPaid: number; receiptsSent: number }> => {
+  batchPay: async (data: { period?: string; promoterUserId?: string }): Promise<{ ok: boolean; paid: number; promotersPaid: number; receiptsSent: number; skippedBelowThreshold: number }> => {
     const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
     return response.data;
   },

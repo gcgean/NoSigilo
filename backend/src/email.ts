@@ -540,12 +540,12 @@ export async function sendPromoterCampaignEmail(
         </div>
         <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
           <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">3</span>
-          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, todo mês via Pix</span>
+          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, direto no seu Pix</span>
         </div>
       </div>
     </div>
 
-    <div style="display:flex;gap:12px;margin:0 0 24px;flex-wrap:wrap;">
+    <div style="display:flex;gap:12px;margin:0 0 16px;flex-wrap:wrap;">
       <div style="flex:1;min-width:140px;background:#fef9c3;border-radius:12px;padding:16px;text-align:center;border:1px solid #fde047;">
         <p style="font-size:22px;font-weight:800;color:#854d0e;margin:0;">20%</p>
         <p style="font-size:12px;color:#713f12;margin:4px 0 0;">de comissão</p>
@@ -556,8 +556,12 @@ export async function sendPromoterCampaignEmail(
       </div>
       <div style="flex:1;min-width:140px;background:#e0f2fe;border-radius:12px;padding:16px;text-align:center;border:1px solid #7dd3fc;">
         <p style="font-size:22px;font-weight:800;color:#0369a1;margin:0;">Pix</p>
-        <p style="font-size:12px;color:#075985;margin:4px 0 0;">todo mês</p>
+        <p style="font-size:12px;color:#075985;margin:4px 0 0;">ao acumular R$10</p>
       </div>
+    </div>
+
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px;margin:0 0 24px;">
+      <p style="font-size:13px;color:#4b5563;margin:0;">💡 O pagamento via Pix é feito assim que suas comissões acumuladas somarem <strong>R$10,00</strong> — sem valor mínimo pra começar a indicar e ganhar.</p>
     </div>
 
     <div style="text-align:center;margin-bottom:24px;">
@@ -641,7 +645,12 @@ export async function sendPromoterIncentiveEmail(
     </div>`
     : `
     <div style="background:#fef9c3;border:1px solid #fde047;border-radius:14px;padding:16px 20px;margin:0 0 24px;text-align:center;">
-      <p style="font-size:14px;color:#713f12;margin:0;">Você ainda não teve nenhuma indicação confirmada — mas seu link já está pronto e cada assinatura vale <strong>R$1,98 recorrente</strong> todo mês.</p>
+      <p style="font-size:14px;color:#713f12;margin:0;">Você ainda não teve nenhuma indicação confirmada — mas seu link já está pronto e cada assinatura vale <strong>R$1,98 recorrente</strong>.</p>
+    </div>`;
+
+  const minPayoutNotice = `
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px;margin:0 0 24px;">
+      <p style="font-size:13px;color:#4b5563;margin:0;">💰 O pagamento via Pix é feito assim que suas comissões acumuladas somarem <strong>R$10,00</strong>.</p>
     </div>`;
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
@@ -687,10 +696,12 @@ export async function sendPromoterIncentiveEmail(
         </div>
         <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:#1f2937;">
           <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">3</span>
-          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, todo mês via Pix</span>
+          <span>Receba <strong>R$1,98 por assinatura</strong> confirmada, direto no seu Pix</span>
         </div>
       </div>
     </div>
+
+    ${minPayoutNotice}
 
     <div style="text-align:center;margin-bottom:24px;">
       <a href="${ctaUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
@@ -731,10 +742,12 @@ export async function sendPromoterMonthlySummaryEmail(
     period: string; // 'YYYY-MM'
     totalSubscriptions: number;
     commissionCents: number;   // total em centavos
-    pendingCents: number;      // ainda pendente de aprovação
-    approvedCents: number;     // aprovado aguardando pagamento
-    paidCents: number;         // já pago
+    pendingCents: number;      // ainda pendente de aprovação (no período)
+    approvedCents: number;     // aprovado aguardando pagamento (no período)
+    paidCents: number;         // já pago (no período)
     dueDate: string;           // '10/MM/YYYY' — data de pagamento prevista
+    totalApprovedBalanceCents: number; // saldo aprovado acumulado em TODOS os períodos (usado no gate de R$10)
+    minPayoutCents: number;    // valor mínimo acumulado para liberar o pagamento
   }
 ) {
   if (!options.apiKey || !options.fromEmail) {
@@ -758,6 +771,19 @@ export async function sendPromoterMonthlySummaryEmail(
     payload.approvedCents > 0 ? `<tr><td style="padding:8px 12px;font-size:14px;color:#374151;">✅ Aprovado (aguardando Pix)</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#2563eb;text-align:right;">${fmt(payload.approvedCents)}</td></tr>` : '',
     payload.paidCents     > 0 ? `<tr><td style="padding:8px 12px;font-size:14px;color:#374151;">💸 Já pago via Pix</td><td style="padding:8px 12px;font-size:14px;font-weight:700;color:#16a34a;text-align:right;">${fmt(payload.paidCents)}</td></tr>` : '',
   ].filter(Boolean).join('');
+
+  const minPayoutBRL = fmt(payload.minPayoutCents);
+  const payoutNoticeHtml = payload.totalApprovedBalanceCents >= payload.minPayoutCents
+    ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px 16px;margin:0 0 24px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">✅</span>
+        <div><p style="font-size:13px;font-weight:700;color:#15803d;margin:0 0 2px;">Pagamento liberado</p>
+        <p style="font-size:13px;color:#166534;margin:0;">Seu saldo aprovado acumulado (${fmt(payload.totalApprovedBalanceCents)}) já atingiu o mínimo de ${minPayoutBRL} e está na fila para pagamento via Pix.</p></div>
+      </div>`
+    : `<div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:14px 16px;margin:0 0 24px;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">💰</span>
+        <div><p style="font-size:13px;font-weight:700;color:#854d0e;margin:0 0 2px;">Pagamento mínimo: ${minPayoutBRL}</p>
+        <p style="font-size:13px;color:#713f12;margin:0;">Pagamos via Pix assim que suas comissões acumuladas somarem ${minPayoutBRL}. Faltam ${fmt(Math.max(0, payload.minPayoutCents - payload.totalApprovedBalanceCents))} para liberar seu próximo pagamento.</p></div>
+      </div>`;
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
 <div style="max-width:580px;margin:0 auto;padding:24px 16px;">
@@ -792,14 +818,8 @@ export async function sendPromoterMonthlySummaryEmail(
       <tbody>${statusRows}</tbody>
     </table>` : ''}
 
-    <!-- Payment date -->
-    <div style="background:#fefce8;border:1px solid #fde047;border-radius:12px;padding:14px 16px;margin:0 0 24px;display:flex;align-items:center;gap:10px;">
-      <span style="font-size:20px;">📅</span>
-      <div>
-        <p style="font-size:13px;font-weight:700;color:#854d0e;margin:0 0 2px;">Previsão de pagamento</p>
-        <p style="font-size:13px;color:#713f12;margin:0;">Pagamentos aprovados são realizados via Pix até <strong>${payload.dueDate}</strong>.</p>
-      </div>
-    </div>
+    <!-- Payment minimum / status -->
+    ${payoutNoticeHtml}
 
     <!-- CTA -->
     <div style="text-align:center;margin-bottom:24px;">
@@ -839,7 +859,10 @@ export async function sendPromoterPaymentReceiptEmail(
     to: string;
     promoterName: string;
     promoterPix: string;
-    period: string;      // 'YYYY-MM'
+    /** Rótulo já formatado do(s) período(s) cobertos por este pagamento — um
+     *  único mês ("Julho / 2026") ou um intervalo ("Julho / 2026 – Agosto / 2026")
+     *  quando o pagamento acumula comissões aprovadas de mais de um período. */
+    periodLabel: string;
     count: number;       // nº de comissões/parcelas pagas nesta operação
     totalCents: number;  // total pago em centavos
     paidAtStr: string;   // data do pagamento 'dd/mm/aaaa'
@@ -854,9 +877,7 @@ export async function sendPromoterPaymentReceiptEmail(
   const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
   const safeName = escapeHtml(payload.promoterName || 'Promotor');
   const safePix = escapeHtml(payload.promoterPix || '—');
-  const [year, month] = payload.period.split('-');
-  const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const monthLabel = month ? `${monthNames[parseInt(month, 10) - 1]} / ${year}` : payload.period;
+  const monthLabel = escapeHtml(payload.periodLabel || '—');
   const fmt = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const total = fmt(payload.totalCents);
 

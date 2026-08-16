@@ -282,7 +282,7 @@ export default function Promoter() {
                     { n: '1', text: 'Ative seu perfil de promotor preenchendo seus dados abaixo.' },
                     { n: '2', text: 'Gere seu convite exclusivo e compartilhe fora da plataforma.' },
                     { n: '3', text: 'Quando alguém assinar usando seu convite, você ganha 20% do valor pago.' },
-                    { n: '4', text: 'Acompanhe seus ganhos pelo painel e receba via Pix mensalmente.' },
+                    { n: '4', text: 'Acompanhe seus ganhos pelo painel e receba via Pix ao atingir R$10,00 acumulados.' },
                   ].map((step) => (
                     <li key={step.n} className="flex items-start gap-3">
                       <span className="shrink-0 w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-600 text-xs font-bold flex items-center justify-center mt-0.5">
@@ -303,6 +303,9 @@ export default function Promoter() {
                   <p className="text-xs text-muted-foreground mt-1.5">
                     10 assinantes × R$ {COMMISSION_PER_PLAN.toFixed(2).replace('.', ',')} ={' '}
                     <strong className="text-emerald-600">R$ {(10 * COMMISSION_PER_PLAN).toFixed(2).replace('.', ',')} por mês</strong>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2 pt-2 border-t border-emerald-500/15">
+                    💰 O pagamento via Pix é liberado quando suas comissões aprovadas somarem <strong className="text-emerald-600">R$10,00</strong> — o valor acumula normalmente entre meses até atingir o mínimo.
                   </p>
                 </div>
               </div>
@@ -531,7 +534,15 @@ export default function Promoter() {
             </div>
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-secondary/30 rounded-xl px-4 py-3">
               <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              As comissões são calculadas apenas sobre assinaturas pagas e confirmadas. Cancelamentos, estornos ou pagamentos recusados não geram comissão. O pagamento ocorre mensalmente via Pix.
+              As comissões são calculadas apenas sobre assinaturas pagas e confirmadas. Cancelamentos, estornos ou pagamentos recusados não geram comissão.
+            </div>
+            <div className={`flex items-start gap-2 text-xs rounded-xl px-4 py-3 border ${stats.approvedCents >= stats.minPayoutCents ? 'text-emerald-700 bg-emerald-500/10 border-emerald-400/30' : 'text-blue-700 bg-blue-500/5 border-blue-400/20'}`}>
+              <Wallet className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              {stats.approvedCents >= stats.minPayoutCents ? (
+                <span>Seu saldo aprovado ({formatBRL(stats.approvedCents)}) já atingiu o mínimo de <strong>{formatBRL(stats.minPayoutCents)}</strong> e está na fila para pagamento via Pix.</span>
+              ) : (
+                <span>O pagamento via Pix é liberado quando suas comissões aprovadas somarem <strong>{formatBRL(stats.minPayoutCents)}</strong> (acumulado entre meses). Faltam <strong>{formatBRL(Math.max(0, stats.minPayoutCents - stats.approvedCents))}</strong>.</span>
+              )}
             </div>
           </div>
         )}

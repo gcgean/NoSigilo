@@ -949,6 +949,29 @@ async function syncHubAccessForUser(
   }
 }
 
+// Valor mínimo acumulado (em centavos) para liberar o pagamento de comissões
+// de um promotor — evita Pix picado de valores pequenos. O saldo considerado
+// é o total aprovado do promotor em TODOS os períodos somados (não por mês).
+const PROMOTER_MIN_PAYOUT_CENTS = 1000;
+
+const PT_MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+function formatPeriodLabel(period: string): string {
+  const [year, month] = period.split('-');
+  const idx = parseInt(month, 10) - 1;
+  return idx >= 0 && idx < 12 ? `${PT_MONTH_NAMES[idx]} / ${year}` : period;
+}
+
+// Rótulo do(s) período(s) cobertos por um pagamento — um único mês, ou um
+// intervalo "de – até" quando o pagamento acumula comissões de vários meses
+// (o que passa a ser comum agora que só pagamos ao atingir o mínimo de R$10).
+function formatPeriodRangeLabel(periods: string[]): string {
+  const sorted = Array.from(new Set(periods)).sort();
+  if (sorted.length === 0) return '—';
+  if (sorted.length === 1) return formatPeriodLabel(sorted[0]);
+  return `${formatPeriodLabel(sorted[0])} – ${formatPeriodLabel(sorted[sorted.length - 1])}`;
+}
+
 // Cria a comissão do promotor para um assinante, se ainda não existir, e notifica
 // o promotor. Idempotente por subscriber_user_id — pode ser chamada várias vezes
 // sem duplicar. Retorna true se criou uma nova comissão.
@@ -3186,6 +3209,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         pendingCents: sum(pending),
         approvedCents: sum(approved),
         paidCents: sum(paid),
+        minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS,
       },
       referredCounts,
       referredUsers,
@@ -3213,17 +3237,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
        FROM promoters p JOIN users u ON u.id = p.user_id ORDER BY p.activated_at DESC`,
       []
     )) as any[];
-    res.json({ promoters: rows.map((r) => ({
-      id: String(r.id), userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
-      whatsapp: r.whatsapp ? String(r.whatsapp) : null,
-      contactEmail: r.contact_email ? String(r.contact_email) : null,
-      status: String(r.status), activatedAt: String(r.activated_at),
-      userName: String(r.user_name || ''), userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
-      totalSubscriptions: Number(r.total_subscriptions || 0),
-      pendingCents: Number(r.pending_cents || 0),
-      approvedCents: Number(r.approved_cents || 0),
-      paidCents: Number(r.paid_cents || 0),
-    })) });
+    res.json({
+      promoters: rows.map((r) => ({
+        id: String(r.id), userId: String(r.user_id), fullName: String(r.full_name), pixKey: String(r.pix_key),
+        whatsapp: r.whatsapp ? String(r.whatsapp) : null,
+        contactEmail: r.contact_email ? String(r.contact_email) : null,
+        status: String(r.status), activatedAt: String(r.activated_at),
+        userName: String(r.user_name || ''), userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
+        totalSubscriptions: Number(r.total_subscriptions || 0),
+        pendingCents: Number(r.pending_cents || 0),
+        approvedCents: Number(r.approved_cents || 0),
+        paidCents: Number(r.paid_cents || 0),
+      })),
+      minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS,
+    });
   });
 
   // Admin: list all commissions
@@ -3370,7 +3397,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
-  // Admin: batch pay commissions (mark all approved as paid)
+  // Admin: batch pay commissions (mark all approved as paid).
+  // Regra: só paga um promotor quando o saldo APROVADO ACUMULADO em TODOS os
+  // períodos atinge PROMOTER_MIN_PAYOUT_CENTS (R$10) — evita Pix picado.
+  // Quando o promotor atinge o mínimo, paga TODO o saldo aprovado dele (não só
+  // o recorte do filtro period/promoterUserId), para realmente zerar a fila.
   app.post('/api/admin/promoter-commissions/batch-pay', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const schema = z.object({ period: z.string().regex(/^\d{4}-\d{2}$/).optional(), promoterUserId: z.string().optional() });
@@ -3378,45 +3409,69 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
       const now = nowIso();
 
-      // 1. Coleta as comissões aprovadas que serão pagas AGORA (com dados do promotor),
-      //    para saber os totais por promotor e emitir o recibo depois do UPDATE.
-      let selectQ = `SELECT pc.id, pc.commission_amount, pc.promoter_user_id, pc.period,
+      // 1. Candidatos: promotores com ao menos 1 comissão aprovada batendo o filtro.
+      let candQ = "SELECT DISTINCT promoter_user_id FROM promoter_commissions WHERE status = 'approved'";
+      const candParams: any[] = [];
+      if (parsed.data.period) { candQ += ' AND period = ?'; candParams.push(parsed.data.period); }
+      if (parsed.data.promoterUserId) { candQ += ' AND promoter_user_id = ?'; candParams.push(parsed.data.promoterUserId); }
+      const candidateRows = (await queryAll(db, candQ, candParams)) as any[];
+      const candidateIds = candidateRows.map((r) => String(r.promoter_user_id));
+
+      if (candidateIds.length === 0) { res.json({ ok: true, paid: 0, promotersPaid: 0, receiptsSent: 0, skippedBelowThreshold: 0 }); return; }
+
+      // 2. Saldo aprovado TOTAL (todos os períodos) de cada candidato — o mínimo
+      //    de R$10 é sempre acumulado, nunca calculado por período isolado.
+      const candPlaceholders = candidateIds.map(() => '?').join(',');
+      const balanceRows = (await queryAll(
+        db,
+        `SELECT promoter_user_id, COALESCE(SUM(commission_amount), 0) AS total
+         FROM promoter_commissions
+         WHERE status = 'approved' AND promoter_user_id IN (${candPlaceholders})
+         GROUP BY promoter_user_id`,
+        candidateIds
+      )) as any[];
+      const eligibleIds = balanceRows.filter((r) => Number(r.total || 0) >= PROMOTER_MIN_PAYOUT_CENTS).map((r) => String(r.promoter_user_id));
+      const skippedBelowThreshold = candidateIds.length - eligibleIds.length;
+
+      if (eligibleIds.length === 0) { res.json({ ok: true, paid: 0, promotersPaid: 0, receiptsSent: 0, skippedBelowThreshold }); return; }
+
+      // 3. Busca TODAS as comissões aprovadas dos elegíveis (qualquer período —
+      //    paga o saldo acumulado inteiro, não só a fatia do filtro original).
+      const elgPlaceholders = eligibleIds.map(() => '?').join(',');
+      const selectQ = `SELECT pc.id, pc.commission_amount, pc.promoter_user_id, pc.period,
           p.full_name AS promoter_name, p.pix_key AS promoter_pix,
           COALESCE(p.contact_email, u.email) AS notify_email
         FROM promoter_commissions pc
         JOIN promoters p ON p.user_id = pc.promoter_user_id
         JOIN users u ON u.id = pc.promoter_user_id
-        WHERE pc.status = 'approved'`;
-      const selParams: any[] = [];
-      if (parsed.data.period) { selectQ += ' AND pc.period = ?'; selParams.push(parsed.data.period); }
-      if (parsed.data.promoterUserId) { selectQ += ' AND pc.promoter_user_id = ?'; selParams.push(parsed.data.promoterUserId); }
-      const toPay = (await queryAll(db, selectQ, selParams)) as any[];
+        WHERE pc.status = 'approved' AND pc.promoter_user_id IN (${elgPlaceholders})`;
+      const toPay = (await queryAll(db, selectQ, eligibleIds)) as any[];
 
-      if (toPay.length === 0) { res.json({ ok: true, paid: 0, promotersPaid: 0, receiptsSent: 0 }); return; }
-
-      // 2. Marca como pagas.
-      let q = "UPDATE promoter_commissions SET status = 'paid', paid_at = ? WHERE status = 'approved'";
-      const params: any[] = [now];
-      if (parsed.data.period) { q += ' AND period = ?'; params.push(parsed.data.period); }
-      if (parsed.data.promoterUserId) { q += ' AND promoter_user_id = ?'; params.push(parsed.data.promoterUserId); }
-      await run(db, q, params);
+      // 4. Marca como pagas.
+      await run(
+        db,
+        `UPDATE promoter_commissions SET status = 'paid', paid_at = ? WHERE status = 'approved' AND promoter_user_id IN (${elgPlaceholders})`,
+        [now, ...eligibleIds]
+      );
       await persist();
 
-      // 3. Agrupa por promotor+período e envia um recibo por grupo (best-effort).
-      const groups = new Map<string, { name: string; pix: string; email: string; period: string; count: number; totalCents: number }>();
+      // 5. Agrupa por promotor e envia um recibo por promotor (pode cobrir vários
+      //    períodos de uma vez agora que pagamos o saldo acumulado inteiro).
+      const groups = new Map<string, { name: string; pix: string; email: string; periods: Set<string>; count: number; totalCents: number }>();
       for (const r of toPay) {
-        const key = `${String(r.promoter_user_id)}|${String(r.period || '')}`;
+        const key = String(r.promoter_user_id);
         if (!groups.has(key)) {
           groups.set(key, {
             name: String(r.promoter_name || 'Promotor'),
             pix: String(r.promoter_pix || ''),
             email: String(r.notify_email || ''),
-            period: String(r.period || ''),
+            periods: new Set(),
             count: 0,
             totalCents: 0,
           });
         }
         const g = groups.get(key)!;
+        if (r.period) g.periods.add(String(r.period));
         g.count += 1;
         g.totalCents += Number(r.commission_amount || 0);
       }
@@ -3426,10 +3481,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       for (const g of groups.values()) {
         if (!g.email) continue;
         try {
-          const receiptNo = `${g.period || 'X'}-${randomUUID().slice(0, 8).toUpperCase()}`;
+          const periodsSorted = Array.from(g.periods).sort();
+          const periodLabel = formatPeriodRangeLabel(periodsSorted);
+          const receiptNo = `${periodsSorted[periodsSorted.length - 1] || 'X'}-${randomUUID().slice(0, 8).toUpperCase()}`;
           const result = await sendPromoterPaymentReceiptEmail(
             { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
-            { to: g.email, promoterName: g.name, promoterPix: g.pix, period: g.period, count: g.count, totalCents: g.totalCents, paidAtStr, receiptNo }
+            { to: g.email, promoterName: g.name, promoterPix: g.pix, periodLabel, count: g.count, totalCents: g.totalCents, paidAtStr, receiptNo }
           );
           if (!(result as any)?.skipped) receiptsSent++;
         } catch (e: any) {
@@ -3438,7 +3495,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         await new Promise((r) => setTimeout(r, 120));
       }
 
-      res.json({ ok: true, paid: toPay.length, promotersPaid: groups.size, receiptsSent });
+      res.json({ ok: true, paid: toPay.length, promotersPaid: groups.size, receiptsSent, skippedBelowThreshold });
     } catch (err) {
       console.error('[promoter-commissions/batch-pay]', err);
       res.status(500).json({ error: 'internal' });
@@ -3458,7 +3515,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const dueDate = new Date(py, pm, 10); // pm é o mês atual (1-indexed), Date usa 0-indexed, então pm = próximo mês
       const dueDateStr = dueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-      // Buscar todos os promotores ativos com seus dados e comissões do período
+      // Buscar todos os promotores ativos com seus dados e comissões do período,
+      // além do saldo aprovado acumulado em TODOS os períodos (usado no aviso do
+      // mínimo de pagamento, que é sempre acumulado, não por mês).
       const rows = (await queryAll(
         db,
         `SELECT p.user_id, p.full_name,
@@ -3467,7 +3526,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           COALESCE(SUM(CASE WHEN pc.status = 'pending'  THEN pc.commission_amount ELSE 0 END), 0) AS pending_cents,
           COALESCE(SUM(CASE WHEN pc.status = 'approved' THEN pc.commission_amount ELSE 0 END), 0) AS approved_cents,
           COALESCE(SUM(CASE WHEN pc.status = 'paid'     THEN pc.commission_amount ELSE 0 END), 0) AS paid_cents,
-          COUNT(CASE WHEN pc.status != 'cancelled' THEN 1 END) AS total_subscriptions
+          COUNT(CASE WHEN pc.status != 'cancelled' THEN 1 END) AS total_subscriptions,
+          (SELECT COALESCE(SUM(pc2.commission_amount), 0) FROM promoter_commissions pc2 WHERE pc2.promoter_user_id = p.user_id AND pc2.status = 'approved') AS total_approved_balance_cents
          FROM promoters p
          JOIN users u ON u.id = p.user_id
          LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id AND pc.period = ?
@@ -3494,6 +3554,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
               approvedCents: Number(row.approved_cents || 0),
               paidCents: Number(row.paid_cents || 0),
               dueDate: dueDateStr,
+              totalApprovedBalanceCents: Number(row.total_approved_balance_cents || 0),
+              minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS,
             }
           );
           if ((result as any)?.skipped) { skipped++; continue; }
