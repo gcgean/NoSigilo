@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, MessageCircle, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2
 } from 'lucide-react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Button } from '@/components/ui/button';
@@ -545,6 +545,32 @@ export default function Settings() {
                     if (e.target) e.target.value = '';
                   }}
                 />
+              </div>
+
+              <div className="border-t" />
+
+              {/* Quem pode enviar mensagem — destacado aqui na edição do perfil,
+                  além de continuar disponível na aba Privacidade. */}
+              <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold text-primary">Quem pode te enviar mensagem</h3>
+                </div>
+                <p className="text-xs text-muted-foreground">Controle quem consegue iniciar uma conversa com você.</p>
+                <Select
+                  value={privacy.allowMessages}
+                  onValueChange={(v) => setPrivacy({ ...privacy, allowMessages: v })}
+                >
+                  <SelectTrigger className="bg-background">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="everyone">Todos</SelectItem>
+                    <SelectItem value="matches">Apenas Matches</SelectItem>
+                    <SelectItem value="friends">Apenas Amigos</SelectItem>
+                    <SelectItem value="nobody">Ninguém</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="border-t" />
