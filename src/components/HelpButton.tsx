@@ -1,7 +1,7 @@
 import { HelpCircle, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { startFirstAccessTutorial } from '@/components/FirstAccessTutorial';
+import { startFirstAccessTutorial } from '@/components/firstAccessTutorialEvents';
 
 const HELP_VIDEO_URL = import.meta.env.VITE_HELP_VIDEO_URL || 'https://www.youtube.com';
 
