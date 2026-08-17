@@ -16,7 +16,8 @@ import {
   Lock,
   Globe,
   Camera,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -155,6 +156,7 @@ export default function Events() {
   const [citySearchInput, setCitySearchInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +259,8 @@ export default function Events() {
   };
 
   const handleCreateEvent = async () => {
+    if (isCreatingEvent) return;
+    setIsCreatingEvent(true);
     try {
       const payload = {
         title: newEvent.title,
@@ -300,6 +304,8 @@ export default function Events() {
       });
       if (premiumRequired) setPaywallOpen(true);
       return;
+    } finally {
+      setIsCreatingEvent(false);
     }
 
     // Reset form
@@ -846,15 +852,20 @@ export default function Events() {
                 )}
 
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={handlePrevStep} className="flex-1">
+                  <Button variant="outline" onClick={handlePrevStep} className="flex-1" disabled={isCreatingEvent}>
                     Voltar
                   </Button>
-                  <Button 
-                    onClick={handleCreateEvent} 
+                  <Button
+                    onClick={handleCreateEvent}
                     className="flex-1 bg-gradient-primary"
+                    disabled={isCreatingEvent}
                   >
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Publicar Evento
+                    {isCreatingEvent ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 mr-2" />
+                    )}
+                    {isCreatingEvent ? 'Publicando...' : 'Publicar Evento'}
                   </Button>
                 </div>
               </div>

@@ -11044,9 +11044,35 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
-    const id = randomUUID();
     const createdAt = nowIso();
     const payload = req.body ?? {};
+
+    // Protege contra clique duplo / retry de rede criando o mesmo evento duas
+    // vezes: se este usuário já criou um evento idêntico (título/data/hora/local)
+    // nos últimos 20s, devolve o existente em vez de duplicar (e não reenvia
+    // as notificações, que já teriam sido disparadas na primeira chamada).
+    const recentCutoff = new Date(Date.now() - 20_000).toISOString();
+    const recentRows = (await queryAll(
+      db,
+      'SELECT id, payload_json, created_at FROM events WHERE user_id = ? AND created_at >= ? ORDER BY created_at DESC',
+      [req.auth!.userId, recentCutoff]
+    )) as any[];
+    for (const row of recentRows) {
+      try {
+        const existing = JSON.parse(String(row.payload_json));
+        if (
+          existing.title === payload.title &&
+          existing.date === payload.date &&
+          existing.time === payload.time &&
+          existing.location === payload.location
+        ) {
+          res.json({ id: String(row.id), event: { id: String(row.id), ...existing, createdAt: String(row.created_at), createdBy: userRow.name ?? null }, notificationsSent: 0, deduped: true });
+          return;
+        }
+      } catch { /* payload_json malformado — ignora e segue a criação normal */ }
+    }
+
+    const id = randomUUID();
     await run(db, 'INSERT INTO events (id, user_id, payload_json, created_at) VALUES (?, ?, ?, ?)', [
       id,
       req.auth!.userId,
