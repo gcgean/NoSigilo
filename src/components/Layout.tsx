@@ -39,6 +39,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
+import { startFirstAccessTutorial } from '@/components/firstAccessTutorialEvents';
 import TokenBadge from '@/components/TokenBadge';
 import { notificationsService, chatService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
@@ -1180,7 +1181,10 @@ export default function Layout() {
             </button>
             <button
               type="button"
-              onClick={() => { setRadarSheetOpen(false); window.dispatchEvent(new Event('nosigilo:open-welcome')); }}
+              onClick={() => {
+                setRadarSheetOpen(false);
+                startFirstAccessTutorial();
+              }}
               className="flex items-start gap-3 rounded-xl border border-rose-400/25 bg-rose-400/5 p-4 text-left transition-colors hover:bg-rose-400/10"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-400/15 text-rose-400">
