@@ -1892,6 +1892,13 @@ export default function Admin() {
                       const daysElapsed = Math.min(now.getDate(), daysInMonth);
                       const dailyAvgCents = daysElapsed > 0 ? current.revenueCents / daysElapsed : 0;
                       const projectedCents = dailyAvgCents * daysInMonth;
+                      // Crescimento projetado vs mês anterior — compara mês completo com mês
+                      // completo (previsto de fim de mês vs. total já fechado do mês passado),
+                      // já que o mês atual ainda está em andamento.
+                      const previous = a.monthly[a.monthly.length - 2];
+                      const growthPct = previous && previous.revenueCents > 0
+                        ? ((projectedCents - previous.revenueCents) / previous.revenueCents) * 100
+                        : null;
                       return (
                         <div className="mb-3 flex flex-wrap gap-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
                           <div>
@@ -1906,6 +1913,14 @@ export default function Admin() {
                             <p className="text-[11px] text-muted-foreground">Previsto até o fim do mês (pela média diária)</p>
                             <p className="text-sm font-bold text-primary">{brl(projectedCents)}</p>
                           </div>
+                          {growthPct !== null && (
+                            <div className="border-l border-border/40 pl-4">
+                              <p className="text-[11px] text-muted-foreground">Crescimento vs. mês anterior ({fmtMonth(previous!.month)})</p>
+                              <p className={`text-sm font-bold ${growthPct >= 0 ? 'text-success' : 'text-destructive'}`}>
+                                {growthPct >= 0 ? '+' : ''}{growthPct.toFixed(1)}%
+                              </p>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}
