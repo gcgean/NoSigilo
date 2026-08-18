@@ -1882,6 +1882,33 @@ export default function Admin() {
 
                   <div>
                     <h4 className="mb-2 text-sm font-semibold">Faturamento — últimos 12 meses</h4>
+                    {(() => {
+                      const current = a.monthly[a.monthly.length - 1];
+                      if (!current) return null;
+                      const now = new Date(a.generatedAt);
+                      const [cy, cm] = current.month.split('-').map(Number);
+                      if (now.getFullYear() !== cy || now.getMonth() + 1 !== cm) return null; // só mostra p/ o mês corrente
+                      const daysInMonth = new Date(cy, cm, 0).getDate();
+                      const daysElapsed = Math.min(now.getDate(), daysInMonth);
+                      const dailyAvgCents = daysElapsed > 0 ? current.revenueCents / daysElapsed : 0;
+                      const projectedCents = dailyAvgCents * daysInMonth;
+                      return (
+                        <div className="mb-3 flex flex-wrap gap-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                          <div>
+                            <p className="text-[11px] text-muted-foreground">Realizado até agora ({daysElapsed}/{daysInMonth} dias)</p>
+                            <p className="text-sm font-bold text-success">{brl(current.revenueCents)}</p>
+                          </div>
+                          <div className="border-l border-border/40 pl-4">
+                            <p className="text-[11px] text-muted-foreground">Média de faturamento por dia</p>
+                            <p className="text-sm font-bold text-foreground">{brl(dailyAvgCents)}</p>
+                          </div>
+                          <div className="border-l border-border/40 pl-4">
+                            <p className="text-[11px] text-muted-foreground">Previsto até o fim do mês (pela média diária)</p>
+                            <p className="text-sm font-bold text-primary">{brl(projectedCents)}</p>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="flex h-40 items-end gap-1.5">
                       {a.monthly.map((m) => (
                         <div key={m.month} className="flex flex-1 flex-col items-center gap-1" title={`${fmtMonth(m.month)}: ${brl(m.revenueCents)}`}>
