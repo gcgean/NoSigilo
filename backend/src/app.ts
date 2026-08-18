@@ -4670,7 +4670,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabledStories = await getSubscriptionsEnabled(db);
     const viewerHasPremiumStories = hasPremiumAccess(me, subscriptionsEnabledStories, env.BILLING_TEST_EMAILS);
 
-    // Busca stories ativos de outros usuários
+    // Busca stories ativos de outros usuários. Ordem estilo Instagram: não
+    // vistos antes de vistos (mais recentes primeiro dentro de cada grupo),
+    // com perfis vitrine/demo sempre por último, independente de visto ou não.
     const rows = (await queryAll(
       db,
       `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
@@ -4679,15 +4681,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.city, u.state, u.bio,
               u.fetiches_json, u.intentions_json,
               u.lat, u.lon,
-              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
+              (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
        JOIN users u ON u.id = s.user_id
+       LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = ?
        WHERE s.expires_at > ? AND s.user_id != ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC, s.created_at DESC`,
-      [now, userId]
+       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
+                is_viewed ASC,
+                s.created_at DESC`,
+      [userId, now, userId]
     )) as any[];
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
@@ -4696,19 +4702,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (myLookingFor.length === 0) return true;
       return matchesLookingFor(myLookingFor, r.gender);
     });
-
-    // Marca quais já foram vistos pelo usuário
-    const storyIds = filtered.map((r: any) => String(r.id));
-    let viewedSet = new Set<string>();
-    if (storyIds.length > 0) {
-      const ph = storyIds.map(() => '?').join(',');
-      const viewed = (await queryAll(
-        db,
-        `SELECT story_id FROM story_views WHERE viewer_id = ? AND story_id IN (${ph})`,
-        [userId, ...storyIds]
-      )) as any[];
-      viewedSet = new Set(viewed.map((v: any) => String(v.story_id)));
-    }
 
     const calcAge = (birthDateStr: string | null) => {
       if (!birthDateStr) return null;
@@ -4746,7 +4739,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         textOverlay: r.text_overlay ? (safeJsonParse(r.text_overlay) as any) : null,
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
-        viewed: viewedSet.has(String(r.id)),
+        viewed: Number(r.is_viewed) === 1,
         likeCount: Number(likeRow?.c || 0),
         likedByMe: !!likedRow,
         myReaction: likedRow?.reaction ? String(likedRow.reaction) : null,
