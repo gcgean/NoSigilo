@@ -2114,7 +2114,7 @@ export default function Feed() {
                   )}
                 >
                   <Users className="h-3.5 w-3.5" />
-                  Amigos
+                  Perfis curtidos
                 </button>
                 <button
                   type="button"
@@ -2639,7 +2639,7 @@ export default function Feed() {
           ) : null}
           {feedFilter === 'friends' && !isLoading && visiblePosts.length === 0 ? (
             <MobileState
-              title="Nada de amigos por aqui ainda"
+              title="Nada por aqui ainda"
               description="Mostra só publicações de amigos e perfis que você curtiu. Curta perfis e faça amigos para encher esta aba."
             />
           ) : null}
