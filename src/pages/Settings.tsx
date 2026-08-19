@@ -32,6 +32,7 @@ import {
 import { CitySearch } from '@/components/CitySearch';
 import MySubscriptionCard from '@/components/MySubscriptionCard';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { getApiErrorInfo } from '@/utils/apiError';
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -445,8 +446,9 @@ export default function Settings() {
       await profileService.deleteAccount();
       toast({ title: 'Conta excluída', description: 'Sua conta foi removida.' });
       logout();
-    } catch {
-      toast({ title: 'Erro ao excluir conta', description: 'Tente novamente.', variant: 'destructive' });
+    } catch (error) {
+      const info = getApiErrorInfo(error, { title: 'Erro ao excluir conta', description: 'Tente novamente.' });
+      toast({ title: info.title, description: info.description, variant: 'destructive' });
     } finally {
       setIsDeletingAccount(false);
     }

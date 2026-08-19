@@ -6570,6 +6570,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/profile/delete-account', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
+
+      // Cancela a recorrência ANTES de bloquear a conta: se isso falhar, a
+      // exclusão não é concluída — senão a pessoa fica presa sendo cobrada
+      // sem conseguir mais logar pra cancelar sozinha (mesmo mecanismo de
+      // POST /api/subscriptions/cancel).
+      const row = (await queryOne(db, 'SELECT hub_subscription_id FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+      const subscriptionId = String(row?.hub_subscription_id || '').trim();
+      if (subscriptionId) {
+        try {
+          await cancelHubSubscription(getHubConfig(env), {
+            subscriptionId,
+            reason: 'Conta excluída pelo usuário no NoSigilo',
+          });
+        } catch (error) {
+          console.error('[profile/delete-account] falha ao cancelar assinatura Hub Billing:', error);
+          res.status(502).json({
+            error: 'hub_cancel_failed',
+            message: 'Não foi possível cancelar sua assinatura ativa. Tente novamente em instantes ou fale com o suporte.',
+          });
+          return;
+        }
+      }
+
       const now = nowIso();
       const deadEmail = `deleted_${userId}@nosigilo.local`;
       const deadPasswordHash = bcrypt.hashSync(randomUUID(), 10);
@@ -6583,6 +6606,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            status = NULL,
            password_hash = ?,
            google_id = NULL,
+           hub_subscription_id = NULL,
            is_deactivated = 1,
            deactivated_at = ?,
            deactivated_by_admin = 0,
