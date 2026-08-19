@@ -340,6 +340,11 @@ export const profileService = {
     return response.data;
   },
 
+  deleteAccount: async () => {
+    const response = await apiClient.post('/profile/delete-account');
+    return response.data;
+  },
+
   reactivateProfile: async () => {
     const response = await apiClient.put('/profile/reactivate');
     return response.data;

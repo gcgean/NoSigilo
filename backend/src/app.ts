@@ -2795,6 +2795,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(403).json({ error: 'account_banned' });
       return;
     }
+    if (row.deleted_at) {
+      res.status(403).json({ error: 'account_deleted' });
+      return;
+    }
     if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) === 1) {
       res.status(403).json({ error: 'account_deactivated_by_admin' });
       return;
@@ -3787,6 +3791,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       if (userRow) {
         if (userRow.is_banned) {
           res.redirect(`${frontendOrigin}/login?error=account_banned`);
+          return;
+        }
+        if (userRow.deleted_at) {
+          res.redirect(`${frontendOrigin}/login?error=account_deleted`);
           return;
         }
         if (userRow.deactivated_by_admin) {
@@ -6538,6 +6546,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.json({ ok: true });
     } catch (err) {
       console.error('[profile/deactivate]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // Exclusão de conta pelo próprio usuário. Diferente de "desativar" (que
+  // reativa sozinha no próximo login), isso é definitivo: anonimiza os dados
+  // identificadores e bloqueia login para sempre. Não apaga em cascata
+  // mensagens/comentários/curtidas com OUTRAS pessoas — remover essas linhas
+  // quebraria o histórico de conversa de quem ainda está na plataforma; a
+  // conta em si some de toda busca/feed/chat (já filtram por is_deactivated).
+  app.post('/api/profile/delete-account', requireAuth(env, db), async (req, res) => {
+    try {
+      const userId = req.auth!.userId;
+      const now = nowIso();
+      const deadEmail = `deleted_${userId}@nosigilo.local`;
+      const deadPasswordHash = bcrypt.hashSync(randomUUID(), 10);
+      await run(
+        db,
+        `UPDATE users SET
+           name = 'Usuário excluído',
+           email = ?,
+           avatar = NULL,
+           bio = NULL,
+           status = NULL,
+           password_hash = ?,
+           google_id = NULL,
+           is_deactivated = 1,
+           deactivated_at = ?,
+           deactivated_by_admin = 0,
+           deactivated_by = NULL,
+           deleted_at = ?
+         WHERE id = ?`,
+        [deadEmail, deadPasswordHash, now, now, userId]
+      );
+      await persist();
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[profile/delete-account]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

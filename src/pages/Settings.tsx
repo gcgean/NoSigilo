@@ -437,10 +437,18 @@ export default function Settings() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    if (confirm('Tem certeza que deseja excluir sua conta? Esta ação não pode ser desfeita.')) {
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    try {
+      await profileService.deleteAccount();
       toast({ title: 'Conta excluída', description: 'Sua conta foi removida.' });
       logout();
+    } catch {
+      toast({ title: 'Erro ao excluir conta', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setIsDeletingAccount(false);
     }
   };
 
@@ -1754,17 +1762,44 @@ export default function Settings() {
               <div>
                 <p className="font-medium">Excluir conta</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Ao excluir sua conta, todos os seus dados serão permanentemente removidos e não poderão ser recuperados.
+                  Seu perfil é desativado e seus dados de identificação (nome, e-mail, foto, bio) são apagados. Essa ação não pode ser desfeita — você não consegue mais acessar essa conta, nem com Google.
                 </p>
               </div>
-              <Button
-                variant="destructive"
-                onClick={handleDeleteAccount}
-                className="gap-2"
-              >
-                <Trash2 className="w-4 h-4" />
-                Excluir Minha Conta
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={isDeletingAccount}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    {isDeletingAccount ? 'Excluindo...' : 'Excluir Minha Conta'}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir sua conta?</AlertDialogTitle>
+                    <AlertDialogDescription className="space-y-2">
+                      <span className="block">Esta ação é definitiva:</span>
+                      <ul className="list-disc list-inside space-y-1 text-sm">
+                        <li>Seu nome, e-mail, foto e bio são apagados</li>
+                        <li>Seu perfil some de buscas, feed e chat</li>
+                        <li>Você não consegue mais entrar nessa conta, nem com Google</li>
+                      </ul>
+                      <span className="block mt-2 font-medium text-foreground">Não é possível desfazer nem recuperar depois.</span>
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeleteAccount}
+                      className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    >
+                      Sim, excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </TabsContent>

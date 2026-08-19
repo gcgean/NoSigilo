@@ -12,6 +12,8 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'Conta suspensa', description: 'Esta conta foi suspensa por violar as diretrizes da comunidade.' };
     case 'account_deactivated_by_admin':
       return { title: 'Conta desativada', description: 'Sua conta foi desativada pela administração da plataforma.' };
+    case 'account_deleted':
+      return { title: 'Conta excluída', description: 'Esta conta foi excluída e não pode mais ser acessada. Crie uma nova conta para continuar.' };
     case 'invalid_credentials':
       return { title: 'Erro ao entrar', description: 'E-mail ou senha incorretos.' };
     case 'use_google_login':

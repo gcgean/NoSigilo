@@ -20,6 +20,7 @@ export default function AuthCallback() {
         oauth_cancelled:       'Login com Google cancelado.',
         account_banned:        'Esta conta foi suspensa.',
         account_deactivated:   'Esta conta foi desativada.',
+        account_deleted:       'Esta conta foi excluída e não pode mais ser acessada. Crie uma nova conta para continuar.',
         token_exchange_failed: 'Erro ao autenticar com Google. Tente novamente.',
         oauth_error:           'Ocorreu um erro no login com Google.',
       };
