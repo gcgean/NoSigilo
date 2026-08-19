@@ -279,6 +279,11 @@ export const profileService = {
     return response.data;
   },
 
+  testTelegram: async () => {
+    const response = await apiClient.post('/profile/telegram/test');
+    return response.data;
+  },
+
   getVisits: async () => {
     const response = await apiClient.get('/profile/visits');
     return response.data;

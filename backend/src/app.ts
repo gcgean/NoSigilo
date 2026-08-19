@@ -3042,6 +3042,23 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true });
   });
 
+  // Envia uma mensagem de teste pro Telegram já conectado do usuário — confirma
+  // que a integração está funcionando de ponta a ponta (usa o mesmo mecanismo
+  // de radar/matches e, se o usuário for admin, das notificações de admin).
+  app.post('/api/profile/telegram/test', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const row = (await queryOne(db, 'SELECT telegram_chat_id FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    if (!row?.telegram_chat_id) {
+      res.status(404).json({ error: 'telegram_not_connected' });
+      return;
+    }
+    await sendTelegramToUser({ db, env }, {
+      userId,
+      text: '✅ <b>Teste de conexão</b>\n\nSe você recebeu essa mensagem, seu Telegram está conectado corretamente ao NoSigilo!',
+    });
+    res.json({ ok: true });
+  });
+
   // Telegram bot webhook — receives messages from Telegram
   app.post('/api/telegram/webhook', async (req, res) => {
     res.json({ ok: true }); // always respond fast

@@ -181,6 +181,7 @@ export default function Settings() {
 
   const hasTelegram = !!(user as any)?.telegramChatId;
   const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramTesting, setTelegramTesting] = useState(false);
 
   // ── Alterar Senha ──────────────────────────────────────────────────────────
   const [passwords, setPasswords] = useState({ current: '', newPass: '', confirm: '' });
@@ -1522,27 +1523,47 @@ export default function Settings() {
                     )}
                   </div>
                 </div>
-                <div className="shrink-0">
+                <div className="shrink-0 flex items-center gap-2">
                   {hasTelegram ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={telegramLoading}
-                      onClick={async () => {
-                        setTelegramLoading(true);
-                        try {
-                          await profileService.disconnectTelegram();
-                          updateUser({ ...(user as any), telegramChatId: null });
-                          toast({ title: 'Telegram desconectado' });
-                        } catch {
-                          toast({ title: 'Erro ao desconectar', variant: 'destructive' });
-                        } finally {
-                          setTelegramLoading(false);
-                        }
-                      }}
-                    >
-                      Desconectar
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={telegramTesting}
+                        onClick={async () => {
+                          setTelegramTesting(true);
+                          try {
+                            await profileService.testTelegram();
+                            toast({ title: '✅ Mensagem de teste enviada', description: 'Confira seu Telegram.' });
+                          } catch {
+                            toast({ title: 'Erro ao enviar teste', variant: 'destructive' });
+                          } finally {
+                            setTelegramTesting(false);
+                          }
+                        }}
+                      >
+                        {telegramTesting ? 'Enviando...' : 'Testar'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={telegramLoading}
+                        onClick={async () => {
+                          setTelegramLoading(true);
+                          try {
+                            await profileService.disconnectTelegram();
+                            updateUser({ ...(user as any), telegramChatId: null });
+                            toast({ title: 'Telegram desconectado' });
+                          } catch {
+                            toast({ title: 'Erro ao desconectar', variant: 'destructive' });
+                          } finally {
+                            setTelegramLoading(false);
+                          }
+                        }}
+                      >
+                        Desconectar
+                      </Button>
+                    </>
                   ) : (
                     <Button
                       size="sm"
