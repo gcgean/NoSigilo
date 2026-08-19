@@ -41,7 +41,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import { startFirstAccessTutorial } from '@/components/firstAccessTutorialEvents';
 import TokenBadge from '@/components/TokenBadge';
-import { notificationsService, chatService } from '@/services/api';
+import { notificationsService, chatService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -140,6 +140,7 @@ export default function Layout() {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [radarSheetOpen, setRadarSheetOpen] = useState(false);
   const [unreadConversationsCount, setUnreadConversationsCount] = useState(0);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [hasUnreadMatch, setHasUnreadMatch] = useState(false);
   const [clockNow, setClockNow] = useState(Date.now());
   const [firstAccessFlow, setFirstAccessFlow] = useState<{ needsPhoto?: boolean; needsPost?: boolean } | null>(null);
@@ -205,14 +206,16 @@ export default function Layout() {
   const firstAccessRewardSeenKey = user?.id ? `nosigilo:first-access-reward-seen:${user.id}` : null;
   const refreshUnread = useCallback(async () => {
     try {
-      const [notifs, chatUnread] = await Promise.all([
+      const [notifs, chatUnread, supportUnread] = await Promise.all([
         notificationsService.getNotifications(),
-        chatService.getUnreadCount()
+        chatService.getUnreadCount(),
+        supportService.getUnreadCount().catch(() => ({ count: 0 })),
       ]);
       const unread = Array.isArray(notifs) ? notifs.filter((n: any) => !n?.isRead) : [];
       setUnreadCount(unread.length);
       setUnreadMessagesCount(chatUnread.messagesCount || 0);
       setUnreadConversationsCount(chatUnread.conversationsCount || 0);
+      setSupportUnreadCount(supportUnread.count || 0);
       setHasUnreadMatch(unread.some((n: any) => n.type === 'profile.liked'));
     } catch {}
   }, []);
@@ -391,15 +394,17 @@ export default function Layout() {
     let cancelled = false;
     const refreshUnreadSafe = async () => {
       try {
-        const [notifs, chatUnread] = await Promise.all([
+        const [notifs, chatUnread, supportUnread] = await Promise.all([
           notificationsService.getNotifications(),
-          chatService.getUnreadCount()
+          chatService.getUnreadCount(),
+          supportService.getUnreadCount().catch(() => ({ count: 0 })),
         ]);
         const unread = Array.isArray(notifs) ? notifs.filter((n: any) => !n?.isRead) : [];
         if (!cancelled) {
           setUnreadCount(unread.length);
           setUnreadMessagesCount(chatUnread.messagesCount || 0);
           setUnreadConversationsCount(chatUnread.conversationsCount || 0);
+          setSupportUnreadCount(supportUnread.count || 0);
           setHasUnreadMatch(unread.some((n: any) => n.type === 'profile.liked'));
         }
       } catch {}
@@ -767,11 +772,16 @@ export default function Layout() {
                 em vez de navegar (não tem rota própria). */}
             <button
               type="button"
-              onClick={() => setSupportOpen(true)}
-              className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
+              onClick={() => { setSupportOpen(true); setSupportUnreadCount(0); }}
+              className="relative flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
             >
               <LifeBuoy className="h-5 w-5" />
               <span className="font-medium">Suporte</span>
+              {supportUnreadCount > 0 && (
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 min-w-[1.25rem] h-5 px-1 flex items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
+                  {supportUnreadCount > 99 ? '99+' : supportUnreadCount}
+                </span>
+              )}
             </button>
           </nav>
 

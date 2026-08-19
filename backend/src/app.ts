@@ -3306,6 +3306,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
   });
 
+  // Contagem de respostas do suporte ainda não lidas — usado pro badge no menu.
+  // Não marca como lida (isso só acontece ao abrir o chat de fato, na rota acima).
+  app.get('/api/promoter/support/unread-count', requireAuth(env, db), async (req, res) => {
+    const row = (await queryOne(
+      db,
+      "SELECT COUNT(*) as c FROM promoter_support_messages WHERE promoter_user_id = ? AND sender_type = 'admin' AND read_at IS NULL",
+      [req.auth!.userId]
+    )) as any;
+    res.json({ count: Number(row?.c || 0) });
+  });
+
   // Enviar mensagem para o suporte (qualquer usuário autenticado, ver acima).
   app.post('/api/promoter/support', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;

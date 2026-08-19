@@ -872,6 +872,10 @@ export const promoterSupportService = {
     const response = await apiClient.post('/promoter/support', { message });
     return response.data;
   },
+  getUnreadCount: async (): Promise<{ count: number }> => {
+    const response = await apiClient.get('/promoter/support/unread-count');
+    return response.data;
+  },
 };
 
 // Suporte geral (qualquer usuário) — mesmos endpoints, agora sem gate de promotor.

@@ -18,7 +18,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import SupportChatDialog from '@/components/SupportChatDialog';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
-import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService } from '@/services/api';
+import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -356,6 +356,7 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('photos');
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
@@ -428,6 +429,18 @@ export default function Profile() {
     }, 0);
   }, [location.hash]);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSupportUnread = () => {
+      supportService.getUnreadCount()
+        .then((data) => { if (!cancelled) setSupportUnreadCount(data.count || 0); })
+        .catch(() => {});
+    };
+    loadSupportUnread();
+    const intervalId = window.setInterval(loadSupportUnread, 30000);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
+  }, []);
 
   const loadStats = async () => {
     setIsLoadingStats(true);
@@ -1157,11 +1170,16 @@ export default function Profile() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="w-full gap-2"
-                onClick={() => setSupportOpen(true)}
+                className="relative w-full gap-2"
+                onClick={() => { setSupportOpen(true); setSupportUnreadCount(0); }}
               >
                 <LifeBuoy className="w-4 h-4" />
                 Suporte
+                {supportUnreadCount > 0 && (
+                  <span className="absolute -top-1 right-2 min-w-[1.1rem] h-[1.1rem] px-1 flex items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+                    {supportUnreadCount > 99 ? '99+' : supportUnreadCount}
+                  </span>
+                )}
               </Button>
             </div>
           </div>
