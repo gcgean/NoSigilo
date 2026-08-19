@@ -1235,22 +1235,34 @@ async function sendPushToUser(
   return sentCount;
 }
 
+// Retorna true só se o Telegram de fato aceitou a mensagem — fetch() não lança
+// em respostas HTTP de erro (token inválido, chat_id errado, bot bloqueado
+// pelo usuário etc.), então sem checar response.ok isso falhava em silêncio.
 async function sendTelegramToUser(
   options: { db: DbHandle; env: Env },
   data: { userId: string; text: string }
-) {
-  if (!options.env.TELEGRAM_BOT_TOKEN) return;
+): Promise<boolean> {
+  if (!options.env.TELEGRAM_BOT_TOKEN) {
+    console.error('[sendTelegramToUser] TELEGRAM_BOT_TOKEN não configurado no servidor');
+    return false;
+  }
   const row = (await queryOne(options.db, 'SELECT telegram_chat_id FROM users WHERE id = ?', [data.userId])) as any;
   const chatId = row?.telegram_chat_id;
-  if (!chatId) return;
+  if (!chatId) return false;
   try {
-    await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: data.text, parse_mode: 'HTML' }),
     });
+    if (!response.ok) {
+      console.error('[sendTelegramToUser] Telegram respondeu erro:', response.status, await response.text());
+      return false;
+    }
+    return true;
   } catch (err) {
     console.error('Telegram send error:', err);
+    return false;
   }
 }
 
@@ -1261,7 +1273,10 @@ async function notifyAdminsTelegram(
   options: { db: DbHandle; env: Env },
   text: string
 ) {
-  if (!options.env.TELEGRAM_BOT_TOKEN) return;
+  if (!options.env.TELEGRAM_BOT_TOKEN) {
+    console.error('[notifyAdminsTelegram] TELEGRAM_BOT_TOKEN não configurado no servidor');
+    return;
+  }
   try {
     const admins = (await queryAll(
       options.db,
@@ -1270,11 +1285,14 @@ async function notifyAdminsTelegram(
     )) as any[];
     for (const admin of admins) {
       try {
-        await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        const response = await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ chat_id: admin.telegram_chat_id, text, parse_mode: 'HTML' }),
         });
+        if (!response.ok) {
+          console.error('[notifyAdminsTelegram] Telegram respondeu erro:', response.status, await response.text());
+        }
       } catch (err) {
         console.error('[notifyAdminsTelegram] send error:', err);
       }
@@ -3052,10 +3070,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).json({ error: 'telegram_not_connected' });
       return;
     }
-    await sendTelegramToUser({ db, env }, {
+    const sent = await sendTelegramToUser({ db, env }, {
       userId,
       text: '✅ <b>Teste de conexão</b>\n\nSe você recebeu essa mensagem, seu Telegram está conectado corretamente ao NoSigilo!',
     });
+    if (!sent) {
+      res.status(502).json({ error: 'telegram_send_failed', message: 'Não foi possível enviar a mensagem de teste. Verifique se o bot do Telegram está configurado corretamente.' });
+      return;
+    }
     res.json({ ok: true });
   });
 

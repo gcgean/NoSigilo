@@ -16,6 +16,8 @@ function mapBackendErrorCode(code: string): ApiErrorInfo | null {
       return { title: 'Conta excluída', description: 'Esta conta foi excluída e não pode mais ser acessada. Crie uma nova conta para continuar.' };
     case 'hub_cancel_failed':
       return { title: 'Erro ao cancelar assinatura', description: 'Não foi possível cancelar sua assinatura ativa. Tente novamente em instantes ou fale com o suporte.' };
+    case 'telegram_send_failed':
+      return { title: 'Erro ao enviar mensagem de teste', description: 'Não foi possível enviar pelo Telegram. Tente reconectar ou fale com o suporte.' };
     case 'invalid_credentials':
       return { title: 'Erro ao entrar', description: 'E-mail ou senha incorretos.' };
     case 'use_google_login':

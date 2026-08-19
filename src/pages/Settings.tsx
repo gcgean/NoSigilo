@@ -1535,8 +1535,9 @@ export default function Settings() {
                           try {
                             await profileService.testTelegram();
                             toast({ title: '✅ Mensagem de teste enviada', description: 'Confira seu Telegram.' });
-                          } catch {
-                            toast({ title: 'Erro ao enviar teste', variant: 'destructive' });
+                          } catch (error) {
+                            const info = getApiErrorInfo(error, { title: 'Erro ao enviar teste', description: 'Tente novamente.' });
+                            toast({ title: info.title, description: info.description, variant: 'destructive' });
                           } finally {
                             setTelegramTesting(false);
                           }
