@@ -25,6 +25,7 @@ import {
   createHubSubscription,
   getHubAccessStatus,
   getHubSubscriptionAnalytics,
+  getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
   listHubPlans,
@@ -1253,6 +1254,36 @@ async function sendTelegramToUser(
   }
 }
 
+// Envia uma mensagem para TODOS os admins que já conectaram o Telegram próprio
+// (Configurações → Notificações → Conectar Telegram, mesmo fluxo de qualquer
+// usuário). Best-effort: nunca lança, um admin sem Telegram conectado é ignorado.
+async function notifyAdminsTelegram(
+  options: { db: DbHandle; env: Env },
+  text: string
+) {
+  if (!options.env.TELEGRAM_BOT_TOKEN) return;
+  try {
+    const admins = (await queryAll(
+      options.db,
+      "SELECT telegram_chat_id FROM users WHERE is_admin = 1 AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''",
+      []
+    )) as any[];
+    for (const admin of admins) {
+      try {
+        await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: admin.telegram_chat_id, text, parse_mode: 'HTML' }),
+        });
+      } catch (err) {
+        console.error('[notifyAdminsTelegram] send error:', err);
+      }
+    }
+  } catch (err) {
+    console.error('[notifyAdminsTelegram] query error:', err);
+  }
+}
+
 function replaceFileExtension(filename: string, nextExtension: string) {
   const ext = path.extname(filename);
   if (!ext) return `${filename}${nextExtension}`;
@@ -2108,6 +2139,81 @@ export function startWeekendEngagementScheduler(db: DbHandle, env: Env) {
   setInterval(check, 5 * 60 * 1000);
   check(); // já checa no boot (caso o processo reinicie dentro da janela)
   console.log('[weekend-engagement] agendador ativo (sex/sáb 20h BRT)');
+}
+
+// ─── Agendador: resumo diário pro admin no Telegram (todo dia às 8h, BRT) ──────
+// Cobre sempre o dia ANTERIOR completo (cadastros, novos assinantes,
+// faturamento do dia e acumulado do mês).
+let adminDailySummaryRunning = false;
+
+async function runAdminDailySummary(db: DbHandle, env: Env) {
+  if (adminDailySummaryRunning) return;
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+
+  // "Ontem" em Brasília, como 'YYYY-MM-DD'.
+  const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const brYesterday = new Date(brNow);
+  brYesterday.setUTCDate(brYesterday.getUTCDate() - 1);
+  const yesterdayStr = brYesterday.toISOString().slice(0, 10);
+
+  const dedupKey = 'admin_daily_summary_last_date';
+  const alreadySent = await getSystemSetting(db, dedupKey);
+  if (alreadySent === yesterdayStr) return; // já mandou o resumo desse dia
+
+  adminDailySummaryRunning = true;
+  try {
+    // Janela do dia anterior em Brasília, convertida pra UTC (00:00 BRT = 03:00 UTC).
+    const [y, m, d] = yesterdayStr.split('-').map(Number);
+    const startUtc = new Date(Date.UTC(y, m - 1, d, 3, 0, 0)).toISOString();
+    const endUtc = new Date(Date.UTC(y, m - 1, d + 1, 3, 0, 0)).toISOString();
+
+    const newSignupsRow = (await queryOne(
+      db,
+      'SELECT COUNT(*) as c FROM users WHERE created_at >= ? AND created_at < ?',
+      [startUtc, endUtc]
+    )) as any;
+    const newSignups = Number(newSignupsRow?.c || 0);
+
+    let hubLines = '⚠️ Não foi possível obter os dados de faturamento do Hub Billing agora.';
+    if (shouldUseHubBilling(env)) {
+      try {
+        const summary = await getHubDailySummary(getHubConfig(env), yesterdayStr);
+        const fmt = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        hubLines =
+          `👤 Novos assinantes: <b>${summary.newSubscribers}</b>\n` +
+          `💰 Faturamento do dia: <b>${fmt(summary.revenueTodayCents)}</b>\n` +
+          `📊 Acumulado do mês: <b>${fmt(summary.revenueMonthToDateCents)}</b>`;
+      } catch (err) {
+        console.error('[admin-daily-summary] hub billing error:', err);
+      }
+    }
+
+    const [dd, mm, yyyy] = [String(d).padStart(2, '0'), String(m).padStart(2, '0'), y];
+    const text =
+      `📅 <b>Resumo de ${dd}/${mm}/${yyyy}</b>\n\n` +
+      `🆕 Novos cadastros: <b>${newSignups}</b>\n` +
+      hubLines;
+
+    void notifyAdminsTelegram({ db, env }, text);
+    await setSystemSetting(db, dedupKey, yesterdayStr);
+  } catch (err) {
+    console.error('[admin-daily-summary] error:', err);
+  } finally {
+    adminDailySummaryRunning = false;
+  }
+}
+
+// Verifica a cada 5 min; dispara uma vez quando entra na janela 8h (BRT).
+export function startAdminDailySummaryScheduler(db: DbHandle, env: Env) {
+  const check = () => {
+    const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // horário de Brasília (UTC-3)
+    if (now.getUTCHours() === 8) {
+      void runAdminDailySummary(db, env);
+    }
+  };
+  setInterval(check, 5 * 60 * 1000);
+  check();
+  console.log('[admin-daily-summary] agendador ativo (todo dia 8h BRT)');
 }
 
 export function createApp(options: { db: DbHandle; env: Env }) {
@@ -3328,6 +3434,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, 'promoter', userId, parsed.data.message, now]);
     await persist();
     res.json({ ok: true, id });
+
+    // Notifica admins no Telegram assim que uma mensagem de suporte chega.
+    try {
+      const sender = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+      const preview = parsed.data.message.length > 300 ? `${parsed.data.message.slice(0, 300)}…` : parsed.data.message;
+      void notifyAdminsTelegram({ db, env },
+        `💬 <b>Nova mensagem de suporte</b>\n\n<b>${String(sender?.name || 'Usuário')}</b>\n${String(sender?.email || '')}\n\n${preview}`
+      );
+    } catch (err) {
+      console.error('[promoter/support] telegram notify error:', err);
+    }
   });
 
   // Admin: listar todos os chats de suporte (com última mensagem + não lidas)
@@ -11036,11 +11153,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     };
 
     try {
-      const user = (await queryOne(db, 'SELECT id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
+      const user = (await queryOne(db, 'SELECT id, name, email, is_premium FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
       if (!user) {
         console.log(`[hub-billing/webhook] customerId=${customerId} not found — ignored`);
         return;
       }
+      const wasAlreadyPremium = Number(user.is_premium || 0) === 1;
 
       const nextStatus =
         eventType === 'payment.approved' || eventType === 'license.activated'
@@ -11069,6 +11187,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           ]
         );
         await persist();
+
+        // ── Notifica admins no Telegram: assinatura ativada/paga ──────────────
+        if (nextStatus === 'licensed') {
+          const amountCents = Number(payload?.payload?.amount || 0);
+          const amountStr = amountCents > 0 ? (amountCents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : null;
+          const kind = wasAlreadyPremium ? '🔄 Renovação' : '🎉 Nova assinatura';
+          void notifyAdminsTelegram({ db, env },
+            `${kind}\n\n<b>${String(user.name || 'Usuário')}</b>\n${String(user.email || '')}` +
+            (amountStr ? `\n💰 ${amountStr}` : '')
+          );
+        }
 
         // ── Promoter commission: paga/ativa licença gera comissão ─────────────
         // Tanto payment.approved quanto license.activated concedem acesso, então

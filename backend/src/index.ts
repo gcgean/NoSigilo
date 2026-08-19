@@ -3,7 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
 import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
-import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler } from './app.js';
+import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startAdminDailySummaryScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -548,6 +548,7 @@ async function main() {
 
   const app = createApp({ db, env });
   startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
+  startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
   const httpServer = createServer(app);
   const onlineCounts = new Map<string, number>();
   const io = new SocketIOServer(httpServer, {

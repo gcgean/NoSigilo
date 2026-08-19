@@ -231,6 +231,20 @@ export async function getHubSubscriptionAnalytics(config: HubConfig) {
   );
 }
 
+export type HubDailySummary = {
+  date: string; // 'YYYY-MM-DD', dia coberto pelo resumo
+  newSubscribers: number; // clientes cujo PRIMEIRO pagamento foi nesse dia
+  revenueTodayCents: number; // total pago nesse dia
+  revenueMonthToDateCents: number; // acumulado do mes (1º dia do mes ate esse dia, inclusive)
+};
+
+export async function getHubDailySummary(config: HubConfig, date: string) {
+  return requestJson<HubDailySummary>(
+    buildUrl(config, '/admin/daily-summary', { productId: config.productId, date }),
+    { method: 'GET', headers: await adminHeaders(config) }
+  );
+}
+
 export async function createHubOrder(
   config: HubConfig,
   data: { customerId: string; planId: string; contractedAmount: number }
