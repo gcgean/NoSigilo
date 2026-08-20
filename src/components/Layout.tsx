@@ -999,7 +999,9 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            {!isMobileChatRoute && user?.id && firstAccessFlow && (firstAccessFlow.needsPhoto || firstAccessFlow.needsPost) ? (
+            {/* Banner "Jornada premium de primeiro acesso" ocultado a pedido —
+                poluía a tela do usuário novo. Para reativar, remova o `false &&`. */}
+            {false && !isMobileChatRoute && user?.id && firstAccessFlow && (firstAccessFlow.needsPhoto || firstAccessFlow.needsPost) ? (
               <div className="mb-4">
                 <div className="overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/12 via-rose-500/10 to-orange-400/10 p-4 shadow-[0_12px_40px_rgba(236,72,153,0.08)]">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
