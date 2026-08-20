@@ -276,8 +276,23 @@ export default function Landing() {
 
             <figure className="landing-desire-image landing-desire-portrait">
               <img
+                className="landing-desire-portrait-top"
+                src="/landing/masked-woman.png"
+                alt="Mulher adulta mascarada em um baile elegante"
+                loading="lazy"
+                decoding="async"
+              />
+              <img
+                className="landing-desire-portrait-center"
                 src="/landing/lounge-trio.jpg"
                 alt="Três adultos juntos em um ambiente reservado"
+                loading="lazy"
+                decoding="async"
+              />
+              <img
+                className="landing-desire-portrait-bottom"
+                src="/landing/first-touch.png"
+                alt="Casal adulto mascarado trocando olhares em um encontro elegante"
                 loading="lazy"
                 decoding="async"
               />
