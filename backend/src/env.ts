@@ -35,4 +35,6 @@ export const env = {
   GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL || '',
   // Comma-separated emails that can use billing even when subscriptions are globally disabled
   BILLING_TEST_EMAILS: process.env.BILLING_TEST_EMAILS || '',
+  TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+  TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || '',
 };
