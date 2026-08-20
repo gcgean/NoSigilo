@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { API_URL } from '@/utils/apiClient';
 
 export type ApiErrorInfo = {
   title: string;
@@ -57,8 +56,8 @@ export function getApiErrorInfo(error: unknown, fallback: ApiErrorInfo): ApiErro
   if (axios.isAxiosError(error)) {
     if (!error.response) {
       return {
-        title: 'Servidor indisponível',
-        description: `Não foi possível conectar ao backend (${API_URL}).`,
+        title: 'Sem conexão com o servidor',
+        description: 'Verifique sua internet e tente novamente.',
       };
     }
 

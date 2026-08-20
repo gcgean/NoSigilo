@@ -31,12 +31,30 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', markResume);
 }
 
+// Metadados que anexamos à config da request para julgar falhas de rede.
+type RequestMeta = { __startedAt?: number; __resumeRetries?: number; method?: string };
+
 function isSafeRetryMethod(method?: string) {
   const normalized = String(method || 'get').toLowerCase();
   return normalized === 'get' || normalized === 'head' || normalized === 'options';
 }
 
-function shouldSuppressNetworkToast() {
+// Uma falha é "da retomada" (e não do servidor) quando a request estava em voo
+// no momento em que o app voltou, saiu logo depois da volta, ou já passou pelo
+// retry de retomada. Isso é avaliado pelo INÍCIO da request — não pela hora em
+// que ela falhou: com timeout de 10s + retry, a falha final pode cair fora da
+// janela de silêncio e disparar o toast mesmo sendo só a rede voltando.
+function isResumeRelatedFailure(config?: RequestMeta) {
+  if ((config?.__resumeRetries || 0) > 0) return true;
+  const startedAt = typeof config?.__startedAt === 'number' ? config.__startedAt : null;
+  if (startedAt === null) return false;
+  // Retomada aconteceu depois que a request saiu → ela atravessou a volta do app.
+  if (lastVisibilityResumeAt >= startedAt) return true;
+  // Request saiu dentro da janela de silêncio pós-retomada.
+  return startedAt - lastVisibilityResumeAt < RESUME_NETWORK_GRACE_MS;
+}
+
+function shouldSuppressNetworkToast(config?: RequestMeta) {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
     return true;
   }
@@ -44,7 +62,8 @@ function shouldSuppressNetworkToast() {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return true;
   }
-  return Date.now() - lastVisibilityResumeAt < RESUME_NETWORK_GRACE_MS;
+  if (Date.now() - lastVisibilityResumeAt < RESUME_NETWORK_GRACE_MS) return true;
+  return isResumeRelatedFailure(config);
 }
 
 function wait(ms: number) {
@@ -66,6 +85,9 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Carimba quando a request saiu — usado para saber se uma falha de rede foi
+    // só o app voltando do segundo plano (ver isResumeRelatedFailure).
+    (config as typeof config & RequestMeta).__startedAt = Date.now();
     return config;
   },
   (error) => Promise.reject(error)
@@ -76,11 +98,11 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (!error.response) {
-      const config = (error.config || {}) as typeof error.config & { __resumeRetries?: number };
+      const config = (error.config || {}) as typeof error.config & RequestMeta;
       const resumeRetries = config.__resumeRetries || 0;
       const canRetryAfterResume =
         resumeRetries < MAX_RESUME_RETRIES &&
-        shouldSuppressNetworkToast() &&
+        shouldSuppressNetworkToast(config) &&
         isSafeRetryMethod(config.method) &&
         (typeof navigator === 'undefined' || navigator.onLine !== false);
 
@@ -91,11 +113,11 @@ apiClient.interceptors.response.use(
       }
 
       const now = Date.now();
-      if (!shouldSuppressNetworkToast() && now - lastNetworkToastAt > NETWORK_TOAST_COOLDOWN_MS) {
+      if (!shouldSuppressNetworkToast(config) && now - lastNetworkToastAt > NETWORK_TOAST_COOLDOWN_MS) {
         lastNetworkToastAt = now;
         toast({
-          title: 'Servidor indisponível',
-          description: `Não foi possível conectar ao backend (${API_URL}).`,
+          title: 'Sem conexão com o servidor',
+          description: 'Verifique sua internet. Vamos tentar reconectar automaticamente.',
           variant: 'destructive',
         });
       }
