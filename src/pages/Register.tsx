@@ -68,9 +68,15 @@ const STEPS = [
 export default function Register() {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite')?.trim() || '';
+  const profileParam = searchParams.get('profile')?.trim() || '';
+  const initialProfile = allOptions.some((option) => option.value === profileParam)
+    ? profileParam
+    : '';
 
   const [currentStep, setCurrentStep] = useState(1);
-  const [showOthers, setShowOthers] = useState(false);
+  const [showOthers, setShowOthers] = useState(
+    () => otherOptions.some((option) => option.value === initialProfile)
+  );
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'blacklisted'>('idle');
@@ -85,7 +91,7 @@ export default function Register() {
     name: '',
     email: '',
     password: '',
-    gender: '',
+    gender: initialProfile,
     city: '',
     state: '',
     acceptTerms: false,

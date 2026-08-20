@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -12,6 +12,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  UserRound,
   Users,
   X,
 } from 'lucide-react';
@@ -78,12 +79,20 @@ const TESTIMONIALS = [
   },
 ];
 
+const LANDING_PROFILE_TYPES = [
+  { value: 'Casal (Ele/Ela)', label: 'Casal', icon: Users },
+  { value: 'Mulher', label: 'Mulher', icon: UserRound },
+  { value: 'Homem', label: 'Homem', icon: UserRound },
+  { value: 'other', label: 'Outros', icon: Sparkles },
+] as const;
+
 export default function Landing() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +115,16 @@ export default function Landing() {
   }
 
   const handleEnter = () => navigate('/login');
+  const handleQuickRegister = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedProfile) return;
+
+    navigate(
+      selectedProfile === 'other'
+        ? '/register'
+        : `/register?profile=${encodeURIComponent(selectedProfile)}`
+    );
+  };
 
   return (
     <div className="landing-editorial">
@@ -158,10 +177,11 @@ export default function Landing() {
 
       <main>
         <section className="landing-hero">
-          <div className="landing-hero-image" role="img" aria-label="Quatro adultos mascarados em um encontro social sofisticado e discreto" />
+          <div className="landing-hero-image" role="img" aria-label="Adultos em um encontro social descontraído em um bar" />
           <div className="landing-hero-vignette" />
           <div className="landing-shell landing-hero-content">
             <div className="landing-hero-copy">
+              <p className="landing-hero-eyebrow">Comunidade liberal · 18+</p>
               <h1>
                 O que parece proibido lá fora, <em>aqui pode ser vivido.</em>
               </h1>
@@ -170,22 +190,59 @@ export default function Landing() {
                 troca de casais, ménage e exibicionismo com liberdade, consentimento,
                 discrição e sigilo.
               </p>
-              <div className="landing-hero-actions">
-                <Button asChild size="lg" className="landing-primary-button">
-                  <Link to="/register">
-                    Crie seu perfil gratuitamente
-                    <ArrowRight data-icon="inline-end" />
-                  </Link>
-                </Button>
-                <Button asChild size="lg" variant="outline" className="landing-secondary-button">
-                  <Link to="/login">Entrar</Link>
-                </Button>
-              </div>
-              <p className="landing-hero-note">
-                <ShieldCheck aria-hidden="true" />
-                Entre no seu tempo. Mostre apenas o que quiser.
-              </p>
+              <a className="landing-hero-discover" href="#experiencia">
+                Conheça a experiência
+                <ArrowRight aria-hidden="true" />
+              </a>
             </div>
+
+            <form className="landing-quick-register" onSubmit={handleQuickRegister}>
+              <div className="landing-quick-register-heading">
+                <span>Seu primeiro passo</span>
+                <h2>Como você quer entrar?</h2>
+                <p>Escolha seu perfil e comece gratuitamente.</p>
+              </div>
+
+              <fieldset>
+                <legend className="sr-only">Escolha o tipo de perfil</legend>
+                <div className="landing-profile-options">
+                  {LANDING_PROFILE_TYPES.map(({ value, label, icon: Icon }) => {
+                    const selected = selectedProfile === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className={selected ? 'is-selected' : undefined}
+                        aria-pressed={selected}
+                        onClick={() => setSelectedProfile(value)}
+                      >
+                        <Icon aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <Button
+                type="submit"
+                size="lg"
+                className="landing-primary-button landing-quick-register-submit"
+                disabled={!selectedProfile}
+              >
+                Criar meu perfil grátis
+                <ArrowRight data-icon="inline-end" />
+              </Button>
+
+              <p className="landing-quick-register-login">
+                Já tenho cadastro
+                <button type="button" onClick={handleEnter}>Entrar</button>
+              </p>
+              <p className="landing-quick-register-note">
+                <ShieldCheck aria-hidden="true" />
+                Você controla o que exibe.
+              </p>
+            </form>
           </div>
           <a className="landing-scroll-cue" href="#experiencia" aria-label="Ir para a próxima seção">
             Descubra
@@ -197,8 +254,8 @@ export default function Landing() {
           <div className="landing-shell landing-desire-grid">
             <figure className="landing-desire-image landing-desire-lead">
               <img
-                src="/landing/gaze-couple.png"
-                alt="Homem e mulher adultos, com máscaras, trocando olhares em um salão elegante"
+                src="/landing/desire-kiss-trio.webp"
+                alt="Três adultos em um momento de intimidade e desejo consensual"
                 loading="lazy"
                 decoding="async"
               />
@@ -219,8 +276,8 @@ export default function Landing() {
 
             <figure className="landing-desire-image landing-desire-portrait">
               <img
-                src="/landing/masked-woman.png"
-                alt="Mulher adulta com máscara e vestido elegante em um baile privado"
+                src="/landing/lounge-trio.jpg"
+                alt="Três adultos juntos em um ambiente reservado"
                 loading="lazy"
                 decoding="async"
               />
@@ -228,8 +285,8 @@ export default function Landing() {
 
             <figure className="landing-desire-image landing-desire-touch">
               <img
-                src="/landing/first-touch.png"
-                alt="Homem e mulher adultos mascarados se cumprimentando com elegância"
+                src="/landing/bed-trio.webp"
+                alt="Três adultos deitados próximos em um encontro consensual"
                 loading="lazy"
                 decoding="async"
               />
@@ -271,7 +328,7 @@ export default function Landing() {
         </section>
 
         <section id="privacidade" className="landing-privacy landing-section">
-          <div className="landing-privacy-image" role="img" aria-label="Cortina de veludo e porta entreaberta com luz suave" />
+          <div className="landing-privacy-image" role="img" aria-label="Três adultos conversando em uma hidromassagem" />
           <div className="landing-privacy-fade" />
           <div className="landing-shell landing-privacy-content">
             <div className="landing-privacy-copy">
