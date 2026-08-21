@@ -238,7 +238,11 @@ export default function Events() {
       }
     } catch (err: any) {
       if (err?.response?.status === 403) { setPaywallOpen(true); return; }
-      toast({ title: 'Não foi possível confirmar presença', description: 'Tente novamente.', variant: 'destructive' });
+      toast({
+        title: target.isGoing ? 'Não foi possível desconfirmar' : 'Não foi possível confirmar presença',
+        description: 'Tente novamente.',
+        variant: 'destructive',
+      });
     }
   };
 

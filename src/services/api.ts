@@ -986,6 +986,18 @@ export const eventsService = {
     const response = await apiClient.get('/events', { params });
     return response.data;
   },
+
+  /** Confirma presença e entra no chat do grupo do evento. 403 = premium. */
+  attendEvent: async (eventId: string): Promise<{ ok: boolean; groupId: string; attendeesCount: number }> => {
+    const response = await apiClient.post(`/events/${eventId}/attend`);
+    return response.data;
+  },
+
+  /** Desconfirma presença. O organizador continua no grupo que ele criou. */
+  leaveEvent: async (eventId: string): Promise<{ ok: boolean; attendeesCount: number }> => {
+    const response = await apiClient.delete(`/events/${eventId}/attend`);
+    return response.data;
+  },
 };
 
 // Admin Service

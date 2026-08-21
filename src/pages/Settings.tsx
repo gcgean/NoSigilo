@@ -372,7 +372,7 @@ export default function Settings() {
   const handleDeleteVideo = async (mediaId: string) => {
     setDeletingVideoId(mediaId);
     try {
-      await feedService.deleteMedia(mediaId);
+      await profileService.deleteMedia(mediaId);
       setMyVideos((prev) => prev.filter((v) => v.id !== mediaId));
       toast({ title: 'Vídeo removido', description: 'O vídeo foi excluído do seu perfil.' });
     } catch {
