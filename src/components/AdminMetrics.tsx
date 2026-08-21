@@ -4,11 +4,12 @@ import { cn } from '@/lib/utils';
 import {
   Users, TrendingUp, Activity, DollarSign,
   RefreshCw, Filter, MapPin, UserCheck,
-  MessageSquare, Heart, Eye, Camera, Video,
+  MessageSquare, Heart, Eye, Camera, Video, UserMinus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { deletionReasonLabel } from '@/utils/accountDeletionReasons';
 
 type Metrics = Awaited<ReturnType<typeof adminService.getMetrics>>;
 
@@ -102,6 +103,14 @@ export default function AdminMetrics() {
 
   // Chart: registrations per day
   const dayMax = Math.max(...m.acquisition.byDay.map((d) => d.count), 1);
+  // Chart: exclusões por dia (escala própria — o volume é bem menor que o de cadastros)
+  const deletionDayMax = Math.max(...(m.deletions?.byDay ?? []).map((d) => d.count), 1);
+  // Cada quebra de exclusão usa a própria escala: com volumes baixos, uma escala
+  // compartilhada deixaria quase todas as barras invisíveis.
+  const maxDeletionReason = Math.max(...(m.deletions?.byReason ?? []).map((r) => r.count), 1);
+  const maxDeletionGender = Math.max(...(m.deletions?.byGender ?? []).map((g) => g.count), 1);
+  const maxDeletionState = Math.max(...(m.deletions?.byState ?? []).map((s) => s.count), 1);
+  const maxDeletionCity = Math.max(...(m.deletions?.byCity ?? []).map((c) => c.count), 1);
 
   // Contagem exata por estado/cidade: somas para descobrir os "não informados"
   const stateSum = m.acquisition.byState.reduce((acc, s) => acc + s.count, 0);
@@ -371,6 +380,157 @@ export default function AdminMetrics() {
           <Stat label="Trial → Pago" value={`${m.revenue.trialConversionRate}%`} sub={`${m.revenue.trialConverted} convertidos`} color="amber" />
         </div>
       </section>
+
+      {/* ── EXCLUSÕES DE CONTA ── */}
+      {m.deletions && (
+        <section>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-muted-foreground">
+            <UserMinus className="h-4 w-4" /> Exclusões de Conta
+          </h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Total excluídas" value={m.deletions.total.toLocaleString('pt-BR')} sub={`${m.deletions.rateOfTotalPct}% da base`} icon={UserMinus} color="red" />
+            <Stat label="Hoje" value={m.deletions.today} sub="exclusões" color="orange" />
+            <Stat label="Últimos 7 dias" value={m.deletions.last7days} sub="exclusões" color="amber" />
+            <Stat label="Últimos 30 dias" value={m.deletions.last30days} sub="exclusões" color="red" />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat
+              label="Saíram no 1º dia"
+              value={m.deletions.sameDayAsSignup}
+              sub={pct(m.deletions.sameDayAsSignup, m.deletions.total)}
+              color="orange"
+            />
+            <Stat
+              label="Eram assinantes"
+              value={m.deletions.werePaying}
+              sub={pct(m.deletions.werePaying, m.deletions.total)}
+              color="red"
+            />
+          </div>
+
+          {/* Mini chart — exclusões por dia */}
+          {m.deletions.byDay.length > 0 && (
+            <div className="mt-4 rounded-xl border p-4">
+              <p className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Exclusões por dia (últimos 30 dias)</p>
+              <div className="flex items-end gap-0.5 h-16">
+                {m.deletions.byDay.map((d) => (
+                  <div key={d.date} className="flex-1 flex flex-col items-center gap-0.5" title={`${d.date}: ${d.count}`}>
+                    <div
+                      className="w-full rounded-t bg-destructive/70 hover:bg-destructive transition-colors"
+                      style={{ height: `${Math.max(4, Math.round((d.count / deletionDayMax) * 56))}px` }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+                <span>{m.deletions.byDay[0]?.date.slice(5)}</span>
+                <span>{m.deletions.byDay[m.deletions.byDay.length - 1]?.date.slice(5)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Quebras: motivo, sexo e região de quem saiu */}
+          {m.deletions.surveyed > 0 ? (
+            <>
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                {/* Por motivo */}
+                <div className="rounded-xl border p-4 space-y-2 lg:col-span-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Motivo do cancelamento
+                  </p>
+                  {m.deletions.byReason.map((r) => (
+                    <Bar
+                      key={r.code}
+                      label={deletionReasonLabel(r.code)}
+                      value={r.count}
+                      max={maxDeletionReason}
+                      color={r.code === 'not_informed' ? 'bg-muted-foreground/40' : 'bg-destructive'}
+                    />
+                  ))}
+                </div>
+
+                {/* Por sexo */}
+                <div className="rounded-xl border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Por sexo / tipo de perfil
+                  </p>
+                  {m.deletions.byGender.map((g) => (
+                    <Bar key={g.gender} label={g.gender} value={g.count} max={maxDeletionGender} color="bg-orange-500" />
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {/* Por UF */}
+                <div className="rounded-xl border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por estado (UF)</p>
+                  {m.deletions.byState.slice(0, 12).map((s) => (
+                    <Bar key={s.state} label={s.state} value={s.count} max={maxDeletionState} color="bg-amber-500" />
+                  ))}
+                  {m.deletions.byState.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Sem dados de estado ainda.</p>
+                  )}
+                </div>
+
+                {/* Por cidade */}
+                <div className="rounded-xl border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por cidade</p>
+                  {m.deletions.byCity.slice(0, 12).map((c) => (
+                    <Bar
+                      key={`${c.city}-${c.uf}`}
+                      label={c.uf ? `${c.city}/${c.uf}` : c.city}
+                      value={c.count}
+                      max={maxDeletionCity}
+                      color="bg-rose-500"
+                    />
+                  ))}
+                  {m.deletions.byCity.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Sem dados de cidade ainda.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Comentários livres */}
+              {m.deletions.comments.length > 0 && (
+                <div className="mt-4 rounded-xl border p-4">
+                  <p className="mb-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    O que escreveram ao sair ({m.deletions.comments.length})
+                  </p>
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {m.deletions.comments.map((c, i) => (
+                      <div key={i} className="rounded-lg border bg-muted/30 p-3">
+                        <p className="text-sm text-foreground">{c.text}</p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {deletionReasonLabel(c.reasonCode)}
+                          {c.gender ? ` · ${c.gender}` : ''}
+                          {c.city ? ` · ${c.city}${c.state ? `/${c.state}` : ''}` : ''}
+                          {` · ${new Date(c.createdAt).toLocaleDateString('pt-BR')}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-3 text-xs text-muted-foreground">
+                As quebras acima cobrem <strong>{m.deletions.surveyed}</strong> de {m.deletions.total} exclusões — só
+                entram as saídas ocorridas depois que o formulário de motivo entrou no ar. Informar o motivo é opcional.
+              </p>
+            </>
+          ) : (
+            <p className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+              Ainda não há exclusões com motivo registrado. A partir de agora, quem excluir a conta pode informar o
+              porquê — e a quebra por motivo, sexo e região aparece aqui.
+            </p>
+          )}
+
+          <p className="mt-3 text-xs text-muted-foreground">
+            Conta excluída pelo próprio usuário em Configurações → Excluir Minha Conta. O perfil é anonimizado e o
+            acesso bloqueado, mas o registro continua na base — por isso ele ainda entra no total de cadastros acima.
+          </p>
+        </section>
+      )}
     </div>
   );
 }

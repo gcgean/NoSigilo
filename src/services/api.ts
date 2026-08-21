@@ -345,8 +345,8 @@ export const profileService = {
     return response.data;
   },
 
-  deleteAccount: async () => {
-    const response = await apiClient.post('/profile/delete-account');
+  deleteAccount: async (data?: { reasonCode?: string; reasonText?: string }) => {
+    const response = await apiClient.post('/profile/delete-account', data ?? {});
     return response.data;
   },
 
@@ -1380,6 +1380,20 @@ export const adminService = {
       revenue: {
         totalPaying: number; payingMen: number; trialCount: number;
         trialConverted: number; trialConversionRate: number;
+      };
+      deletions: {
+        total: number; today: number; last7days: number; last30days: number;
+        byDay: { date: string; count: number }[];
+        sameDayAsSignup: number; werePaying: number; rateOfTotalPct: number;
+        surveyed: number;
+        byReason: { code: string; count: number }[];
+        byGender: { gender: string; count: number }[];
+        byState: { state: string; count: number }[];
+        byCity: { city: string; uf: string; count: number }[];
+        comments: {
+          reasonCode: string | null; text: string;
+          gender: string | null; city: string | null; state: string | null; createdAt: string;
+        }[];
       };
     };
   },

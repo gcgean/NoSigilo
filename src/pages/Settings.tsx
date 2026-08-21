@@ -33,6 +33,7 @@ import { CitySearch } from '@/components/CitySearch';
 import MySubscriptionCard from '@/components/MySubscriptionCard';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { getApiErrorInfo } from '@/utils/apiError';
+import { ACCOUNT_DELETION_REASONS } from '@/utils/accountDeletionReasons';
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -440,11 +441,16 @@ export default function Settings() {
   };
 
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteReasonCode, setDeleteReasonCode] = useState<string>('');
+  const [deleteReasonText, setDeleteReasonText] = useState('');
 
   const handleDeleteAccount = async () => {
     setIsDeletingAccount(true);
     try {
-      await profileService.deleteAccount();
+      await profileService.deleteAccount({
+        reasonCode: deleteReasonCode || undefined,
+        reasonText: deleteReasonText.trim() || undefined,
+      });
       toast({ title: 'Conta excluída', description: 'Sua conta foi removida.' });
       logout();
     } catch (error) {
@@ -1800,7 +1806,7 @@ export default function Settings() {
                     {isDeletingAccount ? 'Excluindo...' : 'Excluir Minha Conta'}
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
                   <AlertDialogHeader>
                     <AlertDialogTitle>Excluir sua conta?</AlertDialogTitle>
                     <AlertDialogDescription className="space-y-2">
@@ -1813,6 +1819,39 @@ export default function Settings() {
                       <span className="block mt-2 font-medium text-foreground">Não é possível desfazer nem recuperar depois.</span>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
+
+                  {/* Motivo da saída — opcional, mas ajuda a melhorar a plataforma */}
+                  <div className="space-y-2 border-t pt-4">
+                    <p className="text-sm font-medium">
+                      Antes de ir, o que te fez sair? <span className="font-normal text-muted-foreground">(opcional)</span>
+                    </p>
+                    <div className="space-y-1">
+                      {ACCOUNT_DELETION_REASONS.map((r) => (
+                        <label
+                          key={r.code}
+                          className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-secondary/60"
+                        >
+                          <input
+                            type="radio"
+                            name="delete-reason"
+                            className="accent-destructive"
+                            checked={deleteReasonCode === r.code}
+                            onChange={() => setDeleteReasonCode(r.code)}
+                          />
+                          <span>{r.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <Textarea
+                      value={deleteReasonText}
+                      onChange={(e) => setDeleteReasonText(e.target.value.slice(0, 500))}
+                      placeholder="Quer contar mais? Escreva aqui (opcional)"
+                      rows={2}
+                      className="text-sm"
+                    />
+                    <p className="text-right text-xs text-muted-foreground">{deleteReasonText.length}/500</p>
+                  </div>
+
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                     <AlertDialogAction

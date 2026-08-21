@@ -950,6 +950,22 @@ async function syncHubAccessForUser(
   }
 }
 
+// Motivos de exclusão de conta oferecidos ao usuário. O código é o que fica
+// gravado (estável para agregação no painel); o rótulo em português vive no
+// frontend, para poder ser reescrito sem invalidar o histórico.
+const ACCOUNT_DELETION_REASON_CODES = [
+  'no_one_in_region',
+  'few_active_users',
+  'found_someone',
+  'too_expensive',
+  'privacy_concern',
+  'fake_profiles',
+  'bad_experience',
+  'technical_issues',
+  'temporary_break',
+  'other',
+] as const;
+
 // Valor mínimo acumulado (em centavos) para liberar o pagamento de comissões
 // de um promotor — evita Pix picado de valores pequenos. O saldo considerado
 // é o total aprovado do promotor em TODOS os períodos somados (não por mês).
@@ -6727,11 +6743,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
 
+      // Motivo da saída é opcional: nunca bloqueia a exclusão se vier vazio ou
+      // com um código desconhecido (a pessoa tem direito de sair sem justificar).
+      const reasonParsed = z.object({
+        reasonCode: z.enum(ACCOUNT_DELETION_REASON_CODES).optional(),
+        reasonText: z.string().max(500).optional(),
+      }).safeParse(req.body ?? {});
+      const reasonCode = reasonParsed.success ? (reasonParsed.data.reasonCode ?? null) : null;
+      const reasonText = reasonParsed.success ? (reasonParsed.data.reasonText?.trim() || null) : null;
+
       // Cancela a recorrência ANTES de bloquear a conta: se isso falhar, a
       // exclusão não é concluída — senão a pessoa fica presa sendo cobrada
       // sem conseguir mais logar pra cancelar sozinha (mesmo mecanismo de
       // POST /api/subscriptions/cancel).
-      const row = (await queryOne(db, 'SELECT hub_subscription_id FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+      // Lê também gênero/cidade/UF/premium para o snapshot analítico, ANTES da
+      // anonimização apagar/alterar esses campos.
+      const row = (await queryOne(
+        db,
+        'SELECT hub_subscription_id, gender, city, state, is_premium FROM users WHERE id = ? LIMIT 1',
+        [userId]
+      )) as any;
       const subscriptionId = String(row?.hub_subscription_id || '').trim();
       if (subscriptionId) {
         try {
@@ -6771,6 +6802,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          WHERE id = ?`,
         [deadEmail, deadPasswordHash, now, now, userId]
       );
+
+      // Snapshot analítico da saída. Best-effort: se falhar, a conta já foi
+      // excluída e não faz sentido devolver erro pra quem pediu pra sair.
+      try {
+        await run(
+          db,
+          `INSERT INTO account_deletions
+             (id, user_id, reason_code, reason_text, gender, city, state, was_premium, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            randomUUID(), userId, reasonCode, reasonText,
+            row?.gender ?? null, row?.city ?? null, row?.state ?? null,
+            Number(row?.is_premium || 0) === 1 ? 1 : 0, now,
+          ]
+        );
+      } catch (e) {
+        console.error('[profile/delete-account] falha ao registrar motivo:', e);
+      }
+
       await persist();
       res.json({ ok: true });
     } catch (err) {
@@ -14343,6 +14393,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         filterGender ? `AND u.gender = '${filterGender.replace(/'/g, "''")}'` : '',
       ].join(' ');
 
+      // Mesmos filtros do painel, aplicados ao snapshot de account_deletions
+      // (alias `d`), que guarda gênero/cidade/UF de quem saiu.
+      const deletionWhere = [
+        filterCity   ? `AND LOWER(d.city)  = LOWER('${filterCity.replace(/'/g, "''")}')` : '',
+        filterState  ? `AND LOWER(d.state) = LOWER('${filterState.replace(/'/g, "''")}')` : '',
+        filterGender ? `AND d.gender = '${filterGender.replace(/'/g, "''")}'` : '',
+      ].join(' ');
+
       const [
         totalUsers,
         registrationsToday,
@@ -14372,6 +14430,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         trialCount,
         trialConverted,
         active2PlusWeek,
+        deletedTotal,
+        deletedToday,
+        deleted7,
+        deleted30,
+        deletedByDay30,
+        deletedSameDay,
+        deletedWerePaying,
+        deletionsSurveyed,
+        deletionsByReason,
+        deletionsByGender,
+        deletionsByState,
+        deletionsByCity,
+        deletionComments,
       ] = await Promise.all([
         // ── Total users
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE 1=1 ${baseWhere}`, []),
@@ -14429,6 +14500,28 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.trial_ends_at > u.created_at AND u.is_premium = 1 ${baseWhere}`, []),
         // ── Active 2+ times this week (approximation via last_seen >= 7d ago, excluding today-only)
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.last_seen_at >= ? AND DATE(u.last_seen_at) != DATE(u.created_at) ${baseWhere}`, [ago(7)]),
+        // ── Contas excluídas pelo próprio usuário (deleted_at preenchido).
+        //    A exclusão anonimiza nome/e-mail mas preserva cidade/UF/gênero,
+        //    então os filtros do painel continuam valendo aqui.
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL ${baseWhere}`, []),
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND DATE(u.deleted_at) = ? ${baseWhere}`, [todayIso]),
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at >= ? ${baseWhere}`, [ago(7)]),
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at >= ? ${baseWhere}`, [ago(30)]),
+        queryAll(db, `SELECT DATE(u.deleted_at) as day, COUNT(*) as c FROM users u WHERE u.deleted_at >= ? ${baseWhere} GROUP BY day ORDER BY day`, [ago(30)]),
+        // ── Tempo de vida da conta até a exclusão: ajuda a ver se a pessoa saiu
+        //    logo no começo (problema de onboarding) ou depois de meses.
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND DATE(u.deleted_at) = DATE(u.created_at) ${baseWhere}`, []),
+        queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND u.is_premium = 1 ${baseWhere}`, []),
+        // ── Quebras por motivo/sexo/região, vindas do snapshot em
+        //    account_deletions (só existe a partir do lançamento do formulário
+        //    de motivo — por isso o total aqui pode ser menor que o histórico).
+        queryOne(db, `SELECT COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere}`, []),
+        queryAll(db, `SELECT COALESCE(d.reason_code, 'not_informed') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(d.reason_code, 'not_informed') ORDER BY c DESC`, []),
+        queryAll(db, `SELECT COALESCE(NULLIF(TRIM(d.gender), ''), 'Não informado') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(NULLIF(TRIM(d.gender), ''), 'Não informado') ORDER BY c DESC LIMIT 20`, []),
+        queryAll(db, `SELECT COALESCE(NULLIF(UPPER(TRIM(d.state)), ''), 'Não informado') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(NULLIF(UPPER(TRIM(d.state)), ''), 'Não informado') ORDER BY c DESC LIMIT 60`, []),
+        queryAll(db, `SELECT TRIM(d.city) as city, UPPER(TRIM(COALESCE(d.state, ''))) as uf, COUNT(*) as c FROM account_deletions d WHERE d.city IS NOT NULL AND TRIM(d.city) != '' ${deletionWhere} GROUP BY TRIM(d.city), UPPER(TRIM(COALESCE(d.state, ''))) ORDER BY c DESC LIMIT 200`, []),
+        // Comentários livres mais recentes — o "porquê" que nenhum código captura.
+        queryAll(db, `SELECT d.reason_code, d.reason_text, d.gender, d.city, d.state, d.created_at FROM account_deletions d WHERE d.reason_text IS NOT NULL AND TRIM(d.reason_text) != '' ${deletionWhere} ORDER BY d.created_at DESC LIMIT 50`, []),
       ]);
 
       const n = (v: any) => Number((v as any)?.c ?? 0);
@@ -14472,6 +14565,32 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           trialCount: n(trialCount),
           trialConverted: n(trialConverted),
           trialConversionRate: n(trialCount) > 0 ? Math.round((n(trialConverted) / n(trialCount)) * 100) : 0,
+        },
+        deletions: {
+          total: n(deletedTotal),
+          today: n(deletedToday),
+          last7days: n(deleted7),
+          last30days: n(deleted30),
+          byDay: (deletedByDay30 as any[]).map((r) => ({ date: String(r.day), count: Number(r.c) })),
+          sameDayAsSignup: n(deletedSameDay),
+          werePaying: n(deletedWerePaying),
+          // % sobre a base total (que ainda inclui as contas excluídas).
+          rateOfTotalPct: n(totalUsers) > 0 ? Math.round((n(deletedTotal) / n(totalUsers)) * 1000) / 10 : 0,
+          // Base das quebras abaixo: só exclusões feitas após o lançamento do
+          // formulário de motivo. Menor que `total` enquanto houver histórico antigo.
+          surveyed: n(deletionsSurveyed),
+          byReason: (deletionsByReason as any[]).map((r) => ({ code: String(r.k), count: Number(r.c) })),
+          byGender: (deletionsByGender as any[]).map((r) => ({ gender: String(r.k), count: Number(r.c) })),
+          byState: (deletionsByState as any[]).map((r) => ({ state: String(r.k), count: Number(r.c) })),
+          byCity: (deletionsByCity as any[]).map((r) => ({ city: String(r.city), uf: String(r.uf || ''), count: Number(r.c) })),
+          comments: (deletionComments as any[]).map((r) => ({
+            reasonCode: r.reason_code ? String(r.reason_code) : null,
+            text: String(r.reason_text),
+            gender: r.gender ? String(r.gender) : null,
+            city: r.city ? String(r.city) : null,
+            state: r.state ? String(r.state) : null,
+            createdAt: String(r.created_at),
+          })),
         },
       });
     } catch (err) {
