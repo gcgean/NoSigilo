@@ -14437,11 +14437,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         deletedByDay30,
         deletedSameDay,
         deletedWerePaying,
+        deletedByGenderAll,
+        deletedByStateAll,
+        deletedByCityAll,
         deletionsSurveyed,
         deletionsByReason,
-        deletionsByGender,
-        deletionsByState,
-        deletionsByCity,
         deletionComments,
       ] = await Promise.all([
         // ── Total users
@@ -14512,19 +14512,34 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         //    logo no começo (problema de onboarding) ou depois de meses.
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND DATE(u.deleted_at) = DATE(u.created_at) ${baseWhere}`, []),
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND u.is_premium = 1 ${baseWhere}`, []),
+        // ── Quebras por sexo/região de TODAS as exclusões (inclusive as
+        //    anteriores ao formulário de motivo): a anonimização preserva
+        //    gender/city/state em users, então esse recorte é completo.
+        queryAll(db, `SELECT COALESCE(NULLIF(TRIM(u.gender), ''), 'Não informado') as k, COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL ${baseWhere} GROUP BY COALESCE(NULLIF(TRIM(u.gender), ''), 'Não informado') ORDER BY c DESC LIMIT 20`, []),
+        queryAll(db, `SELECT COALESCE(NULLIF(UPPER(TRIM(u.state)), ''), 'Não informado') as k, COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL ${baseWhere} GROUP BY COALESCE(NULLIF(UPPER(TRIM(u.state)), ''), 'Não informado') ORDER BY c DESC LIMIT 60`, []),
+        queryAll(db, `SELECT TRIM(u.city) as city, UPPER(TRIM(COALESCE(u.state, ''))) as uf, COUNT(*) as c FROM users u WHERE u.deleted_at IS NOT NULL AND u.city IS NOT NULL AND TRIM(u.city) != '' ${baseWhere} GROUP BY TRIM(u.city), UPPER(TRIM(COALESCE(u.state, ''))) ORDER BY c DESC LIMIT 200`, []),
         // ── Quebras por motivo/sexo/região, vindas do snapshot em
         //    account_deletions (só existe a partir do lançamento do formulário
         //    de motivo — por isso o total aqui pode ser menor que o histórico).
         queryOne(db, `SELECT COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere}`, []),
         queryAll(db, `SELECT COALESCE(d.reason_code, 'not_informed') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(d.reason_code, 'not_informed') ORDER BY c DESC`, []),
-        queryAll(db, `SELECT COALESCE(NULLIF(TRIM(d.gender), ''), 'Não informado') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(NULLIF(TRIM(d.gender), ''), 'Não informado') ORDER BY c DESC LIMIT 20`, []),
-        queryAll(db, `SELECT COALESCE(NULLIF(UPPER(TRIM(d.state)), ''), 'Não informado') as k, COUNT(*) as c FROM account_deletions d WHERE 1=1 ${deletionWhere} GROUP BY COALESCE(NULLIF(UPPER(TRIM(d.state)), ''), 'Não informado') ORDER BY c DESC LIMIT 60`, []),
-        queryAll(db, `SELECT TRIM(d.city) as city, UPPER(TRIM(COALESCE(d.state, ''))) as uf, COUNT(*) as c FROM account_deletions d WHERE d.city IS NOT NULL AND TRIM(d.city) != '' ${deletionWhere} GROUP BY TRIM(d.city), UPPER(TRIM(COALESCE(d.state, ''))) ORDER BY c DESC LIMIT 200`, []),
         // Comentários livres mais recentes — o "porquê" que nenhum código captura.
         queryAll(db, `SELECT d.reason_code, d.reason_text, d.gender, d.city, d.state, d.created_at FROM account_deletions d WHERE d.reason_text IS NOT NULL AND TRIM(d.reason_text) != '' ${deletionWhere} ORDER BY d.created_at DESC LIMIT 50`, []),
       ]);
 
       const n = (v: any) => Number((v as any)?.c ?? 0);
+
+      // DATE(...) volta como string 'YYYY-MM-DD' no SQLite, mas o driver do
+      // Postgres converte para Date — e um String(Date) vira
+      // "Wed Aug 19 2026 00:00:00 GMT-0300...", quebrando o rótulo do eixo.
+      // Normaliza sempre para 'YYYY-MM-DD'.
+      const toDayStr = (v: any): string => {
+        if (v instanceof Date) return v.toISOString().slice(0, 10);
+        const s = String(v ?? '');
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        const parsed = new Date(s);
+        return Number.isNaN(parsed.getTime()) ? s : parsed.toISOString().slice(0, 10);
+      };
 
       res.json({
         filters: { city: filterCity, state: filterState, gender: filterGender },
@@ -14533,7 +14548,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           today: n(registrationsToday),
           last7days: n(registrations7),
           last30days: n(registrations30),
-          byDay: (regByDay30 as any[]).map((r) => ({ date: String(r.day), count: Number(r.c) })),
+          byDay: (regByDay30 as any[]).map((r) => ({ date: toDayStr(r.day), count: Number(r.c) })),
           byGender: (regByGender as any[]).map((r) => ({ gender: r.gender || 'Não informado', count: Number(r.c) })),
           byCity: (regByCity as any[]).map((r) => ({ city: r.city, uf: r.uf || '', count: Number(r.c) })),
           byState: (regByState as any[]).map((r) => ({ state: r.state, count: Number(r.c) })),
@@ -14571,18 +14586,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           today: n(deletedToday),
           last7days: n(deleted7),
           last30days: n(deleted30),
-          byDay: (deletedByDay30 as any[]).map((r) => ({ date: String(r.day), count: Number(r.c) })),
+          byDay: (deletedByDay30 as any[]).map((r) => ({ date: toDayStr(r.day), count: Number(r.c) })),
           sameDayAsSignup: n(deletedSameDay),
           werePaying: n(deletedWerePaying),
           // % sobre a base total (que ainda inclui as contas excluídas).
           rateOfTotalPct: n(totalUsers) > 0 ? Math.round((n(deletedTotal) / n(totalUsers)) * 1000) / 10 : 0,
-          // Base das quebras abaixo: só exclusões feitas após o lançamento do
-          // formulário de motivo. Menor que `total` enquanto houver histórico antigo.
+          // Sexo/região cobrem TODAS as exclusões (base = `total`), porque esses
+          // campos sobrevivem à anonimização.
+          byGender: (deletedByGenderAll as any[]).map((r) => ({ gender: String(r.k), count: Number(r.c) })),
+          byState: (deletedByStateAll as any[]).map((r) => ({ state: String(r.k), count: Number(r.c) })),
+          byCity: (deletedByCityAll as any[]).map((r) => ({ city: String(r.city), uf: String(r.uf || ''), count: Number(r.c) })),
+          // Já o motivo só existe a partir do lançamento do formulário — base
+          // menor (`surveyed`) enquanto houver histórico antigo sem motivo.
           surveyed: n(deletionsSurveyed),
           byReason: (deletionsByReason as any[]).map((r) => ({ code: String(r.k), count: Number(r.c) })),
-          byGender: (deletionsByGender as any[]).map((r) => ({ gender: String(r.k), count: Number(r.c) })),
-          byState: (deletionsByState as any[]).map((r) => ({ state: String(r.k), count: Number(r.c) })),
-          byCity: (deletionsByCity as any[]).map((r) => ({ city: String(r.city), uf: String(r.uf || ''), count: Number(r.c) })),
           comments: (deletionComments as any[]).map((r) => ({
             reasonCode: r.reason_code ? String(r.reason_code) : null,
             text: String(r.reason_text),

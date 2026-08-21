@@ -430,65 +430,65 @@ export default function AdminMetrics() {
             </div>
           )}
 
-          {/* Quebras: motivo, sexo e região de quem saiu */}
+          {/* Sexo e região: cobrem TODAS as exclusões (esses campos sobrevivem
+              à anonimização), então aparecem independente do motivo. */}
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="rounded-xl border p-4 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Por sexo / tipo de perfil
+              </p>
+              {m.deletions.byGender.map((g) => (
+                <Bar key={g.gender} label={g.gender} value={g.count} max={maxDeletionGender} color="bg-orange-500" />
+              ))}
+              {m.deletions.byGender.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma exclusão registrada.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-4 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por estado (UF)</p>
+              {m.deletions.byState.slice(0, 12).map((s) => (
+                <Bar key={s.state} label={s.state} value={s.count} max={maxDeletionState} color="bg-amber-500" />
+              ))}
+              {m.deletions.byState.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhuma exclusão registrada.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border p-4 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por cidade</p>
+              {m.deletions.byCity.slice(0, 12).map((c) => (
+                <Bar
+                  key={`${c.city}-${c.uf}`}
+                  label={c.uf ? `${c.city}/${c.uf}` : c.city}
+                  value={c.count}
+                  max={maxDeletionCity}
+                  color="bg-rose-500"
+                />
+              ))}
+              {m.deletions.byCity.length === 0 && (
+                <p className="text-xs text-muted-foreground">Sem cidade informada nos perfis excluídos.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Motivo e comentários: só existem para saídas posteriores ao
+              lançamento do formulário. */}
           {m.deletions.surveyed > 0 ? (
             <>
-              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-                {/* Por motivo */}
-                <div className="rounded-xl border p-4 space-y-2 lg:col-span-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Motivo do cancelamento
-                  </p>
-                  {m.deletions.byReason.map((r) => (
-                    <Bar
-                      key={r.code}
-                      label={deletionReasonLabel(r.code)}
-                      value={r.count}
-                      max={maxDeletionReason}
-                      color={r.code === 'not_informed' ? 'bg-muted-foreground/40' : 'bg-destructive'}
-                    />
-                  ))}
-                </div>
-
-                {/* Por sexo */}
-                <div className="rounded-xl border p-4 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Por sexo / tipo de perfil
-                  </p>
-                  {m.deletions.byGender.map((g) => (
-                    <Bar key={g.gender} label={g.gender} value={g.count} max={maxDeletionGender} color="bg-orange-500" />
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {/* Por UF */}
-                <div className="rounded-xl border p-4 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por estado (UF)</p>
-                  {m.deletions.byState.slice(0, 12).map((s) => (
-                    <Bar key={s.state} label={s.state} value={s.count} max={maxDeletionState} color="bg-amber-500" />
-                  ))}
-                  {m.deletions.byState.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Sem dados de estado ainda.</p>
-                  )}
-                </div>
-
-                {/* Por cidade */}
-                <div className="rounded-xl border p-4 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Por cidade</p>
-                  {m.deletions.byCity.slice(0, 12).map((c) => (
-                    <Bar
-                      key={`${c.city}-${c.uf}`}
-                      label={c.uf ? `${c.city}/${c.uf}` : c.city}
-                      value={c.count}
-                      max={maxDeletionCity}
-                      color="bg-rose-500"
-                    />
-                  ))}
-                  {m.deletions.byCity.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Sem dados de cidade ainda.</p>
-                  )}
-                </div>
+              <div className="mt-4 rounded-xl border p-4 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Motivo do cancelamento
+                </p>
+                {m.deletions.byReason.map((r) => (
+                  <Bar
+                    key={r.code}
+                    label={deletionReasonLabel(r.code)}
+                    value={r.count}
+                    max={maxDeletionReason}
+                    color={r.code === 'not_informed' ? 'bg-muted-foreground/40' : 'bg-destructive'}
+                  />
+                ))}
               </div>
 
               {/* Comentários livres */}
@@ -514,14 +514,15 @@ export default function AdminMetrics() {
               )}
 
               <p className="mt-3 text-xs text-muted-foreground">
-                As quebras acima cobrem <strong>{m.deletions.surveyed}</strong> de {m.deletions.total} exclusões — só
-                entram as saídas ocorridas depois que o formulário de motivo entrou no ar. Informar o motivo é opcional.
+                O motivo cobre <strong>{m.deletions.surveyed}</strong> de {m.deletions.total} exclusões — só entram as
+                saídas ocorridas depois que o formulário entrou no ar, e informar o motivo é opcional. As quebras por
+                sexo e região acima cobrem todas as {m.deletions.total}.
               </p>
             </>
           ) : (
             <p className="mt-4 rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-              Ainda não há exclusões com motivo registrado. A partir de agora, quem excluir a conta pode informar o
-              porquê — e a quebra por motivo, sexo e região aparece aqui.
+              Ainda não há exclusões com motivo registrado — o formulário é novo e só vale para saídas daqui pra
+              frente. As quebras por sexo e região acima já cobrem todo o histórico.
             </p>
           )}
 
