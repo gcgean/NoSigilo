@@ -13,6 +13,13 @@ export default {
       },
     },
     extend: {
+      // A escala padrão do Tailwind tem 3.5 e 4, mas não 4.5 — então as 14
+      // ocorrências de h-4.5/w-4.5/min-w-4.5 no código eram classes mortas e os
+      // ícones caíam no tamanho padrão do lucide (24px) em vez dos 18px
+      // pretendidos. Registrar o valor faz todas passarem a valer de uma vez.
+      spacing: {
+        '4.5': '1.125rem', // 18px
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
