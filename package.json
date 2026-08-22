@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/generate-seo-pages.mjs",
+    "build:staged": "vite build --outDir dist_new --emptyOutDir && node scripts/generate-seo-pages.mjs --outDir=dist_new",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",

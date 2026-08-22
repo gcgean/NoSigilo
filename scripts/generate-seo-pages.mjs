@@ -10,7 +10,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DIST = resolve(__dirname, '..', 'dist');
+// Pasta de saída configurável (--outDir=dist_new) para permitir o build em
+// staging: compila numa pasta paralela e só troca pela de produção no fim,
+// em vez de esvaziar a pasta que está servindo o site durante o build.
+// Via argv, e não variável de ambiente, para funcionar igual no Windows e Linux.
+const outDirArg = process.argv.find((a) => a.startsWith('--outDir='));
+const OUT_DIR_NAME = outDirArg ? outDirArg.slice('--outDir='.length) : 'dist';
+const DIST = resolve(__dirname, '..', OUT_DIR_NAME);
 const SITE = 'https://nosigilo.net';
 // Domínio das páginas regionais (estado + cidade + hub /swing/).
 // Apenas estas páginas usam este domínio; o resto do site segue em SITE.
@@ -497,4 +503,4 @@ mkdirSync(resolve(DIST, 'swing'), { recursive: true });
 writeFileSync(resolve(DIST, 'swing', 'index.html'), hubPage(), 'utf8');
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');
 
-console.log(`[seo] ${stateCount} estado(s) + ${cityCount} cidade(s) + hub /swing/ + sitemap.xml gerados em dist/`);
+console.log(`[seo] ${stateCount} estado(s) + ${cityCount} cidade(s) + hub /swing/ + sitemap.xml gerados em ${OUT_DIR_NAME}/`);
