@@ -292,6 +292,9 @@ export default function Feed() {
   // Momento em que a aba/app foi para segundo plano — usado para medir quanto
   // tempo a pessoa ficou fora e decidir se o feed merece recarregar.
   const hiddenAtRef = useRef<number | null>(null);
+  // Lista de posts já vistos congelada no último reload, reenviada em todas as
+  // páginas do scroll para manter a ordenação do servidor estável.
+  const seenIdsBaselineRef = useRef('');
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [aspectByKey, setAspectByKey] = useState<Record<string, 'portrait' | 'landscape' | 'square'>>({});
   const pageRef = useRef(1);
@@ -620,6 +623,10 @@ export default function Feed() {
       // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
       const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
+      // Congela a lista para as próximas páginas desse scroll: o servidor
+      // ordena não-vistos primeiro, e essa fronteira precisa ficar parada
+      // enquanto a pessoa rola, senão o offset pula posts.
+      seenIdsBaselineRef.current = seenIds;
       const [feed, radarData] = await Promise.all([
         feedService.getFeed(feedParams),
         shouldRefreshRadarHighlights
@@ -867,8 +874,11 @@ export default function Feed() {
     const nextPage = pageRef.current + 1;
     setIsLoadingMore(true);
     try {
-      // Pass currently-seen post IDs so backend can exclude them (cross-page deduplication)
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
+      // Reenvia a MESMA lista de vistos congelada no reload. Recalcular aqui
+      // (a lista cresce conforme os posts aparecem na tela) moveria a fronteira
+      // entre visto/não-visto no servidor a cada página, e a paginação por
+      // offset passaria a pular posts.
+      const seenIds = seenIdsBaselineRef.current;
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
       if (cityOnly) moreParams.cityOnly = true;

@@ -4678,8 +4678,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       feedHasMore = (proximityRows as any[]).length >= limit;
     } else {
       const orderedByTheme = themeFirst(proximityRows as any[]);
-      slice = orderedByTheme.slice(offset, offset + limit);
-      feedHasMore = orderedByTheme.length > offset + limit;
+      // Não-vistos primeiro, já-vistos no fim (em vez de sumirem): assim quem
+      // volta ao feed sempre cai em conteúdo novo, e quem já viu tudo continua
+      // com feed cheio em vez de uma lista vazia.
+      // O cliente congela a lista de seenIds no reload e reenvia a MESMA em
+      // todas as páginas daquele scroll — se ela crescesse a cada página, a
+      // fronteira entre visto/não-visto andaria junto com o offset e a
+      // paginação passaria a pular posts.
+      const unseenFirst = [
+        ...orderedByTheme.filter((r: any) => !seenIdsSet.has(String(r.id))),
+        ...orderedByTheme.filter((r: any) => seenIdsSet.has(String(r.id))),
+      ];
+      slice = unseenFirst.slice(offset, offset + limit);
+      feedHasMore = unseenFirst.length > offset + limit;
     }
     const postIds = slice.map((r: any) => String(r.id));
 
