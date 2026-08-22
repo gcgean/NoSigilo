@@ -572,8 +572,13 @@ export default function Layout() {
     dismissPwaInstallPrompt();
   };
 
+  // min-h-[100svh] em vez de min-h-screen (100vh): no iOS o 100vh é a altura
+  // COM a barra do Safari escondida, então a página fica mais alta que a área
+  // visível e o fim dela (incluindo a navegação inferior) some atrás da barra.
+  // O svh usa a menor altura possível — nada é cortado, e não há reflow quando
+  // a barra do navegador aparece/some.
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-[100svh] bg-background flex flex-col">
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
