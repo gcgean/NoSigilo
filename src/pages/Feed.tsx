@@ -188,6 +188,10 @@ const FEED_SESSION_SEEN_IDS_KEY = 'nosigilo:feed-session-seen-ids';
 const FEED_SEEN_IDS_LS_KEY = 'nosigilo:feed-seen-ids-v2';
 const FEED_SEEN_IDS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
+// Ausência mínima para recarregar o feed ao voltar. Curto demais faria uma
+// simples troca de aba descartar a posição de leitura; longo demais faz a
+// pessoa reencontrar o feed velho ao voltar.
+const FEED_RESUME_REFRESH_MS = 60_000;
 const NEARBY_OPTIONS = [10, 25, 50, 100, 200, 300] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
 
@@ -283,6 +287,11 @@ export default function Feed() {
   const [feedSessionBaseline, setFeedSessionBaseline] = useState<Record<string, number>>(() => readFeedSessionAuthorCounts());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentsRef = useRef<Array<{ id: string; file: File; url: string }>>([]);
+  const isLoadingRef = useRef(false);
+  const postContentRef = useRef('');
+  // Momento em que a aba/app foi para segundo plano — usado para medir quanto
+  // tempo a pessoa ficou fora e decidir se o feed merece recarregar.
+  const hiddenAtRef = useRef<number | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [aspectByKey, setAspectByKey] = useState<Record<string, 'portrait' | 'landscape' | 'square'>>({});
   const pageRef = useRef(1);
@@ -555,6 +564,16 @@ export default function Feed() {
     attachmentsRef.current = attachments;
   }, [attachments]);
 
+  // Espelhos para o listener de retorno ao feed, que é registrado uma vez e
+  // enxergaria valores congelados se lesse os estados direto.
+  useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  useEffect(() => {
+    postContentRef.current = postContent;
+  }, [postContent]);
+
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
@@ -653,6 +672,58 @@ export default function Feed() {
     void reload();
     void reloadExperiences();
   }, []);
+
+  // Ao VOLTAR para o feed depois de sair do app/aba, recarrega para mostrar
+  // conteúdo novo. Navegar dentro do app (Feed → Chat → Feed) já remonta o
+  // componente e recarrega sozinho; o buraco era sair do navegador/app, quando
+  // o componente fica montado e o feed congela na mesma listagem.
+  // Como reload() envia os seenIds persistidos, o servidor devolve o que essa
+  // pessoa ainda não viu — postagens novas ou a próxima leva das antigas.
+  useEffect(() => {
+    const refreshOnResume = (awayMs: number) => {
+      // A aba de experiências usa outra lista, com carregamento próprio.
+      if (feedFilter === 'experiences') return;
+      if (isLoadingRef.current) return;
+      // Não atrapalha quem estava no meio de uma publicação.
+      if (postContentRef.current.trim() || attachmentsRef.current.length > 0) return;
+      // Ida e volta rápida (conferir uma notificação) não deve descartar a
+      // posição de leitura — inclusive de quem já rolou várias páginas.
+      if (awayMs < FEED_RESUME_REFRESH_MS) return;
+
+      void reload().then(() => {
+        // A lista foi substituída pela página 1: manter a rolagem antiga
+        // deixaria a pessoa parada no meio de um conteúdo que nunca viu chegar.
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+      // O que importa é quanto tempo a pessoa ficou FORA, não quando o feed
+      // carregou pela última vez: quem rolou o feed por 10 min e trocou de aba
+      // por 5s não pode perder a rolagem toda ao voltar.
+      const awayMs = hiddenAtRef.current === null ? 0 : Date.now() - hiddenAtRef.current;
+      hiddenAtRef.current = null;
+      refreshOnResume(awayMs);
+    };
+
+    // Restauração do bfcache (voltar/avançar no mobile): a página estava
+    // congelada, então sempre vale recarregar.
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) refreshOnResume(Number.POSITIVE_INFINITY);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedFilter]);
 
   // Recarrega o feed do servidor ao entrar/sair do modo "Amigos" (filtro é server-side).
   const prevServerFilterRef = useRef<'friends' | 'none'>(feedFilter === 'friends' ? 'friends' : 'none');
