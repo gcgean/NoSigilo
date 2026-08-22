@@ -4267,16 +4267,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       genderParams.length = 0;
     }
 
-    const rows = await queryAll(
-      db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
-        u.id as author_id,
-        CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
-        CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
-        u.gender as author_gender, u.city as author_city, u.state as author_state,
-        u.lat as author_lat, u.lon as author_lon,
-        u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date
-       FROM posts p
+    // ── Candidatos do feed ────────────────────────────────────────────────
+    // O filtro de "já visto" usa post_views (gravado quando o card fica visível
+    // na tela) em vez dos seenIds da URL: o histórico do servidor é completo e
+    // não esbarra no limite de tamanho da query string. Sem isso a janela de
+    // candidatos ficava presa nos N posts mais recentes e a pessoa revia sempre
+    // os mesmos, mesmo com milhares de posts que ela nunca abriu.
+    const feedFrom = `FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE 1=1
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
@@ -4288,13 +4285,55 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          )
          ${genderFilter}
          ${friendsAuthorFilter}
-         ${reelsOnlyFilter}
-       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC
-       ${includeReelsOnly ? 'LIMIT ? OFFSET ?' : 'LIMIT ? OFFSET 0'}`,
-      includeReelsOnly
-        ? [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, limit, offset]
-        : [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams, fetchLimit]
-    );
+         ${reelsOnlyFilter}`;
+    const feedSelect = `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
+        u.id as author_id,
+        CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+        CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
+        u.gender as author_gender, u.city as author_city, u.state as author_state,
+        u.lat as author_lat, u.lon as author_lon,
+        u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date
+       ${feedFrom}`;
+    const feedOrder = `ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC`;
+    const baseParams = [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams];
+
+    // Posts que o cliente acabou de exibir mas cujo registro de view ainda pode
+    // não ter chegado — evita repetir na página seguinte do mesmo scroll.
+    const seenIdsList = Array.from(seenIdsSet);
+    const justShownClause = seenIdsList.length > 0
+      ? `AND p.id NOT IN (${seenIdsList.map(() => '?').join(',')})`
+      : '';
+
+    let rows: any[];
+    if (includeReelsOnly) {
+      // Reels pagina por OFFSET no SQL e o player precisa percorrer todos os
+      // posts para achar os vídeos — não filtra por visto.
+      rows = (await queryAll(db, `${feedSelect} ${feedOrder} LIMIT ? OFFSET ?`, [...baseParams, limit, offset])) as any[];
+    } else {
+      const unseen = (await queryAll(
+        db,
+        `${feedSelect}
+         AND NOT EXISTS (SELECT 1 FROM post_views pv WHERE pv.post_id = p.id AND pv.viewer_id = ?)
+         ${justShownClause}
+         ${feedOrder} LIMIT ?`,
+        [...baseParams, req.auth!.userId, ...seenIdsList, fetchLimit]
+      )) as any[];
+      rows = unseen;
+      // Só quando os não-vistos acabam é que o já-visto volta a aparecer: assim
+      // a pessoa percorre o acervo inteiro antes de repetir qualquer coisa, e
+      // mesmo quem já viu tudo continua com o feed cheio em vez de vazio.
+      if (unseen.length < fetchLimit) {
+        const seenAgain = (await queryAll(
+          db,
+          `${feedSelect}
+           AND EXISTS (SELECT 1 FROM post_views pv WHERE pv.post_id = p.id AND pv.viewer_id = ?)
+           ${justShownClause}
+           ${feedOrder} LIMIT ?`,
+          [...baseParams, req.auth!.userId, ...seenIdsList, fetchLimit - unseen.length]
+        )) as any[];
+        rows = [...unseen, ...seenAgain];
+      }
+    }
 
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
     const distanceKmByPostId = new Map<string, number | null>();
@@ -4678,19 +4717,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       feedHasMore = (proximityRows as any[]).length >= limit;
     } else {
       const orderedByTheme = themeFirst(proximityRows as any[]);
-      // Não-vistos primeiro, já-vistos no fim (em vez de sumirem): assim quem
-      // volta ao feed sempre cai em conteúdo novo, e quem já viu tudo continua
-      // com feed cheio em vez de uma lista vazia.
-      // O cliente congela a lista de seenIds no reload e reenvia a MESMA em
-      // todas as páginas daquele scroll — se ela crescesse a cada página, a
-      // fronteira entre visto/não-visto andaria junto com o offset e a
-      // paginação passaria a pular posts.
-      const unseenFirst = [
-        ...orderedByTheme.filter((r: any) => !seenIdsSet.has(String(r.id))),
-        ...orderedByTheme.filter((r: any) => seenIdsSet.has(String(r.id))),
-      ];
-      slice = unseenFirst.slice(offset, offset + limit);
-      feedHasMore = unseenFirst.length > offset + limit;
+      // Sem OFFSET aqui: a própria exclusão por post_views faz a janela andar.
+      // A cada página o que acabou de ser visto sai do conjunto, então o topo
+      // da lista já é o "próximo" lote. Aplicar offset por cima disso pularia
+      // posts, porque a fronteira do visto se move junto com o scroll.
+      slice = orderedByTheme.slice(0, limit);
+      feedHasMore = orderedByTheme.length > limit;
     }
     const postIds = slice.map((r: any) => String(r.id));
 
