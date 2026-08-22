@@ -4174,12 +4174,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
-    // seenIds: comma-separated post IDs already shown to the client — exclude from current page
-    // Cap at 60 IDs to avoid URL/query bloat; client already limits to 40
+    // seenIds: posts que o cliente já exibiu nesta sessão. Complementa o
+    // post_views (que só grava o que ficou de fato visível na tela): quem rola
+    // rápido passa por posts que nunca chegam a contar como visualização, e sem
+    // isso eles reapareceriam algumas páginas depois.
+    // Teto de 120 ids (~4,4 KB) — cobre ~6 páginas de scroll e fica bem abaixo
+    // do limite usual de query string (8 KB).
     const seenIdsRaw = typeof req.query.seenIds === 'string' ? req.query.seenIds.trim() : '';
     const seenIdsSet = new Set<string>(
       seenIdsRaw
-        ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 60)
+        ? seenIdsRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 120)
         : []
     );
     // When includeReelsOnly=true (Reels/Rap page): include ALL posts regardless of is_reels_only.
@@ -4194,7 +4198,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Cap at 200 (was 400) — with proper indexes this is plenty and keeps the response fast.
     const fetchLimit = includeReelsOnly
       ? Math.min(200, offset + limit + 120)
-      : 120; // janela estável p/ paginação por offset consistente entre páginas
+      // Janela grande de propósito: mais adiante o ranking corta em
+      // MAX_POSTS_PER_AUTHOR por autor, e como os posts vêm por recência
+      // (poucos autores dominam o topo), uma janela pequena sobrava com
+      // menos posts que uma página inteira depois do corte.
+      : 400;
 
     // Build gender preference filter using exact matches + LIKE for casal variants
     let genderFilter = '';
@@ -4305,6 +4313,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       : '';
 
     let rows: any[];
+    // Se o acervo ainda tem não-vistos além da janela buscada. Necessário
+    // porque o ranking corta posts por autor depois daqui: sem isso, uma
+    // janela que rendeu meia página faria o scroll infinito parar achando
+    // que o feed acabou, com milhares de posts ainda por mostrar.
+    let moreUnseenInDb = false;
     if (includeReelsOnly) {
       // Reels pagina por OFFSET no SQL e o player precisa percorrer todos os
       // posts para achar os vídeos — não filtra por visto.
@@ -4319,6 +4332,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         [...baseParams, req.auth!.userId, ...seenIdsList, fetchLimit]
       )) as any[];
       rows = unseen;
+      // A janela veio cheia => ainda há não-vistos no acervo além dela.
+      moreUnseenInDb = unseen.length >= fetchLimit;
       // Só quando os não-vistos acabam é que o já-visto volta a aparecer: assim
       // a pessoa percorre o acervo inteiro antes de repetir qualquer coisa, e
       // mesmo quem já viu tudo continua com o feed cheio em vez de vazio.
@@ -4722,7 +4737,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // da lista já é o "próximo" lote. Aplicar offset por cima disso pularia
       // posts, porque a fronteira do visto se move junto com o scroll.
       slice = orderedByTheme.slice(0, limit);
-      feedHasMore = orderedByTheme.length > limit;
+      // Continua havendo o que mostrar se o banco ainda tem não-vistos fora
+      // desta janela, mesmo que o corte por autor tenha deixado esta página
+      // curta — a próxima chamada monta uma janela nova.
+      feedHasMore = moreUnseenInDb || orderedByTheme.length > limit;
     }
     const postIds = slice.map((r: any) => String(r.id));
 

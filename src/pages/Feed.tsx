@@ -396,7 +396,7 @@ export default function Feed() {
       const params: Parameters<typeof feedService.getFeed>[0] = { page: 1, limit: 20 };
       if (km !== null) params.maxDistanceKm = km;
       if (co) params.cityOnly = true;
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-120).join(',');
       if (seenIds) params.seenIds = seenIds;
       const feed = await feedService.getFeed(params);
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
@@ -618,7 +618,7 @@ export default function Feed() {
       if (cityOnly) feedParams.cityOnly = true;
       if (feedFilter === 'friends') feedParams.filter = 'friends';
       // Limit to 40 most-recent IDs to stay well under URL length limits (~1500 chars)
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-120).join(',');
       if (seenIds) feedParams.seenIds = seenIds;
       const [feed, radarData] = await Promise.all([
         feedService.getFeed(feedParams),
@@ -871,7 +871,7 @@ export default function Feed() {
       // exclusão (post_views + estes ids), não por offset: é justamente essa
       // lista crescendo que faz a próxima página trazer o lote seguinte, e ela
       // cobre os posts cujo registro de view ainda não chegou ao servidor.
-      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-60).join(',');
+      const seenIds = Array.from(trackedFeedPostIdsRef.current).slice(-120).join(',');
       const moreParams: Parameters<typeof feedService.getFeed>[0] = { page: nextPage, limit: 20, seenIds: seenIds || undefined };
       if (nearbyRadius !== null) moreParams.maxDistanceKm = nearbyRadius;
       if (cityOnly) moreParams.cityOnly = true;
