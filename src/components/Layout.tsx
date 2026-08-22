@@ -1084,7 +1084,14 @@ export default function Layout() {
       <OnboardingModal />
       <CityRequiredModal />
       <nav className={cn(
-        "sticky bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
+        // fixed (e não sticky): o sticky depende da altura do container bater
+        // com a área visível, e no iOS essa altura muda sozinha conforme a barra
+        // do Safari aparece/some — quando não bate, a barra de navegação fica
+        // atrás da barra do navegador. O fixed ancora na viewport e independe
+        // desse cálculo. O espaço para ela já está reservado no <main> abaixo
+        // (pb-[calc(5.5rem+safe-area)]); Chat e Reels descontam a altura dela
+        // por conta própria, então não são afetados.
+        "fixed inset-x-0 bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
         shouldHideMobileNav && "hidden"
       )}>
         <div className="flex items-center justify-around h-14 px-1">
