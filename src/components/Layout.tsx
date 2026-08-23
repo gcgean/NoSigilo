@@ -1091,15 +1091,21 @@ export default function Layout() {
         // desse cálculo. O espaço para ela já está reservado no <main> abaixo
         // (pb-[calc(5.5rem+safe-area)]); Chat e Reels descontam a altura dela
         // por conta própria, então não são afetados.
-        // Fundo opaco, SEM backdrop-blur: o desfoque obriga o Safari do iOS a
-        // recalcular o embaçado contra o conteúdo em movimento a cada quadro, e
-        // durante a rolagem (com a barra do navegador animando) ele falha e a
-        // barra aparece cortada até a rolagem parar. Como o fundo já era 82-96%
-        // opaco, a diferença visual é mínima e o artefato some.
-        "fixed inset-x-0 bottom-0 z-40 border-t bg-background md:hidden pb-[env(safe-area-inset-bottom)]",
+        // Barra flutuante (estilo Instagram), destacada da borda inferior em vez
+        // de colada nela. Encostada no fim da tela, ela disputa espaço com a
+        // barra do Safari, que aparece/some durante a rolagem e a cortava. Com a
+        // margem, sobra folga justamente onde essa interferência acontece.
+        // A área segura entra no `bottom` (e não como padding), assim a barra
+        // inteira sobe acima do indicador de home.
+        // Sem backdrop-blur de propósito: desfocar um elemento fixo sobre
+        // conteúdo em movimento faz o Safari recalcular o embaçado a cada quadro
+        // e falhar durante a rolagem.
+        "fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl border bg-background shadow-lg md:hidden",
         shouldHideMobileNav && "hidden"
       )}>
-        <div className="flex items-center justify-around h-14 px-1">
+        {/* px-2 (era px-1): com os cantos arredondados da barra flutuante, os
+            itens das pontas encostariam na curva. */}
+        <div className="flex items-center justify-around h-14 px-2">
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
