@@ -57,6 +57,7 @@ import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
 import SupportChatDialog from '@/components/SupportChatDialog';
+import ViewportDebug from '@/components/ViewportDebug'; // TEMPORÁRIO — diagnóstico do corte no iOS
 import InviteModal from '@/components/InviteModal';
 import { hasPremiumAccess } from '@/utils/premium';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
@@ -579,6 +580,7 @@ export default function Layout() {
   // a barra do navegador aparece/some.
   return (
     <div className="min-h-[100svh] bg-background flex flex-col">
+      <ViewportDebug /> {/* TEMPORÁRIO: só com ?debugvp=1 na URL */}
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
