@@ -1091,7 +1091,12 @@ export default function Layout() {
         // desse cálculo. O espaço para ela já está reservado no <main> abaixo
         // (pb-[calc(5.5rem+safe-area)]); Chat e Reels descontam a altura dela
         // por conta própria, então não são afetados.
-        "fixed inset-x-0 bottom-0 z-40 border-t bg-background/96 backdrop-blur-md supports-[backdrop-filter]:bg-background/82 md:hidden pb-[env(safe-area-inset-bottom)]",
+        // Fundo opaco, SEM backdrop-blur: o desfoque obriga o Safari do iOS a
+        // recalcular o embaçado contra o conteúdo em movimento a cada quadro, e
+        // durante a rolagem (com a barra do navegador animando) ele falha e a
+        // barra aparece cortada até a rolagem parar. Como o fundo já era 82-96%
+        // opaco, a diferença visual é mínima e o artefato some.
+        "fixed inset-x-0 bottom-0 z-40 border-t bg-background md:hidden pb-[env(safe-area-inset-bottom)]",
         shouldHideMobileNav && "hidden"
       )}>
         <div className="flex items-center justify-around h-14 px-1">
