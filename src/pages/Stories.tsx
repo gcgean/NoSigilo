@@ -293,8 +293,12 @@ function StoryViewer({
   };
 
   return createPortal((
+    // h-[100svh] em vez de inset-0: no iOS o `bottom: 0` do inset-0 se refere à
+    // viewport de LAYOUT, que se estende por baixo da barra do Safari — o rodapé
+    // do story (reações, botões) ficava escondido atrás dela. O svh usa a menor
+    // altura visível, então tudo cabe. O padding cobre o indicador de home.
     <div
-      className="fixed inset-0 z-[9995] flex flex-col bg-black"
+      className="fixed inset-x-0 top-0 h-[100svh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -567,7 +571,7 @@ function StatsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[9996] flex items-end justify-center bg-black/70"
+      className="fixed inset-x-0 top-0 h-[100svh] pb-[env(safe-area-inset-bottom,0px)] z-[9996] flex items-end justify-center bg-black/70"
       onClick={onClose}
     >
       <div
@@ -1162,7 +1166,7 @@ export default function Stories() {
           else setPreviewIdx(next);
         };
         return (
-          <div className="fixed inset-0 z-[9995] flex flex-col bg-black">
+          <div className="fixed inset-x-0 top-0 h-[100svh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black">
             {/* Barras de progresso */}
             <div className="flex gap-1 px-3 pt-3 pb-2">
               {myStories.map((_, i) => (
@@ -1251,7 +1255,7 @@ export default function Stories() {
 
       {/* Editor de mídia — texto por cima da foto/vídeo (estilo Instagram) */}
       {editorUrl && (
-        <div className="fixed inset-0 z-[9997] flex flex-col bg-black/95">
+        <div className="fixed inset-x-0 top-0 h-[100svh] pb-[env(safe-area-inset-bottom,0px)] z-[9997] flex flex-col bg-black/95">
           {/* topo */}
           <div className="flex shrink-0 items-center justify-between p-4">
             <button type="button" onClick={() => { if (!uploading) closeEditor(); }} disabled={uploading} className="text-white/80 hover:text-white">
@@ -1344,7 +1348,7 @@ export default function Stories() {
 
       {/* Composer de story de texto */}
       {textOpen && (
-        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
+        <div className="fixed inset-x-0 top-0 h-[100svh] z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
           <div className="w-full max-w-md rounded-3xl border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold">Story de texto</h3>
