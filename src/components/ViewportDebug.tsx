@@ -35,7 +35,15 @@ export default function ViewportDebug() {
       const safeBottom = getComputedStyle(teste).bottom;
       document.body.removeChild(teste);
 
+      const ua = navigator.userAgent;
+      const navegador = /CriOS/.test(ua) ? 'CHROME iOS'
+        : /FxiOS/.test(ua) ? 'FIREFOX iOS'
+        : /EdgiOS/.test(ua) ? 'EDGE iOS'
+        : /iPhone|iPad/.test(ua) ? 'SAFARI iOS'
+        : 'OUTRO';
+
       setDados({
+        NAVEGADOR: navegador,
         innerHeight: window.innerHeight,
         visualViewport: vvH,
         diferenca: vvH < 0 ? 'n/d' : window.innerHeight - vvH,

@@ -53,7 +53,14 @@
     // O quanto do rodapé fica fora da area realmente visivel
     var limite = vvH === null ? innerH : vvH;
     var escondido = Math.max(0, Math.round(r.bottom - limite));
+    var ua = navigator.userAgent;
+    var navegador = /CriOS/.test(ua) ? 'CHROME iOS'
+      : /FxiOS/.test(ua) ? 'FIREFOX iOS'
+      : /EdgiOS/.test(ua) ? 'EDGE iOS'
+      : /iPhone|iPad/.test(ua) ? 'SAFARI iOS'
+      : 'OUTRO';
     t.innerHTML =
+      linha('NAVEGADOR', navegador, true) +
       linha('window.innerHeight', innerH) +
       linha('visualViewport.height', vvH === null ? 'INDISPONIVEL' : vvH) +
       linha('innerHeight − visualViewport', diff === null ? '-' : diff, true) +
