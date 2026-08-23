@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Diagnóstico de viewport</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #111; color: #eee;
+    font: 13px/1.45 -apple-system, system-ui, sans-serif; }
+  /* Réplica do container do story: fixed cobrindo a viewport de layout */
+  #alvo { position: fixed; inset: 0; display: flex; flex-direction: column;
+    background: #000; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  #dados { flex: 1; overflow: auto; padding: 10px 12px; }
+  h1 { font-size: 15px; margin: 0 0 8px; color: #ff5b8a; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  td { padding: 3px 0; border-bottom: 1px solid #222; vertical-align: top; }
+  td:first-child { color: #999; padding-right: 8px; }
+  td:last-child { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .destaque td:last-child { color: #6f6; font-size: 14px; }
+  /* Esta é a faixa equivalente à barra de responder do story */
+  #rodape { background: #c2185b; color: #fff; padding: 12px;
+    text-align: center; font-weight: 700; }
+  #aviso { padding: 6px 12px; background: #332; color: #fd6; font-size: 11px; }
+</style>
+</head>
+<body>
+<div id="alvo">
+  <div id="dados">
+    <h1>Diagnóstico de viewport</h1>
+    <table id="t"></table>
+    <p style="color:#888;font-size:11px;margin-top:10px">
+      Role a página para a barra do Safari aparecer/sumir — os números atualizam sozinhos.
+      Tire o print com a faixa rosa abaixo <b>cortada</b>, para eu ver os valores nesse momento.
+    </p>
+  </div>
+  <div id="aviso">A faixa rosa abaixo representa a barra de responder do story.</div>
+  <div id="rodape">ESTA FAIXA DEVE APARECER INTEIRA</div>
+</div>
+<script>
+  var t = document.getElementById('t');
+  var rodape = document.getElementById('rodape');
+  function linha(rotulo, valor, destaque) {
+    return '<tr' + (destaque ? ' class="destaque"' : '') + '><td>' + rotulo + '</td><td>' + valor + '</td></tr>';
+  }
+  function medir() {
+    var vv = window.visualViewport;
+    var innerH = window.innerHeight;
+    var vvH = vv ? Math.round(vv.height) : null;
+    var diff = vvH === null ? null : innerH - vvH;
+    var r = rodape.getBoundingClientRect();
+    var safe = getComputedStyle(document.getElementById('alvo')).paddingBottom;
+    // O quanto do rodapé fica fora da area realmente visivel
+    var limite = vvH === null ? innerH : vvH;
+    var escondido = Math.max(0, Math.round(r.bottom - limite));
+    t.innerHTML =
+      linha('window.innerHeight', innerH) +
+      linha('visualViewport.height', vvH === null ? 'INDISPONIVEL' : vvH) +
+      linha('innerHeight − visualViewport', diff === null ? '-' : diff, true) +
+      linha('visualViewport.offsetTop', vv ? Math.round(vv.offsetTop) : '-') +
+      linha('visualViewport.pageTop', vv ? Math.round(vv.pageTop) : '-') +
+      linha('visualViewport.scale', vv ? vv.scale : '-') +
+      linha('documentElement.clientHeight', document.documentElement.clientHeight) +
+      linha('screen.height', screen.height) +
+      linha('env(safe-area-inset-bottom)', safe) +
+      linha('rodapé termina em (px)', Math.round(r.bottom)) +
+      linha('ESCONDIDO ATRAS DA BARRA', escondido + ' px', true);
+    rodape.style.background = escondido > 0 ? '#b71c1c' : '#1b5e20';
+    rodape.textContent = escondido > 0
+      ? 'CORTADO: ' + escondido + 'px escondidos'
+      : 'FAIXA INTEIRA VISIVEL';
+  }
+  medir();
+  var vv = window.visualViewport;
+  if (vv) { vv.addEventListener('resize', medir); vv.addEventListener('scroll', medir); }
+  window.addEventListener('resize', medir);
+  window.addEventListener('scroll', medir);
+  setInterval(medir, 500);
+</script>
+</body>
+</html>
