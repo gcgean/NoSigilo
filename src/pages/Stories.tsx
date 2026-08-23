@@ -170,6 +170,36 @@ function useVisibleViewportHeight() {
   return height;
 }
 
+/**
+ * Trava a rolagem da página enquanto um overlay de tela cheia está aberto.
+ *
+ * Sem isso a página de trás continua rolável: aparece barra de rolagem por cima
+ * do story e, no iOS, qualquer arrasto faz a barra do Safari aparecer/sumir —
+ * mudando a altura útil no meio da visualização e cortando o rodapé.
+ * Mesmo padrão já usado no Chat.
+ */
+function useBodyScrollLock(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const html = document.documentElement;
+    const body = document.body;
+    const anterior = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyOverscroll: body.style.overscrollBehavior,
+    };
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    // Evita o "puxar para atualizar" e o repique elástico do iOS por trás do overlay.
+    body.style.overscrollBehavior = 'none';
+    return () => {
+      html.style.overflow = anterior.htmlOverflow;
+      body.style.overflow = anterior.bodyOverflow;
+      body.style.overscrollBehavior = anterior.bodyOverscroll;
+    };
+  }, [active]);
+}
+
 // ─── Story Viewer (fullscreen) ────────────────────────────────────────────────
 function StoryViewer({
   stories,
@@ -187,6 +217,7 @@ function StoryViewer({
   const { toast } = useToast();
   const navigate  = useNavigate();
   const visibleHeight = useVisibleViewportHeight();
+  useBodyScrollLock(true); // o visualizador só existe montado, então trava sempre
   const [idx, setIdx]           = useState(startIndex);
   const [progress, setProgress] = useState(0);
   const [comment, setComment]   = useState('');
@@ -791,6 +822,10 @@ export default function Stories() {
   const [textOpen,  setTextOpen]  = useState(false);
   const [storyText, setStoryText] = useState('');
   const [storyBg,   setStoryBg]   = useState(STORY_BACKGROUNDS[0].id);
+
+  // Overlays de tela cheia desta página (o visualizador de stories trava por
+  // conta própria, já que só existe enquanto está aberto).
+  useBodyScrollLock(previewIdx !== null || statsOpen || textOpen);
 
   // Editor de mídia — texto por cima da foto/vídeo (estilo Instagram)
   const [editorFile,    setEditorFile]    = useState<File | null>(null);
