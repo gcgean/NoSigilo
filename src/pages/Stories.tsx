@@ -136,6 +136,40 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * Altura REALMENTE visível da tela.
+ *
+ * No iOS as unidades de viewport do CSS (e o window.innerHeight) contam a faixa
+ * ocupada pela barra do Safari mesmo com ela na tela — por isso o rodapé do
+ * story ficava atrás dela. O visualViewport é a única medida que acompanha a
+ * barra de verdade, aparecendo e sumindo. É a mesma abordagem já usada no Chat
+ * ("window.innerHeight includes hidden browser chrome", Chat.tsx).
+ *
+ * Retorna null antes da primeira medição, para o CSS (h-[100dvh]) valer como
+ * fallback em navegador sem visualViewport.
+ */
+function useVisibleViewportHeight() {
+  const [height, setHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const update = () => setHeight(Math.round(vv ? vv.height : window.innerHeight));
+    update();
+    // scroll também: no iOS a barra some/aparece durante a rolagem, e o
+    // visualViewport só emite 'resize' depois que a animação termina.
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, []);
+  return height;
+}
+
 // ─── Story Viewer (fullscreen) ────────────────────────────────────────────────
 function StoryViewer({
   stories,
@@ -152,6 +186,7 @@ function StoryViewer({
 }) {
   const { toast } = useToast();
   const navigate  = useNavigate();
+  const visibleHeight = useVisibleViewportHeight();
   const [idx, setIdx]           = useState(startIndex);
   const [progress, setProgress] = useState(0);
   const [comment, setComment]   = useState('');
@@ -305,6 +340,7 @@ function StoryViewer({
     // O padding cobre o indicador de home.
     <div
       className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black"
+      style={visibleHeight ? { height: visibleHeight } : undefined}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -558,6 +594,7 @@ function StatsModal({
   onUpgrade: () => void;
 }) {
   const navigate = useNavigate();
+  const visibleHeight = useVisibleViewportHeight();
   const [tab, setTab]         = useState<'viewers' | 'comments'>('viewers');
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -578,6 +615,7 @@ function StatsModal({
   return (
     <div
       className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9996] flex items-end justify-center bg-black/70"
+      style={visibleHeight ? { height: visibleHeight } : undefined}
       onClick={onClose}
     >
       <div
@@ -735,6 +773,7 @@ export default function Stories() {
   const { requireFields } = useProfileGate();
 
   const [myStories,    setMyStories]    = useState<MyStory[]>([]);
+  const visibleHeight = useVisibleViewportHeight();
   const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined); // compat
   const [feed,         setFeed]         = useState<FeedStory[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -1172,7 +1211,10 @@ export default function Stories() {
           else setPreviewIdx(next);
         };
         return (
-          <div className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black">
+          <div
+            className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black"
+            style={visibleHeight ? { height: visibleHeight } : undefined}
+          >
             {/* Barras de progresso */}
             <div className="flex gap-1 px-3 pt-3 pb-2">
               {myStories.map((_, i) => (
@@ -1261,7 +1303,10 @@ export default function Stories() {
 
       {/* Editor de mídia — texto por cima da foto/vídeo (estilo Instagram) */}
       {editorUrl && (
-        <div className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9997] flex flex-col bg-black/95">
+        <div
+          className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9997] flex flex-col bg-black/95"
+          style={visibleHeight ? { height: visibleHeight } : undefined}
+        >
           {/* topo */}
           <div className="flex shrink-0 items-center justify-between p-4">
             <button type="button" onClick={() => { if (!uploading) closeEditor(); }} disabled={uploading} className="text-white/80 hover:text-white">
