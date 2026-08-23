@@ -137,22 +137,28 @@ function formatTime(iso: string) {
 }
 
 /**
- * Altura REALMENTE visível da tela.
+ * Quantos pixels do fim da tela estão cobertos pela barra do navegador (ou pelo
+ * teclado). É a diferença entre a altura que o CSS enxerga (innerHeight, que
+ * conta a faixa da barra do Safari mesmo com ela visível) e a altura realmente
+ * visível (visualViewport).
  *
- * No iOS as unidades de viewport do CSS (e o window.innerHeight) contam a faixa
- * ocupada pela barra do Safari mesmo com ela na tela — por isso o rodapé do
- * story ficava atrás dela. O visualViewport é a única medida que acompanha a
- * barra de verdade, aparecendo e sumindo. É a mesma abordagem já usada no Chat
- * ("window.innerHeight includes hidden browser chrome", Chat.tsx).
+ * Definir a ALTURA do container a partir do visualViewport não bastou: o
+ * container é `fixed`, ancorado na viewport de LAYOUT, que pode estar deslocada
+ * em relação à visível. Por isso a conta aqui é a mesma que o Chat já usava com
+ * sucesso: manter o container preso em top:0/bottom:0 e empurrar o conteúdo
+ * para cima com um padding do tamanho exato da faixa coberta.
  *
- * Retorna null antes da primeira medição, para o CSS (h-[100dvh]) valer como
- * fallback em navegador sem visualViewport.
+ * Retorna 0 quando não há nada cobrindo — aí vale o padding da área segura
+ * (indicador de home), como no Chat.
  */
-function useVisibleViewportHeight() {
-  const [height, setHeight] = useState<number | null>(null);
+function useBottomChromeInset() {
+  const [inset, setInset] = useState(0);
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    const update = () => setHeight(Math.round(vv ? vv.height : window.innerHeight));
+    const update = () => {
+      const visivel = vv ? vv.height : window.innerHeight;
+      setInset(Math.max(0, Math.round(window.innerHeight - visivel)));
+    };
     update();
     // scroll também: no iOS a barra some/aparece durante a rolagem, e o
     // visualViewport só emite 'resize' depois que a animação termina.
@@ -167,7 +173,7 @@ function useVisibleViewportHeight() {
       window.removeEventListener('orientationchange', update);
     };
   }, []);
-  return height;
+  return inset;
 }
 
 /**
@@ -216,7 +222,7 @@ function StoryViewer({
 }) {
   const { toast } = useToast();
   const navigate  = useNavigate();
-  const visibleHeight = useVisibleViewportHeight();
+  const bottomInset = useBottomChromeInset();
   useBodyScrollLock(true); // o visualizador só existe montado, então trava sempre
   const [idx, setIdx]           = useState(startIndex);
   const [progress, setProgress] = useState(0);
@@ -359,19 +365,19 @@ function StoryViewer({
   };
 
   return createPortal((
-    // h-[100dvh] em vez de inset-0: no iOS o `bottom: 0` do inset-0 se refere à
-    // viewport de LAYOUT, que se estende por baixo da barra do Safari — o rodapé
-    // do story (reações, botões) ficava escondido atrás dela.
+    // O container cobre a viewport de LAYOUT inteira (inset-0) e o conteúdo é
+    // empurrado para cima por um padding do tamanho exato da faixa que a barra
+    // do Safari cobre (ver useBottomChromeInset). Sem barra, o padding vira a
+    // área segura do indicador de home.
     //
-    // Aqui é dvh (altura visível ATUAL), e não svh como no Layout: a regra muda
-    // conforme o caso. Uma página rolável não pode ser mais ALTA que a área
-    // visível, e o svh resolve. Já um overlay de tela cheia precisa cobrir
-    // exatamente a área visível — com svh ele fica CURTO quando a barra do
-    // Safari some, e a página de trás aparece na faixa que sobra.
-    // O padding cobre o indicador de home.
+    // Tentar resolver pela ALTURA do container (100svh / 100dvh / medir o
+    // visualViewport) não funcionou: as unidades de CSS contam a faixa da barra
+    // mesmo com ela na tela, e um `fixed` se ancora na viewport de layout, que
+    // pode estar deslocada da visível. Empurrar o conteúdo com padding não
+    // depende de nenhuma dessas duas coisas — é o que o Chat já fazia.
     <div
-      className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black"
-      style={visibleHeight ? { height: visibleHeight } : undefined}
+      className="fixed inset-0 z-[9995] flex flex-col bg-black"
+      style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -625,7 +631,7 @@ function StatsModal({
   onUpgrade: () => void;
 }) {
   const navigate = useNavigate();
-  const visibleHeight = useVisibleViewportHeight();
+  const bottomInset = useBottomChromeInset();
   const [tab, setTab]         = useState<'viewers' | 'comments'>('viewers');
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -645,8 +651,8 @@ function StatsModal({
 
   return (
     <div
-      className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9996] flex items-end justify-center bg-black/70"
-      style={visibleHeight ? { height: visibleHeight } : undefined}
+      className="fixed inset-0 z-[9996] flex items-end justify-center bg-black/70"
+      style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
       onClick={onClose}
     >
       <div
@@ -804,7 +810,7 @@ export default function Stories() {
   const { requireFields } = useProfileGate();
 
   const [myStories,    setMyStories]    = useState<MyStory[]>([]);
-  const visibleHeight = useVisibleViewportHeight();
+  const bottomInset = useBottomChromeInset();
   const [myStory,      setMyStory]      = useState<MyStory | null | undefined>(undefined); // compat
   const [feed,         setFeed]         = useState<FeedStory[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -1247,8 +1253,8 @@ export default function Stories() {
         };
         return (
           <div
-            className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9995] flex flex-col bg-black"
-            style={visibleHeight ? { height: visibleHeight } : undefined}
+            className="fixed inset-0 z-[9995] flex flex-col bg-black"
+            style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
           >
             {/* Barras de progresso */}
             <div className="flex gap-1 px-3 pt-3 pb-2">
@@ -1339,8 +1345,8 @@ export default function Stories() {
       {/* Editor de mídia — texto por cima da foto/vídeo (estilo Instagram) */}
       {editorUrl && (
         <div
-          className="fixed inset-x-0 top-0 h-[100dvh] pb-[env(safe-area-inset-bottom,0px)] z-[9997] flex flex-col bg-black/95"
-          style={visibleHeight ? { height: visibleHeight } : undefined}
+          className="fixed inset-0 z-[9997] flex flex-col bg-black/95"
+          style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
         >
           {/* topo */}
           <div className="flex shrink-0 items-center justify-between p-4">
@@ -1434,7 +1440,7 @@ export default function Stories() {
 
       {/* Composer de story de texto */}
       {textOpen && (
-        <div className="fixed inset-x-0 top-0 h-[100dvh] z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
+        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black/70 p-4" onClick={() => !uploading && setTextOpen(false)}>
           <div className="w-full max-w-md rounded-3xl border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold">Story de texto</h3>
