@@ -43,10 +43,32 @@ export default function ReportDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
+  // "Outro motivo" sozinho nao diz nada ao moderador — nesse caso a explicacao
+  // passa a fazer parte do motivo obrigatorio.
+  const precisaDetalhar = reason === 'other';
+  const detalhesOk = !precisaDetalhar || details.trim().length >= 5;
+  const podeEnviar = Boolean(reason) && detalhesOk;
+
+  // Limpa o formulario ao fechar, para o proximo alvo nao herdar o motivo antigo.
+  const handleClose = () => {
+    setReason('');
+    setDetails('');
+    onClose();
+  };
+
   const handleSubmit = async () => {
     if (!reason) {
       toast({
         title: 'Selecione um motivo',
+        description: 'O motivo da denúncia é obrigatório.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (!detalhesOk) {
+      toast({
+        title: 'Descreva o motivo',
+        description: 'Ao escolher "Outro motivo", explique o que aconteceu.',
         variant: 'destructive',
       });
       return;
@@ -95,7 +117,7 @@ export default function ReportDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -109,7 +131,9 @@ export default function ReportDialog({
 
         <div className="space-y-4 mt-4">
           <div className="space-y-3">
-            <Label>Motivo da denúncia</Label>
+            <Label>
+              Motivo da denúncia <span className="text-destructive">*</span>
+            </Label>
             <RadioGroup value={reason} onValueChange={setReason}>
               {reportReasons.map((r) => (
                 <div key={r.id} className="flex items-center space-x-2">
@@ -123,23 +147,38 @@ export default function ReportDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="details">Detalhes adicionais (opcional)</Label>
+            <Label htmlFor="details">
+              {precisaDetalhar ? (
+                <>Descreva o motivo <span className="text-destructive">*</span></>
+              ) : (
+                'Detalhes adicionais (opcional)'
+              )}
+            </Label>
             <Textarea
               id="details"
               value={details}
               onChange={(e) => setDetails(e.target.value)}
-              placeholder="Forneça mais informações sobre o problema..."
+              placeholder={
+                precisaDetalhar
+                  ? 'Explique o que aconteceu para nossa equipe analisar...'
+                  : 'Forneça mais informações sobre o problema...'
+              }
               rows={3}
             />
+            {precisaDetalhar && !detalhesOk ? (
+              <p className="text-xs text-destructive">
+                Explique o motivo em pelo menos 5 caracteres.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1">
+            <Button variant="outline" onClick={handleClose} className="flex-1">
               Cancelar
             </Button>
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || !reason}
+              disabled={isSubmitting || !podeEnviar}
               className="flex-1 bg-destructive hover:bg-destructive/90"
             >
               {isSubmitting ? 'Enviando...' : 'Enviar Denúncia'}

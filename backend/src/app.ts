@@ -966,6 +966,18 @@ const ACCOUNT_DELETION_REASON_CODES = [
   'other',
 ] as const;
 
+// Motivos aceitos numa denúncia (de conteúdo ou de perfil). Mesma lógica dos
+// motivos de exclusão: o código é estável, o rótulo em português vive no
+// frontend (src/components/ReportDialog.tsx) e as duas listas devem casar.
+const REPORT_REASON_CODES = [
+  'spam',
+  'harassment',
+  'inappropriate',
+  'underage',
+  'fake',
+  'other',
+] as const;
+
 // Valor mínimo acumulado (em centavos) para liberar o pagamento de comissões
 // de um promotor — evita Pix picado de valores pequenos. O saldo considerado
 // é o total aprovado do promotor em TODOS os períodos somados (não por mês).
@@ -13375,13 +13387,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Reports
   app.post('/api/reports', requireAuth(env, db), async (req, res) => {
     try {
-      const schema = z.object({
-        targetType: z.enum(['user', 'post', 'photo', 'message']),
-        targetId: z.string().min(1),
-        targetName: z.string().optional(),
-        reason: z.string().min(1),
-        details: z.string().optional(),
-      });
+      // O motivo e obrigatorio e precisa ser um dos codigos conhecidos — denuncia
+      // sem motivo nao da ao moderador nada para analisar.
+      const schema = z
+        .object({
+          targetType: z.enum(['user', 'post', 'photo', 'message']),
+          targetId: z.string().min(1),
+          targetName: z.string().optional(),
+          reason: z.enum(REPORT_REASON_CODES),
+          details: z.string().optional(),
+        })
+        // "Outro motivo" so faz sentido acompanhado da explicacao.
+        .refine((d) => d.reason !== 'other' || (d.details ?? '').trim().length >= 5, {
+          path: ['details'],
+        });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success) {
         res.status(400).json({ error: 'invalid_input' });

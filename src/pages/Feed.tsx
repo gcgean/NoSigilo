@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,7 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import SocialPulseCard from '@/components/SocialPulseCard';
 import StreakBadge from '@/components/StreakBadge';
+import ReportDialog from '@/components/ReportDialog';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
@@ -301,6 +302,8 @@ export default function Feed() {
   const feedSessionAuthorCountsRef = useRef<Record<string, number>>(readFeedSessionAuthorCounts());
   const radarHighlightsCacheRef = useRef<{ fetchedAt: number; items: RadarHighlight[] } | null>(null);
 
+  // Denúncia aberta pelo menu do post — vale para o conteúdo e para o perfil do autor.
+  const [reportTarget, setReportTarget] = useState<{ type: 'post' | 'user'; id: string; name: string } | null>(null);
   const [openCommentsPostId, setOpenCommentsPostId] = useState<string | null>(null);
   const [commentsByPostId, setCommentsByPostId] = useState<Record<string, Comment[]>>({});
   const [commentDraftByPostId, setCommentDraftByPostId] = useState<Record<string, string>>({});
@@ -2846,7 +2849,34 @@ export default function Feed() {
                           <Trash2 className="w-4 h-4" />
                           Remover publicação
                         </DropdownMenuItem>
-                      ) : null}
+                      ) : (
+                        <>
+                          {/* Denunciar o CONTEÚDO (a publicação em si) */}
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setReportTarget({
+                              type: 'post',
+                              id: String(item.post.id),
+                              name: String(item.post.author.name || ''),
+                            })}
+                          >
+                            <Flag className="w-4 h-4" />
+                            Denunciar publicação
+                          </DropdownMenuItem>
+                          {/* Denunciar o PERFIL de quem publicou */}
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => setReportTarget({
+                              type: 'user',
+                              id: String(item.post.author.id),
+                              name: String(item.post.author.name || ''),
+                            })}
+                          >
+                            <Flag className="w-4 h-4" />
+                            Denunciar perfil
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -3572,6 +3602,16 @@ export default function Feed() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {reportTarget ? (
+        <ReportDialog
+          isOpen
+          onClose={() => setReportTarget(null)}
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          targetName={reportTarget.name || undefined}
+        />
+      ) : null}
     </div>
   );
 }
