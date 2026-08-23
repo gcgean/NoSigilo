@@ -18,6 +18,7 @@ import SiteVisitTracker from "@/components/SiteVisitTracker";
 
 // Páginas do funil de entrada ficam no bundle inicial (carregam na hora, sem flash).
 import Landing from "./pages/Landing";
+import CampaignLanding from "./pages/CampaignLanding";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import NotFound from "./pages/NotFound";
@@ -89,6 +90,7 @@ const App = () => (
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<Landing />} />
+                    <Route path="/descobrir" element={<CampaignLanding />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/register" element={<Register />} />
