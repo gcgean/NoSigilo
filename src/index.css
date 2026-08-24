@@ -24,10 +24,10 @@ html, body {
     --primary: 350 80% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 345 38% 94%;
+    --secondary: 345 16% 95%;
     --secondary-foreground: 344 25% 12%;
 
-    --muted: 345 32% 95%;
+    --muted: 345 14% 96%;
     --muted-foreground: 344 7% 38%;
 
     --accent: 350 80% 60%;
@@ -36,8 +36,8 @@ html, body {
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 10 35% 87%;
-    --input: 10 28% 83%;
+    --border: 350 18% 88%;
+    --input: 350 14% 83%;
     --ring: 350 80% 60%;
 
     --radius: 0.75rem;
@@ -54,7 +54,7 @@ html, body {
 
     --gradient-primary: linear-gradient(135deg, hsl(350 80% 60%) 0%, hsl(340 70% 55%) 100%);
     --gradient-hero: linear-gradient(180deg, hsl(0 0% 8%) 0%, hsl(350 30% 12%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(350 60% 99% / 0.95) 0%, hsl(345 38% 94% / 0.72) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(350 60% 99% / 0.95) 0%, hsl(345 16% 95% / 0.72) 100%);
 
     --shadow-glow: 0 0 40px hsl(350 80% 60% / 0.3);
     --shadow-card: 0 4px 20px hsl(344 25% 12% / 0.08);
@@ -114,14 +114,6 @@ html, body {
   #root {
     min-height: 100vh;
     min-height: 100dvh;
-  }
-
-  h1,
-  h2,
-  h3 {
-    color: hsl(var(--foreground));
-    font-family: var(--font-editorial);
-    letter-spacing: -0.025em;
   }
 
   button,
