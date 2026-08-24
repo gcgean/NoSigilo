@@ -6,6 +6,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 
 const RANK_STYLE: Record<number, string> = {
   1: 'text-amber-400',
@@ -15,7 +16,8 @@ const RANK_STYLE: Record<number, string> = {
 
 /**
  * Régua horizontal "Top do Dia": posts mais curtidos das últimas 24h.
- * Prova social no topo do feed — tocar abre o post. Renova diariamente.
+ * Prova social no topo do feed — tocar abre o perfil de quem publicou, que é
+ * o que o card promete ao mostrar o rosto e o nome. Renova diariamente.
  */
 export default function TopDayBar() {
   const navigate = useNavigate();
@@ -66,11 +68,11 @@ export default function TopDayBar() {
             type="button"
             onClick={() =>
               unlocked
-                ? navigate(`/feed?postId=${encodeURIComponent(p.id)}&u=${encodeURIComponent(p.author.id)}`)
+                ? navigate(getUserProfileHref(p.author.id, user?.id))
                 : navigate('/subscriptions')
             }
             className="group relative w-28 shrink-0 overflow-hidden rounded-2xl bg-black"
-            title={unlocked ? `${p.author.name} · ${p.likeCount} curtidas` : 'Assine o Premium para ver o Top do Dia'}
+            title={unlocked ? `Ver perfil de ${p.author.name} · ${p.likeCount} curtidas` : 'Assine o Premium para ver o Top do Dia'}
           >
             <div className="aspect-[3/4] w-full">
               {p.mediaUrl && p.mimeType?.startsWith('video/') ? (
