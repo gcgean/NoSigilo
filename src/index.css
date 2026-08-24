@@ -11,25 +11,24 @@ html, body {
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 8%;
+    /* Tema claro editorial: o mesmo rosado quase branco das landings. */
+    --background: 350 55% 98%;
+    --foreground: 344 25% 12%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 0 0% 8%;
+    --card: 350 60% 99%;
+    --card-foreground: 344 25% 12%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 8%;
+    --popover: 350 60% 99%;
+    --popover-foreground: 344 25% 12%;
 
     --primary: 350 80% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 8%;
+    --secondary: 345 38% 94%;
+    --secondary-foreground: 344 25% 12%;
 
-    --muted: 0 0% 96%;
-    /* Texto secundário mais escuro no tema claro (rótulos, valores, legendas)
-       para melhorar a leitura — era 45% (cinza claro demais). */
-    --muted-foreground: 0 0% 32%;
+    --muted: 345 32% 95%;
+    --muted-foreground: 344 7% 38%;
 
     --accent: 350 80% 60%;
     --accent-foreground: 0 0% 100%;
@@ -37,8 +36,8 @@ html, body {
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
+    --border: 10 35% 87%;
+    --input: 10 28% 83%;
     --ring: 350 80% 60%;
 
     --radius: 0.75rem;
@@ -55,11 +54,14 @@ html, body {
 
     --gradient-primary: linear-gradient(135deg, hsl(350 80% 60%) 0%, hsl(340 70% 55%) 100%);
     --gradient-hero: linear-gradient(180deg, hsl(0 0% 8%) 0%, hsl(350 30% 12%) 100%);
-    --gradient-card: linear-gradient(145deg, hsl(0 0% 100% / 0.1) 0%, hsl(0 0% 100% / 0.05) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(350 60% 99% / 0.95) 0%, hsl(345 38% 94% / 0.72) 100%);
 
     --shadow-glow: 0 0 40px hsl(350 80% 60% / 0.3);
-    --shadow-card: 0 4px 20px hsl(0 0% 0% / 0.1);
-    --shadow-elevated: 0 8px 32px hsl(0 0% 0% / 0.15);
+    --shadow-card: 0 4px 20px hsl(344 25% 12% / 0.08);
+    --shadow-elevated: 0 8px 32px hsl(344 25% 12% / 0.13);
+
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-editorial: Georgia, "Times New Roman", serif;
   }
 
   .dark {
@@ -102,7 +104,7 @@ html, body {
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-ui);
     min-height: 100vh;
     min-height: 100dvh;
     overflow-x: hidden;
@@ -112,6 +114,26 @@ html, body {
   #root {
     min-height: 100vh;
     min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: hsl(var(--foreground));
+    font-family: var(--font-editorial);
+    letter-spacing: -0.025em;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: var(--font-ui);
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+    color: hsl(var(--foreground));
   }
 }
 

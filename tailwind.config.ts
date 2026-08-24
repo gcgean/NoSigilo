@@ -13,6 +13,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ["var(--font-ui)"],
+        serif: ["var(--font-editorial)"],
+      },
       // A escala padrão do Tailwind tem 3.5 e 4, mas não 4.5 — então as 14
       // ocorrências de h-4.5/w-4.5/min-w-4.5 no código eram classes mortas e os
       // ícones caíam no tamanho padrão do lucide (24px) em vez dos 18px
