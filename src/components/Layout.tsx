@@ -38,6 +38,24 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import { startFirstAccessTutorial } from '@/components/firstAccessTutorialEvents';
 import TokenBadge from '@/components/TokenBadge';
@@ -140,6 +158,9 @@ export default function Layout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [radarSheetOpen, setRadarSheetOpen] = useState(false);
+  // Confirmação antes de encerrar a sessão — "Sair" ficava a 42px do avatar,
+  // ambos 36×36, sem nenhuma pergunta antes de agir.
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [unreadConversationsCount, setUnreadConversationsCount] = useState(0);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [hasUnreadMatch, setHasUnreadMatch] = useState(false);
@@ -598,7 +619,9 @@ export default function Layout() {
           <div className="flex min-w-0 flex-1 items-center justify-end gap-1 sm:gap-2">
             <TokenBadge />
             <NavLink to="/notifications" onClick={handleNotificationsBellClick}>
-              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full sm:h-10 sm:w-10">
+              {/* 44px de área de toque no mobile (era 36px); o ícone
+                  (h-4.5) e o badge não mudam de tamanho, só o botão. */}
+              <Button variant="ghost" size="icon" className="relative h-11 w-11 rounded-full sm:h-10 sm:w-10">
                 <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                 {unreadCount > 0 ? (
                   <span className="absolute right-0.5 top-0.5 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground sm:right-1 sm:top-1 sm:min-w-5 sm:h-5 sm:text-xs">
@@ -608,10 +631,13 @@ export default function Layout() {
               </Button>
             </NavLink>
 
+            {/* Tema e Divulgar seguem no topo só a partir de md: no mobile
+                (393px) esses dois somavam a 9 controles na mesma faixa —
+                foram para o menu do avatar, junto com Radar/Eventos/Planos/Sair. */}
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-full sm:h-10 sm:w-10"
+              className="hidden h-9 w-9 rounded-full sm:h-10 sm:w-10 md:inline-flex"
               onClick={toggleTheme}
               aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
               title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
@@ -625,7 +651,7 @@ export default function Layout() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-full sm:h-10 sm:w-10"
+              className="hidden h-9 w-9 rounded-full sm:h-10 sm:w-10 md:inline-flex"
               onClick={() => setRadarSheetOpen(true)}
               aria-label="Divulgar: ativar radar ou criar evento"
               title="Divulgar (Radar / Evento)"
@@ -651,31 +677,9 @@ export default function Layout() {
               </NavLink>
             )}
 
-            {/* Radar + Eventos — mobile-only header icons, destacados com cor
-                própria (Radar=rose, Eventos=amber) para não passarem despercebidos. */}
-            <NavLink to="/radar" className="shrink-0 md:hidden" aria-label="Radar">
-              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
-                <Radio className="h-4.5 w-4.5 text-rose-500" />
-              </Button>
-            </NavLink>
-            <NavLink to="/events" className="shrink-0 md:hidden" aria-label="Eventos">
-              <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full">
-                <Calendar className="h-4.5 w-4.5 text-amber-500" />
-              </Button>
-            </NavLink>
-
-            {subscriptionsEnabled ? (
-              <NavLink to="/subscriptions" className="shrink-0 sm:hidden">
-                <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Ver planos">
-                  <Crown className="h-4.5 w-4.5 text-gold" />
-                  {!hasPremiumAccess(user) ? (
-                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-destructive" />
-                  ) : null}
-                </Button>
-              </NavLink>
-            ) : null}
-
-            <NavLink to="/profile" className="shrink-0 flex items-center gap-2">
+            {/* Desktop: avatar continua um link direto — a sidebar já cobre
+                Radar/Eventos/Planos/Configurações/Sair, então não precisa de menu aqui. */}
+            <NavLink to="/profile" className="hidden shrink-0 items-center gap-2 md:flex">
               <div
                 className={cn(
                   'rounded-full transition-all',
@@ -696,15 +700,85 @@ export default function Layout() {
               </div>
             </NavLink>
 
-            {/* Logout — mobile only */}
-            <button
-              type="button"
-              onClick={logout}
-              className="md:hidden shrink-0 flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-              aria-label="Sair"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-            </button>
+            {/* Mobile: o avatar abre o menu da conta em vez de navegar direto.
+                Era o 9º controle de uma fileira de 36×36 — agora concentra
+                tema, divulgar, radar, eventos, planos e sair num só lugar,
+                com itens de tamanho cheio em vez de ícones espremidos. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  // O avatar visível continua 32px (h-8 w-8, igual antes) — o
+                  // botão que o envolve ganha 44×44 de área de toque via
+                  // padding, sem alterar o tamanho aparente do círculo.
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full md:hidden"
+                  aria-label="Menu da conta"
+                >
+                  <div
+                    className={cn(
+                      'rounded-full transition-all',
+                      hasPremiumAccess(user)
+                        ? 'bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-500 p-[3px] shadow-[0_0_0_1px_rgba(251,191,36,0.35),0_10px_24px_rgba(245,158,11,0.28)]'
+                        : ''
+                    )}
+                  >
+                    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary">
+                      {user?.avatar ? (
+                        <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                          <User className="h-4.5 w-4.5" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="truncate">{user?.name || 'Minha conta'}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate('/profile')}>
+                  <User className="mr-2 h-4 w-4" />
+                  Meu perfil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={toggleTheme}>
+                  {theme === 'dark'
+                    ? <Sun className="mr-2 h-4 w-4 text-amber-400" />
+                    : <Moon className="mr-2 h-4 w-4" />
+                  }
+                  {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setRadarSheetOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Divulgar (Radar / Evento)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/radar')}>
+                  <Radio className="mr-2 h-4 w-4 text-rose-500" />
+                  Radar
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/events')}>
+                  <Calendar className="mr-2 h-4 w-4 text-amber-500" />
+                  Eventos
+                </DropdownMenuItem>
+                {subscriptionsEnabled ? (
+                  <DropdownMenuItem onClick={() => navigate('/subscriptions')}>
+                    <Crown className="mr-2 h-4 w-4 text-gold" />
+                    Planos
+                    {!hasPremiumAccess(user) ? (
+                      <span className="ml-auto h-2 w-2 rounded-full bg-destructive" />
+                    ) : null}
+                  </DropdownMenuItem>
+                ) : null}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setLogoutConfirmOpen(true)}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -823,7 +897,7 @@ export default function Layout() {
             </NavLink>
 
             <button
-              onClick={logout}
+              onClick={() => setLogoutConfirmOpen(true)}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
             >
               <LogOut className="w-5 h-5" />
@@ -1077,6 +1151,29 @@ export default function Layout() {
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
             <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
+
+            {/* "Sair" era um clique só, sem confirmação, a 42px do avatar —
+                erro de toque comum. Vale para o menu do avatar (mobile) e a
+                sidebar (desktop). */}
+            <AlertDialog open={logoutConfirmOpen} onOpenChange={setLogoutConfirmOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Sair da conta?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Você vai precisar entrar novamente com seu e-mail e senha para continuar usando o NoSigilo.net.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={() => { setLogoutConfirmOpen(false); logout(); }}
+                  >
+                    Sair
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </main>
       </div>
@@ -1126,7 +1223,7 @@ export default function Layout() {
                   )}
                 >
                   <item.icon className={cn("h-4.5 w-4.5", isActive && "animate-scale-in")} />
-                  <span className="max-w-full truncate text-[10px] leading-4">{item.label}</span>
+                  <span className="max-w-full truncate text-xs leading-4">{item.label}</span>
                   {item.path === '/match' && hasUnreadMatch && (
                     <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
                   )}
@@ -1147,7 +1244,7 @@ export default function Layout() {
             )}
           >
             <Clapperboard className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-[10px] leading-4">Vídeos</span>
+            <span className="max-w-full truncate text-xs leading-4">Vídeos</span>
           </NavLink>
           {/* Atalho para promotor/convites — no desktop fica na sidebar; no mobile
               precisa de uma entrada fixa. Vai ao painel se já for promotor, senão
@@ -1162,7 +1259,7 @@ export default function Layout() {
             )}
           >
             <BadgeDollarSign className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-[10px] leading-4">Ganhe $</span>
+            <span className="max-w-full truncate text-xs leading-4">Ganhe $</span>
           </NavLink>
         </div>
       </nav>

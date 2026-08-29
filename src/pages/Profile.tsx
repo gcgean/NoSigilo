@@ -313,8 +313,13 @@ function PhotoItem({
 
       {photo.isMain && <Badge className="absolute top-2 left-2 bg-gradient-primary pointer-events-none">Principal</Badge>}
 
-      {/* Hover overlay — desktop only */}
-      <div className="absolute inset-0 bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 flex items-center justify-center gap-2 pointer-events-none sm:group-hover:pointer-events-auto">
+      {/* Hover overlay — só desktop. No mobile, `:hover` dispara no primeiro
+          toque (safári trata assim), então esses 4 botões de 40px viravam
+          alvos reais espremidos por flex-shrink a ~23px de largura — abaixo
+          do mínimo de toque do iOS. No mobile, tocar a foto já abre o
+          lightbox acima, com as mesmas ações em botões de tamanho cheio e
+          confirmação para a que altera o perfil público. */}
+      <div className="absolute inset-0 hidden bg-black/50 transition-opacity opacity-0 group-hover:opacity-100 sm:flex items-center justify-center gap-2 pointer-events-none sm:group-hover:pointer-events-auto">
         <Button
           type="button"
           size="icon"
