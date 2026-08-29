@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, MapPin, Locate, Check, Users } from 'lucide-react';
 import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
+import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
 import { onboardingService, authService } from '@/services/api';
@@ -65,6 +66,43 @@ const STEPS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// Rascunho do wizard. Abrir Termos/Privacidade/Diretrizes desmontava o
+// formulário e o usuário voltava ao Passo 1 sem nada preenchido. Guardamos em
+// sessionStorage (morre ao fechar a aba) e NUNCA a senha.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const RASCUNHO_KEY = 'nosigilo:register-draft';
+
+type RascunhoCadastro = {
+  currentStep: number;
+  name: string;
+  email: string;
+  gender: string;
+  city: string;
+  state: string;
+  acceptTerms: boolean;
+  cityConfirmed: boolean;
+};
+
+function lerRascunho(): Partial<RascunhoCadastro> | null {
+  try {
+    const bruto = sessionStorage.getItem(RASCUNHO_KEY);
+    if (!bruto) return null;
+    const dados = JSON.parse(bruto);
+    return dados && typeof dados === 'object' ? dados : null;
+  } catch {
+    return null;
+  }
+}
+
+function limparRascunho() {
+  try {
+    sessionStorage.removeItem(RASCUNHO_KEY);
+  } catch {
+    // sessionStorage indisponível (modo privado antigo) — seguir sem rascunho.
+  }
+}
+
 export default function Register() {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite')?.trim() || '';
@@ -73,9 +111,16 @@ export default function Register() {
     ? profileParam
     : '';
 
-  const [currentStep, setCurrentStep] = useState(1);
+  // Lido uma única vez, antes do primeiro render, para o wizard já nascer no
+  // passo certo (sem piscar o Passo 1).
+  const [rascunho] = useState(lerRascunho);
+  const [currentStep, setCurrentStep] = useState(() => {
+    const passo = Number(rascunho?.currentStep);
+    return passo >= 1 && passo <= 3 ? passo : 1;
+  });
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
   const [showOthers, setShowOthers] = useState(
-    () => otherOptions.some((option) => option.value === initialProfile)
+    () => otherOptions.some((option) => option.value === (rascunho?.gender || initialProfile))
   );
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -88,30 +133,106 @@ export default function Register() {
   const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<string[]>([]);
 
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    name: rascunho?.name ?? '',
+    email: rascunho?.email ?? '',
+    // A senha nunca é persistida: fica só em memória.
     password: '',
-    gender: initialProfile,
-    city: '',
-    state: '',
-    acceptTerms: false,
+    gender: rascunho?.gender || initialProfile,
+    city: rascunho?.city ?? '',
+    state: rascunho?.state ?? '',
+    acceptTerms: rascunho?.acceptTerms ?? false,
   });
   // A cidade só é "confirmada" (caixa travada) quando vem do GPS ou de uma seleção
   // da lista. Enquanto o usuário digita manualmente, o campo permanece editável.
-  const [cityConfirmed, setCityConfirmed] = useState(false);
+  const [cityConfirmed, setCityConfirmed] = useState(rascunho?.cityConfirmed ?? false);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+
+  // Erro por campo, mostrado embaixo do próprio campo. Antes a única resposta
+  // a um formulário inválido era um toast no topo da tela.
+  type CampoErro = 'gender' | 'name' | 'email' | 'password';
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<CampoErro, string>>>({});
+
+  const refDoCampo: Record<CampoErro, React.RefObject<HTMLInputElement>> = {
+    gender: nameInputRef, // o seletor de perfil são cards; levamos o foco ao campo seguinte
+    name: nameInputRef,
+    email: emailInputRef,
+    password: passwordInputRef,
+  };
 
   const { register } = useAuth();
   const { addFavorite } = useFavorites();
   const { confirmAge } = useAgeGate();
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
+
+  // Salva o rascunho a cada mudança de passo ou de campo — sem a senha.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(RASCUNHO_KEY, JSON.stringify({
+        currentStep,
+        name: formData.name,
+        email: formData.email,
+        gender: formData.gender,
+        city: formData.city,
+        state: formData.state,
+        acceptTerms: formData.acceptTerms,
+        cityConfirmed,
+      } satisfies RascunhoCadastro));
+    } catch {
+      // Sem sessionStorage o cadastro continua funcionando, só não guarda nada.
+    }
+  }, [currentStep, formData.name, formData.email, formData.gender, formData.city, formData.state, formData.acceptTerms, cityConfirmed]);
 
   const isCouple = formData.gender.toLowerCase().includes('casal');
 
-  const updateField = (field: string, value: unknown) =>
+  const updateField = (field: string, value: unknown) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    // Corrigiu o campo: o erro inline some e o aviso preso no topo também.
+    setFieldErrors((prev) => {
+      if (!(field in prev)) return prev;
+      const proximo = { ...prev };
+      delete proximo[field as CampoErro];
+      return proximo;
+    });
+    dismiss();
+  };
+
+  // Validação ao sair do campo: com o "Próximo" desabilitado, sem isto o
+  // usuário via só um botão apagado, sem saber o que estava errado.
+  const validarAoSair = (campo: CampoErro) => {
+    const email = formData.email.trim();
+    let erro = '';
+    if (campo === 'email' && email && !EMAIL_RE.test(email)) {
+      erro = 'E-mail inválido. Confira se está escrito corretamente.';
+    }
+    if (campo === 'password' && formData.password && formData.password.length < 6) {
+      erro = 'Senha muito curta. Use pelo menos 6 caracteres.';
+    }
+    if (campo === 'name' && !formData.name.trim()) {
+      erro = 'Informe seu nome ou apelido.';
+    }
+    setFieldErrors((prev) => {
+      if (!erro) {
+        if (!(campo in prev)) return prev;
+        const proximo = { ...prev };
+        delete proximo[campo];
+        return proximo;
+      }
+      return { ...prev, [campo]: erro };
+    });
+  };
+
+  // Marca o campo, leva o foco até ele e avisa também no toast (para quem
+  // estiver com o campo fora da tela).
+  const marcarErro = (campo: CampoErro, titulo: string, descricao?: string) => {
+    setFieldErrors({ [campo]: descricao ? `${titulo} ${descricao}` : titulo });
+    toast({ title: titulo, description: descricao, variant: 'destructive' });
+    // Depois do render, para o campo já existir quando pedirmos o foco.
+    window.setTimeout(() => refDoCampo[campo]?.current?.focus(), 60);
+  };
 
   // Erro vindo do OAuth (ex.: Google sem escolher o tipo de perfil).
   useEffect(() => {
@@ -238,6 +359,18 @@ export default function Register() {
     );
   };
 
+  // O Passo 3 já desabilitava o envio até aceitar os termos; os passos 1 e 2
+  // passam a seguir o mesmo padrão em vez de só reclamar depois do clique.
+  const passoAtualValido =
+    currentStep === 1
+      ? Boolean(formData.gender) &&
+        formData.name.trim().length > 0 &&
+        nameStatus !== 'taken' &&
+        nameStatus !== 'blacklisted'
+      : currentStep === 2
+        ? EMAIL_RE.test(formData.email.trim()) && formData.password.length >= 6
+        : true;
+
   // ── Card select — auto-focus name after picking ───────────────────────────
   const handleSelectGender = (value: string) => {
     updateField('gender', value);
@@ -248,27 +381,15 @@ export default function Register() {
   const handleNext = async () => {
     if (currentStep === 1) {
       if (!formData.gender) {
-        toast({
-          title: 'Selecione seu perfil',
-          description: 'Clique em um dos cards acima.',
-          variant: 'destructive',
-        });
+        marcarErro('gender', 'Selecione seu perfil', 'Clique em um dos cards acima.');
         return;
       }
       if (!formData.name.trim()) {
-        toast({
-          title: 'Como quer ser chamado?',
-          description: 'Informe seu nome ou apelido.',
-          variant: 'destructive',
-        });
+        marcarErro('name', 'Como quer ser chamado?', 'Informe seu nome ou apelido.');
         return;
       }
       if (nameStatus === 'taken' || nameStatus === 'blacklisted') {
-        toast({
-          title: nameStatus === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso',
-          description: 'Escolha outro nome para continuar.',
-          variant: 'destructive',
-        });
+        marcarErro('name', nameStatus === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso', 'Escolha outro nome para continuar.');
         return;
       }
       // Se ainda não confirmou disponível, valida agora antes de avançar.
@@ -278,11 +399,7 @@ export default function Register() {
           const { available, reason } = await authService.checkName(formData.name.trim());
           if (!available) {
             setNameStatus(reason === 'blacklisted' ? 'blacklisted' : 'taken');
-            toast({
-              title: reason === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso',
-              description: 'Escolha outro nome para continuar.',
-              variant: 'destructive',
-            });
+            marcarErro('name', reason === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso', 'Escolha outro nome para continuar.');
             return;
           }
           setNameStatus('available');
@@ -298,30 +415,22 @@ export default function Register() {
 
     if (currentStep === 2) {
       if (!formData.email.trim()) {
-        toast({ title: 'E-mail obrigatório', variant: 'destructive' });
+        marcarErro('email', 'E-mail obrigatório', 'Informe o e-mail de acesso.');
         return;
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        toast({ title: 'E-mail inválido', variant: 'destructive' });
+      if (!EMAIL_RE.test(formData.email)) {
+        marcarErro('email', 'E-mail inválido', 'Confira se está escrito corretamente.');
         return;
       }
       if (!formData.password || formData.password.length < 6) {
-        toast({
-          title: 'Senha muito curta',
-          description: 'Use pelo menos 6 caracteres.',
-          variant: 'destructive',
-        });
+        marcarErro('password', 'Senha muito curta', 'Use pelo menos 6 caracteres.');
         return;
       }
       try {
         setIsLoading(true);
         const { available } = await authService.checkEmail(formData.email);
         if (!available) {
-          toast({
-            title: 'E-mail já cadastrado',
-            description: 'Use outro e-mail ou faça login.',
-            variant: 'destructive',
-          });
+          marcarErro('email', 'E-mail já cadastrado', 'Use outro e-mail ou faça login.');
           return;
         }
       } catch {
@@ -337,6 +446,14 @@ export default function Register() {
       setCurrentStep(3);
     }
   };
+
+  // Trocar de passo zera erros e avisos — antes um "E-mail inválido" seguia
+  // visível nos passos seguintes, com o e-mail já corrigido.
+  useEffect(() => {
+    setFieldErrors({});
+    dismiss();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   const handleBack = () => {
     if (currentStep > 1) setCurrentStep((s) => s - 1);
@@ -412,6 +529,7 @@ export default function Register() {
         window.dispatchEvent(new CustomEvent('nosigilo:first-access-flow-changed'));
       }
       confirmAge(); // user accepted 18+ terms during registration
+      limparRascunho(); // cadastro concluído: nada mais a restaurar
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
       // Homem cai direto na aba de Busca (descoberta de perfis = maior gatilho p/ assinar).
       const isMan = String(formData.gender || '').toLowerCase().startsWith('homem');
@@ -581,6 +699,12 @@ export default function Register() {
                   </div>
                 )}
 
+                {fieldErrors.gender ? (
+                  <p id="erro-gender" role="alert" className="px-1 text-xs font-medium text-destructive">
+                    {fieldErrors.gender}
+                  </p>
+                ) : null}
+
                 {/* Name */}
                 <div className="space-y-2">
                   <Label htmlFor="name">
@@ -595,10 +719,18 @@ export default function Register() {
                     className={cn(
                       'h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm',
                       nameStatus === 'available' && 'border-emerald-500 focus-visible:ring-emerald-500/40',
-                      (nameStatus === 'taken' || nameStatus === 'blacklisted') && 'border-destructive focus-visible:ring-destructive/40'
+                      (nameStatus === 'taken' || nameStatus === 'blacklisted' || fieldErrors.name) && 'border-destructive focus-visible:ring-destructive/40'
                     )}
                     autoComplete="nickname"
+                    onBlur={() => validarAoSair('name')}
+                    aria-invalid={fieldErrors.name ? true : undefined}
+                    aria-describedby={fieldErrors.name ? 'erro-name' : undefined}
                   />
+                  {fieldErrors.name ? (
+                    <p id="erro-name" role="alert" className="px-1 text-xs font-medium text-destructive">
+                      {fieldErrors.name}
+                    </p>
+                  ) : null}
                   {nameStatus === 'checking' && (
                     <p className="px-1 text-xs text-muted-foreground">Verificando disponibilidade…</p>
                   )}
@@ -611,7 +743,7 @@ export default function Register() {
                   {nameStatus === 'blacklisted' && (
                     <p className="px-1 text-xs font-medium text-destructive">Esse nome não está disponível. Escolha outro.</p>
                   )}
-                  {nameStatus === 'idle' && (
+                  {nameStatus === 'idle' && !fieldErrors.name && (
                     <p className="px-1 text-xs text-muted-foreground/70">
                       É o nome visível no seu perfil. Pode ser apelido — sem sobrenome necessário.
                     </p>
@@ -658,11 +790,23 @@ export default function Register() {
                       placeholder="seu@email.com"
                       value={formData.email}
                       onChange={(e) => updateField('email', e.target.value)}
-                      className="h-12 rounded-xl pl-10 text-base sm:h-10 sm:rounded-md sm:text-sm"
+                      ref={emailInputRef}
+                      className={cn(
+                        'h-12 rounded-xl pl-10 text-base sm:h-10 sm:rounded-md sm:text-sm',
+                        fieldErrors.email && 'border-destructive focus-visible:ring-destructive/40'
+                      )}
                       autoComplete="email"
                       required
+                      onBlur={() => validarAoSair('email')}
+                      aria-invalid={fieldErrors.email ? true : undefined}
+                      aria-describedby={fieldErrors.email ? 'erro-email' : undefined}
                     />
                   </div>
+                  {fieldErrors.email ? (
+                    <p id="erro-email" role="alert" className="px-1 text-xs font-medium text-destructive">
+                      {fieldErrors.email}
+                    </p>
+                  ) : null}
                 </div>
 
                 {/* Password */}
@@ -676,9 +820,16 @@ export default function Register() {
                       placeholder="Mínimo 6 caracteres"
                       value={formData.password}
                       onChange={(e) => updateField('password', e.target.value)}
-                      className="h-12 rounded-xl pl-10 pr-11 text-base sm:h-10 sm:rounded-md sm:text-sm"
+                      ref={passwordInputRef}
+                      className={cn(
+                        'h-12 rounded-xl pl-10 pr-11 text-base sm:h-10 sm:rounded-md sm:text-sm',
+                        fieldErrors.password && 'border-destructive focus-visible:ring-destructive/40'
+                      )}
                       autoComplete="new-password"
                       required
+                      onBlur={() => validarAoSair('password')}
+                      aria-invalid={fieldErrors.password ? true : undefined}
+                      aria-describedby={fieldErrors.password ? 'erro-password' : undefined}
                     />
                     <button
                       type="button"
@@ -689,9 +840,15 @@ export default function Register() {
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
-                  <p className="px-1 text-xs text-muted-foreground/70">
-                    Sua conta é só sua — nenhuma informação é compartilhada sem permissão.
-                  </p>
+                  {fieldErrors.password ? (
+                    <p id="erro-password" role="alert" className="px-1 text-xs font-medium text-destructive">
+                      {fieldErrors.password}
+                    </p>
+                  ) : (
+                    <p className="px-1 text-xs text-muted-foreground/70">
+                      Sua conta é só sua — nenhuma informação é compartilhada sem permissão.
+                    </p>
+                  )}
                 </div>
 
                 {/* City — GPS first */}
@@ -816,29 +973,29 @@ export default function Register() {
                   </div>
                   <span className="text-sm leading-relaxed text-muted-foreground">
                     Tenho 18 anos ou mais e aceito os{' '}
-                    <Link
-                      to="/terms"
+                    <button
+                      type="button"
                       className="text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLegalDoc('terms'); }}
                     >
                       Termos de Uso
-                    </Link>{' '}
+                    </button>{' '}
                     e a{' '}
-                    <Link
-                      to="/privacy"
+                    <button
+                      type="button"
                       className="text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLegalDoc('privacy'); }}
                     >
                       Política de Privacidade
-                    </Link>
+                    </button>
                     . Li as{' '}
-                    <Link
-                      to="/guidelines"
+                    <button
+                      type="button"
                       className="text-primary hover:underline"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setLegalDoc('guidelines'); }}
                     >
                       Diretrizes da Comunidade
-                    </Link>
+                    </button>
                     .
                   </span>
                 </label>
@@ -949,7 +1106,7 @@ export default function Register() {
                 <Button
                   type="button"
                   onClick={handleNext}
-                  disabled={isLoading}
+                  disabled={isLoading || !passoAtualValido}
                   className="h-12 flex-1 rounded-xl bg-gradient-primary hover:opacity-90 gap-2 sm:h-10 sm:rounded-md"
                 >
                   {isLoading ? 'Verificando...' : 'Próximo'}
@@ -967,6 +1124,8 @@ export default function Register() {
           </p>
         </div>
       </div>
+
+      <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
   );
 }

@@ -58,6 +58,32 @@ const sections = [
   },
 ];
 
+
+// Corpo do documento isolado da página — ver TermsBody.
+export function GuidelinesBody() {
+  return (
+    <div className="grid gap-6">
+      {sections.map((section) => (
+        <section key={section.title} className="glass rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-11 h-11 rounded-xl bg-primary/12 flex items-center justify-center">
+              <section.icon className="w-5 h-5 text-primary" />
+            </div>
+            <h2 className="text-xl font-semibold">{section.title}</h2>
+          </div>
+          <ul className="space-y-3 text-sm text-muted-foreground">
+            {section.items.map((item) => (
+              <li key={item} className="leading-relaxed">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export default function Guidelines() {
   return (
     <div className="min-h-screen bg-background py-12">
@@ -77,25 +103,7 @@ export default function Guidelines() {
           </div>
         </div>
 
-        <div className="grid gap-6">
-          {sections.map((section) => (
-            <section key={section.title} className="glass rounded-2xl p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-11 h-11 rounded-xl bg-primary/12 flex items-center justify-center">
-                  <section.icon className="w-5 h-5 text-primary" />
-                </div>
-                <h2 className="text-xl font-semibold">{section.title}</h2>
-              </div>
-              <ul className="space-y-3 text-sm text-muted-foreground">
-                {section.items.map((item) => (
-                  <li key={item} className="leading-relaxed">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <GuidelinesBody />
       </div>
     </div>
   );

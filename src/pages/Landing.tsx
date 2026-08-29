@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -92,7 +92,23 @@ export default function Landing() {
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // O header vira sólido só depois de passar o hero — em cima da foto ele
+  // continua transparente, como sempre foi.
+  const [headerSolid, setHeaderSolid] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState('');
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLElement>(null);
+  const heroRef = useRef<HTMLElement>(null);
+
+  // Fechar sempre devolve o foco ao botão, senão quem navega por teclado ou
+  // leitor de tela fica perdido no topo do documento.
+  const closeMenu = useCallback((devolverFoco = true) => {
+    setMenuOpen((aberto) => {
+      if (aberto && devolverFoco) menuButtonRef.current?.focus();
+      return false;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +125,66 @@ export default function Landing() {
       cancelled = true;
     };
   }, []);
+
+  // O header era `absolute` e ficava por cima do hero. Agora que é `sticky`
+  // ele ocupa espaço no fluxo, então devolvemos exatamente a altura dele em
+  // margem negativa — o layout fica pixel a pixel como antes.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const medir = () => {
+      el.style.setProperty('--landing-header-h', `${el.offsetHeight}px`);
+    };
+    medir();
+    const observer = new ResizeObserver(medir);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Fundo sólido a partir do fim do hero.
+  useEffect(() => {
+    const aoRolar = () => {
+      const limite = heroRef.current?.offsetHeight ?? window.innerHeight;
+      setHeaderSolid(window.scrollY > limite);
+    };
+    aoRolar();
+    window.addEventListener('scroll', aoRolar, { passive: true });
+    window.addEventListener('resize', aoRolar);
+    return () => {
+      window.removeEventListener('scroll', aoRolar);
+      window.removeEventListener('resize', aoRolar);
+    };
+  }, []);
+
+  // Menu aberto: Escape fecha, toque fora fecha e o fundo para de rolar.
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeMenu();
+      }
+    };
+    const aoTocarFora = (e: Event) => {
+      const alvo = e.target as Node;
+      if (menuPanelRef.current?.contains(alvo)) return;
+      if (menuButtonRef.current?.contains(alvo)) return; // o próprio botão já alterna
+      closeMenu(false);
+    };
+
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', aoTeclar);
+    // `pointerdown` cobre toque e mouse, e dispara antes do clique no link.
+    document.addEventListener('pointerdown', aoTocarFora);
+
+    return () => {
+      document.body.style.overflow = overflowAnterior;
+      document.removeEventListener('keydown', aoTeclar);
+      document.removeEventListener('pointerdown', aoTocarFora);
+    };
+  }, [menuOpen, closeMenu]);
 
   if (isAuthenticated) {
     return <Navigate to={getLastAuthRoute('/feed')} replace />;
@@ -128,7 +204,10 @@ export default function Landing() {
 
   return (
     <div className="landing-editorial">
-      <header className="landing-header">
+      <header
+        ref={headerRef}
+        className={`landing-header${headerSolid ? ' is-solid' : ''}`}
+      >
         <div className="landing-shell landing-nav">
           <Link to="/" aria-label="Página inicial do NoSigilo.net">
             <BrandLogo
@@ -153,11 +232,13 @@ export default function Landing() {
               <Link to="/register">Cadastrar</Link>
             </Button>
             <button
+              ref={menuButtonRef}
               type="button"
               className="landing-menu-button"
               aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
               aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((open) => !open)}
+              aria-controls="landing-mobile-menu"
+              onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
             >
               {menuOpen ? <X /> : <Menu />}
             </button>
@@ -165,18 +246,31 @@ export default function Landing() {
         </div>
 
         {menuOpen ? (
-          <nav className="landing-mobile-menu" aria-label="Navegação móvel">
-            <a href="#experiencia" onClick={() => setMenuOpen(false)}>Experiência</a>
-            <a href="#privacidade" onClick={() => setMenuOpen(false)}>Privacidade</a>
-            <a href="#relatos" onClick={() => setMenuOpen(false)}>Relatos</a>
-            <button type="button" onClick={handleEnter}>Entrar</button>
-            <Link to="/register">Crie seu perfil gratuitamente</Link>
+          <nav
+            ref={menuPanelRef}
+            id="landing-mobile-menu"
+            className="landing-mobile-menu"
+            aria-label="Navegação móvel"
+          >
+            <a href="#experiencia" onClick={() => closeMenu(false)}>Experiência</a>
+            <a href="#privacidade" onClick={() => closeMenu(false)}>Privacidade</a>
+            <a href="#relatos" onClick={() => closeMenu(false)}>Relatos</a>
+            {/* Estes três só existiam no rodapé, a ~7.500px do topo. */}
+            {subscriptionsEnabled ? (
+              <Link to="/subscriptions" onClick={() => closeMenu(false)}>Planos</Link>
+            ) : null}
+            <Link to="/terms" onClick={() => closeMenu(false)}>Termos</Link>
+            <Link to="/guidelines" onClick={() => closeMenu(false)}>Diretrizes</Link>
+            <button type="button" onClick={() => { closeMenu(false); handleEnter(); }}>Entrar</button>
+            <Link className="landing-mobile-menu-cta" to="/register" onClick={() => closeMenu(false)}>
+              Crie seu perfil gratuitamente
+            </Link>
           </nav>
         ) : null}
       </header>
 
       <main>
-        <section className="landing-hero">
+        <section className="landing-hero" ref={heroRef}>
           <div className="landing-hero-image" role="img" aria-label="Adultos em um encontro social descontraído em um bar" />
           <div className="landing-hero-vignette" />
           <div className="landing-shell landing-hero-content">

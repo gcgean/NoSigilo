@@ -3,7 +3,12 @@ import * as React from "react";
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+// Tempo na tela antes de sumir sozinho. Sem isto o aviso ficava preso e
+// atravessava passos do cadastro já corrigidos.
+export const TOAST_DURATION = 5000;
+// Só o tempo da animação de saída — antes eram 1.000.000 ms (~16 min), o que
+// mantinha o toast na fila muito depois de ele sumir da tela.
+const TOAST_REMOVE_DELAY = 400;
 
 type ToasterToast = ToastProps & {
   id: string;
