@@ -667,7 +667,7 @@ export default function Layout() {
                     accessCountdown.tone === 'danger'
                       ? 'bg-destructive text-destructive-foreground'
                       : accessCountdown.tone === 'premium'
-                        ? 'border border-gold/30 bg-gold/15 text-gold'
+                        ? 'border border-gold/30 bg-gold/15 text-gold-text'
                         : 'bg-secondary text-secondary-foreground'
                   )}
                   title={accessCountdown.title}
@@ -1008,15 +1008,26 @@ export default function Layout() {
             ) : null}
             {!isMobileChatRoute && accessCountdown && !bannerDismissed && (
               <div className="mb-4 sm:hidden">
+                {/* Era 11px em --gold (3,63:1 sobre o próprio fundo) — a
+                    mensagem que evita cancelamento era a menos legível do
+                    app. Agora 14px em --gold-text (mais escuro no tema
+                    claro) e com um botão de renovar ao lado. */}
                 {accessCountdown.tone === 'premium' ? (
-                  <NavLink to="/subscriptions" className="inline-flex max-w-full">
-                    <Badge
-                      className="max-w-full truncate rounded-full border border-gold/30 bg-gold/15 px-3 py-1.5 text-xs text-gold"
+                  <div className="flex max-w-full items-center gap-2 rounded-full border border-gold/30 bg-gold/15 py-1.5 pl-3 pr-1.5">
+                    <NavLink
+                      to="/subscriptions"
+                      className="min-w-0 flex-1 truncate text-sm font-medium text-gold-text"
                       title={accessCountdown.title}
                     >
                       {accessCountdown.label}
-                    </Badge>
-                  </NavLink>
+                    </NavLink>
+                    <NavLink
+                      to="/subscriptions"
+                      className="shrink-0 rounded-full bg-gold px-3 py-1 text-xs font-semibold text-black/80 transition-opacity hover:opacity-90"
+                    >
+                      Renovar
+                    </NavLink>
+                  </div>
                 ) : null}
               </div>
             )}

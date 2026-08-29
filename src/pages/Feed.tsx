@@ -1770,7 +1770,7 @@ export default function Feed() {
           <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/12 via-rose-500/10 to-orange-400/10 p-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-sm font-semibold text-primary">Segundo passo do seu primeiro acesso</p>
+                <p className="text-sm font-semibold text-brand-pink">Segundo passo do seu primeiro acesso</p>
                 <h2 className="text-xl font-bold">Faça sua primeira publicação</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Compartilhe uma foto, um clima, uma intenção ou uma apresentação rápida. Um perfil que publica cedo desperta mais curiosidade e recebe mais atenção.
@@ -1846,7 +1846,7 @@ export default function Feed() {
               <button
                 type="button"
                 onClick={() => setExpTemplatesOpen((v) => !v)}
-                className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                className="flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-brand-pink hover:bg-primary/10 transition-colors"
               >
                 ✍️ {expTemplatesOpen ? 'Fechar modelos' : 'Usar modelo'}
               </button>
@@ -2065,7 +2065,7 @@ export default function Feed() {
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Clapperboard className={cn('w-4 h-4 shrink-0', reelsOnly ? 'text-primary' : 'text-muted-foreground')} />
                   <div className="min-w-0">
-                    <p className={cn('text-sm font-medium', reelsOnly ? 'text-primary' : 'text-foreground')}>
+                    <p className={cn('text-sm font-medium', reelsOnly ? 'text-brand-pink' : 'text-foreground')}>
                       Somente em Rap
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
@@ -2140,7 +2140,7 @@ export default function Feed() {
                     <div className="absolute top-0 h-full animate-progress-indeterminate rounded-full bg-gradient-to-r from-rose-500 via-primary to-violet-500" />
                   )}
                 </div>
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {uploadProgress !== null && uploadProgress < 100
                     ? `Enviando mídia… ${uploadProgress}%`
                     : 'Processando e publicando…'}
@@ -2349,7 +2349,7 @@ export default function Feed() {
                   <p className="text-sm font-semibold text-foreground">Mais chance de encontrar algo agora</p>
                   <p className="mt-1 text-sm leading-6 text-muted-foreground">{feedInsightsSummary}</p>
                 </div>
-                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-primary">
+                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink">
                   Ao vivo
                 </Badge>
               </div>
@@ -2412,13 +2412,13 @@ export default function Feed() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-lg leading-none">{WEEKLY_THEME.emoji}</span>
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-primary/70">Tema da semana</span>
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-brand-pink/70">Tema da semana</span>
                     </div>
                     <p className="text-sm font-bold text-foreground">{WEEKLY_THEME.theme}</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">{WEEKLY_THEME.description}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-primary text-[10px]">
+                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-brand-pink text-[10px]">
                       {WEEKLY_THEME.deadline}
                     </Badge>
                   </div>
@@ -2503,7 +2503,7 @@ export default function Feed() {
                         >
                           {experience.description}
                         </p>
-                        <span className="mt-1.5 inline-block text-sm font-semibold text-primary hover:underline">
+                        <span className="mt-1.5 inline-block text-sm font-semibold text-brand-pink hover:underline">
                           {expandedExp[experience.id] ? 'Ler menos' : 'Ler conto completo →'}
                         </span>
                       </button>
@@ -2556,7 +2556,7 @@ export default function Feed() {
                             )}
                           >
                             <Heart className={cn('w-5 h-5', experience.likedByMe && 'fill-current')} />
-                            <span className="hidden text-[10px] font-medium text-muted-foreground/60 sm:inline">
+                            <span className="hidden text-xs font-medium text-muted-foreground/60 sm:inline">
                               {myExpReactions[experience.id]
                                 ? EXP_REACTION_EMOJI[myExpReactions[experience.id]!]
                                 : '· segure'}
@@ -2754,8 +2754,8 @@ export default function Feed() {
               <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
                 <div className="flex flex-col items-center gap-0.5 text-center">
-                  <span className="text-xs font-bold tracking-wide text-primary uppercase">{item.title}</span>
-                  <span className="text-[11px] text-muted-foreground max-w-[240px] leading-tight">{item.description}</span>
+                  <span className="text-xs font-bold tracking-wide text-brand-pink uppercase">{item.title}</span>
+                  <span className="text-sm text-muted-foreground max-w-[240px] leading-tight">{item.description}</span>
                 </div>
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
@@ -2789,7 +2789,7 @@ export default function Feed() {
                               </Badge>
                             )}
                             {ctx?.label && ctx.label !== 'Novo agora' && (
-                              <Badge variant="outline" className="shrink-0 max-w-[10rem] truncate border-primary/20 bg-primary/5 text-[10px] font-medium text-primary">
+                              <Badge variant="outline" className="shrink-0 max-w-[10rem] truncate border-primary/20 bg-primary/5 text-[10px] font-medium text-brand-pink">
                                 {ctx.reason === 'nearby' ? '📍' : ctx.reason === 'affinity' ? '💬' : ctx.reason === 'popular_local' ? '🔥' : ''} {ctx.label}
                               </Badge>
                             )}
@@ -3018,7 +3018,7 @@ export default function Feed() {
                     </div>
                     <span className="text-sm font-medium text-muted-foreground">
                       {item.post.likesCount >= 10 ? (
-                        <span className="text-primary font-semibold">🔥 {item.post.likesCount}</span>
+                        <span className="text-brand-pink font-semibold">🔥 {item.post.likesCount}</span>
                       ) : item.post.likesCount}
                     </span>
                   </button>
@@ -3052,7 +3052,7 @@ export default function Feed() {
                     'text-[11px] font-semibold group-hover:translate-x-0.5 transition-transform shrink-0',
                     nearbyRadius !== null && item.post.distanceKm !== null && item.post.distanceKm !== undefined
                       ? 'text-emerald-600'
-                      : 'text-primary'
+                      : 'text-brand-pink'
                   )}>
                     {nearbyRadius !== null && item.post.distanceKm !== null && item.post.distanceKm !== undefined
                       ? 'Chamar →'
@@ -3087,7 +3087,7 @@ export default function Feed() {
                                   {String(c.user.id) !== String(user?.id || '') && (
                                     <button
                                       type="button"
-                                      className="text-[11px] text-primary hover:underline"
+                                      className="text-[11px] text-brand-pink hover:underline"
                                       onClick={() => {
                                         setReplyingToByPostId((prev) => ({
                                           ...prev,
@@ -3155,7 +3155,7 @@ export default function Feed() {
 
                   {/* Reply context banner */}
                   {replyingToByPostId[item.post.id] && (
-                    <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">
+                    <div className="flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-brand-pink">
                       <span>↩ Respondendo <strong>{replyingToByPostId[item.post.id]?.user.name}</strong></span>
                       <button type="button" className="ml-auto text-muted-foreground hover:text-foreground" onClick={() => setReplyingToByPostId((prev) => ({ ...prev, [item.post.id]: null }))}>✕</button>
                     </div>
@@ -3218,7 +3218,7 @@ export default function Feed() {
                   <p className="text-sm font-semibold text-foreground">Mais chance agora</p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{feedInsightsSummary}</p>
                 </div>
-                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-primary text-[10px]">
+                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink text-[10px]">
                   Ao vivo
                 </Badge>
               </div>
@@ -3257,7 +3257,7 @@ export default function Feed() {
                             </Badge>
                           ) : null}
                         </div>
-                        <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-muted-foreground">{item.message}</p>
+                        <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{item.message}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-rose-600">
                         <TimerReset className="h-3 w-3" />

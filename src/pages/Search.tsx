@@ -571,7 +571,7 @@ export default function SearchPage() {
 
           {/* Tagline */}
           {tagline ? (
-            <p className="mt-1 line-clamp-1 text-[11px] italic text-white/70">"{tagline}"</p>
+            <p className="mt-1 line-clamp-1 text-sm italic text-white/70">"{tagline}"</p>
           ) : null}
 
           {/* Intention icons */}
@@ -866,7 +866,7 @@ export default function SearchPage() {
               });
               setShowWizard(true);
             }}
-            className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
           >
             <Pencil className="h-3 w-3" /> Editar padrão
           </button>
@@ -931,7 +931,7 @@ export default function SearchPage() {
             />
             {showSuggestions && suggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
-                <p className="px-3 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
+                <p className="px-3 pt-2 text-sm font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
                 {suggestions.map((s) => (
                   <button
                     key={s.id}
@@ -1059,7 +1059,7 @@ export default function SearchPage() {
           {/* Intention filter pills */}
           <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
-              <span className="text-[11px] shrink-0 text-muted-foreground">Busca por:</span>
+              <span className="text-sm shrink-0 text-muted-foreground">Busca por:</span>
               <button
                 type="button"
                 onClick={() => setSelectedIntention('')}

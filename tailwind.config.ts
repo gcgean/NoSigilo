@@ -70,6 +70,10 @@ export default {
         gold: "hsl(var(--gold))",
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
+        // Variantes só para TEXTO — mais escura no tema claro, mais clara no
+        // escuro. Preenchimentos, ícones e bordas continuam com `primary`/`gold`.
+        "brand-pink": "hsl(var(--brand-pink-text))",
+        "gold-text": "hsl(var(--gold-text))",
       },
       borderRadius: {
         lg: "var(--radius)",
