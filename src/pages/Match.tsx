@@ -23,6 +23,7 @@ import { enablePushNotifications, getPushActivationState } from '@/utils/pushNot
 import { calcProfileCompletion } from '@/utils/profileCompletion';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 type MatchProfile = {
   id: string;
@@ -64,6 +65,7 @@ const CACHE_KEY_PROFILES = 'nosigilo_match_profiles';
 const CACHE_KEY_INDEX = 'nosigilo_match_index';
 
 export default function Match() {
+  useDocumentTitle('Match');
   const { on, off } = useSocket();
   const navigate = useNavigate();
   const { addFavorite } = useFavorites();

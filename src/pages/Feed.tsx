@@ -50,6 +50,7 @@ import {
   COMMENT_QUICK_EMOJIS,
   COMMENT_SAVE_BUTTON_CLASS,
 } from '@/components/comments/commentStyles';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedContext = { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string };
@@ -255,6 +256,7 @@ function readFeedSessionAuthorCounts() {
 }
 
 export default function Feed() {
+  useDocumentTitle('Feed');
   const { user, updateUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();

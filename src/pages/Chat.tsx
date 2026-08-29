@@ -1523,11 +1523,20 @@ export default function Chat() {
           {/* iOS keyboard closes and the container height suddenly grows).        */}
           <div
             ref={messagesContainerRef}
-            className="flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden flex flex-col [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className={cn(
+              "flex-1 min-h-0 w-full min-w-0 max-w-full overflow-y-auto overscroll-y-contain overflow-x-hidden flex flex-col [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+              // Conversa vazia (sem mensagem nenhuma ainda): centraliza
+              // verticalmente em vez de empurrar para o fim — sem isso o
+              // spacer abaixo (feito para colar mensagens no rodapé) deixava
+              // ~280px de vão em branco entre o cabeçalho e "Comece a conversa".
+              (!isLoadingMessages && !USE_MOCKS && messages.length === 0 && !!activeConversation && !activeConversation.lastMessageAt && !((activeConversation.unreadCount || 0) > 0)) && "justify-center"
+            )}
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
-            {/* Spacer: pushes messages to the bottom when content < container height */}
-            <div className="flex-1 shrink-0" />
+            {/* Spacer: pushes messages to the bottom when content < container height.
+                Fica de fora quando a conversa está vazia — ele brigaria com o
+                justify-center acima, sempre vencendo por ter flex-1 próprio. */}
+            {!(!isLoadingMessages && !USE_MOCKS && messages.length === 0 && !!activeConversation && !activeConversation.lastMessageAt && !((activeConversation.unreadCount || 0) > 0)) && <div className="flex-1 shrink-0" />}
             <div className="flex flex-col gap-2.5 px-2.5 py-3 md:gap-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation

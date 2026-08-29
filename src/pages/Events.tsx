@@ -49,6 +49,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { eventsService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const EVENT_TYPES = [
   { value: 'party', label: 'Festa', icon: '🎉' },
@@ -145,6 +146,7 @@ const mockEvents: Event[] = [
 ];
 
 export default function Events() {
+  useDocumentTitle('Eventos');
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();

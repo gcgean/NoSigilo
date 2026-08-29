@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -57,6 +58,7 @@ function formatDistanceKm(distanceKm: unknown) {
 }
 
 export default function SearchPage() {
+  useDocumentTitle('Buscar');
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();

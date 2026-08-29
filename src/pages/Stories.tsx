@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { PHOTO_REACTIONS, REACTION_EMOJI } from '@/lib/reactions';
 import { STORY_BACKGROUNDS, backgroundCss } from '@/lib/storyBackgrounds';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
 
@@ -803,6 +804,7 @@ function StatsModal({
 
 // ─── Página principal Stories ─────────────────────────────────────────────────
 export default function Stories() {
+  useDocumentTitle('Stories');
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate  = useNavigate();

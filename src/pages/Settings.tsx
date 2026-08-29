@@ -39,6 +39,7 @@ import {
   enablePushNotifications,
   getPushActivationState,
 } from '@/utils/pushNotifications';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean };
 
@@ -48,6 +49,7 @@ function resolveMediaUrl(url: string) {
 }
 
 export default function Settings() {
+  useDocumentTitle('Configurações');
   const { user, updateUser, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();

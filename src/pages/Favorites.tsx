@@ -5,8 +5,10 @@ import { Link } from 'react-router-dom';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { Card } from '@/components/ui/card';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 export default function Favorites() {
+  useDocumentTitle('Curtidos');
   const { favorites, removeFavorite } = useFavorites();
 
   return (

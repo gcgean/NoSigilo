@@ -9,6 +9,7 @@ import { getNotificationHref } from '@/utils/notificationNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 type NotificationItem = {
   id: string;
@@ -33,6 +34,7 @@ function timeAgo(iso: string) {
 }
 
 export default function Notifications() {
+  useDocumentTitle('Notificações');
   const { toast } = useToast();
   const { user } = useAuth();
   const navigate = useNavigate();

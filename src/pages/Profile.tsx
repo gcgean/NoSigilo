@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -352,6 +353,7 @@ function PhotoItem({
 }
 
 export default function Profile() {
+  useDocumentTitle('Meu Perfil');
   const { user, updateUser } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
