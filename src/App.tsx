@@ -125,6 +125,10 @@ const App = () => (
                       <Route path="/events" element={<Events />} />
                       <Route path="/chat/groups" element={<GroupsList />} />
                       <Route path="/chat/group/:groupId" element={<GroupChat />} />
+                      {/* Conversa aberta tem URL própria: o gesto de voltar do
+                          iOS retorna à lista, e a aba pode ser recuperada.
+                          Declarada depois de /chat/groups para não capturá-la. */}
+                      <Route path="/chat/:conversationId" element={<Chat />} />
                       <Route path="/invites" element={<Invites />} />
                       <Route path="/promoter" element={<Promoter />} />
                       <Route path="/ganhe" element={<PromoterLanding />} />

@@ -15,7 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -170,7 +171,16 @@ export default function Chat() {
   const { registerActivity } = useActivityTracker();
   const { isFavorite, addFavorite } = useFavorites();
   const location = useLocation();
-  const [selectedChat, setSelectedChat] = useState<string | null>(null);
+  // A conversa aberta mora na URL (/chat/:conversationId). Assim o gesto de
+  // voltar do iOS retorna à lista em vez de sair do chat, e a aba descartada
+  // pelo Safari em segundo plano volta na conversa certa.
+  const { conversationId: conversationIdDaUrl } = useParams<{ conversationId: string }>();
+  const selectedChat = conversationIdDaUrl ?? null;
+
+  // `setSelectedChat(id)` empilha histórico; `setSelectedChat(null)` volta à lista.
+  const setSelectedChat = useCallback((id: string | null) => {
+    navigate(id ? `/chat/${encodeURIComponent(id)}` : '/chat');
+  }, [navigate]);
   const [selectedConversationSnapshot, setSelectedConversationSnapshot] = useState<Conversation | null>(null);
   const [message, setMessage] = useState('');
   const [otherTyping, setOtherTyping] = useState(false);
@@ -220,6 +230,10 @@ export default function Chat() {
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const activeConversation =
     selectedConversation ?? (selectedConversationSnapshot?.id === selectedChat ? selectedConversationSnapshot : null);
+
+  // O título da aba passa a nomear a conversa aberta — importante no seletor
+  // de abas do iOS, onde as 12 rotas apareciam com o mesmo nome.
+  useDocumentTitle(activeConversation?.user?.name ? `Conversa com ${activeConversation.user.name}` : 'Conversas');
   const premiumAccess = hasPremiumAccess(user);
   const { requireFields } = useProfileGate();
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
@@ -608,8 +622,10 @@ export default function Chat() {
     const queryConversationId = new URLSearchParams(location.search).get('conversationId') || '';
     const conversationId = stateConversationId || queryConversationId;
     if (!conversationId) return;
-    setSelectedChat(conversationId);
-  }, [location.state, location.search]);
+    // Veio de outra tela por state/query: troca pela URL canônica sem criar
+    // uma entrada extra no histórico.
+    navigate(`/chat/${encodeURIComponent(conversationId)}`, { replace: true });
+  }, [location.state, location.search, navigate]);
 
   // Abre ou cria conversa diretamente quando ?userId= está na URL (ex: "Mandar msg" nos Stories)
   useEffect(() => {
@@ -622,7 +638,7 @@ export default function Chat() {
         const data = await chatService.createConversation(targetUserId);
         if (data?.id) {
           await loadConversations();
-          setSelectedChat(data.id);
+          navigate(`/chat/${encodeURIComponent(data.id)}`, { replace: true });
         }
       } catch {
         // falha silenciosa — usuário continua na lista de conversas
@@ -1227,17 +1243,14 @@ export default function Chat() {
           {!isLoadingConversations && (USE_MOCKS ? [] : visibleConversations).map((conversation) => {
             const highlightMeta = getHighlightColorMeta(conversation.highlightColor);
             return (
-              <div
+              <Link
               key={conversation.id}
-              onClick={() => {
+              to={`/chat/${encodeURIComponent(conversation.id)}`}
+              onClick={(e) => {
                 cancelConvLongPress();
                 // Se o long-press já abriu o menu, ignora o clique sintético
-                if (convLongPressFired.current) { convLongPressFired.current = false; return; }
-                setSelectedChat(conversation.id);
+                if (convLongPressFired.current) { convLongPressFired.current = false; e.preventDefault(); }
               }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === 'Enter') setSelectedChat(conversation.id); }}
               onTouchStart={() => startConvLongPress(conversation)}
               onTouchEnd={cancelConvLongPress}
               onTouchMove={cancelConvLongPress}
@@ -1317,7 +1330,7 @@ export default function Chat() {
                   })()}
                 </div>
               </div>
-              </div>
+              </Link>
             );
           })}
           {!isLoadingConversations && !USE_MOCKS && hasMoreConversations && (
@@ -1345,7 +1358,8 @@ export default function Chat() {
                   if (document.activeElement instanceof HTMLElement) {
                     document.activeElement.blur();
                   }
-                  setSelectedChat(null);
+                  // Mesmo caminho do gesto de deslizar da borda no iOS.
+                  navigate(-1);
                 }}
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -1823,11 +1837,11 @@ export default function Chat() {
             style={{
               paddingLeft: 'max(0.625rem, env(safe-area-inset-left))',
               paddingRight: 'max(0.625rem, env(safe-area-inset-right))',
-              // On mobile, add safe-area-inset-bottom here so the input clears
-              // the iPhone home indicator – replaces the separate spacer div.
-              ...(isMobileViewport
-                ? { paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom, 0px))' }
-                : {}),
+              // O container externo (mobileStyle) já aplica
+              // env(safe-area-inset-bottom) quando o teclado está fechado, e a
+              // altura do teclado quando está aberto. Repetir o env aqui somava
+              // o recuo duas vezes (~68px de folga em vez de ~40px), então aqui
+              // fica só o respiro do próprio composer.
             }}
           >
             {!premiumAccess && (

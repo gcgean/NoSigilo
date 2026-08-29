@@ -1993,7 +1993,7 @@ export default function Feed() {
               value={postContent}
               onChange={(e) => setPostContent(e.target.value)}
               onPaste={handlePasteOnComposer}
-              className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-[15px] leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input sm:text-sm"
+              className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input"
               rows={2}
             />
             {attachments.length > 0 && (
