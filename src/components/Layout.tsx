@@ -1,6 +1,7 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { BannerSlot, FeedBannerQueueProvider } from '@/contexts/FeedBannerQueueContext';
 import {
   Home,
   Heart,
@@ -913,6 +914,12 @@ export default function Layout() {
             isMobileReelsRoute && 'overflow-hidden px-0 py-0 pb-0 sm:px-0 sm:py-0'
           )}
         >
+          {/* Fila de prioridade dos avisos do topo do feed: instalar app,
+              pílula de assinante, "ative notificações" e o card de saudação
+              (os dois últimos vivem dentro do próprio <Outlet/>, em
+              Feed.tsx) competiam pelo mesmo espaço e apareciam todos juntos.
+              O provider é o estado compartilhado que decide qual aparece. */}
+          <FeedBannerQueueProvider>
           <div className={cn('mx-auto w-full max-w-6xl', (isMobileChatRoute || isMobileReelsRoute) && 'max-w-none h-full')}>
             {!isMobileChatRoute && accessBanner && !bannerDismissed ? (
               <div className="mb-4">
@@ -956,7 +963,7 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            {!isMobileChatRoute && showPwaInstallPrompt ? (
+            <BannerSlot id="pwa-install" priority={30} eligible={!isMobileChatRoute && showPwaInstallPrompt}>
               <div className="mb-4">
                 <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -977,9 +984,9 @@ export default function Layout() {
                   </div>
                 </div>
               </div>
-            ) : null}
+            </BannerSlot>
 
-            {!isMobileChatRoute && hasEmptyInterests ? (
+            <BannerSlot id="interests-nudge" priority={25} eligible={!isMobileChatRoute && hasEmptyInterests}>
               <div className="mb-4">
                 <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1005,32 +1012,34 @@ export default function Layout() {
                   </div>
                 </div>
               </div>
-            ) : null}
-            {!isMobileChatRoute && accessCountdown && !bannerDismissed && (
+            </BannerSlot>
+            <BannerSlot
+              id="subscription-countdown"
+              priority={10}
+              eligible={!isMobileChatRoute && accessCountdown?.tone === 'premium' && !bannerDismissed}
+            >
               <div className="mb-4 sm:hidden">
                 {/* Era 11px em --gold (3,63:1 sobre o próprio fundo) — a
                     mensagem que evita cancelamento era a menos legível do
                     app. Agora 14px em --gold-text (mais escuro no tema
                     claro) e com um botão de renovar ao lado. */}
-                {accessCountdown.tone === 'premium' ? (
-                  <div className="flex max-w-full items-center gap-2 rounded-full border border-gold/30 bg-gold/15 py-1.5 pl-3 pr-1.5">
-                    <NavLink
-                      to="/subscriptions"
-                      className="min-w-0 flex-1 truncate text-sm font-medium text-gold-text"
-                      title={accessCountdown.title}
-                    >
-                      {accessCountdown.label}
-                    </NavLink>
-                    <NavLink
-                      to="/subscriptions"
-                      className="shrink-0 rounded-full bg-gold px-3 py-1 text-xs font-semibold text-black/80 transition-opacity hover:opacity-90"
-                    >
-                      Renovar
-                    </NavLink>
-                  </div>
-                ) : null}
+                <div className="flex max-w-full items-center gap-2 rounded-full border border-gold/30 bg-gold/15 py-1.5 pl-3 pr-1.5">
+                  <NavLink
+                    to="/subscriptions"
+                    className="min-w-0 flex-1 truncate text-sm font-medium text-gold-text"
+                    title={accessCountdown?.title}
+                  >
+                    {accessCountdown?.label}
+                  </NavLink>
+                  <NavLink
+                    to="/subscriptions"
+                    className="shrink-0 rounded-full bg-gold px-3 py-1 text-xs font-semibold text-black/80 transition-opacity hover:opacity-90"
+                  >
+                    Renovar
+                  </NavLink>
+                </div>
               </div>
-            )}
+            </BannerSlot>
             {false && !isMobileChatRoute && !promoterBannerDismissed && location.pathname !== '/ganhe' && location.pathname !== '/promoter' && location.pathname !== '/match' && (
               <div className="mb-4">
                 <div className="relative flex items-center justify-between gap-2 rounded-2xl px-4 py-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 text-white shadow-[0_8px_24px_rgba(16,185,129,0.25)]">
@@ -1186,6 +1195,7 @@ export default function Layout() {
               </AlertDialogContent>
             </AlertDialog>
           </div>
+          </FeedBannerQueueProvider>
         </main>
       </div>
 

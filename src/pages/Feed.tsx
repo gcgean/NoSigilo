@@ -18,6 +18,7 @@ import FeedGreeting from '@/components/FeedGreeting';
 import TopDayBar from '@/components/TopDayBar';
 import NearbyActivityStrip from '@/components/NearbyActivityStrip';
 import { useToast } from '@/hooks/use-toast';
+import { BannerSlot } from '@/contexts/FeedBannerQueueContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ToastAction } from '@/components/ui/toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -1787,10 +1788,14 @@ export default function Feed() {
         <EventPromoCard userId={user.id} />
       )}
 
-      {user && !firstAccessPostMode && !notifBannerDismissed && !pushEnabled && pushSupported && (
+      <BannerSlot
+        id="notif-banner"
+        priority={20}
+        eligible={Boolean(user) && !firstAccessPostMode && !notifBannerDismissed && !pushEnabled && pushSupported}
+      >
         <Card className="relative mb-3 flex items-center gap-2.5 overflow-hidden border-primary/20 bg-gradient-to-r from-primary/10 to-rose-500/5 px-3 py-2.5 sm:mb-4">
           <Bell className="h-4 w-4 shrink-0 text-primary" />
-          <p className="min-w-0 flex-1 text-xs font-medium text-foreground">
+          <p className="min-w-0 flex-1 text-sm font-medium text-foreground">
             Ative as notificações para não perder matches, radares e mensagens.
           </p>
           <button
@@ -1822,10 +1827,15 @@ export default function Feed() {
             <X className="h-3.5 w-3.5" />
           </button>
         </Card>
-      )}
+      </BannerSlot>
 
       {/* Saudação contextual por horário */}
-      {feedFilter !== 'experiences' ? <FeedGreeting userName={user?.name} summary={feedInsightsSummary} /> : null}
+      {/* Prioridade mais baixa da fila: só aparece quando nenhum aviso mais
+          urgente (assinatura, notificações, instalar app) está ocupando o
+          slot — é decorativo, não bloqueia nada se ficar de fora hoje. */}
+      <BannerSlot id="feed-greeting" priority={40} eligible={feedFilter !== 'experiences'}>
+        <FeedGreeting userName={user?.name} summary={feedInsightsSummary} />
+      </BannerSlot>
 
       {/* Top do Dia — posts mais curtidos das últimas 24h */}
       {feedFilter !== 'experiences' ? <TopDayBar /> : null}
