@@ -16,12 +16,14 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Layout from "@/components/Layout";
 import SiteVisitTracker from "@/components/SiteVisitTracker";
 
-// Páginas do funil de entrada ficam no bundle inicial (carregam na hora, sem flash).
+// A Landing é a porta de entrada pública: fica no bundle inicial para abrir
+// sem flash. As outras páginas do funil saíram dele — quem chega na home não
+// precisa baixar o cadastro, o login e a landing de campanha junto.
 import Landing from "./pages/Landing";
-import CampaignLanding from "./pages/CampaignLanding";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import NotFound from "./pages/NotFound";
+const CampaignLanding = lazy(() => import("./pages/CampaignLanding"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Demais páginas são carregadas sob demanda (code-splitting por rota) para deixar
 // o bundle inicial pequeno — especialmente a Landing pública (página de vendas).

@@ -33,6 +33,11 @@
     <link rel="apple-touch-icon" href="/icon.jpg" />
     <link rel="apple-touch-icon-precomposed" href="/icon.jpg" />
 
+    <!-- Hero da landing: e um background CSS, entao so seria descoberto depois
+         do CSS baixar e o React montar. O preload adianta a maior imagem
+         acima da dobra da pagina publica. -->
+    <link rel="preload" as="image" href="/landing/hero-liberal-party.jpg" fetchpriority="high" />
+
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://nosigilo.net/" />

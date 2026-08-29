@@ -154,8 +154,10 @@ export default function CampaignLanding() {
 
         <figure className="campaign-hero-media">
           <img
-            src="/landing/hero-masquerade.png"
+            src="/landing/hero-masquerade-722.webp"
             alt="Casais adultos mascarados conversando em um encontro elegante"
+            width={722}
+            height={361}
             loading="eager"
           />
         </figure>
@@ -163,7 +165,7 @@ export default function CampaignLanding() {
 
       <section className="campaign-features campaign-section" aria-labelledby="campaign-features-title">
         <figure className="campaign-feature-media">
-          <img src="/landing/gaze-couple.png" alt="Casal adulto mascarado trocando olhares em um ambiente reservado" />
+          <img src="/landing/gaze-couple-722.webp" alt="Casal adulto mascarado trocando olhares em um ambiente reservado" width={722} height={481} />
         </figure>
 
         <div className="campaign-features-copy">
@@ -207,7 +209,7 @@ export default function CampaignLanding() {
           </div>
 
           <figure className="campaign-privacy-media">
-            <img src="/landing/gaze-couple.png" alt="Casal adulto mascarado se observando com discrição" loading="lazy" />
+            <img src="/landing/gaze-couple-722.webp" alt="Casal adulto mascarado se observando com discrição" width={722} height={481} loading="lazy" />
           </figure>
         </div>
       </section>
@@ -217,6 +219,8 @@ export default function CampaignLanding() {
           <img
             src="/landing/hero-liberal-party.jpg"
             alt="Adultos conversando em um encontro social descontraído"
+            width={1024}
+            height={768}
             loading="lazy"
           />
         </figure>

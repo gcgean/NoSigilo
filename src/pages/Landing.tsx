@@ -349,6 +349,8 @@ export default function Landing() {
             <figure className="landing-desire-image landing-desire-lead">
               <img
                 src="/landing/desire-kiss-trio.webp"
+                width={840}
+                height={560}
                 alt="Três adultos em um momento de intimidade e desejo consensual"
                 loading="lazy"
                 decoding="async"
@@ -371,7 +373,11 @@ export default function Landing() {
             <figure className="landing-desire-image landing-desire-portrait">
               <img
                 className="landing-desire-portrait-top"
-                src="/landing/masked-woman.png"
+                src="/landing/masked-woman-722.webp"
+                srcSet="/landing/masked-woman-361.webp 361w, /landing/masked-woman-722.webp 722w"
+                sizes="(max-width: 900px) 100vw, 361px"
+                width={722}
+                height={481}
                 alt="Mulher adulta mascarada em um baile elegante"
                 loading="lazy"
                 decoding="async"
@@ -379,13 +385,19 @@ export default function Landing() {
               <img
                 className="landing-desire-portrait-center"
                 src="/landing/lounge-trio.jpg"
+                width={640}
+                height={425}
                 alt="Três adultos juntos em um ambiente reservado"
                 loading="lazy"
                 decoding="async"
               />
               <img
                 className="landing-desire-portrait-bottom"
-                src="/landing/first-touch.png"
+                src="/landing/first-touch-722.webp"
+                srcSet="/landing/first-touch-361.webp 361w, /landing/first-touch-722.webp 722w"
+                sizes="(max-width: 900px) 100vw, 361px"
+                width={722}
+                height={481}
                 alt="Casal adulto mascarado trocando olhares em um encontro elegante"
                 loading="lazy"
                 decoding="async"
@@ -395,6 +407,8 @@ export default function Landing() {
             <figure className="landing-desire-image landing-desire-touch">
               <img
                 src="/landing/bed-trio.webp"
+                width={600}
+                height={400}
                 alt="Três adultos deitados próximos em um encontro consensual"
                 loading="lazy"
                 decoding="async"

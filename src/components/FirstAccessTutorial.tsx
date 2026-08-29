@@ -47,7 +47,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'merece ser vivido.',
     description:
       'Uma comunidade liberal para casais e singles explorarem swing, troca de casal, ménage e exibicionismo — com consentimento, discrição e liberdade.',
-    image: '/landing/hero-masquerade.png',
+    image: '/landing/hero-masquerade-722.webp',
     imagePosition: '68% center',
     benefits: [
       { icon: Users, title: 'Casais e singles', description: 'Conexões sem julgamentos e no seu ritmo.' },
@@ -62,7 +62,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'curiosidade.',
     description:
       'Use o Match e a Busca para descobrir pessoas próximas, filtrar interesses e perceber quando a química é recíproca.',
-    image: '/landing/gaze-couple.png',
+    image: '/landing/gaze-couple-722.webp',
     imagePosition: 'center',
     benefits: [
       { icon: Heart, title: 'Match por afinidade', description: 'Curta e descubra quando o interesse é mútuo.' },
@@ -77,7 +77,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'ir além.',
     description:
       'Feed, Stories e Vídeos revelam experiências e desejos da comunidade. Você escolhe se quer observar, publicar ou provocar curiosidade.',
-    image: '/landing/masked-woman.png',
+    image: '/landing/masked-woman-722.webp',
     imagePosition: 'center 32%',
     benefits: [
       { icon: Images, title: 'Feed e Stories', description: 'Momentos, fotos e stories que expiram em 24h.' },
@@ -92,7 +92,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'conexão.',
     description:
       'Quando houver sintonia, o Chat cria um espaço privado para conversar, alinhar expectativas e decidir o próximo passo com calma.',
-    image: '/landing/first-touch.png',
+    image: '/landing/first-touch-722.webp',
     imagePosition: 'center',
     benefits: [
       { icon: MessageCircle, title: 'Chat privado', description: 'Converse com discrição antes de qualquer encontro.' },
@@ -107,7 +107,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'fazem sentido.',
     description:
       'Sinalize quando estiver disponível, descubra quem está por perto e encontre eventos criados pela comunidade.',
-    image: '/landing/hero-editorial.png',
+    image: '/landing/hero-editorial-722.webp',
     imagePosition: '76% center',
     benefits: [
       { icon: Radio, title: 'Radar discreto', description: 'Avise que está na cidade sem expor sua localização exata.' },
@@ -122,7 +122,7 @@ const TOUR_STEPS: TourStep[] = [
     highlight: 'até onde quer ir.',
     description:
       'O Premium libera a experiência completa para conversar, interagir e participar de verdade da comunidade. Cancele quando quiser.',
-    image: '/landing/privacy-editorial.png',
+    image: '/landing/privacy-editorial-722.webp',
     imagePosition: '68% center',
     benefits: [
       { icon: MessageCircle, title: 'Converse sem barreiras', description: 'Aproxime-se de quem despertou seu interesse.' },

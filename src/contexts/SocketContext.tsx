@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
-import { io, Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { SOCKET_URL } from '@/utils/serverUrl';
 
@@ -33,30 +33,43 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const newSocket = io(SOCKET_URL, {
-      auth: { token },
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
+    // O socket.io-client só é baixado quando alguém está de fato logado —
+    // visitante da landing não carrega essa biblioteca.
+    let cancelado = false;
+    let socketAtivo: Socket | null = null;
 
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-    });
+    import('socket.io-client').then(({ io }) => {
+      if (cancelado) return;
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-    });
+      const newSocket = io(SOCKET_URL, {
+        auth: { token },
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
 
-    newSocket.on('connect_error', () => {
-      setIsConnected(false);
-    });
+      newSocket.on('connect', () => {
+        setIsConnected(true);
+      });
 
-    setSocket(newSocket);
+      newSocket.on('disconnect', () => {
+        setIsConnected(false);
+      });
+
+      newSocket.on('connect_error', () => {
+        setIsConnected(false);
+      });
+
+      socketAtivo = newSocket;
+      setSocket(newSocket);
+    }).catch(() => {
+      // Falha ao carregar o módulo: o app segue sem tempo real.
+    });
 
     return () => {
-      newSocket.disconnect();
+      cancelado = true;
+      socketAtivo?.disconnect();
       setSocket(null);
       setIsConnected(false);
     };
