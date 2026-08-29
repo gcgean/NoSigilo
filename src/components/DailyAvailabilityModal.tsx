@@ -5,12 +5,15 @@ import { Button } from '@/components/ui/button';
 
 const STORAGE_KEY = 'nosigilo:avail-shown-date';
 
+// As cores tinham só a versão do tema escuro (texto 400 sobre 10% de cor).
+// No tema claro isso vira texto claro sobre fundo quase branco e some. Cada
+// opção agora traz o par: tom escuro por padrão, o original em `dark:`.
 const OPTIONS = [
-  { value: 'now',         emoji: '⚡', label: 'Disponível hoje',     hint: 'Expira em 24h',     color: 'border-emerald-500 bg-emerald-500/10 text-emerald-400' },
-  { value: 'week',        emoji: '📅', label: 'Esta semana',         hint: 'Expira em 7 dias',  color: 'border-orange-500 bg-orange-500/10 text-orange-400' },
-  { value: 'month',       emoji: '🗓️', label: 'Este mês',            hint: 'Expira em 30 dias', color: 'border-violet-500 bg-violet-500/10 text-violet-400' },
-  { value: 'online_only', emoji: '💬', label: 'Só online',           hint: 'Sem encontros',     color: 'border-sky-500 bg-sky-500/10 text-sky-400' },
-  { value: 'not_looking', emoji: '🔒', label: 'Não estou buscando',  hint: 'Oculto nos filtros',color: 'border-zinc-500 bg-zinc-500/10 text-zinc-400' },
+  { value: 'now',         emoji: '⚡', label: 'Disponível hoje',     hint: 'Expira em 24h',     color: 'border-emerald-600/70 bg-emerald-500/20 text-emerald-800 dark:border-emerald-500 dark:bg-emerald-500/10 dark:text-emerald-400' },
+  { value: 'week',        emoji: '📅', label: 'Esta semana',         hint: 'Expira em 7 dias',  color: 'border-orange-600/70 bg-orange-500/20 text-orange-800 dark:border-orange-500 dark:bg-orange-500/10 dark:text-orange-400' },
+  { value: 'month',       emoji: '🗓️', label: 'Este mês',            hint: 'Expira em 30 dias', color: 'border-violet-600/70 bg-violet-500/20 text-violet-800 dark:border-violet-500 dark:bg-violet-500/10 dark:text-violet-400' },
+  { value: 'online_only', emoji: '💬', label: 'Só online',           hint: 'Sem encontros',     color: 'border-sky-600/70 bg-sky-500/20 text-sky-800 dark:border-sky-500 dark:bg-sky-500/10 dark:text-sky-400' },
+  { value: 'not_looking', emoji: '🔒', label: 'Não estou buscando',  hint: 'Oculto nos filtros',color: 'border-zinc-600/70 bg-zinc-500/20 text-zinc-800 dark:border-zinc-500 dark:bg-zinc-500/10 dark:text-zinc-400' },
 ] as const;
 
 function todayStr() {
@@ -95,7 +98,7 @@ export default function DailyAvailabilityModal() {
                 <span className="text-xl leading-none">{opt.emoji}</span>
                 <div>
                   <p className="text-sm font-semibold">{opt.label}</p>
-                  <p className="text-[11px] opacity-70">{opt.hint}</p>
+                  <p className="text-[11px] opacity-80 dark:opacity-70">{opt.hint}</p>
                 </div>
               </button>
             ))}
