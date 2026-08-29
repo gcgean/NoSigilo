@@ -578,7 +578,7 @@ export default function Settings() {
                   value={privacy.allowMessages}
                   onValueChange={(v) => setPrivacy({ ...privacy, allowMessages: v })}
                 >
-                  <SelectTrigger className="bg-background">
+                  <SelectTrigger className="bg-background" aria-label="Quem pode te enviar mensagem">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1358,7 +1358,7 @@ export default function Settings() {
               value={privacy.allowMessages}
               onValueChange={(v) => setPrivacy({ ...privacy, allowMessages: v })}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="Quem pode enviar mensagens">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1667,7 +1667,8 @@ export default function Settings() {
                     className="pr-10"
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPasswords((s) => ({ ...s, current: !s.current }))}>
+                    onClick={() => setShowPasswords((s) => ({ ...s, current: !s.current }))}
+                    aria-label={showPasswords.current ? 'Ocultar senha atual' : 'Mostrar senha atual'}>
                     {showPasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -1685,7 +1686,8 @@ export default function Settings() {
                     className={`pr-10 ${passwords.newPass && passwords.newPass.length < 6 ? 'border-destructive' : ''}`}
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPasswords((s) => ({ ...s, newPass: !s.newPass }))}>
+                    onClick={() => setShowPasswords((s) => ({ ...s, newPass: !s.newPass }))}
+                    aria-label={showPasswords.newPass ? 'Ocultar nova senha' : 'Mostrar nova senha'}>
                     {showPasswords.newPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
@@ -1706,7 +1708,8 @@ export default function Settings() {
                     className={`pr-10 ${passwords.confirm && passwords.confirm !== passwords.newPass ? 'border-destructive' : passwords.confirm && passwords.confirm === passwords.newPass ? 'border-success' : ''}`}
                   />
                   <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowPasswords((s) => ({ ...s, confirm: !s.confirm }))}>
+                    onClick={() => setShowPasswords((s) => ({ ...s, confirm: !s.confirm }))}
+                    aria-label={showPasswords.confirm ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
                     {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>

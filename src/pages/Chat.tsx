@@ -1351,6 +1351,7 @@ export default function Chat() {
                 variant="ghost"
                 size="icon"
                 className="h-9 w-9 shrink-0 rounded-full md:hidden"
+                aria-label="Voltar para a lista de conversas"
                 onClick={() => {
                   // Dismiss the keyboard BEFORE clearing selectedChat so iOS
                   // doesn't trigger a simultaneous keyboard-close + layout-change
@@ -1431,6 +1432,7 @@ export default function Chat() {
                 size="icon"
                 className="h-9 w-9 rounded-full"
                 onClick={() => toast({ title: '🎙️ Em breve', description: 'Chamadas de voz estão chegando em breve.' })}
+                aria-label="Chamada de voz"
               >
                 <Phone className="h-5 w-5" />
               </Button>
@@ -1439,6 +1441,7 @@ export default function Chat() {
                 size="icon"
                 className="hidden h-9 w-9 rounded-full sm:inline-flex"
                 onClick={() => toast({ title: '📹 Em breve', description: 'Chamadas de vídeo estão chegando em breve.' })}
+                aria-label="Chamada de vídeo"
               >
                 <Video className="h-5 w-5" />
               </Button>
@@ -1448,7 +1451,7 @@ export default function Chat() {
                   overlays desta tela foram reescritos sem Radix Dialog. */}
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" aria-label="Mais opções da conversa">
                     <MoreVertical className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1919,6 +1922,7 @@ export default function Chat() {
                     onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
                     className="h-11 w-9 rounded-xl md:h-9 md:w-9"
+                    aria-label="Enviar imagem"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -1929,7 +1933,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl md:h-9 md:w-9">
+                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl md:h-9 md:w-9" aria-label="Inserir emoji">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -2036,6 +2040,7 @@ export default function Chat() {
                 }}
                 onClick={() => handleSendMessage(message)}
                 disabled={!premiumAccess || !message.trim() || isUploading}
+                aria-label="Enviar mensagem"
               >
                 <Send className="h-5 w-5" />
               </Button>

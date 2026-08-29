@@ -596,7 +596,7 @@ export default function SearchPage() {
         {/* Hover overlay */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
           {premiumAccess ? (
-            <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow">
+            <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow" aria-label="Curtir perfil">
               <Heart className="w-6 h-6" />
             </Button>
           ) : (

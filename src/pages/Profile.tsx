@@ -332,13 +332,13 @@ function PhotoItem({
         >
           <Edit2 className="w-4 h-4" />
         </Button>
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) void onDelete(photo.id); }}>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" aria-label="Excluir foto" onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) void onDelete(photo.id); }}>
           <Trash2 className="w-4 h-4" />
         </Button>
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" disabled={isTogglingVisibility} onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" disabled={isTogglingVisibility} aria-label={photo.isPrivate ? 'Tornar foto pública' : 'Tornar foto privada'} onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}>
           {photo.isPrivate ? <Image className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
         </Button>
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" onClick={() => setIsPreviewOpen(true)}>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" aria-label="Ampliar foto" onClick={() => setIsPreviewOpen(true)}>
           <Maximize2 className="w-4 h-4" />
         </Button>
       </div>
@@ -998,6 +998,7 @@ export default function Profile() {
               <DialogTrigger asChild>
                 <button
                   type="button"
+                  aria-label="Ver foto de perfil ampliada"
                   className={cn("w-32 h-32 rounded-full overflow-hidden ring-4 shadow-glow", profileData.premium ? "ring-gold/70" : "ring-primary/30")}
                 >
                   <img src={mainPhotoUrl} alt={profileData.name} className="w-full h-full object-cover" />
@@ -1024,6 +1025,7 @@ export default function Profile() {
               type="button"
               disabled={isUploading}
               onClick={() => avatarFileInputRef.current?.click()}
+              aria-label="Trocar foto de perfil"
               className="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-gradient-primary flex items-center justify-center shadow-glow disabled:opacity-60"
             >
               <Camera className="w-5 h-5 text-white" />

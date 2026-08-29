@@ -420,6 +420,7 @@ export default function Match() {
               navigate('/search');
             }}
             className="h-11 w-11 rounded-xl sm:h-10 sm:w-10 sm:rounded-md"
+            aria-label="Filtros de busca"
           >
             <Filter className="w-5 h-5" />
           </Button>
@@ -538,6 +539,7 @@ export default function Match() {
                 type="button"
                 className="absolute inset-0 h-full w-full"
                 onClick={() => navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'))}
+                aria-label={`Ver perfil de ${currentProfile.name}`}
               >
                 <img
                   src={coverUrl}
@@ -652,7 +654,7 @@ export default function Match() {
 
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-white hover:bg-white/10">
+                    <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 rounded-full text-white hover:bg-white/10" aria-label="Mais opções">
                       <MoreHorizontal className="h-4.5 w-4.5" />
                     </Button>
                   </PopoverTrigger>
@@ -701,6 +703,7 @@ export default function Match() {
           onMouseEnter={() => setIsHoveringPass(true)}
           onMouseLeave={() => setIsHoveringPass(false)}
           disabled={!currentProfile}
+          aria-label="Passar"
         >
           <X className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
@@ -711,6 +714,7 @@ export default function Match() {
           className="relative h-[64px] w-full rounded-[24px] bg-gradient-primary shadow-glow transition-all hover:opacity-90 sm:h-20 sm:w-20 sm:rounded-full"
           onClick={() => void handleLike()}
           disabled={!currentProfile}
+          aria-label="Curtir"
         >
           <Heart className="h-7 w-7 sm:h-10 sm:w-10" fill="white" />
         </Button>
@@ -725,6 +729,7 @@ export default function Match() {
             navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'));
           }}
           disabled={!currentProfile}
+          aria-label="Ver perfil"
         >
           <User className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
@@ -736,6 +741,7 @@ export default function Match() {
           className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
           onClick={() => void handleOpenChat()}
           disabled={!currentProfile}
+          aria-label="Mandar mensagem"
         >
           <MessageCircle className="h-7 w-7 sm:h-8 sm:w-8" />
         </Button>
