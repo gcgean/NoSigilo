@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService } from '@/services/api';
+import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import GiftTokensModal from '@/components/GiftTokensModal';
 import { INTENTION_OPTIONS } from '@/pages/Search';
@@ -520,7 +520,31 @@ export default function UserProfile() {
 
   // A aba nomeia o perfil aberto, em vez do título genérico da home.
   useDocumentTitle(profile?.name ? `${profile.name}` : 'Perfil');
+
   const premiumAccess = hasPremiumAccess(me);
+
+  type PlanoResumo = { price?: number; intervalCount?: number };
+  // Preço mensal de destaque para o paywall — mesma regra da tela de
+  // Assinaturas (menor preço por mês entre os planos pagos).
+  const [precoMensal, setPrecoMensal] = useState<number | null>(null);
+  useEffect(() => {
+    if (isSelf || premiumAccess) return;
+    let cancelado = false;
+    subscriptionsService
+      .getPlans()
+      .then((r: { plans?: PlanoResumo[] } | PlanoResumo[]) => {
+        if (cancelado) return;
+        const lista: PlanoResumo[] = Array.isArray(r) ? r : (r?.plans ?? []);
+        const mensais = lista
+          .filter((pl) => Number(pl?.price) > 0)
+          .map((pl) => Number(pl.price) / Math.max(1, Number(pl.intervalCount) || 1))
+          .filter((v) => v > 0);
+        if (mensais.length) setPrecoMensal(Math.min(...mensais));
+      })
+      .catch(() => undefined);
+    return () => { cancelado = true; };
+  }, [isSelf, premiumAccess]);
+
 
   useEffect(() => {
     const sp = new URLSearchParams(location.search);
@@ -1099,19 +1123,92 @@ export default function UserProfile() {
   const followingCount = Number(profile?.followingCount ?? 0);
 
   if (!isSelf && !premiumAccess) {
+    const nome = String(profile?.name || '').trim();
+    const local = [profile?.city, profile?.state].filter(Boolean).join('/');
+    const precoLabel = precoMensal !== null ? precoMensal.toFixed(2).replace('.', ',') : null;
+    const beneficios = [
+      { icon: UserRound, texto: 'Ver o perfil completo de quem te interessa' },
+      { icon: ImageIcon, texto: 'Abrir as fotos e vídeos publicados' },
+      { icon: MessageCircle, texto: 'Conversar no chat sem limite' },
+      { icon: Heart, texto: 'Usar o Match e descobrir quem te curtiu' },
+    ];
+
     return (
-      <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
-        <button
-          type="button"
-          onClick={() => setPaywallOpen(true)}
-          className="glass w-full rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-left transition-colors hover:bg-destructive/10"
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <Lock className="h-5 w-5 text-destructive" />
-            <h1 className="text-2xl font-bold">Perfil bloqueado</h1>
+      <div className="mx-auto w-full min-w-0 max-w-2xl overflow-x-hidden">
+        {/* Quem está do outro lado — é o motivo de assinar, então aparece
+            primeiro, com a foto embaçada (a curiosidade é o gancho). */}
+        <div className="glass overflow-hidden rounded-2xl">
+          <div className="relative flex flex-col items-center gap-3 px-5 pb-6 pt-8 text-center">
+            <div className="relative">
+              <div className="pointer-events-none select-none blur-md">
+                <UserAvatar user={profile} className="h-24 w-24" indicatorClassName="hidden" />
+              </div>
+              <span className="absolute -bottom-1 -right-1 flex h-9 w-9 items-center justify-center rounded-full border-2 border-background bg-gradient-primary shadow-glow">
+                <Lock className="h-4 w-4 text-white" />
+              </span>
+            </div>
+
+            <div>
+              <p className="text-xl font-bold">{nome || 'Este perfil'}</p>
+              {local || profile?.gender ? (
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {[profile?.gender, local].filter(Boolean).join(' · ')}
+                </p>
+              ) : null}
+            </div>
+
+            {/* Prova de que o perfil é ativo — números reais, não promessa. */}
+            {(followersCount > 0 || profileVisitsCount > 0) && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                {profileVisitsCount > 0 ? (
+                  <span><strong className="text-foreground">{formatStatCount(profileVisitsCount)}</strong> visualizações</span>
+                ) : null}
+                {followersCount > 0 ? (
+                  <span><strong className="text-foreground">{formatStatCount(followersCount)}</strong> seguidores</span>
+                ) : null}
+              </div>
+            )}
           </div>
-          <p className="text-muted-foreground">Renove seu plano para navegar pelos perfis, ver o Match e responder no chat.</p>
-        </button>
+
+          <div className="border-t px-5 py-5">
+            <h1 className="text-lg font-bold">
+              Assine para ver {nome ? `o perfil de ${nome}` : 'este perfil'}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Seu acesso está inativo. Com o Premium você volta a navegar pela comunidade inteira.
+            </p>
+
+            <ul className="mt-4 space-y-2.5">
+              {beneficios.map((b) => (
+                <li key={b.texto} className="flex items-center gap-2.5 text-sm">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    <b.icon className="h-4 w-4 text-primary" />
+                  </span>
+                  <span>{b.texto}</span>
+                </li>
+              ))}
+            </ul>
+
+            <Button
+              className="mt-5 h-12 w-full gap-2 bg-gradient-primary text-base font-semibold shadow-glow hover:opacity-90"
+              onClick={() => navigate('/subscriptions')}
+            >
+              {precoLabel ? `Assinar por R$ ${precoLabel}/mês` : 'Ver planos'}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => setPaywallOpen(true)}
+              className="mt-3 w-full py-2.5 text-sm font-medium text-brand-pink hover:underline"
+            >
+              Ou ganhe dias grátis indicando amigos
+            </button>
+
+            <p className="mt-3 text-center text-xs text-muted-foreground">
+              Cancele quando quiser, sem fidelidade.
+            </p>
+          </div>
+        </div>
 
         <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       </div>

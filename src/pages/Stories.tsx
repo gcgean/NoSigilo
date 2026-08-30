@@ -693,15 +693,22 @@ function StatsModal({
         </div>
 
         {!isPremium ? (
-          <div className="flex flex-col items-center gap-4 px-6 py-10 text-center">
+          <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <Lock className="h-8 w-8 text-primary" />
+              <Eye className="h-8 w-8 text-primary" />
             </div>
-            <h4 className="text-lg font-bold">Recurso Premium</h4>
-            <p className="text-sm text-muted-foreground">Assine para ver quem visualizou e comentou nos seus stories.</p>
-            <Button className="gap-2 bg-gradient-to-r from-primary to-violet-600" onClick={onUpgrade}>
-              <Crown className="h-4 w-4" /> Ver planos
+            <h4 className="text-lg font-bold">Alguém já viu seu story</h4>
+            <p className="text-sm text-muted-foreground">
+              Seu story está no ar e some em 24h. Assine para descobrir quem visualizou,
+              quem curtiu e quem comentou — e chamar quem demonstrou interesse antes de expirar.
+            </p>
+            <Button
+              className="mt-1 h-12 w-full gap-2 bg-gradient-primary text-base font-semibold shadow-glow hover:opacity-90"
+              onClick={onUpgrade}
+            >
+              <Crown className="h-4 w-4" /> Assinar e ver quem viu
             </Button>
+            <p className="text-xs text-muted-foreground">Cancele quando quiser, sem fidelidade.</p>
           </div>
         ) : (
           <>

@@ -38,6 +38,20 @@ export default function ProfileVisitors() {
   );
   const latestVisit = visitors[0] || null;
 
+  // Total de visitas vem de /profile/stats, que não é gated. O número é o
+  // gancho da tela de assinatura: "8 pessoas te visitaram" convence mais que
+  // "recurso premium".
+  const [totalBloqueado, setTotalBloqueado] = useState<number | null>(null);
+  useEffect(() => {
+    if (isPremium) return;
+    let cancelado = false;
+    profileService
+      .getStats()
+      .then((d: { visits?: number }) => { if (!cancelado) setTotalBloqueado(Number(d?.visits ?? 0)); })
+      .catch(() => undefined);
+    return () => { cancelado = true; };
+  }, [isPremium]);
+
   useEffect(() => {
     if (!isPremium) {
       setIsLoading(false);
@@ -68,17 +82,47 @@ export default function ProfileVisitors() {
           <h1 className="text-2xl font-bold">Quem visitou seu perfil</h1>
         </div>
 
-        <Card className="p-8 text-center border-gold/30 bg-gold/5">
-          <div className="w-16 h-16 bg-gold/20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Crown className="w-8 h-8 text-gold" />
+        <Card className="border-primary/25 p-6 text-center sm:p-8">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+            <Eye className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="text-xl font-bold mb-2">Recurso Premium</h2>
-          <p className="text-muted-foreground mb-6">
-            Assine o Premium para ver a lista completa de pessoas que visitaram seu perfil recentemente.
-          </p>
-          <Button className="bg-gold text-black hover:bg-gold/90 font-bold px-8" onClick={() => setPaywallOpen(true)}>
-            Ver Planos Premium
+
+          {totalBloqueado !== null && totalBloqueado > 0 ? (
+            <>
+              <p className="text-4xl font-extrabold text-foreground">{totalBloqueado.toLocaleString('pt-BR')}</p>
+              <h2 className="mt-1 text-lg font-bold">
+                {totalBloqueado === 1 ? 'pessoa já visitou seu perfil' : 'pessoas já visitaram seu perfil'}
+              </h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Elas viram você. Assine para descobrir quem são e chamar quem te interessou.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-bold">Veja quem visitou seu perfil</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Assine para saber quem passou por aqui e voltar a conversar com quem te interessou.
+              </p>
+            </>
+          )}
+
+          <Button
+            className="mt-6 h-12 w-full gap-2 bg-gradient-primary text-base font-semibold shadow-glow hover:opacity-90 sm:w-auto sm:px-8"
+            onClick={() => navigate('/subscriptions')}
+          >
+            <Crown className="h-4 w-4" />
+            Assinar e ver quem me visitou
           </Button>
+
+          <button
+            type="button"
+            onClick={() => setPaywallOpen(true)}
+            className="mt-3 w-full py-2.5 text-sm font-medium text-brand-pink hover:underline"
+          >
+            Ou ganhe dias grátis indicando amigos
+          </button>
+
+          <p className="mt-3 text-xs text-muted-foreground">Cancele quando quiser, sem fidelidade.</p>
         </Card>
       </div>
     );
