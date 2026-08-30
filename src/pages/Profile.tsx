@@ -361,7 +361,12 @@ export default function Profile() {
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { socket } = useSocket();
-  const [activeTab, setActiveTab] = useState('photos');
+  const [activeTab, setActiveTab] = useState('posts');
+  // Minhas publicações em lista — o mesmo que o perfil de terceiros mostra na
+  // aba "Postagens". Como clicar no próprio nome leva para cá (e não para
+  // /users/:id), sem isto não havia onde ver as próprias postagens.
+  const [myPosts, setMyPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
@@ -380,6 +385,9 @@ export default function Profile() {
   const [busyNotifId, setBusyNotifId] = useState<string | null>(null);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [busyTestimonialId, setBusyTestimonialId] = useState<string | null>(null);
+  // As recomendações aprovadas já vinham do servidor (status 'all') mas nunca
+  // eram exibidas no próprio perfil — só as pendentes, para aceitar/recusar.
+  const approvedTestimonials = testimonials.filter((t) => String(t.status) === 'approved');
   const [privatePhotoRequests, setPrivatePhotoRequests] = useState<PrivatePhotoAccessItem[]>([]);
   const [isLoadingPrivatePhotoRequests, setIsLoadingPrivatePhotoRequests] = useState(false);
   const [busyPrivatePhotoRequestId, setBusyPrivatePhotoRequestId] = useState<string | null>(null);
@@ -648,6 +656,28 @@ export default function Profile() {
     void loadPhotos();
     void loadPrivatePhotoRequests();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'posts') return;
+    if (!user?.id) return;
+    let cancelled = false;
+    setIsLoadingPosts(true);
+    usersService
+      .getUserPosts(String(user.id), { limit: 30 })
+      .then((data) => {
+        if (cancelled) return;
+        setMyPosts(Array.isArray(data?.posts) ? data.posts : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMyPosts([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoadingPosts(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, user?.id]);
 
   const approvedPrivatePhotoAccessCount = privatePhotoRequests.filter((item) => item.status === 'approved').length;
   const pendingPrivatePhotoAccessCount = privatePhotoRequests.filter((item) => item.status === 'pending').length;
@@ -962,7 +992,11 @@ export default function Profile() {
     setBusyTestimonialId(t.id);
     try {
       await testimonialsService.respond(t.id, accept);
-      setTestimonials((prev) => prev.filter((x) => x.id !== t.id));
+      setTestimonials((prev) =>
+        accept
+          ? prev.map((x) => (x.id === t.id ? { ...x, status: 'approved' } : x))
+          : prev.filter((x) => x.id !== t.id)
+      );
       setNotifications((prev) =>
         prev.filter((n) => !(n.type === 'testimonial.pending' && String(n.data?.testimonialId || '') === String(t.id)))
       );
@@ -1226,13 +1260,13 @@ export default function Profile() {
             <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground">seguidores</p>
           </div>
           <div className="text-center">
-            <a href="#testimonials">
+            <button type="button" className="w-full" onClick={() => setActiveTab('testimonials')}>
               <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity">
                 <Star className="w-4 h-4" />
                 <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.testimonials)}</span>
               </div>
               <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground hover:underline">recomendações</p>
-            </a>
+            </button>
           </div>
         </div>
       </div>
@@ -1531,12 +1565,16 @@ export default function Profile() {
 
       {/* Photos Section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="w-full mb-4">
-          <TabsTrigger value="photos" className="flex-1 gap-2">
+        <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 p-1">
+          <TabsTrigger value="posts" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <Image className="w-4 h-4" />
-            Públicas
+            Postagens
           </TabsTrigger>
-          <TabsTrigger value="private" className="flex-1 gap-2">
+          <TabsTrigger value="photos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Image className="w-4 h-4" />
+            Fotos
+          </TabsTrigger>
+          <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <Lock className="w-4 h-4" />
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate">Privadas</span>
@@ -1552,11 +1590,63 @@ export default function Profile() {
               )}
             </span>
           </TabsTrigger>
-          <TabsTrigger value="videos" className="flex-1 gap-2">
+          <TabsTrigger value="videos" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <Video className="w-4 h-4" />
             Vídeos{myVideos.length > 0 ? ` (${myVideos.length})` : ''}
           </TabsTrigger>
+          <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Star className="w-4 h-4" />
+            Recomendações{approvedTestimonials.length > 0 ? ` (${approvedTestimonials.length})` : ''}
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="posts">
+          {isLoadingPosts ? (
+            <div className="py-4 text-sm text-muted-foreground">Carregando postagens...</div>
+          ) : myPosts.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center">
+              <Image className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Você ainda não publicou nada.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {myPosts.map((post) => {
+                const fotos = (post.media || []).filter((m) => m.url && !String(m.mimeType || '').startsWith('video/'));
+                const videos = (post.media || []).filter((m) => m.url && String(m.mimeType || '').startsWith('video/'));
+                return (
+                  <article key={post.id} className="glass rounded-2xl p-4">
+                    <p className="mb-2 text-xs text-muted-foreground">{visitTimeAgo(post.createdAt)}</p>
+                    {post.content?.trim() ? (
+                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">{post.content}</p>
+                    ) : null}
+                    {fotos.length > 0 ? (
+                      <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                        {fotos.map((m) => (
+                          <img
+                            key={m.id}
+                            src={resolveMediaUrl(m.url || '')}
+                            alt=""
+                            loading="lazy"
+                            className="w-full rounded-xl object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {videos.map((m) => (
+                      <video
+                        key={m.id}
+                        src={resolveMediaUrl(m.url || '')}
+                        controls
+                        playsInline
+                        className="mt-2 w-full rounded-xl"
+                      />
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="photos">
           <div className="grid grid-cols-3 gap-3">
@@ -1737,6 +1827,35 @@ export default function Profile() {
             </div>
           </div>
 
+        </TabsContent>
+
+        <TabsContent value="testimonials">
+          {approvedTestimonials.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center">
+              <Star className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Nenhuma recomendação aprovada ainda. Quando alguém escrever sobre você, ela aparece aqui depois que você aceitar.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {approvedTestimonials.map((t) => (
+                <article key={t.id} className="glass rounded-2xl p-4">
+                  <button
+                    type="button"
+                    className="font-medium hover:underline"
+                    onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
+                  >
+                    {t.author.name}
+                  </button>
+                  {formatProfileIdentityLine(t.author) ? (
+                    <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</div>
+                  ) : null}
+                  <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{t.content}</p>
+                </article>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="videos">
