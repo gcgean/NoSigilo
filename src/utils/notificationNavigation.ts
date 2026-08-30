@@ -10,6 +10,8 @@ export function getNotificationHref(notification: any): string {
   const profileUserId = data?.profileUserId ? String(data.profileUserId) : '';
 
   if (type === 'post.liked' && postId) return `/feed?postId=${encodeURIComponent(postId)}`;
+  // Marcado numa publicação: abre a publicação em que foi mencionado.
+  if (type === 'post.mentioned' && postId) return `/feed?postId=${encodeURIComponent(postId)}`;
   if (type === 'post.commented' && postId) return `/feed?postId=${encodeURIComponent(postId)}&openComments=1`;
 
   // Top do Dia (e Top da Semana legado) — leva ao próprio post em destaque

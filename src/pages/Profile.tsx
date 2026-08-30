@@ -23,6 +23,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
+import PostContent from '@/components/PostContent';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -1617,7 +1618,7 @@ export default function Profile() {
                   <article key={post.id} className="glass rounded-2xl p-4">
                     <p className="mb-2 text-xs text-muted-foreground">{visitTimeAgo(post.createdAt)}</p>
                     {post.content?.trim() ? (
-                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">{post.content}</p>
+                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6"><PostContent content={post.content} /></p>
                     ) : null}
                     {fotos.length > 0 ? (
                       <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>

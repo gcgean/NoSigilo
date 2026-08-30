@@ -27,6 +27,7 @@ import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
+import PostContent from '@/components/PostContent';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
@@ -1482,7 +1483,7 @@ export default function UserProfile() {
                   <article key={post.id} className="glass rounded-2xl p-4">
                     <p className="mb-2 text-xs text-muted-foreground">{format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}</p>
                     {post.content?.trim() ? (
-                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">{post.content}</p>
+                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6"><PostContent content={post.content} /></p>
                     ) : null}
                     {fotos.length > 0 ? (
                       <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>

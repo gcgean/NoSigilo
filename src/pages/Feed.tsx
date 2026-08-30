@@ -39,6 +39,7 @@ import SocialPulseCard from '@/components/SocialPulseCard';
 import StreakBadge from '@/components/StreakBadge';
 import ReportDialog from '@/components/ReportDialog';
 import PostRulesNotice from '@/components/PostRulesNotice';
+import PostContent from '@/components/PostContent';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
@@ -2914,7 +2915,9 @@ export default function Feed() {
               {/* Post Content */}
               {item.post.content?.trim() ? (
                 <div className="px-3 pb-3 sm:px-4">
-                  <p className="text-base leading-6 sm:text-lg sm:leading-7">{item.post.content}</p>
+                  <p className="text-base leading-6 sm:text-lg sm:leading-7">
+                    <PostContent content={item.post.content} />
+                  </p>
                 </div>
               ) : null}
 

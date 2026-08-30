@@ -969,6 +969,23 @@ const ACCOUNT_DELETION_REASON_CODES = [
 // Motivos aceitos numa denúncia (de conteúdo ou de perfil). Mesma lógica dos
 // motivos de exclusão: o código é estável, o rótulo em português vive no
 // frontend (src/components/ReportDialog.tsx) e as duas listas devem casar.
+// ── Menções (@nome) em postagens ────────────────────────────────────────────
+// O nome do usuário é único (LOWER(name) confere na hora do cadastro), então
+// funciona como @handle. Aceita letras acentuadas, números, ponto, hífen e
+// underline — mas NÃO espaço, senão a menção comeria o resto da frase.
+const MENTION_RE = /(?<![\p{L}\p{N}._-])@([\p{L}\p{N}._-]{2,30})/gu;
+
+export function extractMentionNames(content: string): string[] {
+  const vistos = new Set<string>();
+  for (const m of String(content || '').matchAll(MENTION_RE)) {
+    const nome = m[1];
+    // Pontuação final não faz parte do nome: "@fulano." menciona "fulano".
+    const limpo = nome.replace(/[._-]+$/, '');
+    if (limpo.length >= 2) vistos.add(limpo.toLowerCase());
+  }
+  return Array.from(vistos);
+}
+
 const REPORT_REASON_CODES = [
   'spam',
   'harassment',
@@ -5808,6 +5825,68 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await persist();
     // Só perfis de mulheres e casais ganham tokens por postagem.
     await awardContentTokensIfEligible(db, req.auth!.userId, 'post', id, req.app.get('io'));
+
+    // Menções (@nome): avisa quem foi marcado. Falha aqui não derruba a
+    // postagem — ela já está salva.
+    try {
+      const nomes = extractMentionNames(content);
+      if (nomes.length > 0) {
+        const io = req.app.get('io') as SocketIOServer | undefined;
+        const placeholders = nomes.map(() => '?').join(', ');
+        const marcados = (await queryAll(
+          db,
+          `SELECT id, name FROM users
+           WHERE LOWER(name) IN (${placeholders})
+             AND id != ?
+             AND COALESCE(is_banned, 0) = 0
+             AND COALESCE(is_deactivated, 0) = 0`,
+          [...nomes, req.auth!.userId]
+        )) as any[];
+        if (marcados.length > 0) {
+          const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+          const autorNome = autor?.name ? String(autor.name) : 'Alguém';
+          const trecho = content.length > 90 ? `${content.slice(0, 90)}…` : content;
+          for (const m of marcados) {
+            // Quem bloqueou (ou foi bloqueado por) o autor não é notificado.
+            const bloqueio = await queryOne(
+              db,
+              `SELECT 1 FROM blocks
+               WHERE (blocker_user_id = ? AND blocked_user_id = ?)
+                  OR (blocker_user_id = ? AND blocked_user_id = ?)
+               LIMIT 1`,
+              [String(m.id), req.auth!.userId, req.auth!.userId, String(m.id)]
+            );
+            if (bloqueio) continue;
+            await createNotification(
+              { db, io },
+              {
+                userId: String(m.id),
+                type: 'post.mentioned',
+                title: `${autorNome} marcou você numa publicação`,
+                description: trecho,
+                dataJson: { postId: id, actorId: req.auth!.userId, actorName: autorNome },
+              }
+            );
+            await sendPushToUser(
+              { db, env },
+              {
+                userId: String(m.id),
+                payload: {
+                  title: `${autorNome} marcou você numa publicação`,
+                  body: trecho,
+                  url: `/feed?postId=${encodeURIComponent(id)}`,
+                  tag: `post.mentioned:${id}`,
+                  data: { postId: id, actorId: req.auth!.userId, actorName: autorNome },
+                },
+              }
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[posts/mentions]', err);
+    }
+
     res.json({ id });
   });
 
@@ -7051,21 +7130,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           WHERE l.target_type = 'user' AND l.user_id = u.id
         ) as following_count
       FROM users u
-      WHERE u.id = ?
+      WHERE u.id = ? OR LOWER(u.name) = LOWER(?)
+      ORDER BY (CASE WHEN u.id = ? THEN 0 ELSE 1 END)
+      LIMIT 1
     `,
-      [userId]
+      [userId, userId, userId]
     );
     if (!row) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
-    if (viewerId !== userId && Number((row as any).is_admin || 0) === 1 && Number(viewerRow?.is_admin || 0) !== 1) {
+    // A partir daqui usa sempre o id real: o parâmetro da rota pode ter vindo
+    // como nome (links de menção usam /users/<nome>).
+    const targetId = String((row as any).id);
+    if (viewerId !== targetId && Number((row as any).is_admin || 0) === 1 && Number(viewerRow?.is_admin || 0) !== 1) {
       res.status(404).json({ error: 'not_found' });
       return;
     }
     // Perfil banido ou desativado some das consultas (exceto para o próprio dono e admins).
     if (
-      viewerId !== userId &&
+      viewerId !== targetId &&
       Number(viewerRow?.is_admin || 0) !== 1 &&
       (Number((row as any).is_banned || 0) === 1 || Number((row as any).is_deactivated || 0) === 1)
     ) {
@@ -7073,21 +7157,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     // Check if the viewing user has been blocked by the target (or viewer blocked target)
-    if (viewerId !== userId) {
+    if (viewerId !== targetId) {
       const blockRow = await queryOne(
         db,
         `SELECT blocker_user_id FROM blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1`,
-        [viewerId, userId, userId, viewerId]
+        [viewerId, targetId, targetId, viewerId]
       );
       if (blockRow) {
-        const isViewerBlocked = (blockRow as any).blocker_user_id === userId;
+        const isViewerBlocked = (blockRow as any).blocker_user_id === targetId;
         res.status(403).json({ error: 'blocked', blockedBy: isViewerBlocked ? 'target' : 'viewer' });
         return;
       }
     }
     const presence = req.app.get('presence');
     const distanceKm =
-      viewerId !== userId && viewerRow?.lat != null && viewerRow?.lon != null && (row as any).lat != null && (row as any).lon != null
+      viewerId !== targetId && viewerRow?.lat != null && viewerRow?.lon != null && (row as any).lat != null && (row as any).lon != null
         ? roundDistanceKm(
             haversineKm(
               { lat: Number(viewerRow.lat), lon: Number(viewerRow.lon) },
