@@ -302,16 +302,16 @@ export default function Subscriptions() {
   const headlinePrice = monthlyPrices.length ? Math.min(...monthlyPrices) : 9.9;
   const headlinePriceLabel = headlinePrice.toFixed(2).replace('.', ',');
 
-  // Preço "de" só aparece se o plano REALMENTE tiver um preço cheio maior
-  // configurado (compareAtPrice vem do backend). Nunca é inventado aqui —
-  // um "de/por" falso seria preço de referência inexistente.
+  // Preço de lançamento: o valor de hoje é promocional e vai SUBIR para
+  // `futurePrice` (definido pelo admin). O texto fala do futuro — "depois
+  // passa a" — e não de um preço anterior que nunca foi cobrado.
   const planoDoDestaque = paidPlans.find(
     (p) => p.price / Math.max(1, p.intervalCount || 1) === headlinePrice
-  ) as (typeof paidPlans)[number] & { compareAtPrice?: number | null };
-  const precoCheio = Number(planoDoDestaque?.compareAtPrice ?? 0);
-  const temDesconto = precoCheio > headlinePrice;
-  const precoCheioLabel = precoCheio.toFixed(2).replace('.', ',');
-  const descontoPercent = temDesconto ? Math.round((1 - headlinePrice / precoCheio) * 100) : 0;
+  ) as (typeof paidPlans)[number] & { futurePrice?: number | null };
+  const precoFuturo = Number(planoDoDestaque?.futurePrice ?? 0);
+  const ehLancamento = precoFuturo > headlinePrice;
+  const precoFuturoLabel = precoFuturo.toFixed(2).replace('.', ',');
+  const economiaPercent = ehLancamento ? Math.round((1 - headlinePrice / precoFuturo) * 100) : 0;
 
   // Custo por dia — mesmo preço, enquadramento menor. Conta real, não promessa.
   const porDia = headlinePrice / 30;
@@ -338,9 +338,9 @@ export default function Subscriptions() {
       {/* Destaque de preço — "custa somente R$ 9,90" */}
       {!isLoading && subscriptionsEnabled === true && (
         <div className="rounded-2xl border-2 border-gold/40 bg-gradient-to-r from-gold/15 via-primary/5 to-violet-500/10 px-5 py-4 text-center">
-          {temDesconto ? (
-            <span className="mb-1 inline-block rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
-              {descontoPercent}% de desconto
+          {ehLancamento ? (
+            <span className="mb-1.5 inline-block rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+              Preço de lançamento · {economiaPercent}% abaixo
             </span>
           ) : null}
 
@@ -349,14 +349,17 @@ export default function Subscriptions() {
           </p>
 
           <p className="mt-0.5 text-4xl font-extrabold text-foreground">
-            {temDesconto ? (
-              <span className="mr-2 align-middle text-xl font-semibold text-muted-foreground line-through">
-                R$ {precoCheioLabel}
-              </span>
-            ) : null}
             R$ {headlinePriceLabel}
             <span className="text-base font-medium text-muted-foreground">/mês</span>
           </p>
+
+          {ehLancamento ? (
+            <p className="mt-1.5 text-sm font-semibold text-foreground">
+              O valor vai passar a{' '}
+              <span className="text-muted-foreground line-through">R$ {precoFuturoLabel}</span>
+              {' '}— aproveite enquanto está no lançamento.
+            </p>
+          ) : null}
 
           <p className="mt-1 text-sm font-medium text-brand-pink">
             Dá R$ {porDiaLabel} por dia — cancele quando quiser, sem fidelidade.

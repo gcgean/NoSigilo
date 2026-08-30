@@ -394,6 +394,21 @@ async function setSystemSetting(db: DbHandle, key: string, value: string) {
   );
 }
 
+/**
+ * Preço que a assinatura VAI passar a custar (em centavos). Quando definido e
+ * maior que o preço atual, o app anuncia o valor de hoje como preço de
+ * lançamento e mostra para quanto vai subir.
+ *
+ * É uma promessa sobre o futuro, não um "de/por" sobre o passado — por isso o
+ * texto diz "depois passa a", e não "de R$ X". Anunciar um preço anterior que
+ * nunca foi cobrado seria preço de referência inexistente.
+ */
+async function getPrecoFuturoCents(db: DbHandle): Promise<number> {
+  const raw = await getSystemSetting(db, 'preco_futuro_cents');
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0;
+}
+
 async function getSubscriptionsEnabled(db: DbHandle) {
   const raw = await getSystemSetting(db, 'subscriptions_enabled');
   return raw === null ? true : raw !== '0';
@@ -11104,6 +11119,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       } else {
         rawPlans = fallbackSubscriptionPlans();
       }
+      const precoFuturoCents = await getPrecoFuturoCents(db);
       const plans = rawPlans
         .filter((plan: any) => plan.isActive !== false && String(plan.status || 'active') === 'active')
         .map((plan: any) => ({
@@ -11113,18 +11129,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           description: plan.description ? String(plan.description) : null,
           price: Number(plan.amount || 0) / 100,
           amount: Number(plan.amount || 0),
-          // Preço "de" (cheio), para exibir o desconto riscado. Só existe se
-          // estiver REALMENTE configurado no plano — nunca é inventado aqui.
-          // Sem isso, o frontend não mostra nenhum "de/por".
-          compareAtPrice: Number(plan.compareAtAmount || plan.listAmount || 0) > Number(plan.amount || 0)
-            ? Number(plan.compareAtAmount || plan.listAmount || 0) / 100
-            : null,
+
           currency: String(plan.currency || 'BRL'),
           interval: formatPlanInterval(String(plan.intervalUnit || 'month'), Number(plan.intervalCount || 1)),
           intervalUnit: String(plan.intervalUnit || 'month'),
           intervalCount: Number(plan.intervalCount || 1),
           isActive: !!plan.isActive,
           perks: plan.description ? String(plan.description).split(/\s*[•|]\s*/).filter(Boolean) : [],
+          // Só acompanha o plano quando é de fato MAIOR que o preço de hoje.
+          futurePrice: precoFuturoCents > Number(plan.amount || 0)
+            ? precoFuturoCents / 100
+            : null,
         }));
       res.json(plans);
     } catch (error) {
@@ -12659,7 +12674,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   app.get('/api/admin/settings', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    res.json({ subscriptionsEnabled });
+    const precoFuturoCents = await getPrecoFuturoCents(db);
+    res.json({ subscriptionsEnabled, precoFuturoCents });
+  });
+
+  // Preço futuro da assinatura. Em centavos; 0 desliga o aviso de lançamento.
+  app.put('/api/admin/settings/preco-futuro', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ cents: z.number().int().min(0).max(1000000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    await setSystemSetting(db, 'preco_futuro_cents', String(parsed.data.cents));
+    await persist();
+    res.json({ precoFuturoCents: parsed.data.cents });
   });
 
   app.put('/api/admin/settings/subscriptions', requireAuth(env, db), requireAdmin(), async (req, res) => {
