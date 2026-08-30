@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio, Star, Mail } from 'lucide-react';
+import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio, Star, Mail, Crown, Heart } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { chatService, profileService, matchService } from '@/services/api';
+import { chatService, profileService, matchService, usersService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,9 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { formatStatCount } from '@/utils/statCount';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { resolveServerUrl } from '@/utils/serverUrl';
 const EmojiPicker = lazy(() => import('emoji-picker-react').then(m => ({ default: m.default })));
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -217,6 +220,21 @@ export default function Chat() {
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
   const [showMessageSearch, setShowMessageSearch] = useState(false);
   // Rolagem infinita da lista de conversas (renderização incremental)
+  // Ficha do outro na conversa ainda sem mensagens. A lista de conversas não
+  // traz "membro desde" nem os contadores, então busca-se o perfil só neste
+  // caso — não vale inchar o payload da lista inteira por causa disso.
+  type FichaDoOutro = {
+    gender?: string | null;
+    city?: string | null;
+    state?: string | null;
+    createdAt?: string | null;
+    isPremium?: boolean;
+    followersCount?: number;
+    profileVisitsCount?: number;
+  };
+  const [emptyStateProfile, setEmptyStateProfile] = useState<FichaDoOutro | null>(null);
+  const [isFollowingFromChat, setIsFollowingFromChat] = useState(false);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
   const [visibleConversationsCount, setVisibleConversationsCount] = useState(CONVERSATIONS_PAGE_SIZE);
   const conversationsScrollRef = useRef<HTMLDivElement>(null);
   const conversationsSentinelRef = useRef<HTMLDivElement>(null);
@@ -230,6 +248,15 @@ export default function Chat() {
   const selectedConversation = conversations.find((c) => c.id === selectedChat);
   const activeConversation =
     selectedConversation ?? (selectedConversationSnapshot?.id === selectedChat ? selectedConversationSnapshot : null);
+
+  // Conversa aberta que ainda não teve nenhuma mensagem (dos dois lados).
+  const conversaVazia =
+    !isLoadingMessages &&
+    !USE_MOCKS &&
+    messages.length === 0 &&
+    !!activeConversation &&
+    !activeConversation.lastMessageAt &&
+    !((activeConversation.unreadCount || 0) > 0);
 
   // O título da aba passa a nomear a conversa aberta — importante no seletor
   // de abas do iOS, onde as 12 rotas apareciam com o mesmo nome.
@@ -463,6 +490,17 @@ export default function Chat() {
       setIsTogglingLike(false);
     }
   };
+
+  useEffect(() => {
+    const outroId = activeConversation?.user?.id ? String(activeConversation.user.id) : '';
+    if (!conversaVazia || !outroId) { setEmptyStateProfile(null); return; }
+    let cancelled = false;
+    usersService
+      .getUser(outroId)
+      .then((data) => { if (!cancelled) setEmptyStateProfile(data ?? null); })
+      .catch(() => { if (!cancelled) setEmptyStateProfile(null); });
+    return () => { cancelled = true; };
+  }, [conversaVazia, activeConversation?.user?.id]);
 
   const handleMarkConversationUnread = async () => {
     if (!selectedChat) return;
@@ -1529,20 +1567,89 @@ export default function Chat() {
               // verticalmente em vez de empurrar para o fim — sem isso o
               // spacer abaixo (feito para colar mensagens no rodapé) deixava
               // ~280px de vão em branco entre o cabeçalho e "Comece a conversa".
-              (!isLoadingMessages && !USE_MOCKS && messages.length === 0 && !!activeConversation && !activeConversation.lastMessageAt && !((activeConversation.unreadCount || 0) > 0)) && "justify-center"
+              conversaVazia && "justify-center"
             )}
             style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
           >
             {/* Spacer: pushes messages to the bottom when content < container height.
                 Fica de fora quando a conversa está vazia — ele brigaria com o
                 justify-center acima, sempre vencendo por ter flex-1 próprio. */}
-            {!(!isLoadingMessages && !USE_MOCKS && messages.length === 0 && !!activeConversation && !activeConversation.lastMessageAt && !((activeConversation.unreadCount || 0) > 0)) && <div className="flex-1 shrink-0" />}
+            {!conversaVazia && <div className="flex-1 shrink-0" />}
             <div className="flex flex-col gap-2.5 px-2.5 py-3 md:gap-4 md:p-4">
               {isLoadingMessages && <div className="text-sm text-muted-foreground">Carregando...</div>}
-              {!isLoadingMessages && !USE_MOCKS && messages.length === 0 && activeConversation
-                && !activeConversation.lastMessageAt
-                && !((activeConversation.unreadCount || 0) > 0) && (
+              {conversaVazia && activeConversation && (
                 <div className="flex flex-col items-center gap-3 py-6 px-2">
+                  {/* Ficha de quem está do outro lado: dá contexto antes da
+                      primeira mensagem, em vez de abrir numa tela vazia. */}
+                  <div className="flex w-full max-w-sm flex-col items-center gap-2 rounded-2xl border bg-secondary/20 px-4 py-5 text-center">
+                    <UserAvatar user={activeConversation.user} className="h-20 w-20" />
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-base font-semibold">{activeConversation.user.name}</p>
+                      {emptyStateProfile?.isPremium ? (
+                        <Crown role="img" aria-label="Assinante" className="h-4 w-4 shrink-0 text-gold" />
+                      ) : null}
+                    </div>
+
+                    {(() => {
+                      const partes: string[] = [];
+                      const genero = String(emptyStateProfile?.gender ?? activeConversation.user.gender ?? '').trim();
+                      const cidade = String(emptyStateProfile?.city ?? activeConversation.user.city ?? '').trim();
+                      const uf = String(emptyStateProfile?.state ?? activeConversation.user.state ?? '').trim();
+                      if (genero) partes.push(genero);
+                      const local = [cidade, uf].filter(Boolean).join('/');
+                      if (local) partes.push(local);
+                      const desde = emptyStateProfile?.createdAt ? new Date(String(emptyStateProfile.createdAt)) : null;
+                      if (desde && !Number.isNaN(desde.getTime())) {
+                        partes.push(`Desde ${format(desde, "MMMM'/'yyyy", { locale: ptBR })}`);
+                      }
+                      return partes.length > 0 ? (
+                        <p className="text-sm text-muted-foreground">{partes.join(' · ')}</p>
+                      ) : null;
+                    })()}
+
+                    {emptyStateProfile ? (
+                      <p className="text-sm text-muted-foreground">
+                        {formatStatCount(Number(emptyStateProfile.followersCount || 0))} seguidores
+                        {' · '}
+                        {formatStatCount(Number(emptyStateProfile.profileVisitsCount || 0))} visualizações
+                      </p>
+                    ) : null}
+
+                    <div className="mt-1 flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={isTogglingFollow || isFollowingFromChat}
+                        onClick={async () => {
+                          const alvo = String(activeConversation.user.id);
+                          setIsTogglingFollow(true);
+                          try {
+                            await matchService.like(alvo);
+                            setIsFollowingFromChat(true);
+                            toast({ title: 'Perfil curtido' });
+                          } catch {
+                            toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
+                          } finally {
+                            setIsTogglingFollow(false);
+                          }
+                        }}
+                      >
+                        <Heart className={cn('h-4 w-4', isFollowingFromChat && 'fill-current text-brand-pink')} />
+                        {isFollowingFromChat ? 'Seguindo' : 'Seguir'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate(getUserProfileHref(activeConversation.user.id, user?.id, '/chat'))}
+                      >
+                        Ver perfil
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="text-center">
                     <p className="text-sm font-medium text-foreground">Comece a conversa</p>
                     <p className="text-xs text-muted-foreground mt-0.5">
