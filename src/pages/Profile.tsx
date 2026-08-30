@@ -981,7 +981,7 @@ export default function Profile() {
           <div className="mb-5 rounded-2xl border border-primary/20 bg-primary/10 p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="font-semibold text-primary">Primeiro passo para entrar com força no NoSigilo</p>
+                <p className="font-semibold text-brand-pink">Primeiro passo para entrar com força no NoSigilo</p>
                 <p className="text-sm text-muted-foreground">
                   Escolha agora sua foto principal. Assim que ela subir, vamos te levar para fazer sua primeira publicação.
                 </p>
@@ -1044,7 +1044,7 @@ export default function Profile() {
                 </Badge>
               )}
               {profileData.premium && (
-                <Badge className="bg-gold/15 text-gold border border-gold/30">
+                <Badge className="bg-gold/15 text-gold-text border border-gold/30">
                   Premium
                 </Badge>
               )}
@@ -1083,7 +1083,7 @@ export default function Profile() {
                 href={String((profileData as any).bioLink)}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-brand-pink transition-colors hover:bg-primary/10"
               >
                 <Link2 className="h-4 w-4 shrink-0" />
                 <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
@@ -1093,7 +1093,7 @@ export default function Profile() {
 
             <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
+                <p className="text-[12px] font-bold uppercase tracking-[0.06em] text-brand-pink">
                   Sua descrição do perfil
                 </p>
                 {!isEditingBio ? (
@@ -1101,7 +1101,7 @@ export default function Profile() {
                     type="button"
                     size="sm"
                     variant="outline"
-                    className="h-8 border-primary/30 bg-background/80 text-primary hover:bg-primary/10"
+                    className="h-8 border-primary/30 bg-background/80 text-brand-pink hover:bg-primary/10"
                     onClick={() => setIsEditingBio(true)}
                   >
                     Editar
@@ -1116,17 +1116,17 @@ export default function Profile() {
                     onChange={(e) => setBioDraft(e.target.value)}
                     maxLength={500}
                     rows={4}
-                    className="min-h-[110px] border-primary/30 bg-background/85 text-[15px] leading-relaxed text-primary placeholder:text-primary/55"
+                    className="min-h-[110px] border-primary/30 bg-background/85 text-base leading-relaxed text-brand-pink placeholder:text-brand-pink/55"
                     placeholder="Conte um pouco sobre você..."
                   />
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-xs text-primary/75">{bioDraft.length}/500</span>
+                    <span className="text-xs text-brand-pink/75">{bioDraft.length}/500</span>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="border-primary/30 text-primary hover:bg-primary/10"
+                        className="border-primary/30 text-brand-pink hover:bg-primary/10"
                         onClick={handleCancelBioEdit}
                         disabled={isSavingBio}
                       >
@@ -1145,7 +1145,7 @@ export default function Profile() {
                   </div>
                 </div>
               ) : (
-                <p className="text-[15px] leading-relaxed text-primary whitespace-pre-line">
+                <p className="text-[15px] leading-relaxed text-brand-pink whitespace-pre-line">
                   {profileData.bio || 'Adicione uma descrição para aparecer no seu perfil.'}
                 </p>
               )}
@@ -1185,7 +1185,7 @@ export default function Profile() {
                 <LifeBuoy className="w-4 h-4" />
                 Suporte
                 {supportUnreadCount > 0 && (
-                  <span className="absolute -top-1 right-2 min-w-[1.1rem] h-[1.1rem] px-1 flex items-center justify-center rounded-full bg-destructive text-[9px] font-bold text-white">
+                  <span className="absolute -top-1 right-2 min-w-[1.1rem] h-[1.1rem] px-1 flex items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">
                     {supportUnreadCount > 99 ? '99+' : supportUnreadCount}
                   </span>
                 )}
@@ -1241,7 +1241,7 @@ export default function Profile() {
                   {intentions.map((val) => {
                     const opt = INTENTION_OPTIONS.find((o) => o.value === val);
                     return (
-                      <span key={val} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                      <span key={val} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-brand-pink">
                         {opt ? `${opt.emoji} ${opt.label}` : val}
                       </span>
                     );
@@ -1330,7 +1330,7 @@ export default function Profile() {
         <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <h2 className="text-lg font-semibold">Notificações</h2>
-            <NavLink to="/notifications" className="text-sm text-primary hover:underline">
+            <NavLink to="/notifications" className="text-sm text-brand-pink hover:underline">
               Ver todas
             </NavLink>
           </div>
@@ -1339,10 +1339,10 @@ export default function Profile() {
               <div className="rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 via-rose-500/6 to-orange-400/8 p-4 sm:p-5">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
                   <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Últimos visitantes</div>
+                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-pink">Últimos visitantes</div>
                     <div className="text-sm text-muted-foreground">As 3 pessoas mais recentes que passaram pelo seu perfil.</div>
                   </div>
-                  <Badge className="w-fit bg-primary/12 text-primary border border-primary/20">
+                  <Badge className="w-fit bg-primary/12 text-brand-pink border border-primary/20">
                     {profileVisits.length} visitante{profileVisits.length > 1 ? 's' : ''}
                   </Badge>
                 </div>
@@ -1372,7 +1372,7 @@ export default function Profile() {
                                 {visitTimeAgo(visit.createdAt)}
                               </Badge>
                               {Number(visit.visitsCount || 1) > 1 ? (
-                                <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px]">
+                                <Badge variant="secondary" className="bg-primary/10 text-brand-pink text-[10px]">
                                   {Number(visit.visitsCount)} visitas
                                 </Badge>
                               ) : null}

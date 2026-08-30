@@ -1101,7 +1101,7 @@ export default function UserProfile() {
                   <Sparkles className="w-3 h-3" /> Verificado
                 </Badge>
               )}
-              {profile?.isPremium && <Badge className="bg-gold/15 text-gold border border-gold/30">Premium</Badge>}
+              {profile?.isPremium && <Badge className="bg-gold/15 text-gold-text border border-gold/30">Premium</Badge>}
               {(profile as any)?.boosted && (
                 <Badge className="gap-1 border border-amber-400/40 bg-amber-400/15 text-amber-500">
                   <Zap className="w-3 h-3" /> Em destaque
@@ -1154,7 +1154,7 @@ export default function UserProfile() {
                 <span>{cityLine}</span>
               </div>
               {distanceLabel ? (
-                <div className="flex items-center justify-center sm:justify-start gap-1 text-xs font-medium text-primary">
+                <div className="flex items-center justify-center sm:justify-start gap-1 text-xs font-medium text-brand-pink">
                   <span>{distanceLabel}</span>
                 </div>
               ) : null}
@@ -1208,7 +1208,7 @@ export default function UserProfile() {
                 href={String((profile as any).bioLink)}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
+                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-brand-pink transition-colors hover:bg-primary/10"
               >
                 <Link2 className="h-4 w-4 shrink-0" />
                 <span className="truncate">{String((profile as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
@@ -1218,10 +1218,10 @@ export default function UserProfile() {
 
             {profile?.bio ? (
               <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
-                <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-primary">
+                <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-brand-pink">
                   {isSelf ? 'Sua descrição do perfil' : 'Leia nossa descrição antes de chamar no chat'}
                 </p>
-                <p className="text-[15px] leading-relaxed text-primary">{profile.bio}</p>
+                <p className="text-[15px] leading-relaxed text-brand-pink">{profile.bio}</p>
               </div>
             ) : null}
 
@@ -1689,7 +1689,7 @@ export default function UserProfile() {
               <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
                 <Target className="w-10 h-10 opacity-40" />
                 <p className="text-sm">Nenhum objetivo definido ainda.</p>
-                {isSelf && <a href="/settings" className="text-xs text-primary underline">Definir em Configurações</a>}
+                {isSelf && <a href="/settings" className="text-xs text-brand-pink underline">Definir em Configurações</a>}
               </div>
             );
             return (
@@ -1698,7 +1698,7 @@ export default function UserProfile() {
                   {intentions.map((val) => {
                     const opt = INTENTION_OPTIONS.find((o) => o.value === val);
                     return (
-                      <span key={val} className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+                      <span key={val} className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-sm font-medium text-brand-pink">
                         {opt ? `${opt.emoji} ${opt.label}` : val}
                       </span>
                     );
@@ -1716,7 +1716,7 @@ export default function UserProfile() {
               <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
                 <Flame className="w-10 h-10 opacity-40" />
                 <p className="text-sm">Nenhum fetiche definido ainda.</p>
-                {isSelf && <a href="/settings" className="text-xs text-primary underline">Definir em Configurações</a>}
+                {isSelf && <a href="/settings" className="text-xs text-brand-pink underline">Definir em Configurações</a>}
               </div>
             );
             return (

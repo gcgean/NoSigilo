@@ -1281,7 +1281,7 @@ export default function Chat() {
                     {conversation.lastMessageAt ? (
                       <span className={cn(
                         'text-[11px] leading-none',
-                        conversation.unreadCount && conversation.unreadCount > 0 ? 'font-semibold text-primary' : 'text-muted-foreground'
+                        conversation.unreadCount && conversation.unreadCount > 0 ? 'font-semibold text-brand-pink' : 'text-muted-foreground'
                       )}>
                         {formatConvTime(conversation.lastMessageAt)}
                       </span>
@@ -1297,7 +1297,7 @@ export default function Chat() {
                   <p className="text-xs truncate text-muted-foreground">{getIdentityLine(conversation.user)}</p>
                 ) : null}
                 {conversation.isHighlighted && conversation.highlightNote ? (
-                  <p className="text-xs truncate text-primary font-medium">
+                  <p className="text-xs truncate text-brand-pink font-medium">
                     {conversation.highlightNote}
                   </p>
                 ) : null}
@@ -1388,7 +1388,7 @@ export default function Chat() {
                   {getIdentityLine(activeConversation?.user) || 'Chat'}
                 </span>
                 {otherTyping ? (
-                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                  <span className="block truncate text-[11px] leading-4 font-medium text-brand-pink">
                     digitando…
                   </span>
                 ) : formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline) ? (
@@ -1399,12 +1399,12 @@ export default function Chat() {
                     {formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline)}
                   </span>
                 ) : formatDistanceLabel(activeConversation?.user.distanceKm) ? (
-                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                  <span className="block truncate text-[11px] leading-4 font-medium text-brand-pink">
                     {formatDistanceLabel(activeConversation?.user.distanceKm)}
                   </span>
                 ) : null}
                 {activeConversation?.isHighlighted && activeConversation.highlightNote ? (
-                  <span className="block truncate text-[11px] leading-4 font-medium text-primary">
+                  <span className="block truncate text-[11px] leading-4 font-medium text-brand-pink">
                     {activeConversation.highlightNote}
                   </span>
                 ) : null}
@@ -1646,7 +1646,7 @@ export default function Chat() {
                         <div className="flex flex-col gap-2">
                           {msg.viaRadar && !isMine && (
                             <div className="rounded-lg border border-primary/30 bg-primary/10 p-2">
-                              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-primary">
+                              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-brand-pink">
                                 <Radio className="h-3.5 w-3.5" /> Contato via Radar de Disponibilidade
                               </p>
                               <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
@@ -1662,7 +1662,7 @@ export default function Chat() {
                             </div>
                           )}
                           {isMutualMatchMessage && (
-                            <div className="flex items-center justify-center gap-2 text-primary">
+                            <div className="flex items-center justify-center gap-2 text-brand-pink">
                               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12">
                                 <HeartHandshake className="h-4 w-4" />
                               </span>
@@ -1770,7 +1770,7 @@ export default function Chat() {
                               'mb-1 rounded-lg border-l-2 px-2 py-1',
                               isMine ? 'border-primary-foreground/50 bg-black/15' : 'border-primary bg-foreground/5'
                             )}>
-                              <p className={cn('text-[11px] font-semibold', isMine ? 'text-primary-foreground/90' : 'text-primary')}>
+                              <p className={cn('text-[11px] font-semibold', isMine ? 'text-primary-foreground/90' : 'text-brand-pink')}>
                                 {msg.replyTo.senderId === user?.id ? 'Você' : (activeConversation?.user?.name || 'Mensagem')}
                               </p>
                               <p className="truncate text-[12px] opacity-75">
@@ -1784,7 +1784,7 @@ export default function Chat() {
                             <p
                               className={cn(
                                 'break-words text-[16px] leading-6 md:text-base',
-                                isMutualMatchMessage && 'text-sm font-semibold leading-5 text-primary md:text-sm',
+                                isMutualMatchMessage && 'text-sm font-semibold leading-5 text-brand-pink md:text-sm',
                               )}
                             >
                               {msg.content}
@@ -1874,7 +1874,7 @@ export default function Chat() {
               <div className="mb-1.5 flex items-center gap-2 rounded-xl border-l-2 border-primary bg-secondary/50 px-3 py-2">
                 <Reply className="h-3.5 w-3.5 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-primary">
+                  <p className="text-xs font-semibold text-brand-pink">
                     Respondendo a {replyingTo.senderId === user?.id ? 'você' : (activeConversation?.user?.name || 'mensagem')}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
