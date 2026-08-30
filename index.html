@@ -17,6 +17,24 @@
     <meta name="geo.placename" content="Brasil" />
     <link rel="canonical" href="https://nosigilo.net/" />
 
+    <!-- Tema aplicado ANTES da primeira pintura. Sem isto o navegador pinta a
+         página clara e só escurece quando o React monta, causando um flash
+         branco a cada carregamento — bem visível agora que o padrão é escuro.
+         A chave e o fallback tem que casar com src/contexts/ThemeContext.tsx. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('nosigilo:theme');
+          if (t !== 'light' && t !== 'dark') t = 'dark';
+          if (t === 'dark') document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = t;
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+        }
+      })();
+    </script>
+
     <!-- PWA / App -->
     <meta name="theme-color" content="#eb4778" />
     <meta name="mobile-web-app-capable" content="yes" />

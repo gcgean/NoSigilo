@@ -16,8 +16,14 @@ function getStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'dark' || stored === 'light') return stored;
-  } catch {}
-  return 'light';
+  } catch {
+    // localStorage indisponível — cai no padrão abaixo.
+  }
+  // Padrão do site é escuro. Quem já escolheu claro mantém a escolha, porque
+  // o valor salvo tem precedência. O mesmo fallback está no script inline do
+  // index.html, que aplica o tema antes da primeira pintura — os dois
+  // precisam concordar, senão a tela pisca ao trocar.
+  return 'dark';
 }
 
 function applyTheme(theme: Theme) {
