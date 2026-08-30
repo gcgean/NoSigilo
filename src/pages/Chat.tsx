@@ -1725,8 +1725,10 @@ export default function Chat() {
                           className="flex items-center gap-2 text-left"
                           onClick={redirectToPlans}
                         >
-                          <Lock className="w-4 h-4" />
-                          <p>Assine para ver esta mensagem</p>
+                          <Lock className="w-4 h-4 shrink-0" />
+                          <p className="text-sm font-medium">
+                            Assine para ler o que {activeConversation?.user?.name || 'esta pessoa'} escreveu
+                          </p>
                         </button>
                       ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
                         /* Premium gate — blur incoming messages for non-subscribers */
@@ -1744,8 +1746,10 @@ export default function Chat() {
                                 <div className="h-3.5 w-24 rounded bg-muted-foreground/20 blur-[3px]" />
                               )}
                             </div>
-                            <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground/80">
-                              Assine para ler a mensagem
+                            <p className="mt-1.5 text-sm font-semibold text-brand-pink">
+                              {activeConversation?.user?.name
+                                ? `${activeConversation.user.name} te escreveu — assine para ler`
+                                : 'Assine para ler a mensagem'}
                             </p>
                           </div>
                         </button>

@@ -2961,6 +2961,7 @@ export default function Feed() {
                     fitToFrame={feedMediaIsFitted}
                     premiumAccess={premiumAccess}
                     onPremiumGate={() => setPaywallOpen(true)}
+                    authorName={item.post.author.name}
                   />
                   {heartBurstPostId === item.post.id && (
                     <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
@@ -3223,7 +3224,13 @@ export default function Feed() {
 
                   <div className="flex gap-2">
                     <Input
-                      placeholder={!premiumAccess ? 'Assine o Premium para comentar' : (replyingToByPostId[item.post.id] ? `Responder ${replyingToByPostId[item.post.id]?.user.name}...` : 'Escreva um comentário...')}
+                      placeholder={
+                        !premiumAccess
+                          ? `Assine para falar com ${item.post.author.name}`
+                          : (replyingToByPostId[item.post.id]
+                              ? `Responder ${replyingToByPostId[item.post.id]?.user.name}...`
+                              : 'Escreva um comentário...')
+                      }
                       value={commentDraftByPostId[item.post.id] || ''}
                       readOnly={!premiumAccess}
                       onMouseDown={!premiumAccess ? (e) => { e.preventDefault(); setPaywallOpen(true); } : undefined}

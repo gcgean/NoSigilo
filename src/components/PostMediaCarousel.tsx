@@ -17,6 +17,8 @@ interface PostMediaCarouselProps {
   aspectStyle?: (id: string) => React.CSSProperties;
   premiumAccess?: boolean;
   onPremiumGate?: () => void;
+  /** Nome de quem publicou — usado no aviso de vídeo travado. */
+  authorName?: string;
   /**
    * Quando true, a mídia é exibida inteira dentro de um quadro horizontal e as
    * laterais vazias recebem uma cópia borrada da própria imagem. Usado no feed
@@ -166,6 +168,7 @@ export function PostMediaCarousel({
   aspectStyle,
   premiumAccess = false,
   onPremiumGate,
+  authorName,
   fitToFrame,
 }: PostMediaCarouselProps) {
   const [index, setIndex] = useState(0);
@@ -205,14 +208,17 @@ export function PostMediaCarousel({
               style={{ minHeight: 260, ...(aspectStyle ? aspectStyle(m.id) : {}) }}
               onClick={(e) => { e.stopPropagation(); onPremiumGate?.(); }}
             >
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-gradient-to-b from-black/40 via-black/60 to-black/85">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-gradient-to-b from-black/40 via-black/60 to-black/85 px-6 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/50">
                   <Crown className="h-7 w-7 text-yellow-400 drop-shadow" />
                 </div>
-                <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-bold uppercase tracking-wide text-black shadow">
-                  Vídeo Premium
+                <span className="text-base font-bold text-white drop-shadow">Vídeo só para assinantes</span>
+                <span className="text-sm text-white/85 drop-shadow">
+                  {authorName ? `${authorName} publicou um vídeo aqui.` : 'Tem um vídeo publicado aqui.'}
                 </span>
-                <span className="text-xs font-medium text-white/85 drop-shadow">Assine para assistir</span>
+                <span className="mt-1 rounded-full bg-gradient-primary px-5 py-2.5 text-sm font-semibold text-white shadow-glow">
+                  Assinar e assistir
+                </span>
               </div>
             </div>
           );
@@ -250,14 +256,8 @@ export function PostMediaCarousel({
     // Foto é livre para todos (só VÍDEO exige premium — tratado no ramo isVideo
     // acima). Assim o usuário novo vê os perfis e o conteúdo; interações
     // (comentar, mensagem, vídeo) é que exigem assinatura.
-    const locked = false;
-
     return (
-      <div
-        className={cn('relative w-full overflow-hidden', locked && 'cursor-pointer')}
-        style={aspectStyle ? aspectStyle(m.id) : {}}
-        onClick={locked ? (e) => { e.stopPropagation(); onPremiumGate?.(); } : undefined}
-      >
+      <div className="relative w-full overflow-hidden" style={aspectStyle ? aspectStyle(m.id) : {}}>
         {fitted && (
           <img
             src={resolveUrl(m.url)}
@@ -277,10 +277,7 @@ export function PostMediaCarousel({
           decoding="async"
           className={cn(
             'relative h-full w-full select-none',
-            fitted ? 'object-contain' : 'bg-black object-contain sm:object-cover',
-            // Não-assinante vê a foto borrada (dá pra perceber que tem conteúdo,
-            // mas sem detalhes) — teaser para converter em Premium.
-            locked && 'scale-105 blur-xl'
+            fitted ? 'object-contain' : 'bg-black object-contain sm:object-cover'
           )}
           style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
           onContextMenu={(e) => e.preventDefault()}
@@ -289,18 +286,6 @@ export function PostMediaCarousel({
           }
         />
 
-        {/* Overlay Premium (não-assinante) */}
-        {locked && (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/25">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/50">
-              <Crown className="h-7 w-7 text-yellow-400 drop-shadow" />
-            </div>
-            <span className="rounded-full bg-yellow-400 px-3 py-1 text-xs font-bold uppercase tracking-wide text-black shadow">
-              Premium
-            </span>
-            <span className="text-xs font-medium text-white/85 drop-shadow">Assine para ver sem borrão</span>
-          </div>
-        )}
       </div>
     );
   }
