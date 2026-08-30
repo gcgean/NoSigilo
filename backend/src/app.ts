@@ -11113,6 +11113,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           description: plan.description ? String(plan.description) : null,
           price: Number(plan.amount || 0) / 100,
           amount: Number(plan.amount || 0),
+          // Preço "de" (cheio), para exibir o desconto riscado. Só existe se
+          // estiver REALMENTE configurado no plano — nunca é inventado aqui.
+          // Sem isso, o frontend não mostra nenhum "de/por".
+          compareAtPrice: Number(plan.compareAtAmount || plan.listAmount || 0) > Number(plan.amount || 0)
+            ? Number(plan.compareAtAmount || plan.listAmount || 0) / 100
+            : null,
           currency: String(plan.currency || 'BRL'),
           interval: formatPlanInterval(String(plan.intervalUnit || 'month'), Number(plan.intervalCount || 1)),
           intervalUnit: String(plan.intervalUnit || 'month'),

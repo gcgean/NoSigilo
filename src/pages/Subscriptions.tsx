@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { subscriptionsService, authService, invitesService } from '@/services/api';
+import { subscriptionsService, authService, invitesService, profileService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -284,8 +284,38 @@ export default function Subscriptions() {
   const monthlyPrices = paidPlans
     .map((p) => p.price / Math.max(1, p.intervalCount || 1))
     .filter((v) => v > 0);
+  // O que o usuário está perdendo AGORA, com os números reais dele. É o
+  // argumento mais forte e o único que não depende de promessa.
+  const [meusNumeros, setMeusNumeros] = useState<{ visits: number; followers: number } | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    profileService
+      .getStats()
+      .then((d: { visits?: number; followers?: number }) => {
+        if (cancelado) return;
+        setMeusNumeros({ visits: Number(d?.visits ?? 0), followers: Number(d?.followers ?? 0) });
+      })
+      .catch(() => undefined);
+    return () => { cancelado = true; };
+  }, []);
+
   const headlinePrice = monthlyPrices.length ? Math.min(...monthlyPrices) : 9.9;
   const headlinePriceLabel = headlinePrice.toFixed(2).replace('.', ',');
+
+  // Preço "de" só aparece se o plano REALMENTE tiver um preço cheio maior
+  // configurado (compareAtPrice vem do backend). Nunca é inventado aqui —
+  // um "de/por" falso seria preço de referência inexistente.
+  const planoDoDestaque = paidPlans.find(
+    (p) => p.price / Math.max(1, p.intervalCount || 1) === headlinePrice
+  ) as (typeof paidPlans)[number] & { compareAtPrice?: number | null };
+  const precoCheio = Number(planoDoDestaque?.compareAtPrice ?? 0);
+  const temDesconto = precoCheio > headlinePrice;
+  const precoCheioLabel = precoCheio.toFixed(2).replace('.', ',');
+  const descontoPercent = temDesconto ? Math.round((1 - headlinePrice / precoCheio) * 100) : 0;
+
+  // Custo por dia — mesmo preço, enquadramento menor. Conta real, não promessa.
+  const porDia = headlinePrice / 30;
+  const porDiaLabel = porDia.toFixed(2).replace('.', ',');
 
   // Premium ATIVO = pago e ainda não vencido. Um assinante vencido (is_premium=1
   // mas licença expirada) deixa de ser "ativo" → mostra "Regularize", não "Você já é Premium".
@@ -308,15 +338,46 @@ export default function Subscriptions() {
       {/* Destaque de preço — "custa somente R$ 9,90" */}
       {!isLoading && subscriptionsEnabled === true && (
         <div className="rounded-2xl border-2 border-gold/40 bg-gradient-to-r from-gold/15 via-primary/5 to-violet-500/10 px-5 py-4 text-center">
+          {temDesconto ? (
+            <span className="mb-1 inline-block rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+              {descontoPercent}% de desconto
+            </span>
+          ) : null}
+
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Acesso completo por apenas
           </p>
+
           <p className="mt-0.5 text-4xl font-extrabold text-foreground">
+            {temDesconto ? (
+              <span className="mr-2 align-middle text-xl font-semibold text-muted-foreground line-through">
+                R$ {precoCheioLabel}
+              </span>
+            ) : null}
             R$ {headlinePriceLabel}
             <span className="text-base font-medium text-muted-foreground">/mês</span>
           </p>
+
           <p className="mt-1 text-sm font-medium text-brand-pink">
-            Menos que um lanche — cancele quando quiser, sem fidelidade.
+            Dá R$ {porDiaLabel} por dia — cancele quando quiser, sem fidelidade.
+          </p>
+        </div>
+      )}
+
+      {/* Perda concreta: quantas pessoas já demonstraram interesse e o usuário
+          não consegue ver. Só aparece se os números forem reais e > 0. */}
+      {!isLoading && !isPremiumActive && subscriptionsEnabled === true && meusNumeros
+        && (meusNumeros.visits > 0 || meusNumeros.followers > 0) && (
+        <div className="mt-3 rounded-2xl border border-primary/25 bg-primary/5 px-5 py-4">
+          <p className="text-sm font-semibold text-foreground">
+            {meusNumeros.visits > 0 && meusNumeros.followers > 0
+              ? `${meusNumeros.visits} ${meusNumeros.visits === 1 ? 'pessoa visitou' : 'pessoas visitaram'} seu perfil e ${meusNumeros.followers} ${meusNumeros.followers === 1 ? 'te curtiu' : 'te curtiram'}.`
+              : meusNumeros.visits > 0
+                ? `${meusNumeros.visits} ${meusNumeros.visits === 1 ? 'pessoa visitou' : 'pessoas visitaram'} seu perfil.`
+                : `${meusNumeros.followers} ${meusNumeros.followers === 1 ? 'pessoa te curtiu' : 'pessoas te curtiram'}.`}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Você ainda não pode ver quem são. Assine e comece a conversar com elas hoje.
           </p>
         </div>
       )}
