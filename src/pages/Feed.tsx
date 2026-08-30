@@ -40,6 +40,7 @@ import StreakBadge from '@/components/StreakBadge';
 import ReportDialog from '@/components/ReportDialog';
 import PostRulesNotice from '@/components/PostRulesNotice';
 import PostContent from '@/components/PostContent';
+import MentionAutocomplete from '@/components/MentionAutocomplete';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
@@ -2004,15 +2005,23 @@ export default function Feed() {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <Textarea
-              ref={composerRef}
-              placeholder="Compartilhe aqui prazer com fotos, vídeos e textos picantes!"
-              value={postContent}
-              onChange={(e) => setPostContent(e.target.value)}
-              onPaste={handlePasteOnComposer}
-              className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input"
-              rows={2}
-            />
+            {/* `relative` ancora a lista de sugestões de @menção logo abaixo. */}
+            <div className="relative">
+              <Textarea
+                ref={composerRef}
+                placeholder="Compartilhe aqui prazer com fotos, vídeos e textos picantes! Use @ para marcar alguém."
+                value={postContent}
+                onChange={(e) => setPostContent(e.target.value)}
+                onPaste={handlePasteOnComposer}
+                className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input"
+                rows={2}
+              />
+              <MentionAutocomplete
+                textareaRef={composerRef}
+                value={postContent}
+                onChange={setPostContent}
+              />
+            </div>
             {attachments.length > 0 && (
               <div className="mt-4 grid sm:grid-cols-2 gap-3">
                 {attachments.map((p, idx) => (
