@@ -4312,7 +4312,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
         u.gender as author_gender, u.city as author_city, u.state as author_state,
         u.lat as author_lat, u.lon as author_lon,
-        u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date
+        u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date,
+        u.is_premium as author_is_premium, u.hub_license_end_at as author_hub_license_end_at
        ${feedFrom}`;
     const feedOrder = `ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC`;
     const baseParams = [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams];
@@ -4857,6 +4858,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           state: r.author_state ?? null,
           birthDate: r.author_birth_date ?? null,
           partnerBirthDate: r.author_partner_birth_date ?? null,
+          // Selo de assinante no feed: só quem paga e está com a licença em dia
+          // (trial não conta, senão o selo perderia o sentido).
+          isPremium: !!r.author_is_premium && (
+            !r.author_hub_license_end_at ||
+            new Date(String(r.author_hub_license_end_at)).getTime() > Date.now()
+          ),
         },
         mediaIds: mediaIdsByPostId.get(String(r.id)) ?? [],
         media: (mediaIdsByPostId.get(String(r.id)) ?? []).map((mid) => mediaById.get(mid)).filter(Boolean),

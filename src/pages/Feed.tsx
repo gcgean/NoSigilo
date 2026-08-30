@@ -33,10 +33,12 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { buildProfileAgeLabel } from '@/utils/profileAgeLabel';
 import SocialPulseCard from '@/components/SocialPulseCard';
 import StreakBadge from '@/components/StreakBadge';
 import ReportDialog from '@/components/ReportDialog';
+import PostRulesNotice from '@/components/PostRulesNotice';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
@@ -83,7 +85,7 @@ type FeedPost = {
   id: string;
   content: string;
   createdAt: string;
-  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null };
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null; isPremium?: boolean };
   mediaIds: string[];
   media: FeedMedia[];
   likesCount: number;
@@ -101,7 +103,7 @@ type FeedExperience = {
   description: string;
   createdAt: string;
   media?: Array<{ id: string; url: string; mimeType: string }>;
-  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null };
+  author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; birthDate?: string | null; partnerBirthDate?: string | null; isPremium?: boolean };
   likesCount: number;
   commentsCount: number;
   likedByMe: boolean;
@@ -546,8 +548,10 @@ export default function Feed() {
   }, [feedDisplayItems]);
 
   // No feed não exibimos a localização (cidade/estado) do autor — apenas o gênero.
+  // Antes só o gênero aparecia; a localidade já vinha da API e ficava sem uso.
+  // Usa o mesmo formatador do resto do app (Chat, Perfil, Radar).
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
-    String(profile?.gender || '').trim();
+    formatProfileIdentityLine(profile);
 
   // Gender badge: label + Tailwind color classes per profile type
   const getProfileTypeBadge = (gender?: string | null): { label: string; cls: string; emoji: string } | null => {
@@ -2093,6 +2097,12 @@ export default function Feed() {
               </div>
             )}
 
+            {/* Regras aparecem assim que o composer entra em uso — o aviso
+                precede a publicação sem ocupar a dobra do feed quando ocioso. */}
+            {(postContent.trim().length > 0 || attachments.length > 0) && (
+              <PostRulesNotice className="mt-3" />
+            )}
+
             <div className="mt-3 flex flex-col gap-3 border-t pt-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:mt-4 sm:pt-4">
               <div className="flex min-w-0 flex-wrap gap-2">
                 <Button
@@ -2789,6 +2799,13 @@ export default function Feed() {
                         {item.post.author.name}
                         {(() => { const a = buildProfileAgeLabel(item.post.author); return a ? <span className="font-normal text-muted-foreground">, {a}</span> : null; })()}
                       </span>
+                      {item.post.author.isPremium ? (
+                        <Crown
+                          role="img"
+                          aria-label="Assinante"
+                          className="h-4 w-4 shrink-0 text-gold"
+                        />
+                      ) : null}
                       {(() => {
                         const badge = getProfileTypeBadge(item.post.author.gender);
                         const ctx = item.post.feedContext;

@@ -464,7 +464,7 @@ export default function UserProfile() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'public' | 'private' | 'testimonials' | 'videos' | 'experiences'>('public');
+  const [activeTab, setActiveTab] = useState<'posts' | 'public' | 'private' | 'testimonials' | 'videos' | 'experiences'>('posts');
   const [profile, setProfile] = useState<any | null>(null);
   const [publicPhotos, setPublicPhotos] = useState<Photo[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<Photo[]>([]);
@@ -478,6 +478,10 @@ export default function UserProfile() {
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
   const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  // Postagens do próprio perfil (só as dele), como a aba "Principal" da
+  // referência. Reaproveita /api/users/:id/posts, que já existia para vídeos.
+  const [userPosts, setUserPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [userExperiences, setUserExperiences] = useState<Array<{ id: string; title: string; description: string; createdAt: string; likesCount: number; commentsCount: number; likedByMe: boolean }>>([]);
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
@@ -688,6 +692,28 @@ export default function UserProfile() {
       .finally(() => {
         if (cancelled) return;
         setIsLoadingVideos(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (activeTab !== 'posts') return;
+    let cancelled = false;
+    setIsLoadingPosts(true);
+    usersService
+      .getUserPosts(userId, { limit: 30 })
+      .then((data) => {
+        if (cancelled) return;
+        setUserPosts(Array.isArray(data?.posts) ? data.posts : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUserPosts([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsLoadingPosts(false);
       });
     return () => { cancelled = true; };
   }, [activeTab, userId]);
@@ -1378,9 +1404,13 @@ export default function UserProfile() {
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="w-full mb-4 flex flex-wrap gap-1 h-auto p-1">
+          <TabsTrigger value="posts" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Postagens</span>
+          </TabsTrigger>
           <TabsTrigger value="public" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <ImageIcon className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Públicas ({publicPhotosCount})</span>
+            <span className="truncate">Fotos ({publicPhotosCount})</span>
           </TabsTrigger>
           {(isSelf || privatePhotosCount > 0) && (
             <TabsTrigger value="private" className="flex-1 gap-1.5 text-xs sm:text-sm">
@@ -1431,6 +1461,56 @@ export default function UserProfile() {
             ))}
             {publicPhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos públicas.</div>}
           </div>
+        </TabsContent>
+
+        <TabsContent value="posts">
+          {isLoadingPosts ? (
+            <div className="py-4 text-sm text-muted-foreground">Carregando postagens...</div>
+          ) : userPosts.length === 0 ? (
+            <div className="glass rounded-xl p-8 text-center">
+              <ImageIcon className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                {isSelf ? 'Você ainda não publicou nada.' : 'Nenhuma postagem ainda.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {userPosts.map((post) => {
+                const fotos = (post.media || []).filter((m) => m.url && !String(m.mimeType || '').startsWith('video/'));
+                const videos = (post.media || []).filter((m) => m.url && String(m.mimeType || '').startsWith('video/'));
+                return (
+                  <article key={post.id} className="glass rounded-2xl p-4">
+                    <p className="mb-2 text-xs text-muted-foreground">{format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}</p>
+                    {post.content?.trim() ? (
+                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">{post.content}</p>
+                    ) : null}
+                    {fotos.length > 0 ? (
+                      <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
+                        {fotos.map((m) => (
+                          <img
+                            key={m.id}
+                            src={resolveMediaUrl(m.url || '')}
+                            alt=""
+                            loading="lazy"
+                            className="w-full rounded-xl object-cover"
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                    {videos.map((m) => (
+                      <video
+                        key={m.id}
+                        src={resolveMediaUrl(m.url || '')}
+                        controls
+                        playsInline
+                        className="mt-2 w-full rounded-xl"
+                      />
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="private">
