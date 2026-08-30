@@ -172,7 +172,7 @@ export default function GroupChat() {
             <div key={m.id} className={cn('flex items-end gap-2', isMine && 'flex-row-reverse')}>
               {!isMine && <UserAvatar user={{ name: m.senderName, avatar: m.senderAvatar }} className="h-7 w-7 shrink-0" />}
               <div className={cn('max-w-[75%] rounded-2xl px-3 py-2', isMine ? 'bg-primary text-primary-foreground' : 'bg-secondary')}>
-                {!isMine && <p className="mb-0.5 text-[11px] font-semibold text-primary">{m.senderName}</p>}
+                {!isMine && <p className="mb-0.5 text-[11px] font-semibold text-brand-pink">{m.senderName}</p>}
                 {m.mediaUrl && (
                   m.mediaMimeType?.startsWith('video/') ? (
                     <video src={resolveServerUrl(m.mediaUrl)} controls className="mb-1 max-h-64 w-full rounded-lg" />
@@ -251,7 +251,7 @@ export default function GroupChat() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{m.name}</p>
                   {m.isOrganizer && (
-                    <span className="flex items-center gap-1 text-[11px] text-gold"><Crown className="h-3 w-3" /> Organizador(a)</span>
+                    <span className="flex items-center gap-1 text-[11px] text-gold-text"><Crown className="h-3 w-3" /> Organizador(a)</span>
                   )}
                 </div>
                 {isOrganizer && !m.isOrganizer && m.id !== user?.id && (

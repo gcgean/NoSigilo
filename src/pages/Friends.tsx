@@ -259,7 +259,7 @@ export default function FriendsPage() {
           onClick={() => setTab('friends')}
           className={`px-4 py-2.5 text-sm font-medium transition-colors ${
             tab === 'friends'
-              ? 'text-primary border-b-2 border-primary -mb-px'
+              ? 'text-brand-pink border-b-2 border-primary -mb-px'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -272,7 +272,7 @@ export default function FriendsPage() {
           onClick={() => setTab('requests')}
           className={`px-4 py-2.5 text-sm font-medium transition-colors flex items-center gap-1.5 ${
             tab === 'requests'
-              ? 'text-primary border-b-2 border-primary -mb-px'
+              ? 'text-brand-pink border-b-2 border-primary -mb-px'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >

@@ -315,7 +315,7 @@ export default function Subscriptions() {
             R$ {headlinePriceLabel}
             <span className="text-base font-medium text-muted-foreground">/mês</span>
           </p>
-          <p className="mt-1 text-sm font-medium text-primary">
+          <p className="mt-1 text-sm font-medium text-brand-pink">
             Menos que um lanche — cancele quando quiser, sem fidelidade.
           </p>
         </div>
@@ -461,7 +461,7 @@ export default function Subscriptions() {
                           </Button>
                         </div>
                         {!useHostedCheckout && !boletoDirectUrl && checkoutResult.checkoutUrl && (
-                          <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
+                          <a href={checkoutResult.checkoutUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs text-brand-pink hover:underline">
                             <ExternalLink className="w-3 h-3" /> Abrir página de checkout
                           </a>
                         )}
@@ -521,7 +521,7 @@ export default function Subscriptions() {
                       onClick={() => setBillingMethod(value)}
                       className={cn(
                         'flex flex-col items-center gap-1.5 rounded-2xl border-2 py-3 text-sm font-semibold transition-all',
-                        sel ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:border-primary/40 text-muted-foreground'
+                        sel ? 'border-primary bg-primary/10 text-brand-pink' : 'border-border hover:border-primary/40 text-muted-foreground'
                       )}
                     >
                       <Icon className="w-5 h-5" />

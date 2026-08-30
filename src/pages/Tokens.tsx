@@ -119,12 +119,12 @@ export default function Tokens() {
           <div className="rounded-xl border bg-background/60 p-3 text-center">
             <TrendingUp className="mx-auto mb-1 h-4 w-4 text-primary" />
             <p className="text-lg font-bold">{summary?.total ?? 0}</p>
-            <p className="text-[11px] text-muted-foreground">Total acumulado</p>
+            <p className="text-xs text-muted-foreground">Total acumulado</p>
           </div>
           <div className="rounded-xl border bg-background/60 p-3 text-center">
             <Gift className="mx-auto mb-1 h-4 w-4 text-emerald-500" />
             <p className="text-lg font-bold">{summary?.freeDays ?? 0}</p>
-            <p className="text-[11px] text-muted-foreground">Dias grátis gerados</p>
+            <p className="text-xs text-muted-foreground">Dias grátis gerados</p>
           </div>
         </div>
       </Card>
@@ -157,7 +157,7 @@ export default function Tokens() {
           {summary?.boostUntil ? 'Estender destaque' : 'Destacar agora'} · {summary?.boostCost ?? 30} tokens
         </Button>
         {summary !== null && summary.points < (summary.boostCost ?? 30) && !summary.boostUntil && (
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">
+          <p className="mt-2 text-center text-sm text-muted-foreground">
             Você precisa de {summary.boostCost ?? 30} tokens. Interaja para ganhar mais!
           </p>
         )}
@@ -169,10 +169,10 @@ export default function Tokens() {
           <Trophy className="h-4 w-4 text-amber-400" />
           <h2 className="text-sm font-semibold uppercase tracking-wider">Ranking do mês</h2>
         </div>
-        <p className="-mt-2 mb-2 text-[11px] text-muted-foreground">
+        <p className="-mt-2 mb-2 text-sm text-muted-foreground">
           Conta os pontos ganhos no mês atual. Zera no dia 1º de cada mês — seu saldo e dias grátis não são afetados.
         </p>
-        <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[11px] text-amber-600 dark:text-amber-400">
+        <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
           🏆 <strong>Prêmio do mês:</strong> top 3 de cada categoria ganham dias premium + selo no perfil — 🥇 7 dias · 🥈 3 dias · 🥉 1 dia.
         </div>
         <div className="mb-3 flex gap-2">
@@ -235,7 +235,7 @@ export default function Tokens() {
                   <p className="truncate text-sm">{ACTION_LABELS[h.action] ?? h.action}</p>
                   <p className="text-[11px] text-muted-foreground">{new Date(h.createdAt).toLocaleString('pt-BR')}</p>
                 </div>
-                <span className={cn('shrink-0 text-sm font-bold', h.points >= 0 ? 'text-emerald-500' : 'text-primary')}>
+                <span className={cn('shrink-0 text-sm font-bold', h.points >= 0 ? 'text-emerald-500' : 'text-brand-pink')}>
                   {h.points >= 0 ? `+${h.points}` : h.points}
                 </span>
               </div>

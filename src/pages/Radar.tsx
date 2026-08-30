@@ -454,7 +454,7 @@ export default function Radar() {
                 contradição: no dia seguinte ao envio, "Uso de hoje" voltava a
                 mostrar "1 restante" enquanto "Uso da semana" seguia zerado. */}
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-primary/80">Radar da semana</div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-pink/80">Radar da semana</div>
               <div className="mt-2 flex min-w-0 items-end justify-between gap-3">
                 <div>
                   <div className="text-2xl font-bold">{usage.weeklyRemaining}</div>
@@ -522,7 +522,7 @@ export default function Radar() {
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{message.length}/200</span>
-                <button type="button" className="text-primary hover:underline" onClick={() => handleUseTemplate(MESSAGE_TEMPLATES[Math.floor(Math.random() * MESSAGE_TEMPLATES.length)])}>
+                <button type="button" className="text-brand-pink hover:underline" onClick={() => handleUseTemplate(MESSAGE_TEMPLATES[Math.floor(Math.random() * MESSAGE_TEMPLATES.length)])}>
                   <Sparkles className="mr-1 inline h-3 w-3" />
                   Usar sugestao
                 </button>
@@ -700,7 +700,7 @@ export default function Radar() {
                               <div className="flex shrink-0 flex-wrap gap-1">
                                 <Badge variant="outline">Recebido</Badge>
                                 {delivery.viewedAt ? <Badge variant="outline">Visualizou</Badge> : null}
-                                {delivery.contactedAt ? <Badge className="bg-primary/15 text-primary">Conversou</Badge> : null}
+                                {delivery.contactedAt ? <Badge className="bg-primary/15 text-brand-pink">Conversou</Badge> : null}
                               </div>
                             </div>
                           ))}
@@ -745,7 +745,7 @@ export default function Radar() {
               ) : (
                 <>
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/10 bg-primary/5 p-3 text-sm text-muted-foreground">
-                    <Badge className="bg-primary/15 text-primary">{heatmap.totalActive} ativos agora</Badge>
+                    <Badge className="bg-primary/15 text-brand-pink">{heatmap.totalActive} ativos agora</Badge>
                     {heatmap.hottestZone ? (
                       <span className="inline-flex items-center gap-1">
                         <Flame className="h-4 w-4 text-orange-500" />
@@ -765,7 +765,7 @@ export default function Radar() {
                         <div key={zone.id} className={`rounded-2xl border p-3 text-center transition-colors ${levelClass}`}>
                           <div className="text-xs font-semibold uppercase tracking-[0.14em]">{zone.label}</div>
                           <div className="mt-2 text-2xl font-bold">{zone.count}</div>
-                          <div className="text-[11px]">{zone.count === 0 ? 'sem radar' : zone.count === 1 ? '1 radar' : `${zone.count} radares`}</div>
+                          <div className="text-xs">{zone.count === 0 ? 'sem radar' : zone.count === 1 ? '1 radar' : `${zone.count} radares`}</div>
                         </div>
                       );
                     })}
@@ -813,7 +813,7 @@ export default function Radar() {
                           {item.sender.name}
                         </button>
                         <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(item.sender) || `${item.city}, ${item.state}`}</div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> ativo ha {formatElapsed(item.createdAt)}</span>
                           <span>{formatRemaining(item.expiresAt)}</span>
                           {typeof item.distanceKm === 'number' ? <span>{item.distanceKm} km de você</span> : null}
