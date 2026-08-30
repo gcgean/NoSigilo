@@ -2793,7 +2793,25 @@ export default function Feed() {
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
               </div>
             ) : (
-            <Card key={item.post.id} id={`post-${item.post.id}`} data-post-card data-post-id={item.post.id} className="overflow-hidden glass" style={{ contain: 'paint' }}>
+            <Card
+              key={item.post.id}
+              id={`post-${item.post.id}`}
+              data-post-card
+              data-post-id={item.post.id}
+              className="overflow-hidden glass"
+              style={{
+                // O navegador pula layout/paint dos cards fora da tela. Os nós
+                // continuam no DOM (o observer de visualizações e a âncora
+                // #post-<id> dependem disso), mas o custo de render deixa de
+                // crescer com o tamanho da lista.
+                contentVisibility: 'auto',
+                // Altura estimada enquanto o card nunca foi renderizado. O
+                // `auto` faz o navegador guardar a altura REAL depois da
+                // primeira vez, então este número só afeta o primeiro scroll.
+                // Medido: card só de texto ~287px; com foto passa de 600px.
+                containIntrinsicSize: 'auto 450px',
+              }}
+            >
               {/* Post Header */}
                     <div className="flex items-center justify-between gap-2 p-3 sm:p-4">
                       <Link

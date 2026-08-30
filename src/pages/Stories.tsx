@@ -153,13 +153,39 @@ function formatTime(iso: string) {
  * Retorna 0 quando não há nada cobrindo — aí vale o padding da área segura
  * (indicador de home), como no Chat.
  */
+/**
+ * Piso de recuo para o Chrome no iOS.
+ *
+ * O diagnóstico em aparelho real mostrou que ali `innerHeight` é IGUAL a
+ * `visualViewport.height` (o Chrome sobrepõe a própria barra sem encolher a
+ * viewport) e `env(safe-area-inset-bottom)` resolve como 0. Resultado: nem a
+ * conta abaixo nem o CSS davam qualquer folga, e o conteúdo ficava sob o
+ * indicador de home. Safari e Android não passam por aqui — lá as duas fontes
+ * já funcionam.
+ *
+ * 34px é a altura do indicador de home nos iPhones com tela cheia; em modelos
+ * com botão físico (tela < 812pt) não existe indicador e o piso não se aplica.
+ *
+ * NÃO validado em aparelho real ainda — é uma compensação defensiva baseada no
+ * que o diagnóstico mediu.
+ */
+function pisoDoChromeIOS(): number {
+  if (typeof navigator === 'undefined' || typeof screen === 'undefined') return 0;
+  const ehChromeIOS = /CriOS/.test(navigator.userAgent);
+  if (!ehChromeIOS) return 0;
+  const temIndicadorDeHome = Math.max(screen.width, screen.height) >= 812;
+  return temIndicadorDeHome ? 34 : 0;
+}
+
 function useBottomChromeInset() {
   const [inset, setInset] = useState(0);
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const piso = pisoDoChromeIOS();
     const update = () => {
       const visivel = vv ? vv.height : window.innerHeight;
-      setInset(Math.max(0, Math.round(window.innerHeight - visivel)));
+      const medido = Math.max(0, Math.round(window.innerHeight - visivel));
+      setInset(Math.max(medido, piso));
     };
     update();
     // scroll também: no iOS a barra some/aparece durante a rolagem, e o
