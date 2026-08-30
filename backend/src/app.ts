@@ -6073,8 +6073,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/profile/stats', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     
+    // "Seguidores" = quem curtiu o seu perfil; "seguindo" = perfis que você
+    // curtiu. As duas pontas saem da mesma tabela `likes` (target_type='user'),
+    // só muda o lado da relação.
     const likesCount = await queryOne(db, "SELECT COUNT(*) as c FROM likes WHERE target_type = 'user' AND target_id = ?", [userId]);
+    const followingCount = await queryOne(db, "SELECT COUNT(*) as c FROM likes WHERE target_type = 'user' AND user_id = ?", [userId]);
     const visitsCount = await queryOne(db, "SELECT COUNT(*) as c FROM profile_visits WHERE visited_user_id = ?", [userId]);
+    const testimonialsCount = await queryOne(db, "SELECT COUNT(*) as c FROM testimonials WHERE profile_user_id = ? AND status = 'approved'", [userId]);
     const matchesCount = await queryOne(
       db, 
       `SELECT COUNT(*) as c FROM likes a
@@ -6086,7 +6091,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({
       likes: Number(likesCount?.c || 0),
       visits: Number(visitsCount?.c || 0),
-      matches: Number(matchesCount?.c || 0)
+      matches: Number(matchesCount?.c || 0),
+      followers: Number(likesCount?.c || 0),
+      following: Number(followingCount?.c || 0),
+      testimonials: Number(testimonialsCount?.c || 0)
     });
   });
 
@@ -7024,7 +7032,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           SELECT COUNT(*)
           FROM profile_visits v
           WHERE v.visited_user_id = u.id
-        ) as profile_visits_count
+        ) as profile_visits_count,
+        (
+          SELECT COUNT(*)
+          FROM likes l
+          WHERE l.target_type = 'user' AND l.target_id = u.id
+        ) as followers_count,
+        (
+          SELECT COUNT(*)
+          FROM likes l
+          WHERE l.target_type = 'user' AND l.user_id = u.id
+        ) as following_count
       FROM users u
       WHERE u.id = ?
     `,
@@ -7077,6 +7095,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       videosCount: Number((row as any).videos_count || 0),
       testimonialsCount: Number((row as any).approved_testimonials_count || 0),
       profileVisitsCount: Number((row as any).profile_visits_count || 0),
+      // Seguidores = quem curtiu este perfil; seguindo = quem este perfil curtiu.
+      followersCount: Number((row as any).followers_count || 0),
+      followingCount: Number((row as any).following_count || 0),
       distanceKm,
     });
   });

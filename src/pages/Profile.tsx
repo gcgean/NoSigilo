@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2, LifeBuoy } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -22,6 +22,7 @@ import { feedService, notificationsService, privatePhotosService, profileService
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { formatStatCount } from '@/utils/statCount';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -371,7 +372,7 @@ export default function Profile() {
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [stats, setStats] = useState({ likes: 0, visits: 0, matches: 0 });
+  const [stats, setStats] = useState({ likes: 0, visits: 0, matches: 0, followers: 0, following: 0, testimonials: 0 });
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [profileVisits, setProfileVisits] = useState<ProfileVisitItem[]>([]);
@@ -1194,35 +1195,44 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4 mt-6 pt-6 border-t">
-          <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-primary mb-1">
-              <Heart className="w-4 h-4" />
-              <span className="text-xl sm:text-2xl font-bold">{profileData.stats.likes}</span>
-            </div>
-            <p className="text-xs sm:text-sm text-muted-foreground">Curtidas</p>
-          </div>
+        {/* Stats — visualizações, seguindo, seguidores e recomendações.
+            "Seguidores" são as pessoas que curtiram o seu perfil; "seguindo",
+            os perfis que você curtiu (as duas pontas da mesma relação). */}
+        <div className="grid grid-cols-4 gap-1 mt-6 pt-6 border-t sm:gap-4">
           <div className="text-center">
             <Link to="/profile/visitors">
               <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity relative">
                 <Eye className="w-4 h-4" />
-                <span className="text-xl sm:text-2xl font-bold">{profileData.stats.visits}</span>
+                <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.visits)}</span>
                 {!hasPremiumAccess(user) && (
                   <Crown className="w-3 h-3 text-gold absolute -top-1 -right-2" />
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-muted-foreground hover:underline">Visitas</p>
+              <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground hover:underline">visualizações</p>
             </Link>
           </div>
           <div className="text-center">
-            <Link to="/notifications">
+            <div className="flex items-center justify-center gap-1 text-primary mb-1">
+              <UserPlus className="w-4 h-4" />
+              <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.following)}</span>
+            </div>
+            <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground">seguindo</p>
+          </div>
+          <div className="text-center">
+            <div className="flex items-center justify-center gap-1 text-primary mb-1">
+              <Heart className="w-4 h-4" />
+              <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.followers)}</span>
+            </div>
+            <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground">seguidores</p>
+          </div>
+          <div className="text-center">
+            <a href="#testimonials">
               <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity">
-                <Sparkles className="w-4 h-4" />
-                <span className="text-xl sm:text-2xl font-bold">{profileData.stats.matches}</span>
+                <Star className="w-4 h-4" />
+                <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.testimonials)}</span>
               </div>
-              <p className="text-xs sm:text-sm text-muted-foreground hover:underline">Matches</p>
-            </Link>
+              <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground hover:underline">recomendações</p>
+            </a>
           </div>
         </div>
       </div>

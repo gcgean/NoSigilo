@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, TrendingUp, BadgeCheck, Maximize2, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,8 @@ import { ptBR } from 'date-fns/locale';
 import { Sparkles } from 'lucide-react';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
+import { formatStatCount } from '@/utils/statCount';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import {
@@ -508,6 +510,9 @@ export default function UserProfile() {
   const [isLikingProfile, setIsLikingProfile] = useState(false);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
+
+  // A aba nomeia o perfil aberto, em vez do título genérico da home.
+  useDocumentTitle(profile?.name ? `${profile.name}` : 'Perfil');
   const premiumAccess = hasPremiumAccess(me);
 
   useEffect(() => {
@@ -1060,6 +1065,9 @@ export default function UserProfile() {
   );
   const videosCount = Number(profile?.videosCount ?? userVideos.length ?? 0);
   const profileVisitsCount = Number(profile?.profileVisitsCount ?? 0);
+  // Seguidores = quem curtiu este perfil; seguindo = quem este perfil curtiu.
+  const followersCount = Number(profile?.followersCount ?? 0);
+  const followingCount = Number(profile?.followingCount ?? 0);
 
   if (!isSelf && !premiumAccess) {
     return (
@@ -1225,28 +1233,27 @@ export default function UserProfile() {
               </div>
             ) : null}
 
-            {!isSelf ? (
-              <div className="mb-4 rounded-xl border bg-background/70 p-3.5">
-                <div className="grid grid-cols-2 gap-2.5 text-sm">
-                  <div className="rounded-xl border bg-card px-3 py-2.5">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                      <span className="text-[11px] uppercase tracking-wide">Alcance</span>
-                    </div>
-                    <p className="text-lg font-bold leading-none">{profileVisitsCount.toLocaleString('pt-BR')}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Visitas no perfil</p>
-                  </div>
-                  <div className="rounded-xl border bg-card px-3 py-2.5">
-                    <div className="mb-1.5 flex items-center gap-1.5 text-muted-foreground">
-                      <BadgeCheck className="h-3.5 w-3.5" />
-                      <span className="text-[11px] uppercase tracking-wide">Confiança</span>
-                    </div>
-                    <p className="text-lg font-bold leading-none">{testimonialsCount.toLocaleString('pt-BR')}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">Depoimentos e indicações</p>
-                  </div>
-                </div>
+            {/* Visualizações, seguindo, seguidores e recomendações — os mesmos
+                quatro números do próprio perfil, para dar a quem visita a
+                mesma leitura de reputação. */}
+            <div className="mb-4 grid grid-cols-4 gap-1 rounded-xl border bg-background/70 px-2 py-3 text-center">
+              <div>
+                <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(profileVisitsCount)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">visualizações</p>
               </div>
-            ) : null}
+              <div>
+                <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(followingCount)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">seguindo</p>
+              </div>
+              <div>
+                <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(followersCount)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">seguidores</p>
+              </div>
+              <div>
+                <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(testimonialsCount)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">recomendações</p>
+              </div>
+            </div>
             
             <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
               <Button
