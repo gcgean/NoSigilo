@@ -41,6 +41,7 @@ import ReportDialog from '@/components/ReportDialog';
 import PostRulesNotice from '@/components/PostRulesNotice';
 import PostContent from '@/components/PostContent';
 import MentionAutocomplete from '@/components/MentionAutocomplete';
+import BackToTop from '@/components/BackToTop';
 import { useDailyCheckin } from '@/hooks/useDailyCheckin';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { PHOTO_REACTIONS, REACTION_EMOJI, EMPTY_REACTION_COUNTS, type PhotoReaction } from '@/lib/reactions';
@@ -3653,6 +3654,8 @@ export default function Feed() {
           targetName={reportTarget.name || undefined}
         />
       ) : null}
+
+      <BackToTop />
     </div>
   );
 }

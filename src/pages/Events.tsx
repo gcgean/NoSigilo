@@ -48,6 +48,7 @@ import { useNavigate } from 'react-router-dom';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { eventsService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
+import BackToTop from '@/components/BackToTop';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -1026,6 +1027,8 @@ export default function Events() {
       )}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+
+      <BackToTop />
     </div>
   );
 }

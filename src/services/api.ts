@@ -659,6 +659,14 @@ export const usersService = {
     return response.data;
   },
 
+  getFollows: async (
+    userId: string,
+    params: { type: 'followers' | 'following'; page?: number; limit?: number }
+  ): Promise<{ users: Array<{ id: string; name: string; avatar: string | null; gender: string | null; city: string | null; state: string | null }>; hasMore: boolean }> => {
+    const response = await apiClient.get(`/users/${encodeURIComponent(userId)}/follows`, { params });
+    return response.data;
+  },
+
   suggestUsers: async (q: string): Promise<{ users: Array<{ id: string; name: string; avatar: string | null; gender: string | null; city: string | null; state: string | null }> }> => {
     const response = await apiClient.get('/users/suggest', { params: { q } });
     return response.data;

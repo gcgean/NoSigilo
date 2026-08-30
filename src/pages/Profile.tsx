@@ -24,6 +24,7 @@ import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
 import PostContent from '@/components/PostContent';
+import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialog';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
@@ -368,6 +369,7 @@ export default function Profile() {
   // /users/:id), sem isto não havia onde ver as próprias postagens.
   const [myPosts, setMyPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [listaDeFollow, setListaDeFollow] = useState<TipoDeLista | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
@@ -1247,18 +1249,22 @@ export default function Profile() {
             </Link>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-primary mb-1">
-              <UserPlus className="w-4 h-4" />
-              <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.following)}</span>
-            </div>
-            <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground">seguindo</p>
+            <button type="button" className="w-full" onClick={() => setListaDeFollow('following')}>
+              <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity">
+                <UserPlus className="w-4 h-4" />
+                <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.following)}</span>
+              </div>
+              <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground hover:underline">seguindo</p>
+            </button>
           </div>
           <div className="text-center">
-            <div className="flex items-center justify-center gap-1 text-primary mb-1">
-              <Heart className="w-4 h-4" />
-              <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.followers)}</span>
-            </div>
-            <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground">seguidores</p>
+            <button type="button" className="w-full" onClick={() => setListaDeFollow('followers')}>
+              <div className="flex items-center justify-center gap-1 text-primary mb-1 hover:opacity-80 transition-opacity">
+                <Heart className="w-4 h-4" />
+                <span className="text-xl sm:text-2xl font-bold">{formatStatCount(profileData.stats.followers)}</span>
+              </div>
+              <p className="text-xs tracking-tight sm:text-sm sm:tracking-normal text-muted-foreground hover:underline">seguidores</p>
+            </button>
           </div>
           <div className="text-center">
             <button type="button" className="w-full" onClick={() => setActiveTab('testimonials')}>
@@ -1966,6 +1972,14 @@ export default function Profile() {
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
+      {user?.id ? (
+        <FollowListDialog
+          userId={String(user.id)}
+          tipo={listaDeFollow}
+          onClose={() => setListaDeFollow(null)}
+          viewerId={user?.id}
+        />
+      ) : null}
     </div>
   );
 }

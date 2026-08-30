@@ -28,6 +28,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
 import PostContent from '@/components/PostContent';
+import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialog';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
@@ -483,6 +484,7 @@ export default function UserProfile() {
   // referência. Reaproveita /api/users/:id/posts, que já existia para vídeos.
   const [userPosts, setUserPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
+  const [listaDeFollow, setListaDeFollow] = useState<TipoDeLista | null>(null);
   const [userExperiences, setUserExperiences] = useState<Array<{ id: string; title: string; description: string; createdAt: string; likesCount: number; commentsCount: number; likedByMe: boolean }>>([]);
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
@@ -1268,14 +1270,14 @@ export default function UserProfile() {
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(profileVisitsCount)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">visualizações</p>
               </div>
-              <div>
+              <button type="button" onClick={() => setListaDeFollow('following')} className="transition-opacity hover:opacity-80">
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(followingCount)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">seguindo</p>
-              </div>
-              <div>
+                <p className="mt-1 text-xs text-muted-foreground hover:underline">seguindo</p>
+              </button>
+              <button type="button" onClick={() => setListaDeFollow('followers')} className="transition-opacity hover:opacity-80">
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(followersCount)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">seguidores</p>
-              </div>
+                <p className="mt-1 text-xs text-muted-foreground hover:underline">seguidores</p>
+              </button>
               <div>
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(testimonialsCount)}</p>
                 <p className="mt-1 text-xs text-muted-foreground">recomendações</p>
@@ -2011,6 +2013,15 @@ export default function UserProfile() {
       </Dialog>
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+
+      {userId ? (
+        <FollowListDialog
+          userId={String(userId)}
+          tipo={listaDeFollow}
+          onClose={() => setListaDeFollow(null)}
+          viewerId={me?.id}
+        />
+      ) : null}
     </div>
   );
 }

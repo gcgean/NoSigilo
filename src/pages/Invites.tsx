@@ -143,7 +143,7 @@ export default function Invites() {
       <div className="glass rounded-2xl p-6 sm:p-8">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm text-primary">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm text-brand-pink">
               <ShieldCheck className="w-4 h-4" />
               Rede por indicação
             </div>
@@ -189,14 +189,14 @@ export default function Invites() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">{tier.count} indicados validados</p>
-                <div className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary font-medium">
+                <div className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-brand-pink font-medium">
                   +{tier.days} dias Premium
                 </div>
                 {tier.granted && (
                   <p className="text-xs text-emerald-600 font-medium">Recompensa resgatada ✓</p>
                 )}
                 {tier.reached && !tier.granted && (
-                  <p className="text-xs text-primary font-medium">Meta atingida!</p>
+                  <p className="text-xs text-brand-pink font-medium">Meta atingida!</p>
                 )}
               </div>
             ))}
@@ -231,7 +231,7 @@ export default function Invites() {
           )}
 
           {!nextTier && (
-            <div className="rounded-xl bg-primary/10 border border-primary/20 px-4 py-3 text-sm text-primary font-medium flex items-center gap-2">
+            <div className="rounded-xl bg-primary/10 border border-primary/20 px-4 py-3 text-sm text-brand-pink font-medium flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4" />
               Você conquistou todas as recompensas! Continue indicando para ajudar a comunidade crescer.
             </div>
@@ -362,7 +362,7 @@ export default function Invites() {
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
                           {invite.status === 'revoked' ? 'Revogado' : 'Ativo'}
                         </span>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-brand-pink">
                           <Users className="w-3 h-3" />
                           {invite.entrantsCount || 0} entraram
                         </span>

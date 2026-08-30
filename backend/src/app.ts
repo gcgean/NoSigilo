@@ -7051,6 +7051,64 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Autocomplete de perfis por nome (dropdown na busca). Ignora distância/gênero —
   // procura no Brasil todo. Prioriza nome exato > começa com > contém.
   // IMPORTANTE: definida antes de /api/users/:userId para não ser capturada como id.
+  // Lista de seguidores / seguindo de um perfil. "Seguidor" = quem curtiu o
+  // perfil; "seguindo" = quem o perfil curtiu (dois lados da mesma tabela
+  // `likes`). Aberta a qualquer usuário logado, como nas redes sociais.
+  app.get('/api/users/:userId/follows', requireAuth(env, db), async (req, res) => {
+    const viewerId = req.auth!.userId;
+    const alvoParam = String(req.params.userId || '');
+    const tipo = req.query.type === 'following' ? 'following' : 'followers';
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const offset = (page - 1) * limit;
+
+    // Aceita id ou nome, igual a /api/users/:userId (links de menção).
+    const alvo = (await queryOne(
+      db,
+      'SELECT id FROM users WHERE id = ? OR LOWER(name) = LOWER(?) ORDER BY (CASE WHEN id = ? THEN 0 ELSE 1 END) LIMIT 1',
+      [alvoParam, alvoParam, alvoParam]
+    )) as any;
+    if (!alvo?.id) { res.status(404).json({ error: 'not_found' }); return; }
+    const alvoId = String(alvo.id);
+
+    // followers: quem curtiu o alvo (l.user_id é a pessoa da lista).
+    // following: quem o alvo curtiu (l.target_id é a pessoa da lista).
+    const juncao = tipo === 'following'
+      ? 'JOIN likes l ON l.target_id = u.id AND l.user_id = ?'
+      : 'JOIN likes l ON l.user_id = u.id AND l.target_id = ?';
+
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.gender, u.city, u.state
+       FROM users u
+       ${juncao} AND l.target_type = 'user'
+       WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND (u.is_admin = 0 OR u.is_admin IS NULL)
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+       ORDER BY l.created_at DESC
+       LIMIT ? OFFSET ?`,
+      [alvoId, viewerId, viewerId, limit + 1, offset]
+    )) as any[];
+
+    const hasMore = rows.length > limit;
+    res.json({
+      users: rows.slice(0, limit).map((r) => ({
+        id: String(r.id),
+        name: String(r.name),
+        avatar: r.avatar ? String(r.avatar) : null,
+        gender: r.gender ? String(r.gender) : null,
+        city: r.city ? String(r.city) : null,
+        state: r.state ? String(r.state) : null,
+      })),
+      hasMore,
+    });
+  });
+
   app.get('/api/users/suggest', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const q = req.query.q ? String(req.query.q).trim() : '';

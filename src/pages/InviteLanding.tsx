@@ -97,7 +97,7 @@ export default function InviteLanding() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-primary">
+              <div className="w-full h-full flex items-center justify-center text-3xl font-bold text-brand-pink">
                 {inviterName.charAt(0).toUpperCase()}
               </div>
             )}

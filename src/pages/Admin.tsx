@@ -1186,7 +1186,7 @@ export default function Admin() {
       <Card className="mb-6 border-primary/20 bg-primary/5 p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
-            <p className="text-sm font-semibold text-primary">Assinaturas da rede</p>
+            <p className="text-sm font-semibold text-brand-pink">Assinaturas da rede</p>
             <h3 className="text-xl font-semibold">
               {settings.subscriptionsEnabled ? 'Cobrança premium ativa' : 'Cobrança premium desligada'}
             </h3>
@@ -1765,7 +1765,7 @@ export default function Admin() {
                           {report.targetType === 'user' && report.targetId ? (
                             <Link
                               to={`/profile/${report.targetId}`}
-                              className="text-primary hover:underline inline-flex items-center gap-1"
+                              className="text-brand-pink hover:underline inline-flex items-center gap-1"
                             >
                               {report.targetName || report.targetId}
                               <ExternalLink className="w-3 h-3" />
@@ -1863,8 +1863,8 @@ export default function Admin() {
                 { label: 'Assinantes ativos', value: String(a.summary.activeSubscribers), tone: 'text-foreground' },
                 { label: 'MRR (receita mensal)', value: brl(a.summary.mrrCents), tone: 'text-success' },
                 { label: 'Faturamento 12 meses', value: brl(a.summary.revenueLast12moCents), tone: 'text-success' },
-                { label: 'Projeção próximos 12m', value: brl(a.summary.projectedNext12moCents), tone: 'text-primary' },
-                { label: 'Novos (12m)', value: `+${a.summary.newLast12mo}`, tone: 'text-primary' },
+                { label: 'Projeção próximos 12m', value: brl(a.summary.projectedNext12moCents), tone: 'text-brand-pink' },
+                { label: 'Novos (12m)', value: `+${a.summary.newLast12mo}`, tone: 'text-brand-pink' },
                 { label: 'Não renovaram (12m)', value: String(a.summary.churnedLast12mo), tone: 'text-destructive' },
                 { label: 'Churn / Retenção', value: `${a.summary.churnRatePct}% / ${a.summary.retentionRatePct}%`, tone: 'text-foreground' },
                 { label: 'Ticket médio (ARPU)', value: brl(a.summary.arpuCents), tone: 'text-foreground' },
@@ -1911,7 +1911,7 @@ export default function Admin() {
                           </div>
                           <div className="border-l border-border/40 pl-4">
                             <p className="text-[11px] text-muted-foreground">Previsto até o fim do mês (pela média diária)</p>
-                            <p className="text-sm font-bold text-primary">{brl(projectedCents)}</p>
+                            <p className="text-sm font-bold text-brand-pink">{brl(projectedCents)}</p>
                           </div>
                           {growthPct !== null && (
                             <div className="border-l border-border/40 pl-4">
@@ -1950,7 +1950,7 @@ export default function Admin() {
                           <tr key={m.month} className="border-b border-border/30">
                             <td className="py-1.5 pr-3">{fmtMonth(m.month)}</td>
                             <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
-                            <td className="px-3 py-1.5 text-right text-primary">+{m.newCustomers}</td>
+                            <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
                             <td className="px-3 py-1.5 text-right">{m.renewals}</td>
                             <td className="px-3 py-1.5 text-right text-destructive">{m.churned}</td>
                           </tr>
@@ -1994,7 +1994,7 @@ export default function Admin() {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Novos Hoje</span>
-                  <span className="font-semibold text-primary">+{Number(finance.newToday || 0)}</span>
+                  <span className="font-semibold text-brand-pink">+{Number(finance.newToday || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-muted-foreground">Taxa de Churn</span>
@@ -2056,7 +2056,7 @@ export default function Admin() {
               </div>
             </div>
             {funnelPeriod !== 'all' && (
-              <p className="mt-1 text-xs text-primary">
+              <p className="mt-1 text-xs text-brand-pink">
                 Mostrando apenas quem se cadastrou nos últimos {funnelPeriod} dias (coorte).
               </p>
             )}
@@ -2100,7 +2100,7 @@ export default function Admin() {
 
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="rounded-xl bg-secondary/30 p-4">
-                      <p className="text-2xl font-bold text-primary">{f.overallConversionPct}%</p>
+                      <p className="text-2xl font-bold text-brand-pink">{f.overallConversionPct}%</p>
                       <p className="text-xs text-muted-foreground">Conversão geral (cadastro → assinante)</p>
                     </div>
                     <div className="rounded-xl bg-secondary/30 p-4">
@@ -2271,7 +2271,7 @@ export default function Admin() {
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
                     <p className="text-xs text-muted-foreground">Projeção em 12 meses</p>
-                    <p className="text-xl font-bold text-primary">{brl(revenueReport.projected12mCents)}</p>
+                    <p className="text-xl font-bold text-brand-pink">{brl(revenueReport.projected12mCents)}</p>
                   </div>
                 </div>
 
@@ -2500,7 +2500,7 @@ export default function Admin() {
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {/* Funil */}
                   <div className="rounded-xl border border-border/50 bg-secondary/20 p-4">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-primary">Funil</p>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-pink">Funil</p>
                     <p className="text-3xl font-bold leading-none">{menConv.funnel.conversaoPct ?? 0}%</p>
                     <p className="mb-3 text-xs text-muted-foreground">{menConv.funnel.assinaram} de {menConv.funnel.homens} assinaram</p>
                     <ul className="space-y-1 text-xs text-muted-foreground">
@@ -2571,7 +2571,7 @@ export default function Admin() {
               {/* Página de origem: de onde vieram os cliques em "assinar" */}
               {menConv && menConv.porPagina.length > 0 && (
                 <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 p-4">
-                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">Página de origem</p>
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-brand-pink">Página de origem</p>
                   <p className="mb-3 text-xs text-muted-foreground">
                     Onde o usuário estava ao gerar o PIX · mostra pra onde vale mais mandar tráfego masculino
                   </p>
@@ -3249,7 +3249,7 @@ function AdminReferralsTab() {
               );
             })}
             <div className="mt-2 flex items-center justify-between rounded-xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3">
-              <span className="text-sm font-medium text-primary">Total de dias premium distribuídos</span>
+              <span className="text-sm font-medium text-brand-pink">Total de dias premium distribuídos</span>
               <span className="text-lg font-bold text-primary">
                 {tierStats.reduce((acc, t) => acc + t.totalDays, 0)}
               </span>

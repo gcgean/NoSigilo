@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { PHOTO_REACTIONS, REACTION_EMOJI } from '@/lib/reactions';
 import { STORY_BACKGROUNDS, backgroundCss } from '@/lib/storyBackgrounds';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import BackToTop from '@/components/BackToTop';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
@@ -1497,6 +1498,8 @@ export default function Stories() {
       )}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+
+      <BackToTop />
     </div>
   );
 }
