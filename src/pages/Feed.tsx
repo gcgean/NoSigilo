@@ -2708,7 +2708,7 @@ export default function Feed() {
                                     <Button type="button" size="sm" variant="outline" className={COMMENT_CANCEL_BUTTON_CLASS} onClick={() => cancelEditingExpComment(experience.id)}>Cancelar</Button>
                                   </div>
                                 ) : (
-                                  <p className="text-sm text-muted-foreground">{c.content}</p>
+                                  <p className="text-sm text-muted-foreground"><PostContent content={c.content} /></p>
                                 )}
                               </div>
                             </div>
@@ -3157,7 +3157,7 @@ export default function Feed() {
                                   <Button type="button" size="sm" variant="outline" className={COMMENT_CANCEL_BUTTON_CLASS} onClick={() => cancelEditingComment(item.post.id)}>Cancelar</Button>
                                 </div>
                               ) : (
-                                <p className="text-sm text-muted-foreground">{c.content}</p>
+                                <p className="text-sm text-muted-foreground"><PostContent content={c.content} /></p>
                               )}
                             </div>
                           </div>

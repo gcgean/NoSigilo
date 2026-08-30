@@ -1539,6 +1539,75 @@ async function createNotification(
   return id;
 }
 
+/**
+ * Avisa quem foi marcado com @nome num texto (postagem, comentário, story...).
+ *
+ * Não notifica: o próprio autor, nomes que não existem, perfis banidos ou
+ * desativados, e quem tem bloqueio em qualquer direção com o autor.
+ *
+ * Nunca lança: se a notificação falhar, o conteúdo já foi gravado e não deve
+ * ser desfeito por causa disso.
+ */
+async function notifyMentions(
+  ctx: { db: DbHandle; io?: SocketIOServer; env: Env },
+  opts: {
+    content: string;
+    autorId: string;
+    tipo: string;
+    tituloSufixo: string;
+    url: string;
+    tag: string;
+    dados?: Record<string, unknown>;
+  }
+) {
+  try {
+    const nomes = extractMentionNames(opts.content);
+    if (nomes.length === 0) return;
+
+    const placeholders = nomes.map(() => '?').join(', ');
+    const marcados = (await queryAll(
+      ctx.db,
+      `SELECT id, name FROM users
+       WHERE LOWER(name) IN (${placeholders})
+         AND id != ?
+         AND COALESCE(is_banned, 0) = 0
+         AND COALESCE(is_deactivated, 0) = 0`,
+      [...nomes, opts.autorId]
+    )) as any[];
+    if (marcados.length === 0) return;
+
+    const autor = (await queryOne(ctx.db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [opts.autorId])) as any;
+    const autorNome = autor?.name ? String(autor.name) : 'Alguém';
+    const titulo = `${autorNome} ${opts.tituloSufixo}`;
+    const trecho = opts.content.length > 90 ? `${opts.content.slice(0, 90)}…` : opts.content;
+
+    for (const m of marcados) {
+      const bloqueio = await queryOne(
+        ctx.db,
+        `SELECT 1 FROM blocks
+         WHERE (blocker_user_id = ? AND blocked_user_id = ?)
+            OR (blocker_user_id = ? AND blocked_user_id = ?)
+         LIMIT 1`,
+        [String(m.id), opts.autorId, opts.autorId, String(m.id)]
+      );
+      if (bloqueio) continue;
+
+      const dataJson = { ...(opts.dados ?? {}), actorId: opts.autorId, actorName: autorNome };
+      await createNotification(
+        { db: ctx.db, io: ctx.io },
+        { userId: String(m.id), type: opts.tipo, title: titulo, description: trecho, dataJson }
+      );
+      await sendPushToUser(
+        { db: ctx.db, env: ctx.env },
+        { userId: String(m.id), payload: { title: titulo, body: trecho, url: opts.url, tag: opts.tag, data: dataJson } }
+      );
+    }
+  } catch (err) {
+    console.error('[notifyMentions]', err);
+  }
+}
+
+
 // Sanitiza o nome da cidade vindo do input do usuário: descarta valores inválidos
 // (1-2 letras), que surgem quando alguém digita no campo e não seleciona uma
 // cidade da lista. Não há município brasileiro com menos de 3 letras.
@@ -5254,6 +5323,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await persist();
     // Só mulheres e casais ganham tokens por story.
     await awardContentTokensIfEligible(db, userId, 'story', id, req.app.get('io'));
+
+    // Menções (@nome) no texto do story (texto puro ou overlay sobre a mídia).
+    if (storyText) {
+      await notifyMentions(
+        { db, io: req.app.get('io') as SocketIOServer | undefined, env },
+        {
+          content: storyText,
+          autorId: userId,
+          tipo: 'story.mentioned',
+          tituloSufixo: 'marcou você num story',
+          url: `/stories?storyId=${encodeURIComponent(id)}`,
+          tag: `story.mentioned:${id}`,
+          dados: { storyId: id },
+        }
+      );
+    }
+
     res.json({ id, expiresAt });
   });
 
@@ -5826,66 +5912,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Só perfis de mulheres e casais ganham tokens por postagem.
     await awardContentTokensIfEligible(db, req.auth!.userId, 'post', id, req.app.get('io'));
 
-    // Menções (@nome): avisa quem foi marcado. Falha aqui não derruba a
-    // postagem — ela já está salva.
-    try {
-      const nomes = extractMentionNames(content);
-      if (nomes.length > 0) {
-        const io = req.app.get('io') as SocketIOServer | undefined;
-        const placeholders = nomes.map(() => '?').join(', ');
-        const marcados = (await queryAll(
-          db,
-          `SELECT id, name FROM users
-           WHERE LOWER(name) IN (${placeholders})
-             AND id != ?
-             AND COALESCE(is_banned, 0) = 0
-             AND COALESCE(is_deactivated, 0) = 0`,
-          [...nomes, req.auth!.userId]
-        )) as any[];
-        if (marcados.length > 0) {
-          const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
-          const autorNome = autor?.name ? String(autor.name) : 'Alguém';
-          const trecho = content.length > 90 ? `${content.slice(0, 90)}…` : content;
-          for (const m of marcados) {
-            // Quem bloqueou (ou foi bloqueado por) o autor não é notificado.
-            const bloqueio = await queryOne(
-              db,
-              `SELECT 1 FROM blocks
-               WHERE (blocker_user_id = ? AND blocked_user_id = ?)
-                  OR (blocker_user_id = ? AND blocked_user_id = ?)
-               LIMIT 1`,
-              [String(m.id), req.auth!.userId, req.auth!.userId, String(m.id)]
-            );
-            if (bloqueio) continue;
-            await createNotification(
-              { db, io },
-              {
-                userId: String(m.id),
-                type: 'post.mentioned',
-                title: `${autorNome} marcou você numa publicação`,
-                description: trecho,
-                dataJson: { postId: id, actorId: req.auth!.userId, actorName: autorNome },
-              }
-            );
-            await sendPushToUser(
-              { db, env },
-              {
-                userId: String(m.id),
-                payload: {
-                  title: `${autorNome} marcou você numa publicação`,
-                  body: trecho,
-                  url: `/feed?postId=${encodeURIComponent(id)}`,
-                  tag: `post.mentioned:${id}`,
-                  data: { postId: id, actorId: req.auth!.userId, actorName: autorNome },
-                },
-              }
-            );
-          }
-        }
+    // Menções (@nome): avisa quem foi marcado.
+    await notifyMentions(
+      { db, io: req.app.get('io') as SocketIOServer | undefined, env },
+      {
+        content,
+        autorId: req.auth!.userId,
+        tipo: 'post.mentioned',
+        tituloSufixo: 'marcou você numa publicação',
+        url: `/feed?postId=${encodeURIComponent(id)}`,
+        tag: `post.mentioned:${id}`,
+        dados: { postId: id },
       }
-    } catch (err) {
-      console.error('[posts/mentions]', err);
-    }
+    );
 
     res.json({ id });
   });
@@ -10296,6 +10335,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     ]);
     await persist();
     await awardTokens(db, req.auth!.userId, 'comment', id, req.app.get('io'));
+
+    // Menções (@nome) dentro do comentário.
+    await notifyMentions(
+      { db, io, env },
+      {
+        content: parsed.data.content,
+        autorId: req.auth!.userId,
+        tipo: 'comment.mentioned',
+        tituloSufixo: 'marcou você num comentário',
+        url: parsed.data.targetType === 'post'
+          ? `/feed?postId=${encodeURIComponent(parsed.data.targetId)}&openComments=1`
+          : '/feed',
+        tag: `comment.mentioned:${id}`,
+        dados: { commentId: id, postId: parsed.data.targetType === 'post' ? parsed.data.targetId : undefined },
+      }
+    );
+
     if (parsed.data.targetType === 'post') {
       const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ? LIMIT 1', [parsed.data.targetId])) as any;
       const ownerId = post?.user_id ? String(post.user_id) : null;

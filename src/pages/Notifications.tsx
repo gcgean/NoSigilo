@@ -205,7 +205,7 @@ export default function Notifications() {
               if (type === 'promoter.commission') return BadgeDollarSign;
               if (type === 'feed.top_day' || type === 'feed.top_week') return Award;
               if (type.includes('visited')) return Eye;
-              if (type === 'post.mentioned') return AtSign;
+              if (type.endsWith('.mentioned')) return AtSign;
               if (type === 'story.hot' || type.includes('liked')) return Heart;
               if (type.includes('commented') || type === 'story.comment') return MessageCircle;
               if (type.includes('testimonial')) return Star;
