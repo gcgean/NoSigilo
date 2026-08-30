@@ -573,7 +573,7 @@ export default function Settings() {
               <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <MessageCircle className="w-4 h-4 text-primary" />
-                  <h3 className="text-sm font-semibold text-primary">Quem pode te enviar mensagem</h3>
+                  <h3 className="text-sm font-semibold text-brand-pink">Quem pode te enviar mensagem</h3>
                 </div>
                 <p className="text-xs text-muted-foreground">Controle quem consegue iniciar uma conversa com você.</p>
                 <Select
@@ -621,6 +621,7 @@ export default function Settings() {
                           onChange={(e) => setNameReqValue(e.target.value)}
                           placeholder="Novo nome"
                           maxLength={60}
+                          className="h-12 sm:h-10"
                         />
                         <div className="flex gap-2">
                           <Button size="sm" disabled={nameReqBusy || !nameReqValue.trim()} onClick={() => void handleRequestNameChange()}>
@@ -632,7 +633,7 @@ export default function Settings() {
                     ) : (
                       <button
                         type="button"
-                        className="text-xs font-medium text-primary hover:underline"
+                        className="text-xs font-medium text-brand-pink hover:underline"
                         onClick={() => setNameReqOpen(true)}
                       >
                         Solicitar mudança de nome
@@ -740,6 +741,7 @@ export default function Settings() {
                       value={profile.status}
                       onChange={(e) => setProfile({ ...profile, status: e.target.value })}
                       placeholder="Ex.: Casal discreto em busca de conexões..."
+                      className="h-12 sm:h-10"
                     />
                   </div>
                   <div className="space-y-2">
@@ -761,6 +763,7 @@ export default function Settings() {
                       value={profile.bioLink}
                       onChange={(e) => setProfile({ ...profile, bioLink: e.target.value })}
                       placeholder="instagram.com/seuperfil, onlyfans.com/..., seu site..."
+                      className="h-12 sm:h-10"
                     />
                   </div>
                 </div>
@@ -906,7 +909,7 @@ export default function Settings() {
                           type="date"
                           value={profile.birthDate}
                           onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })}
-                          className="pl-9"
+                          className="h-12 pl-9 sm:h-10"
                         />
                       </div>
                     </div>
@@ -920,6 +923,7 @@ export default function Settings() {
                           value={profile.partnerName}
                           onChange={(e) => setProfile({ ...profile, partnerName: e.target.value })}
                           placeholder="Nome da pessoa 2"
+                          className="h-12 sm:h-10"
                         />
                       </div>
                       <div className="space-y-2">
@@ -931,7 +935,7 @@ export default function Settings() {
                             type="date"
                             value={profile.partnerBirthDate}
                             onChange={(e) => setProfile({ ...profile, partnerBirthDate: e.target.value })}
-                            className="pl-9"
+                            className="h-12 pl-9 sm:h-10"
                           />
                         </div>
                       </div>
@@ -998,7 +1002,7 @@ export default function Settings() {
                     </div>
                     <div className="space-y-2">
                       <Label>Altura</Label>
-                      <Input value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} placeholder="Ex.: 1,78 m" />
+                      <Input value={profile.height} onChange={(e) => setProfile({ ...profile, height: e.target.value })} placeholder="Ex.: 1,78 m" className="h-12 sm:h-10" />
                     </div>
                     <div className="space-y-2">
                       <Label>Corpo</Label>
@@ -1066,7 +1070,7 @@ export default function Settings() {
                     </div>
                     <div className="space-y-2">
                       <Label>Altura</Label>
-                      <Input value={profile.partnerHeight} onChange={(e) => setProfile({ ...profile, partnerHeight: e.target.value })} placeholder="Ex.: 1,65 m" />
+                      <Input value={profile.partnerHeight} onChange={(e) => setProfile({ ...profile, partnerHeight: e.target.value })} placeholder="Ex.: 1,65 m" className="h-12 sm:h-10" />
                     </div>
                     <div className="space-y-2">
                       <Label>Corpo</Label>
@@ -1092,7 +1096,7 @@ export default function Settings() {
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Profissão</Label>
-                        <Input value={profile.profession} onChange={(e) => setProfile({ ...profile, profession: e.target.value })} placeholder="Ex.: Empresário(a), Estudante..." />
+                        <Input value={profile.profession} onChange={(e) => setProfile({ ...profile, profession: e.target.value })} placeholder="Ex.: Empresário(a), Estudante..." className="h-12 sm:h-10" />
                       </div>
                       <div className="space-y-2">
                         <Label>Signo</Label>
@@ -1280,6 +1284,7 @@ export default function Settings() {
                       onChange={(e) => setProfile({ ...profile, meetingTagline: e.target.value.slice(0, 100) })}
                       placeholder='Ex.: "Buscamos casal para soft swing em Fortaleza 😈"'
                       maxLength={100}
+                      className="h-12 sm:h-10"
                     />
                     <p className="text-right text-xs text-muted-foreground">{profile.meetingTagline.length}/100</p>
                   </div>
@@ -1462,7 +1467,7 @@ export default function Settings() {
                 </div>
                 <span className="text-sm font-medium">Claro</span>
                 {theme === 'light' && (
-                  <span className="text-[10px] font-semibold text-primary">Ativo</span>
+                  <span className="text-[10px] font-semibold text-brand-pink">Ativo</span>
                 )}
               </button>
               <button
@@ -1479,7 +1484,7 @@ export default function Settings() {
                 </div>
                 <span className="text-sm font-medium">Escuro</span>
                 {theme === 'dark' && (
-                  <span className="text-[10px] font-semibold text-primary">Ativo</span>
+                  <span className="text-[10px] font-semibold text-brand-pink">Ativo</span>
                 )}
               </button>
             </div>
@@ -1666,9 +1671,9 @@ export default function Settings() {
                     placeholder="Sua senha atual"
                     value={passwords.current}
                     onChange={(e) => setPasswords((p) => ({ ...p, current: e.target.value }))}
-                    className="pr-10"
+                    className="h-12 pr-10 sm:h-10"
                   />
-                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  <button type="button" className="absolute -right-0.5 top-1/2 -translate-y-1/2 p-3.5 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPasswords((s) => ({ ...s, current: !s.current }))}
                     aria-label={showPasswords.current ? 'Ocultar senha atual' : 'Mostrar senha atual'}>
                     {showPasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1685,9 +1690,9 @@ export default function Settings() {
                     placeholder="Mínimo 6 caracteres"
                     value={passwords.newPass}
                     onChange={(e) => setPasswords((p) => ({ ...p, newPass: e.target.value }))}
-                    className={`pr-10 ${passwords.newPass && passwords.newPass.length < 6 ? 'border-destructive' : ''}`}
+                    className={`h-12 pr-10 sm:h-10 ${passwords.newPass && passwords.newPass.length < 6 ? 'border-destructive' : ''}`}
                   />
-                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  <button type="button" className="absolute -right-0.5 top-1/2 -translate-y-1/2 p-3.5 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPasswords((s) => ({ ...s, newPass: !s.newPass }))}
                     aria-label={showPasswords.newPass ? 'Ocultar nova senha' : 'Mostrar nova senha'}>
                     {showPasswords.newPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1707,9 +1712,9 @@ export default function Settings() {
                     placeholder="Repita a nova senha"
                     value={passwords.confirm}
                     onChange={(e) => setPasswords((p) => ({ ...p, confirm: e.target.value }))}
-                    className={`pr-10 ${passwords.confirm && passwords.confirm !== passwords.newPass ? 'border-destructive' : passwords.confirm && passwords.confirm === passwords.newPass ? 'border-success' : ''}`}
+                    className={`h-12 pr-10 sm:h-10 ${passwords.confirm && passwords.confirm !== passwords.newPass ? 'border-destructive' : passwords.confirm && passwords.confirm === passwords.newPass ? 'border-success' : ''}`}
                   />
-                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  <button type="button" className="absolute -right-0.5 top-1/2 -translate-y-1/2 p-3.5 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowPasswords((s) => ({ ...s, confirm: !s.confirm }))}
                     aria-label={showPasswords.confirm ? 'Ocultar confirmação de senha' : 'Mostrar confirmação de senha'}>
                     {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -1952,7 +1957,7 @@ function SuggestionsTab() {
                   onClick={() => setCategory(c.value)}
                   className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${
                     category === c.value
-                      ? 'border-primary bg-primary/10 text-primary font-medium'
+                      ? 'border-primary bg-primary/10 text-brand-pink font-medium'
                       : 'border-border text-muted-foreground hover:border-primary/50'
                   }`}
                 >
@@ -2007,7 +2012,7 @@ function SuggestionsTab() {
               <p className="text-sm whitespace-pre-wrap">{s.content}</p>
               {s.adminReply && (
                 <div className="mt-2 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2">
-                  <p className="text-xs font-semibold text-primary mb-1">Resposta da equipe</p>
+                  <p className="text-xs font-semibold text-brand-pink mb-1">Resposta da equipe</p>
                   <p className="text-sm text-muted-foreground">{s.adminReply}</p>
                 </div>
               )}

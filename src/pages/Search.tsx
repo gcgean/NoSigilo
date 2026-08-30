@@ -868,7 +868,7 @@ export default function SearchPage() {
               });
               setShowWizard(true);
             }}
-            className="flex shrink-0 items-center gap-1 text-xs font-medium text-primary hover:underline"
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-brand-pink hover:underline"
           >
             <Pencil className="h-3 w-3" /> Editar padrão
           </button>
@@ -973,7 +973,7 @@ export default function SearchPage() {
             className={
               onlyLiked
                 ? 'animate-liked-filter h-11 w-full justify-center rounded-xl gap-2 border-0 bg-gradient-primary px-4 text-sm font-medium text-white hover:opacity-95 motion-reduce:animate-none'
-                : 'h-11 w-full justify-center rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-primary hover:bg-primary/10'
+                : 'h-11 w-full justify-center rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-brand-pink hover:bg-primary/10'
             }
           >
             <Heart className={onlyLiked ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
@@ -1244,7 +1244,7 @@ export default function SearchPage() {
                   setCity('');
                   setSort('nearby');
                 }}
-                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+                className="shrink-0 rounded-lg bg-primary/10 px-2.5 py-1 text-xs font-semibold text-brand-pink hover:bg-primary/20 transition-colors"
               >
                 Limpar filtros
               </button>

@@ -3438,14 +3438,14 @@ export default function Feed() {
                       className={cn(
                         'flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-sm font-medium transition-colors',
                         reactionsModalTab === tab.key
-                          ? 'border-b-2 border-primary text-primary'
+                          ? 'border-b-2 border-primary text-brand-pink'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <span>{tab.label}</span>
                       <span className={cn(
                         'rounded-full px-1.5 py-0.5 text-xs font-semibold',
-                        reactionsModalTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                        reactionsModalTab === tab.key ? 'bg-primary/10 text-brand-pink' : 'bg-muted text-muted-foreground'
                       )}>
                         {tab.count}
                       </span>
@@ -3526,14 +3526,14 @@ export default function Feed() {
                       className={cn(
                         'flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-2 text-sm font-medium transition-colors',
                         reactionsModalExpTab === tab.key
-                          ? 'border-b-2 border-primary text-primary'
+                          ? 'border-b-2 border-primary text-brand-pink'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <span>{tab.label}</span>
                       <span className={cn(
                         'rounded-full px-1.5 py-0.5 text-xs font-semibold',
-                        reactionsModalExpTab === tab.key ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
+                        reactionsModalExpTab === tab.key ? 'bg-primary/10 text-brand-pink' : 'bg-muted text-muted-foreground'
                       )}>
                         {tab.count}
                       </span>

@@ -827,7 +827,7 @@ export default function Events() {
                       <div className="flex items-center gap-2">
                         <Eye className="w-4 h-4 text-muted-foreground" />
                         <span>
-                          Alcance estimado: <strong className="text-primary">~{Math.floor(Math.random() * 500) + 100}</strong> pessoas
+                          Alcance estimado: <strong className="text-brand-pink">~{Math.floor(Math.random() * 500) + 100}</strong> pessoas
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">

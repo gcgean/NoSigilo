@@ -687,7 +687,7 @@ function StatsModal({
                   onClick={() => setTab(t)}
                   className={cn(
                     'flex-1 py-3 text-sm font-medium transition-colors',
-                    tab === t ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+                    tab === t ? 'border-b-2 border-primary text-brand-pink' : 'text-muted-foreground'
                   )}
                 >
                   {t === 'viewers' ? `👁️ ${viewers.length} visualizações` : `💬 ${comments.length} comentários`}
@@ -755,7 +755,7 @@ function StatsModal({
                           ) : isHot ? (
                             <p className="text-xs font-medium text-amber-600">Mandou um Coração Quente 🔥</p>
                           ) : v.reaction ? (
-                            <p className="text-xs text-primary">Curtiu seu story</p>
+                            <p className="text-xs text-brand-pink">Curtiu seu story</p>
                           ) : (
                             <p className="text-xs text-muted-foreground">{formatTime(v.viewedAt)}</p>
                           )}
@@ -1057,13 +1057,13 @@ export default function Stories() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-            Meus Stories {myStories.length > 0 && <span className="text-primary ml-1">{myStories.length}</span>}
+            Meus Stories {myStories.length > 0 && <span className="text-brand-pink ml-1">{myStories.length}</span>}
           </h2>
           {/* Botões de adicionar sempre visíveis */}
           {myStories.length > 0 && (
             <div className="flex items-center gap-2">
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-medium disabled:opacity-40">
+                className="flex items-center gap-1 text-xs text-brand-pink hover:text-brand-pink/80 font-medium disabled:opacity-40">
                 <Camera className="h-3.5 w-3.5" /> Câmera
               </button>
               <button type="button" disabled={uploading} onClick={() => galleryRef.current?.click()}
@@ -1176,7 +1176,7 @@ export default function Stories() {
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Stories de interesse
-          {feed.length > 0 && <span className="ml-2 text-primary">{feed.length}</span>}
+          {feed.length > 0 && <span className="ml-2 text-brand-pink">{feed.length}</span>}
         </h2>
 
         {feed.length === 0 ? (
