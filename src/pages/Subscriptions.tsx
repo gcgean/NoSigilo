@@ -340,7 +340,7 @@ export default function Subscriptions() {
         <div className="rounded-2xl border-2 border-gold/40 bg-gradient-to-r from-gold/15 via-primary/5 to-violet-500/10 px-5 py-4 text-center">
           {ehLancamento ? (
             <span className="mb-1.5 inline-block rounded-full bg-emerald-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
-              Preço de lançamento · {economiaPercent}% abaixo
+              Desconto de {economiaPercent}%
             </span>
           ) : null}
 
@@ -357,7 +357,7 @@ export default function Subscriptions() {
             <p className="mt-1.5 text-sm font-semibold text-foreground">
               O valor vai passar a{' '}
               <span className="text-muted-foreground line-through">R$ {precoFuturoLabel}</span>
-              {' '}— aproveite enquanto está no lançamento.
+              {' '}— aproveite enquanto está com desconto.
             </p>
           ) : null}
 
