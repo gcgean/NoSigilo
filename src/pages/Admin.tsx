@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -1762,14 +1762,20 @@ export default function Admin() {
                         </div>
                         <p className="font-medium">
                           Denunciado:{' '}
-                          {report.targetType === 'user' && report.targetId ? (
-                            <Link
-                              to={`/profile/${report.targetId}`}
+                          {report.targetId && (report.targetType === 'user' || report.targetType === 'post') ? (
+                            <a
+                              href={
+                                report.targetType === 'user'
+                                  ? `/users/${encodeURIComponent(report.targetId)}`
+                                  : `/feed?postId=${encodeURIComponent(report.targetId)}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
                               className="text-brand-pink hover:underline inline-flex items-center gap-1"
                             >
                               {report.targetName || report.targetId}
                               <ExternalLink className="w-3 h-3" />
-                            </Link>
+                            </a>
                           ) : (
                             <span>{report.targetName || report.targetId}</span>
                           )}
