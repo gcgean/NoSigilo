@@ -1375,10 +1375,10 @@ export default function UserProfile() {
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(followersCount)}</p>
                 <p className="mt-1 text-xs text-muted-foreground hover:underline">seguidores</p>
               </button>
-              <div>
+              <button type="button" onClick={() => setActiveTab('testimonials')} className="transition-opacity hover:opacity-80">
                 <p className="text-base font-bold leading-none sm:text-lg">{formatStatCount(testimonialsCount)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">recomendações</p>
-              </div>
+                <p className="mt-1 text-xs text-muted-foreground hover:underline">recomendações</p>
+              </button>
             </div>
             
             <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
@@ -1524,12 +1524,13 @@ export default function UserProfile() {
               <span className="truncate">Vídeos {videosCount > 0 ? `(${activeTab === 'videos' ? userVideos.length : videosCount})` : ''}</span>
             </TabsTrigger>
           )}
-          {(isSelf || testimonialsCount > 0) && (
-            <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
-              <Star className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Depoimentos {testimonialsCount > 0 ? `(${testimonialsCount})` : ''}</span>
-            </TabsTrigger>
-          )}
+          {/* Antes a aba só existia com testimonialsCount > 0, o que tornava
+              impossível ser o PRIMEIRO a recomendar alguém: todo perfil começa
+              com zero, então nunca havia onde escrever. Agora sempre aparece. */}
+          <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Star className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Recomendações {testimonialsCount > 0 ? `(${testimonialsCount})` : ''}</span>
+          </TabsTrigger>
           <TabsTrigger value="experiences" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <BookOpen className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Experiências {userExperiences.length > 0 ? `(${userExperiences.length})` : ''}</span>
@@ -1779,7 +1780,25 @@ export default function UserProfile() {
           <div id="testimonials" className="space-y-3">
             {isLoadingTestimonials && <div className="text-sm text-muted-foreground">Carregando...</div>}
             {!isLoadingTestimonials && testimonials.filter((t) => String(t.status) === 'approved').length === 0 && (
-              <div className="glass rounded-xl p-6 text-center text-sm text-muted-foreground">Sem depoimentos ainda.</div>
+              <div className="glass rounded-xl p-6 text-center">
+                <Star className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                {isSelf ? (
+                  <p className="text-sm text-muted-foreground">
+                    Você ainda não tem recomendações. Quem já te conheceu pode escrever uma
+                    pelo seu perfil — você aprova antes de aparecer.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-foreground">
+                      Seja o primeiro a recomendar {profile?.name || 'este perfil'}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Conte como foi a sua experiência. A recomendação só aparece
+                      depois que a pessoa aceitar.
+                    </p>
+                  </>
+                )}
+              </div>
             )}
             {!isLoadingTestimonials &&
               testimonials
