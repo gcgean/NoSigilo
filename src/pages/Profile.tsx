@@ -24,6 +24,7 @@ import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
 import PostContent from '@/components/PostContent';
+import ProfilePostCard, { type PostDoPerfil } from '@/components/ProfilePostCard';
 import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialog';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -367,7 +368,7 @@ export default function Profile() {
   // Minhas publicações em lista — o mesmo que o perfil de terceiros mostra na
   // aba "Postagens". Como clicar no próprio nome leva para cá (e não para
   // /users/:id), sem isto não havia onde ver as próprias postagens.
-  const [myPosts, setMyPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
+  const [myPosts, setMyPosts] = useState<PostDoPerfil[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [listaDeFollow, setListaDeFollow] = useState<TipoDeLista | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -1617,40 +1618,14 @@ export default function Profile() {
             </div>
           ) : (
             <div className="space-y-3">
-              {myPosts.map((post) => {
-                const fotos = (post.media || []).filter((m) => m.url && !String(m.mimeType || '').startsWith('video/'));
-                const videos = (post.media || []).filter((m) => m.url && String(m.mimeType || '').startsWith('video/'));
-                return (
-                  <article key={post.id} className="glass rounded-2xl p-4">
-                    <p className="mb-2 text-xs text-muted-foreground">{visitTimeAgo(post.createdAt)}</p>
-                    {post.content?.trim() ? (
-                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6"><PostContent content={post.content} /></p>
-                    ) : null}
-                    {fotos.length > 0 ? (
-                      <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
-                        {fotos.map((m) => (
-                          <img
-                            key={m.id}
-                            src={resolveMediaUrl(m.url || '')}
-                            alt=""
-                            loading="lazy"
-                            className="w-full rounded-xl object-cover"
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                    {videos.map((m) => (
-                      <video
-                        key={m.id}
-                        src={resolveMediaUrl(m.url || '')}
-                        controls
-                        playsInline
-                        className="mt-2 w-full rounded-xl"
-                      />
-                    ))}
-                  </article>
-                );
-              })}
+              {myPosts.map((post) => (
+                <ProfilePostCard
+                  key={post.id}
+                  post={post}
+                  viewerId={user?.id}
+                  dataLabel={visitTimeAgo(post.createdAt)}
+                />
+              ))}
             </div>
           )}
         </TabsContent>

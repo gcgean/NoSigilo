@@ -7734,17 +7734,60 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
     }
 
+    // Contadores de interação, para o perfil ter as mesmas ações do feed.
+    // Uma consulta agregada por métrica em vez de N+1 por postagem.
+    const postIds = slice.map((r: any) => String(r.id));
+    const likesByPost = new Map<string, number>();
+    const commentsByPost = new Map<string, number>();
+    const viewsByPost = new Map<string, number>();
+    const likedByMe = new Set<string>();
+    if (postIds.length > 0) {
+      const ph = postIds.map(() => '?').join(', ');
+      const likeRows = (await queryAll(
+        db,
+        `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${ph}) GROUP BY target_id`,
+        postIds
+      )) as any[];
+      for (const r of likeRows) likesByPost.set(String(r.target_id), Number(r.c || 0));
+
+      const commentRows = (await queryAll(
+        db,
+        `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${ph}) GROUP BY target_id`,
+        postIds
+      )) as any[];
+      for (const r of commentRows) commentsByPost.set(String(r.target_id), Number(r.c || 0));
+
+      const viewRows = (await queryAll(
+        db,
+        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${ph}) GROUP BY post_id`,
+        postIds
+      )) as any[];
+      for (const r of viewRows) viewsByPost.set(String(r.post_id), Number(r.c || 0));
+
+      const mineRows = (await queryAll(
+        db,
+        `SELECT target_id FROM likes WHERE target_type = 'post' AND user_id = ? AND target_id IN (${ph})`,
+        [req.auth!.userId, ...postIds]
+      )) as any[];
+      for (const r of mineRows) likedByMe.add(String(r.target_id));
+    }
+
     const posts = slice
       .map((r: any) => {
         const media = (mediaIdsByPostId.get(String(r.id)) ?? [])
           .map((mid) => mediaById.get(mid))
           .filter(Boolean) as { id: string; url: string | null; mimeType: string | null }[];
         if (videosOnly && !media.some((m) => String(m.mimeType || '').startsWith('video/'))) return null;
+        const pid = String(r.id);
         return {
           id: r.id,
           content: r.content,
           createdAt: r.created_at,
           media,
+          likesCount: likesByPost.get(pid) ?? 0,
+          commentsCount: commentsByPost.get(pid) ?? 0,
+          viewsCount: viewsByPost.get(pid) ?? 0,
+          likedByMe: likedByMe.has(pid),
         };
       })
       .filter(Boolean);

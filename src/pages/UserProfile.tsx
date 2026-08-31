@@ -28,6 +28,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { formatStatCount } from '@/utils/statCount';
 import PostContent from '@/components/PostContent';
+import ProfilePostCard, { type PostDoPerfil } from '@/components/ProfilePostCard';
 import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialog';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -482,7 +483,7 @@ export default function UserProfile() {
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   // Postagens do próprio perfil (só as dele), como a aba "Principal" da
   // referência. Reaproveita /api/users/:id/posts, que já existia para vídeos.
-  const [userPosts, setUserPosts] = useState<Array<{ id: string; content: string; createdAt: string; media: Array<{ id: string; url: string | null; mimeType: string | null }> }>>([]);
+  const [userPosts, setUserPosts] = useState<PostDoPerfil[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [listaDeFollow, setListaDeFollow] = useState<TipoDeLista | null>(null);
   const [userExperiences, setUserExperiences] = useState<Array<{ id: string; title: string; description: string; createdAt: string; likesCount: number; commentsCount: number; likedByMe: boolean }>>([]);
@@ -1576,40 +1577,16 @@ export default function UserProfile() {
             </div>
           ) : (
             <div className="space-y-3">
-              {userPosts.map((post) => {
-                const fotos = (post.media || []).filter((m) => m.url && !String(m.mimeType || '').startsWith('video/'));
-                const videos = (post.media || []).filter((m) => m.url && String(m.mimeType || '').startsWith('video/'));
-                return (
-                  <article key={post.id} className="glass rounded-2xl p-4">
-                    <p className="mb-2 text-xs text-muted-foreground">{format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}</p>
-                    {post.content?.trim() ? (
-                      <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6"><PostContent content={post.content} /></p>
-                    ) : null}
-                    {fotos.length > 0 ? (
-                      <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>
-                        {fotos.map((m) => (
-                          <img
-                            key={m.id}
-                            src={resolveMediaUrl(m.url || '')}
-                            alt=""
-                            loading="lazy"
-                            className="w-full rounded-xl object-cover"
-                          />
-                        ))}
-                      </div>
-                    ) : null}
-                    {videos.map((m) => (
-                      <video
-                        key={m.id}
-                        src={resolveMediaUrl(m.url || '')}
-                        controls
-                        playsInline
-                        className="mt-2 w-full rounded-xl"
-                      />
-                    ))}
-                  </article>
-                );
-              })}
+              {userPosts.map((post) => (
+                <ProfilePostCard
+                  key={post.id}
+                  post={post}
+                  viewerId={me?.id}
+                  dataLabel={format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}
+                  podeInteragir={premiumAccess}
+                  onPrecisaAssinar={() => setPaywallOpen(true)}
+                />
+              ))}
             </div>
           )}
         </TabsContent>
