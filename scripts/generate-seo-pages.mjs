@@ -18,9 +18,18 @@ const outDirArg = process.argv.find((a) => a.startsWith('--outDir='));
 const OUT_DIR_NAME = outDirArg ? outDirArg.slice('--outDir='.length) : 'dist';
 const DIST = resolve(__dirname, '..', OUT_DIR_NAME);
 const SITE = 'https://nosigilo.net';
-// Domínio das páginas regionais (estado + cidade + hub /swing/).
-// Apenas estas páginas usam este domínio; o resto do site segue em SITE.
-const REGIONAL = 'https://nosigilo.baselider.com.br';
+// Domínio canônico único. Antes as páginas regionais viviam em
+// nosigilo.baselider.com.br enquanto o resto do site se declarava em
+// nosigilo.net — os dois domínios servem o mesmo site, então o Google via
+// sinais contraditórios (canonical apontando para um domínio que redirecionava
+// de volta) e não indexava a home nem as páginas institucionais.
+//
+// Agora tudo aponta para SITE. baselider continua servindo normalmente, mas
+// declarando nosigilo.net como o original, que é como se migra de domínio sem
+// deslogar ninguém: a sessão fica no localStorage, preso à origem.
+//
+// REGIONAL segue existindo só para não reescrever os ~15 pontos de uso abaixo.
+const REGIONAL = SITE;
 const TODAY = new Date().toISOString().slice(0, 10);
 
 /** Estados brasileiros: nome, slug, capital, cidades-chave e região. */
