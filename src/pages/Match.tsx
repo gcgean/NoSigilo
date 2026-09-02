@@ -262,7 +262,7 @@ export default function Match() {
       redirectToPlans();
       return;
     }
-    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    const ok = await requireFields(['photo', 'birthDate', 'city']);
     if (!ok) return;
     if (!currentProfile) return;
     try {
@@ -297,7 +297,7 @@ export default function Match() {
       redirectToPlans();
       return;
     }
-    const ok = await requireFields(['photo', 'birthDate', 'interests', 'city']);
+    const ok = await requireFields(['photo', 'birthDate', 'city']);
     if (!ok) return;
     if (currentProfile?.id) {
       try {
