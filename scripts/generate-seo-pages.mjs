@@ -142,6 +142,122 @@ function citiesOf(stateSlug) {
   return SELECTED_CITIES.filter((c) => c.state.slug === stateSlug);
 }
 
+/** Capitais publicadas na mesma região, exceto a propria — vira bloco de links
+ *  cruzados. Sinaliza ao Google que estas páginas formam um conjunto regional,
+ *  em vez de 27 páginas soltas que so trocam o nome da cidade. */
+function neighborCities(city) {
+  return SELECTED_CITIES
+    .filter((c) => c.state.region === city.state.region && c.state.slug !== city.state.slug)
+    .slice(0, 6);
+}
+
+/** Estados publicados da mesma região, exceto o próprio. */
+function neighborStates(st) {
+  return SELECTED_STATES.filter((s) => s.region === st.region && s.slug !== st.slug);
+}
+
+/** Trilha de navegação. Diferente do FAQ, este ainda rende resultado visível:
+ *  o Google troca a URL crua pela trilha "nosigilo.net › swing › Ceará ›
+ *  Fortaleza" no resultado da busca. */
+function breadcrumbLd(trilha) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: trilha.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.name,
+      item: `${SITE}${item.path}`,
+    })),
+  };
+}
+
+/** FAQ: HTML em <details> (expansível sem JavaScript) + o JSON-LD.
+ *
+ *  NOTA: desde agosto/2023 o Google restringiu o rich result de FAQ a sites
+ *  governamentais e de saúde reconhecidos, então NÃO espere os blocos
+ *  expansíveis no resultado. O que isto entrega é conteúdo que responde buscas
+ *  de cauda longa, profundidade real na página e material que o Google cita
+ *  nas AI Overviews. */
+function faqSection(itens) {
+  const html = `
+      <h2>Perguntas frequentes</h2>
+      <div class="faq">
+        ${itens.map((q) => `<details>
+          <summary>${esc(q.p)}</summary>
+          <p>${q.r}</p>
+        </details>`).join('')}
+      </div>`;
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: itens.map((q) => ({
+      '@type': 'Question',
+      name: q.p,
+      acceptedAnswer: { '@type': 'Answer', text: String(q.r).replace(/<[^>]*>/g, '') },
+    })),
+  };
+  return { html, ld };
+}
+
+/** Perguntas de uma página de cidade. Todas respondidas com o que o produto
+ *  realmente faz — nada de número de perfis por cidade ou nomes de casas
+ *  noturnas, que seriam invenção. */
+function faqCidade(city, st) {
+  return [
+    {
+      p: `O NoSigilo é gratuito em ${city.name}?`,
+      r: `Sim, o cadastro é gratuito e permite criar seu perfil, navegar e ser encontrado por outros perfis de ${esc(city.name)}. Recursos avançados, como enviar mensagens sem limite e ver quem visitou seu perfil, fazem parte do plano premium.`,
+    },
+    {
+      p: 'Preciso ser um casal para entrar?',
+      r: 'Não. O NoSigilo é aberto a casais, mulheres solteiras e homens solteiros do meio liberal. Os filtros permitem que cada perfil encontre exatamente o tipo de conexão que procura.',
+    },
+    {
+      p: `Como encontro pessoas perto de mim em ${city.name}?`,
+      r: `A função <strong>Estou Aqui</strong> mostra quem está por perto em tempo real, e os filtros de busca permitem restringir por cidade e estado — então dá para ver quem está em ${esc(city.name)} ou em outras cidades de ${esc(st.name)}.`,
+    },
+    {
+      p: 'Minhas fotos ficam expostas?',
+      r: 'Não. Você separa fotos públicas de fotos privadas e decide quem libera para ver as íntimas. As mensagens privadas ainda contam com visualização única, em que o conteúdo some depois de visto.',
+    },
+    {
+      p: 'O ambiente é seguro e moderado?',
+      r: 'Os perfis passam por aprovação antes de circular, existe denúncia em qualquer perfil ou publicação, e há diretrizes de comunidade que a moderação aplica. O acesso é restrito a maiores de 18 anos.',
+    },
+    {
+      p: `Meus conhecidos podem me encontrar aqui?`,
+      r: 'O NoSigilo é uma rede fechada e não indexa perfis em buscadores — as páginas públicas do site são apenas informativas, como esta. Nada do que você publica dentro da plataforma aparece no Google.',
+    },
+  ];
+}
+
+/** Perguntas da página de estado — mesma regra: só o que o produto faz. */
+function faqEstado(st) {
+  return [
+    {
+      p: `O NoSigilo funciona em todo o ${st.name}?`,
+      r: `Sim. A busca cobre ${esc(st.capital)} e as demais cidades do estado, e os filtros permitem restringir por cidade — útil em ${esc(st.name)}, onde o meio liberal se concentra na capital mas existe no interior.`,
+    },
+    {
+      p: 'Quanto custa?',
+      r: 'O cadastro é gratuito e já permite criar o perfil, navegar e ser encontrado. O plano premium libera os recursos avançados, como mensagens sem limite e ver quem visitou seu perfil.',
+    },
+    {
+      p: 'Casais e solteiros podem usar?',
+      r: 'Sim — casais liberais, mulheres solteiras e homens solteiros. Cada perfil indica o que procura, e os filtros fazem o resto.',
+    },
+    {
+      p: 'Meu perfil aparece no Google?',
+      r: 'Não. Os perfis não são indexados por buscadores. As páginas do site que aparecem na busca, como esta, são apenas informativas.',
+    },
+    {
+      p: 'Como funciona a discrição na prática?',
+      r: 'Fotos públicas ficam separadas das privadas, que só abrem para quem você liberar. Conteúdo sensível pode ir por mensagem com visualização única, sumindo depois de visto.',
+    },
+  ];
+}
+
 function statePage(st) {
   const cities = list(st.cities);
   const cityPages = citiesOf(st.slug);
@@ -163,6 +279,14 @@ function statePage(st) {
     about: { '@type': 'Place', name: `${st.name}, Brasil` },
     areaServed: { '@type': 'AdministrativeArea', name: st.name },
   };
+
+  const faq = faqSection(faqEstado(st));
+  const trilha = breadcrumbLd([
+    { name: 'Início', path: '/' },
+    { name: 'Swing por estado', path: '/swing/' },
+    { name: st.name, path: `/swing/${st.slug}/` },
+  ]);
+  const vizinhos = neighborStates(st);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -190,7 +314,7 @@ function statePage(st) {
   <meta name="twitter:description" content="${esc(desc)}" />
   <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
-  <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
+  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -213,6 +337,11 @@ function statePage(st) {
     .ctas { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0; }
     .box { background:#141418; border:1px solid #26262c; border-radius:16px; padding:20px; margin-top:22px; }
     footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
+    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
+    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
+    .faq details p { margin:10px 0 0; }
+    .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
     .states { font-size:13px; line-height:2; margin-top:14px; }
   </style>
 </head>
@@ -263,7 +392,28 @@ function statePage(st) {
           em ${esc(cities)} e demais cidades do estado.
         </p>
       </div>
+
+      <h2>Como funciona</h2>
+      <ol>
+        <li><strong>Crie o perfil</strong> — gratuito, indicando se você é casal, mulher solteira ou homem solteiro.</li>
+        <li><strong>Separe o público do íntimo</strong> — fotos privadas só abrem para quem você liberar.</li>
+        <li><strong>Filtre por cidade</strong> — de ${esc(st.capital)} ao interior de ${esc(st.name)}.</li>
+        <li><strong>Converse com calma</strong> — com visualização única para o que é mais sensível.</li>
+      </ol>
+
+      <h2>Privacidade em primeiro lugar</h2>
+      <p>
+        A preocupação de quem vive o meio liberal em ${esc(st.name)} é sempre a mesma: ser reconhecido.
+        Por isso os perfis não são indexados por buscadores, as fotos íntimas ficam atrás de liberação
+        individual e o conteúdo mais sensível pode ser enviado com visualização única. As páginas que
+        aparecem no Google, como esta, são apenas informativas.
+      </p>
+${faq.html}
 ${cityLinksBlock}
+${vizinhos.length ? `
+      <h2>Estados vizinhos no ${esc(st.region)}</h2>
+      <div class="links">${vizinhos.map((v) => `<a href="/swing/${v.slug}/">Swing em ${esc(v.name)}</a>`).join('')}</div>
+` : ''}
     </main>
 
     <footer>
@@ -301,6 +451,16 @@ function cityPage(city) {
     areaServed: { '@type': 'City', name: city.name },
   };
 
+  const faq = faqSection(faqCidade(city, st));
+  const trilha = breadcrumbLd([
+    { name: 'Início', path: '/' },
+    { name: 'Swing por estado', path: '/swing/' },
+    { name: st.name, path: `/swing/${st.slug}/` },
+    { name: city.name, path: `/swing/${st.slug}/${city.slug}/` },
+  ]);
+  const vizinhas = neighborCities(city);
+  const outrasDoEstado = st.cities.filter((c) => c !== city.name);
+
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -327,7 +487,7 @@ function cityPage(city) {
   <meta name="twitter:description" content="${esc(desc)}" />
   <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
-  <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
+  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -349,6 +509,11 @@ function cityPage(city) {
     .ctas { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0; }
     .box { background:#141418; border:1px solid #26262c; border-radius:16px; padding:20px; margin-top:22px; }
     footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
+    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
+    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
+    .faq details p { margin:10px 0 0; }
+    .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
   </style>
 </head>
 <body>
@@ -359,7 +524,7 @@ function cityPage(city) {
     </header>
 
     <main>
-      <p class="crumb"><a href="/swing/${st.slug}/" style="color:#9a9aa2;">${esc(st.name)}</a> › ${esc(city.name)}</p>
+      <p class="crumb"><a href="/swing/" style="color:#9a9aa2;">Swing por estado</a> › <a href="/swing/${st.slug}/" style="color:#9a9aa2;">${esc(st.name)}</a> › ${esc(city.name)}</p>
       <h1>Swing e Troca de Casais em <span>${esc(city.name)}</span></h1>
       <p class="lead">
         A rede social adulta e discreta para casais, mulheres e homens solteiros do meio liberal
@@ -372,6 +537,18 @@ function cityPage(city) {
         longe da exposição das redes sociais comuns. Casais liberais e singles encontram pessoas com os
         mesmos interesses para swing, ménage e encontros liberais — com total discrição.
       </p>
+
+      <h2>Como funciona</h2>
+      <p>
+        A lógica é simples e pensada para quem não quer se expor: você entra, monta o perfil no seu tempo
+        e só revela o que quiser, para quem quiser.
+      </p>
+      <ol>
+        <li><strong>Crie o perfil</strong> — gratuito, indicando se você é casal, mulher solteira ou homem solteiro, e o que procura.</li>
+        <li><strong>Separe o que é público do que é íntimo</strong> — fotos públicas ficam visíveis; as privadas só abrem para quem você liberar.</li>
+        <li><strong>Encontre gente perto</strong> — os filtros restringem por cidade e estado, e a função "Estou Aqui" mostra quem está por perto agora.</li>
+        <li><strong>Converse com calma</strong> — mensagens privadas, com opção de visualização única para o que é mais sensível.</li>
+      </ol>
 
       <h2>Por que usar o NoSigilo em ${esc(city.name)}</h2>
       <ul>
@@ -387,12 +564,48 @@ function cityPage(city) {
         <a class="cta outline" href="/login">Já tenho conta</a>
       </div>
 
+      <h2>Privacidade: o ponto que mais pesa</h2>
+      <p>
+        Quem vive o meio liberal em ${esc(city.name)} costuma ter a mesma preocupação — ser reconhecido.
+        É por isso que o sigilo aqui não é promessa de marketing, e sim como o produto foi construído:
+        o perfil não é indexado por buscadores, as fotos íntimas ficam atrás de liberação individual,
+        e o conteúdo mais sensível pode ser enviado com visualização única, sumindo depois de visto.
+        As páginas que aparecem no Google, como esta, são apenas informativas — nenhum perfil de usuário
+        chega aos resultados de busca.
+      </p>
+
+      <h2>Quem você encontra</h2>
+      <p>
+        A comunidade reúne três públicos que se procuram: <strong>casais liberais</strong>, que buscam
+        troca de casais ou uma terceira pessoa; <strong>mulheres solteiras</strong>, que definem o próprio
+        ritmo e com quem querem falar; e <strong>homens solteiros</strong>, em encontros de ménage e
+        relações abertas. Os filtros existem justamente para que cada perfil chegue a quem faz sentido,
+        sem ruído.
+      </p>
+
+      <h2>Primeiro encontro liberal: como não errar</h2>
+      <p>
+        Vale a mesma etiqueta que sustenta o meio há décadas — e ela protege os dois lados:
+      </p>
+      <ul>
+        <li><strong>Converse antes.</strong> Alinhe limites, expectativas e o que está fora de cogitação antes de marcar.</li>
+        <li><strong>Comece em lugar público.</strong> Um drink em ${esc(city.name)} antes de qualquer coisa reduz o desconforto dos dois lados.</li>
+        <li><strong>"Não" encerra o assunto.</strong> Consentimento é contínuo e pode ser retirado a qualquer momento, por qualquer pessoa envolvida.</li>
+        <li><strong>Combine com o parceiro.</strong> Nos casais, a regra combinada antes vale mais do que a vontade do momento.</li>
+        <li><strong>Discrição é mão dupla.</strong> Não comente, não fotografe, não exponha quem você conheceu.</li>
+      </ul>
+${faq.html}
+
       <div class="box">
         <p style="margin:0;">
           Veja também <a href="/swing/${st.slug}/">swing e troca de casais em ${esc(st.name)}</a> —
-          perfis do meio liberal em todo o estado.
+          perfis do meio liberal em todo o estado${outrasDoEstado.length ? `, incluindo ${esc(list(outrasDoEstado))}` : ''}.
         </p>
       </div>
+${vizinhas.length ? `
+      <h2>Swing em outras cidades do ${esc(city.state.region)}</h2>
+      <div class="links">${vizinhas.map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}</div>
+` : ''}
     </main>
 
     <footer>
@@ -416,6 +629,50 @@ function hubPage() {
   for (const s of SELECTED_STATES) (byRegion[s.region] ||= []).push(s);
   const order = ['Sudeste', 'Sul', 'Nordeste', 'Centro-Oeste', 'Norte'].filter((r) => byRegion[r]?.length);
 
+  // O hub e a porta de entrada do cluster regional: o ItemList diz ao Google
+  // que estas 27 paginas formam um conjunto, e nao paginas soltas.
+  const jsonld = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: title,
+    description: desc,
+    url,
+    inLanguage: 'pt-BR',
+    isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: SELECTED_STATES.length,
+      itemListElement: SELECTED_STATES.map((st, i) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        name: `Swing e troca de casais em ${st.name}`,
+        url: `${SITE}/swing/${st.slug}/`,
+      })),
+    },
+  };
+  const trilha = breadcrumbLd([
+    { name: 'Início', path: '/' },
+    { name: 'Swing por estado', path: '/swing/' },
+  ]);
+  const faq = faqSection([
+    {
+      p: 'O NoSigilo cobre todo o Brasil?',
+      r: 'Sim. Há páginas por estado para as 27 unidades da federação e para as capitais, e a busca dentro da plataforma filtra por cidade.',
+    },
+    {
+      p: 'Preciso pagar para me cadastrar?',
+      r: 'Não. O cadastro é gratuito e já permite criar o perfil, navegar e ser encontrado. O plano premium libera os recursos avançados.',
+    },
+    {
+      p: 'Casais e solteiros podem usar?',
+      r: 'Sim — casais liberais, mulheres solteiras e homens solteiros, cada um indicando o que procura.',
+    },
+    {
+      p: 'Meu perfil aparece em buscadores?',
+      r: 'Não. Perfis não são indexados. As páginas que aparecem no Google, como esta, são apenas informativas.',
+    },
+  ]);
+
   const sections = order.map((reg) => `
       <h2>${esc(reg)}</h2>
       <div class="states">${byRegion[reg].map((s) => `<a href="${REGIONAL}/swing/${s.slug}/" style="color:#eb4778;">${esc(s.name)}</a>`).join(' · ')}</div>
@@ -438,6 +695,7 @@ function hubPage() {
   <meta property="og:description" content="${esc(desc)}" />
   <meta property="og:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
+  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
   <style>
     :root { color-scheme: dark; }
     body { margin:0; background:#09090b; color:#e7e7ea; font-family:system-ui,-apple-system,sans-serif; line-height:1.65; }
@@ -450,6 +708,10 @@ function hubPage() {
     .cta { display:inline-block; background:#eb4778; color:#fff; font-weight:700; text-decoration:none; padding:10px 18px; border-radius:999px; margin-top:20px; }
     footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
     a { color:#eb4778; }
+    .faq { text-align:left; max-width:760px; margin:0 auto; }
+    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
+    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
+    .faq details p { margin:10px 0 0; color:#c7c7cf; }
   </style>
 </head>
 <body>
@@ -461,6 +723,18 @@ function hubPage() {
       e encontre casais e singles para swing, troca de casais e ménage com sigilo e privacidade.
     </p>
     ${sections}
+
+    <p style="max-width:760px;margin:32px auto 0;text-align:left;">
+      Cada página reúne o que interessa a quem procura <strong>swing</strong>, <strong>troca de casais</strong>
+      e <strong>ménage</strong> naquela região: como a plataforma funciona, como a privacidade é tratada
+      e o caminho para encontrar casais e singles por perto. A comunidade é nacional, mas a busca é local —
+      os filtros restringem por cidade e estado, e a função "Estou Aqui" mostra quem está próximo agora.
+    </p>
+    <p style="max-width:760px;margin:14px auto 0;text-align:left;">
+      O acesso é restrito a maiores de 18 anos. Os perfis passam por aprovação antes de circular e não são
+      indexados por buscadores — o que aparece no Google são apenas páginas informativas como esta.
+    </p>
+${faq.html}
     <a class="cta" href="/register">Criar conta grátis</a>
     <footer>
       <a href="/">Início</a> · <a href="/terms">Termos</a> · <a href="/privacy">Privacidade</a> · <a href="/guidelines">Diretrizes</a>
