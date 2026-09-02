@@ -8433,20 +8433,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const distExpr = myLat !== null && myLon !== null
       ? `((u.lat - ${myLat}) * (u.lat - ${myLat}) + (u.lon - ${myLon}) * (u.lon - ${myLon}) * ${lonScale * lonScale})`
       : null;
-    // Perfis com distância real > 0 vêm primeiro (0km / sem-localização caem no fim,
-    // onde são ordenados por cidade e estado).
+    // Qualquer perfil com coordenadas válidas vem primeiro. Distância 0 é válida
+    // para perfis que usam o mesmo centro de cidade e representa máxima proximidade.
     const hasRealDistanceSql = distExpr
-      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0 THEN 0 ELSE 1 END,`
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END,`
       : '';
     const distanceOrderSql = distExpr
-      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0 THEN ${distExpr} ELSE 1e18 END ASC,`
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN ${distExpr} ELSE 1e18 END ASC,`
       : '';
     // Banda de proximidade (~100km): perfis de distância "parecida" ficam no mesmo
     // grupo, e o boost (destaque pago) só desempata DENTRO da banda — a proximidade
     // sempre vence entre bandas diferentes.
     const bandDegrees = 0.9; // ~100km por banda
     const distanceBandSql = distExpr
-      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL AND ${distExpr} > 0
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL
              THEN CAST((ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) * ${lonScale}) / ${bandDegrees} AS INTEGER)
              ELSE 999999 END ASC,`
       : '';

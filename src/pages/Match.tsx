@@ -61,9 +61,6 @@ function resolveMediaUrl(url?: string | null) {
   return resolveServerUrl(url);
 }
 
-const CACHE_KEY_PROFILES = 'nosigilo_match_profiles';
-const CACHE_KEY_INDEX = 'nosigilo_match_index';
-
 export default function Match() {
   useDocumentTitle('Match');
   const { on, off } = useSocket();
@@ -74,23 +71,12 @@ export default function Match() {
   const { registerActivity } = useActivityTracker();
   const profileViewCountRef = useRef(0);
   
-  const [profiles, setProfiles] = useState<MatchProfile[]>(() => {
-    try {
-      const saved = sessionStorage.getItem(CACHE_KEY_PROFILES);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  
-  const [currentIndex, setCurrentIndex] = useState(() => {
-    const saved = sessionStorage.getItem(CACHE_KEY_INDEX);
-    return saved ? parseInt(saved, 10) : 0;
-  });
+  const [profiles, setProfiles] = useState<MatchProfile[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHoveringPass, setIsHoveringPass] = useState(false);
-  const [isLoading, setIsLoading] = useState(profiles.length === 0);
+  const [isLoading, setIsLoading] = useState(true);
   const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);
   const [isLoadingLikedProfiles, setIsLoadingLikedProfiles] = useState(false);
   const [hasSwipedAny, setHasSwipedAny] = useState(() => sessionStorage.getItem('nosigilo_match_swiped') === '1');
@@ -127,7 +113,9 @@ export default function Match() {
 
   useEffect(() => {
     let cancelled = false;
-    if (profiles.length === 0) setIsLoading(true);
+    setIsLoading(true);
+    setProfiles([]);
+    setCurrentIndex(0);
 
     Promise.all([matchService.getCards(), matchService.getLikedProfiles()])
       .then(([cardsData, likedData]) => {
@@ -136,19 +124,12 @@ export default function Match() {
         const liked = Array.isArray(likedData) ? likedData : [];
         setProfiles(newProfiles);
         setLikedProfiles(liked);
-        sessionStorage.setItem(CACHE_KEY_PROFILES, JSON.stringify(newProfiles));
-
-        setCurrentIndex((prev) => {
-          if (prev >= newProfiles.length) {
-            sessionStorage.setItem(CACHE_KEY_INDEX, '0');
-            return 0;
-          }
-          return prev;
-        });
+        setCurrentIndex(0);
       })
       .catch(() => {
         if (cancelled) return;
-        if (profiles.length === 0) setProfiles([]);
+        setProfiles([]);
+        setCurrentIndex(0);
       })
       .finally(() => {
         if (cancelled) return;
@@ -157,7 +138,6 @@ export default function Match() {
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -246,11 +226,8 @@ export default function Match() {
       setSwipeDirection(null);
       setProfiles((prev) => {
         const nextProfiles = swipedProfileId ? prev.filter((p) => String(p.id) !== swipedProfileId) : prev;
-        sessionStorage.setItem(CACHE_KEY_PROFILES, JSON.stringify(nextProfiles));
         setCurrentIndex((prevIndex) => {
-          const nextIndex = nextProfiles.length === 0 ? 0 : Math.min(prevIndex, nextProfiles.length - 1);
-          sessionStorage.setItem(CACHE_KEY_INDEX, String(nextIndex));
-          return nextIndex;
+          return nextProfiles.length === 0 ? 0 : Math.min(prevIndex, nextProfiles.length - 1);
         });
         return nextProfiles;
       });

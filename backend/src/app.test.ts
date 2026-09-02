@@ -363,6 +363,13 @@ describe('nosigilo backend', () => {
       -3.7361,
       -38.6531,
     ]);
+    await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
+      'São Paulo',
+      'sao paulo',
+      'SP',
+      -23.5475,
+      -46.6361,
+    ]);
 
     const viewer = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Viewer Cidade Próxima',
@@ -409,6 +416,17 @@ describe('nosigilo backend', () => {
     expect(Number(nearbyResult.distanceKm)).toBeGreaterThan(0);
     expect(Number(nearbyResult.distanceKm)).toBeLessThan(50);
     expect(search.body.users.some((u: any) => String(u.id) === String(distant.user.id))).toBe(false);
+
+    await run(ctx.db, 'UPDATE users SET is_premium = 1 WHERE id = ?', [viewer.user.id]);
+    const matchCards = await request(ctx.app)
+      .get('/api/match/cards')
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    const nearbyMatchIndex = matchCards.body.findIndex((u: any) => String(u.id) === String(nearby.user.id));
+    const distantMatchIndex = matchCards.body.findIndex((u: any) => String(u.id) === String(distant.user.id));
+    expect(nearbyMatchIndex).toBeGreaterThanOrEqual(0);
+    expect(distantMatchIndex).toBeGreaterThanOrEqual(0);
+    expect(nearbyMatchIndex).toBeLessThan(distantMatchIndex);
 
     const nearbyPostId = `feed-city-near-${Math.random().toString(16).slice(2)}`;
     const distantPostId = `feed-city-far-${Math.random().toString(16).slice(2)}`;
