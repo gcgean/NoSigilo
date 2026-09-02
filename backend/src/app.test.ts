@@ -452,6 +452,25 @@ describe('nosigilo backend', () => {
     expect(feedIds.indexOf(nearbyPostId)).toBeGreaterThanOrEqual(0);
     expect(feedIds.indexOf(distantPostId)).toBeGreaterThanOrEqual(0);
     expect(feedIds.indexOf(nearbyPostId)).toBeLessThan(feedIds.indexOf(distantPostId));
+
+    const gpsUpdate = await request(ctx.app)
+      .put('/api/location')
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .send({ lat: -3.7361, lng: -38.6531 })
+      .expect(200);
+    expect(gpsUpdate.body.city).toBe('Caucaia');
+    expect(gpsUpdate.body.state).toBe('CE');
+
+    const gpsViewer = (await queryOne(
+      ctx.db,
+      'SELECT city, state, lat, lon, location_source FROM users WHERE id = ?',
+      [viewer.user.id]
+    )) as any;
+    expect(gpsViewer.city).toBe('Caucaia');
+    expect(gpsViewer.state).toBe('CE');
+    expect(gpsViewer.location_source).toBe('gps');
+    expect(Number(gpsViewer.lat)).toBeCloseTo(-3.7361, 4);
+    expect(Number(gpsViewer.lon)).toBeCloseTo(-38.6531, 4);
   });
 
   it('onboarding suggestions returns matching users', async () => {

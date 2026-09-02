@@ -11166,9 +11166,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
-    await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps' WHERE id = ?", [parsed.data.lat, parsed.data.lng, req.auth!.userId]);
+    const nearest = await nearestCity(db, parsed.data.lat, parsed.data.lng);
+    if (nearest) {
+      await run(
+        db,
+        "UPDATE users SET lat = ?, lon = ?, location_source = 'gps', city = ?, state = ? WHERE id = ?",
+        [parsed.data.lat, parsed.data.lng, nearest.name, nearest.state, req.auth!.userId]
+      );
+    } else {
+      await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps' WHERE id = ?", [
+        parsed.data.lat,
+        parsed.data.lng,
+        req.auth!.userId,
+      ]);
+    }
     await persist();
-    res.json({ ok: true });
+    res.json({
+      ok: true,
+      city: nearest?.name ?? null,
+      state: nearest?.state ?? null,
+    });
   });
 
   app.post('/api/users/:targetUserId/visit', requireAuth(env, db), async (req, res) => {

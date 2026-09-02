@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { appService, authService, locationService, profileService } from '@/services/api';
+import { appService, authService, profileService } from '@/services/api';
 
 export interface User {
   id: string;
@@ -99,33 +99,6 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
-
-const LOCATION_LAST_SENT_KEY = 'nosigilo:location-last-sent';
-
-function shouldSendLocation(): boolean {
-  try {
-    const last = localStorage.getItem(LOCATION_LAST_SENT_KEY);
-    if (!last) return true;
-    return new Date(last).toDateString() !== new Date().toDateString();
-  } catch {
-    return true;
-  }
-}
-
-function silentlyUpdateLocation() {
-  if (typeof navigator === 'undefined' || !navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      void locationService.updateLocation(pos.coords.latitude, pos.coords.longitude)
-        .then(() => {
-          try { localStorage.setItem(LOCATION_LAST_SENT_KEY, new Date().toISOString()); } catch {}
-        })
-        .catch(() => {});
-    },
-    () => {}, // silently ignore: denied, unavailable, timeout
-    { timeout: 8000, maximumAge: 300_000 }
-  );
-}
 
 // Billing PII fields — kept in memory but NOT persisted to localStorage
 const BILLING_PII_FIELDS: Array<keyof User> = [
@@ -253,7 +226,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void applySettings(parsedUser).then((nextUser) => {
           if (nextUser) setUser(nextUser);
         });
-        if (shouldSendLocation()) silentlyUpdateLocation();
       } catch {
         localStorage.removeItem('nosigilo_user');
       }
@@ -264,7 +236,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const mergedUser = { ...me, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
           saveUserToStorage(mergedUser);
           setUser(mergedUser);
-          if (shouldSendLocation()) silentlyUpdateLocation();
         })
         .catch(() => {
           localStorage.removeItem('token');
@@ -296,7 +267,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveUserToStorage(mergedUser);
     setUser(mergedUser);
     localStorage.setItem('nosigilo_feed_filter', 'all'); // sempre abrir o feed em "Todos" ao logar
-    silentlyUpdateLocation(); // always capture on explicit login
     return mergedUser;
   };
 
@@ -329,7 +299,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       saveUserToStorage(mergedUser);
       setUser(mergedUser);
       localStorage.setItem('nosigilo_feed_filter', 'all'); // novo usuário abre o feed em "Todos"
-      silentlyUpdateLocation(); // capture location on first registration too
       return { ...result, user: mergedUser };
     }
     return result;

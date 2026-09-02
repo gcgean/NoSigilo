@@ -352,8 +352,8 @@ export default function Radar() {
       await locationService.updateLocation(lat, lon);
       const nearest = await locationService.getNearestCity(lat, lon);
 
-      const nextCity = String(nearest?.city?.name || '').trim();
-      const nextState = String(nearest?.city?.state || '').trim().toUpperCase();
+      const nextCity = String(nearest?.name || '').trim();
+      const nextState = String(nearest?.state || '').trim().toUpperCase();
       if (nextCity && nextState) {
         setCity(nextCity);
         setState(nextState);
