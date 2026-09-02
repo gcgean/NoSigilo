@@ -5,7 +5,7 @@
 //
 // Também regenera dist/sitemap.xml com a home + páginas institucionais + todos os estados.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -31,6 +31,69 @@ const SITE = 'https://nosigilo.net';
 // REGIONAL segue existindo só para não reescrever os ~15 pontos de uso abaixo.
 const REGIONAL = SITE;
 const TODAY = new Date().toISOString().slice(0, 10);
+
+// ---------------------------------------------------------------------------
+//  Prova social com numero real
+// ---------------------------------------------------------------------------
+// Cada pagina regional mostra quantos perfis existem ali. Isso resolve dois
+// problemas de uma vez: converte melhor que texto generico, e da a cada pagina
+// um dado que so existe nela — sem o que 48 paginas do mesmo molde correriam
+// risco de serem lidas pelo Google como doorway pages.
+//
+// A regra e nunca exibir um numero fraco. Rio Branco tem 5 perfis; mostrar
+// isso afundaria a pagina. Entao ha um corte: abaixo do minimo, a pagina sobe
+// um nivel (estado, depois nacional) ate achar um numero que sustente.
+const MIN_CIDADE = 50;
+const MIN_ESTADO = 100;
+
+let STATS = null;
+try {
+  STATS = JSON.parse(readFileSync(resolve(__dirname, 'seo-stats.json'), 'utf8'));
+} catch {
+  // Sem o arquivo o site continua gerando, apenas sem os numeros.
+  console.warn('[seo] seo-stats.json ausente — paginas sairao sem prova social');
+}
+
+/** Arredonda para baixo ate um numero "redondo". 821 -> 800, 194 -> 150, 78 -> 70.
+ *  Sempre para baixo, nunca para cima: assim a afirmacao continua verdadeira
+ *  mesmo que alguns perfis saiam entre uma atualizacao e outra. */
+function arredondaParaBaixo(n) {
+  if (n >= 1000) return Math.floor(n / 1000) * 1000;
+  if (n >= 500) return Math.floor(n / 100) * 100;
+  if (n >= 100) return Math.floor(n / 50) * 50;
+  return Math.floor(n / 10) * 10;
+}
+
+const fmt = (n) => n.toLocaleString('pt-BR');
+
+/** Frase de prova social para uma cidade, caindo para o estado e depois para o
+ *  Brasil quando o numero local nao sustenta. Retorna '' se nao houver dado. */
+function provaSocialCidade(city, st) {
+  if (!STATS) return '';
+  const nCidade = STATS.cidades?.[`${st.slug}/${city.slug}`] ?? 0;
+  if (nCidade >= MIN_CIDADE) {
+    return `<strong>Mais de ${fmt(arredondaParaBaixo(nCidade))} perfis em ${esc(city.name)}</strong> já fazem parte da comunidade.`;
+  }
+  const nEstado = STATS.estados?.[st.slug] ?? 0;
+  if (nEstado >= MIN_ESTADO) {
+    return `<strong>Mais de ${fmt(arredondaParaBaixo(nEstado))} perfis no estado</strong> já fazem parte da comunidade, e a busca filtra por cidade.`;
+  }
+  const nBrasil = STATS.nacional ?? 0;
+  if (!nBrasil) return '';
+  return `<strong>Mais de ${fmt(arredondaParaBaixo(nBrasil))} perfis no Brasil</strong> já fazem parte da comunidade.`;
+}
+
+/** Mesma logica para a pagina de estado. */
+function provaSocialEstado(st) {
+  if (!STATS) return '';
+  const nEstado = STATS.estados?.[st.slug] ?? 0;
+  if (nEstado >= MIN_ESTADO) {
+    return `<strong>Mais de ${fmt(arredondaParaBaixo(nEstado))} perfis no estado</strong> já fazem parte da comunidade.`;
+  }
+  const nBrasil = STATS.nacional ?? 0;
+  if (!nBrasil) return '';
+  return `<strong>Mais de ${fmt(arredondaParaBaixo(nBrasil))} perfis no Brasil</strong> já fazem parte da comunidade.`;
+}
 
 /** Estados brasileiros: nome, slug, capital, cidades-chave e região. */
 const STATES = [
@@ -77,36 +140,84 @@ const ENABLED_STATES = 'all';
 //   Deixe {} para nenhuma cidade. Ex.:
 //   const ENABLED_CITIES = { 'sao-paulo': [{ name: 'Campinas', slug: 'campinas' }] };
 const ENABLED_CITIES = {
-  'ceara': [{ name: 'Fortaleza', slug: 'fortaleza' }],
-  'rio-grande-do-norte': [{ name: 'Natal', slug: 'natal' }],
-  'rondonia': [{ name: 'Porto Velho', slug: 'porto-velho' }],
+  // Selecao guiada pelos dados, nao pelo mapa: entram as cidades onde ja
+  // existem perfis de verdade (ver scripts/seo-stats.json). Por isso ha
+  // cidades sem pagina de capital que superam capitais — Campina Grande tem
+  // mais perfis que Natal e Manaus, Caruaru tem mais que Salvador. Uma pagina
+  // de cidade sem ninguem por perto atrai visita e entrega um vazio.
+  'ceara': [
+    { name: 'Fortaleza', slug: 'fortaleza' },
+    { name: 'Maracanaú', slug: 'maracanau' },
+    { name: 'Sobral', slug: 'sobral' },
+    { name: 'Juazeiro do Norte', slug: 'juazeiro-do-norte' },
+    { name: 'Caucaia', slug: 'caucaia' },
+    { name: 'Eusébio', slug: 'eusebio' },
+    { name: 'Tianguá', slug: 'tiangua' },
+    { name: 'Iguatu', slug: 'iguatu' },
+  ],
+  'rondonia': [
+    { name: 'Porto Velho', slug: 'porto-velho' },
+    { name: 'Ariquemes', slug: 'ariquemes' },
+  ],
+  'sao-paulo': [
+    { name: 'São Paulo', slug: 'sao-paulo' },
+    { name: 'Guarulhos', slug: 'guarulhos' },
+    { name: 'Campinas', slug: 'campinas' },
+    { name: 'Ribeirão Preto', slug: 'ribeirao-preto' },
+  ],
+  'pernambuco': [
+    { name: 'Recife', slug: 'recife' },
+    { name: 'Caruaru', slug: 'caruaru' },
+    { name: 'Jaboatão dos Guararapes', slug: 'jaboatao-dos-guararapes' },
+    { name: 'Petrolina', slug: 'petrolina' },
+    { name: 'Paulista', slug: 'paulista' },
+    { name: 'Olinda', slug: 'olinda' },
+  ],
+  'paraiba': [
+    { name: 'Campina Grande', slug: 'campina-grande' },
+    { name: 'João Pessoa', slug: 'joao-pessoa' },
+  ],
+  'rio-grande-do-norte': [
+    { name: 'Natal', slug: 'natal' },
+    { name: 'Mossoró', slug: 'mossoro' },
+  ],
   'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
-  'maranhao': [{ name: 'São Luís', slug: 'sao-luis' }],
-  'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
-  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
-  'paraiba': [{ name: 'João Pessoa', slug: 'joao-pessoa' }],
-  'pernambuco': [{ name: 'Recife', slug: 'recife' }],
-  'piaui': [{ name: 'Teresina', slug: 'teresina' }],
-  'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
-  'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
-  'amapa': [{ name: 'Macapá', slug: 'macapa' }],
-  'para': [{ name: 'Belém', slug: 'belem' }],
-  'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
-  'tocantins': [{ name: 'Palmas', slug: 'palmas' }],
-  // Centro-Oeste
-  'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
-  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
-  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
-  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
-  // Sudeste
-  'espirito-santo': [{ name: 'Vitória', slug: 'vitoria' }],
-  'minas-gerais': [{ name: 'Belo Horizonte', slug: 'belo-horizonte' }],
   'rio-de-janeiro': [{ name: 'Rio de Janeiro', slug: 'rio-de-janeiro' }],
-  'sao-paulo': [{ name: 'São Paulo', slug: 'sao-paulo' }],
-  // Sul
+  'minas-gerais': [
+    { name: 'Belo Horizonte', slug: 'belo-horizonte' },
+    { name: 'Contagem', slug: 'contagem' },
+  ],
+  'maranhao': [
+    { name: 'São Luís', slug: 'sao-luis' },
+    { name: 'Imperatriz', slug: 'imperatriz' },
+  ],
+  'piaui': [{ name: 'Teresina', slug: 'teresina' }],
+  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
   'parana': [{ name: 'Curitiba', slug: 'curitiba' }],
   'rio-grande-do-sul': [{ name: 'Porto Alegre', slug: 'porto-alegre' }],
-  'santa-catarina': [{ name: 'Florianópolis', slug: 'florianopolis' }],
+  'para': [{ name: 'Belém', slug: 'belem' }],
+  'espirito-santo': [
+    { name: 'Vila Velha', slug: 'vila-velha' },
+    { name: 'Vitória', slug: 'vitoria' },
+    { name: 'Serra', slug: 'serra' },
+  ],
+  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
+  'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
+  'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
+  'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
+  'santa-catarina': [
+    { name: 'Joinville', slug: 'joinville' },
+    { name: 'Florianópolis', slug: 'florianopolis' },
+  ],
+  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
+  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
+  // Capitais com poucos perfis. Mantidas porque quem busca "swing aracaju"
+  // precisa achar alguma coisa — mas a regra de corte faz a pagina exibir o
+  // numero nacional, nunca o local.
+  'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
+  'tocantins': [{ name: 'Palmas', slug: 'palmas' }],
+  'amapa': [{ name: 'Macapá', slug: 'macapa' }],
+  'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
 };
 // ============================================================
 
@@ -287,6 +398,7 @@ function statePage(st) {
     { name: st.name, path: `/swing/${st.slug}/` },
   ]);
   const vizinhos = neighborStates(st);
+  const prova = provaSocialEstado(st);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -341,6 +453,7 @@ function statePage(st) {
     .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
     .faq details p { margin:10px 0 0; }
     .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .prova { background:#1a1015; border:1px solid #eb477833; border-left:3px solid #eb4778; border-radius:12px; padding:14px 16px; color:#e7e7ea; }
     .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
     .states { font-size:13px; line-height:2; margin-top:14px; }
   </style>
@@ -362,6 +475,9 @@ function statePage(st) {
       <div class="chips">
         ${st.cities.map((c) => `<span class="chip">Swing ${esc(c)}</span>`).join('\n        ')}
       </div>
+
+${prova ? `
+      <p class="prova">${prova}</p>` : ''}
 
       <p>
         Procurando <strong>swing em ${esc(st.name)}</strong> ou <strong>troca de casais em ${esc(st.capital)}</strong>?
@@ -459,6 +575,7 @@ function cityPage(city) {
     { name: city.name, path: `/swing/${st.slug}/${city.slug}/` },
   ]);
   const vizinhas = neighborCities(city);
+  const prova = provaSocialCidade(city, st);
   const outrasDoEstado = st.cities.filter((c) => c !== city.name);
 
   return `<!doctype html>
@@ -513,6 +630,7 @@ function cityPage(city) {
     .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
     .faq details p { margin:10px 0 0; }
     .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+    .prova { background:#1a1015; border:1px solid #eb477833; border-left:3px solid #eb4778; border-radius:12px; padding:14px 16px; color:#e7e7ea; }
     .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
   </style>
 </head>
@@ -530,6 +648,9 @@ function cityPage(city) {
         A rede social adulta e discreta para casais, mulheres e homens solteiros do meio liberal
         em ${esc(city.name)}, ${esc(st.name)}. Conexões reais com sigilo, privacidade e respeito.
       </p>
+
+${prova ? `
+      <p class="prova">${prova}</p>` : ''}
 
       <p>
         Procurando <strong>swing em ${esc(city.name)}</strong> ou <strong>troca de casais em ${esc(city.name)}</strong>?
