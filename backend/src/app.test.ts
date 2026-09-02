@@ -3,7 +3,7 @@ import request from 'supertest';
 import path from 'node:path';
 import { unlinkSync, existsSync, rmSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
-import { initDb, run } from './db.js';
+import { initDb, queryOne, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
 
@@ -346,6 +346,94 @@ describe('nosigilo backend', () => {
     const nearest = await request(ctx.app).get('/api/cities/nearest').query({ lat: -23.55, lon: -46.63 }).expect(200);
     expect(nearest.body.name).toBe('São Paulo');
     expect(nearest.body.state).toBe('SP');
+  });
+
+  it('uses profile city coordinates for nearby discovery before GPS permission', async () => {
+    await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
+      'Fortaleza',
+      'fortaleza',
+      'CE',
+      -3.7319,
+      -38.5267,
+    ]);
+    await run(ctx.db, 'INSERT INTO cities (name, name_norm, state, lat, lon) VALUES (?, ?, ?, ?, ?)', [
+      'Caucaia',
+      'caucaia',
+      'CE',
+      -3.7361,
+      -38.6531,
+    ]);
+
+    const viewer = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Cidade Próxima',
+      email: 'viewer-cidade-proxima@example.com',
+      password: 'senha123',
+      gender: 'Homem',
+      city: 'Fortaleza',
+      state: 'CE',
+      lookingFor: ['Mulher'],
+    });
+    const nearby = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Cidade Vizinha',
+      email: 'perfil-cidade-vizinha@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'Caucaia',
+      state: 'CE',
+    });
+    const distant = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Cidade Distante',
+      email: 'perfil-cidade-distante@example.com',
+      password: 'senha123',
+      gender: 'Mulher',
+      city: 'São Paulo',
+      state: 'SP',
+    });
+
+    const storedViewer = (await queryOne(
+      ctx.db,
+      'SELECT lat, lon, location_source FROM users WHERE id = ?',
+      [viewer.user.id]
+    )) as any;
+    expect(storedViewer.location_source).toBe('profile_city');
+    expect(Number(storedViewer.lat)).toBeCloseTo(-3.7319, 3);
+    expect(Number(storedViewer.lon)).toBeCloseTo(-38.5267, 3);
+
+    const search = await request(ctx.app)
+      .get('/api/users')
+      .query({ sort: 'nearby', radar: 50, genders: 'Mulher', limit: 40 })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    const nearbyResult = search.body.users.find((u: any) => String(u.id) === String(nearby.user.id));
+    expect(nearbyResult).toBeTruthy();
+    expect(Number(nearbyResult.distanceKm)).toBeGreaterThan(0);
+    expect(Number(nearbyResult.distanceKm)).toBeLessThan(50);
+    expect(search.body.users.some((u: any) => String(u.id) === String(distant.user.id))).toBe(false);
+
+    const nearbyPostId = `feed-city-near-${Math.random().toString(16).slice(2)}`;
+    const distantPostId = `feed-city-far-${Math.random().toString(16).slice(2)}`;
+    const now = Date.now();
+    await run(
+      ctx.db,
+      'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [nearbyPostId, nearby.user.id, 'Conteúdo da cidade vizinha', null, 0, new Date(now - 60_000).toISOString()]
+    );
+    await run(
+      ctx.db,
+      'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [distantPostId, distant.user.id, 'Conteúdo da cidade distante', null, 0, new Date(now).toISOString()]
+    );
+    await ctx.db.persist();
+
+    const feed = await request(ctx.app)
+      .get('/api/feed')
+      .query({ limit: 40, page: 1 })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    const feedIds = feed.body.posts.map((post: any) => String(post.id));
+    expect(feedIds.indexOf(nearbyPostId)).toBeGreaterThanOrEqual(0);
+    expect(feedIds.indexOf(distantPostId)).toBeGreaterThanOrEqual(0);
+    expect(feedIds.indexOf(nearbyPostId)).toBeLessThan(feedIds.indexOf(distantPostId));
   });
 
   it('onboarding suggestions returns matching users', async () => {

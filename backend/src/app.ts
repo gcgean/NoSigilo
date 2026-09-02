@@ -1631,6 +1631,29 @@ function sanitizeCityValue(value: unknown): string | null {
   return v.length >= 3 ? v : null;
 }
 
+async function findCityCoordinates(db: DbHandle, city: unknown, state: unknown) {
+  const sanitizedCity = sanitizeCityValue(city);
+  const normalizedState = String(state || '').trim().toUpperCase();
+  if (!sanitizedCity || normalizedState.length !== 2) return null;
+
+  const row = (await queryOne(
+    db,
+    `SELECT name, state, lat, lon
+     FROM cities
+     WHERE name_norm = ? AND UPPER(state) = ?
+     LIMIT 1`,
+    [normalizeText(sanitizedCity), normalizedState]
+  )) as any;
+  if (!row || row.lat == null || row.lon == null) return null;
+
+  return {
+    city: String(row.name || sanitizedCity),
+    state: String(row.state || normalizedState).toUpperCase(),
+    lat: Number(row.lat),
+    lon: Number(row.lon),
+  };
+}
+
 async function ensureConversationBetweenUsers(db: DbHandle, userAId: string, userBId: string) {
   const pair = [userAId, userBId].sort((a, b) => a.localeCompare(b));
   const existing = (await queryOne(
@@ -2887,6 +2910,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const id = randomUUID();
     const registrationIpHash = hashRequestIp(env, getRequestIp(req));
     const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+    const registrationLocation = await findCityCoordinates(db, parsed.data.city, parsed.data.state);
+    const registrationCity = registrationLocation?.city ?? sanitizeCityValue(parsed.data.city);
+    const registrationState = registrationLocation?.state ?? (parsed.data.state?.trim().toUpperCase() || null);
 
     await run(
       db,
@@ -2895,8 +2921,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id, email, password_hash, name, avatar, bio, status, city, state, birth_date, gender, marital_status,
         sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes, drinks, profession, zodiac_sign,
         looking_for_json, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at,
-        invited_by_user_id, invite_status, registration_ip_hash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invited_by_user_id, invite_status, registration_ip_hash, lat, lon, location_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         id,
@@ -2906,8 +2932,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         '',
         null,
         null,
-        sanitizeCityValue(parsed.data.city),
-        parsed.data.state ?? null,
+        registrationCity,
+        registrationState,
         parsed.data.birthDate ?? null,
         parsed.data.gender ?? null,
         null,
@@ -2931,6 +2957,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         invite ? String(invite.inviter_user_id) : null,
         'approved',
         registrationIpHash,
+        registrationLocation?.lat ?? null,
+        registrationLocation?.lon ?? null,
+        registrationLocation ? 'profile_city' : null,
       ]
     );
     if (invite) {
@@ -4757,15 +4786,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               authorId,
               score: totalScore + (hasMedia ? 4 : 0),
               createdAtMs,
+              proximityRank:
+                distanceKm !== null && distanceKm <= 20 ? 0
+                  : sameCity ? 0
+                    : distanceKm !== null && distanceKm <= 100 ? 1
+                      : sameState ? 2
+                        : distanceKm !== null ? 3 : 4,
               reason,
               label,
               matchesInterest,
             };
           });
 
-          // Ordem cronológica: mais recentes primeiro. Mantém o feed previsível e
-          // evita o usuário rever a mesma postagem (a dedup por seenIds cuida do resto).
-          ranked.sort((a, b) => b.createdAtMs - a.createdAtMs);
+          // Descoberta regional primeiro: cidade/até 20 km, região de até 100 km,
+          // mesmo estado e só então demais regiões. Dentro da mesma faixa, a
+          // pontuação combina afinidade, atividade, qualidade e recência.
+          ranked.sort((a, b) =>
+            a.proximityRank - b.proximityRank ||
+            b.score - a.score ||
+            b.createdAtMs - a.createdAtMs
+          );
 
           // Só perfis do interesse do viewer (quando ele definiu preferência)
           const interestFiltered = viewerLookingFor.length > 0
@@ -6703,6 +6743,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     const data = parsed.data;
+    const updatesProfileLocation = 'city' in data || 'state' in data;
+    const currentLocation = updatesProfileLocation
+      ? ((await queryOne(db, 'SELECT city, state FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any)
+      : null;
 
     // Nome só muda via solicitação ao suporte + aprovação do admin — nunca pelo
     // update direto do perfil. Ignora silenciosamente qualquer 'name' enviado.
@@ -6770,6 +6814,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (key in data) {
         setParts.push(`${col} = ?`);
         values.push(key === 'city' ? sanitizeCityValue((data as any)[key]) : (data as any)[key]);
+      }
+    }
+    if (updatesProfileLocation) {
+      const nextCity = 'city' in data ? sanitizeCityValue(data.city) : sanitizeCityValue(currentLocation?.city);
+      const nextState = String(('state' in data ? data.state : currentLocation?.state) || '').trim().toUpperCase();
+      const cityChanged = normalizeText(nextCity || '') !== normalizeText(String(currentLocation?.city || ''));
+      const stateChanged = nextState !== String(currentLocation?.state || '').trim().toUpperCase();
+
+      if (cityChanged || stateChanged) {
+        const cityCoordinates = await findCityCoordinates(db, nextCity, nextState);
+        setParts.push('lat = ?', 'lon = ?', 'location_source = ?');
+        values.push(
+          cityCoordinates?.lat ?? null,
+          cityCoordinates?.lon ?? null,
+          cityCoordinates ? 'profile_city' : null
+        );
       }
     }
     if ('bioLink' in data) {
@@ -7436,8 +7496,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (viewerLat !== null && viewerLon !== null) {
         const latDelta = radarKm / 111;
         const lonDelta = radarKm / (111 * Math.cos((viewerLat * Math.PI) / 180));
-        conditions.push('u.lat BETWEEN ? AND ? AND u.lon BETWEEN ? AND ?');
-        params.push(viewerLat - latDelta, viewerLat + latDelta, viewerLon - lonDelta, viewerLon + lonDelta);
+        const lonScale = Math.cos((viewerLat * Math.PI) / 180);
+        conditions.push(`u.lat BETWEEN ? AND ? AND u.lon BETWEEN ? AND ?
+          AND ((u.lat - ?) * (u.lat - ?) + ((u.lon - ?) * ?) * ((u.lon - ?) * ?)) <= ?`);
+        params.push(
+          viewerLat - latDelta,
+          viewerLat + latDelta,
+          viewerLon - lonDelta,
+          viewerLon + lonDelta,
+          viewerLat,
+          viewerLat,
+          viewerLon,
+          lonScale,
+          viewerLon,
+          lonScale,
+          (radarKm / 111) ** 2
+        );
       }
     }
 
@@ -8329,9 +8403,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Rough approximation: 1 degree latitude is ~111km, longitude varies but we use a fixed scale for simplicity in SQLite
       const latDelta = distanceKm / 111;
       const lonDelta = distanceKm / (111 * Math.cos(myLat * Math.PI / 180));
+      const lonScale = Math.cos((myLat * Math.PI) / 180);
       
-      whereClause += ' AND u.lat BETWEEN ? AND ? AND u.lon BETWEEN ? AND ?';
-      params.push(myLat - latDelta, myLat + latDelta, myLon - lonDelta, myLon + lonDelta);
+      whereClause += ` AND u.lat BETWEEN ? AND ? AND u.lon BETWEEN ? AND ?
+        AND ((u.lat - ?) * (u.lat - ?) + ((u.lon - ?) * ?) * ((u.lon - ?) * ?)) <= ?`;
+      params.push(
+        myLat - latDelta,
+        myLat + latDelta,
+        myLon - lonDelta,
+        myLon + lonDelta,
+        myLat,
+        myLat,
+        myLon,
+        lonScale,
+        myLon,
+        lonScale,
+        (distanceKm / 111) ** 2
+      );
     }
 
     // Perfis com destaque ativo (comprado com tokens) aparecem primeiro.
@@ -11078,7 +11166,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input' });
       return;
     }
-    await run(db, 'UPDATE users SET lat = ?, lon = ? WHERE id = ?', [parsed.data.lat, parsed.data.lng, req.auth!.userId]);
+    await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps' WHERE id = ?", [parsed.data.lat, parsed.data.lng, req.auth!.userId]);
     await persist();
     res.json({ ok: true });
   });
