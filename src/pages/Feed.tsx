@@ -202,6 +202,31 @@ const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
 const FEED_RESUME_REFRESH_MS = 60_000;
 const NEARBY_OPTIONS = [10, 25, 50, 100, 200, 300] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
+const FEED_PROXIMITY_PREFERENCE_KEY = 'nosigilo:feed-proximity-v1';
+
+type FeedProximityPreference =
+  | { mode: 'region' }
+  | { mode: 'all' }
+  | { mode: 'radius'; radius: NearbyOption };
+
+function readFeedProximityPreference(): { nearbyRadius: NearbyOption | null; cityOnly: boolean } {
+  if (typeof window === 'undefined') return { nearbyRadius: null, cityOnly: true };
+  try {
+    const raw = window.localStorage.getItem(FEED_PROXIMITY_PREFERENCE_KEY);
+    if (!raw) return { nearbyRadius: null, cityOnly: true };
+    const preference = JSON.parse(raw) as { mode?: string; radius?: unknown };
+    if (preference.mode === 'all') return { nearbyRadius: null, cityOnly: false };
+    if (
+      preference.mode === 'radius' &&
+      typeof preference.radius === 'number' &&
+      (NEARBY_OPTIONS as readonly number[]).includes(preference.radius)
+    ) {
+      return { nearbyRadius: preference.radius as NearbyOption, cityOnly: false };
+    }
+    if (preference.mode === 'region') return { nearbyRadius: null, cityOnly: true };
+  } catch {}
+  return { nearbyRadius: null, cityOnly: true };
+}
 
 /** Persist seen post IDs across sessions (localStorage, 24h TTL) */
 function readFeedSeenIds(): Set<string> {
@@ -385,8 +410,20 @@ export default function Feed() {
 
   // Proximity filter: null = todos, number = raio rígido; cityOnly mantém o
   // nome legado, mas representa a região progressiva (cidade → estado → distância).
-  const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(null);
-  const [cityOnly, setCityOnly] = useState(false);
+  const [initialProximityPreference] = useState(readFeedProximityPreference);
+  const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(initialProximityPreference.nearbyRadius);
+  const [cityOnly, setCityOnly] = useState(initialProximityPreference.cityOnly);
+
+  useEffect(() => {
+    const preference: FeedProximityPreference = cityOnly
+      ? { mode: 'region' }
+      : nearbyRadius !== null
+        ? { mode: 'radius', radius: nearbyRadius }
+        : { mode: 'all' };
+    try {
+      window.localStorage.setItem(FEED_PROXIMITY_PREFERENCE_KEY, JSON.stringify(preference));
+    } catch {}
+  }, [cityOnly, nearbyRadius]);
 
   const handleNearbyRadius = (km: NearbyOption) => {
     const next = nearbyRadius === km ? null : km;
@@ -2300,7 +2337,7 @@ export default function Feed() {
             </div>
 
             {/* Proximity filter row — segunda linha, só quando tem localização e não está em Experiências */}
-            {user?.lat && feedFilter !== 'experiences' ? (
+            {(user?.lat || user?.city) && feedFilter !== 'experiences' ? (
               <div className="mt-2.5 pt-2.5 border-t border-border/40 flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
                 <span className="text-xs text-muted-foreground font-medium shrink-0">Perto de mim:</span>
