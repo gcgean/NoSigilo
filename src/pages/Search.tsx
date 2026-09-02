@@ -120,6 +120,8 @@ export default function SearchPage() {
 
   // Sentinel ref for IntersectionObserver (infinite scroll)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
+  const queryVersionRef = useRef(0);
 
   // Debounce ref for text inputs
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -192,6 +194,9 @@ export default function SearchPage() {
 
   // ── fetch first page (reset) ───────────────────────────────────────────────
   const fetchFirstPage = useCallback(async () => {
+    const queryVersion = ++queryVersionRef.current;
+    loadingMoreRef.current = false;
+    setIsLoadingMore(false);
     if (onlyLiked) {
       setFilteredLiked(applyLikedFilters(likedProfiles));
       return;
@@ -202,10 +207,12 @@ export default function SearchPage() {
     setHasMore(false);
     try {
       const data = await usersService.searchUsers(buildParams(1));
+      if (queryVersion !== queryVersionRef.current) return;
       setResults(data.users);
       setHasMore(data.hasMore);
       setPage(1);
     } catch {
+      if (queryVersion !== queryVersionRef.current) return;
       setResults([]);
       setHasMore(false);
       toast({
@@ -214,24 +221,32 @@ export default function SearchPage() {
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      if (queryVersion === queryVersionRef.current) setIsLoading(false);
     }
   }, [onlyLiked, buildParams, applyLikedFilters, likedProfiles, toast]);
 
   // ── fetch next page ────────────────────────────────────────────────────────
   const fetchNextPage = useCallback(async () => {
-    if (isLoadingMore || !hasMore || onlyLiked) return;
+    if (loadingMoreRef.current || isLoadingMore || !hasMore || onlyLiked) return;
+    loadingMoreRef.current = true;
+    const queryVersion = queryVersionRef.current;
     setIsLoadingMore(true);
     const nextPage = page + 1;
     try {
       const data = await usersService.searchUsers(buildParams(nextPage));
-      setResults((prev) => [...prev, ...data.users]);
+      if (queryVersion !== queryVersionRef.current) return;
+      setResults((prev) => {
+        const knownIds = new Set(prev.map((profile) => String(profile.id)));
+        const newProfiles = data.users.filter((profile: any) => !knownIds.has(String(profile.id)));
+        return [...prev, ...newProfiles];
+      });
       setHasMore(data.hasMore);
       setPage(nextPage);
     } catch {
       // silently ignore load-more errors
     } finally {
-      setIsLoadingMore(false);
+      loadingMoreRef.current = false;
+      if (queryVersion === queryVersionRef.current) setIsLoadingMore(false);
     }
   }, [isLoadingMore, hasMore, onlyLiked, page, buildParams]);
 
@@ -389,18 +404,25 @@ export default function SearchPage() {
     const viewerCity = String(user?.city || '').trim().toLowerCase();
     if (!hasDistanceData && !viewerCity) return [];
     const sameCity: any[] = [];
-    const near: any[]     = [];
-    const distant: any[]  = [];
+    const sameState: any[] = [];
+    const otherStates: any[] = [];
     const unknown: any[]  = [];
+    const viewerState = String(user?.state || '').trim().toUpperCase();
     for (const p of displayResults) {
       // Mesma cidade (por nome) vem primeiro, independente da distância — dois
       // perfis da mesma cidade grande (ex.: São Paulo) podem estar a 20 km.
       const pCity = String(p.city || '').trim().toLowerCase();
-      if (viewerCity && pCity && pCity === viewerCity) { sameCity.push(p); continue; }
-      const d = p.distanceKm;
-      if (typeof d !== 'number') { unknown.push(p); continue; }
-      if (d <= 50) near.push(p);
-      else distant.push(p);
+      const pState = String(p.state || '').trim().toUpperCase();
+      if (viewerCity && pCity && pCity === viewerCity && (!viewerState || pState === viewerState)) {
+        sameCity.push(p);
+        continue;
+      }
+      if (viewerState && pState === viewerState) {
+        sameState.push(p);
+        continue;
+      }
+      if (typeof p.distanceKm === 'number') otherStates.push(p);
+      else unknown.push(p);
     }
     // Dentro de cada grupo, ordena por distância crescente (sem distância vai ao fim).
     const byDistance = (a: any, b: any) => {
@@ -408,12 +430,17 @@ export default function SearchPage() {
       const dbv = typeof b.distanceKm === 'number' ? b.distanceKm : Infinity;
       return da - dbv;
     };
-    sameCity.sort(byDistance); near.sort(byDistance); distant.sort(byDistance);
+    sameCity.sort(byDistance);
+    sameState.sort(byDistance);
+    otherStates.sort(byDistance);
     const groups: ProfileGroup[] = [];
     if (sameCity.length) groups.push({ label: 'Na sua cidade', profiles: sameCity });
-    if (near.length)     groups.push({ label: 'Até 50 km',     profiles: near });
-    if (distant.length)  groups.push({ label: 'Mais distantes', profiles: distant });
-    if (unknown.length)  groups.push({ label: 'Outros',         profiles: unknown });
+    if (sameState.length) groups.push({
+      label: viewerState ? `Outras cidades de ${viewerState}` : 'No seu estado',
+      profiles: sameState,
+    });
+    if (otherStates.length) groups.push({ label: 'Outros estados por proximidade', profiles: otherStates });
+    if (unknown.length) groups.push({ label: 'Outros', profiles: unknown });
     return groups;
   })();
 

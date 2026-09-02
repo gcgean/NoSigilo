@@ -7416,7 +7416,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // ─── Search / browse users ───────────────────────────────────────────────
   app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
-    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city FROM users WHERE id = ?', [viewerId])) as any;
+    const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city, state FROM users WHERE id = ?', [viewerId])) as any;
     const viewerIsAdmin = Number(viewerRow?.is_admin || 0) === 1;
     const page   = Math.max(1, Number(req.query.page  || 1));
     const limit  = Math.min(40, Math.max(1, Number(req.query.limit || 20)));
@@ -7491,8 +7491,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     let viewerLat: number | null = viewerRow?.lat != null ? Number(viewerRow.lat) : null;
     let viewerLon: number | null = viewerRow?.lon != null ? Number(viewerRow.lon) : null;
-    // Busca por nome ignora o raio de distância (procura no Brasil todo).
-    if (!search && radarKm !== null) {
+    // No modo "Próximos", o raio é a faixa inicial da descoberta, não um corte
+    // definitivo: a paginação continua pela cidade, estado e demais regiões.
+    // Buscas/filtros explícitos e as outras ordenações preservam o limite rígido.
+    const progressivelyExpandNearby = sort === 'nearby' && !search && !city;
+    if (!search && radarKm !== null && !progressivelyExpandNearby) {
       if (viewerLat !== null && viewerLon !== null) {
         const latDelta = radarKm / 111;
         const lonDelta = radarKm / (111 * Math.cos((viewerLat * Math.PI) / 180));
@@ -7521,14 +7524,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const distanceOrderBy =
       viewerLat !== null && viewerLon !== null
         ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
-      ABS(u.lat - ${viewerLat}) + ABS(u.lon - ${viewerLon}) ASC,`
+      ((u.lat - ${viewerLat}) * (u.lat - ${viewerLat})) +
+      (((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)}) *
+       ((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)})) ASC,`
         : '';
 
-    // Mesma cidade primeiro (nome igual, ignorando caixa/espaços). Inline-escapado
-    // como o distanceOrderBy — a cidade vem do nosso DB, não de input do usuário.
+    // Mesma cidade primeiro, depois outras cidades do estado e, por fim, demais
+    // estados por distância. Os valores vêm do perfil autenticado e são escapados.
     const viewerCity = viewerRow?.city ? String(viewerRow.city).trim() : '';
+    const viewerState = viewerRow?.state ? String(viewerRow.state).trim().toUpperCase() : '';
+    const escapedViewerCity = viewerCity.replace(/'/g, "''");
+    const escapedViewerState = viewerState.replace(/'/g, "''");
     const sameCityOrderBy = viewerCity
-      ? `CASE WHEN u.city IS NOT NULL AND LOWER(TRIM(u.city)) = LOWER('${viewerCity.replace(/'/g, "''")}') THEN 0 ELSE 1 END ASC,`
+      ? `CASE WHEN u.city IS NOT NULL
+          AND LOWER(TRIM(u.city)) = LOWER('${escapedViewerCity}')
+          ${viewerState ? `AND UPPER(TRIM(u.state)) = '${escapedViewerState}'` : ''}
+        THEN 0 ELSE 1 END ASC,`
+      : '';
+    const sameStateOrderBy = viewerState
+      ? `CASE WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0 ELSE 1 END ASC,`
       : '';
 
     let orderBy: string;
@@ -7557,11 +7571,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       params.push(onlineThresholdIso);
       orderBy = `
         ${sameCityOrderBy}
+        ${sameStateOrderBy}
         ${distanceOrderBy}
         CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
         CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
         u.last_seen_at DESC,
-        u.created_at DESC
+        u.created_at DESC,
+        u.id ASC
       `;
     }
 

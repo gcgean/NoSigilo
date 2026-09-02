@@ -378,13 +378,13 @@ describe('nosigilo backend', () => {
       gender: 'Homem',
       city: 'Fortaleza',
       state: 'CE',
-      lookingFor: ['Mulher'],
+      lookingFor: ['Travesti'],
     });
     const nearby = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Perfil Cidade Vizinha',
       email: 'perfil-cidade-vizinha@example.com',
       password: 'senha123',
-      gender: 'Mulher',
+      gender: 'Travesti',
       city: 'Caucaia',
       state: 'CE',
     });
@@ -392,7 +392,7 @@ describe('nosigilo backend', () => {
       name: 'Perfil Cidade Distante',
       email: 'perfil-cidade-distante@example.com',
       password: 'senha123',
-      gender: 'Mulher',
+      gender: 'Travesti',
       city: 'São Paulo',
       state: 'SP',
     });
@@ -408,14 +408,23 @@ describe('nosigilo backend', () => {
 
     const search = await request(ctx.app)
       .get('/api/users')
-      .query({ sort: 'nearby', radar: 50, genders: 'Mulher', limit: 40 })
+      .query({ sort: 'nearby', radar: 10, genders: 'Travesti', limit: 1, page: 1 })
       .set('Authorization', `Bearer ${viewer.token}`)
       .expect(200);
-    const nearbyResult = search.body.users.find((u: any) => String(u.id) === String(nearby.user.id));
+    const nearbyResult = search.body.users[0];
     expect(nearbyResult).toBeTruthy();
+    expect(String(nearbyResult.id)).toBe(String(nearby.user.id));
     expect(Number(nearbyResult.distanceKm)).toBeGreaterThan(0);
     expect(Number(nearbyResult.distanceKm)).toBeLessThan(50);
-    expect(search.body.users.some((u: any) => String(u.id) === String(distant.user.id))).toBe(false);
+    expect(search.body.hasMore).toBe(true);
+
+    const expandedSearch = await request(ctx.app)
+      .get('/api/users')
+      .query({ sort: 'nearby', radar: 10, genders: 'Travesti', limit: 1, page: 2 })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(String(expandedSearch.body.users[0]?.id)).toBe(String(distant.user.id));
+    expect(Number(expandedSearch.body.users[0]?.distanceKm)).toBeGreaterThan(1000);
 
     await run(ctx.db, 'UPDATE users SET is_premium = 1 WHERE id = ?', [viewer.user.id]);
     const matchCards = await request(ctx.app)
