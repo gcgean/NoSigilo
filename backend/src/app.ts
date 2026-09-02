@@ -4316,6 +4316,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
     const includeReelsOnly = req.query.includeReelsOnly === 'true';
+    // Mantém o nome do parâmetro por compatibilidade com clientes existentes,
+    // mas o modo agora representa a região progressiva, não só a cidade exata.
+    const cityOnly = req.query.cityOnly === 'true' || req.query.cityOnly === '1';
     // seenIds: posts que o cliente já exibiu nesta sessão. Complementa o
     // post_views (que só grava o que ficou de fato visível na tela): quem rola
     // rápido passa por posts que nunca chegam a contar como visualização, e sem
@@ -4445,7 +4448,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         u.birth_date as author_birth_date, u.partner_birth_date as author_partner_birth_date,
         u.is_premium as author_is_premium, u.hub_license_end_at as author_hub_license_end_at
        ${feedFrom}`;
-    const feedOrder = `ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC`;
+    const viewerCityRaw = String((viewerRow as any)?.city || '').trim();
+    const viewerStateRaw = String((viewerRow as any)?.state || '').trim().toUpperCase();
+    const escapedViewerCity = viewerCityRaw.replace(/'/g, "''");
+    const escapedViewerState = viewerStateRaw.replace(/'/g, "''");
+    const regionalDistanceOrder = viewerLat !== null && viewerLon !== null
+      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
+         ((u.lat - ${viewerLat}) * (u.lat - ${viewerLat})) +
+         (((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)}) *
+          ((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)})) ASC,`
+      : '';
+    const feedOrder = cityOnly
+      ? `ORDER BY
+          CASE WHEN u.city IS NOT NULL
+            AND LOWER(TRIM(u.city)) = LOWER('${escapedViewerCity}')
+            ${viewerStateRaw ? `AND UPPER(TRIM(u.state)) = '${escapedViewerState}'` : ''}
+          THEN 0 ELSE 1 END ASC,
+          ${viewerStateRaw
+            ? `CASE WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0 ELSE 1 END ASC,`
+            : ''}
+          ${regionalDistanceOrder}
+          p.created_at DESC,
+          p.id ASC`
+      : `ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN ${viewerIsNew ? 0 : 1} ELSE ${viewerIsNew ? 1 : 0} END) ASC, p.created_at DESC`;
     const baseParams = [req.auth!.userId, req.auth!.userId, ...genderParams, ...friendsAuthorParams];
 
     // Posts que o cliente acabou de exibir mas cujo registro de view ainda pode
@@ -4496,8 +4521,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const feedContextByPostId = new Map<string, { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string }>();
     const distanceKmByPostId = new Map<string, number | null>();
     const sameCityByPostId = new Map<string, boolean>();
+    const sameStateByPostId = new Map<string, boolean>();
     const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
-    const cityOnly = req.query.cityOnly === 'true' || req.query.cityOnly === '1';
     let feedInsights = {
       nearbyActiveCount: 0,
       nearbyRadiusKm: null as number | null,
@@ -4698,9 +4723,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 : null;
             // Store distance for response payload and proximity filtering
             distanceKmByPostId.set(postId, distanceKm);
-            const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '');
-            sameCityByPostId.set(postId, sameCity);
             const sameState = !!viewerState && viewerState === normalizeRadarText(row.author_state || '');
+            const sameCity = !!viewerCity && viewerCity === normalizeRadarText(row.author_city || '') && (!viewerState || sameState);
+            sameCityByPostId.set(postId, sameCity);
+            sameStateByPostId.set(postId, sameState);
             const matchesInterest = matchesLookingFor(viewerLookingFor, row.author_gender);
             const parsedMediaIds = safeJsonParse(row.media_ids_json);
             const hasMedia = Array.isArray(parsedMediaIds)
@@ -4836,9 +4862,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           return cappedRanked.map((item) => item.row);
         })();
 
-    // Proximity filter: cityOnly = same city; maxDistanceKm = radius in km
-    const proximityRows = cityOnly && viewerCity
-      ? orderedRows.filter((r: any) => sameCityByPostId.get(String(r.id)) === true)
+    // "Minha região": cidade primeiro, depois o restante do estado e então
+    // outros estados por distância. Não corta o acervo; o scroll segue ampliando.
+    const proximityRows = cityOnly
+      ? [...orderedRows].sort((a: any, b: any) => {
+          const aId = String(a.id);
+          const bId = String(b.id);
+          const aRegionRank = sameCityByPostId.get(aId) ? 0 : sameStateByPostId.get(aId) ? 1 : 2;
+          const bRegionRank = sameCityByPostId.get(bId) ? 0 : sameStateByPostId.get(bId) ? 1 : 2;
+          if (aRegionRank !== bRegionRank) return aRegionRank - bRegionRank;
+          const aDistance = distanceKmByPostId.get(aId);
+          const bDistance = distanceKmByPostId.get(bId);
+          const safeADistance = typeof aDistance === 'number' ? aDistance : Number.POSITIVE_INFINITY;
+          const safeBDistance = typeof bDistance === 'number' ? bDistance : Number.POSITIVE_INFINITY;
+          if (safeADistance !== safeBDistance) return safeADistance - safeBDistance;
+          const createdDiff = new Date(String(b.created_at || '')).getTime() - new Date(String(a.created_at || '')).getTime();
+          return createdDiff || aId.localeCompare(bId);
+        })
       : maxDistanceKm !== null && viewerLat !== null && viewerLon !== null
         ? orderedRows.filter((r: any) => {
             const d = distanceKmByPostId.get(String(r.id));
@@ -4885,7 +4925,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       slice = proximityRows as any[];
       feedHasMore = (proximityRows as any[]).length >= limit;
     } else {
-      const orderedByTheme = themeFirst(proximityRows as any[]);
+      // No modo regional, proximidade é a regra principal e o tema do dia não
+      // pode promover uma publicação distante acima da cidade/estado do perfil.
+      const orderedByTheme = cityOnly ? (proximityRows as any[]) : themeFirst(proximityRows as any[]);
       // Sem OFFSET aqui: a própria exclusão por post_views faz a janela andar.
       // A cada página o que acabou de ser visto sai do conjunto, então o topo
       // da lista já é o "próximo" lote. Aplicar offset por cima disso pularia

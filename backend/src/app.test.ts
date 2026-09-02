@@ -426,6 +426,15 @@ describe('nosigilo backend', () => {
     expect(String(expandedSearch.body.users[0]?.id)).toBe(String(distant.user.id));
     expect(Number(expandedSearch.body.users[0]?.distanceKm)).toBeGreaterThan(1000);
 
+    const sameCity = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Mesma Cidade',
+      email: 'perfil-mesma-cidade@example.com',
+      password: 'senha123',
+      gender: 'Travesti',
+      city: 'Fortaleza',
+      state: 'CE',
+    });
+
     await run(ctx.db, 'UPDATE users SET is_premium = 1 WHERE id = ?', [viewer.user.id]);
     const matchCards = await request(ctx.app)
       .get('/api/match/cards')
@@ -439,7 +448,13 @@ describe('nosigilo backend', () => {
 
     const nearbyPostId = `feed-city-near-${Math.random().toString(16).slice(2)}`;
     const distantPostId = `feed-city-far-${Math.random().toString(16).slice(2)}`;
+    const sameCityPostId = `feed-city-same-${Math.random().toString(16).slice(2)}`;
     const now = Date.now();
+    await run(
+      ctx.db,
+      'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [sameCityPostId, sameCity.user.id, 'Conteúdo da mesma cidade', null, 0, new Date(now - 120_000).toISOString()]
+    );
     await run(
       ctx.db,
       'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -461,6 +476,29 @@ describe('nosigilo backend', () => {
     expect(feedIds.indexOf(nearbyPostId)).toBeGreaterThanOrEqual(0);
     expect(feedIds.indexOf(distantPostId)).toBeGreaterThanOrEqual(0);
     expect(feedIds.indexOf(nearbyPostId)).toBeLessThan(feedIds.indexOf(distantPostId));
+
+    const regionalPage1 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ cityOnly: true, limit: 1, page: 1 })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(String(regionalPage1.body.posts[0]?.id)).toBe(sameCityPostId);
+    expect(regionalPage1.body.hasMore).toBe(true);
+
+    const regionalPage2 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ cityOnly: true, limit: 1, page: 2, seenIds: sameCityPostId })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(String(regionalPage2.body.posts[0]?.id)).toBe(nearbyPostId);
+    expect(regionalPage2.body.hasMore).toBe(true);
+
+    const regionalPage3 = await request(ctx.app)
+      .get('/api/feed')
+      .query({ cityOnly: true, limit: 1, page: 3, seenIds: `${sameCityPostId},${nearbyPostId}` })
+      .set('Authorization', `Bearer ${viewer.token}`)
+      .expect(200);
+    expect(String(regionalPage3.body.posts[0]?.id)).toBe(distantPostId);
 
     const gpsUpdate = await request(ctx.app)
       .put('/api/location')

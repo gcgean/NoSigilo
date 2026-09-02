@@ -383,7 +383,8 @@ export default function Feed() {
     localStorage.setItem('nosigilo_feed_filter', feedFilter);
   }, [feedFilter]);
 
-  // Proximity filter: null = todos, number = raio em km; cityOnly = somente minha cidade
+  // Proximity filter: null = todos, number = raio rígido; cityOnly mantém o
+  // nome legado, mas representa a região progressiva (cidade → estado → distância).
   const [nearbyRadius, setNearbyRadius] = useState<NearbyOption | null>(null);
   const [cityOnly, setCityOnly] = useState(false);
 
@@ -2314,7 +2315,7 @@ export default function Feed() {
                         : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
                     )}
                   >
-                    🏙 Minha cidade
+                    🌎 Minha região
                   </button>
                   {NEARBY_OPTIONS.map((km) => (
                     <button
@@ -2359,10 +2360,12 @@ export default function Feed() {
                   <span className="text-lg">📍</span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">
-                      {cityOnly ? 'Pessoas da sua cidade' : `Pessoas a até ${nearbyRadius} km de você`}
+                      {cityOnly ? 'Pessoas da sua região' : `Pessoas a até ${nearbyRadius} km de você`}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Toque em qualquer perfil para iniciar uma conversa e marcar um encontro.
+                      {cityOnly
+                        ? 'Primeiro sua cidade, depois outras cidades do estado e regiões próximas.'
+                        : 'Toque em qualquer perfil para iniciar uma conversa e marcar um encontro.'}
                     </p>
                   </div>
                 </div>
@@ -2757,11 +2760,11 @@ export default function Feed() {
             <Card className="overflow-hidden p-8 glass text-center space-y-3">
               <div className="text-4xl">📍</div>
               <p className="font-semibold text-foreground">
-                {cityOnly ? 'Ninguém da sua cidade por enquanto' : 'Ninguém perto de você por enquanto'}
+                {cityOnly ? 'Ninguém da sua região por enquanto' : 'Ninguém perto de você por enquanto'}
               </p>
               <p className="text-sm text-muted-foreground">
                 {cityOnly
-                  ? 'Não encontramos publicações de pessoas da sua cidade. Tente um raio de distância ou volte mais tarde.'
+                  ? 'Não encontramos publicações compatíveis na sua região ou nas regiões próximas. Volte mais tarde.'
                   : `Não encontramos publicações de pessoas a até ${nearbyRadius} km. Tente ampliar o raio ou voltar mais tarde.`
                 }
               </p>
@@ -2771,11 +2774,6 @@ export default function Feed() {
                     Ampliar para {km} km
                   </Button>
                 ))}
-                {cityOnly && (
-                  <Button size="sm" variant="outline" onClick={() => { setCityOnly(false); void handleNearbyRadius(50); }}>
-                    Ver até 50 km
-                  </Button>
-                )}
                 <Button size="sm" variant="ghost" onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}>
                   Ver todos
                 </Button>
