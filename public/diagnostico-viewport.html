@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Pagina de diagnostico, nao faz parte do site publico. O noindex evita
+     que ela apareca como resultado de busca do nosigilo.net — o Vite copia
+     tudo de public/ para dist/, entao ela fica acessivel na raiz. -->
+<meta name="robots" content="noindex, nofollow">
 <title>Diagnóstico de viewport</title>
 <style>
   * { box-sizing: border-box; }
