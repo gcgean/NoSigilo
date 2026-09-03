@@ -72,6 +72,9 @@ export interface User {
   lat?: number | null;
   lon?: number | null;
   isPromoter?: boolean;
+  /** Perfil vitrine/demo. Vem só do /api/auth/me (sobre si mesmo) — nunca é
+   *  exposto sobre outros usuários, senão revelaria quais perfis são vitrine. */
+  isShowcase?: boolean;
 }
 
 interface AuthContextType {

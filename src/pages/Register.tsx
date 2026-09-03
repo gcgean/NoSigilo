@@ -149,10 +149,14 @@ export default function Register() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+  // O campo de cidade é o CitySearch, que não expõe input via ref. A entrada
+  // existe só para o mapa de erros ficar completo; o foco vira no-op (o `?.`
+  // em refDoCampo cobre o null) e a mensagem de erro aparece normalmente.
+  const cityInputRef = useRef<HTMLInputElement>(null);
 
   // Erro por campo, mostrado embaixo do próprio campo. Antes a única resposta
   // a um formulário inválido era um toast no topo da tela.
-  type CampoErro = 'gender' | 'name' | 'email' | 'password';
+  type CampoErro = 'gender' | 'name' | 'email' | 'password' | 'city';
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CampoErro, string>>>({});
 
   const refDoCampo: Record<CampoErro, React.RefObject<HTMLInputElement>> = {
@@ -160,6 +164,7 @@ export default function Register() {
     name: nameInputRef,
     email: emailInputRef,
     password: passwordInputRef,
+    city: cityInputRef,
   };
 
   const { register } = useAuth();
@@ -368,7 +373,12 @@ export default function Register() {
         nameStatus !== 'taken' &&
         nameStatus !== 'blacklisted'
       : currentStep === 2
-        ? EMAIL_RE.test(formData.email.trim()) && formData.password.length >= 6
+        // A cidade virou obrigatória: sem ela o feed regional, o radar e a
+        // busca por perto não funcionam, e o perfil fica invisível para quem
+        // está na mesma cidade. Mesmo mínimo do backend (sanitizeCityValue).
+        ? EMAIL_RE.test(formData.email.trim()) &&
+          formData.password.length >= 6 &&
+          formData.city.trim().length >= 3
         : true;
 
   // ── Card select — auto-focus name after picking ───────────────────────────
@@ -424,6 +434,10 @@ export default function Register() {
       }
       if (!formData.password || formData.password.length < 6) {
         marcarErro('password', 'Senha muito curta', 'Use pelo menos 6 caracteres.');
+        return;
+      }
+      if (formData.city.trim().length < 3) {
+        marcarErro('city', 'Informe sua cidade', 'É ela que mostra perfis perto de você e faz você aparecer para quem está na sua região.');
         return;
       }
       try {
@@ -913,7 +927,9 @@ export default function Register() {
                   )}
 
                   <p className="px-1 text-xs text-muted-foreground/70">
-                    Usamos sua cidade para mostrar perfis próximos. Pode preencher depois.
+                    Obrigatório. É a cidade que mostra perfis perto de você — e que
+                    faz você aparecer para quem está na sua região. Só cidade e
+                    estado ficam visíveis no perfil; endereço, nunca.
                   </p>
                 </div>
               </div>

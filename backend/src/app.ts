@@ -3974,7 +3974,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       subscriptionsEnabled,
       showLocation: true,
     });
-    res.json({ ...user, isPromoter: !!promoterRow });
+    // isShowcase sai APENAS aqui, no endpoint sobre si mesmo. Nao entra no
+    // rowToPublicUser porque isso revelaria a todos quais perfis sao vitrine.
+    // O cliente usa a flag para nao cobrar cidade de perfil vitrine.
+    const isShowcase = Number((row as any)?.is_showcase || 0) === 1;
+    res.json({ ...user, isPromoter: !!promoterRow, isShowcase });
   });
 
   app.post('/api/auth/refresh', requireAuth(env, db), async (req, res) => {
