@@ -19,8 +19,11 @@
 WITH visiveis AS (
   SELECT trim(city) AS city, trim(state) AS state
   FROM users
-  WHERE COALESCE(is_banned, false) = false
-    AND COALESCE(is_deactivated, false) = false
+  -- ATENCAO: is_banned e is_deactivated sao INTEGER, nao boolean (heranca da
+  -- migracao do SQLite), e deleted_at e TEXT. Comparar com `false` da erro
+  -- "COALESCE types integer and boolean cannot be matched".
+  WHERE COALESCE(is_banned, 0) = 0
+    AND COALESCE(is_deactivated, 0) = 0
     AND deleted_at IS NULL
 ),
 nacional AS (
