@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
-import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
@@ -521,12 +520,16 @@ function StoryViewer({
               </span>
             </div>
 
-            {/* Linha 2: gênero e localização. Usa o mesmo helper do resto do
-                app (lista de seguidores, match), então o formato é sempre
-                "Casal (Ele/Ela) - Fortaleza, CE" e some sozinho o que faltar. */}
-            {formatProfileIdentityLine(story.author) && (
+            {/* Linha 2: apenas o gênero, SEM localização — decisão de produto.
+                A ordenação regional já coloca quem é da mesma cidade primeiro,
+                então a proximidade aparece no que a pessoa vê, não escrita na
+                tela. Nomear a cidade quebraria a sensação de comunidade local
+                assim que ela rolasse até os stories de fora: ler "São Paulo"
+                num app cuja promessa é proximidade passa a mensagem de que não
+                há ninguém por perto. */}
+            {story.author.gender && (
               <p className="text-sm text-white/80 mt-0.5">
-                {formatProfileIdentityLine(story.author)}
+                {story.author.gender}
               </p>
             )}
 
