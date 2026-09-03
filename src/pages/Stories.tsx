@@ -234,6 +234,47 @@ function useBodyScrollLock(active: boolean) {
   }, [active]);
 }
 
+/** Distância, em km, até onde a cidade do autor ainda é exibida no story.
+ *  50 km cobre região metropolitana (Fortaleza→Maracanaú, Recife→Olinda) sem
+ *  alcançar outra praça (Fortaleza→Sobral são 230 km, Recife→Caruaru 130). */
+const RAIO_CIDADE_VISIVEL_KM = 50;
+
+const normalizarTexto = (v?: string | null) =>
+  String(v ?? '').trim().toLowerCase();
+
+/**
+ * Linha abaixo do nome no story: gênero sempre, cidade SÓ quando for perto.
+ *
+ * A ordenação regional já traz quem é da mesma cidade primeiro, então nos
+ * primeiros stories o nome da cidade reforça o senso de comunidade local.
+ * Nos de fora ele faria o oposto — ler "São Paulo" num app cuja promessa é
+ * proximidade passa a mensagem de que não há ninguém por perto. Por isso a
+ * cidade some quando está longe, em vez de anunciar a distância.
+ *
+ * Omitir não é enganar: é exatamente o que a tela mostrava antes para todos.
+ */
+function linhaDeIdentidadeDoStory(
+  autor: { gender: string | null; city: string | null; state: string | null; distanceKm: number | null },
+  espectador: { city?: string | null; state?: string | null }
+) {
+  const genero = String(autor.gender ?? '').trim();
+  const cidade = String(autor.city ?? '').trim();
+  const uf = String(autor.state ?? '').trim();
+  if (!cidade) return genero;
+
+  const mesmaCidade =
+    normalizarTexto(cidade) === normalizarTexto(espectador.city) &&
+    // Compara a UF só quando os dois lados a têm — perfil antigo pode não ter.
+    (!uf || !espectador.state || normalizarTexto(uf) === normalizarTexto(espectador.state));
+  const dentroDoRaio =
+    autor.distanceKm !== null && autor.distanceKm <= RAIO_CIDADE_VISIVEL_KM;
+
+  if (!mesmaCidade && !dentroDoRaio) return genero;
+
+  const local = [cidade, uf].filter(Boolean).join(', ');
+  return [genero, local].filter(Boolean).join(' - ');
+}
+
 // ─── Story Viewer (fullscreen) ────────────────────────────────────────────────
 function StoryViewer({
   stories,
@@ -250,6 +291,7 @@ function StoryViewer({
 }) {
   const { toast } = useToast();
   const navigate  = useNavigate();
+  const { user: espectador } = useAuth();
   const bottomInset = useBottomChromeInset();
   useBodyScrollLock(true); // o visualizador só existe montado, então trava sempre
   const [idx, setIdx]           = useState(startIndex);
@@ -520,16 +562,11 @@ function StoryViewer({
               </span>
             </div>
 
-            {/* Linha 2: apenas o gênero, SEM localização — decisão de produto.
-                A ordenação regional já coloca quem é da mesma cidade primeiro,
-                então a proximidade aparece no que a pessoa vê, não escrita na
-                tela. Nomear a cidade quebraria a sensação de comunidade local
-                assim que ela rolasse até os stories de fora: ler "São Paulo"
-                num app cuja promessa é proximidade passa a mensagem de que não
-                há ninguém por perto. */}
-            {story.author.gender && (
+            {/* Linha 2: gênero sempre; cidade só quando é perto.
+                Ver linhaDeIdentidadeDoStory para o porquê. */}
+            {linhaDeIdentidadeDoStory(story.author, espectador ?? {}) && (
               <p className="text-sm text-white/80 mt-0.5">
-                {story.author.gender}
+                {linhaDeIdentidadeDoStory(story.author, espectador ?? {})}
               </p>
             )}
 
