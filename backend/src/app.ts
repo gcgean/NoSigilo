@@ -5140,7 +5140,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
 
-    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, city, state, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
     const myLat = me?.lat != null ? Number(me.lat) : null;
     const myLon = me?.lon != null ? Number(me.lon) : null;
@@ -5148,9 +5148,43 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabledStories = await getSubscriptionsEnabled(db);
     const viewerHasPremiumStories = hasPremiumAccess(me, subscriptionsEnabledStories, env.BILLING_TEST_EMAILS);
 
+    // Ordenação regional dos stories.
+    //
+    // Story expira em 24h, então TUDO na lista é recente — a distância pode
+    // subir na ordenação sem risco de enterrar conteúdo novo, ao contrário do
+    // feed. E o ganho é grande: com ~120 stories ativos, ninguém rola além dos
+    // primeiros; antes disto a ordem geográfica era aleatória, e quem está em
+    // Fortaleza podia ver stories de Porto Alegre enquanto os da própria
+    // cidade ficavam na posição 60.
+    //
+    // A região entra DEPOIS de is_viewed, de propósito: se viesse antes, o
+    // usuário veria stories que já assistiu da sua cidade na frente de stories
+    // novos de outro estado, e a fileira pareceria repetida a cada visita.
+    //
+    // É ordenação, não filtro — em cidade pequena, filtrar esvaziaria a
+    // fileira; ordenando, quem tem poucos por perto continua vendo todos.
+    const myCityRaw = String(me?.city || '').trim().replace(/'/g, "''");
+    const myStateRaw = String(me?.state || '').trim().toUpperCase().replace(/'/g, "''");
+    const storyRegionOrder = [
+      myCityRaw
+        ? `CASE WHEN u.city IS NOT NULL AND LOWER(TRIM(u.city)) = LOWER('${myCityRaw}')
+             ${myStateRaw ? `AND UPPER(TRIM(u.state)) = '${myStateRaw}'` : ''}
+           THEN 0 ELSE 1 END ASC,`
+        : '',
+      myStateRaw
+        ? `CASE WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${myStateRaw}' THEN 0 ELSE 1 END ASC,`
+        : '',
+      myLat !== null && myLon !== null
+        ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
+           ((u.lat - ${myLat}) * (u.lat - ${myLat})) +
+           (((u.lon - ${myLon}) * ${Math.cos((myLat * Math.PI) / 180)}) *
+            ((u.lon - ${myLon}) * ${Math.cos((myLat * Math.PI) / 180)})) ASC,`
+        : '',
+    ].filter(Boolean).join(' ');
+
     // Busca stories ativos de outros usuários. Ordem estilo Instagram: não
-    // vistos antes de vistos (mais recentes primeiro dentro de cada grupo),
-    // com perfis vitrine/demo sempre por último, independente de visto ou não.
+    // vistos antes de vistos, agora com a região decidindo dentro de cada
+    // grupo, e perfis vitrine/demo sempre por último.
     const rows = (await queryAll(
       db,
       `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
@@ -5170,6 +5204,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
        ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
                 is_viewed ASC,
+                ${storyRegionOrder}
                 s.created_at DESC`,
       [userId, now, userId]
     )) as any[];
@@ -5192,7 +5227,46 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return age;
     };
 
-    const storiesOut = await Promise.all(filtered.map(async (r: any) => {
+    // Curtidas e reações de TODOS os stories em duas consultas, em vez de três
+    // por story. Com ~120 stories ativos isso eram 366 idas ao banco a cada
+    // abertura da tela; agora são 2, e o custo para de crescer com a base.
+    const storyIds = filtered.map((r: any) => String(r.id));
+    const marcadores = storyIds.map(() => '?').join(',');
+    const [reacoesRows, minhasRows] = storyIds.length
+      ? await Promise.all([
+          queryAll(
+            db,
+            `SELECT story_id, COALESCE(reaction, 'heart') AS reaction, COUNT(*) AS c
+             FROM story_likes WHERE story_id IN (${marcadores})
+             GROUP BY story_id, COALESCE(reaction, 'heart')`,
+            storyIds
+          ) as Promise<any[]>,
+          queryAll(
+            db,
+            `SELECT story_id, COALESCE(reaction, 'heart') AS reaction
+             FROM story_likes WHERE liker_id = ? AND story_id IN (${marcadores})`,
+            [userId, ...storyIds]
+          ) as Promise<any[]>,
+        ])
+      : [[] as any[], [] as any[]];
+
+    // O total de curtidas sai da soma das reações — é a mesma contagem que a
+    // consulta antiga fazia com COUNT(*), sem precisar de uma terceira ida.
+    const reacoesPorStory = new Map<string, Array<{ type: string; count: number }>>();
+    const totalPorStory = new Map<string, number>();
+    for (const row of reacoesRows) {
+      const sid = String(row.story_id);
+      const qtd = Number(row.c || 0);
+      if (!reacoesPorStory.has(sid)) reacoesPorStory.set(sid, []);
+      reacoesPorStory.get(sid)!.push({ type: String(row.reaction), count: qtd });
+      totalPorStory.set(sid, (totalPorStory.get(sid) || 0) + qtd);
+    }
+    const minhaReacaoPorStory = new Map<string, string>();
+    for (const row of minhasRows) {
+      minhaReacaoPorStory.set(String(row.story_id), String(row.reaction));
+    }
+
+    const storiesOut = filtered.map((r: any) => {
       let distanceKm: number | null = null;
       if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
         distanceKm = roundDistanceKm(haversineKm(
@@ -5200,11 +5274,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           { lat: Number(r.lat), lon: Number(r.lon) }
         ));
       }
-      const [likeRow, likedRow, reactionRows] = await Promise.all([
-        queryOne(db, 'SELECT COUNT(*) as c FROM story_likes WHERE story_id = ?', [r.id]) as Promise<any>,
-        queryOne(db, "SELECT COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?", [r.id, userId]) as Promise<any>,
-        queryAll(db, "SELECT COALESCE(reaction, 'heart') AS reaction, COUNT(*) AS c FROM story_likes WHERE story_id = ? GROUP BY COALESCE(reaction, 'heart')", [r.id]) as Promise<any[]>,
-      ]);
+      const sid = String(r.id);
+      const minhaReacao = minhaReacaoPorStory.get(sid) ?? null;
       const isVideoStory = String(r.mime_type || '').startsWith('video/');
       const videoLocked = isVideoStory && !viewerHasPremiumStories;
       return {
@@ -5218,10 +5289,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         viewed: Number(r.is_viewed) === 1,
-        likeCount: Number(likeRow?.c || 0),
-        likedByMe: !!likedRow,
-        myReaction: likedRow?.reaction ? String(likedRow.reaction) : null,
-        reactions: (reactionRows as any[]).map((rr) => ({ type: String(rr.reaction), count: Number(rr.c) })),
+        likeCount: totalPorStory.get(sid) || 0,
+        likedByMe: minhaReacao !== null,
+        myReaction: minhaReacao,
+        reactions: reacoesPorStory.get(sid) ?? [],
         author: {
           id: String(r.user_id),
           name: String(r.name),
@@ -5237,7 +5308,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           distanceKm,
         },
       };
-    }));
+    });
     res.json({ stories: storiesOut });
   });
 

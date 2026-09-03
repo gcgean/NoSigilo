@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useToast } from '@/hooks/use-toast';
@@ -520,10 +521,12 @@ function StoryViewer({
               </span>
             </div>
 
-            {/* Linha 2: apenas o gênero (sem localização) */}
-            {story.author.gender && (
+            {/* Linha 2: gênero e localização. Usa o mesmo helper do resto do
+                app (lista de seguidores, match), então o formato é sempre
+                "Casal (Ele/Ela) - Fortaleza, CE" e some sozinho o que faltar. */}
+            {formatProfileIdentityLine(story.author) && (
               <p className="text-sm text-white/80 mt-0.5">
-                {story.author.gender}
+                {formatProfileIdentityLine(story.author)}
               </p>
             )}
 
