@@ -4458,6 +4458,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          (((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)}) *
           ((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)})) ASC,`
       : '';
+    // Faixas de recência, aplicadas ANTES da distância.
+    //
+    // POR QUE: a distância é praticamente constante por autor, então usá-la
+    // como critério antes da data fazia quem está a 0 km ocupar o topo do feed
+    // permanentemente. Resultado medido em 03/09/2026: o feed abria com posts
+    // de 41 e 45 dias, enquanto Fortaleza tinha 36 posts das últimas 48h e 121
+    // da última semana soterrados atrás de 1.270 antigos. Post novo é o que tem
+    // mais chance de ser respondido — enterrá-lo mata a interação.
+    //
+    // Agora a ordem é: cidade → estado → faixa de idade → distância → data.
+    // Dentro de cada faixa a distância volta a desempatar, então "mais perto
+    // primeiro" continua valendo entre posts de idade parecida.
+    //
+    // created_at é TEXT em ISO 8601 UTC ('2026-09-03T20:51:26.148Z'), formato
+    // uniforme na base inteira — a comparação lexicográfica de string equivale
+    // à cronológica e funciona igual no Postgres e no SQLite, sem cast.
+    const isoHaDias = (dias: number) =>
+      new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    const freshnessOrder = `CASE
+            WHEN p.created_at >= '${isoHaDias(2)}' THEN 0
+            WHEN p.created_at >= '${isoHaDias(7)}' THEN 1
+            WHEN p.created_at >= '${isoHaDias(30)}' THEN 2
+            ELSE 3 END ASC,`;
     const feedOrder = cityOnly
       ? `ORDER BY
           CASE WHEN u.city IS NOT NULL
@@ -4467,6 +4490,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           ${viewerStateRaw
             ? `CASE WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0 ELSE 1 END ASC,`
             : ''}
+          ${freshnessOrder}
           ${regionalDistanceOrder}
           p.created_at DESC,
           p.id ASC`
