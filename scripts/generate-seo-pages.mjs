@@ -66,6 +66,30 @@ function arredondaParaBaixo(n) {
 
 const fmt = (n) => n.toLocaleString('pt-BR');
 
+/** Número de perfis da cidade, ou 0 se não atinge o mínimo. Usado na meta
+ *  description: no resultado da busca, "Mais de 800 perfis em Fortaleza" é o
+ *  único argumento que um concorrente não consegue copiar. As páginas de
+ *  cidade estavam aparecendo com impressão e zero clique — snippet genérico
+ *  não convence ninguém a clicar. */
+/** O Google corta a description por volta de 155 caracteres e substitui o resto
+ *  por reticências — uma frase cortada no meio custa clique. Esta função recebe
+ *  as variantes em ordem de preferência (da mais informativa à mais enxuta) e
+ *  devolve a primeira que couber, em vez de truncar no meio da palavra. */
+function melhorDesc(variantes) {
+  const CABE = 155;
+  return variantes.find((d) => [...d].length <= CABE) || variantes[variantes.length - 1];
+}
+
+function numeroCidade(city, st) {
+  const n = STATS?.cidades?.[`${st.slug}/${city.slug}`] ?? 0;
+  return n >= MIN_CIDADE ? arredondaParaBaixo(n) : 0;
+}
+
+function numeroEstado(st) {
+  const n = STATS?.estados?.[st.slug] ?? 0;
+  return n >= MIN_ESTADO ? arredondaParaBaixo(n) : 0;
+}
+
 /** Frase de prova social para uma cidade, caindo para o estado e depois para o
  *  Brasil quando o numero local nao sustenta. Retorna '' se nao houver dado. */
 function provaSocialCidade(city, st) {
@@ -376,7 +400,17 @@ function statePage(st) {
     ? `\n      <h2>Cidades em ${esc(st.name)}</h2>\n      <div class="states">${cityPages.map((c) => `<a href="${REGIONAL}/swing/${st.slug}/${c.slug}/" style="color:#eb4778;">Swing em ${esc(c.name)}</a>`).join(' · ')}</div>\n`
     : '';
   const title = `Swing e Troca de Casais em ${st.name} (${st.uf}) | NoSigilo.net`;
-  const desc = `Rede adulta discreta de swing, troca de casais e ménage em ${st.name} — ${cities}. Casais e singles do meio liberal com sigilo e privacidade. Cadastro grátis.`;
+  const nEstado = numeroEstado(st);
+  const desc = melhorDesc(nEstado
+    ? [
+        `Mais de ${fmt(nEstado)} perfis no estado. Swing, troca de casais e ménage em ${list(st.cities.slice(0, 3))} — rede adulta discreta, com sigilo. Cadastro grátis.`,
+        `Mais de ${fmt(nEstado)} perfis no estado. Swing, troca de casais e ménage em ${list(st.cities.slice(0, 2))} — rede adulta discreta. Cadastro grátis.`,
+        `Mais de ${fmt(nEstado)} perfis no estado. Swing e troca de casais numa rede adulta discreta, com sigilo. Cadastro grátis.`,
+      ]
+    : [
+        `Swing, troca de casais e ménage em ${list(st.cities.slice(0, 3))}. Rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
+        `Swing, troca de casais e ménage em ${st.capital} e região. Rede adulta discreta, com sigilo. Cadastro grátis.`,
+      ]);
   const url = `${REGIONAL}/swing/${st.slug}/`;
 
   const jsonld = {
@@ -553,7 +587,17 @@ function cityPage(city) {
   const st = city.state;
   const url = `${REGIONAL}/swing/${st.slug}/${city.slug}/`;
   const title = `Swing e Troca de Casais em ${city.name} (${st.uf}) | NoSigilo.net`;
-  const desc = `Rede adulta discreta de swing, troca de casais e ménage em ${city.name}, ${st.name}. Casais e singles do meio liberal com sigilo e privacidade. Cadastro grátis.`;
+  const nCidade = numeroCidade(city, st);
+  const desc = melhorDesc(nCidade
+    ? [
+        `Mais de ${fmt(nCidade)} perfis em ${city.name}. Rede adulta discreta de swing, troca de casais e ménage — casais e singles do meio liberal, com sigilo. Cadastro grátis.`,
+        `Mais de ${fmt(nCidade)} perfis em ${city.name}. Swing, troca de casais e ménage numa rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
+        `Mais de ${fmt(nCidade)} perfis em ${city.name}. Swing e troca de casais com sigilo. Cadastro grátis.`,
+      ]
+    : [
+        `Rede adulta discreta de swing, troca de casais e ménage em ${city.name}, ${st.name}. Casais e singles do meio liberal, com sigilo. Cadastro grátis.`,
+        `Swing, troca de casais e ménage em ${city.name}. Rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
+      ]);
 
   const jsonld = {
     '@context': 'https://schema.org',
@@ -744,7 +788,13 @@ ${vizinhas.length ? `
 
 function hubPage() {
   const title = 'Swing e Troca de Casais por Estado no Brasil | NoSigilo.net';
-  const desc = 'Encontre swing, troca de casais e ménage no seu estado. NoSigilo.net conecta o meio liberal brasileiro em todas as regiões — São Paulo, Rio, Minas, Bahia, Paraná e mais.';
+  const nBrasil = STATS?.nacional ? arredondaParaBaixo(STATS.nacional) : 0;
+  const desc = melhorDesc([
+    nBrasil
+      ? `Mais de ${fmt(nBrasil)} perfis no Brasil. Swing, troca de casais e ménage por estado e cidade — rede adulta discreta, com sigilo. Cadastro grátis.`
+      : 'Swing, troca de casais e ménage por estado e cidade. Rede adulta discreta para o meio liberal brasileiro, com sigilo. Cadastro grátis.',
+    'Swing, troca de casais e ménage por estado e cidade. Rede adulta discreta, com sigilo. Cadastro grátis.',
+  ]);
   const url = `${REGIONAL}/swing/`;
   const byRegion = {};
   for (const s of SELECTED_STATES) (byRegion[s.region] ||= []).push(s);
