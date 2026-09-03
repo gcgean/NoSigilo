@@ -9045,7 +9045,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       state: z.string().min(2).max(2),
       message: z.string().min(1).max(200),
       targetGender: z.array(z.enum(['all', 'female', 'male', 'couple'])).min(1).max(4),
-      radius: z.coerce.number().int().min(5).max(500),
+      // Teto alinhado com o slider da tela (5 a 100 km). Antes o backend
+      // aceitava 500: nenhum radar jamais passou de 100 pela interface, mas
+      // quem chamasse a API direto conseguiria disparar um radar atravessando
+      // regioes inteiras — o oposto do senso de comunidade local que a
+      // feature existe para criar.
+      radius: z.coerce.number().int().min(5).max(100),
       durationHours: z.coerce.number().int().min(1).max(72),
       isAnonymous: z.boolean().optional(),
       showOnlyOnline: z.boolean().optional(),
