@@ -156,6 +156,7 @@ type TopAccessUser = {
 };
 
 type GrowingCity = { label: string; novos: number; total: number; growth: number };
+type GrowingState = GrowingCity;
 
 type VisitAnalytics = {
   total: number;
@@ -181,6 +182,7 @@ type VisitAnalytics = {
   uniqueUsersByDay: VisitBreakdown[];
   newUsersByDay: VisitBreakdown[];
   growingCities: GrowingCity[];
+  growingStates: GrowingState[];
   growthPeriodDays: number;
 };
 
@@ -219,6 +221,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   uniqueUsersByDay: [],
   newUsersByDay: [],
   growingCities: [],
+  growingStates: [],
   growthPeriodDays: 30,
 };
 
@@ -2827,6 +2830,50 @@ export default function Admin() {
                           <div className={`text-right shrink-0 ${textClass}`}>
                             <p className="text-lg font-bold leading-none">{arrow} {city.novos}</p>
                             <p className="text-[10px] mt-1 text-muted-foreground">novos · {Math.abs(city.growth)}% da cidade</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* ── Estados em crescimento ── */}
+            <Card className="p-5 glass">
+              <div className="flex items-start justify-between gap-4 mb-1">
+                <div>
+                  <h3 className="font-semibold">Estados em crescimento 🔥</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Mesmo critério do card de cidades, agregado por UF: novos usuários nos últimos {visitAnalytics.growthPeriodDays} dias (mín. 5 usuários no estado). A % mostra quanto isso representa do total do estado.
+                  </p>
+                </div>
+              </div>
+              {visitAnalytics.growingStates.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-4">Nenhum estado com 5+ usuários e cadastros no período ainda.</p>
+              ) : (
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  {visitAnalytics.growingStates.slice(0, 15).map((state, i) => {
+                    const isHot    = state.growth >= 50;
+                    const isUp     = state.growth > 0;
+                    const isStable = state.growth === 0;
+                    const isDown   = state.growth < 0;
+                    const bgClass  = isHot ? 'bg-orange-500/10 border-orange-400/30' : isUp ? 'bg-emerald-500/10 border-emerald-400/30' : isDown ? 'bg-red-500/10 border-red-400/20' : 'bg-secondary/40 border-transparent';
+                    const textClass= isHot ? 'text-orange-600' : isUp ? 'text-emerald-600' : isDown ? 'text-red-500' : 'text-muted-foreground';
+                    const arrow    = isHot ? '🔥' : isUp ? '↑' : isDown ? '↓' : '→';
+                    return (
+                      <div key={state.label} className={`rounded-xl border p-3 ${bgClass}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
+                            <p className="font-medium text-sm truncate">{state.label}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              <span className="font-medium">{state.novos}</span> novos &nbsp;·&nbsp; de {state.total} no total
+                            </p>
+                          </div>
+                          <div className={`text-right shrink-0 ${textClass}`}>
+                            <p className="text-lg font-bold leading-none">{arrow} {state.novos}</p>
+                            <p className="text-[10px] mt-1 text-muted-foreground">novos · {Math.abs(state.growth)}% do estado</p>
                           </div>
                         </div>
                       </div>

@@ -13915,6 +13915,33 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           count: Number(row.c || 0),
         })),
         growthPeriodDays,
+        growingStates: (() => {
+          // Mesma fonte de dados do card de cidades (cityGrowthRows), só que
+          // agregada por UF em vez de por cidade — não precisa de outra
+          // consulta ao banco.
+          const MIN_USERS = 5;
+          const ufMap = new Map<string, { novos: number; total: number }>();
+          for (const row of (cityGrowthRows as any[])) {
+            const uf = String(row.uf || '').trim();
+            if (!uf) continue; // sem UF não dá para agregar por estado
+            const novos = Number(row.novos || 0);
+            const total = Number(row.total || 0);
+            const entry = ufMap.get(uf) || { novos: 0, total: 0 };
+            entry.novos += novos;
+            entry.total += total;
+            ufMap.set(uf, entry);
+          }
+          return Array.from(ufMap.entries())
+            .filter(([, e]) => e.total >= MIN_USERS && e.novos > 0)
+            .map(([uf, e]) => ({
+              label: uf,
+              novos: e.novos,
+              total: e.total,
+              growth: Math.round((e.novos / e.total) * 100),
+            }))
+            .sort((x, y) => y.novos - x.novos || y.growth - x.growth)
+            .slice(0, 30);
+        })(),
         growingCities: (() => {
           const MIN_USERS = 5; // ignora cidades minúsculas
           // Agrupa por cidade normalizada (lowercase), unindo variações com/sem UF
