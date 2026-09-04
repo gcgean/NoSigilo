@@ -3,6 +3,13 @@
 // São páginas HTML reais, indexáveis por Bing/Google sem depender de JavaScript,
 // que funcionam como funil: o conteúdo regional atrai a busca e os CTAs levam ao app.
 //
+// O visual reproduz o da landing /descobrir (src/pages/CampaignLanding.tsx +
+// CampaignLanding.css) — hero com foto, seções alternadas com ícone, bloco de
+// privacidade em vinho escuro, FAQ e CTA final. A landing é um componente React
+// renderizado no cliente; estas páginas são o MESMO desenho visual, mas em HTML
+// puro gerado no build, para não depender de JS na indexação. O conteúdo (texto,
+// FAQ, prova social) continua único por cidade — só o layout foi copiado.
+//
 // Também regenera dist/sitemap.xml com a home + páginas institucionais + todos os estados.
 
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
@@ -66,11 +73,6 @@ function arredondaParaBaixo(n) {
 
 const fmt = (n) => n.toLocaleString('pt-BR');
 
-/** Número de perfis da cidade, ou 0 se não atinge o mínimo. Usado na meta
- *  description: no resultado da busca, "Mais de 800 perfis em Fortaleza" é o
- *  único argumento que um concorrente não consegue copiar. As páginas de
- *  cidade estavam aparecendo com impressão e zero clique — snippet genérico
- *  não convence ninguém a clicar. */
 /** O Google corta a description por volta de 155 caracteres e substitui o resto
  *  por reticências — uma frase cortada no meio custa clique. Esta função recebe
  *  as variantes em ordem de preferência (da mais informativa à mais enxuta) e
@@ -80,6 +82,9 @@ function melhorDesc(variantes) {
   return variantes.find((d) => [...d].length <= CABE) || variantes[variantes.length - 1];
 }
 
+/** Número de perfis da cidade, ou 0 se não atinge o mínimo. Usado na meta
+ *  description: no resultado da busca, "Mais de 800 perfis em Fortaleza" é o
+ *  único argumento que um concorrente não consegue copiar. */
 function numeroCidade(city, st) {
   const n = STATS?.cidades?.[`${st.slug}/${city.slug}`] ?? 0;
   return n >= MIN_CIDADE ? arredondaParaBaixo(n) : 0;
@@ -267,8 +272,8 @@ const list = (arr) => {
 function statesNav(currentSlug) {
   return SELECTED_STATES.map((s) =>
     s.slug === currentSlug
-      ? `<strong style="color:#eb4778;">${esc(s.name)}</strong>`
-      : `<a href="${REGIONAL}/swing/${s.slug}/" style="color:#b9b9c0;">${esc(s.name)}</a>`
+      ? `<strong>${esc(s.name)}</strong>`
+      : `<a href="${REGIONAL}/swing/${s.slug}/">${esc(s.name)}</a>`
   ).join(' · ');
 }
 
@@ -307,23 +312,13 @@ function breadcrumbLd(trilha) {
   };
 }
 
-/** FAQ: HTML em <details> (expansível sem JavaScript) + o JSON-LD.
- *
- *  NOTA: desde agosto/2023 o Google restringiu o rich result de FAQ a sites
- *  governamentais e de saúde reconhecidos, então NÃO espere os blocos
- *  expansíveis no resultado. O que isto entrega é conteúdo que responde buscas
- *  de cauda longa, profundidade real na página e material que o Google cita
- *  nas AI Overviews. */
-function faqSection(itens) {
-  const html = `
-      <h2>Perguntas frequentes</h2>
-      <div class="faq">
-        ${itens.map((q) => `<details>
-          <summary>${esc(q.p)}</summary>
-          <p>${q.r}</p>
-        </details>`).join('')}
-      </div>`;
-  const ld = {
+/** JSON-LD do FAQ. NOTA: desde agosto/2023 o Google restringiu o rich result de
+ *  FAQ a sites governamentais e de saúde reconhecidos, então NÃO espere os
+ *  blocos expansíveis no resultado. O que isto entrega é conteúdo que responde
+ *  buscas de cauda longa, profundidade real na página e material que o Google
+ *  cita nas AI Overviews. */
+function faqJsonLd(itens) {
+  return {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
     mainEntity: itens.map((q) => ({
@@ -332,7 +327,6 @@ function faqSection(itens) {
       acceptedAnswer: { '@type': 'Answer', text: String(q.r).replace(/<[^>]*>/g, '') },
     })),
   };
-  return { html, ld };
 }
 
 /** Perguntas de uma página de cidade. Todas respondidas com o que o produto
@@ -393,12 +387,262 @@ function faqEstado(st) {
   ];
 }
 
+/** Perguntas do hub /swing/. */
+function faqHub() {
+  return [
+    {
+      p: 'O NoSigilo cobre todo o Brasil?',
+      r: 'Sim. Há páginas por estado para as 27 unidades da federação e para as capitais, e a busca dentro da plataforma filtra por cidade.',
+    },
+    {
+      p: 'Preciso pagar para me cadastrar?',
+      r: 'Não. O cadastro é gratuito e já permite criar o perfil, navegar e ser encontrado. O plano premium libera os recursos avançados.',
+    },
+    {
+      p: 'Casais e solteiros podem usar?',
+      r: 'Sim — casais liberais, mulheres solteiras e homens solteiros, cada um indicando o que procura.',
+    },
+    {
+      p: 'Meu perfil aparece em buscadores?',
+      r: 'Não. Perfis não são indexados. As páginas que aparecem no Google, como esta, são apenas informativas.',
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+//  Visual — cópia do layout de /descobrir (CampaignLanding.tsx)
+// ---------------------------------------------------------------------------
+// /descobrir é um componente React, renderizado no cliente. Estas páginas
+// precisam do MESMO desenho visual (paleta, tipografia, seções alternadas com
+// foto, bloco de privacidade em vinho, FAQ, CTA final) mas como HTML puro, sem
+// depender do bundle React — por isso o CSS abaixo é uma reprodução inline do
+// CampaignLanding.css, e os ícones são SVGs próprios (sem depender do pacote
+// lucide-react, que só existe dentro do app).
+//
+// As 4 fotos são as mesmas que a landing usa, nos mesmos papéis (hero,
+// recursos, audiência) — a exceção é a seção de privacidade, que ganhou a foto
+// dedicada (privacy-editorial-722.webp) em vez de reaproveitar a de recursos.
+
+const ICONS = {
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  message: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>',
+  gift: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M19 12v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-7"/><path d="M12 8c0-2.5-2-5-4.5-5S5 5 5 6.5 7 8 7 8h5Zm0 0c0-2.5 2-5 4.5-5S19 5 19 6.5 17 8 17 8h-5Z"/></svg>',
+  images: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="14" height="14" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5-9 9"/><path d="M13 21H6a2 2 0 0 1-2-2V6"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  badge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 12 3 3 5-6"/><path d="M12 2a3 3 0 0 1 2.6 1.5A3 3 0 0 1 18.5 6 3 3 0 0 1 20 9a3 3 0 0 1-1.5 2.6A3 3 0 0 1 18.5 15a3 3 0 0 1-3.4 3.4A3 3 0 0 1 12 20a3 3 0 0 1-2.6-1.5A3 3 0 0 1 5.5 15 3 3 0 0 1 4 12a3 3 0 0 1 1.5-2.6A3 3 0 0 1 5.5 6 3 3 0 0 1 8.9 3.5 3 3 0 0 1 12 2Z"/></svg>',
+  dollar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+};
+const icon = (name) => ICONS[name] || '';
+
+/** CSS inline reproduzindo CampaignLanding.css — tokens (cores, tipografia),
+ *  seções alternadas com foto e o bloco escuro de privacidade. Sem @import de
+ *  fonte: cai para a fonte do sistema, o que mantém a página rápida (sem
+ *  requisição extra) e é aceitável para uma página estática de SEO. */
+const CAMPAIGN_CSS = `
+:root{color-scheme:light;}
+*{box-sizing:border-box;}
+body{margin:0;background:#fff8f8;color:#1d1216;font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6;}
+.cl figure,.cl h1,.cl h2,.cl h3,.cl p{margin:0;}
+.cl h1,.cl h2{font-family:Georgia,"Times New Roman",serif;font-weight:400;letter-spacing:-.045em;}
+.cl h1 em,.cl h2 em{color:#700c20;font-style:normal;}
+.cl a{color:inherit;}
+.cl-section{width:min(100% - 2.5rem,1100px);margin-inline:auto;}
+.cl-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.4rem clamp(1.25rem,4vw,3rem);}
+.cl-brand{font-family:Georgia,serif;font-weight:700;font-size:1.4rem;color:#1d1216;text-decoration:none;}
+.cl-brand em{color:#ef405e;font-style:normal;}
+.cl-login{color:#700c20;font-weight:700;font-size:.9rem;text-decoration:none;border-bottom:1px solid transparent;}
+.cl-login:hover{border-color:currentColor;}
+.cl-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:clamp(2rem,5vw,4rem);align-items:center;width:min(100% - 2.5rem,1180px);margin-inline:auto;padding-block:clamp(1rem,3vw,2rem) clamp(3rem,6vw,5rem);}
+.cl-crumb{font-size:.78rem;color:#8a7d81;margin-bottom:.9rem;}
+.cl-crumb a{color:#8a7d81;text-decoration:underline;text-decoration-color:#ead7d3;}
+.cl-hero h1{font-size:clamp(2.1rem,4vw,3.1rem);line-height:1.05;text-wrap:balance;}
+.cl-intro{margin-top:1rem;color:#655c61;font-size:1.02rem;line-height:1.6;max-width:34rem;}
+.cl-prova{display:inline-flex;margin-top:1.1rem;padding:.7rem 1.1rem;border-radius:.5rem;background:#fff2f2;border:1px solid #ead7d3;border-left:3px solid #ef405e;font-size:.9rem;color:#4e4348;}
+.cl-prova strong{color:#700c20;}
+.cl-cta{display:inline-flex;align-items:center;justify-content:space-between;gap:.9rem;width:min(100%,21rem);margin-top:1.3rem;padding:.85rem 1.1rem .85rem 1.35rem;border-radius:.35rem;background:#ef405e;box-shadow:0 14px 30px rgba(213,45,76,.22);color:#fff;font-weight:800;font-size:1rem;text-decoration:none;}
+.cl-cta:hover{background:#d52d4c;}
+.cl-cta svg{width:1.15rem;height:1.15rem;flex:0 0 auto;}
+.cl-trust{display:flex;flex-wrap:wrap;gap:1.3rem;margin-top:1.6rem;padding-top:1.2rem;border-top:1px solid #ead7d3;}
+.cl-trust-item{display:flex;align-items:center;gap:.5rem;font-size:.72rem;font-weight:700;color:#4e4348;}
+.cl-trust-item svg{width:1.05rem;height:1.05rem;color:#700c20;flex:0 0 auto;}
+.cl-hero-media{border-radius:.65rem;overflow:hidden;aspect-ratio:4/3;background:#12090c;box-shadow:0 24px 60px rgba(45,20,27,.16);}
+.cl-hero-media img{display:block;width:100%;height:100%;object-fit:cover;}
+.cl-alt{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(2rem,5vw,4rem);align-items:center;padding-block:clamp(3rem,6vw,5rem);}
+.cl-alt-media{border-radius:.65rem;overflow:hidden;aspect-ratio:1/1;background:#1a1115;box-shadow:0 20px 50px rgba(45,20,27,.14);}
+.cl-alt-media img{display:block;width:100%;height:100%;object-fit:cover;}
+.cl-alt-copy h2{font-size:clamp(1.9rem,3vw,2.6rem);}
+.cl-alt-copy>p{margin-top:.85rem;color:#655c61;font-size:.98rem;line-height:1.6;}
+.cl-list{margin-top:1.3rem;border-top:1px solid #ead7d3;}
+.cl-list-item{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:.9rem;padding:1rem 0;border-bottom:1px solid #ead7d3;}
+.cl-list-item svg{width:1.4rem;height:1.4rem;color:#700c20;margin-top:.1rem;flex:0 0 auto;}
+.cl-list-item h3{font-size:.94rem;font-weight:800;}
+.cl-list-item p{margin-top:.2rem;color:#655c61;font-size:.86rem;line-height:1.5;}
+.cl-dark{background:linear-gradient(115deg,rgba(255,255,255,.02),transparent 42%),#26080f;color:#fff9f4;}
+.cl-dark h2{color:#fff9f4;}
+.cl-dark h2 em{color:#cba868;}
+.cl-dark .cl-alt-copy>p{color:#d9c9c8;}
+.cl-dark .cl-list-item{border-color:rgba(203,168,104,.35);}
+.cl-dark .cl-list-item svg{color:#cba868;}
+.cl-dark .cl-list-item p{color:#d9c9c8;}
+.cl-faq{padding-block:clamp(3rem,6vw,5rem);}
+.cl-faq h2{font-size:clamp(1.9rem,3vw,2.6rem);margin-bottom:1.6rem;}
+.cl-faq-list{border-top:1px solid #ead7d3;}
+.cl-faq-item{padding:1.3rem 0;border-bottom:1px solid #ead7d3;}
+.cl-faq-item summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:.9rem;font-family:Georgia,serif;font-size:1.05rem;}
+.cl-faq-item summary::-webkit-details-marker{display:none;}
+.cl-faq-item summary svg{width:1.9rem;height:1.9rem;flex:0 0 auto;padding:.4rem;border:1px solid #ead7d3;border-radius:50%;color:#700c20;background:#fff2f2;}
+.cl-faq-item p{margin-top:.7rem;margin-left:2.8rem;color:#655c61;font-size:.92rem;line-height:1.55;}
+.cl-region{padding-block:clamp(2rem,4vw,3rem);border-top:1px solid #ead7d3;}
+.cl-region h2{font-size:1.4rem;font-family:Georgia,serif;margin-bottom:.5rem;}
+.cl-region p{color:#655c61;font-size:.92rem;margin-bottom:1rem;}
+.cl-chips{display:flex;flex-wrap:wrap;gap:.6rem;}
+.cl-chips a{background:#fff2f2;border:1px solid #ead7d3;border-radius:999px;padding:.45rem .95rem;font-size:.85rem;text-decoration:none;color:#700c20;font-weight:600;}
+.cl-chips a:hover{background:#ead7d3;}
+.cl-etiquette{margin:0;padding-left:1.2rem;color:#655c61;font-size:.92rem;line-height:1.75;}
+.cl-final{position:relative;overflow:hidden;background:radial-gradient(circle at 5% 25%,rgba(239,64,94,.2),transparent 32%),linear-gradient(120deg,#2a0710,#650d22 68%,#2a0710);color:#fff9f4;}
+.cl-final-inner{width:min(100% - 2.5rem,1100px);margin-inline:auto;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:2rem;padding-block:clamp(3rem,6vw,4.5rem);}
+.cl-final h2{font-family:Georgia,serif;font-size:clamp(1.8rem,3vw,2.4rem);color:#f2d7a3;max-width:32rem;}
+.cl-final p{margin-top:.6rem;color:#e3d2d1;max-width:28rem;}
+.cl-final-actions{display:flex;flex-direction:column;align-items:flex-start;gap:.7rem;}
+.cl-final-login{color:#f2d7a3;font-size:.85rem;text-decoration:underline;}
+.cl-footer{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;padding:1.3rem clamp(1.25rem,4vw,3rem);background:#151416;color:#ddd3d4;font-size:.78rem;}
+.cl-footer-brand{font-family:Georgia,serif;font-weight:700;color:#fff;}
+.cl-footer-age{display:flex;align-items:center;gap:.5rem;}
+.cl-footer-age svg{width:1rem;height:1rem;color:#cba868;flex:0 0 auto;}
+.cl-footer-links a{color:#ddd3d4;text-decoration:none;margin-right:.9rem;}
+.cl-footer-links a:hover{text-decoration:underline;}
+.cl-footer-states{width:100%;margin-top:.6rem;font-size:.72rem;line-height:2;color:#a8a0a3;}
+.cl-footer-states a{color:#a8a0a3;text-decoration:none;}
+.cl-footer-states a:hover{text-decoration:underline;}
+.cl-footer-states strong{color:#f2d7a3;}
+@media (max-width:860px){
+  .cl-hero,.cl-alt{grid-template-columns:minmax(0,1fr);}
+  .cl-hero-media{order:-1;aspect-ratio:16/9;}
+}
+`;
+
+function campaignHeader() {
+  return `<header class="cl-header">
+      <a class="cl-brand" href="/">NoSigilo<em>.net</em></a>
+      <a class="cl-login" href="/login">Já sou membro</a>
+    </header>`;
+}
+
+function campaignFooter(currentStateSlug) {
+  return `<footer class="cl-footer">
+      <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+        <span class="cl-footer-brand">NoSigilo.net</span>
+        <div class="cl-footer-age">${icon('badge')}<span>Comunidade exclusiva para maiores de 18 anos.</span></div>
+      </div>
+      <div class="cl-footer-links">
+        <a href="/terms">Termos</a><a href="/privacy">Privacidade</a><a href="/guidelines">Diretrizes</a><a href="/swing/">Todos os estados</a>
+      </div>
+      <div class="cl-footer-states">${statesNav(currentStateSlug)}</div>
+    </footer>`;
+}
+
+/** Os 4 passos "Como funciona" — mesmo papel da seção "features" da landing
+ *  (mesmos 4 ícones: perfil, fotos, localização, conversa), com a 3ª descrição
+ *  parametrizada por cidade/capital/estado. */
+function comoFuncionaItems(localizacaoDesc) {
+  return [
+    { ic: 'user', title: 'Crie o perfil', desc: 'Gratuito — indique se é casal, mulher solteira ou homem solteiro, e o que procura.' },
+    { ic: 'images', title: 'Separe público do íntimo', desc: 'Fotos públicas ficam visíveis; as privadas só abrem para quem você liberar.' },
+    { ic: 'pin', title: 'Encontre gente perto', desc: localizacaoDesc },
+    { ic: 'message', title: 'Converse com calma', desc: 'Mensagens privadas, com visualização única para o que é mais sensível.' },
+  ];
+}
+
+/** Os 3 itens do bloco escuro de privacidade — mesmo papel da seção
+ *  "privacyItems" da landing. Conteúdo fixo: não varia por região porque a
+ *  garantia é a mesma em qualquer lugar. */
+const PRIVACIDADE_ITEMS = [
+  { ic: 'eye', title: 'Perfil fora do Google', desc: 'Buscadores não indexam perfis — só páginas informativas como esta.' },
+  { ic: 'lock', title: 'Fotos sob seu controle', desc: 'Você decide quem vê as fotos mais íntimas.' },
+  { ic: 'shield', title: 'Visualização única', desc: 'Conteúdo sensível pode sumir depois de visto.' },
+];
+
+/** Os 3 públicos — mesmo papel da seção "audiences" da landing, com a 1ª
+ *  descrição parametrizada por cidade/capital. */
+function audienciaItems(casaisDesc) {
+  return [
+    { ic: 'users', title: 'Casais liberais', desc: casaisDesc },
+    { ic: 'user', title: 'Mulheres solteiras', desc: 'Definem o próprio ritmo e com quem querem falar.' },
+    { ic: 'user', title: 'Homens solteiros', desc: 'Em encontros de ménage e relações abertas, com discrição.' },
+  ];
+}
+
+const listItemsHtml = (itens) => itens.map((it) =>
+  `<div class="cl-list-item">${icon(it.ic)}<div><h3>${esc(it.title)}</h3><p>${it.desc}</p></div></div>`
+).join('');
+
+const FAQ_ICON_CYCLE = ['dollar', 'users', 'pin', 'lock', 'shield', 'eye'];
+
+/** Seção de FAQ no estilo da landing (ícone + pergunta em serif + resposta).
+ *  <details>/<summary> mantém expansível sem JavaScript, igual à versão
+ *  anterior — só o visual mudou. */
+function campaignFaqSection(itens) {
+  const items = itens.map((q, i) => `<details class="cl-faq-item">
+          <summary>${icon(FAQ_ICON_CYCLE[i % FAQ_ICON_CYCLE.length])}<span>${esc(q.p)}</span></summary>
+          <p>${q.r}</p>
+        </details>`).join('\n        ');
+  return `<section class="cl-section cl-faq">
+      <h2>Ainda pensando se é para <em>você</em>?</h2>
+      <div class="cl-faq-list">
+        ${items}
+      </div>
+    </section>`;
+}
+
+/** Monta o documento HTML completo: head (meta/JSON-LD/CSS) + body no layout
+ *  da landing. `body` já vem pronto (header, seções, footer). */
+function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body }) {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${esc(title)}</title>
+  <meta name="description" content="${esc(desc)}" />
+  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="rating" content="adult" />
+  <meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
+  ${geoUf ? `<meta name="geo.region" content="BR-${geoUf}" />` : ''}
+  ${geoPlace ? `<meta name="geo.placename" content="${esc(geoPlace)}" />` : ''}
+  <link rel="canonical" href="${url}" />
+  <link rel="icon" type="image/jpeg" href="/icon.jpg" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:site_name" content="NoSigilo.net" />
+  <meta property="og:url" content="${url}" />
+  <meta property="og:title" content="${esc(title)}" />
+  <meta property="og:description" content="${esc(desc)}" />
+  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${esc(title)}" />
+  <meta name="twitter:description" content="${esc(desc)}" />
+  <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
+  <meta name="theme-color" content="#eb4778" />
+  <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
+  <style>${CAMPAIGN_CSS}</style>
+</head>
+<body>
+  <main class="cl">
+    ${body}
+  </main>
+</body>
+</html>
+`;
+}
+
 function statePage(st) {
   const cities = list(st.cities);
   const cityPages = citiesOf(st.slug);
-  const cityLinksBlock = cityPages.length
-    ? `\n      <h2>Cidades em ${esc(st.name)}</h2>\n      <div class="states">${cityPages.map((c) => `<a href="${REGIONAL}/swing/${st.slug}/${c.slug}/" style="color:#eb4778;">Swing em ${esc(c.name)}</a>`).join(' · ')}</div>\n`
-    : '';
   const title = `Swing e Troca de Casais em ${st.name} (${st.uf}) | NoSigilo.net`;
   const nEstado = numeroEstado(st);
   const desc = melhorDesc(nEstado
@@ -413,174 +657,124 @@ function statePage(st) {
       ]);
   const url = `${REGIONAL}/swing/${st.slug}/`;
 
-  const jsonld = {
-    '@context': 'https://schema.org',
-    '@type': 'WebPage',
-    name: title,
-    description: desc,
-    url,
-    inLanguage: 'pt-BR',
-    isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
-    about: { '@type': 'Place', name: `${st.name}, Brasil` },
-    areaServed: { '@type': 'AdministrativeArea', name: st.name },
-  };
+  const jsonld = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description: desc,
+      url,
+      inLanguage: 'pt-BR',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      about: { '@type': 'Place', name: `${st.name}, Brasil` },
+      areaServed: { '@type': 'AdministrativeArea', name: st.name },
+    },
+    breadcrumbLd([
+      { name: 'Início', path: '/' },
+      { name: 'Swing por estado', path: '/swing/' },
+      { name: st.name, path: `/swing/${st.slug}/` },
+    ]),
+    faqJsonLd(faqEstado(st)),
+  ];
 
-  const faq = faqSection(faqEstado(st));
-  const trilha = breadcrumbLd([
-    { name: 'Início', path: '/' },
-    { name: 'Swing por estado', path: '/swing/' },
-    { name: st.name, path: `/swing/${st.slug}/` },
-  ]);
   const vizinhos = neighborStates(st);
   const prova = provaSocialEstado(st);
 
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(title)}</title>
-  <meta name="description" content="${esc(desc)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
-  <meta name="rating" content="adult" />
-  <meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
-  <meta name="geo.region" content="BR-${st.uf}" />
-  <meta name="geo.placename" content="${esc(st.name)}" />
-  <link rel="canonical" href="${url}" />
-  <link rel="icon" type="image/jpeg" href="/icon.jpg" />
-  <meta property="og:type" content="website" />
-  <meta property="og:locale" content="pt_BR" />
-  <meta property="og:site_name" content="NoSigilo.net" />
-  <meta property="og:url" content="${url}" />
-  <meta property="og:title" content="${esc(`Swing e Troca de Casais em ${st.name}`)}" />
-  <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${esc(`Swing e Troca de Casais em ${st.name}`)}" />
-  <meta name="twitter:description" content="${esc(desc)}" />
-  <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
-  <meta name="theme-color" content="#eb4778" />
-  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin:0; background:#09090b; color:#e7e7ea; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; line-height:1.65; }
-    a { color:#eb4778; }
-    .wrap { max-width:880px; margin:0 auto; padding:28px 20px 56px; }
-    header.top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:28px; }
-    .brand { font-weight:800; font-size:20px; color:#fff; text-decoration:none; }
-    .cta { display:inline-block; background:#eb4778; color:#fff; font-weight:700; text-decoration:none; padding:10px 18px; border-radius:999px; }
-    .cta.outline { background:transparent; border:1px solid #eb477855; color:#eb4778; }
-    h1 { font-size:30px; line-height:1.25; font-weight:800; margin:0 0 14px; }
-    h1 span { color:#eb4778; }
-    h2 { font-size:21px; font-weight:700; margin:30px 0 10px; }
-    p { color:#c7c7cf; }
-    .lead { font-size:17px; color:#d9d9df; }
-    ul { color:#c7c7cf; padding-left:20px; }
-    li { margin:6px 0; }
-    .chips { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
-    .chip { border:1px solid #2a2a30; background:#141418; border-radius:999px; padding:5px 12px; font-size:13px; color:#b9b9c0; }
-    .ctas { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0; }
-    .box { background:#141418; border:1px solid #26262c; border-radius:16px; padding:20px; margin-top:22px; }
-    footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
-    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
-    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
-    .faq details p { margin:10px 0 0; }
-    .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
-    .prova { background:#1a1015; border:1px solid #eb477833; border-left:3px solid #eb4778; border-radius:12px; padding:14px 16px; color:#e7e7ea; }
-    .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
-    .states { font-size:13px; line-height:2; margin-top:14px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <header class="top">
-      <a class="brand" href="/">NoSigilo<span style="color:#eb4778;">.net</span></a>
-      <a class="cta" href="/register">Criar conta grátis</a>
-    </header>
+  const body = `${campaignHeader()}
 
-    <main>
-      <h1>Swing e Troca de Casais em <span>${esc(st.name)}</span></h1>
-      <p class="lead">
-        A rede social adulta e discreta para casais, mulheres e homens solteiros do meio liberal
-        em ${esc(st.name)} e região ${esc(st.region)}. Conexões reais com sigilo, privacidade e respeito.
-      </p>
-
-      <div class="chips">
-        ${st.cities.map((c) => `<span class="chip">Swing ${esc(c)}</span>`).join('\n        ')}
-      </div>
-
-${prova ? `
-      <p class="prova">${prova}</p>` : ''}
-
-      <p>
-        Procurando <strong>swing em ${esc(st.name)}</strong> ou <strong>troca de casais em ${esc(st.capital)}</strong>?
-        O <strong>NoSigilo.net</strong> reúne o meio liberal de ${esc(cities)} num só lugar, longe da exposição
-        das redes sociais comuns. Aqui casais liberais e singles encontram pessoas com os mesmos interesses
-        para swing, ménage e encontros liberais — com total discrição.
-      </p>
-
-      <h2>Por que usar o NoSigilo em ${esc(st.name)}</h2>
-      <ul>
-        <li><strong>Perfis reais do meio liberal</strong> em ${esc(st.capital)} e em todo o estado de ${esc(st.name)}.</li>
-        <li><strong>Função "Estou Aqui"</strong> — encontre casais e singles próximos de você em tempo real.</li>
-        <li><strong>Fotos públicas e privadas</strong> — você decide quem vê o que é mais íntimo.</li>
-        <li><strong>Mensagens com visualização única</strong> — conteúdos que somem depois de vistos.</li>
-        <li><strong>Cadastro gratuito</strong> e ambiente selecionado, discreto e respeitoso.</li>
-      </ul>
-
-      <div class="ctas">
-        <a class="cta" href="/register">Criar conta grátis</a>
-        <a class="cta outline" href="/login">Já tenho conta</a>
-      </div>
-
-      <div class="box">
-        <h2 style="margin-top:0;">Swing e ménage em ${esc(st.name)}</h2>
-        <p style="margin-bottom:0;">
-          Além da troca de casais, o NoSigilo acolhe quem busca <strong>ménage em ${esc(st.name)}</strong>,
-          relacionamentos abertos e encontros esporádicos liberais entre adultos consentidos —
-          em ${esc(cities)} e demais cidades do estado.
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/">Swing por estado</a> › ${esc(st.name)}</p>
+        <h1>Swing e Troca de Casais em <em>${esc(st.name)}</em></h1>
+        <p class="cl-intro">
+          Procurando <strong>swing em ${esc(st.name)}</strong> ou <strong>troca de casais em ${esc(st.capital)}</strong>?
+          O NoSigilo.net reúne o meio liberal de ${esc(cities)} num só lugar, longe da exposição das redes sociais
+          comuns — casais liberais e singles com os mesmos interesses para swing, ménage e encontros liberais,
+          com total discrição.
         </p>
+        ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
+        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
+          <span class="cl-trust-item">${icon('gift')}Entrada gratuita</span>
+        </div>
       </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
 
-      <h2>Como funciona</h2>
-      <ol>
-        <li><strong>Crie o perfil</strong> — gratuito, indicando se você é casal, mulher solteira ou homem solteiro.</li>
-        <li><strong>Separe o público do íntimo</strong> — fotos privadas só abrem para quem você liberar.</li>
-        <li><strong>Filtre por cidade</strong> — de ${esc(st.capital)} ao interior de ${esc(st.name)}.</li>
-        <li><strong>Converse com calma</strong> — com visualização única para o que é mais sensível.</li>
-      </ol>
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em></h2>
+        <p>A lógica é simples e pensada para quem não quer se expor: você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
+        <div class="cl-list">
+          ${listItemsHtml(comoFuncionaItems(`Filtros por cidade — de ${esc(st.capital)} ao interior de ${esc(st.name)}.`))}
+        </div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
 
-      <h2>Privacidade em primeiro lugar</h2>
-      <p>
-        A preocupação de quem vive o meio liberal em ${esc(st.name)} é sempre a mesma: ser reconhecido.
-        Por isso os perfis não são indexados por buscadores, as fotos íntimas ficam atrás de liberação
-        individual e o conteúdo mais sensível pode ser enviado com visualização única. As páginas que
-        aparecem no Google, como esta, são apenas informativas.
-      </p>
-${faq.html}
-${cityLinksBlock}
-${vizinhos.length ? `
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Sigilo de <em>verdade</em></h2>
+          <p>
+            Quem vive o meio liberal em ${esc(st.name)} costuma ter a mesma preocupação: ser reconhecido.
+            Por isso o sigilo aqui não é promessa de marketing — é como o produto foi construído. As páginas
+            que aparecem no Google, como esta, são só informativas: nenhum perfil chega aos resultados de busca.
+          </p>
+          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <figure class="cl-alt-media">
+        <img src="/landing/hero-liberal-party.jpg" alt="Adultos conversando em um encontro social liberal" width="1024" height="768" loading="lazy" />
+      </figure>
+      <div class="cl-alt-copy">
+        <h2>Quem você <em>encontra</em></h2>
+        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <div class="cl-list">${listItemsHtml(audienciaItems(`Buscam troca de casais ou uma terceira pessoa, em ${esc(st.capital)} e em todo o estado.`))}</div>
+      </div>
+    </section>
+
+    ${cityPages.length ? `<section class="cl-section cl-region">
+      <h2>Cidades em ${esc(st.name)}</h2>
+      <p>Página própria para quem procura perto de casa.</p>
+      <div class="cl-chips">${cityPages.map((c) => `<a href="/swing/${st.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}</div>
+    </section>` : ''}
+
+    ${vizinhos.length ? `<section class="cl-section cl-region">
       <h2>Estados vizinhos no ${esc(st.region)}</h2>
-      <div class="links">${vizinhos.map((v) => `<a href="/swing/${v.slug}/">Swing em ${esc(v.name)}</a>`).join('')}</div>
-` : ''}
-    </main>
+      <div class="cl-chips">${vizinhos.map((v) => `<a href="/swing/${v.slug}/">Swing em ${esc(v.name)}</a>`).join('')}</div>
+    </section>` : ''}
 
-    <footer>
-      <p>Swing e troca de casais em outros estados:</p>
-      <div class="states">${statesNav(st.slug)}</div>
-      <p style="margin-top:20px;">
-        <a href="/">Início</a> ·
-        <a href="/terms">Termos de Uso</a> ·
-        <a href="/privacy">Privacidade</a> ·
-        <a href="/guidelines">Diretrizes</a>
-        <br />© ${new Date().getFullYear()} NoSigilo.net — conteúdo adulto (18+). Todos os direitos reservados.
-      </p>
-    </footer>
-  </div>
-</body>
-</html>
-`;
+    ${campaignFaqSection(faqEstado(st))}
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>Seu próximo encontro pode começar com um perfil.</h2>
+          <p>Crie sua conta gratuitamente e descubra quem está em ${esc(st.name)} na mesma sintonia.</p>
+        </div>
+        <div class="cl-final-actions">
+          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${campaignFooter(st.slug)}`;
+
+  return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: st.name, jsonld, body });
 }
 
 function cityPage(city) {
@@ -599,191 +793,136 @@ function cityPage(city) {
         `Swing, troca de casais e ménage em ${city.name}. Rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
       ]);
 
-  const jsonld = {
-    '@context': 'https://schema.org',
-    '@type': 'WebPage',
-    name: title,
-    description: desc,
-    url,
-    inLanguage: 'pt-BR',
-    isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
-    about: { '@type': 'Place', name: `${city.name}, ${st.name}, Brasil` },
-    areaServed: { '@type': 'City', name: city.name },
-  };
+  const jsonld = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description: desc,
+      url,
+      inLanguage: 'pt-BR',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      about: { '@type': 'Place', name: `${city.name}, ${st.name}, Brasil` },
+      areaServed: { '@type': 'City', name: city.name },
+    },
+    breadcrumbLd([
+      { name: 'Início', path: '/' },
+      { name: 'Swing por estado', path: '/swing/' },
+      { name: st.name, path: `/swing/${st.slug}/` },
+      { name: city.name, path: `/swing/${st.slug}/${city.slug}/` },
+    ]),
+    faqJsonLd(faqCidade(city, st)),
+  ];
 
-  const faq = faqSection(faqCidade(city, st));
-  const trilha = breadcrumbLd([
-    { name: 'Início', path: '/' },
-    { name: 'Swing por estado', path: '/swing/' },
-    { name: st.name, path: `/swing/${st.slug}/` },
-    { name: city.name, path: `/swing/${st.slug}/${city.slug}/` },
-  ]);
   const vizinhas = neighborCities(city);
   const prova = provaSocialCidade(city, st);
   const outrasDoEstado = st.cities.filter((c) => c !== city.name);
 
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(title)}</title>
-  <meta name="description" content="${esc(desc)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
-  <meta name="rating" content="adult" />
-  <meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
-  <meta name="geo.region" content="BR-${st.uf}" />
-  <meta name="geo.placename" content="${esc(city.name)}" />
-  <link rel="canonical" href="${url}" />
-  <link rel="icon" type="image/jpeg" href="/icon.jpg" />
-  <meta property="og:type" content="website" />
-  <meta property="og:locale" content="pt_BR" />
-  <meta property="og:site_name" content="NoSigilo.net" />
-  <meta property="og:url" content="${url}" />
-  <meta property="og:title" content="${esc(`Swing e Troca de Casais em ${city.name}`)}" />
-  <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="${esc(`Swing e Troca de Casais em ${city.name}`)}" />
-  <meta name="twitter:description" content="${esc(desc)}" />
-  <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
-  <meta name="theme-color" content="#eb4778" />
-  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin:0; background:#09090b; color:#e7e7ea; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; line-height:1.65; }
-    a { color:#eb4778; }
-    .wrap { max-width:880px; margin:0 auto; padding:28px 20px 56px; }
-    header.top { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:28px; }
-    .brand { font-weight:800; font-size:20px; color:#fff; text-decoration:none; }
-    .cta { display:inline-block; background:#eb4778; color:#fff; font-weight:700; text-decoration:none; padding:10px 18px; border-radius:999px; }
-    .cta.outline { background:transparent; border:1px solid #eb477855; color:#eb4778; }
-    .crumb { font-size:13px; color:#9a9aa2; margin-bottom:8px; }
-    h1 { font-size:30px; line-height:1.25; font-weight:800; margin:0 0 14px; }
-    h1 span { color:#eb4778; }
-    h2 { font-size:21px; font-weight:700; margin:30px 0 10px; }
-    p { color:#c7c7cf; }
-    .lead { font-size:17px; color:#d9d9df; }
-    ul { color:#c7c7cf; padding-left:20px; }
-    li { margin:6px 0; }
-    .ctas { display:flex; flex-wrap:wrap; gap:12px; margin:26px 0; }
-    .box { background:#141418; border:1px solid #26262c; border-radius:16px; padding:20px; margin-top:22px; }
-    footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
-    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
-    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
-    .faq details p { margin:10px 0 0; }
-    .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
-    .prova { background:#1a1015; border:1px solid #eb477833; border-left:3px solid #eb4778; border-radius:12px; padding:14px 16px; color:#e7e7ea; }
-    .links a { background:#141418; border:1px solid #26262c; border-radius:999px; padding:7px 14px; text-decoration:none; font-size:14px; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <header class="top">
-      <a class="brand" href="/">NoSigilo<span style="color:#eb4778;">.net</span></a>
-      <a class="cta" href="/register">Criar conta grátis</a>
-    </header>
+  const body = `${campaignHeader()}
 
-    <main>
-      <p class="crumb"><a href="/swing/" style="color:#9a9aa2;">Swing por estado</a> › <a href="/swing/${st.slug}/" style="color:#9a9aa2;">${esc(st.name)}</a> › ${esc(city.name)}</p>
-      <h1>Swing e Troca de Casais em <span>${esc(city.name)}</span></h1>
-      <p class="lead">
-        A rede social adulta e discreta para casais, mulheres e homens solteiros do meio liberal
-        em ${esc(city.name)}, ${esc(st.name)}. Conexões reais com sigilo, privacidade e respeito.
-      </p>
-
-${prova ? `
-      <p class="prova">${prova}</p>` : ''}
-
-      <p>
-        Procurando <strong>swing em ${esc(city.name)}</strong> ou <strong>troca de casais em ${esc(city.name)}</strong>?
-        O <strong>NoSigilo.net</strong> reúne o meio liberal de ${esc(city.name)} e região num só lugar,
-        longe da exposição das redes sociais comuns. Casais liberais e singles encontram pessoas com os
-        mesmos interesses para swing, ménage e encontros liberais — com total discrição.
-      </p>
-
-      <h2>Como funciona</h2>
-      <p>
-        A lógica é simples e pensada para quem não quer se expor: você entra, monta o perfil no seu tempo
-        e só revela o que quiser, para quem quiser.
-      </p>
-      <ol>
-        <li><strong>Crie o perfil</strong> — gratuito, indicando se você é casal, mulher solteira ou homem solteiro, e o que procura.</li>
-        <li><strong>Separe o que é público do que é íntimo</strong> — fotos públicas ficam visíveis; as privadas só abrem para quem você liberar.</li>
-        <li><strong>Encontre gente perto</strong> — os filtros restringem por cidade e estado, e a função "Estou Aqui" mostra quem está por perto agora.</li>
-        <li><strong>Converse com calma</strong> — mensagens privadas, com opção de visualização única para o que é mais sensível.</li>
-      </ol>
-
-      <h2>Por que usar o NoSigilo em ${esc(city.name)}</h2>
-      <ul>
-        <li><strong>Perfis reais do meio liberal</strong> em ${esc(city.name)} e em toda a região.</li>
-        <li><strong>Função "Estou Aqui"</strong> — encontre casais e singles próximos de você em tempo real.</li>
-        <li><strong>Fotos públicas e privadas</strong> — você decide quem vê o que é mais íntimo.</li>
-        <li><strong>Mensagens com visualização única</strong> — conteúdos que somem depois de vistos.</li>
-        <li><strong>Cadastro gratuito</strong> e ambiente selecionado, discreto e respeitoso.</li>
-      </ul>
-
-      <div class="ctas">
-        <a class="cta" href="/register">Criar conta grátis</a>
-        <a class="cta outline" href="/login">Já tenho conta</a>
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/">Swing por estado</a> › <a href="/swing/${st.slug}/">${esc(st.name)}</a> › ${esc(city.name)}</p>
+        <h1>Swing e Troca de Casais em <em>${esc(city.name)}</em></h1>
+        <p class="cl-intro">
+          Procurando <strong>swing em ${esc(city.name)}</strong> ou <strong>troca de casais em ${esc(city.name)}</strong>?
+          O NoSigilo.net reúne o meio liberal de ${esc(city.name)} e região num só lugar, longe da exposição das
+          redes sociais comuns — casais liberais, mulheres solteiras e homens solteiros com os mesmos interesses
+          para swing, ménage e encontros liberais, com total discrição.
+        </p>
+        ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
+        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
+          <span class="cl-trust-item">${icon('gift')}Entrada gratuita</span>
+        </div>
       </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
 
-      <h2>Privacidade: o ponto que mais pesa</h2>
-      <p>
-        Quem vive o meio liberal em ${esc(city.name)} costuma ter a mesma preocupação — ser reconhecido.
-        É por isso que o sigilo aqui não é promessa de marketing, e sim como o produto foi construído:
-        o perfil não é indexado por buscadores, as fotos íntimas ficam atrás de liberação individual,
-        e o conteúdo mais sensível pode ser enviado com visualização única, sumindo depois de visto.
-        As páginas que aparecem no Google, como esta, são apenas informativas — nenhum perfil de usuário
-        chega aos resultados de busca.
-      </p>
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em></h2>
+        <p>A lógica é simples e pensada para quem não quer se expor: você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
+        <div class="cl-list">
+          ${listItemsHtml(comoFuncionaItems(`Filtros por cidade e estado, e a função "Estou Aqui" mostra quem está perto de você em ${esc(city.name)} agora.`))}
+        </div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
 
-      <h2>Quem você encontra</h2>
-      <p>
-        A comunidade reúne três públicos que se procuram: <strong>casais liberais</strong>, que buscam
-        troca de casais ou uma terceira pessoa; <strong>mulheres solteiras</strong>, que definem o próprio
-        ritmo e com quem querem falar; e <strong>homens solteiros</strong>, em encontros de ménage e
-        relações abertas. Os filtros existem justamente para que cada perfil chegue a quem faz sentido,
-        sem ruído.
-      </p>
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Sigilo de <em>verdade</em></h2>
+          <p>
+            Quem vive o meio liberal em ${esc(city.name)} costuma ter a mesma preocupação: ser reconhecido.
+            Por isso o sigilo aqui não é promessa de marketing — é como o produto foi construído. As páginas
+            que aparecem no Google, como esta, são só informativas: nenhum perfil chega aos resultados de busca.
+          </p>
+          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
 
+    <section class="cl-section cl-alt">
+      <figure class="cl-alt-media">
+        <img src="/landing/hero-liberal-party.jpg" alt="Adultos conversando em um encontro social liberal" width="1024" height="768" loading="lazy" />
+      </figure>
+      <div class="cl-alt-copy">
+        <h2>Quem você <em>encontra</em></h2>
+        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <div class="cl-list">${listItemsHtml(audienciaItems(`Buscam troca de casais ou uma terceira pessoa, em ${esc(city.name)} e região.`))}</div>
+      </div>
+    </section>
+
+    <section class="cl-section cl-region">
       <h2>Primeiro encontro liberal: como não errar</h2>
-      <p>
-        Vale a mesma etiqueta que sustenta o meio há décadas — e ela protege os dois lados:
-      </p>
-      <ul>
+      <p>Vale a mesma etiqueta que sustenta o meio há décadas — e ela protege os dois lados.</p>
+      <ul class="cl-etiquette">
         <li><strong>Converse antes.</strong> Alinhe limites, expectativas e o que está fora de cogitação antes de marcar.</li>
         <li><strong>Comece em lugar público.</strong> Um drink em ${esc(city.name)} antes de qualquer coisa reduz o desconforto dos dois lados.</li>
         <li><strong>"Não" encerra o assunto.</strong> Consentimento é contínuo e pode ser retirado a qualquer momento, por qualquer pessoa envolvida.</li>
         <li><strong>Combine com o parceiro.</strong> Nos casais, a regra combinada antes vale mais do que a vontade do momento.</li>
         <li><strong>Discrição é mão dupla.</strong> Não comente, não fotografe, não exponha quem você conheceu.</li>
       </ul>
-${faq.html}
+    </section>
 
-      <div class="box">
-        <p style="margin:0;">
-          Veja também <a href="/swing/${st.slug}/">swing e troca de casais em ${esc(st.name)}</a> —
-          perfis do meio liberal em todo o estado${outrasDoEstado.length ? `, incluindo ${esc(list(outrasDoEstado))}` : ''}.
-        </p>
+    <section class="cl-section cl-region">
+      <h2>Veja também</h2>
+      <p>Perfis do meio liberal em todo o estado${outrasDoEstado.length ? `, incluindo ${esc(list(outrasDoEstado))}` : ''}.</p>
+      <div class="cl-chips">
+        <a href="/swing/${st.slug}/">Swing em ${esc(st.name)}</a>
+        ${vizinhas.map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}
       </div>
-${vizinhas.length ? `
-      <h2>Swing em outras cidades do ${esc(city.state.region)}</h2>
-      <div class="links">${vizinhas.map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}</div>
-` : ''}
-    </main>
+    </section>
 
-    <footer>
-      <a href="/">Início</a> ·
-      <a href="/swing/">Todos os estados</a> ·
-      <a href="/terms">Termos</a> ·
-      <a href="/privacy">Privacidade</a>
-      <br />© ${new Date().getFullYear()} NoSigilo.net — conteúdo adulto (18+). Todos os direitos reservados.
-    </footer>
-  </div>
-</body>
-</html>
-`;
+    ${campaignFaqSection(faqCidade(city, st))}
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>Seu próximo encontro pode começar com um perfil.</h2>
+          <p>Crie sua conta gratuitamente e descubra quem está em ${esc(city.name)} na mesma sintonia.</p>
+        </div>
+        <div class="cl-final-actions">
+          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${campaignFooter(st.slug)}`;
+
+  return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld, body });
 }
 
 function hubPage() {
@@ -802,119 +941,131 @@ function hubPage() {
 
   // O hub e a porta de entrada do cluster regional: o ItemList diz ao Google
   // que estas 27 paginas formam um conjunto, e nao paginas soltas.
-  const jsonld = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: title,
-    description: desc,
-    url,
-    inLanguage: 'pt-BR',
-    isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
-    mainEntity: {
-      '@type': 'ItemList',
-      numberOfItems: SELECTED_STATES.length,
-      itemListElement: SELECTED_STATES.map((st, i) => ({
-        '@type': 'ListItem',
-        position: i + 1,
-        name: `Swing e troca de casais em ${st.name}`,
-        url: `${SITE}/swing/${st.slug}/`,
-      })),
-    },
-  };
-  const trilha = breadcrumbLd([
-    { name: 'Início', path: '/' },
-    { name: 'Swing por estado', path: '/swing/' },
-  ]);
-  const faq = faqSection([
+  const jsonld = [
     {
-      p: 'O NoSigilo cobre todo o Brasil?',
-      r: 'Sim. Há páginas por estado para as 27 unidades da federação e para as capitais, e a busca dentro da plataforma filtra por cidade.',
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: title,
+      description: desc,
+      url,
+      inLanguage: 'pt-BR',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      mainEntity: {
+        '@type': 'ItemList',
+        numberOfItems: SELECTED_STATES.length,
+        itemListElement: SELECTED_STATES.map((st, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          name: `Swing e troca de casais em ${st.name}`,
+          url: `${SITE}/swing/${st.slug}/`,
+        })),
+      },
     },
-    {
-      p: 'Preciso pagar para me cadastrar?',
-      r: 'Não. O cadastro é gratuito e já permite criar o perfil, navegar e ser encontrado. O plano premium libera os recursos avançados.',
-    },
-    {
-      p: 'Casais e solteiros podem usar?',
-      r: 'Sim — casais liberais, mulheres solteiras e homens solteiros, cada um indicando o que procura.',
-    },
-    {
-      p: 'Meu perfil aparece em buscadores?',
-      r: 'Não. Perfis não são indexados. As páginas que aparecem no Google, como esta, são apenas informativas.',
-    },
-  ]);
+    breadcrumbLd([
+      { name: 'Início', path: '/' },
+      { name: 'Swing por estado', path: '/swing/' },
+    ]),
+    faqJsonLd(faqHub()),
+  ];
 
-  const sections = order.map((reg) => `
-      <h2>${esc(reg)}</h2>
-      <div class="states">${byRegion[reg].map((s) => `<a href="${REGIONAL}/swing/${s.slug}/" style="color:#eb4778;">${esc(s.name)}</a>`).join(' · ')}</div>
-  `).join('\n');
+  const prova = nBrasil ? `<strong>Mais de ${fmt(nBrasil)} perfis no Brasil</strong> já fazem parte da comunidade.` : '';
 
-  return `<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${esc(title)}</title>
-  <meta name="description" content="${esc(desc)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
-  <meta name="rating" content="adult" />
-  <link rel="canonical" href="${url}" />
-  <link rel="icon" type="image/jpeg" href="/icon.jpg" />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="${url}" />
-  <meta property="og:title" content="${esc(title)}" />
-  <meta property="og:description" content="${esc(desc)}" />
-  <meta property="og:image" content="${REGIONAL}/icon.jpg" />
-  <meta name="theme-color" content="#eb4778" />
-  <script type="application/ld+json">${JSON.stringify([jsonld, trilha, faq.ld])}</script>
-  <style>
-    :root { color-scheme: dark; }
-    body { margin:0; background:#09090b; color:#e7e7ea; font-family:system-ui,-apple-system,sans-serif; line-height:1.65; }
-    .wrap { max-width:880px; margin:0 auto; padding:28px 20px 56px; }
-    .brand { font-weight:800; font-size:20px; color:#fff; text-decoration:none; }
-    h1 { font-size:30px; font-weight:800; margin:24px 0 12px; }
-    h2 { font-size:20px; font-weight:700; margin:26px 0 8px; color:#fff; }
-    p { color:#c7c7cf; }
-    .states { font-size:15px; line-height:2.1; }
-    .cta { display:inline-block; background:#eb4778; color:#fff; font-weight:700; text-decoration:none; padding:10px 18px; border-radius:999px; margin-top:20px; }
-    footer { margin-top:40px; padding-top:24px; border-top:1px solid #26262c; font-size:13px; color:#9a9aa2; }
-    a { color:#eb4778; }
-    .faq { text-align:left; max-width:760px; margin:0 auto; }
-    .faq details { border:1px solid #26262c; border-radius:12px; padding:14px 16px; margin:10px 0; background:#111114; }
-    .faq summary { cursor:pointer; font-weight:600; color:#e7e7ea; }
-    .faq details p { margin:10px 0 0; color:#c7c7cf; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <a class="brand" href="/">NoSigilo<span style="color:#eb4778;">.net</span></a>
-    <h1>Swing e Troca de Casais por Estado</h1>
-    <p>
-      O <strong>NoSigilo.net</strong> conecta o meio liberal brasileiro em todo o país. Escolha seu estado
-      e encontre casais e singles para swing, troca de casais e ménage com sigilo e privacidade.
-    </p>
-    ${sections}
+  // O diretório de estados e o motivo de a pagina existir — fica logo apos o
+  // hero, antes do conteudo institucional, para nao enterrar a navegacao.
+  const regionSections = order.map((reg) => `
+      <div class="cl-chips" style="margin-bottom:1.4rem;">
+        <span style="width:100%;font-weight:800;font-family:Georgia,serif;font-size:1.05rem;color:#700c20;margin-bottom:.4rem;display:block;">${esc(reg)}</span>
+        ${byRegion[reg].map((s) => `<a href="/swing/${s.slug}/">${esc(s.name)}</a>`).join('')}
+      </div>`).join('');
 
-    <p style="max-width:760px;margin:32px auto 0;text-align:left;">
-      Cada página reúne o que interessa a quem procura <strong>swing</strong>, <strong>troca de casais</strong>
-      e <strong>ménage</strong> naquela região: como a plataforma funciona, como a privacidade é tratada
-      e o caminho para encontrar casais e singles por perto. A comunidade é nacional, mas a busca é local —
-      os filtros restringem por cidade e estado, e a função "Estou Aqui" mostra quem está próximo agora.
-    </p>
-    <p style="max-width:760px;margin:14px auto 0;text-align:left;">
-      O acesso é restrito a maiores de 18 anos. Os perfis passam por aprovação antes de circular e não são
-      indexados por buscadores — o que aparece no Google são apenas páginas informativas como esta.
-    </p>
-${faq.html}
-    <a class="cta" href="/register">Criar conta grátis</a>
-    <footer>
-      <a href="/">Início</a> · <a href="/terms">Termos</a> · <a href="/privacy">Privacidade</a> · <a href="/guidelines">Diretrizes</a>
-      <br />© ${new Date().getFullYear()} NoSigilo.net — conteúdo adulto (18+).
-    </footer>
-  </div>
-</body>
-</html>
-`;
+  const body = `${campaignHeader()}
+
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/">Swing por estado</a></p>
+        <h1>Swing e Troca de Casais <em>por Estado</em></h1>
+        <p class="cl-intro">
+          O NoSigilo.net conecta o meio liberal brasileiro em todo o país. Escolha seu estado e encontre
+          casais e singles para swing, troca de casais e ménage, com sigilo e privacidade de verdade.
+        </p>
+        ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
+        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
+          <span class="cl-trust-item">${icon('gift')}Entrada gratuita</span>
+        </div>
+      </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
+
+    <section class="cl-section cl-region" style="border-top:1px solid #ead7d3;">
+      <h2>Escolha seu estado</h2>
+      <p>27 unidades da federação, mais páginas de capitais e cidades onde a comunidade já tem gente de verdade.</p>
+      ${regionSections}
+    </section>
+
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em></h2>
+        <p>A lógica é simples e pensada para quem não quer se expor: você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
+        <div class="cl-list">
+          ${listItemsHtml(comoFuncionaItems('Filtros por cidade e estado, em qualquer lugar do Brasil.'))}
+        </div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
+
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Sigilo de <em>verdade</em></h2>
+          <p>
+            A preocupação de quem vive o meio liberal é sempre a mesma: ser reconhecido. Por isso o sigilo aqui
+            não é promessa de marketing — é como o produto foi construído. As páginas que aparecem no Google,
+            como esta, são só informativas: nenhum perfil chega aos resultados de busca.
+          </p>
+          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <figure class="cl-alt-media">
+        <img src="/landing/hero-liberal-party.jpg" alt="Adultos conversando em um encontro social liberal" width="1024" height="768" loading="lazy" />
+      </figure>
+      <div class="cl-alt-copy">
+        <h2>Quem você <em>encontra</em></h2>
+        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <div class="cl-list">${listItemsHtml(audienciaItems('Buscam troca de casais ou uma terceira pessoa, em qualquer estado do Brasil.'))}</div>
+      </div>
+    </section>
+
+    ${campaignFaqSection(faqHub())}
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>Seu próximo encontro pode começar com um perfil.</h2>
+          <p>Crie sua conta gratuitamente e descubra quem está na mesma sintonia perto de você.</p>
+        </div>
+        <div class="cl-final-actions">
+          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${campaignFooter(null)}`;
+
+  return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body });
 }
 
 function sitemap() {
