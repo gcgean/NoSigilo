@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Crown, Loader2 } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Loader2 } from 'lucide-react';
 import ActiveNowBar from '@/components/ActiveNowBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -20,8 +20,6 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
-import { hasPremiumAccess } from '@/utils/premium';
-import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const genderOptions = [
@@ -63,8 +61,6 @@ export default function SearchPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { requireFields: _requireFields } = useProfileGate(); // reservado para ações futuras
-  const premiumAccess = hasPremiumAccess(user);
-  const [paywallOpen, setPaywallOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [suggestions, setSuggestions] = useState<Array<{ id: string; name: string; avatar: string | null; gender: string | null; city: string | null; state: string | null }>>([]);
@@ -500,10 +496,8 @@ export default function SearchPage() {
     const tagline: string | null = profile.meetingTagline ?? null;
 
     const handleOpenProfile = () => {
-      if (!premiumAccess) {
-        setPaywallOpen(true);
-        return;
-      }
+      // Ver perfil e livre: GET /api/users/:userId nao exige premium, e o Feed
+      // ja abre perfis para quem nao assina. A trava aqui era so no cliente.
       navigate(getUserProfileHref(profile.id, undefined, '/search'));
     };
 
@@ -623,21 +617,13 @@ export default function SearchPage() {
         </div>
 
         {/* Hover overlay */}
+        {/* Curtir e ver perfil sao gratis, entao o coracao aparece para todos.
+            Antes quem nao assinava via uma coroa com "Assinar para ver" — um
+            paywall sobre algo que o servidor nunca cobrou. */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/45 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
-          {premiumAccess ? (
-            <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow" aria-label="Curtir perfil">
-              <Heart className="w-6 h-6" />
-            </Button>
-          ) : (
-            <>
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black/50 ring-2 ring-yellow-400/40 backdrop-blur-sm">
-                <Crown className="w-7 h-7 text-yellow-400 drop-shadow" />
-              </div>
-              <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
-                Assinar para ver
-              </span>
-            </>
-          )}
+          <Button size="icon" className="w-14 h-14 rounded-full bg-gradient-primary shadow-glow" aria-label="Curtir perfil">
+            <Heart className="w-6 h-6" />
+          </Button>
         </div>
       </div>
     );
@@ -1317,7 +1303,6 @@ export default function SearchPage() {
         </>
       )}
 
-      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }

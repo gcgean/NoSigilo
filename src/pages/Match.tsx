@@ -446,10 +446,8 @@ export default function Match() {
             variant="outline"
             size="icon"
             onClick={() => {
-              if (!premiumAccess) {
-                redirectToPlans();
-                return;
-              }
+              // Buscar e livre: /api/users e /api/users/suggest nao exigem
+              // premium no servidor. A trava aqui era so no cliente.
               navigate('/search');
             }}
             className="h-11 w-11 rounded-xl sm:h-10 sm:w-10 sm:rounded-md"
