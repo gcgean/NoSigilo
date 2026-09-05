@@ -612,7 +612,15 @@ export default function Profile() {
     void loadNotifications();
   }, []);
 
+  // /profile/visits exige premium (403 premium_required). Sem a checagem, quem
+  // não assina levava o toast global "Recurso Premium" só por abrir o próprio
+  // perfil, sem ter clicado em nada. A tela já tem o seu próprio convite para
+  // assinar (ver o bloco de "quem visitou" mais abaixo).
   const loadProfileVisits = async () => {
+    if (!hasPremiumAccess(user)) {
+      setProfileVisits([]);
+      return;
+    }
     try {
       const visits = await profileService.getVisits();
       setProfileVisits(Array.isArray(visits) ? visits : []);
@@ -623,6 +631,9 @@ export default function Profile() {
 
   useEffect(() => {
     void loadProfileVisits();
+    // Só na montagem: o status premium vem de `user`, que já está carregado
+    // antes desta página montar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

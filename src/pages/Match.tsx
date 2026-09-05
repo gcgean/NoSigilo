@@ -228,6 +228,59 @@ export default function Match() {
     }
   };
 
+  // ─── Arrastar o card ──────────────────────────────────────────────────────
+  // O texto "Arraste para os lados ou use os botões" já estava na tela, mas o
+  // gesto nunca existiu — só a animação de saída, disparada pelos botões.
+  //
+  // Usa Pointer Events (cobre mouse e toque com um código só) e decide a direção
+  // antes de capturar: enquanto o movimento for mais vertical que horizontal, o
+  // gesto é ignorado e a página rola normalmente. Sem isso, arrastar o card
+  // sequestraria o scroll vertical no celular.
+  const ARRASTE_MINIMO_PX = 10;   // ativa o gesto
+  const ARRASTE_DECISAO_PX = 90;  // confirma curtir/passar ao soltar
+  const [dragX, setDragX] = useState(0);
+  const dragRef = useRef<{ x: number; y: number; eixo: 'indefinido' | 'horizontal' | 'vertical' } | null>(null);
+  // Um arrasto termina em click no botão que cobre o card (que navega para o
+  // perfil). Este ref suprime esse click — só o dele, sem afetar toques limpos.
+  const arrastouRef = useRef(false);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (swipeDirection) return; // já saindo da tela
+    dragRef.current = { x: e.clientX, y: e.clientY, eixo: 'indefinido' };
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+
+    if (d.eixo === 'indefinido') {
+      if (Math.abs(dx) < ARRASTE_MINIMO_PX && Math.abs(dy) < ARRASTE_MINIMO_PX) return;
+      // Vertical vence: solta o gesto para a página rolar.
+      d.eixo = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+      if (d.eixo === 'horizontal') {
+        arrastouRef.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+    }
+    if (d.eixo !== 'horizontal') return;
+    setDragX(dx);
+  };
+
+  const onPointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d || d.eixo !== 'horizontal') return;
+    const x = dragX;
+    setDragX(0);
+    // handleLike/handlePass já barram quem não tem premium (redirectToPlans) e
+    // exigem perfil completo — nesses casos nada acontece e o card volta ao
+    // lugar sozinho, porque handleSwipe só roda depois das checagens.
+    if (x >= ARRASTE_DECISAO_PX) void handleLike();
+    else if (x <= -ARRASTE_DECISAO_PX) void handlePass();
+  };
+
   const handleSwipe = (direction: 'left' | 'right') => {
     const swipedProfileId = currentProfile?.id ? String(currentProfile.id) : null;
     setHasSwipedAny(true);
@@ -513,6 +566,31 @@ export default function Match() {
         )}
         {!isLoading && currentProfile && (
           <div
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+            // O card inteiro é um botão que abre o perfil; sem isto, todo
+            // arrasto terminaria navegando para lá.
+            onClickCapture={(e) => {
+              if (!arrastouRef.current) return;
+              arrastouRef.current = false;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            style={{
+              // touchAction pan-y: o navegador continua dono do scroll vertical,
+              // nós só assumimos o horizontal.
+              touchAction: 'pan-y',
+              // Sem isto, arrastar com o mouse seleciona o texto do card.
+              userSelect: 'none',
+              ...(swipeDirection || dragX === 0
+                ? null
+                : {
+                    transform: `translateX(${dragX}px) rotate(${Math.max(-12, Math.min(12, dragX / 18))}deg)`,
+                    transition: 'none',
+                  }),
+            }}
             className={cn(
               'absolute inset-0 rounded-[22px] sm:rounded-3xl overflow-hidden shadow-elevated transition-all duration-300',
               swipeDirection === 'right' && 'animate-swipe-right',
@@ -671,13 +749,29 @@ export default function Match() {
               </div>
             </div>
 
-            {swipeDirection === 'right' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-success/20 animate-fade-in">
+            {/* Indicadores de curtir/passar. Aparecem tanto na saída pelos
+                botões (swipeDirection) quanto durante o arrasto, aí com opacidade
+                proporcional ao quanto falta para confirmar — é o retorno que diz
+                "solta agora que vai valer". */}
+            {(swipeDirection === 'right' || dragX > 0) && (
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-0 flex items-center justify-center bg-success/20',
+                  swipeDirection === 'right' && 'animate-fade-in'
+                )}
+                style={swipeDirection ? undefined : { opacity: Math.min(1, dragX / ARRASTE_DECISAO_PX) }}
+              >
                 <Heart className="w-32 h-32 text-success" fill="currentColor" />
               </div>
             )}
-            {swipeDirection === 'left' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-destructive/20 animate-fade-in">
+            {(swipeDirection === 'left' || dragX < 0) && (
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-0 flex items-center justify-center bg-destructive/20',
+                  swipeDirection === 'left' && 'animate-fade-in'
+                )}
+                style={swipeDirection ? undefined : { opacity: Math.min(1, -dragX / ARRASTE_DECISAO_PX) }}
+              >
                 <X className="w-32 h-32 text-destructive" />
               </div>
             )}
