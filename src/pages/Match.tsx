@@ -117,7 +117,16 @@ export default function Match() {
     setProfiles([]);
     setCurrentIndex(0);
 
-    Promise.all([matchService.getCards(), matchService.getLikedProfiles()])
+    // /match/liked exige premium no backend (403 premium_required). Para quem
+    // ainda não é assinante, o clique no botão "Curtidos" já redireciona pro
+    // paywall antes de chamar a API — mas ESTE carregamento inicial chamava a
+    // mesma rota sem checar nada, só para preencher o número do badge. Cada
+    // usuário grátis que abria o Match levava um toast de "assine" sem ter
+    // feito nada; corrigido pulando a chamada quando premiumAccess é falso.
+    Promise.all([
+      matchService.getCards(),
+      premiumAccess ? matchService.getLikedProfiles() : Promise.resolve([]),
+    ])
       .then(([cardsData, likedData]) => {
         if (cancelled) return;
         const newProfiles = Array.isArray(cardsData) ? cardsData : [];
@@ -138,6 +147,10 @@ export default function Match() {
     return () => {
       cancelled = true;
     };
+    // Roda só na montagem, de propósito — premiumAccess é lido do valor que
+    // já está pronto no primeiro render (vem de `user`, carregado antes desta
+    // página montar), não precisa re-disparar se mudar depois.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
