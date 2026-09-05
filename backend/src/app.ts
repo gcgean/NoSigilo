@@ -8481,12 +8481,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // LISTAR os cards NÃO exige premium — de propósito. O paywall fica nas AÇÕES
+  // (/match/like e /match/pass, ambos com 403 premium_required logo na entrada,
+  // e o cliente já redireciona para os planos antes de chamá-las).
+  //
+  // Antes esta rota bloqueava a listagem inteira, e o efeito era o pior dos dois
+  // mundos: o usuário grátis abria o Match, o 403 disparava o toast global de
+  // "Recurso Premium" sem ele ter clicado em nada, e o catch do cliente zerava a
+  // lista — a tela mostrava "Nenhum perfil no momento" junto com o aviso de
+  // assinatura. Ninguém via o que estava perdendo, que é justamente o que faz
+  // alguém assinar. Nenhum dado novo é exposto: perfis já aparecem no Feed para
+  // quem não é assinante.
   app.get('/api/match/cards', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
-      res.status(403).json({ error: 'premium_required' });
-      return;
-    }
-
     const me = (await queryOne(db, 'SELECT lat, lon, city, state, looking_for_json, is_admin FROM users WHERE id = ?', [req.auth!.userId])) as any;
     const myLat = me?.lat ? Number(me.lat) : null;
     const myLon = me?.lon ? Number(me.lon) : null;
