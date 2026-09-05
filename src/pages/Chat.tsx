@@ -1623,14 +1623,23 @@ export default function Chat() {
                         className="gap-1.5"
                         disabled={isTogglingFollow || isFollowingFromChat}
                         onClick={async () => {
+                          // /match/like exige premium. Sem esta checagem o 403
+                          // caía no catch genérico e o usuário via "Não foi
+                          // possível curtir — tente novamente", que é enganoso:
+                          // não é falha temporária, é paywall, e tentar de novo
+                          // nunca ia funcionar. Mesmo padrão do handler de
+                          // curtir logo acima neste arquivo.
+                          if (!premiumAccess) { setPaywallOpen(true); return; }
                           const alvo = String(activeConversation.user.id);
                           setIsTogglingFollow(true);
                           try {
                             await matchService.like(alvo);
                             setIsFollowingFromChat(true);
                             toast({ title: 'Perfil curtido' });
-                          } catch {
-                            toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
+                          } catch (err) {
+                            const status = (err as { response?: { status?: number } })?.response?.status;
+                            if (status === 403) setPaywallOpen(true);
+                            else toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
                           } finally {
                             setIsTogglingFollow(false);
                           }
