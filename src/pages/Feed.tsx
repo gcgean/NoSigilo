@@ -1408,8 +1408,7 @@ export default function Feed() {
   };
 
   const sendExpComment = async (expId: string) => {
-    // Comentar é premium: abre a tela de pagamento em vez de tentar e falhar.
-    if (!premiumAccess) { setPaywallOpen(true); return; }
+    // Comentar é grátis: interação social básica (ver backend, POST /api/comments).
     const draft = (commentDraftByExpId[expId] || '').trim();
     if (!draft) return;
     setCommentDraftByExpId((prev) => ({ ...prev, [expId]: '' }));
@@ -1719,8 +1718,7 @@ export default function Feed() {
   };
 
   const sendComment = async (postId: string) => {
-    // Comentar é premium: abre a tela de pagamento em vez de tentar e falhar.
-    if (!premiumAccess) { setPaywallOpen(true); return; }
+    // Comentar é grátis: interação social básica (ver backend, POST /api/comments).
     const draft = (commentDraftByPostId[postId] || '').trim();
     if (!draft) return;
     const replyingTo = replyingToByPostId[postId] ?? null;
@@ -3260,16 +3258,11 @@ export default function Feed() {
                   <div className="flex gap-2">
                     <Input
                       placeholder={
-                        !premiumAccess
-                          ? `Assine para falar com ${item.post.author.name}`
-                          : (replyingToByPostId[item.post.id]
-                              ? `Responder ${replyingToByPostId[item.post.id]?.user.name}...`
-                              : 'Escreva um comentário...')
+                        replyingToByPostId[item.post.id]
+                          ? `Responder ${replyingToByPostId[item.post.id]?.user.name}...`
+                          : 'Escreva um comentário...'
                       }
                       value={commentDraftByPostId[item.post.id] || ''}
-                      readOnly={!premiumAccess}
-                      onMouseDown={!premiumAccess ? (e) => { e.preventDefault(); setPaywallOpen(true); } : undefined}
-                      onFocus={!premiumAccess ? () => setPaywallOpen(true) : undefined}
                       onChange={(e) => setCommentDraftByPostId((prev) => ({ ...prev, [item.post.id]: e.target.value }))}
                       onKeyDown={(e) => { if (e.key === 'Enter') void sendComment(item.post.id); }}
                     />

@@ -267,20 +267,11 @@ export default function SearchPage() {
   }, [fetchNextPage]);
 
   // ── Load liked profiles once ───────────────────────────────────────────────
-  // /match/liked exige premium (403 premium_required). Sem a checagem, todo
-  // usuário grátis que abria a Busca levava o toast global "Recurso Premium"
-  // sem ter clicado em nada — o filtro "Somente curtidos" já leva ao paywall
-  // por conta própria quando é usado.
   useEffect(() => {
-    if (!premiumAccess) {
-      setLikedProfiles([]);
-      return;
-    }
     matchService
       .getLikedProfiles()
       .then((list) => setLikedProfiles(Array.isArray(list) ? list : []))
       .catch(() => setLikedProfiles([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Load search preferences + apply as defaults ────────────────────────────

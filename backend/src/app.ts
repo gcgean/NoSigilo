@@ -5604,8 +5604,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // POST /api/stories/:id/comments — comentar em story (privado, só o autor vê)
   app.post('/api/stories/:id/comments', requireAuth(env, db), async (req, res) => {
     const commenterId = req.auth!.userId;
-    // Comentar em story é interação premium (ver e curtir são livres).
-    if (!(await userHasPremiumAccess(db, commenterId))) { res.status(403).json({ error: 'premium_required' }); return; }
+    // Comentar em story é GRÁTIS, junto com ver e curtir: interação social básica.
     const storyId = req.params.id;
     const io = req.app.get('io') as SocketIOServer | undefined;
     const { text } = req.body as { text?: string };
@@ -5695,9 +5694,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const storyId = req.params.id;
     const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
     if (!story || story.user_id !== userId) { res.status(403).json({ error: 'forbidden' }); return; }
-    const subscriptionsEnabled2 = await getSubscriptionsEnabled(db);
-    const userRow2 = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
-    if (!hasPremiumAccess(userRow2, subscriptionsEnabled2, env.BILLING_TEST_EMAILS)) { res.status(403).json({ error: 'premium_required' }); return; }
+    // GRÁTIS: são os comentários do PRÓPRIO story de quem está pedindo (a
+    // checagem de dono acima já garante isso). Ler o retorno da sua própria
+    // publicação é social básico — o que a assinatura vende é ver QUEM viu.
     const rows = (await queryAll(
       db,
       `SELECT sc.id, sc.text, sc.created_at,
@@ -8701,10 +8700,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.post('/api/match/like', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
-      res.status(403).json({ error: 'premium_required' });
-      return;
-    }
+    // GRÁTIS por decisão de produto: interação social básica. O que a
+    // assinatura vende (ver ReferralPaywallModal/Subscriptions) é mensagens
+    // ilimitadas, Radar "Estou Aqui", ver quem visitou o perfil, fotos/vídeos
+    // exclusivos e eventos — nada disso passa por aqui.
 
     const io = req.app.get('io') as SocketIOServer | undefined;
     const schema = z.object({ userId: z.string().min(1) });
@@ -8914,10 +8913,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.post('/api/match/pass', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
-      res.status(403).json({ error: 'premium_required' });
-      return;
-    }
+    // GRÁTIS por decisão de produto: interação social básica. O que a
+    // assinatura vende (ver ReferralPaywallModal/Subscriptions) é mensagens
+    // ilimitadas, Radar "Estou Aqui", ver quem visitou o perfil, fotos/vídeos
+    // exclusivos e eventos — nada disso passa por aqui.
 
     const schema = z.object({ userId: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
@@ -8951,10 +8950,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/match/liked', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
-      res.status(403).json({ error: 'premium_required' });
-      return;
-    }
+    // GRÁTIS por decisão de produto: interação social básica. O que a
+    // assinatura vende (ver ReferralPaywallModal/Subscriptions) é mensagens
+    // ilimitadas, Radar "Estou Aqui", ver quem visitou o perfil, fotos/vídeos
+    // exclusivos e eventos — nada disso passa por aqui.
 
     const viewer = (await queryOne(db, 'SELECT lat, lon, is_admin FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const viewerLat = viewer?.lat != null ? Number(viewer.lat) : null;
@@ -10614,8 +10613,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
-    // Comentar (feed/foto/perfil/experiência) é interação premium; curtir é livre.
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) { res.status(403).json({ error: 'premium_required' }); return; }
+    // Comentar e curtir são GRÁTIS: interação social básica, é o que gera
+    // engajamento. A assinatura vende mensagens, radar, eventos e mídia.
     const schema = z.object({
       targetType: z.enum(['post', 'user', 'photo', 'experience']),
       targetId: z.string().min(1),

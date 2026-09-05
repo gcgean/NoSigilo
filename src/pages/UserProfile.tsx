@@ -1583,7 +1583,7 @@ export default function UserProfile() {
                   post={post}
                   viewerId={me?.id}
                   dataLabel={format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}
-                  podeInteragir={premiumAccess}
+                  podeInteragir
                   onPrecisaAssinar={() => setPaywallOpen(true)}
                 />
               ))}

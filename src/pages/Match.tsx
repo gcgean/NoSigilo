@@ -117,22 +117,15 @@ export default function Match() {
     setProfiles([]);
     setCurrentIndex(0);
 
-    // /match/liked exige premium no backend (403 premium_required). Para quem
-    // ainda não é assinante, o clique no botão "Curtidos" já redireciona pro
-    // paywall antes de chamar a API — mas ESTE carregamento inicial chamava a
-    // mesma rota sem checar nada, só para preencher o número do badge. Cada
-    // usuário grátis que abria o Match levava um toast de "assine" sem ter
-    // feito nada; corrigido pulando a chamada quando premiumAccess é falso.
-    Promise.all([
-      matchService.getCards(),
-      premiumAccess ? matchService.getLikedProfiles() : Promise.resolve([]),
-    ])
-      .then(([cardsData, likedData]) => {
+    // As duas buscas são independentes de propósito. Antes ficavam num
+    // Promise.all: se a lista de curtidos falhasse, os CARDS iam junto e a
+    // tela travava em "Carregando perfis" — o principal quebrando por causa
+    // do acessório (o contador do badge).
+    matchService
+      .getCards()
+      .then((cardsData) => {
         if (cancelled) return;
-        const newProfiles = Array.isArray(cardsData) ? cardsData : [];
-        const liked = Array.isArray(likedData) ? likedData : [];
-        setProfiles(newProfiles);
-        setLikedProfiles(liked);
+        setProfiles(Array.isArray(cardsData) ? cardsData : []);
         setCurrentIndex(0);
       })
       .catch(() => {
@@ -144,13 +137,20 @@ export default function Match() {
         if (cancelled) return;
         setIsLoading(false);
       });
+
+    matchService
+      .getLikedProfiles()
+      .then((likedData) => {
+        if (cancelled) return;
+        setLikedProfiles(Array.isArray(likedData) ? likedData : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLikedProfiles([]);
+      });
     return () => {
       cancelled = true;
     };
-    // Roda só na montagem, de propósito — premiumAccess é lido do valor que
-    // já está pronto no primeiro render (vem de `user`, carregado antes desta
-    // página montar), não precisa re-disparar se mudar depois.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -301,10 +301,6 @@ export default function Match() {
   };
 
   const handleLike = async () => {
-    if (!premiumAccess) {
-      redirectToPlans();
-      return;
-    }
     const ok = await requireFields(['photo', 'birthDate', 'city']);
     if (!ok) return;
     if (!currentProfile) return;
@@ -336,10 +332,6 @@ export default function Match() {
   };
 
   const handlePass = async () => {
-    if (!premiumAccess) {
-      redirectToPlans();
-      return;
-    }
     const ok = await requireFields(['photo', 'birthDate', 'city']);
     if (!ok) return;
     if (currentProfile?.id) {
@@ -403,10 +395,6 @@ export default function Match() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  if (!premiumAccess) {
-                    redirectToPlans();
-                    return;
-                  }
                   setIsLoadingLikedProfiles(true);
                   matchService
                     .getLikedProfiles()
