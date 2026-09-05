@@ -174,79 +174,105 @@ const ENABLED_CITIES = {
   // cidades sem pagina de capital que superam capitais — Campina Grande tem
   // mais perfis que Natal e Manaus, Caruaru tem mais que Salvador. Uma pagina
   // de cidade sem ninguem por perto atrai visita e entrega um vazio.
+  //
+  // Corte atual: 15+ perfis visiveis. Abaixo disso a pagina existiria sem ter
+  // gente para entregar a quem chegasse por ela.
+  'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
+  'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
+  'amapa': [{ name: 'Macapá', slug: 'macapa' }],
+  'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
+  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
   'ceara': [
-    { name: 'Fortaleza', slug: 'fortaleza' },
-    { name: 'Maracanaú', slug: 'maracanau' },
-    { name: 'Sobral', slug: 'sobral' },
-    { name: 'Juazeiro do Norte', slug: 'juazeiro-do-norte' },
+    { name: 'Aquiraz', slug: 'aquiraz' },
     { name: 'Caucaia', slug: 'caucaia' },
+    { name: 'Crato', slug: 'crato' },
     { name: 'Eusébio', slug: 'eusebio' },
-    { name: 'Tianguá', slug: 'tiangua' },
+    { name: 'Fortaleza', slug: 'fortaleza' },
+    { name: 'Horizonte', slug: 'horizonte' },
     { name: 'Iguatu', slug: 'iguatu' },
+    { name: 'Juazeiro do Norte', slug: 'juazeiro-do-norte' },
+    { name: 'Maracanaú', slug: 'maracanau' },
+    { name: 'Quixadá', slug: 'quixada' },
+    { name: 'Sobral', slug: 'sobral' },
+    { name: 'Tianguá', slug: 'tiangua' },
   ],
-  'rondonia': [
-    { name: 'Porto Velho', slug: 'porto-velho' },
-    { name: 'Ariquemes', slug: 'ariquemes' },
+  'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
+  'espirito-santo': [
+    { name: 'Cariacica', slug: 'cariacica' },
+    { name: 'Serra', slug: 'serra' },
+    { name: 'Vila Velha', slug: 'vila-velha' },
+    { name: 'Vitória', slug: 'vitoria' },
   ],
-  'sao-paulo': [
-    { name: 'São Paulo', slug: 'sao-paulo' },
-    { name: 'Guarulhos', slug: 'guarulhos' },
-    { name: 'Campinas', slug: 'campinas' },
-    { name: 'Ribeirão Preto', slug: 'ribeirao-preto' },
+  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
+  'maranhao': [
+    { name: 'Imperatriz', slug: 'imperatriz' },
+    { name: 'São Luís', slug: 'sao-luis' },
   ],
-  'pernambuco': [
-    { name: 'Recife', slug: 'recife' },
-    { name: 'Caruaru', slug: 'caruaru' },
-    { name: 'Jaboatão dos Guararapes', slug: 'jaboatao-dos-guararapes' },
-    { name: 'Petrolina', slug: 'petrolina' },
-    { name: 'Paulista', slug: 'paulista' },
-    { name: 'Olinda', slug: 'olinda' },
+  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
+  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
+  'minas-gerais': [
+    { name: 'Belo Horizonte', slug: 'belo-horizonte' },
+    { name: 'Betim', slug: 'betim' },
+    { name: 'Contagem', slug: 'contagem' },
+    { name: 'Ipatinga', slug: 'ipatinga' },
+    { name: 'Uberlândia', slug: 'uberlandia' },
+  ],
+  'para': [
+    { name: 'Ananindeua', slug: 'ananindeua' },
+    { name: 'Belém', slug: 'belem' },
   ],
   'paraiba': [
     { name: 'Campina Grande', slug: 'campina-grande' },
     { name: 'João Pessoa', slug: 'joao-pessoa' },
   ],
-  'rio-grande-do-norte': [
-    { name: 'Natal', slug: 'natal' },
-    { name: 'Mossoró', slug: 'mossoro' },
+  'parana': [
+    { name: 'Curitiba', slug: 'curitiba' },
+    { name: 'Londrina', slug: 'londrina' },
+    { name: 'Maringá', slug: 'maringa' },
   ],
-  'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
-  'rio-de-janeiro': [{ name: 'Rio de Janeiro', slug: 'rio-de-janeiro' }],
-  'minas-gerais': [
-    { name: 'Belo Horizonte', slug: 'belo-horizonte' },
-    { name: 'Contagem', slug: 'contagem' },
-  ],
-  'maranhao': [
-    { name: 'São Luís', slug: 'sao-luis' },
-    { name: 'Imperatriz', slug: 'imperatriz' },
+  'pernambuco': [
+    { name: 'Caruaru', slug: 'caruaru' },
+    { name: 'Jaboatão dos Guararapes', slug: 'jaboatao-dos-guararapes' },
+    { name: 'Olinda', slug: 'olinda' },
+    { name: 'Paulista', slug: 'paulista' },
+    { name: 'Petrolina', slug: 'petrolina' },
+    { name: 'Recife', slug: 'recife' },
   ],
   'piaui': [{ name: 'Teresina', slug: 'teresina' }],
-  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
-  'parana': [{ name: 'Curitiba', slug: 'curitiba' }],
-  'rio-grande-do-sul': [{ name: 'Porto Alegre', slug: 'porto-alegre' }],
-  'para': [{ name: 'Belém', slug: 'belem' }],
-  'espirito-santo': [
-    { name: 'Vila Velha', slug: 'vila-velha' },
-    { name: 'Vitória', slug: 'vitoria' },
-    { name: 'Serra', slug: 'serra' },
+  'rio-de-janeiro': [
+    { name: 'Niterói', slug: 'niteroi' },
+    { name: 'Rio de Janeiro', slug: 'rio-de-janeiro' },
   ],
-  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
-  'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
-  'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
+  'rio-grande-do-norte': [
+    { name: 'Mossoró', slug: 'mossoro' },
+    { name: 'Natal', slug: 'natal' },
+  ],
+  'rio-grande-do-sul': [{ name: 'Porto Alegre', slug: 'porto-alegre' }],
+  'rondonia': [
+    { name: 'Ariquemes', slug: 'ariquemes' },
+    { name: 'Candeias do Jamari', slug: 'candeias-do-jamari' },
+    { name: 'Porto Velho', slug: 'porto-velho' },
+  ],
   'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
   'santa-catarina': [
-    { name: 'Joinville', slug: 'joinville' },
     { name: 'Florianópolis', slug: 'florianopolis' },
+    { name: 'Joinville', slug: 'joinville' },
   ],
-  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
-  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
-  // Capitais com poucos perfis. Mantidas porque quem busca "swing aracaju"
-  // precisa achar alguma coisa — mas a regra de corte faz a pagina exibir o
-  // numero nacional, nunca o local.
+  'sao-paulo': [
+    { name: 'Campinas', slug: 'campinas' },
+    { name: 'Guarulhos', slug: 'guarulhos' },
+    { name: 'Osasco', slug: 'osasco' },
+    { name: 'Ribeirão Preto', slug: 'ribeirao-preto' },
+    { name: 'Santo André', slug: 'santo-andre' },
+    { name: 'Santos', slug: 'santos' },
+    { name: 'Sorocaba', slug: 'sorocaba' },
+    { name: 'São José do Rio Preto', slug: 'sao-jose-do-rio-preto' },
+    { name: 'São José dos Campos', slug: 'sao-jose-dos-campos' },
+    { name: 'São Paulo', slug: 'sao-paulo' },
+  ],
   'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
   'tocantins': [{ name: 'Palmas', slug: 'palmas' }],
-  'amapa': [{ name: 'Macapá', slug: 'macapa' }],
-  'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
+
 };
 // ============================================================
 
