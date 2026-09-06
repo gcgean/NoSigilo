@@ -12,7 +12,9 @@
 //
 // Também regenera dist/sitemap.xml com a home + páginas institucionais + todos os estados.
 
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -350,6 +352,104 @@ const SELECTED_CITIES = Object.entries(ENABLED_CITIES).flatMap(([stateSlug, citi
   if (!st) { console.warn(`[seo] estado desconhecido em ENABLED_CITIES: ${stateSlug}`); return []; }
   return (cities || []).map((c) => ({ ...c, state: st }));
 });
+
+// ---------------------------------------------------------------------------
+//  Numeros frescos, direto do banco
+// ---------------------------------------------------------------------------
+// O seo-stats.json continua existindo como reserva: e o que vale quando o
+// gerador roda fora do servidor (na maquina de quem desenvolve, onde nao ha
+// Postgres) ou quando o banco nao responde. Uma pagina sem numero e um
+// problema pequeno; uma pagina que nao gera e um problema grande.
+//
+// Vai por `docker exec ... psql` em vez de um cliente Postgres porque o
+// gerador esta no package.json da raiz, que nao tem o pg instalado (ele vive
+// no backend). Um comando a mais no build sai mais barato que uma dependencia
+// a mais na raiz — e e exatamente o mesmo caminho que o scripts/seo-stats.sql
+// ja usa a mao.
+const PG_CONTAINER = process.env.SEO_PG_CONTAINER || 'nosigilo-postgres';
+
+const semAcentos = (t) => String(t ?? '')
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .toLowerCase().trim();
+
+const SQL_STATS = `
+  WITH visiveis AS (
+    SELECT trim(city) AS city, trim(state) AS state
+    FROM users
+    -- is_banned e is_deactivated sao INTEGER, nao boolean (heranca do SQLite):
+    -- comparar com \`false\` da "COALESCE types integer and boolean cannot be matched".
+    WHERE COALESCE(is_banned, 0) = 0
+      AND COALESCE(is_deactivated, 0) = 0
+      AND deleted_at IS NULL
+  )
+  SELECT json_build_object(
+    'nacional',   (SELECT COUNT(*) FROM visiveis),
+    'porUf',      (SELECT json_object_agg(state, n) FROM (
+                     SELECT upper(state) AS state, COUNT(*) AS n FROM visiveis
+                     WHERE char_length(COALESCE(state, '')) = 2 GROUP BY 1) t),
+    'porCidade',  (SELECT json_object_agg(city, n) FROM (
+                     SELECT city, COUNT(*) AS n FROM visiveis
+                     WHERE char_length(COALESCE(city, '')) >= 3 GROUP BY 1) t)
+  )::text;
+`;
+
+function statsDoBanco() {
+  if (process.argv.includes('--sem-banco')) return null;
+  let bruto;
+  try {
+    bruto = execFileSync('docker', [
+      'exec', '-i', PG_CONTAINER, 'sh', '-c',
+      'psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -c ' + JSON.stringify(SQL_STATS),
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
+  } catch (e) {
+    console.warn(`[seo] banco indisponivel (${String(e.message).split(String.fromCharCode(10))[0]}) — usando seo-stats.json`);
+    return null;
+  }
+
+  let dados;
+  try { dados = JSON.parse(String(bruto).trim()); }
+  catch { console.warn('[seo] resposta do banco ilegivel — usando seo-stats.json'); return null; }
+  if (!dados || typeof dados.nacional !== 'number') return null;
+
+  const estados = {};
+  for (const st of SELECTED_STATES) {
+    const n = dados.porUf?.[st.uf];
+    if (typeof n === 'number') estados[st.slug] = n;
+  }
+
+  // A consulta agrupa cidade so pelo nome, e nao por estado+cidade, porque uma
+  // parte dos perfis tem o campo state vazio — agrupar pelos dois fatiaria a
+  // mesma cidade em duas linhas e cada metade pareceria menor do que e.
+  //
+  // O preco disso e a homonimia: "Santa Luzia" existe na PB e em MG. Quando o
+  // mesmo nome cai em mais de uma cidade publicada, ninguem leva o numero e as
+  // duas caem para o total do estado. Repetir a mesma contagem nas duas seria
+  // inventar gente que nao esta la.
+  const porNome = new Map();
+  for (const [nome, n] of Object.entries(dados.porCidade || {})) {
+    porNome.set(semAcentos(nome), n);
+  }
+  const vezes = new Map();
+  for (const c of SELECTED_CITIES) {
+    const k = semAcentos(c.name);
+    vezes.set(k, (vezes.get(k) || 0) + 1);
+  }
+  const cidades = {};
+  let ambiguas = 0;
+  for (const c of SELECTED_CITIES) {
+    const k = semAcentos(c.name);
+    if (vezes.get(k) > 1) { ambiguas++; continue; }
+    const n = porNome.get(k);
+    if (typeof n === 'number') cidades[`${c.state.slug}/${c.slug}`] = n;
+  }
+  if (ambiguas) console.warn(`[seo] ${ambiguas} cidade(s) de nome repetido ficaram sem numero proprio`);
+
+  console.log(`[seo] numeros do banco: ${dados.nacional} perfis, ${Object.keys(estados).length} estados, ${Object.keys(cidades).length} cidades`);
+  return { nacional: dados.nacional, estados, cidades };
+}
+
+const doBanco = statsDoBanco();
+if (doBanco) STATS = doBanco;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const list = (arr) => {
@@ -1167,6 +1267,52 @@ function hubPage() {
   return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body });
 }
 
+// ---------------------------------------------------------------------------
+//  lastmod que nao mente
+// ---------------------------------------------------------------------------
+// Antes o sitemap carimbava a data de hoje em todas as URLs, em toda execucao.
+// Enquanto o gerador so rodava junto com um deploy isso passava; com uma rotina
+// periodica viraria mentira diaria — 142 paginas jurando que mudaram sem terem
+// mudado. O Google desconta o lastmod de quem faz isso e ainda gasta rastreio
+// a toa, entao o efeito seria o oposto do pretendido.
+//
+// Agora a data vem do conteudo: guardamos o hash de cada pagina em
+// seo-lastmod.json e a data em que ele mudou pela ultima vez. Pagina igual
+// mantem a data antiga.
+//
+// Isso combina bem com o arredondamento para baixo da prova social: Fortaleza
+// so muda de "Mais de 800" para "Mais de 900" ao cruzar a casa dos 900, entao
+// a rotina pode rodar todo dia e quase nunca mexer em nada — que e exatamente
+// o sinal honesto a se mandar.
+const LASTMOD_FILE = resolve(__dirname, 'seo-lastmod.json');
+let LASTMOD = {};
+try { LASTMOD = JSON.parse(readFileSync(LASTMOD_FILE, 'utf8')); } catch { /* primeira vez */ }
+
+const hashDe = (txt) => createHash('sha1').update(txt).digest('hex').slice(0, 16);
+
+/** Escreve a pagina se ela mudou (ou se o arquivo nao existe, caso do dist
+ *  recem-limpo pelo vite) e devolve a data da ultima mudanca real de conteudo.
+ *  Reparar na ordem: a data depende so do hash, nunca da existencia do arquivo
+ *  — senao todo `vite build`, que apaga o dist, empurraria a data para hoje. */
+let mudaram = 0;
+function publica(chave, arquivo, html) {
+  const h = hashDe(html);
+  const anterior = LASTMOD[chave];
+  const mudou = !anterior || anterior.hash !== h;
+  if (mudou) { LASTMOD[chave] = { hash: h, lastmod: TODAY }; mudaram++; }
+  if (mudou || !existsSync(arquivo)) writeFileSync(arquivo, html, 'utf8');
+  return LASTMOD[chave].lastmod;
+}
+
+/** Paginas que este gerador nao produz (home, cadastro, institucionais). Nao da
+ *  para saber daqui se o texto delas mudou, entao a data e fixada na primeira
+ *  execucao e mantida. Mudou Termos ou Privacidade de verdade? Apague a linha
+ *  correspondente em seo-lastmod.json e a proxima execucao recarimba. */
+function dataFixa(chave) {
+  if (!LASTMOD[chave]) LASTMOD[chave] = { hash: 'externo', lastmod: TODAY };
+  return LASTMOD[chave].lastmod;
+}
+
 function sitemap() {
   const base = [
     { loc: `${SITE}/`, freq: 'weekly', pri: '1.0' },
@@ -1178,20 +1324,25 @@ function sitemap() {
     { loc: `${SITE}/privacy`, freq: 'yearly', pri: '0.4' },
     { loc: `${SITE}/guidelines`, freq: 'yearly', pri: '0.4' },
   ];
-  const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8' }));
-  const cityUrls = SELECTED_CITIES.map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7' }));
+  const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8', chave: `/swing/${s.slug}/` }));
+  const cityUrls = SELECTED_CITIES.map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7', chave: `/swing/${c.state.slug}/${c.slug}/` }));
   const urls = [...base, ...stateUrls, ...cityUrls]
-    .map((u) => `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${TODAY}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`)
+    .map((u) => {
+      const quando = u.chave ? (LASTMOD[u.chave]?.lastmod || TODAY) : dataFixa(new URL(u.loc).pathname);
+      return `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${quando}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`;
+    })
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 }
 
 // --- escreve os arquivos ---
+const inedito = Object.keys(LASTMOD).length === 0;
+
 let stateCount = 0;
 for (const st of SELECTED_STATES) {
   const dir = resolve(DIST, 'swing', st.slug);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(resolve(dir, 'index.html'), statePage(st), 'utf8');
+  publica(`/swing/${st.slug}/`, resolve(dir, 'index.html'), statePage(st));
   stateCount++;
 }
 
@@ -1199,12 +1350,18 @@ let cityCount = 0;
 for (const city of SELECTED_CITIES) {
   const dir = resolve(DIST, 'swing', city.state.slug, city.slug);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(resolve(dir, 'index.html'), cityPage(city), 'utf8');
+  publica(`/swing/${city.state.slug}/${city.slug}/`, resolve(dir, 'index.html'), cityPage(city));
   cityCount++;
 }
 
 mkdirSync(resolve(DIST, 'swing'), { recursive: true });
-writeFileSync(resolve(DIST, 'swing', 'index.html'), hubPage(), 'utf8');
+publica('/swing/', resolve(DIST, 'swing', 'index.html'), hubPage());
+
+// O sitemap le o LASTMOD ja preenchido pelas chamadas acima, entao vem depois.
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');
+writeFileSync(LASTMOD_FILE, JSON.stringify(LASTMOD, null, 2) + String.fromCharCode(10), 'utf8');
 
 console.log(`[seo] ${stateCount} estado(s) + ${cityCount} cidade(s) + hub /swing/ + sitemap.xml gerados em ${OUT_DIR_NAME}/`);
+console.log(inedito
+  ? `[seo] seo-lastmod.json criado com ${Object.keys(LASTMOD).length} pagina(s)`
+  : `[seo] ${mudaram} pagina(s) mudaram de conteudo — as outras ${Object.keys(LASTMOD).length - mudaram} mantiveram o lastmod anterior`);

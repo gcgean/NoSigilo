@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "cleanup:temp": "node scripts/cleanup-temp-files.mjs"
+    "cleanup:temp": "node scripts/cleanup-temp-files.mjs",
+    "seo:refresh": "node scripts/generate-seo-pages.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

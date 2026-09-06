@@ -25,3 +25,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Estado do gerador de SEO: guarda o hash e a data da ultima mudanca real de
+# cada pagina, para o lastmod do sitemap nao carimbar "mudou hoje" toda vez
+# que a rotina roda. E estado de cada maquina, nao codigo — versionar faria a
+# rotina do servidor sujar a arvore e brigar com o git pull.
+scripts/seo-lastmod.json
