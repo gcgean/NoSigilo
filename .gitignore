@@ -26,8 +26,9 @@ dist-ssr
 *.sln
 *.sw?
 
-# Estado do gerador de SEO: guarda o hash e a data da ultima mudanca real de
-# cada pagina, para o lastmod do sitemap nao carimbar "mudou hoje" toda vez
-# que a rotina roda. E estado de cada maquina, nao codigo — versionar faria a
-# rotina do servidor sujar a arvore e brigar com o git pull.
+# Espelho local do estado do gerador de SEO (hash e data da ultima mudanca de
+# cada pagina, que sustentam o lastmod do sitemap). A copia que vale fica na
+# tabela seo_lastmod do Postgres; este arquivo so entra em cena quando o banco
+# nao responde. Fora do git porque a rotina do cron o reescreve toda madrugada
+# e sujaria a arvore antes do proximo git pull.
 scripts/seo-lastmod.json

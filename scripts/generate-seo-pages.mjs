@@ -393,21 +393,38 @@ const SQL_STATS = `
   )::text;
 `;
 
+const SEM_BANCO = process.argv.includes('--sem-banco');
+
+/** Manda SQL pelo stdin do psql, e nao por `-c`.
+ *
+ *  A primeira versao usava `-c` com o SQL entre aspas do shell, e o psql
+ *  recebia os \n literais como meta-comandos dele — o comando morria antes de
+ *  chegar ao banco. Pelo stdin nao ha nada para escapar: e o mesmo caminho que
+ *  o scripts/seo-stats.sql ja usa a mao. */
+function psql(sql) {
+  return execFileSync('docker', [
+    'exec', '-i', PG_CONTAINER, 'sh', '-c',
+    'psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -q -v ON_ERROR_STOP=1 -f -',
+  ], { input: sql, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 30000 });
+}
+
+/** Ultima linha nao vazia da saida — onde vem o resultado do SELECT final. */
+function ultimaLinha(saida) {
+  return String(saida).split(String.fromCharCode(10)).map((l) => l.trim()).filter(Boolean).pop() || '';
+}
+
 function statsDoBanco() {
-  if (process.argv.includes('--sem-banco')) return null;
+  if (SEM_BANCO) return null;
   let bruto;
   try {
-    bruto = execFileSync('docker', [
-      'exec', '-i', PG_CONTAINER, 'sh', '-c',
-      'psql -U $POSTGRES_USER -d $POSTGRES_DB -t -A -c ' + JSON.stringify(SQL_STATS),
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 30000 });
+    bruto = psql(SQL_STATS);
   } catch (e) {
     console.warn(`[seo] banco indisponivel (${String(e.message).split(String.fromCharCode(10))[0]}) — usando seo-stats.json`);
     return null;
   }
 
   let dados;
-  try { dados = JSON.parse(String(bruto).trim()); }
+  try { dados = JSON.parse(ultimaLinha(bruto)); }
   catch { console.warn('[seo] resposta do banco ilegivel — usando seo-stats.json'); return null; }
   if (!dados || typeof dados.nacional !== 'number') return null;
 
@@ -1284,9 +1301,74 @@ function hubPage() {
 // so muda de "Mais de 800" para "Mais de 900" ao cruzar a casa dos 900, entao
 // a rotina pode rodar todo dia e quase nunca mexer em nada — que e exatamente
 // o sinal honesto a se mandar.
+//
+// Onde esse estado mora: no Postgres, tabela seo_lastmod. O arquivo
+// seo-lastmod.json continua sendo escrito, mas so como espelho — vale quando
+// o banco nao responde ou quando o gerador roda fora do servidor.
+//
+// Versionar o arquivo no git nao daria certo: a rotina do cron o reescreveria
+// toda madrugada, sujando a arvore e brigando com o git pull. E deixa-lo so
+// no disco perderia a historia num clone novo ou num servidor recriado — e
+// perder a historia significa carimbar "mudou hoje" nas 142 paginas de uma vez,
+// exatamente a mentira que este mecanismo existe para evitar. O banco resolve
+// os dois: nao passa pelo git e sobrevive ao repositorio.
+//
+// A tabela e criada aqui, e nao em backend/pg-migrations, de proposito: e
+// estado de ferramenta de build, nao do aplicativo. Ninguem no backend le
+// isso, e assim o gerador nao depende de o backend ter subido e migrado antes.
 const LASTMOD_FILE = resolve(__dirname, 'seo-lastmod.json');
-let LASTMOD = {};
-try { LASTMOD = JSON.parse(readFileSync(LASTMOD_FILE, 'utf8')); } catch { /* primeira vez */ }
+const SQL_CRIA_LASTMOD = `
+  CREATE TABLE IF NOT EXISTS seo_lastmod (
+    path    TEXT PRIMARY KEY,
+    hash    TEXT NOT NULL,
+    lastmod TEXT NOT NULL
+  );
+`;
+
+function lastmodDoBanco() {
+  if (SEM_BANCO) return null;
+  try {
+    const out = psql(SQL_CRIA_LASTMOD + `
+      SELECT COALESCE(json_object_agg(path, json_build_object('hash', hash, 'lastmod', lastmod)), '{}')::text
+      FROM seo_lastmod;
+    `);
+    return JSON.parse(ultimaLinha(out));
+  } catch (e) {
+    console.warn(`[seo] seo_lastmod indisponivel (${String(e.message).split(String.fromCharCode(10))[0]}) — usando o espelho local`);
+    return null;
+  }
+}
+
+/** Grava de volta. Os valores sao validados por formato antes de entrar na
+ *  query: caminho de slug, hash hexadecimal e data ISO nao tem aspas nem
+ *  ponto-e-virgula, entao interpolar aqui e seguro sem um driver de verdade.
+ *  O que nao casar com o formato fica de fora em vez de ser escapado — se
+ *  apareceu algo estranho, o certo e nao gravar. */
+function gravaLastmodNoBanco(mapa) {
+  if (SEM_BANCO) return false;
+  const ok = (chave, v) => /^\/[a-z0-9\/-]*$/.test(chave)
+    && /^([a-f0-9]{16}|externo)$/.test(v.hash)
+    && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v.lastmod);
+  const valores = Object.entries(mapa).filter(([k, v]) => ok(k, v))
+    .map(([k, v]) => `('${k}','${v.hash}','${v.lastmod}')`);
+  if (!valores.length) return false;
+  try {
+    psql(SQL_CRIA_LASTMOD + `
+      INSERT INTO seo_lastmod (path, hash, lastmod) VALUES ${valores.join(',')}
+      ON CONFLICT (path) DO UPDATE SET hash = EXCLUDED.hash, lastmod = EXCLUDED.lastmod;
+    `);
+    return true;
+  } catch (e) {
+    console.warn(`[seo] nao consegui gravar seo_lastmod (${String(e.message).split(String.fromCharCode(10))[0]})`);
+    return false;
+  }
+}
+
+let LASTMOD = lastmodDoBanco();
+let LASTMOD_NO_BANCO = LASTMOD !== null;
+if (!LASTMOD_NO_BANCO) {
+  try { LASTMOD = JSON.parse(readFileSync(LASTMOD_FILE, 'utf8')); } catch { LASTMOD = {}; }
+}
 
 const hashDe = (txt) => createHash('sha1').update(txt).digest('hex').slice(0, 16);
 
@@ -1359,9 +1441,12 @@ publica('/swing/', resolve(DIST, 'swing', 'index.html'), hubPage());
 
 // O sitemap le o LASTMOD ja preenchido pelas chamadas acima, entao vem depois.
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');
+const gravou = gravaLastmodNoBanco(LASTMOD);
+// O arquivo e escrito de qualquer jeito: espelho para quando o banco faltar.
 writeFileSync(LASTMOD_FILE, JSON.stringify(LASTMOD, null, 2) + String.fromCharCode(10), 'utf8');
 
 console.log(`[seo] ${stateCount} estado(s) + ${cityCount} cidade(s) + hub /swing/ + sitemap.xml gerados em ${OUT_DIR_NAME}/`);
 console.log(inedito
   ? `[seo] seo-lastmod.json criado com ${Object.keys(LASTMOD).length} pagina(s)`
   : `[seo] ${mudaram} pagina(s) mudaram de conteudo — as outras ${Object.keys(LASTMOD).length - mudaram} mantiveram o lastmod anterior`);
+console.log(`[seo] lastmod guardado em ${gravou ? 'seo_lastmod (Postgres)' : 'seo-lastmod.json (banco indisponivel)'}`);
