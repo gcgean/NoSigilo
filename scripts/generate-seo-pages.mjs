@@ -442,9 +442,16 @@ function statsDoBanco() {
   // mesmo nome cai em mais de uma cidade publicada, ninguem leva o numero e as
   // duas caem para o total do estado. Repetir a mesma contagem nas duas seria
   // inventar gente que nao esta la.
+  // SOMA as variantes, nao sobrescreve. A consulta agrupa por trim(city)
+  // exato, entao "Fortaleza", "fortaleza" e "FORTALEZA" chegam como tres
+  // chaves; sem somar, sobrava so a ultima e a cidade parecia ter uma fracao
+  // dos perfis. Quebrava justamente as maiores, que tem mais variantes —
+  // Fortaleza caiu abaixo do corte de 50 e a pagina perdeu o numero.
+  // Normalizar tambem junta acento: "Sao Paulo" e "São Paulo" sao a mesma.
   const porNome = new Map();
   for (const [nome, n] of Object.entries(dados.porCidade || {})) {
-    porNome.set(semAcentos(nome), n);
+    const k = semAcentos(nome);
+    porNome.set(k, (porNome.get(k) || 0) + n);
   }
   const vezes = new Map();
   for (const c of SELECTED_CITIES) {
