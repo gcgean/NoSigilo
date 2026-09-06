@@ -95,6 +95,9 @@ interface RegisterData {
   partnerBirthDate?: string;
   gender: string;
   inviteToken?: string;
+  /** Pagina regional de SEO de onde o cadastro partiu (ex.: swing/ceara/fortaleza).
+   *  Ausente quando veio pelo caminho principal do site. */
+  signupSource?: string;
   city?: string;
   state?: string;
   lookingFor?: string[];

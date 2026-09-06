@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, MapPin, Locate, Check, Users } from 'lucide-react';
 import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
+import { leOrigem, limpaOrigem } from '@/utils/origemCadastro';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
@@ -489,6 +490,7 @@ export default function Register() {
       email: formData.email,
       password: formData.password,
       ...(inviteToken ? { inviteToken } : {}),
+      ...(leOrigem() ? { signupSource: leOrigem() } : {}),
       gender: formData.gender,
       city: formData.city || undefined,
       state: formData.state || undefined,
@@ -516,6 +518,10 @@ export default function Register() {
     setLoadingLabel('Criando sua conta...');
     try {
       const createdUser = await attemptRegister(1);
+
+      // A origem ja cumpriu o papel dela. Limpar evita que uma segunda conta
+      // criada no mesmo navegador herde o credito da pagina regional da primeira.
+      limpaOrigem();
 
       if (selectedSuggestionIds.length > 0) {
         selectedSuggestionIds.forEach((id) => {

@@ -1093,7 +1093,7 @@ export const adminService = {
     return response.data;
   },
 
-  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string }) => {
+  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string; origem?: string }) => {
     const response = await apiClient.get('/admin/users', { params });
     return response.data;
   },

@@ -1631,6 +1631,22 @@ function sanitizeCityValue(value: unknown): string | null {
   return v.length >= 3 ? v : null;
 }
 
+/** De qual pagina de SEO o cadastro partiu.
+ *
+ *  Chega das paginas regionais como `swing/ceara/fortaleza` (caminho curto,
+ *  para nao precisar de encoding no href) e vira `/swing/ceara/fortaleza/`.
+ *
+ *  Devolve null para qualquer coisa fora desse formato, e nao o valor cru: a
+ *  coluna alimenta um relatorio agrupado, e basta alguem inventar variacoes na
+ *  barra de enderecos para o relatorio encher de linhas de uma ocorrencia. O
+ *  cadastro em si nunca falha por isso — origem invalida so vira "veio pelo
+ *  caminho principal", que e a resposta honesta quando nao se sabe. */
+function sanitizeSignupSource(value: unknown): string | null {
+  const v = String(value ?? '').trim().replace(/^\/+|\/+$/g, '');
+  if (!/^swing(\/[a-z0-9-]+){0,2}$/.test(v)) return null;
+  return `/${v}/`;
+}
+
 async function findCityCoordinates(db: DbHandle, city: unknown, state: unknown) {
   const sanitizedCity = sanitizeCityValue(city);
   const normalizedState = String(state || '').trim().toUpperCase();
@@ -2827,6 +2843,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       password: z.string().min(6),
       name: z.string().min(1),
       inviteToken: z.string().optional(),
+      signupSource: z.string().max(120).optional(),
       birthDate: z.string().optional(),
       gender: z.string().optional(),
       city: z.string().optional(),
@@ -2921,8 +2938,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         id, email, password_hash, name, avatar, bio, status, city, state, birth_date, gender, marital_status,
         sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes, drinks, profession, zodiac_sign,
         looking_for_json, is_verified, is_premium, is_admin, created_at, trial_started_at, trial_ends_at,
-        invited_by_user_id, invite_status, registration_ip_hash, lat, lon, location_source
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invited_by_user_id, invite_status, registration_ip_hash, lat, lon, location_source, signup_source
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       [
         id,
@@ -2960,6 +2977,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         registrationLocation?.lat ?? null,
         registrationLocation?.lon ?? null,
         registrationLocation ? 'profile_city' : null,
+        sanitizeSignupSource(parsed.data.signupSource),
       ]
     );
     if (invite) {
@@ -12590,6 +12608,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const stateFilter = String(req.query.state || '').trim();
       const createdFrom = String(req.query.createdFrom || '').trim();
       const createdTo = String(req.query.createdTo || '').trim();
+      // De onde veio o cadastro: 'regional' (qualquer pagina de SEO), 'direto'
+      // (home, link direto, convite) ou o caminho exato de uma pagina.
+      const origemFilter = String(req.query.origem || '').trim();
 
       const conditions: string[] = [];
       const whereParams: unknown[] = [];
@@ -12612,6 +12633,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (createdTo) {
         conditions.push('created_at <= ?');
         whereParams.push(`${createdTo}T23:59:59.999Z`);
+      }
+      if (origemFilter === 'regional') {
+        conditions.push('signup_source IS NOT NULL');
+      } else if (origemFilter === 'direto') {
+        conditions.push('signup_source IS NULL');
+      } else if (origemFilter) {
+        conditions.push('signup_source = ?');
+        whereParams.push(origemFilter);
       }
       const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -12653,6 +12682,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         deactivatedAt: row.deactivated_at ?? null,
         deactivatedByAdmin: Number(row.deactivated_by_admin || 0) === 1,
         fromPromoter: !!row.invited_by_user_id && promoterInviterSet.has(String(row.invited_by_user_id)),
+        // null = veio pelo caminho principal do site. Nao e dado faltando:
+        // e a origem mais comum, e o que as paginas regionais disputam.
+        signupSource: row.signup_source ? String(row.signup_source) : null,
       }));
 
       res.json({
@@ -15094,6 +15126,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         regByCity,
         regByState,
         regByOrigin,
+        regByPage,
         activeToday,
         active7,
         active30,
@@ -15145,6 +15178,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         queryAll(db, `SELECT UPPER(TRIM(u.state)) as state, COUNT(*) as c FROM users u WHERE u.state IS NOT NULL AND TRIM(u.state) != '' ${baseWhere} GROUP BY UPPER(TRIM(u.state)) ORDER BY c DESC LIMIT 60`, []),
         // ── By origin (utm_source / referrer)
         queryAll(db, `SELECT origin_type, COUNT(*) as c FROM site_visits WHERE origin_type IS NOT NULL GROUP BY origin_type ORDER BY c DESC LIMIT 20`, []),
+        // ── Por pagina de cadastro: quantos vieram de cada pagina regional de
+        // SEO. Diferente do byOrigin acima, que mede visita (site_visits) e nao
+        // cadastro. NULL vira 'direto' — quem chegou pela home, link ou convite.
+        queryAll(db, `SELECT COALESCE(u.signup_source, 'direto') as pagina, COUNT(*) as c FROM users u WHERE 1=1 ${baseWhere} GROUP BY COALESCE(u.signup_source, 'direto') ORDER BY c DESC LIMIT 200`, []),
         // ── Active today (last_seen_at today)
         queryOne(db, `SELECT COUNT(*) as c FROM users u WHERE DATE(u.last_seen_at) = ? ${baseWhere}`, [todayIso]),
         // ── Active last 7 days
@@ -15236,6 +15273,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           byCity: (regByCity as any[]).map((r) => ({ city: r.city, uf: r.uf || '', count: Number(r.c) })),
           byState: (regByState as any[]).map((r) => ({ state: r.state, count: Number(r.c) })),
           byOrigin: (regByOrigin as any[]).map((r) => ({ origin: r.origin_type, count: Number(r.c) })),
+          byPage: (regByPage as any[]).map((r) => ({ page: String(r.pagina), count: Number(r.c) })),
         },
         activation: {
           addedPhoto: n(usersWithPhoto),

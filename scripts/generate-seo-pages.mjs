@@ -481,6 +481,16 @@ const list = (arr) => {
   return arr.slice(0, -1).join(', ') + ' e ' + arr[arr.length - 1];
 };
 
+/** URL do cadastro carregando de qual pagina o visitante veio.
+ *
+ *  E o que permite responder, no admin, se estas paginas trazem gente que se
+ *  cadastra ou so visita. Vai como caminho curto (swing/ceara/fortaleza) para
+ *  nao precisar de encoding na URL; o backend normaliza para /swing/ceara/
+ *  fortaleza/ e descarta o que nao casar com esse formato. */
+function cadastroUrl(origem) {
+  return `/register?origem=${origem}`;
+}
+
 /** Links para os estados publicados (rodapé de cada página → ajuda o crawler a achar todas). */
 function statesNav(currentSlug) {
   return SELECTED_STATES.map((s) =>
@@ -911,7 +921,7 @@ function statePage(st) {
           com total discrição.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
-        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}`)}">Criar conta grátis ${icon('arrow')}</a>
         <div class="cl-trust">
           <span class="cl-trust-item">${icon('users')}Casais e singles</span>
           <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
@@ -984,7 +994,7 @@ function statePage(st) {
           <p>Crie sua conta gratuitamente e descubra quem está em ${esc(st.name)} na mesma sintonia.</p>
         </div>
         <div class="cl-final-actions">
-          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}`)}">Entrar para a comunidade ${icon('arrow')}</a>
           <a class="cl-final-login" href="/login">Já tenho uma conta</a>
         </div>
       </div>
@@ -1054,7 +1064,7 @@ function cityPage(city) {
           para swing, ménage e encontros liberais, com total discrição.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
-        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}/${city.slug}`)}">Criar conta grátis ${icon('arrow')}</a>
         <div class="cl-trust">
           <span class="cl-trust-item">${icon('users')}Casais e singles</span>
           <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
@@ -1137,7 +1147,7 @@ function cityPage(city) {
           <p>Crie sua conta gratuitamente e descubra quem está em ${esc(city.name)} na mesma sintonia.</p>
         </div>
         <div class="cl-final-actions">
-          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}/${city.slug}`)}">Entrar para a comunidade ${icon('arrow')}</a>
           <a class="cl-final-login" href="/login">Já tenho uma conta</a>
         </div>
       </div>
@@ -1212,7 +1222,7 @@ function hubPage() {
           casais e singles para swing, troca de casais e ménage, com sigilo e privacidade de verdade.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
-        <a class="cl-cta" href="/register">Criar conta grátis ${icon('arrow')}</a>
+        <a class="cl-cta" href="${cadastroUrl(`swing`)}">Criar conta grátis ${icon('arrow')}</a>
         <div class="cl-trust">
           <span class="cl-trust-item">${icon('users')}Casais e singles</span>
           <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
@@ -1280,7 +1290,7 @@ function hubPage() {
           <p>Crie sua conta gratuitamente e descubra quem está na mesma sintonia perto de você.</p>
         </div>
         <div class="cl-final-actions">
-          <a class="cl-cta" href="/register">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-cta" href="${cadastroUrl(`swing`)}">Entrar para a comunidade ${icon('arrow')}</a>
           <a class="cl-final-login" href="/login">Já tenho uma conta</a>
         </div>
       </div>

@@ -101,6 +101,32 @@ export default function AdminMetrics() {
   const maxGender = Math.max(...m.acquisition.byGender.map((g) => g.count), 1);
   const maxOrigin = Math.max(...m.acquisition.byOrigin.map((o) => o.count), 1);
 
+  // ── Cadastros por pagina de SEO ────────────────────────────────────────────
+  // Responde a pergunta que justifica o trabalho nas paginas regionais: elas
+  // trazem gente que se cadastra, ou so trazem visita? O backend devolve
+  // 'direto' para quem chegou pela home, por link ou por convite.
+  const paginasCadastro: Array<{ page: string; count: number }> = m.acquisition.byPage ?? [];
+  const cadastrosDiretos = paginasCadastro.find((p) => p.page === 'direto')?.count ?? 0;
+  const paginasRegionais = paginasCadastro
+    .filter((p) => p.page !== 'direto')
+    .sort((a, b) => b.count - a.count);
+  const totalRegional = paginasRegionais.reduce((acc, p) => acc + p.count, 0);
+  const maxRegional = Math.max(...paginasRegionais.map((p) => p.count), 1);
+  const fatiaRegional = total > 0 ? (totalRegional / total) * 100 : 0;
+
+  // "/swing/ceara/fortaleza/" -> "Fortaleza · Ceara". Acento se perde porque o
+  // caminho e um slug; o caminho completo fica no title.
+  const rotuloPagina = (caminho: string) => {
+    const partes = caminho.split('/').filter(Boolean).slice(1); // tira 'swing'
+    const menores = new Set(['de', 'do', 'da', 'dos', 'das', 'e']);
+    const bonito = (w: string) => w.split('-')
+      .map((x, i) => (i > 0 && menores.has(x) ? x : x.charAt(0).toUpperCase() + x.slice(1)))
+      .join(' ');
+    if (partes.length === 0) return 'Hub de estados';
+    if (partes.length === 1) return `${bonito(partes[0])} (estado)`;
+    return `${bonito(partes[1])} · ${bonito(partes[0])}`;
+  };
+
   // Chart: registrations per day
   const dayMax = Math.max(...m.acquisition.byDay.map((d) => d.count), 1);
   // Chart: exclusões por dia (escala própria — o volume é bem menor que o de cadastros)
@@ -212,6 +238,53 @@ export default function AdminMetrics() {
               <Bar key={o.origin} label={o.origin || 'Direto'} value={o.count} max={maxOrigin} color="bg-amber-500" />
             ))}
           </div>
+        </div>
+
+        {/* ── Cadastros vindos das paginas de cidade e estado ── */}
+        <div className="mt-4 rounded-xl border p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+              <MapPin className="h-3 w-3" /> Cadastros por página de cidade/estado
+            </p>
+            <span className="text-[11px] text-muted-foreground">
+              {paginasRegionais.length} página(s) trouxeram cadastro
+            </span>
+          </div>
+
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border bg-emerald-500/5 p-3">
+              <p className="text-xl font-semibold text-emerald-500">{totalRegional}</p>
+              <p className="text-[11px] text-muted-foreground">vieram de páginas regionais</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xl font-semibold">{cadastrosDiretos}</p>
+              <p className="text-[11px] text-muted-foreground">vieram pelo site principal</p>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xl font-semibold">{fatiaRegional.toFixed(1)}%</p>
+              <p className="text-[11px] text-muted-foreground">do total de cadastros</p>
+            </div>
+          </div>
+
+          {paginasRegionais.length === 0 ? (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              Nenhum cadastro veio das páginas regionais ainda. A marcação começou a valer a partir
+              da publicação — cadastros anteriores contam como site principal.
+            </p>
+          ) : (
+            <div className="max-h-96 space-y-1 overflow-y-auto pr-1">
+              {paginasRegionais.map((pg) => (
+                <div key={pg.page} title={pg.page}>
+                  <Bar
+                    label={rotuloPagina(pg.page)}
+                    value={pg.count}
+                    max={maxRegional}
+                    color="bg-emerald-500"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Contagem exata por estado e cidade ── */}

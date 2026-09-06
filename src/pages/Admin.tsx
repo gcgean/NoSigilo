@@ -52,6 +52,9 @@ type AdminUser = {
   deactivatedAt?: string | null;
   deactivatedByAdmin?: boolean;
   fromPromoter?: boolean;
+  /** Pagina de SEO de onde o cadastro partiu (/swing/ceara/fortaleza/).
+   *  null = veio pelo caminho principal do site. */
+  signupSource?: string | null;
   reports: number;
 };
 
@@ -353,9 +356,24 @@ export default function Admin() {
   const [searchQuery, setSearchQuery] = useState('');
   // Filtros da lista de usuários — todos aplicados no servidor (combinados com AND),
   // para valer sobre a base inteira, não só sobre o que já foi carregado.
+  // "/swing/ceara/fortaleza/" -> "Fortaleza", "/swing/ceara/" -> "Ceara".
+  // Os acentos se perdem porque o caminho e um slug; o caminho inteiro fica no
+  // title do badge, para nao restar duvida de qual pagina foi.
+  const nomeDaPagina = (caminho: string) => {
+    const partes = caminho.split('/').filter(Boolean);           // ['swing','ceara','fortaleza']
+    const ultima = partes[partes.length - 1] || '';
+    if (!ultima || ultima === 'swing') return 'Hub de estados';
+    const menores = new Set(['de', 'do', 'da', 'dos', 'das', 'e']);
+    return ultima.split('-')
+      .map((w, i) => (i > 0 && menores.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+      .join(' ');
+  };
+
   const [filterCity, setFilterCity] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
+  // '' = todas, 'regional' = veio de alguma pagina de SEO, 'direto' = home/link/convite
+  const [filterOrigem, setFilterOrigem] = useState('');
   const [filterCreatedTo, setFilterCreatedTo] = useState('');
   const usersFilterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usersFilterMountedRef = useRef(false);
@@ -754,6 +772,7 @@ export default function Admin() {
       city: filterCity || undefined,
       state: filterState || undefined,
       createdFrom: filterCreatedFrom || undefined,
+      origem: filterOrigem || undefined,
       createdTo: filterCreatedTo || undefined,
     });
     const usersArray = Array.isArray(rawUsersResult)
@@ -783,6 +802,7 @@ export default function Admin() {
         isDeactivated: !!item.isDeactivated,
         deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
         deactivatedByAdmin: !!item.deactivatedByAdmin,
+        signupSource: item.signupSource ? String(item.signupSource) : null,
         reports: reportCountMap.get(String(item.id || '')) || 0,
       } satisfies AdminUser;
     });
@@ -850,7 +870,7 @@ export default function Admin() {
     }, 400);
     return () => { if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo]);
+  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem]);
 
   // Rolagem infinita: observa o sentinel no fim da lista e carrega a próxima
   // página quando ele entra na viewport.
@@ -1568,6 +1588,18 @@ export default function Admin() {
                   onChange={(e) => setFilterState(e.target.value.toUpperCase())}
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Veio de</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={filterOrigem}
+                  onChange={(e) => setFilterOrigem(e.target.value)}
+                >
+                  <option value="">Qualquer origem</option>
+                  <option value="regional">Páginas de cidade/estado</option>
+                  <option value="direto">Cadastro direto</option>
+                </select>
+              </div>
             </div>
 
             <div className="mb-3 flex items-center justify-between">
@@ -1579,7 +1611,7 @@ export default function Admin() {
                       {showOnlyShowcase ? <> · {filteredUsers.length} na vitrine</> : null}
                     </>}
               </p>
-              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery) && (
+              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem) && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline"
@@ -1589,6 +1621,7 @@ export default function Admin() {
                     setFilterState('');
                     setFilterCreatedFrom('');
                     setFilterCreatedTo('');
+                    setFilterOrigem('');
                   }}
                 >
                   Limpar filtros
@@ -1621,9 +1654,18 @@ export default function Admin() {
                             })()}
                           </Badge>
                         )}
-                        {entry.fromPromoter
-                          ? <Badge className="bg-violet-500/15 text-violet-500 border border-violet-500/30 text-xs">📣 Promotor</Badge>
-                          : <Badge variant="outline" className="text-xs text-muted-foreground">Cadastro direto</Badge>}
+                        {entry.fromPromoter ? (
+                          <Badge className="bg-violet-500/15 text-violet-500 border border-violet-500/30 text-xs">📣 Promotor</Badge>
+                        ) : entry.signupSource ? (
+                          <Badge
+                            className="bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 text-xs"
+                            title={`Cadastrou-se pela pagina ${entry.signupSource}`}
+                          >
+                            🔎 {nomeDaPagina(entry.signupSource)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">Cadastro direto</Badge>
+                        )}
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
