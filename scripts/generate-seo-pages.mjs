@@ -82,6 +82,20 @@ function melhorDesc(variantes) {
   return variantes.find((d) => [...d].length <= CABE) || variantes[variantes.length - 1];
 }
 
+/** O titulo abre com a consulta exata que as pessoas digitam. O Search Console
+ *  mostrou a pagina de Fortaleza na posicao 17 para "troca de casais em
+ *  fortaleza", enquanto quem esta na pagina 1 (Sexlog, ComunidadeSwing, ysos)
+ *  abre o titulo com essa frase; o nosso enterrava ela depois de "Swing e".
+ *
+ *  O Google corta o titulo por volta de 60 caracteres, e cidade de nome longo
+ *  ("Campos dos Goytacazes") estoura isso sozinha. Entao as variantes vao da
+ *  mais completa para a mais curta e fica a primeira que couber — a frase da
+ *  busca sobrevive em todas, o que se perde e o complemento. */
+function melhorTitle(variantes) {
+  const CABE = 60;
+  return variantes.find((t) => [...t].length <= CABE) || variantes[variantes.length - 1];
+}
+
 /** Número de perfis da cidade, ou 0 se não atinge o mínimo. Usado na meta
  *  description: no resultado da busca, "Mais de 800 perfis em Fortaleza" é o
  *  único argumento que um concorrente não consegue copiar. */
@@ -718,7 +732,12 @@ function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body }) {
 function statePage(st) {
   const cities = list(st.cities);
   const cityPages = citiesOf(st.slug);
-  const title = `Swing e Troca de Casais em ${st.name} (${st.uf}) | NoSigilo.net`;
+  const title = melhorTitle([
+    `Troca de Casais em ${st.name} (${st.uf}) — Swing e Casais Liberais | NoSigilo`,
+    `Troca de Casais em ${st.name} (${st.uf}) — Swing Liberal | NoSigilo`,
+    `Troca de Casais em ${st.name} (${st.uf}) — Swing | NoSigilo`,
+    `Troca de Casais em ${st.name} (${st.uf}) | NoSigilo`,
+  ]);
   const nEstado = numeroEstado(st);
   const desc = melhorDesc(nEstado
     ? [
@@ -855,7 +874,12 @@ function statePage(st) {
 function cityPage(city) {
   const st = city.state;
   const url = `${REGIONAL}/swing/${st.slug}/${city.slug}/`;
-  const title = `Swing e Troca de Casais em ${city.name} (${st.uf}) | NoSigilo.net`;
+  const title = melhorTitle([
+    `Troca de Casais em ${city.name} (${st.uf}) — Swing e Casais Liberais | NoSigilo`,
+    `Troca de Casais em ${city.name} (${st.uf}) — Swing Liberal | NoSigilo`,
+    `Troca de Casais em ${city.name} (${st.uf}) — Swing | NoSigilo`,
+    `Troca de Casais em ${city.name} (${st.uf}) | NoSigilo`,
+  ]);
   const nCidade = numeroCidade(city, st);
   const desc = melhorDesc(nCidade
     ? [
