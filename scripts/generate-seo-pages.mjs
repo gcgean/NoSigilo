@@ -175,35 +175,52 @@ const ENABLED_CITIES = {
   // mais perfis que Natal e Manaus, Caruaru tem mais que Salvador. Uma pagina
   // de cidade sem ninguem por perto atrai visita e entrega um vazio.
   //
-  // Corte atual: 15+ perfis visiveis. Abaixo disso a pagina existiria sem ter
-  // gente para entregar a quem chegasse por ela.
+  // Corte atual: 8+ perfis visiveis. Foi 20, depois 15, e desceu porque o
+  // Search Console mostrou que a cauda longa e onde o site ganha: Porto Velho
+  // converte 14% e Manaus 22%, enquanto Sao Paulo, com o dobro de impressoes,
+  // converte 3,5%. Cidade pequena disputa termo barato e entrega o clique.
+  //
+  // Abaixo de 8 nao vale: quem se cadastra por uma pagina dessas encontra
+  // pouca gente por perto e nao volta.
   'acre': [{ name: 'Rio Branco', slug: 'rio-branco' }],
   'alagoas': [{ name: 'Maceió', slug: 'maceio' }],
   'amapa': [{ name: 'Macapá', slug: 'macapa' }],
   'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
-  'bahia': [{ name: 'Salvador', slug: 'salvador' }],
+  'bahia': [
+    { name: 'Feira de Santana', slug: 'feira-de-santana' },
+    { name: 'Salvador', slug: 'salvador' },
+  ],
   'ceara': [
     { name: 'Aquiraz', slug: 'aquiraz' },
+    { name: 'Aracati', slug: 'aracati' },
     { name: 'Caucaia', slug: 'caucaia' },
     { name: 'Crato', slug: 'crato' },
     { name: 'Eusébio', slug: 'eusebio' },
     { name: 'Fortaleza', slug: 'fortaleza' },
     { name: 'Horizonte', slug: 'horizonte' },
     { name: 'Iguatu', slug: 'iguatu' },
+    { name: 'Itapipoca', slug: 'itapipoca' },
     { name: 'Juazeiro do Norte', slug: 'juazeiro-do-norte' },
+    { name: 'Limoeiro do Norte', slug: 'limoeiro-do-norte' },
     { name: 'Maracanaú', slug: 'maracanau' },
+    { name: 'Pacajus', slug: 'pacajus' },
     { name: 'Quixadá', slug: 'quixada' },
     { name: 'Sobral', slug: 'sobral' },
     { name: 'Tianguá', slug: 'tiangua' },
   ],
   'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
   'espirito-santo': [
+    { name: 'Aracruz', slug: 'aracruz' },
     { name: 'Cariacica', slug: 'cariacica' },
+    { name: 'Guarapari', slug: 'guarapari' },
     { name: 'Serra', slug: 'serra' },
     { name: 'Vila Velha', slug: 'vila-velha' },
     { name: 'Vitória', slug: 'vitoria' },
   ],
-  'goias': [{ name: 'Goiânia', slug: 'goiania' }],
+  'goias': [
+    { name: 'Aparecida de Goiânia', slug: 'aparecida-de-goiania' },
+    { name: 'Goiânia', slug: 'goiania' },
+  ],
   'maranhao': [
     { name: 'Imperatriz', slug: 'imperatriz' },
     { name: 'São Luís', slug: 'sao-luis' },
@@ -214,12 +231,17 @@ const ENABLED_CITIES = {
     { name: 'Belo Horizonte', slug: 'belo-horizonte' },
     { name: 'Betim', slug: 'betim' },
     { name: 'Contagem', slug: 'contagem' },
+    { name: 'Governador Valadares', slug: 'governador-valadares' },
     { name: 'Ipatinga', slug: 'ipatinga' },
+    { name: 'Juiz de Fora', slug: 'juiz-de-fora' },
+    { name: 'Sete Lagoas', slug: 'sete-lagoas' },
     { name: 'Uberlândia', slug: 'uberlandia' },
+    { name: 'Vespasiano', slug: 'vespasiano' },
   ],
   'para': [
     { name: 'Ananindeua', slug: 'ananindeua' },
     { name: 'Belém', slug: 'belem' },
+    { name: 'Parauapebas', slug: 'parauapebas' },
   ],
   'paraiba': [
     { name: 'Campina Grande', slug: 'campina-grande' },
@@ -227,11 +249,14 @@ const ENABLED_CITIES = {
   ],
   'parana': [
     { name: 'Curitiba', slug: 'curitiba' },
+    { name: 'Foz do Iguaçu', slug: 'foz-do-iguacu' },
     { name: 'Londrina', slug: 'londrina' },
     { name: 'Maringá', slug: 'maringa' },
   ],
   'pernambuco': [
     { name: 'Caruaru', slug: 'caruaru' },
+    { name: 'Garanhuns', slug: 'garanhuns' },
+    { name: 'Ipojuca', slug: 'ipojuca' },
     { name: 'Jaboatão dos Guararapes', slug: 'jaboatao-dos-guararapes' },
     { name: 'Olinda', slug: 'olinda' },
     { name: 'Paulista', slug: 'paulista' },
@@ -240,35 +265,59 @@ const ENABLED_CITIES = {
   ],
   'piaui': [{ name: 'Teresina', slug: 'teresina' }],
   'rio-de-janeiro': [
+    { name: 'Campos dos Goytacazes', slug: 'campos-dos-goytacazes' },
+    { name: 'Duque de Caxias', slug: 'duque-de-caxias' },
     { name: 'Niterói', slug: 'niteroi' },
+    { name: 'Nova Iguaçu', slug: 'nova-iguacu' },
     { name: 'Rio de Janeiro', slug: 'rio-de-janeiro' },
+    { name: 'São Gonçalo', slug: 'sao-goncalo' },
+    { name: 'Volta Redonda', slug: 'volta-redonda' },
   ],
   'rio-grande-do-norte': [
+    { name: 'Caicó', slug: 'caico' },
     { name: 'Mossoró', slug: 'mossoro' },
     { name: 'Natal', slug: 'natal' },
+    { name: 'Parnamirim', slug: 'parnamirim' },
+    { name: 'Pau dos Ferros', slug: 'pau-dos-ferros' },
   ],
-  'rio-grande-do-sul': [{ name: 'Porto Alegre', slug: 'porto-alegre' }],
+  'rio-grande-do-sul': [
+    { name: 'Caxias do Sul', slug: 'caxias-do-sul' },
+    { name: 'Novo Hamburgo', slug: 'novo-hamburgo' },
+    { name: 'Pelotas', slug: 'pelotas' },
+    { name: 'Porto Alegre', slug: 'porto-alegre' },
+    { name: 'Rio Grande', slug: 'rio-grande' },
+  ],
   'rondonia': [
     { name: 'Ariquemes', slug: 'ariquemes' },
+    { name: 'Cacoal', slug: 'cacoal' },
     { name: 'Candeias do Jamari', slug: 'candeias-do-jamari' },
+    { name: 'Ji Paraná', slug: 'ji-parana' },
     { name: 'Porto Velho', slug: 'porto-velho' },
   ],
   'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
   'santa-catarina': [
+    { name: 'Blumenau', slug: 'blumenau' },
     { name: 'Florianópolis', slug: 'florianopolis' },
     { name: 'Joinville', slug: 'joinville' },
   ],
   'sao-paulo': [
     { name: 'Campinas', slug: 'campinas' },
+    { name: 'Caraguatatuba', slug: 'caraguatatuba' },
+    { name: 'Diadema', slug: 'diadema' },
+    { name: 'Franca', slug: 'franca' },
     { name: 'Guarulhos', slug: 'guarulhos' },
+    { name: 'Jundiaí', slug: 'jundiai' },
     { name: 'Osasco', slug: 'osasco' },
+    { name: 'Presidente Prudente', slug: 'presidente-prudente' },
     { name: 'Ribeirão Preto', slug: 'ribeirao-preto' },
     { name: 'Santo André', slug: 'santo-andre' },
     { name: 'Santos', slug: 'santos' },
     { name: 'Sorocaba', slug: 'sorocaba' },
+    { name: 'São Bernardo do Campo', slug: 'sao-bernardo-do-campo' },
     { name: 'São José do Rio Preto', slug: 'sao-jose-do-rio-preto' },
     { name: 'São José dos Campos', slug: 'sao-jose-dos-campos' },
     { name: 'São Paulo', slug: 'sao-paulo' },
+    { name: 'Taboão da Serra', slug: 'taboao-da-serra' },
   ],
   'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
   'tocantins': [{ name: 'Palmas', slug: 'palmas' }],
