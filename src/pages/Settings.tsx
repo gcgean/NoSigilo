@@ -238,6 +238,21 @@ export default function Settings() {
   }, []);
 
   const handleSaveProfile = async () => {
+    // O campo de cidade e um autocomplete que atualiza a cada tecla. Quem
+    // digita "S" comecando a escrever "Sao Paulo" e salva sem escolher da
+    // lista manda "S" para o servidor, que descarta valores com menos de 3
+    // letras (sanitizeCityValue) e grava NULL — a cidade sumia em silencio e
+    // com ela a busca local, o radar e a ordenacao por proximidade. Avisar
+    // aqui e melhor do que deixar o servidor apagar sem dizer nada.
+    const cidade = profile.city.trim();
+    if (cidade && cidade.length < 3) {
+      toast({
+        title: 'Escolha sua cidade na lista',
+        description: 'É ela que mostra perfis perto de você e faz você aparecer para quem está na sua região.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsLoading(true);
     try {
       const profilePayload = {
