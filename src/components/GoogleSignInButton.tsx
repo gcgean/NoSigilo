@@ -1,3 +1,5 @@
+import { leOrigem } from '@/utils/origemCadastro';
+
 interface GoogleSignInButtonProps {
   label?: string;
   gender?: string;
@@ -21,6 +23,12 @@ export default function GoogleSignInButton({
     if (name)   params.set('name', name);
     if (city)   params.set('city', city);
     if (state)  params.set('state', state);
+    // O cadastro por Google sai do app e volta pelo callback do backend, entao
+    // a origem tem de viajar junto na ida — quando a conta e criada, la no
+    // callback, o navegador ainda nem voltou para o app. Sem isto, todo cadastro
+    // pelo caminho mais rapido da tela contava como "cadastro direto".
+    const origem = leOrigem();
+    if (origem) params.set('origem', origem);
     const query = params.toString();
     window.location.href = `/api/auth/google${query ? `?${query}` : ''}`;
   };

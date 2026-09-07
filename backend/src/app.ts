@@ -4043,6 +4043,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (typeof req.query.name   === 'string' && req.query.name)   statePayload.name   = req.query.name;
     if (typeof req.query.city   === 'string' && req.query.city)   statePayload.city   = req.query.city;
     if (typeof req.query.state  === 'string' && req.query.state)  statePayload.state  = req.query.state;
+    // De qual pagina de SEO o cadastro partiu. Vai no state assinado porque e
+    // o unico canal que sobrevive ao desvio pelo Google: a conta e criada no
+    // callback, antes de o navegador voltar para o app.
+    if (typeof req.query.origem === 'string' && req.query.origem) statePayload.origem = req.query.origem;
     const state = jwt.sign(statePayload, env.JWT_SECRET, { expiresIn: '10m' });
     const params = new URLSearchParams({
       client_id: clientId,
@@ -4178,6 +4182,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           : await uniqueGoogleName(googleName);
         const city   = sanitizeCityValue(stateClaims.city);
         const state  = stateClaims.state || null;
+        const signupSource = sanitizeSignupSource(stateClaims.origem);
         const email  = googleEmail || `google_${googleId}@nosigilo.internal`;
 
         await run(
@@ -4187,16 +4192,16 @@ export function createApp(options: { db: DbHandle; env: Env }) {
              marital_status, sexual_orientation, ethnicity, hair, eyes, height, body_type, smokes,
              drinks, profession, zodiac_sign, looking_for_json, is_verified, is_premium, is_admin,
              created_at, trial_started_at, trial_ends_at, invited_by_user_id, invite_status,
-             registration_ip_hash, google_id
+             registration_ip_hash, google_id, signup_source
            ) VALUES (?, ?, NULL, ?, ?, NULL, NULL, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL,
-                     NULL, NULL, NULL, NULL, NULL, NULL, ?, 0, 0, ?, ?, ?, ?, NULL, 'approved', ?, ?)`,
+                     NULL, NULL, NULL, NULL, NULL, NULL, ?, 0, 0, ?, ?, ?, ?, NULL, 'approved', ?, ?, ?)`,
           [
             id, email, name, '',
             city, state, gender,
             gender ? JSON.stringify(googleDefaultLookingFor(gender)) : null,
             isAdministrativeEmail(email) ? 1 : 0,
             createdAt, createdAt, trialEndsAt,
-            registrationIpHash, googleId,
+            registrationIpHash, googleId, signupSource,
           ]
         );
         await persist();
