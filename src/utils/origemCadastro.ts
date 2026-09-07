@@ -1,19 +1,34 @@
 // De qual página o visitante veio antes de se cadastrar.
 //
 // As páginas regionais de SEO (/swing/<estado>/ e /swing/<estado>/<cidade>/)
-// são HTML estático servido fora do app React, e seus CTAs levam ao cadastro
-// com ?origem=swing/ceara/fortaleza. É o que permite responder, no admin, se
-// essas páginas trazem gente que se cadastra ou se só trazem visita.
+// são HTML estático servido fora do app React, e seus links levam ao cadastro
+// e ao login com ?origem=swing/ceara/fortaleza. É o que permite responder, no
+// admin, se essas páginas trazem gente que se cadastra ou só trazem visita.
 //
-// Guardar em sessionStorage e não só ler da URL resolve o caminho realista:
-// quem chega pela página de Fortaleza costuma olhar /descobrir, voltar, ir ao
-// login e só então criar a conta. Sem isso a origem se perderia na primeira
-// navegação e o relatório mediria bem menos do que aconteceu.
+// São duas fontes, nesta ordem de confiança:
 //
-// sessionStorage, e não localStorage, de propósito: a origem vale para esta
-// visita. Se a pessoa voltar semanas depois pela home, ela veio da home — e
-// atribuir o cadastro a uma página regional que ela viu num outro dia seria
-// inflar o número que estamos justamente tentando medir.
+//   1. A URL atual. É o dado bruto, sempre presente enquanto a pessoa estiver
+//      na página para onde o link a mandou.
+//   2. O sessionStorage. Serve para a origem atravessar a navegação: quem chega
+//      por Fortaleza costuma ver /descobrir, voltar, ir ao login e só então
+//      criar a conta — e nesse trajeto a URL já perdeu o parâmetro.
+//
+// A primeira versão usava só o sessionStorage, e um cadastro real feito pela
+// página de Fortaleza foi gravado como direto. A cadeia toda estava correta no
+// bundle publicado, o que deixou como explicação o armazenamento ter voltado
+// vazio na hora do envio. Isso acontece em pelo menos três situações, e nenhuma
+// delas é rara:
+//
+//   • Navegação interna sem recarregar. capturaOrigem() roda uma vez, na carga
+//     do módulo. Se a pessoa volta ao /register pelo roteador, a URL continua
+//     mostrando ?origem= mas nada é lido de novo.
+//   • Segundo cadastro na mesma aba. limpaOrigem() apaga depois do primeiro, e
+//     o seguinte perdia a origem mesmo com a URL dizendo o contrário.
+//   • Janela anônima com proteção estrita. O setItem lança, o catch engole e a
+//     origem some sem deixar rastro.
+//
+// Ler a URL primeiro cobre as três, porque não depende de nada ter sido
+// guardado antes.
 
 const CHAVE = 'nosigilo:origem-cadastro';
 
@@ -22,23 +37,33 @@ const CHAVE = 'nosigilo:origem-cadastro';
  *  endereços — a validação que vale é a do servidor. */
 const FORMATO = /^swing(\/[a-z0-9-]+){0,2}$/;
 
-/** Chame uma vez quando o app sobe. Se a URL trouxer ?origem= válida, guarda. */
-export function capturaOrigem(busca: string = window.location.search): void {
+function daUrl(busca: string = window.location.search): string | undefined {
   try {
     const valor = new URLSearchParams(busca).get('origem')?.trim() || '';
-    if (valor && FORMATO.test(valor)) {
-      sessionStorage.setItem(CHAVE, valor);
-    }
+    return valor && FORMATO.test(valor) ? valor : undefined;
   } catch {
-    // Navegação anônima com storage bloqueado, por exemplo. A origem se perde
-    // e o cadastro conta como direto — o cadastro em si não pode quebrar por
-    // causa de uma métrica.
+    return undefined;
+  }
+}
+
+/** Chame quando o app sobe. Se a URL trouxer ?origem= válida, guarda para
+ *  sobreviver à navegação seguinte. */
+export function capturaOrigem(busca: string = window.location.search): void {
+  const valor = daUrl(busca);
+  if (!valor) return;
+  try {
+    sessionStorage.setItem(CHAVE, valor);
+  } catch {
+    // Armazenamento bloqueado. Não é fatal: a URL continua respondendo por esta
+    // página, e o cadastro nunca pode falhar por causa de uma métrica.
   }
 }
 
 /** O que enviar no cadastro, ou undefined se a visita não veio de uma página
  *  regional. */
 export function leOrigem(): string | undefined {
+  const agora = daUrl();
+  if (agora) return agora;
   try {
     const valor = sessionStorage.getItem(CHAVE)?.trim() || '';
     return valor && FORMATO.test(valor) ? valor : undefined;
@@ -48,7 +73,9 @@ export function leOrigem(): string | undefined {
 }
 
 /** Depois do cadastro concluído, para uma segunda conta criada no mesmo
- *  navegador não herdar a origem da primeira. */
+ *  navegador não herdar a origem guardada da primeira. A URL segue valendo: se
+ *  a pessoa ainda está numa página que veio de Fortaleza, ela veio de
+ *  Fortaleza, e isso é verdade sobre esta visita — não resíduo da anterior. */
 export function limpaOrigem(): void {
   try { sessionStorage.removeItem(CHAVE); } catch { /* nada a fazer */ }
 }
