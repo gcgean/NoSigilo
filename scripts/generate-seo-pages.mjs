@@ -491,6 +491,20 @@ function cadastroUrl(origem) {
   return `/register?origem=${origem}`;
 }
 
+/** O login tambem leva a origem.
+ *
+ *  Sem isto ha um vazamento silencioso: quem clica em "Ja sou membro" ou "Ja
+ *  tenho uma conta" sai da pagina regional para /login sem parametro nenhum, e
+ *  como estas paginas sao HTML estatico o app nunca rodou nelas para guardar a
+ *  origem antes. Se essa pessoa acabar criando uma conta, o cadastro conta como
+ *  direto e a pagina perde o credito por um visitante que ela trouxe.
+ *
+ *  Basta o parametro existir em /login: o app captura na entrada e a origem
+ *  sobrevive dali ate o /register. */
+function loginUrl(origem) {
+  return `/login?origem=${origem}`;
+}
+
 /** Links para os estados publicados (rodapé de cada página → ajuda o crawler a achar todas). */
 function statesNav(currentSlug) {
   return SELECTED_STATES.map((s) =>
@@ -749,10 +763,10 @@ body{margin:0;background:#fff8f8;color:#1d1216;font-family:"Inter",ui-sans-serif
 }
 `;
 
-function campaignHeader() {
+function campaignHeader(origem) {
   return `<header class="cl-header">
       <a class="cl-brand" href="/">NoSigilo<em>.net</em></a>
-      <a class="cl-login" href="/login">Já sou membro</a>
+      <a class="cl-login" href="${loginUrl(origem)}">Já sou membro</a>
     </header>`;
 }
 
@@ -908,7 +922,7 @@ function statePage(st) {
   const vizinhos = neighborStates(st);
   const prova = provaSocialEstado(st);
 
-  const body = `${campaignHeader()}
+  const body = `${campaignHeader(`swing/${st.slug}`)}
 
     <section class="cl-hero">
       <div class="cl-hero-copy">
@@ -995,7 +1009,7 @@ function statePage(st) {
         </div>
         <div class="cl-final-actions">
           <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}`)}">Entrar para a comunidade ${icon('arrow')}</a>
-          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+          <a class="cl-final-login" href="${loginUrl(`swing/${st.slug}`)}">Já tenho uma conta</a>
         </div>
       </div>
     </section>
@@ -1051,7 +1065,7 @@ function cityPage(city) {
   const prova = provaSocialCidade(city, st);
   const outrasDoEstado = st.cities.filter((c) => c !== city.name);
 
-  const body = `${campaignHeader()}
+  const body = `${campaignHeader(`swing/${st.slug}/${city.slug}`)}
 
     <section class="cl-hero">
       <div class="cl-hero-copy">
@@ -1148,7 +1162,7 @@ function cityPage(city) {
         </div>
         <div class="cl-final-actions">
           <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}/${city.slug}`)}">Entrar para a comunidade ${icon('arrow')}</a>
-          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+          <a class="cl-final-login" href="${loginUrl(`swing/${st.slug}/${city.slug}`)}">Já tenho uma conta</a>
         </div>
       </div>
     </section>
@@ -1211,7 +1225,7 @@ function hubPage() {
         ${byRegion[reg].map((s) => `<a href="/swing/${s.slug}/">${esc(s.name)}</a>`).join('')}
       </div>`).join('');
 
-  const body = `${campaignHeader()}
+  const body = `${campaignHeader(`swing`)}
 
     <section class="cl-hero">
       <div class="cl-hero-copy">
@@ -1291,7 +1305,7 @@ function hubPage() {
         </div>
         <div class="cl-final-actions">
           <a class="cl-cta" href="${cadastroUrl(`swing`)}">Entrar para a comunidade ${icon('arrow')}</a>
-          <a class="cl-final-login" href="/login">Já tenho uma conta</a>
+          <a class="cl-final-login" href="${loginUrl(`swing`)}">Já tenho uma conta</a>
         </div>
       </div>
     </section>
