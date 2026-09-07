@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { appService, authService, profileService } from '@/services/api';
+import { appService, authService, profileService, subscriptionsService } from '@/services/api';
+import { hasPremiumAccess } from '@/utils/premium';
 
 export interface User {
   id: string;
@@ -204,6 +205,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    /** Reconcilia o acesso pago com o billing ao abrir o app.
+     *
+     *  O webhook do pagamento e o caminho normal e marca is_premium na hora.
+     *  Mas quando ele falha ou atrasa, quem acabou de pagar continua vendo
+     *  cadeado em toda tela, e recarregar a pagina nao adianta: o boot so chama
+     *  getMe(), que le o banco, e nada pergunta ao billing. So a tela de
+     *  assinatura chamava /subscriptions/status, que e quem sincroniza — entao
+     *  fora dela a liberacao dependia de alguem fazer na mao.
+     *
+     *  Perguntar so quando o usuario NAO tem acesso limita o custo ao caso em
+     *  que a resposta pode mudar algo. E o servidor ja corta curto quem nunca
+     *  iniciou um pagamento (sem hub_customer_id ele responde sem falar com o
+     *  billing), entao a esmagadora maioria dos boots nao gera chamada externa.
+     *
+     *  Falha aqui e silenciosa de proposito: abrir o app nao pode depender do
+     *  billing estar de pe. Na pior hipotese fica como estava antes. */
+    const reconciliaAcessoPago = async (u: User): Promise<User> => {
+      if (USE_MOCKS || !localStorage.getItem('token')) return u;
+      if (hasPremiumAccess(u)) return u;
+      try {
+        const status = await subscriptionsService.getStatus();
+        if (status?.canAccess !== true) return u;
+        const atualizado = await authService.getMe();
+        return atualizado ?? u;
+      } catch {
+        return u;
+      }
+    };
+
     const applySettings = async (currentUser: User | null) => {
       const [settings, freshMe] = await Promise.all([
         appService.getSettings().catch(() => ({ subscriptionsEnabled: true })),
@@ -213,8 +243,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
       if (!currentUser) return null;
       const base = freshMe ?? currentUser;
+      // A checagem de acesso le subscriptionsEnabled, entao vem depois do merge.
       const mergedUser = { ...base, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
       saveUserToStorage(mergedUser);
+
+      // Em segundo plano, para nao atrasar a primeira renderizacao: quem ja tem
+      // acesso nem chega a perguntar, e quem nao tem prefere ver o app agora e
+      // destravar em seguida a esperar o billing responder para entrar.
+      void reconciliaAcessoPago(mergedUser).then((liberado) => {
+        if (liberado === mergedUser) return;
+        saveUserToStorage(liberado);
+        setUser(liberado);
+      });
+
       return mergedUser;
     };
 
