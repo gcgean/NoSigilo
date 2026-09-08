@@ -86,6 +86,20 @@ const BEACON = [
 const MIN_CIDADE = 50;
 const MIN_ESTADO = 100;
 
+// Corte para uma cidade GANHAR pagina — nao confundir com MIN_CIDADE, que decide
+// se a pagina exibe o numero de perfis. Abaixo disto a pagina existiria sem ter
+// gente para entregar a quem chegasse por ela.
+const MIN_PERFIS_CIDADE = 8;
+
+const UF_PARA_SLUG = {
+  AC: 'acre', AL: 'alagoas', AP: 'amapa', AM: 'amazonas', BA: 'bahia', CE: 'ceara',
+  DF: 'distrito-federal', ES: 'espirito-santo', GO: 'goias', MA: 'maranhao',
+  MT: 'mato-grosso', MS: 'mato-grosso-do-sul', MG: 'minas-gerais', PA: 'para',
+  PB: 'paraiba', PR: 'parana', PE: 'pernambuco', PI: 'piaui', RJ: 'rio-de-janeiro',
+  RN: 'rio-grande-do-norte', RS: 'rio-grande-do-sul', RO: 'rondonia', RR: 'roraima',
+  SC: 'santa-catarina', SP: 'sao-paulo', SE: 'sergipe', TO: 'tocantins',
+};
+
 let STATS = null;
 try {
   STATS = JSON.parse(readFileSync(resolve(__dirname, 'seo-stats.json'), 'utf8'));
@@ -501,6 +515,81 @@ function statsDoBanco() {
 
   console.log(`[seo] numeros do banco: ${dados.nacional} perfis, ${Object.keys(estados).length} estados, ${Object.keys(cidades).length} cidades`);
   return { nacional: dados.nacional, estados, cidades };
+}
+
+// ---------------------------------------------------------------------------
+//  --candidatas: cidades que ja tem gente e ainda nao tem pagina
+// ---------------------------------------------------------------------------
+// Roda no servidor, onde o banco esta, e ja compara com o que esta publicado —
+// evita o vai e vem de colar SQL e conferir a lista a mao.
+//
+//   node scripts/generate-seo-pages.mjs --candidatas
+//
+// Agrupa por nome em minusculas porque a mesma cidade chega escrita de varios
+// jeitos ("Fortaleza", "fortaleza"), e sem juntar isso uma cidade grande parece
+// varias pequenas. A UF vem da variante mais frequente: parte dos perfis tem o
+// campo state vazio, entao ela nao serve para agrupar, so para rotular.
+const SQL_CANDIDATAS = `
+  WITH visiveis AS (
+    SELECT trim(city) AS cidade, upper(trim(COALESCE(state, ''))) AS uf
+      FROM users
+     WHERE COALESCE(is_banned, 0) = 0
+       AND COALESCE(is_deactivated, 0) = 0
+       AND deleted_at IS NULL
+       AND char_length(trim(COALESCE(city, ''))) >= 3
+  ),
+  total AS (
+    SELECT lower(cidade) AS chave, COUNT(*) AS n FROM visiveis GROUP BY 1
+  ),
+  nome AS (
+    SELECT lower(cidade) AS chave, cidade,
+           ROW_NUMBER() OVER (PARTITION BY lower(cidade) ORDER BY COUNT(*) DESC) AS rn
+      FROM visiveis GROUP BY lower(cidade), cidade
+  ),
+  ufs AS (
+    SELECT lower(cidade) AS chave, uf,
+           ROW_NUMBER() OVER (PARTITION BY lower(cidade) ORDER BY COUNT(*) DESC) AS rn
+      FROM visiveis WHERE char_length(uf) = 2 GROUP BY lower(cidade), uf
+  )
+  SELECT json_agg(json_build_object('cidade', x.cidade, 'uf', x.uf, 'total', x.n) ORDER BY x.n DESC)::text
+    FROM (
+      SELECT n.cidade, COALESCE(u.uf, '') AS uf, t.n
+        FROM total t
+        JOIN nome n ON n.chave = t.chave AND n.rn = 1
+        LEFT JOIN ufs u ON u.chave = t.chave AND u.rn = 1
+       WHERE t.n >= ${MIN_PERFIS_CIDADE}
+    ) x;
+`;
+
+if (process.argv.includes('--candidatas')) {
+  let linhas;
+  try {
+    linhas = JSON.parse(ultimaLinha(psql(SQL_CANDIDATAS)) || 'null') || [];
+  } catch (e) {
+    console.error('[seo] nao consegui consultar o banco:', String(e.message).split(String.fromCharCode(10))[0]);
+    process.exit(1);
+  }
+  const publicadas = new Set(SELECTED_CITIES.map((c) => semAcentos(c.name)));
+  const faltando = linhas.filter((l) => l.uf && UF_PARA_SLUG[l.uf] && !publicadas.has(semAcentos(l.cidade)));
+  const semUf = linhas.filter((l) => !l.uf || !UF_PARA_SLUG[l.uf]).filter((l) => !publicadas.has(semAcentos(l.cidade)));
+
+  console.log(`[seo] ${SELECTED_CITIES.length} cidade(s) publicadas, corte de ${MIN_PERFIS_CIDADE} perfis`);
+  if (faltando.length === 0) {
+    console.log('[seo] nenhuma cidade nova alcancou o corte.');
+  } else {
+    console.log(`[seo] ${faltando.length} cidade(s) para publicar:
+`);
+    for (const l of faltando) console.log(`  ("${l.cidade}", "${l.uf}"),   // ${l.total} perfis`);
+  }
+  if (semUf.length) {
+    // Sem UF nao da para montar /swing/<estado>/<cidade>/. Aparecem aqui em vez
+    // de sumirem em silencio: quase sempre e cadastro com o estado em branco,
+    // nao cidade inexistente.
+    console.log(`
+[seo] ${semUf.length} cidade(s) alcancaram o corte mas estao sem UF definida:`);
+    for (const l of semUf) console.log(`  ${l.cidade} — ${l.total} perfis`);
+  }
+  process.exit(0);
 }
 
 const doBanco = statsDoBanco();
