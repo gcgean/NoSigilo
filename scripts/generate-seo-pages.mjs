@@ -249,12 +249,15 @@ const ENABLED_CITIES = {
   'amazonas': [{ name: 'Manaus', slug: 'manaus' }],
   'bahia': [
     { name: 'Feira de Santana', slug: 'feira-de-santana' },
+    { name: 'Juazeiro', slug: 'juazeiro' },
     { name: 'Salvador', slug: 'salvador' },
   ],
   'ceara': [
+    { name: 'Acaraú', slug: 'acarau' },
     { name: 'Aquiraz', slug: 'aquiraz' },
     { name: 'Aracati', slug: 'aracati' },
     { name: 'Caucaia', slug: 'caucaia' },
+    { name: 'Crateús', slug: 'crateus' },
     { name: 'Crato', slug: 'crato' },
     { name: 'Eusébio', slug: 'eusebio' },
     { name: 'Fortaleza', slug: 'fortaleza' },
@@ -265,14 +268,18 @@ const ENABLED_CITIES = {
     { name: 'Limoeiro do Norte', slug: 'limoeiro-do-norte' },
     { name: 'Maracanaú', slug: 'maracanau' },
     { name: 'Pacajus', slug: 'pacajus' },
+    { name: 'Pacatuba', slug: 'pacatuba' },
     { name: 'Quixadá', slug: 'quixada' },
+    { name: 'Russas', slug: 'russas' },
     { name: 'Sobral', slug: 'sobral' },
+    { name: 'São Gonçalo do Amarante', slug: 'sao-goncalo-do-amarante' },
     { name: 'Tianguá', slug: 'tiangua' },
   ],
   'distrito-federal': [{ name: 'Brasília', slug: 'brasilia' }],
   'espirito-santo': [
     { name: 'Aracruz', slug: 'aracruz' },
     { name: 'Cariacica', slug: 'cariacica' },
+    { name: 'Colatina', slug: 'colatina' },
     { name: 'Guarapari', slug: 'guarapari' },
     { name: 'Serra', slug: 'serra' },
     { name: 'Vila Velha', slug: 'vila-velha' },
@@ -281,42 +288,64 @@ const ENABLED_CITIES = {
   'goias': [
     { name: 'Aparecida de Goiânia', slug: 'aparecida-de-goiania' },
     { name: 'Goiânia', slug: 'goiania' },
+    { name: 'Rio Verde', slug: 'rio-verde' },
   ],
   'maranhao': [
     { name: 'Imperatriz', slug: 'imperatriz' },
+    { name: 'São José de Ribamar', slug: 'sao-jose-de-ribamar' },
     { name: 'São Luís', slug: 'sao-luis' },
   ],
-  'mato-grosso': [{ name: 'Cuiabá', slug: 'cuiaba' }],
-  'mato-grosso-do-sul': [{ name: 'Campo Grande', slug: 'campo-grande' }],
+  'mato-grosso': [
+    { name: 'Cuiabá', slug: 'cuiaba' },
+    { name: 'Rondonópolis', slug: 'rondonopolis' },
+  ],
+  'mato-grosso-do-sul': [
+    { name: 'Campo Grande', slug: 'campo-grande' },
+    { name: 'Dourados', slug: 'dourados' },
+  ],
   'minas-gerais': [
     { name: 'Belo Horizonte', slug: 'belo-horizonte' },
     { name: 'Betim', slug: 'betim' },
     { name: 'Contagem', slug: 'contagem' },
+    { name: 'Divinópolis', slug: 'divinopolis' },
     { name: 'Governador Valadares', slug: 'governador-valadares' },
     { name: 'Ipatinga', slug: 'ipatinga' },
     { name: 'Juiz de Fora', slug: 'juiz-de-fora' },
+    { name: 'Manhuaçu', slug: 'manhuacu' },
+    { name: 'Montes Claros', slug: 'montes-claros' },
+    { name: 'Ribeirão das Neves', slug: 'ribeirao-das-neves' },
     { name: 'Sete Lagoas', slug: 'sete-lagoas' },
+    { name: 'Uberaba', slug: 'uberaba' },
     { name: 'Uberlândia', slug: 'uberlandia' },
     { name: 'Vespasiano', slug: 'vespasiano' },
   ],
   'para': [
     { name: 'Ananindeua', slug: 'ananindeua' },
     { name: 'Belém', slug: 'belem' },
+    { name: 'Castanhal', slug: 'castanhal' },
     { name: 'Parauapebas', slug: 'parauapebas' },
+    { name: 'Redenção', slug: 'redencao' },
   ],
   'paraiba': [
+    { name: 'Bayeux', slug: 'bayeux' },
     { name: 'Campina Grande', slug: 'campina-grande' },
     { name: 'João Pessoa', slug: 'joao-pessoa' },
+    { name: 'Santa Luzia', slug: 'santa-luzia' },
   ],
   'parana': [
+    { name: 'Cascavel', slug: 'cascavel' },
     { name: 'Curitiba', slug: 'curitiba' },
     { name: 'Foz do Iguaçu', slug: 'foz-do-iguacu' },
     { name: 'Londrina', slug: 'londrina' },
     { name: 'Maringá', slug: 'maringa' },
   ],
   'pernambuco': [
+    { name: 'Cabo de Santo Agostinho', slug: 'cabo-de-santo-agostinho' },
+    { name: 'Camaragibe', slug: 'camaragibe' },
     { name: 'Caruaru', slug: 'caruaru' },
     { name: 'Garanhuns', slug: 'garanhuns' },
+    { name: 'Gravatá', slug: 'gravata' },
+    { name: 'Igarassu', slug: 'igarassu' },
     { name: 'Ipojuca', slug: 'ipojuca' },
     { name: 'Jaboatão dos Guararapes', slug: 'jaboatao-dos-guararapes' },
     { name: 'Olinda', slug: 'olinda' },
@@ -326,6 +355,7 @@ const ENABLED_CITIES = {
   ],
   'piaui': [{ name: 'Teresina', slug: 'teresina' }],
   'rio-de-janeiro': [
+    { name: 'Cabo Frio', slug: 'cabo-frio' },
     { name: 'Campos dos Goytacazes', slug: 'campos-dos-goytacazes' },
     { name: 'Duque de Caxias', slug: 'duque-de-caxias' },
     { name: 'Niterói', slug: 'niteroi' },
@@ -342,8 +372,10 @@ const ENABLED_CITIES = {
     { name: 'Pau dos Ferros', slug: 'pau-dos-ferros' },
   ],
   'rio-grande-do-sul': [
+    { name: 'Canoas', slug: 'canoas' },
     { name: 'Caxias do Sul', slug: 'caxias-do-sul' },
     { name: 'Novo Hamburgo', slug: 'novo-hamburgo' },
+    { name: 'Passo Fundo', slug: 'passo-fundo' },
     { name: 'Pelotas', slug: 'pelotas' },
     { name: 'Porto Alegre', slug: 'porto-alegre' },
     { name: 'Rio Grande', slug: 'rio-grande' },
@@ -352,13 +384,21 @@ const ENABLED_CITIES = {
     { name: 'Ariquemes', slug: 'ariquemes' },
     { name: 'Cacoal', slug: 'cacoal' },
     { name: 'Candeias do Jamari', slug: 'candeias-do-jamari' },
+    { name: 'Jaru', slug: 'jaru' },
     { name: 'Ji Paraná', slug: 'ji-parana' },
     { name: 'Porto Velho', slug: 'porto-velho' },
+    { name: 'Rolim de Moura', slug: 'rolim-de-moura' },
+    { name: 'Vilhena', slug: 'vilhena' },
   ],
   'roraima': [{ name: 'Boa Vista', slug: 'boa-vista' }],
   'santa-catarina': [
+    { name: 'Balneário Camboriú', slug: 'balneario-camboriu' },
     { name: 'Blumenau', slug: 'blumenau' },
+    { name: 'Chapecó', slug: 'chapeco' },
+    { name: 'Criciúma', slug: 'criciuma' },
     { name: 'Florianópolis', slug: 'florianopolis' },
+    { name: 'Itajaí', slug: 'itajai' },
+    { name: 'Itapema', slug: 'itapema' },
     { name: 'Joinville', slug: 'joinville' },
   ],
   'sao-paulo': [
@@ -368,7 +408,10 @@ const ENABLED_CITIES = {
     { name: 'Franca', slug: 'franca' },
     { name: 'Guarulhos', slug: 'guarulhos' },
     { name: 'Jundiaí', slug: 'jundiai' },
+    { name: 'Mogi das Cruzes', slug: 'mogi-das-cruzes' },
     { name: 'Osasco', slug: 'osasco' },
+    { name: 'Piracicaba', slug: 'piracicaba' },
+    { name: 'Praia Grande', slug: 'praia-grande' },
     { name: 'Presidente Prudente', slug: 'presidente-prudente' },
     { name: 'Ribeirão Preto', slug: 'ribeirao-preto' },
     { name: 'Santo André', slug: 'santo-andre' },
@@ -416,6 +459,12 @@ const PG_CONTAINER = process.env.SEO_PG_CONTAINER || 'nosigilo-postgres';
 const semAcentos = (t) => String(t ?? '')
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().trim();
+
+/** O mesmo slug que vira URL. O diff de --candidatas compara por ele, e nao
+ *  pelo nome: "Ji Paraná" e "Ji-Paraná" sao nomes diferentes e a MESMA pagina
+ *  (/swing/rondonia/ji-parana/). Comparando por nome, a segunda aparecia como
+ *  cidade nova e teria virado duplicata. */
+const slugCidade = (t) => semAcentos(t).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 const SQL_STATS = `
   WITH visiveis AS (
@@ -569,9 +618,19 @@ if (process.argv.includes('--candidatas')) {
     console.error('[seo] nao consegui consultar o banco:', String(e.message).split(String.fromCharCode(10))[0]);
     process.exit(1);
   }
-  const publicadas = new Set(SELECTED_CITIES.map((c) => semAcentos(c.name)));
-  const faltando = linhas.filter((l) => l.uf && UF_PARA_SLUG[l.uf] && !publicadas.has(semAcentos(l.cidade)));
-  const semUf = linhas.filter((l) => !l.uf || !UF_PARA_SLUG[l.uf]).filter((l) => !publicadas.has(semAcentos(l.cidade)));
+  const publicadas = new Set(SELECTED_CITIES.map((c) => c.slug));
+  // "Fortaleza ce", "Serra es": e o nome com a UF colada, digitado a mao. Nao e
+  // municipio, e publicar viraria uma pagina duplicada da cidade de verdade.
+  const ehNomeComUf = (nome) => {
+    const partes = semAcentos(nome).split(/\s+/);
+    if (partes.length < 2) return false;
+    const ultima = partes[partes.length - 1].toUpperCase();
+    return ultima.length === 2 && !!UF_PARA_SLUG[ultima];
+  };
+  const novas = linhas.filter((l) => !publicadas.has(slugCidade(l.cidade)));
+  const suspeitas = novas.filter((l) => ehNomeComUf(l.cidade));
+  const faltando = novas.filter((l) => !suspeitas.includes(l) && l.uf && UF_PARA_SLUG[l.uf]);
+  const semUf = novas.filter((l) => !suspeitas.includes(l) && (!l.uf || !UF_PARA_SLUG[l.uf]));
 
   console.log(`[seo] ${SELECTED_CITIES.length} cidade(s) publicadas, corte de ${MIN_PERFIS_CIDADE} perfis`);
   if (faltando.length === 0) {
@@ -580,6 +639,11 @@ if (process.argv.includes('--candidatas')) {
     console.log(`[seo] ${faltando.length} cidade(s) para publicar:
 `);
     for (const l of faltando) console.log(`  ("${l.cidade}", "${l.uf}"),   // ${l.total} perfis`);
+  }
+  if (suspeitas.length) {
+    console.log(`
+[seo] ${suspeitas.length} entrada(s) parecem o nome da cidade com a UF colada — nao publicar:`);
+    for (const l of suspeitas) console.log(`  ${l.cidade} — ${l.total} perfis`);
   }
   if (semUf.length) {
     // Sem UF nao da para montar /swing/<estado>/<cidade>/. Aparecem aqui em vez
