@@ -453,6 +453,12 @@ export default function Admin() {
           isDeactivated: !!item.isDeactivated,
           deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
           deactivatedByAdmin: !!item.deactivatedByAdmin,
+          // Estes dois faltavam aqui e existiam so na recarga com filtros. Como
+          // e esta a lista que aparece ao abrir o admin, os badges de origem
+          // ficavam invisiveis ate alguem filtrar alguma coisa — o de promotor
+          // desde sempre, o da pagina de SEO desde que foi criado.
+          fromPromoter: !!item.fromPromoter,
+          signupSource: item.signupSource ? String(item.signupSource) : null,
           reports: 0,
         } satisfies AdminUser;
       });
@@ -802,6 +808,7 @@ export default function Admin() {
         isDeactivated: !!item.isDeactivated,
         deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
         deactivatedByAdmin: !!item.deactivatedByAdmin,
+        fromPromoter: !!item.fromPromoter,
         signupSource: item.signupSource ? String(item.signupSource) : null,
         reports: reportCountMap.get(String(item.id || '')) || 0,
       } satisfies AdminUser;
