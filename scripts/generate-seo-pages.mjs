@@ -42,6 +42,37 @@ const REGIONAL = SITE;
 const TODAY = new Date().toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------------------
+//  Registro de visita
+// ---------------------------------------------------------------------------
+// Estas paginas sao HTML estatico, fora do app React, entao nao apareciam em
+// site_visits — o admin sabia quantos cadastros cada pagina trouxe, mas nao
+// quantas visitas, e sem isso nao ha taxa de conversao.
+//
+// Cuidados, porque isto roda em toda visita organica:
+//
+//  • Espera o load. Nada aqui pode disputar banda com a renderizacao; o Google
+//    mede tempo de carregamento e a pagina existe para ranquear.
+//  • sendBeacon quando existe. Ele nao segura a navegacao e sobrevive a quem
+//    fecha a aba logo apos abrir, que num site de sigilo nao e caso raro.
+//  • try/catch em volta de tudo e keepalive no fetch de reserva. Falha de
+//    metrica nao pode quebrar pagina.
+//  • Nada de identificador proprio: o endpoint ja deriva o que precisa do
+//    cabecalho, e a pagina nao escreve cookie nem storage.
+const BEACON = [
+  '(function(){try{',
+  'var d={path:location.pathname,title:document.title,referrer:document.referrer||undefined,',
+  'language:navigator.language,screenWidth:screen.width,screenHeight:screen.height,',
+  'deviceType:(innerWidth<768?"mobile":innerWidth<1024?"tablet":"desktop")};',
+  'var s=function(){try{',
+  'var b=JSON.stringify(d);',
+  'if(navigator.sendBeacon){navigator.sendBeacon("/api/analytics/visit",new Blob([b],{type:"application/json"}));}',
+  'else{fetch("/api/analytics/visit",{method:"POST",headers:{"Content-Type":"application/json"},body:b,keepalive:true});}',
+  '}catch(e){}};',
+  'if(document.readyState==="complete"){s();}else{addEventListener("load",s);}',
+  '}catch(e){}})();',
+].join('');
+
+// ---------------------------------------------------------------------------
 //  Prova social com numero real
 // ---------------------------------------------------------------------------
 // Cada pagina regional mostra quantos perfis existem ali. Isso resolve dois
@@ -872,6 +903,7 @@ function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body }) {
   <main class="cl">
     ${body}
   </main>
+  <script>${BEACON}</script>
 </body>
 </html>
 `;

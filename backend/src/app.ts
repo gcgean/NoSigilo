@@ -13851,6 +13851,43 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         hour: h,
         count: Math.round((hourSum[h] / HOUR_AVG_DAYS) * 10) / 10, // média de únicos por hora
       }));
+
+      // ── Desempenho das páginas regionais de SEO ────────────────────────────
+      // Junta duas contagens que vivem em tabelas diferentes: cadastro atribuído
+      // (users.signup_source) e visita (site_visits.page_path). É o par que
+      // responde se a página converte, e não só se ela recebe gente.
+      //
+      // UNION ALL somado por página em vez de FULL OUTER JOIN: precisa aparecer
+      // quem tem visita sem cadastro E quem tem cadastro sem visita (o caso de
+      // hoje, já que a marcação de visita é mais nova que a de cadastro), e o
+      // FULL OUTER JOIN não existe no SQLite antigo que este código ainda serve.
+      //
+      // A barra final é normalizada dos dois lados: signup_source é gravado com
+      // ela, e location.pathname pode vir sem, dependendo de como o visitante
+      // chegou. Sem isso a mesma página viraria duas linhas.
+      const paginasRegionaisRows = (await queryAll(
+        db,
+        `SELECT pagina,
+                SUM(cadastros)   AS cadastros,
+                SUM(visitas)     AS visitas,
+                SUM(visitantes)  AS visitantes
+           FROM (
+             SELECT signup_source AS pagina, COUNT(*) AS cadastros, 0 AS visitas, 0 AS visitantes
+               FROM users
+              WHERE signup_source IS NOT NULL
+              GROUP BY signup_source
+             UNION ALL
+             SELECT CASE WHEN page_path LIKE '%/' THEN page_path ELSE page_path || '/' END AS pagina,
+                    0 AS cadastros, COUNT(*) AS visitas, COUNT(DISTINCT ip_hash) AS visitantes
+               FROM site_visits
+              WHERE page_path LIKE '/swing/%'
+              GROUP BY 1
+           ) t
+          GROUP BY pagina
+          ORDER BY cadastros DESC, visitas DESC`,
+        []
+      )) as any[];
+
       res.json({
         total: totalVisits,
         today: Number((todayRow as any)?.c || 0),
@@ -13956,6 +13993,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           label: String(row.reg_day || ''),
           count: Number(row.c || 0),
         })),
+        regionalPages: paginasRegionaisRows.map((r) => {
+          const visitas = Number(r.visitas || 0);
+          const cadastros = Number(r.cadastros || 0);
+          return {
+            page: String(r.pagina || ''),
+            cadastros,
+            visitas,
+            visitantes: Number(r.visitantes || 0),
+            // Sem visita registrada nao ha taxa: devolver 0 daria a impressao de
+            // pagina que nao converte, quando o que falta e a medicao.
+            taxa: visitas > 0 ? Number(((cadastros / visitas) * 100).toFixed(1)) : null,
+          };
+        }),
         growthPeriodDays,
         growingStates: (() => {
           // Mesma fonte de dados do card de cidades (cityGrowthRows), só que

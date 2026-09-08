@@ -187,6 +187,18 @@ type VisitAnalytics = {
   growingCities: GrowingCity[];
   growingStates: GrowingState[];
   growthPeriodDays: number;
+  regionalPages: RegionalPagePerf[];
+};
+
+/** Desempenho de uma pagina regional de SEO. `taxa` vem null quando ainda nao
+ *  ha visita registrada: zero daria a impressao de pagina que nao converte,
+ *  quando o que falta e a medicao. */
+type RegionalPagePerf = {
+  page: string;
+  cadastros: number;
+  visitas: number;
+  visitantes: number;
+  taxa: number | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -226,6 +238,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   growingCities: [],
   growingStates: [],
   growthPeriodDays: 30,
+  regionalPages: [],
 };
 
 function parseDate(value?: string | null) {
@@ -2929,6 +2942,71 @@ export default function Admin() {
                     );
                   })}
                 </div>
+              )}
+            </Card>
+
+            {/* ── Desempenho das páginas de cidade e estado ── */}
+            <Card className="p-5 glass">
+              <div className="flex items-start justify-between gap-4 mb-1">
+                <div>
+                  <h3 className="font-semibold">Páginas de cidade e estado 🔎</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Ordenado por cadastros. A taxa é cadastros ÷ visitas da própria página —
+                    quanta gente que chegou pela busca acabou criando conta.
+                  </p>
+                </div>
+              </div>
+              {visitAnalytics.regionalPages.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-4">
+                  Nenhuma página trouxe cadastro nem visita registrada ainda.
+                </p>
+              ) : (
+                <>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {visitAnalytics.regionalPages.slice(0, 15).map((pg, i) => {
+                      const temTaxa = pg.taxa !== null;
+                      const bom     = temTaxa && pg.taxa! >= 5;
+                      const medio   = temTaxa && pg.taxa! >= 1 && pg.taxa! < 5;
+                      const bgClass = pg.cadastros === 0
+                        ? 'bg-secondary/40 border-transparent'
+                        : bom ? 'bg-orange-500/10 border-orange-400/30'
+                        : medio ? 'bg-emerald-500/10 border-emerald-400/30'
+                        : 'bg-emerald-500/5 border-emerald-400/20';
+                      const textClass = pg.cadastros === 0
+                        ? 'text-muted-foreground'
+                        : bom ? 'text-orange-600' : 'text-emerald-600';
+                      return (
+                        <div key={pg.page} className={`rounded-xl border p-3 ${bgClass}`} title={pg.page}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
+                              <p className="font-medium text-sm truncate">{nomeDaPagina(pg.page)}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                <span className="font-medium">{pg.visitas}</span> visita(s)
+                                {pg.visitantes > 0 ? <> &nbsp;·&nbsp; {pg.visitantes} únicos</> : null}
+                              </p>
+                            </div>
+                            <div className={`text-right shrink-0 ${textClass}`}>
+                              <p className="text-lg font-bold leading-none">
+                                {bom ? '🔥' : pg.cadastros > 0 ? '↑' : '→'} {pg.cadastros}
+                              </p>
+                              <p className="text-[10px] mt-1 text-muted-foreground">
+                                {temTaxa ? <>cadastros · {pg.taxa}% de conversão</> : <>cadastros · sem visita medida</>}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {visitAnalytics.regionalPages.some((p) => p.taxa === null) && (
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      Páginas sem taxa ainda não têm visita registrada. A marcação de visita nas
+                      páginas estáticas é mais recente que a de cadastro, então a conversão só
+                      passa a fazer sentido para o tráfego que chegar a partir de agora.
+                    </p>
+                  )}
+                </>
               )}
             </Card>
 
