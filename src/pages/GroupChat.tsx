@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Users, Send, LogOut, Crown, X, Image as ImageIcon, Lock } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Crown, Image as ImageIcon, Lock, LogOut, Send, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -195,14 +195,18 @@ export default function GroupChat() {
         {!premiumAccess && (
           <button
             type="button"
-            onClick={() => setPaywallOpen(true)}
-            className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
+            onClick={() => navigate('/subscriptions')}
+            aria-label="Acesso bloqueado. Toque para assinar."
+            className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 active:scale-[0.99]"
           >
-            <div>
+            <div className="flex min-w-0 flex-1 flex-col">
               <p className="font-medium text-destructive">Acesso bloqueado</p>
               <p className="text-sm text-muted-foreground">Assine para participar da conversa do grupo.</p>
             </div>
-            <Lock className="h-4 w-4 text-destructive" />
+            <span className="ml-3 flex shrink-0 items-center gap-1 rounded-full bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground">
+              Assinar
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
           </button>
         )}
         <div className="flex items-end gap-2">

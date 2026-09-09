@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { Search, Send, Phone, Video, MoreVertical, ArrowLeft, Image, Smile, Lock, Check, CheckCheck, Zap, Eye, EyeOff, X, Trash2, User, WifiOff, MessageCircle, Pin, Copy, HeartHandshake, Reply, Radio, Star, Mail, Crown, Heart } from 'lucide-react';
+import { ArrowLeft, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Video, WifiOff, X, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -1971,17 +1971,27 @@ export default function Chat() {
               // fica só o respiro do próprio composer.
             }}
           >
+            {/* Vai direto para a area de assinatura, em vez de abrir o modal de
+                convite antes. A opcao gratuita nao se perde: o card "Convide 3
+                amigos" fica na propria pagina de planos. */}
             {!premiumAccess && (
               <button
                 type="button"
-                onClick={redirectToPlans}
-                className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10"
+                onClick={() => navigate('/subscriptions')}
+                aria-label="Acesso bloqueado. Toque para assinar."
+                className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 active:scale-[0.99]"
               >
-                <div>
+                <div className="flex min-w-0 flex-1 flex-col">
                   <p className="font-medium text-destructive">Acesso bloqueado</p>
                   <p className="text-sm text-muted-foreground">Assine para ler e responder todas as mensagens.</p>
                 </div>
-                <Lock className="h-4 w-4 text-destructive" />
+                {/* Rotulo e seta explicitos: no celular nao ha hover, e sem eles a
+                    caixa lia como aviso morto — a pessoa nem tentava tocar. O
+                    cadeado sozinho parece decoracao, nao acao. */}
+                <span className="ml-3 flex shrink-0 items-center gap-1 rounded-full bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground">
+                  Assinar
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </span>
               </button>
             )}
             {/* Reply preview — mensagem sendo respondida */}
