@@ -1410,6 +1410,25 @@ function hubPage() {
         ${byRegion[reg].map((s) => `<a href="/swing/${s.slug}/">${esc(s.name)}</a>`).join('')}
       </div>`).join('');
 
+  // Diretorio de cidades. Sem ele as cidades so eram alcancaveis pela pagina do
+  // estado, ou seja, a tres cliques da home — fundo demais para um site novo.
+  //
+  // O relatorio de indexacao de 09/09/2026 mostrou 20 paginas indexadas contra
+  // 63 "detectadas, mas nao indexadas": o Google achou as URLs pelo sitemap e
+  // nao chegou a rastrear. Encurtar o caminho e o que esta ao nosso alcance —
+  // sitemap anuncia, link interno leva.
+  const cidadesPorEstado = order.map((reg) => {
+    const estados = byRegion[reg].filter((st) => citiesOf(st.slug).length > 0);
+    if (estados.length === 0) return '';
+    return estados.map((st) => `
+      <div class="cl-chips" style="margin-bottom:1rem;">
+        <span style="width:100%;font-weight:700;font-size:.95rem;color:#700c20;margin-bottom:.35rem;display:block;">
+          <a href="/swing/${st.slug}/" style="color:inherit;">${esc(st.name)}</a>
+        </span>
+        ${citiesOf(st.slug).map((c) => `<a href="/swing/${st.slug}/${c.slug}/">${esc(c.name)}</a>`).join('')}
+      </div>`).join('');
+  }).join('');
+
   const body = `${campaignHeader(`swing`)}
 
     <section class="cl-hero">
@@ -1437,6 +1456,12 @@ function hubPage() {
       <h2>Escolha seu estado</h2>
       <p>27 unidades da federação, mais páginas de capitais e cidades onde a comunidade já tem gente de verdade.</p>
       ${regionSections}
+    </section>
+
+    <section class="cl-section cl-region" style="border-top:1px solid #ead7d3;">
+      <h2>Cidades com gente por perto</h2>
+      <p>${SELECTED_CITIES.length} cidades onde já há perfis de verdade — não é lista de município, é onde a comunidade existe.</p>
+      ${cidadesPorEstado}
     </section>
 
     <section class="cl-section cl-alt">
