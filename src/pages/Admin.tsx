@@ -198,6 +198,10 @@ type RegionalPagePerf = {
   cadastros: number;
   visitas: number;
   visitantes: number;
+  /** Visitantes únicos que clicaram no CTA e chegaram ao formulário. É a etapa
+   *  do meio do funil: sem ela, "ninguém se cadastrou" pode significar duas
+   *  coisas opostas — ninguém clicou, ou clicaram e desistiram no cadastro. */
+  chegaram: number;
   taxa: number | null;
 };
 
@@ -2951,8 +2955,9 @@ export default function Admin() {
                 <div>
                   <h3 className="font-semibold">Páginas de cidade e estado 🔎</h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Ordenado por cadastros. A taxa é cadastros ÷ visitas da própria página —
-                    quanta gente que chegou pela busca acabou criando conta.
+                    Ordenado por cadastros. O funil vai de visitante → abriu o cadastro →
+                    criou conta, para separar quem não se interessou pela página de quem
+                    se interessou e desistiu no formulário. A taxa é cadastros ÷ visitas.
                   </p>
                 </div>
               </div>
@@ -2982,9 +2987,20 @@ export default function Admin() {
                               <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
                               <p className="font-medium text-sm truncate">{nomeDaPagina(pg.page)}</p>
                               <p className="text-xs text-muted-foreground mt-1">
-                                <span className="font-medium">{pg.visitas}</span> visita(s)
-                                {pg.visitantes > 0 ? <> &nbsp;·&nbsp; {pg.visitantes} únicos</> : null}
+                                <span className="font-medium">{pg.visitantes || pg.visitas}</span> visitante(s)
+                                &nbsp;→&nbsp; <span className="font-medium">{pg.chegaram}</span> abriram o cadastro
+                                &nbsp;→&nbsp; <span className="font-medium">{pg.cadastros}</span> criaram conta
                               </p>
+                              {pg.visitantes > 0 && pg.chegaram === 0 && pg.cadastros === 0 && (
+                                <p className="text-[11px] text-amber-600 mt-0.5">
+                                  Ninguém clicou no CTA — o problema é a página, não o cadastro.
+                                </p>
+                              )}
+                              {pg.chegaram > 0 && pg.cadastros === 0 && (
+                                <p className="text-[11px] text-amber-600 mt-0.5">
+                                  Abriram o cadastro e desistiram — o problema é o formulário, não a página.
+                                </p>
+                              )}
                             </div>
                             <div className={`text-right shrink-0 ${textClass}`}>
                               <p className="text-lg font-bold leading-none">

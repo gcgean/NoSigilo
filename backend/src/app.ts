@@ -13870,17 +13870,32 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         `SELECT pagina,
                 SUM(cadastros)   AS cadastros,
                 SUM(visitas)     AS visitas,
-                SUM(visitantes)  AS visitantes
+                SUM(visitantes)  AS visitantes,
+                SUM(chegaram)    AS chegaram
            FROM (
-             SELECT signup_source AS pagina, COUNT(*) AS cadastros, 0 AS visitas, 0 AS visitantes
+             SELECT signup_source AS pagina, COUNT(*) AS cadastros, 0 AS visitas, 0 AS visitantes,
+                    0 AS chegaram
                FROM users
               WHERE signup_source IS NOT NULL
               GROUP BY signup_source
              UNION ALL
              SELECT CASE WHEN page_path LIKE '%/' THEN page_path ELSE page_path || '/' END AS pagina,
-                    0 AS cadastros, COUNT(*) AS visitas, COUNT(DISTINCT ip_hash) AS visitantes
+                    0 AS cadastros, COUNT(*) AS visitas, COUNT(DISTINCT ip_hash) AS visitantes,
+                    0 AS chegaram
                FROM site_visits
               WHERE page_path LIKE '/swing/%'
+              GROUP BY 1
+             UNION ALL
+             -- Etapa do meio: quem clicou no CTA e chegou ao formulario. O
+             -- SiteVisitTracker grava a rota inteira, entao /register?origem=... ja
+             -- esta em site_visits — faltava so ler. Sem esta coluna nao da para
+             -- distinguir "ninguem clicou" de "clicaram e desistiram no cadastro",
+             -- que sao problemas opostos: um e da pagina, outro e do formulario.
+             SELECT '/' || substring(page_path from 'origem=(swing[a-z0-9/-]*)') || '/' AS pagina,
+                    0 AS cadastros, 0 AS visitas, 0 AS visitantes,
+                    COUNT(DISTINCT ip_hash) AS chegaram
+               FROM site_visits
+              WHERE page_path LIKE '/register%origem=swing%'
               GROUP BY 1
            ) t
           GROUP BY pagina
@@ -14001,6 +14016,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             cadastros,
             visitas,
             visitantes: Number(r.visitantes || 0),
+            chegaram: Number(r.chegaram || 0),
             // Sem visita registrada nao ha taxa: devolver 0 daria a impressao de
             // pagina que nao converte, quando o que falta e a medicao.
             taxa: visitas > 0 ? Number(((cadastros / visitas) * 100).toFixed(1)) : null,
