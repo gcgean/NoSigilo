@@ -204,9 +204,19 @@ function getWebPushConfig(env: Env) {
 
   if (usingEphemeralKeys && !hasWarnedAboutEphemeralVapidKeys) {
     hasWarnedAboutEphemeralVapidKeys = true;
-    console.warn(
-      '[PUSH WARNING] VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY não configuradas. Gerando chaves temporárias apenas para desenvolvimento.'
-    );
+    // Em producao isto nao e um aviso, e uma falha em andamento: as chaves sao
+    // geradas a CADA boot, e o navegador guarda a inscricao feita com a chave
+    // anterior. Depois de um deploy, todo envio para as inscricoes antigas
+    // volta 400 VapidPkHashMismatch — ou seja, ninguem recebe notificacao e o
+    // sintoma so aparece no log, nunca na tela.
+    const mensagem =
+      'VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY nao configuradas: gerando chaves efemeras. ' +
+      'Elas mudam a cada reinicio e invalidam TODAS as inscricoes de push existentes.';
+    if (String(process.env.NODE_ENV || '') === 'production') {
+      console.error(`[PUSH ERRO] ${mensagem} Defina as duas no ambiente para o push voltar a funcionar.`);
+    } else {
+      console.warn(`[PUSH AVISO] ${mensagem} Em desenvolvimento isso e esperado.`);
+    }
   }
 
   return {
@@ -1284,6 +1294,28 @@ async function sendPushToUser(
         await run(options.db, 'DELETE FROM push_subscriptions WHERE id = ?', [String(row.id)]);
         continue;
       }
+
+      // VapidPkHashMismatch: a inscricao foi criada com uma chave VAPID que nao
+      // e mais a atual, entao NENHUM envio para ela vai funcionar — e so o
+      // navegador pode consertar, reinscrevendo com a chave nova.
+      //
+      // Sem apagar aqui, a inscricao morta ficava sendo tentada em toda
+      // notificacao, para sempre, enchendo o log e gastando requisicao. Era o
+      // caso das inscricoes da Apple: 400 em todo envio, nenhuma limpeza.
+      //
+      // Apagar e seguro: o cliente reinscreve na proxima visita (ver
+      // src/utils/pushNotifications.ts, que busca a chave publica do servidor).
+      // Perde-se no maximo as notificacoes ate a pessoa abrir o site — que ela
+      // ja nao estava recebendo de qualquer forma.
+      const corpo = String(error?.body || '');
+      if (statusCode === 400 && corpo.includes('VapidPkHashMismatch')) {
+        await run(options.db, 'DELETE FROM push_subscriptions WHERE id = ?', [String(row.id)]);
+        console.warn(
+          `[push] inscricao removida por VapidPkHashMismatch (chave VAPID mudou): ${String(row.id)}`
+        );
+        continue;
+      }
+
       console.error('Falha ao enviar push notification:', error);
     }
   }
