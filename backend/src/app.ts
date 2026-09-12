@@ -1105,7 +1105,38 @@ async function ensurePromoterCommission(
   try {
     const commReais = (commAmount / 100).toFixed(2).replace('.', ',');
     const title = '💰 Você ganhou uma comissão!';
-    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão.`;
+
+    // O saldo e quanto falta para o Pix vao junto do aviso.
+    //
+    // Este e o momento em que o promotor pergunta "quando eu recebo?", e a
+    // resposta estava so na landing e no painel. Receber "voce ganhou R$ 1,98"
+    // tres vezes sem nada cair na conta parece calote quando ninguem disse que
+    // existe um minimo — e o minimo e sobre o ACUMULADO, entao a cada comissao
+    // a distancia ate o Pix encurta, o que e uma informacao boa de dar.
+    //
+    // Conta approved + pending: pendente ainda esta no prazo de estorno e nao
+    // paga, mas ja e dinheiro do promotor. Somar os dois e o numero que ele ve
+    // como "meu saldo"; mostrar so o aprovado faria o saldo parecer menor do
+    // que o painel mostra.
+    let saldoDaVez = commAmount;
+    try {
+      const saldoRow = (await queryOne(
+        db,
+        `SELECT COALESCE(SUM(commission_amount), 0) AS total
+         FROM promoter_commissions
+         WHERE promoter_user_id = ? AND status IN ('pending', 'approved')`,
+        [inviterUserId]
+      )) as any;
+      saldoDaVez = Number(saldoRow?.total || commAmount);
+    } catch {
+      // Falha ao somar nao pode derrubar o aviso: cai no valor desta comissao.
+    }
+    const emReais = (centavos: number) => (centavos / 100).toFixed(2).replace('.', ',');
+    const faltam = PROMOTER_MIN_PAYOUT_CENTS - saldoDaVez;
+    const linhaDoSaldo = faltam <= 0
+      ? `Seu saldo é R$ ${emReais(saldoDaVez)} — já dá para receber via Pix.`
+      : `Seu saldo é R$ ${emReais(saldoDaVez)}. O Pix sai a partir de R$ ${emReais(PROMOTER_MIN_PAYOUT_CENTS)} acumulados (faltam R$ ${emReais(faltam)}).`;
+    const description = `Um convidado seu assinou o Premium. Você ganhou R$ ${commReais} de comissão. ${linhaDoSaldo}`;
     await createNotification(
       { db, io: ctx?.io },
       {
