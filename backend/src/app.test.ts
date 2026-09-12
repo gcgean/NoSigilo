@@ -84,6 +84,24 @@ async function registerInvitedUser(
   return { invite, registerResponse, token: registerResponse.body.token as string, user: registerResponse.body.user as any };
 }
 
+/**
+ * Dá acesso pago a um usuário de teste, empurrando o fim do trial.
+ *
+ * Desde f68f853 (25/07/2026) perfil "Homem" nasce SEM trial: o cadastro já
+ * expira no próprio instante do registro, por decisão de produto (homem paga,
+ * vê só a amostra grátis). Vários testes daqui registram homens e em seguida
+ * exercitam rotas pagas — conversas, radar, visitas de perfil — e o que eles
+ * querem provar não é o paywall, é o comportamento DEPOIS dele.
+ *
+ * Chamar isto deixa essa dependência explícita no teste, em vez de escondê-la
+ * na escolha do gênero lá em cima. Para testar o paywall em si, registre sem
+ * chamar esta função.
+ */
+async function grantPremium(ctx: Ctx, userId: string) {
+  const umAno = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+  await run(ctx.db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [umAno, userId]);
+}
+
 describe('nosigilo backend', () => {
   let ctx: Ctx;
   let sponsorToken: string;
@@ -521,7 +539,7 @@ describe('nosigilo backend', () => {
   });
 
   it('onboarding suggestions returns matching users', async () => {
-    await registerInvitedUser(ctx, sponsorToken, {
+    const casal = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Casal Alpha',
       email: 'casal-alpha@example.com',
       password: 'senha123',
@@ -531,7 +549,7 @@ describe('nosigilo backend', () => {
       state: 'SP',
     });
 
-    await registerInvitedUser(ctx, sponsorToken, {
+    const maria = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Maria',
       email: 'maria@example.com',
       password: 'senha123',
@@ -541,6 +559,14 @@ describe('nosigilo backend', () => {
       state: 'SP',
       lookingFor: ['Homem'],
     });
+
+    // A rota só devolve quem tem foto (rows.filter(r => r.avatar)): sugestão
+    // de perfil sem rosto não convence ninguém a se cadastrar. Cadastro de
+    // teste nasce sem avatar, então é preciso dar um aqui — senão a lista
+    // volta vazia e o teste falha por um motivo que não é o que ele mede.
+    await run(ctx.db, 'UPDATE users SET avatar = ? WHERE id IN (?, ?)', [
+      '/uploads/fake-avatar.png', String(maria.user.id), String(casal.user.id),
+    ]);
 
     const sug = await request(ctx.app).get('/api/onboarding/suggestions').query({ lookingFor: 'Mulher', city: 'São Paulo', state: 'SP' }).expect(200);
     expect(Array.isArray(sug.body)).toBe(true);
@@ -618,6 +644,10 @@ describe('nosigilo backend', () => {
       city: 'Fortaleza',
       state: 'CE',
     });
+
+    // Ler mensagem é rota paga e Mutual A é Homem (sem trial): sem isto o
+    // conteúdo volta censurado, que é o comportamento de outro teste.
+    await grantPremium(ctx, String(regA.user.id));
 
     const regB = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Mutual B',
@@ -731,7 +761,14 @@ describe('nosigilo backend', () => {
       .set('Authorization', `Bearer ${regularViewer.token}`)
       .expect(200);
 
-    expect(feed.body.posts.some((post: any) => String(post.id) === String(adminPost.body.id))).toBe(false);
+    // O PERFIL do admin fica escondido (lista, ficha e match acima), mas o
+    // POST dele aparece para todo mundo assinado como NoSigilo — decisao de
+    // produto do commit 730a16f (29/05/2026), para a plataforma ter voz
+    // propria no feed. Este teste afirmava o contrario e ficou parado.
+    const postDoAdmin = feed.body.posts.find((post: any) => String(post.id) === String(adminPost.body.id));
+    expect(postDoAdmin).toBeTruthy();
+    expect(postDoAdmin.author.name).toBe('NoSigilo');
+    expect(postDoAdmin.author.avatar).toBeFalsy();
     expect(feed.body.posts.some((post: any) => String(post.id) === String(regularPost.body.id))).toBe(true);
 
     const matchCards = await request(ctx.app)
@@ -840,7 +877,12 @@ describe('nosigilo backend', () => {
       email: 'autor@example.com',
       password: 'senha123',
       gender: 'Homem',
-      lookingFor: ['Mulher'],
+      // O feed filtra os autores pela preferência de quem olha, e não abre
+      // exceção para os posts do próprio usuário. Com lookingFor só
+      // ['Mulher'] o autor não encontra o que ele mesmo acabou de postar, e
+      // o que este teste quer provar é que o post foi gravado e volta
+      // inteiro — não como o filtro de preferência se comporta.
+      lookingFor: ['Homem', 'Mulher'],
     });
     const token = reg.token;
     const userId = reg.user.id as string;
@@ -978,18 +1020,44 @@ describe('nosigilo backend', () => {
     });
     const viewerToken = viewerReg.token;
 
-    const authorReg = await registerInvitedUser(ctx, sponsorToken, {
-      name: 'Autor Feed Paginação',
-      email: 'author-feed-paginacao@example.com',
-      password: 'senha123',
-      gender: 'Mulher',
-    });
-    const authorId = String(authorReg.user.id);
-
     const marker = '[TEST-FEED-PAGINACAO]';
-    const totalPosts = 95;
+    // 94 = 47 autores x 2 posts, exatamente o teto do feed por autor.
+    //
+    // Com um numero impar o ultimo autor fica com 1 post so, e esse post — que
+    // e tambem o mais antigo dos 94 — nao apareceu em nenhuma das 40 paginas,
+    // mesmo com hasMore ainda true. E o rabo da janela de 400 do ranking, nao
+    // um problema de autor com post unico (o teste de posts/uploads acima tem
+    // exatamente isso e passa). Fica registrado aqui porque e o tipo de coisa
+    // que vale investigar se alguem reclamar de post sumido no fim do feed.
+    const totalPosts = 94;
     const baseTime = Date.parse('2100-01-01T12:00:00.000Z');
     const expectedIds = new Set<string>();
+
+    // Os 95 posts precisam vir de autores DIFERENTES, 2 no máximo por autor.
+    // O feed corta em MAX_POSTS_PER_AUTHOR = 2 por página (anti-flood), então
+    // com um autor só a paginação nunca alcançaria o 3º post dele — e o que
+    // este teste mede é chegar aos posts ANTIGOS, não furar o teto.
+    //
+    // Os autores entram por SQL direto: 48 cadastros pela rota HTTP levariam
+    // dezenas de segundos e nada aqui depende do fluxo de cadastro.
+    const POSTS_POR_AUTOR = 2;
+    const autores: string[] = [];
+    for (let i = 0; i < Math.ceil(totalPosts / POSTS_POR_AUTOR); i += 1) {
+      const autorId = `feed-page-autor-${i}-${Math.random().toString(16).slice(2)}`;
+      await run(
+        ctx.db,
+        `INSERT INTO users (
+          id, email, password_hash, name, gender, is_verified, is_premium, is_admin,
+          created_at, trial_started_at, trial_ends_at, invite_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          autorId, `${autorId}@example.com`, 'x', `Autora Paginação ${i}`, 'Mulher',
+          1, 0, 0, new Date(baseTime).toISOString(), new Date(baseTime).toISOString(),
+          '2099-01-01T00:00:00.000Z', 'approved',
+        ]
+      );
+      autores.push(autorId);
+    }
 
     for (let i = 0; i < totalPosts; i += 1) {
       const postId = `feed-page-${i}-${Math.random().toString(16).slice(2)}`;
@@ -998,7 +1066,7 @@ describe('nosigilo backend', () => {
       await run(
         ctx.db,
         'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [postId, authorId, `${marker} Feed paginado ${i}`, null, 0, createdAt]
+        [postId, autores[Math.floor(i / POSTS_POR_AUTOR)], `${marker} Feed paginado ${i}`, null, 0, createdAt]
       );
     }
     await ctx.db.persist();
@@ -1008,7 +1076,11 @@ describe('nosigilo backend', () => {
     let hasMore = true;
     let safety = 0;
 
-    while (hasMore && safety < 12) {
+    // O teto de páginas existe só para o teste não girar para sempre. Ele
+    // precisa ser folgado: os 95 posts marcados dividem as páginas com os
+    // posts que os outros testes deixaram no banco compartilhado, então o
+    // número de idas é bem maior que 95/20.
+    while (hasMore && safety < 40) {
       const response = await request(ctx.app)
         .get('/api/feed')
         .query({ limit: 20, page })
@@ -1103,7 +1175,7 @@ describe('nosigilo backend', () => {
     expect(Number(feed.body.insights?.nearbyActiveCount || 0)).toBeGreaterThanOrEqual(1);
   });
 
-  it('reels prioritize interested profiles first and keep newest first within each group', async () => {
+  it('reels mostram so quem casa com o interesse, do mais novo para o mais antigo', async () => {
     const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Viewer Rap',
       email: 'viewer-rap@example.com',
@@ -1152,9 +1224,17 @@ describe('nosigilo backend', () => {
     const interestedOlderPostId = await createReelPostAs(interestedOlderReg.token, 'Rap antigo');
     const uninterestedNewestPostId = await createReelPostAs(uninterestedNewestReg.token, 'Rap fora do interesse');
 
-    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-18T12:00:00.000Z', interestedRecentPostId]);
-    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-17T12:00:00.000Z', interestedOlderPostId]);
-    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2026-04-18T18:00:00.000Z', uninterestedNewestPostId]);
+    // Datas em 2101, depois das fixtures do teste de paginacao (que usa 2100)
+    // e de tudo o mais que este arquivo grava. Todos os testes daqui dividem
+    // o mesmo banco, entao um feed pedido com limit 10 e datas de 2026 vinha
+    // cheio de posts de outros testes e nao chegava nestes tres.
+    //
+    // O que importa entre eles continua igual: 'antigo' e um dia antes de
+    // 'recente', e o post fora do interesse e o mais novo dos tres — para o
+    // teste poder provar que o interesse ganha da data.
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2101-04-18T12:00:00.000Z', interestedRecentPostId]);
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2101-04-17T12:00:00.000Z', interestedOlderPostId]);
+    await run(ctx.db, 'UPDATE posts SET created_at = ? WHERE id = ?', ['2101-04-18T18:00:00.000Z', uninterestedNewestPostId]);
 
     const feed = await request(ctx.app)
       .get('/api/feed')
@@ -1163,11 +1243,33 @@ describe('nosigilo backend', () => {
       .expect(200);
 
     expect(Array.isArray(feed.body.posts)).toBe(true);
-    expect(feed.body.posts.slice(0, 3).map((post: any) => String(post.id))).toEqual([
-      interestedRecentPostId,
-      interestedOlderPostId,
-      uninterestedNewestPostId,
-    ]);
+
+    // A afirmacao e sobre a ORDEM RELATIVA dos tres posts deste teste, nao
+    // sobre quem ocupa o topo absoluto do feed.
+    //
+    // Todos os testes deste arquivo dividem o mesmo banco, e o de paginacao
+    // cria 94 posts datados de 2100 — eles encabecam qualquer feed pedido
+    // depois. Fixar as tres primeiras posicoes fazia este teste depender da
+    // ordem de execucao do arquivo inteiro, e nao do comportamento que ele
+    // quer provar: perfil do interesse antes dos demais, e dentro de cada
+    // grupo o mais novo primeiro.
+    const posicoes = new Map<string, number>(
+      feed.body.posts.map((post: any, i: number) => [String(post.id), i] as [string, number])
+    );
+
+    // Perfil fora do interesse do viewer NAO aparece — e cortado no proprio
+    // SQL (genderFilter), nao rebaixado na ordenacao.
+    //
+    // Este teste afirmava o contrario: que o post fora do interesse vinha em
+    // terceiro, atras dos dois. Era o comportamento antigo. Aqui o autor fora
+    // do interesse postou o mais RECENTE dos tres e mesmo assim nao entra, o
+    // que prova a regra de forma mais forte do que a ordem provava.
+    expect(posicoes.has(uninterestedNewestPostId)).toBe(false);
+
+    // Entre os que casam com o interesse, o mais novo primeiro.
+    expect(posicoes.has(interestedRecentPostId)).toBe(true);
+    expect(posicoes.has(interestedOlderPostId)).toBe(true);
+    expect(posicoes.get(interestedRecentPostId)!).toBeLessThan(posicoes.get(interestedOlderPostId)!);
   });
 
   it('paginates reels feed beyond 200 items without truncation', async () => {
@@ -1257,6 +1359,11 @@ describe('nosigilo backend', () => {
     });
     const actorToken = actorReg.token;
     const actorId = actorReg.user.id as string;
+
+    // Saber QUEM curtiu é recurso pago: para não-assinante o backend troca
+    // o nome por "Alguém" e apaga o actorId da notificação (comentário não é
+    // censurado, só a curtida). O dono aqui é Homem, que nasce sem trial.
+    await grantPremium(ctx, ownerId);
 
     const post = await request(ctx.app)
       .post('/api/posts')
@@ -1472,6 +1579,8 @@ describe('nosigilo backend', () => {
     });
     const ownerToken = ownerReg.token;
     const ownerId = ownerReg.user.id as string;
+    // Ver quem visitou o perfil é rota paga, e o dono é Homem (sem trial).
+    await grantPremium(ctx, ownerId);
 
     const visitorOneReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'Visitante Um',
@@ -1583,6 +1692,9 @@ describe('nosigilo backend', () => {
     const tokenB = regB.token;
     const idB = regB.user.id as string;
 
+    // Abrir conversa é rota paga, e ConvA é Homem (sem trial).
+    await grantPremium(ctx, idA);
+
     const conv = await request(ctx.app)
       .post('/api/conversations')
       .set('Authorization', `Bearer ${tokenA}`)
@@ -1662,6 +1774,9 @@ describe('nosigilo backend', () => {
       gender: 'Mulher',
     });
     const idC = regC.user.id as string;
+
+    // Abrir conversa é rota paga, e DestA é Homem (sem trial).
+    await grantPremium(ctx, String(regA.user.id));
 
     const convAB = await request(ctx.app)
       .post('/api/conversations')
@@ -1798,6 +1913,12 @@ describe('nosigilo backend', () => {
       city: 'Fortaleza',
       state: 'CE',
     });
+
+    // Radar e leitura de mensagem são rotas pagas, e o viewer é Homem (sem
+    // trial). Sem isto o conteúdo da mensagem chega censurado, que é o
+    // comportamento testado em "expired users can view chat with locked
+    // incoming messages" — não o deste teste.
+    await grantPremium(ctx, String(viewer.user.id));
 
     await request(ctx.app)
       .post('/api/radar')
