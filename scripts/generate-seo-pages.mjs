@@ -295,9 +295,11 @@ const ENABLED_CITIES = {
     { name: 'Aparecida de Goiânia', slug: 'aparecida-de-goiania' },
     { name: 'Goiânia', slug: 'goiania' },
     { name: 'Rio Verde', slug: 'rio-verde' },
+    { name: 'Valparaíso de Goiás', slug: 'valparaiso-de-goias' },
   ],
   'maranhao': [
     { name: 'Imperatriz', slug: 'imperatriz' },
+    { name: 'Paço do Lumiar', slug: 'paco-do-lumiar' },
     { name: 'São José de Ribamar', slug: 'sao-jose-de-ribamar' },
     { name: 'São Luís', slug: 'sao-luis' },
   ],
@@ -316,6 +318,7 @@ const ENABLED_CITIES = {
     { name: 'Divinópolis', slug: 'divinopolis' },
     { name: 'Governador Valadares', slug: 'governador-valadares' },
     { name: 'Ipatinga', slug: 'ipatinga' },
+    { name: 'Itabira', slug: 'itabira' },
     { name: 'Juiz de Fora', slug: 'juiz-de-fora' },
     { name: 'Manhuaçu', slug: 'manhuacu' },
     { name: 'Montes Claros', slug: 'montes-claros' },
@@ -380,11 +383,13 @@ const ENABLED_CITIES = {
   'rio-grande-do-sul': [
     { name: 'Canoas', slug: 'canoas' },
     { name: 'Caxias do Sul', slug: 'caxias-do-sul' },
+    { name: 'Lajeado', slug: 'lajeado' },
     { name: 'Novo Hamburgo', slug: 'novo-hamburgo' },
     { name: 'Passo Fundo', slug: 'passo-fundo' },
     { name: 'Pelotas', slug: 'pelotas' },
     { name: 'Porto Alegre', slug: 'porto-alegre' },
     { name: 'Rio Grande', slug: 'rio-grande' },
+    { name: 'São Leopoldo', slug: 'sao-leopoldo' },
   ],
   'rondonia': [
     { name: 'Ariquemes', slug: 'ariquemes' },
@@ -411,9 +416,11 @@ const ENABLED_CITIES = {
     { name: 'Campinas', slug: 'campinas' },
     { name: 'Caraguatatuba', slug: 'caraguatatuba' },
     { name: 'Diadema', slug: 'diadema' },
+    { name: 'Ferraz de Vasconcelos', slug: 'ferraz-de-vasconcelos' },
     { name: 'Franca', slug: 'franca' },
     { name: 'Guarulhos', slug: 'guarulhos' },
     { name: 'Jundiaí', slug: 'jundiai' },
+    { name: 'Mauá', slug: 'maua' },
     { name: 'Mogi das Cruzes', slug: 'mogi-das-cruzes' },
     { name: 'Osasco', slug: 'osasco' },
     { name: 'Piracicaba', slug: 'piracicaba' },
@@ -424,9 +431,11 @@ const ENABLED_CITIES = {
     { name: 'Santos', slug: 'santos' },
     { name: 'Sorocaba', slug: 'sorocaba' },
     { name: 'São Bernardo do Campo', slug: 'sao-bernardo-do-campo' },
+    { name: 'São Caetano do Sul', slug: 'sao-caetano-do-sul' },
     { name: 'São José do Rio Preto', slug: 'sao-jose-do-rio-preto' },
     { name: 'São José dos Campos', slug: 'sao-jose-dos-campos' },
     { name: 'São Paulo', slug: 'sao-paulo' },
+    { name: 'São Vicente', slug: 'sao-vicente' },
     { name: 'Taboão da Serra', slug: 'taboao-da-serra' },
   ],
   'sergipe': [{ name: 'Aracaju', slug: 'aracaju' }],
@@ -625,16 +634,30 @@ if (process.argv.includes('--candidatas')) {
     process.exit(1);
   }
   const publicadas = new Set(SELECTED_CITIES.map((c) => c.slug));
-  // "Fortaleza ce", "Serra es": e o nome com a UF colada, digitado a mao. Nao e
-  // municipio, e publicar viraria uma pagina duplicada da cidade de verdade.
-  const ehNomeComUf = (nome) => {
-    const partes = semAcentos(nome).split(/\s+/);
-    if (partes.length < 2) return false;
-    const ultima = partes[partes.length - 1].toUpperCase();
-    return ultima.length === 2 && !!UF_PARA_SLUG[ultima];
+  // "Fortaleza ce", "Serra es", "Fortaleza ceara": e o nome da cidade com o
+  // estado colado, digitado a mao. Nao e municipio, e publicar viraria uma
+  // pagina duplicada da cidade de verdade.
+  //
+  // Nao basta olhar o sufixo: "Valparaiso de Goias" e cidade LEGITIMA que
+  // termina com o nome do estado. O que separa os dois casos e o resto — se,
+  // tirando o sufixo, sobra exatamente uma cidade JA PUBLICADA, entao e
+  // duplicata. "Fortaleza ceara" sem "ceara" vira "Fortaleza", que existe;
+  // "Valparaiso de Goias" sem "Goias" vira "Valparaiso de", que nao existe.
+  const sufixosDeEstado = new Set([
+    ...Object.keys(UF_PARA_SLUG).map((uf) => uf.toLowerCase()),
+    ...ALL_STATES.map((st) => semAcentos(st.name)),
+  ]);
+  const ehNomeComEstado = (nome) => {
+    const limpo = semAcentos(nome);
+    for (const sufixo of sufixosDeEstado) {
+      if (!limpo.endsWith(' ' + sufixo)) continue;
+      const resto = limpo.slice(0, -(sufixo.length + 1)).trim();
+      if (resto && publicadas.has(slugCidade(resto))) return true;
+    }
+    return false;
   };
   const novas = linhas.filter((l) => !publicadas.has(slugCidade(l.cidade)));
-  const suspeitas = novas.filter((l) => ehNomeComUf(l.cidade));
+  const suspeitas = novas.filter((l) => ehNomeComEstado(l.cidade));
   const faltando = novas.filter((l) => !suspeitas.includes(l) && l.uf && UF_PARA_SLUG[l.uf]);
   const semUf = novas.filter((l) => !suspeitas.includes(l) && (!l.uf || !UF_PARA_SLUG[l.uf]));
 
