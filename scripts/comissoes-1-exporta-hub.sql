@@ -4,12 +4,14 @@
 -- verdade sobre quem pagou o que: o NoSigilo nao guarda historico de
 -- pagamento, so o estado atual do acesso.
 --
---   docker exec -i <container-do-postgres-do-hub> sh -c \
---     'psql -U $POSTGRES_USER -d $POSTGRES_DB -f -' \
+--   docker exec -i hub_billing_postgres_prod sh -c \
+--     'psql -U $POSTGRES_USER -d $POSTGRES_DB --csv -f -' \
 --     < scripts/comissoes-1-exporta-hub.sql > /tmp/pagamentos-hub.csv
 --
--- Confira o nome do container com `docker ps` antes de rodar — nao e o
--- nosigilo-postgres, e o do hub de pagamentos.
+-- O container e o do HUB (hub_billing_postgres_prod), nao o nosigilo-postgres.
+-- Confira que esta no ar antes:
+--
+--   docker ps --filter name=hub_billing_postgres_prod
 --
 -- NAO escreve nada.
 --
@@ -28,8 +30,13 @@
 -- product_id vai junto porque o hub atende mais de um produto: quem for
 -- conferir do lado do NoSigilo filtra pelo hub_product_id do proprio usuario.
 
-\pset format csv
-\pset tuples_only off
+-- O formato CSV vem do --csv na linha de comando, NAO de um \pset aqui dentro.
+--
+-- Motivo: \pset imprime "Output format is csv." no stdout, e como a saida toda
+-- e redirecionada para o arquivo, essa frase virava a PRIMEIRA LINHA do CSV,
+-- antes do cabecalho. O \copy do passo 2 entao lia "Output format is csv."
+-- como se fosse o cabecalho e quebrava. Com --csv nenhum comando de barra
+-- imprime nada e o arquivo comeca direto no cabecalho.
 
 SELECT
   p.customer_id::text                                          AS hub_customer_id,
