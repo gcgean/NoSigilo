@@ -1075,7 +1075,11 @@ function statePage(st) {
     `Swing, Troca de Casais e Ménage em ${st.name} (${st.uf}) | NoSigilo`,
     `Swing e Troca de Casais em ${st.name} (${st.uf}) | NoSigilo`,
     `Swing e Troca de Casais em ${st.name} | NoSigilo`,
-    `Troca de Casais em ${st.name} | NoSigilo`,
+    // Ultimo recurso: larga a MARCA, nao o termo. Nome de cidade longo
+    // (Jaboatao dos Guararapes) estoura 60 por 1 a 3 caracteres, e para um
+    // site que ninguem procura pelo nome ainda, "NoSigilo" no titulo vale
+    // menos que "swing" — a marca ja aparece na URL e na descricao.
+    `Swing e Troca de Casais em ${st.name}`,
   ]);
   const nEstado = numeroEstado(st);
   const desc = melhorDesc(nEstado
@@ -1217,7 +1221,11 @@ function cityPage(city) {
     `Swing, Troca de Casais e Ménage em ${city.name} (${st.uf}) | NoSigilo`,
     `Swing e Troca de Casais em ${city.name} (${st.uf}) | NoSigilo`,
     `Swing e Troca de Casais em ${city.name} | NoSigilo`,
-    `Troca de Casais em ${city.name} | NoSigilo`,
+    // Ultimo recurso: larga a MARCA, nao o termo. Nome de cidade longo
+    // (Jaboatao dos Guararapes) estoura 60 por 1 a 3 caracteres, e para um
+    // site que ninguem procura pelo nome ainda, "NoSigilo" no titulo vale
+    // menos que "swing" — a marca ja aparece na URL e na descricao.
+    `Swing e Troca de Casais em ${city.name}`,
   ]);
   const nCidade = numeroCidade(city, st);
   const desc = melhorDesc(nCidade
