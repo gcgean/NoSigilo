@@ -3,9 +3,14 @@ import request from 'supertest';
 import path from 'node:path';
 import { unlinkSync, existsSync, rmSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
+import { createHmac } from 'node:crypto';
 import { initDb, queryOne, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
+
+// Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
+// teste precisa assinar o corpo com o mesmo valor que o app confere.
+const HUB_WEBHOOK_SECRET_TESTE = 'segredo-de-teste-do-webhook';
 
 type Ctx = {
   app: ReturnType<typeof createApp>;
@@ -31,6 +36,9 @@ async function createTestCtx(): Promise<Ctx> {
       RESEND_FROM_EMAIL: '',
       APP_NAME: 'NoSigilo Test',
       BILLING_TEST_EMAILS: '',
+      // Sem isto a rota /api/webhooks/hub-billing responde 503 e nao da para
+      // testar comissao de renovacao. Ligar o segredo so habilita a rota.
+      HUB_BILLING_WEBHOOK_SECRET: HUB_WEBHOOK_SECRET_TESTE,
     },
   });
   const cleanup = async () => {
@@ -2278,5 +2286,93 @@ describe('nosigilo backend', () => {
       .get('/api/story-fans')
       .set('Authorization', `Bearer ${fa.token}`)
       .expect(403);
+  });
+
+  // ── Comissao de promotor: renovacao paga gera comissao nova ───────────────
+  //
+  // O bug que este teste existe para nunca mais voltar: ensurePromoterCommission
+  // checava so subscriber_user_id, sem periodo. O promotor ganhava UMA comissao
+  // por assinante para sempre, e toda renovacao era descartada em silencio —
+  // enquanto a landing prometia "20% via Pix todo mes".
+  it('renovacao paga gera comissao nova, e o mesmo evento repetido nao', async () => {
+    const promotor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Promotor Renovacao', email: 'promotor-renov@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    await run(
+      ctx.db,
+      `INSERT INTO promoters (id, user_id, full_name, pix_key, status, accepted_terms_at, activated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        `promoter-renov-${Date.now()}`, String(promotor.user.id), 'Promotor Renovacao',
+        'promotor-renov@example.com', 'active',
+        new Date().toISOString(), new Date().toISOString(), new Date().toISOString(),
+      ]
+    );
+
+    // Assinante convidado PELO promotor: e o vinculo que a comissao usa
+    // (invite_link_entries -> invite_links.inviter_user_id).
+    const assinante = await registerInvitedUser(ctx, promotor.token, {
+      name: 'Assinante Renovacao', email: 'assinante-renov@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const hubCustomerId = 'cus-renov-teste';
+    await run(ctx.db, 'UPDATE users SET hub_customer_id = ? WHERE id = ?', [hubCustomerId, String(assinante.user.id)]);
+
+    const pagamento = async () => {
+      const corpo = { customerId: hubCustomerId, payload: { amount: 990 } };
+      const bruto = JSON.stringify(corpo);
+      const assinatura = createHmac('sha256', HUB_WEBHOOK_SECRET_TESTE).update(Buffer.from(bruto)).digest('hex');
+      await request(ctx.app)
+        .post('/api/webhooks/hub-billing')
+        .set('x-hub-event', 'payment.approved')
+        .set('x-hub-signature', `sha256=${assinatura}`)
+        .set('Content-Type', 'application/json')
+        .send(corpo)
+        .expect(200);
+    };
+
+    // O webhook responde antes de processar (para o gateway nao dar timeout),
+    // entao o teste espera o efeito aparecer no banco em vez de assumir que ja
+    // aconteceu quando o 200 voltou.
+    const contarComissoes = async () => {
+      const row = (await ctx.db.queryOne(
+        'SELECT COUNT(*) AS c FROM promoter_commissions WHERE subscriber_user_id = ?',
+        [String(assinante.user.id)]
+      )) as any;
+      return Number(row?.c || 0);
+    };
+    const esperarComissoes = async (quantas: number) => {
+      for (let i = 0; i < 40; i += 1) {
+        if ((await contarComissoes()) >= quantas) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(await contarComissoes()).toBe(quantas);
+    };
+
+    await pagamento();
+    await esperarComissoes(1);
+
+    // Mesmo evento de novo dentro do mesmo mes: continua uma so. E o que
+    // protege contra reentrega de webhook pelo gateway.
+    await pagamento();
+    await new Promise((r) => setTimeout(r, 250));
+    expect(await contarComissoes()).toBe(1);
+
+    // Vira o mes: em vez de mexer no relogio, envelhecemos a comissao que
+    // existe. O proximo pagamento cai num periodo em que nao ha comissao.
+    await run(
+      ctx.db,
+      "UPDATE promoter_commissions SET period = '2020-01' WHERE subscriber_user_id = ?",
+      [String(assinante.user.id)]
+    );
+
+    await pagamento();
+    await esperarComissoes(2);
+
+    const total = (await ctx.db.queryOne(
+      'SELECT SUM(commission_amount) AS s FROM promoter_commissions WHERE subscriber_user_id = ?',
+      [String(assinante.user.id)]
+    )) as any;
+    // 20% de R$ 9,90 em cada um dos dois meses.
+    expect(Number(total?.s || 0)).toBe(396);
   });
 });

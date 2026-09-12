@@ -1051,7 +1051,15 @@ async function ensurePromoterCommission(
   subscriberUserId: string,
   subscriptionAmountCents = 990,
   eventType = 'access_synced',
-  ctx?: { io?: SocketIOServer; env?: Env }
+  ctx?: { io?: SocketIOServer; env?: Env },
+  // 'primeira'    — só existe comissão se este assinante nunca gerou nenhuma.
+  // 'por-periodo' — uma por mês, porque houve pagamento neste mês.
+  //
+  // A diferença não é detalhe: chamar 'por-periodo' de um lugar que roda sem
+  // pagamento (o sync de acesso roda a cada login de quem está licenciado)
+  // criaria comissão todo mês para quem pagou uma anuidade, ou para quem
+  // ganhou licença na mão. Só o webhook de pagamento sabe que entrou dinheiro.
+  escopo: 'primeira' | 'por-periodo' = 'primeira'
 ): Promise<boolean> {
   // Quem convidou este assinante (via link de convite)?
   const inviteEntry = (await queryOne(
@@ -1067,12 +1075,25 @@ async function ensurePromoterCommission(
   const promoter = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [inviterUserId]);
   if (!promoter) return false;
 
-  const existing = await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
+  const period = new Date().toISOString().slice(0, 7);
+
+  // Antes daqui a checagem era só por subscriber_user_id, sem periodo — o que
+  // dava UMA comissão por assinante para sempre. A renovacao chegava, o
+  // sistema reconhecia que era renovacao (o aviso no Telegram ate diz
+  // "Renovacao") e a comissao era descartada em silencio, enquanto a pagina do
+  // promotor prometia "20% via Pix todo mes" e "comissao recorrente enquanto o
+  // assinante mantiver o plano".
+  const existing = escopo === 'por-periodo'
+    ? await queryOne(
+        db,
+        'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? AND period = ? LIMIT 1',
+        [subscriberUserId, period]
+      )
+    : await queryOne(db, 'SELECT id FROM promoter_commissions WHERE subscriber_user_id = ? LIMIT 1', [subscriberUserId]);
   if (existing) return false;
 
   const subAmount = Number(subscriptionAmountCents || 990);
   const commAmount = Math.round(subAmount * 0.20);
-  const period = new Date().toISOString().slice(0, 7);
   await run(
     db,
     'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
@@ -12282,7 +12303,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               String(user.id),
               Number(payload?.payload?.amount || 990),
               eventType,
-              { io: req.app.get('io') as SocketIOServer | undefined, env }
+              { io: req.app.get('io') as SocketIOServer | undefined, env },
+              // Só pagamento gera comissão recorrente. license.activated
+              // tambem concede acesso, mas acontece em ativacao de trial e em
+              // liberacao manual, onde nao entrou dinheiro — ali vale a regra
+              // antiga de uma comissao por assinante.
+              eventType === 'payment.approved' ? 'por-periodo' : 'primeira'
             );
             if (created) await persist();
           } catch (err) {
