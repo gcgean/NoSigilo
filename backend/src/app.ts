@@ -5569,50 +5569,69 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // GET /api/feed/top-day — posts com mais curtidas RECEBIDAS nas últimas 24h
   // (não "publicados nas últimas 24h" — um post de dias atrás que voltou a
-  // bombar hoje também entra). Vitrine global no topo do feed, recalculada a
-  // cada chamada. A janela de 30 dias no filtro de posts é só limite de
-  // performance (evita varrer a tabela inteira conforme ela cresce) — nada
-  // realisticamente "bomba" do zero depois de 30 dias parado.
-  app.get('/api/feed/top-day', requireAuth(env, db), async (req, res) => {
-    const userId = req.auth!.userId;
+  // bombar hoje também entra). Vitrine global no topo do feed. A janela de 30
+  // dias no filtro de posts é só limite de performance — nada realisticamente
+  // "bomba" do zero depois de 30 dias parado.
+  //
+  // O ranking é igual para todos (só o bloqueio é pessoal), então fica em cache
+  // por TOP_DAY_CACHE_MS e só os bloqueios são checados por usuário. Antes era
+  // recalculado a cada chamada — um COUNT de curtidas por post de 30 dias e um
+  // NOT EXISTS com OR em blocks, que não usa índice: 4–7 s por chamada, e o
+  // TopDayBar chama a cada 3 min por aba aberta. Era o maior consumidor de CPU
+  // do Postgres.
+  const TOP_DAY_CACHE_MS = 2 * 60 * 1000;
+  // Folga acima dos 12 exibidos, para sobrar post depois de tirar bloqueados.
+  const TOP_DAY_POOL_SIZE = 60;
+  type TopDayEntry = {
+    authorId: string;
+    post: {
+      id: string;
+      likeCount: number;
+      createdAt: string;
+      mediaUrl: string | null;
+      mimeType: string | null;
+      author: { id: string; name: string; avatar: string | null };
+    };
+  };
+  let topDayCache: { at: number; entries: TopDayEntry[] } | null = null;
+  let topDayInFlight: Promise<TopDayEntry[]> | null = null;
+
+  const computeTopDayEntries = async (): Promise<TopDayEntry[]> => {
     const dayAgo = new Date(Date.now() - 24 * 3_600_000).toISOString();
     const postWindowAgo = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
 
+    // Parte das curtidas das últimas 24h (idx_likes_created_at) e só então junta
+    // com os posts — em vez de contar post a post. O JOIN já descarta posts sem
+    // curtida (Top do Dia exige pelo menos 1).
     const rows = (await queryAll(
       db,
       `SELECT p.id, p.media_ids_json, p.created_at,
               u.id as author_id,
               CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
               CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
-              u.gender as author_gender,
-              (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'post' AND l.target_id = p.id AND l.created_at >= ?) as like_count
-       FROM posts p
+              lc.like_count
+       FROM (
+         SELECT target_id, COUNT(*) AS like_count
+         FROM likes
+         WHERE target_type = 'post' AND created_at >= ?
+         GROUP BY target_id
+       ) lc
+       JOIN posts p ON p.id = lc.target_id
        JOIN users u ON u.id = p.user_id
        WHERE p.created_at >= ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND p.media_ids_json IS NOT NULL AND p.media_ids_json != '[]'
          AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)
-         AND NOT EXISTS (
-           SELECT 1 FROM blocks b
-           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
-              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
-         )
-       ORDER BY like_count DESC, p.created_at DESC
-       LIMIT 40`,
-      [dayAgo, postWindowAgo, userId, userId]
+       ORDER BY lc.like_count DESC, p.created_at DESC
+       LIMIT ${TOP_DAY_POOL_SIZE}`,
+      [dayAgo, postWindowAgo]
     )) as any[];
-
-    // Top do Dia é vitrine global: mostra para todos, independente do
-    // interesse (looking_for) de quem vê. Exige pelo menos 1 curtida.
-    const filtered = rows
-      .filter((r) => Number(r.like_count || 0) > 0)
-      .slice(0, 12);
 
     // Resolve a primeira mídia (thumbnail) de cada post
     const firstMediaIdByPost = new Map<string, string>();
     const mediaIdSet = new Set<string>();
-    for (const r of filtered) {
+    for (const r of rows) {
       const ids = safeJsonParse(r.media_ids_json);
       const first = Array.isArray(ids) ? ids.find((x: any) => typeof x === 'string' && x.trim()) : null;
       if (first) { firstMediaIdByPost.set(String(r.id), String(first)); mediaIdSet.add(String(first)); }
@@ -5625,23 +5644,66 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       for (const m of mrows) mediaById.set(String(m.id), { filename: m.filename ?? null, mime: m.mime_type ?? null });
     }
 
-    const posts = filtered.map((r, i) => {
+    return rows.map((r) => {
       const mid = firstMediaIdByPost.get(String(r.id));
       const media = mid ? mediaById.get(mid) : null;
       return {
-        id: String(r.id),
-        rank: i + 1,
-        likeCount: Number(r.like_count || 0),
-        createdAt: String(r.created_at),
-        mediaUrl: media?.filename ? `/uploads/${media.filename}` : null,
-        mimeType: media?.mime ?? null,
-        author: {
-          id: String(r.author_id),
-          name: String(r.author_name),
-          avatar: r.author_avatar ? String(r.author_avatar) : null,
+        authorId: String(r.author_id),
+        post: {
+          id: String(r.id),
+          likeCount: Number(r.like_count || 0),
+          createdAt: String(r.created_at),
+          mediaUrl: media?.filename ? `/uploads/${media.filename}` : null,
+          mimeType: media?.mime ?? null,
+          author: {
+            id: String(r.author_id),
+            name: String(r.author_name),
+            avatar: r.author_avatar ? String(r.author_avatar) : null,
+          },
         },
       };
     });
+  };
+
+  // Chamadas simultâneas com o cache vencido compartilham um único cálculo.
+  const getTopDayEntries = (): Promise<TopDayEntry[]> => {
+    if (topDayCache && Date.now() - topDayCache.at < TOP_DAY_CACHE_MS) {
+      return Promise.resolve(topDayCache.entries);
+    }
+    if (!topDayInFlight) {
+      topDayInFlight = computeTopDayEntries()
+        .then((entries) => {
+          topDayCache = { at: Date.now(), entries };
+          return entries;
+        })
+        .finally(() => {
+          topDayInFlight = null;
+        });
+    }
+    return topDayInFlight;
+  };
+
+  app.get('/api/feed/top-day', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+
+    // Top do Dia é vitrine global: mostra para todos, independente do
+    // interesse (looking_for) de quem vê — só esconde autores com bloqueio.
+    const [entries, blockRows] = await Promise.all([
+      getTopDayEntries(),
+      queryAll(
+        db,
+        `SELECT blocked_user_id AS id FROM blocks WHERE blocker_user_id = ?
+         UNION
+         SELECT blocker_user_id AS id FROM blocks WHERE blocked_user_id = ?`,
+        [userId, userId]
+      ) as Promise<any[]>,
+    ]);
+    const blockedIds = new Set(blockRows.map((b) => String(b.id)));
+
+    const posts = entries
+      .filter((e) => !blockedIds.has(e.authorId))
+      .slice(0, 12)
+      .map((e, i) => ({ ...e.post, rank: i + 1 }));
 
     res.json({ posts });
   });
