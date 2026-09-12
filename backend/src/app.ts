@@ -5148,6 +5148,71 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // ── Stories ───────────────────────────────────────────────────────────────
 
+  // 'favorites' = story restrito a lista de favoritos do autor. Qualquer outro
+  // valor (inclusive NULL, que e o que todo story anterior a migracao 084 tem)
+  // e publico.
+  function storyAudience(raw: unknown): 'all' | 'favorites' {
+    return String(raw || '') === 'favorites' ? 'favorites' : 'all';
+  }
+
+  // Regrava a lista de favoritos do dono inteira (o cliente manda o estado
+  // final da selecao, nao um diff). Ids que nao correspondem a um perfil vivo
+  // sao descartados em silencio: a lista e um recorte de quem existe hoje, e
+  // guardar um id morto so criaria um item fantasma na tela de selecao.
+  //
+  // Devolve quantos ficaram, para o endpoint responder com a contagem real em
+  // vez de repetir de volta o que o cliente mandou.
+  async function salvaFavoritosDeStory(ownerId: string, idsBrutos: unknown): Promise<string[]> {
+    const pedidos = Array.from(new Set(
+      (Array.isArray(idsBrutos) ? idsBrutos : [])
+        .map((x) => String(x || '').trim())
+        .filter((x) => x && x !== ownerId)
+    )).slice(0, 500);
+
+    let validos: string[] = [];
+    if (pedidos.length > 0) {
+      const ph = pedidos.map(() => '?').join(',');
+      const rows = (await queryAll(
+        db,
+        `SELECT id FROM users
+         WHERE id IN (${ph})
+           AND (is_banned = 0 OR is_banned IS NULL)
+           AND (is_deactivated = 0 OR is_deactivated IS NULL)
+           AND deleted_at IS NULL`,
+        pedidos
+      )) as any[];
+      validos = rows.map((r: any) => String(r.id));
+    }
+
+    await run(db, 'DELETE FROM story_favorites WHERE owner_id = ?', [ownerId]);
+    const agora = nowIso();
+    for (const favoriteId of validos) {
+      await run(
+        db,
+        'INSERT INTO story_favorites (id, owner_id, favorite_id, created_at) VALUES (?, ?, ?, ?)',
+        [randomUUID(), ownerId, favoriteId, agora]
+      );
+    }
+    return validos;
+  }
+
+  // Devolve undefined quando o story pode ser aberto, e o motivo da recusa quando nao.
+  // Só consulta a lista de favoritos quando o story é restrito — no caso comum
+  // (story público) não custa nada.
+  async function recusaDeStory(
+    story: { user_id: unknown; audience?: unknown },
+    viewerId: string
+  ): Promise<'forbidden' | undefined> {
+    if (String(story.user_id) === viewerId) return undefined;
+    if (storyAudience(story.audience) !== 'favorites') return undefined;
+    const permitido = (await queryOne(
+      db,
+      'SELECT 1 AS ok FROM story_favorites WHERE owner_id = ? AND favorite_id = ? LIMIT 1',
+      [String(story.user_id), viewerId]
+    )) as any;
+    return permitido ? undefined : 'forbidden';
+  }
+
   function storyExpiresAt(createdAt: string): string {
     return new Date(new Date(createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
@@ -5158,7 +5223,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
+      `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at,
               m.filename, m.mime_type
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
@@ -5181,6 +5246,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         text: s.text ? String(s.text) : null,
         background: s.background ? String(s.background) : null,
         textOverlay: s.text_overlay ? (safeJsonParse(s.text_overlay) as any) : null,
+        audience: storyAudience(s.audience),
         createdAt: String(s.created_at),
         expiresAt: String(s.expires_at),
         viewCount: Number(viewCount?.c || 0),
@@ -5246,26 +5312,39 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // grupo, e perfis vitrine/demo sempre por último.
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.created_at, s.expires_at,
+      `SELECT s.id, s.user_id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at,
               m.filename, m.mime_type,
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
               u.fetiches_json, u.intentions_json,
               u.lat, u.lon,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
-              (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed
+              (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed,
+              (CASE WHEN pin.pinned_user_id IS NOT NULL THEN 1 ELSE 0 END) as is_pinned
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
        JOIN users u ON u.id = s.user_id
        LEFT JOIN story_views sv ON sv.story_id = s.id AND sv.viewer_id = ?
+       LEFT JOIN story_pins pin ON pin.user_id = ? AND pin.pinned_user_id = s.user_id
        WHERE s.expires_at > ? AND s.user_id != ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-       ORDER BY (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
+         -- Story de favoritos: so passa se o viewer estiver na lista do autor.
+         -- A lista e consultada agora, na leitura — tirar alguem dos favoritos
+         -- tira o acesso aos stories restritos que ainda estao no ar.
+         AND (
+           s.audience IS NULL OR s.audience <> 'favorites'
+           OR EXISTS (
+             SELECT 1 FROM story_favorites f
+             WHERE f.owner_id = s.user_id AND f.favorite_id = ?
+           )
+         )
+       ORDER BY is_pinned DESC,
+                (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
                 is_viewed ASC,
                 ${storyRegionOrder}
                 s.created_at DESC`,
-      [userId, now, userId]
+      [userId, userId, now, userId, userId]
     )) as any[];
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
@@ -5325,6 +5404,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       minhaReacaoPorStory.set(String(row.story_id), String(row.reaction));
     }
 
+    // Quais autores desta fileira eu ja curti. Curtir perfil e o que este app
+    // tem de "seguir" (o proprio /api/profile/stats chama isso de following),
+    // e e o que o filtro "So de quem eu curti" usa na tela de Stories.
+    //
+    // Uma consulta para a fileira inteira, restrita aos autores que estao nela:
+    // sem o IN, quem curtiu 300 perfis trazia 300 linhas para filtrar ~40.
+    const autorIds = Array.from(new Set(filtered.map((r: any) => String(r.user_id))));
+    const curtidosPorMim = new Set<string>();
+    if (autorIds.length > 0) {
+      const ph = autorIds.map(() => '?').join(',');
+      const curtidas = (await queryAll(
+        db,
+        `SELECT target_id FROM likes
+         WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`,
+        [userId, ...autorIds]
+      )) as any[];
+      for (const row of curtidas) curtidosPorMim.add(String(row.target_id));
+    }
+
     const storiesOut = filtered.map((r: any) => {
       let distanceKm: number | null = null;
       if (myLat != null && myLon != null && r.lat != null && r.lon != null) {
@@ -5345,6 +5443,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         text: r.text ? String(r.text) : null,
         background: r.background ? String(r.background) : null,
         textOverlay: r.text_overlay ? (safeJsonParse(r.text_overlay) as any) : null,
+        // Chega aqui so o que o viewer pode ver; o campo serve para a estrela
+        // verde, que diz "voce esta nos favoritos de quem postou".
+        audience: storyAudience(r.audience),
         createdAt: String(r.created_at),
         expiresAt: String(r.expires_at),
         viewed: Number(r.is_viewed) === 1,
@@ -5365,6 +5466,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           fetiches: (safeJsonParse(r.fetiches_json) as string[] | null) ?? [],
           intentions: (safeJsonParse(r.intentions_json) as string[] | null) ?? [],
           distanceKm,
+          likedByMe: curtidosPorMim.has(String(r.user_id)),
+          pinnedByMe: Number(r.is_pinned) === 1,
         },
       };
     });
@@ -5531,6 +5634,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const background = typeof req.body?.background === 'string' ? req.body.background.trim() : '';
     const isText = !mediaId && text.length > 0;         // story de texto puro (fundo colorido)
     const hasOverlay = !!mediaId && text.length > 0;    // texto por cima da mídia (estilo Instagram)
+    // Audiência: 'favorites' restringe o story à lista de favoritos do autor.
+    // Qualquer outro valor cai em público — o padrão nunca é o restrito, para
+    // não acontecer de alguém postar achando que está no ar para todos.
+    const paraFavoritos = String(req.body?.audience || '') === 'favorites';
 
     if (!mediaId && !isText) { res.status(400).json({ error: 'mediaId_or_text_required' }); return; }
     if (text.length > 280) { res.status(400).json({ error: 'text_too_long', message: 'O texto deve ter no máximo 280 caracteres.' }); return; }
@@ -5553,6 +5660,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (!media) { res.status(404).json({ error: 'media_not_found' }); return; }
     }
 
+    // O composer manda a seleção junto com o post (dá para mexer na lista na
+    // hora, como no Instagram). Só regrava quando o campo vem: post público
+    // não deve apagar a lista que a pessoa montou antes.
+    if (paraFavoritos && Array.isArray(req.body?.favoriteIds)) {
+      await salvaFavoritosDeStory(userId, req.body.favoriteIds);
+    }
+
+    // Publicar só para favoritos com a lista vazia esconderia o story de todo
+    // mundo — quase certamente não é o que a pessoa quis fazer.
+    if (paraFavoritos) {
+      const quantos = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_favorites WHERE owner_id = ?', [userId])) as any;
+      if (Number(quantos?.c || 0) === 0) {
+        res.status(400).json({ error: 'no_favorites', message: 'Escolha pelo menos um perfil favorito antes de publicar só para eles.' });
+        return;
+      }
+    }
+
     // Limite máximo de 10 stories ativos por usuário
     const now = new Date().toISOString();
     const activeCount = (await queryOne(db, 'SELECT COUNT(*) as c FROM stories WHERE user_id = ? AND expires_at > ?', [userId, now])) as any;
@@ -5568,15 +5692,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const storyText = (isText || hasOverlay) ? text : null;
     await run(
       db,
-      'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, now, expiresAt],
+      'INSERT INTO stories (id, user_id, media_id, text, background, text_overlay, audience, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, userId, mediaId || '', storyText, isText ? (background || 'sunset') : null, textOverlayJson, paraFavoritos ? 'favorites' : 'all', now, expiresAt],
     );
     await persist();
     // Só mulheres e casais ganham tokens por story.
     await awardContentTokensIfEligible(db, userId, 'story', id, req.app.get('io'));
 
     // Menções (@nome) no texto do story (texto puro ou overlay sobre a mídia).
-    if (storyText) {
+    // Em story restrito a notificação está desligada: ela levaria a pessoa a
+    // uma tela vazia se ela não estiver nos favoritos, e revelaria o conteúdo
+    // do story no próprio texto da notificação.
+    if (storyText && !paraFavoritos) {
       await notifyMentions(
         { db, io: req.app.get('io') as SocketIOServer | undefined, env },
         {
@@ -5591,7 +5718,121 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       );
     }
 
-    res.json({ id, expiresAt });
+    res.json({ id, expiresAt, audience: paraFavoritos ? 'favorites' : 'all' });
+  });
+
+  // GET /api/story-favorites — a lista de favoritos e os perfis entre os quais
+  // dá para escolher.
+  //
+  // O universo de escolha é quem eu curti. Curtir perfil é o "seguir" deste
+  // app (é o que /api/profile/stats já conta como following), então a regra
+  // fica igual à do Instagram: você só escolhe favoritos entre quem você
+  // acompanha. Quem já está na lista entra junto mesmo se a curtida foi
+  // desfeita depois — senão a pessoa sumiria da tela de seleção continuando a
+  // ver os stories restritos, que é o pior dos dois mundos.
+  app.get('/api/story-favorites', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.city, u.state,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS avatar_filename,
+              (CASE WHEN fav.favorite_id IS NOT NULL THEN 1 ELSE 0 END) AS is_favorite
+       FROM users u
+       LEFT JOIN story_favorites fav ON fav.owner_id = ? AND fav.favorite_id = u.id
+       WHERE u.id <> ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND u.deleted_at IS NULL
+         AND (
+           fav.favorite_id IS NOT NULL
+           OR EXISTS (
+             SELECT 1 FROM likes l
+             WHERE l.user_id = ? AND l.target_type = 'user' AND l.target_id = u.id
+           )
+         )
+       ORDER BY is_favorite DESC, u.name ASC
+       LIMIT 500`,
+      [userId, userId, userId]
+    )) as any[];
+
+    res.json({
+      candidates: rows.map((r: any) => ({
+        id: String(r.id),
+        name: String(r.name),
+        avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        city: r.city ? String(r.city) : null,
+        state: r.state ? String(r.state) : null,
+        isFavorite: Number(r.is_favorite) === 1,
+      })),
+      favoriteIds: rows.filter((r: any) => Number(r.is_favorite) === 1).map((r: any) => String(r.id)),
+    });
+  });
+
+  // PUT /api/story-favorites — regrava a lista inteira.
+  app.put('/api/story-favorites', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    if (!Array.isArray(req.body?.favoriteIds)) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const salvos = await salvaFavoritosDeStory(userId, req.body.favoriteIds);
+    await persist();
+    res.json({ ok: true, favoriteIds: salvos });
+  });
+
+  // POST /api/story-pins — fixa ou desfixa um perfil na MINHA fileira de stories.
+  //
+  // Toggle em vez de POST/DELETE separados porque é um botão só na tela, e o
+  // cliente não precisa saber o estado atual para acertar a chamada.
+  //
+  // Não mexe em permissão nenhuma e não notifica ninguém: fixar é uma
+  // preferência de leitura, privada de quem fixa. Ver story-favorites para a
+  // lista que vai no sentido contrário.
+  app.post('/api/story-pins', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const alvo = String(req.body?.userId || '').trim();
+    if (!alvo || alvo === userId) { res.status(400).json({ error: 'invalid_input' }); return; }
+
+    const existe = (await queryOne(
+      db,
+      'SELECT id FROM story_pins WHERE user_id = ? AND pinned_user_id = ? LIMIT 1',
+      [userId, alvo]
+    )) as any;
+
+    if (existe) {
+      await run(db, 'DELETE FROM story_pins WHERE id = ?', [String(existe.id)]);
+      await persist();
+      res.json({ pinned: false });
+      return;
+    }
+
+    const alvoVivo = (await queryOne(
+      db,
+      `SELECT id FROM users
+       WHERE id = ?
+         AND (is_banned = 0 OR is_banned IS NULL)
+         AND (is_deactivated = 0 OR is_deactivated IS NULL)
+         AND deleted_at IS NULL`,
+      [alvo]
+    )) as any;
+    if (!alvoVivo) { res.status(404).json({ error: 'not_found' }); return; }
+
+    // Teto de 50: a lista serve para destacar um punhado de perfis. Fixar
+    // tudo é o mesmo que não fixar nada, e ainda esvazia o valor da ordenação
+    // por região que vem logo abaixo dela.
+    const quantos = (await queryOne(db, 'SELECT COUNT(*) as c FROM story_pins WHERE user_id = ?', [userId])) as any;
+    if (Number(quantos?.c || 0) >= 50) {
+      res.status(400).json({ error: 'max_pins', message: 'Você já fixou 50 perfis. Desfixe algum antes.' });
+      return;
+    }
+
+    await run(
+      db,
+      'INSERT INTO story_pins (id, user_id, pinned_user_id, created_at) VALUES (?, ?, ?, ?)',
+      [randomUUID(), userId, alvo, nowIso()]
+    );
+    await persist();
+    res.json({ pinned: true });
   });
 
   // DELETE /api/stories/:id — apagar próprio story
@@ -5612,8 +5853,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/stories/:id/view', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const storyId = req.params.id;
-    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    const story = (await queryOne(db, 'SELECT id, user_id, audience FROM stories WHERE id = ?', [storyId])) as any;
     if (!story || story.user_id === viewerId) { res.json({ ok: true }); return; }
+    if (await recusaDeStory(story, viewerId)) { res.status(403).json({ error: 'forbidden' }); return; }
     const existing = (await queryOne(db, 'SELECT id FROM story_views WHERE story_id = ? AND viewer_id = ?', [storyId, viewerId])) as any;
     if (!existing) {
       await run(db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), storyId, viewerId, new Date().toISOString()]);
@@ -5664,8 +5906,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const { text } = req.body as { text?: string };
     if (!text?.trim()) { res.status(400).json({ error: 'text_required' }); return; }
-    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    const story = (await queryOne(db, 'SELECT id, user_id, audience FROM stories WHERE id = ?', [storyId])) as any;
     if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    if (await recusaDeStory(story, commenterId)) { res.status(403).json({ error: 'forbidden' }); return; }
     const id = randomUUID();
     const now = new Date().toISOString();
     await run(db, 'INSERT INTO story_comments (id, story_id, commenter_id, text, created_at) VALUES (?, ?, ?, ?, ?)', [id, storyId, commenterId, text.trim(), now]);
@@ -5787,8 +6030,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const parsed = reactionSchema.safeParse(req.body || {});
     const reaction = parsed.success && parsed.data.reaction ? parsed.data.reaction : 'heart';
     const HOT_HEART_COST = 1; // Coração Quente consome 1 token
-    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    const story = (await queryOne(db, 'SELECT id, user_id, audience FROM stories WHERE id = ?', [storyId])) as any;
     if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    if (await recusaDeStory(story, likerId)) { res.status(403).json({ error: 'forbidden' }); return; }
     const existing = (await queryOne(
       db,
       "SELECT id, COALESCE(reaction, 'heart') AS reaction FROM story_likes WHERE story_id = ? AND liker_id = ?",

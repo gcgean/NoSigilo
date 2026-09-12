@@ -3,10 +3,12 @@ import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
+  Star, Pin, Search, Check, Globe,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
+import type { StoryAudience, StoryFavoriteCandidate } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
@@ -20,6 +22,48 @@ import BackToTop from '@/components/BackToTop';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
+
+// Três listas diferentes convivem nesta tela, e confundi-las é fácil. Em uma
+// frase cada:
+//
+//   Favoritos (estrela verde)  — quem PODE VER o story que eu marcar como
+//                                restrito. Sai do meu lado, afeta os outros.
+//   Fixados   (alfinete)       — quem eu QUERO VER primeiro. Só muda a ordem
+//                                da minha fileira; ninguém fica sabendo.
+//   Curtidos                   — quem eu curti. É o "seguir" deste app, e é
+//                                de onde saem os candidatos a favorito.
+type FiltroStories = 'todos' | 'fixados' | 'curtidos';
+
+const CHAVE_FILTRO = 'nosigilo:stories-filtro';
+
+/** O filtro escolhido sobrevive à navegação — quem prefere só os fixados não
+ *  quer reescolher a cada visita. Vale por navegador, não por conta: é
+ *  preferência de leitura, não dado de perfil. */
+function leFiltroSalvo(): FiltroStories {
+  try {
+    const v = localStorage.getItem(CHAVE_FILTRO);
+    return v === 'fixados' || v === 'curtidos' ? v : 'todos';
+  } catch {
+    return 'todos';
+  }
+}
+
+/** Estrela verde do Instagram: marca o story que só os favoritos do autor
+ *  veem. No feed ela só aparece para quem ESTÁ na lista — é a forma de a
+ *  pessoa entender por que está vendo aquilo. */
+function SeloFavoritos({ className }: { className?: string }) {
+  return (
+    <span
+      title="Story só para favoritos"
+      className={cn(
+        'flex items-center justify-center rounded-full bg-[#22c55e] text-white shadow ring-1 ring-black/30',
+        className ?? 'h-4 w-4',
+      )}
+    >
+      <Star className="h-2.5 w-2.5 fill-current" />
+    </span>
+  );
+}
 
 // Cores do texto sobre a mídia (deve casar com a whitelist do backend).
 const OVERLAY_COLORS = ['#ffffff', '#000000', '#ec4899', '#facc15', '#22d3ee'];
@@ -104,6 +148,7 @@ function StoryContent({ story, thumb = false }: { story: StoryLike; thumb?: bool
 type MyStory = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
+  audience?: StoryAudience;
   createdAt: string; expiresAt: string;
   viewCount: number; commentCount: number; likeCount: number;
 };
@@ -111,6 +156,7 @@ type MyStory = {
 type FeedStory = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null; textOverlay?: TextOverlay | null;
+  audience?: StoryAudience;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
   author: {
@@ -119,6 +165,8 @@ type FeedStory = {
     city: string | null; state: string | null; bio: string | null;
     fetiches: string[]; intentions: string[];
     distanceKm: number | null;
+    likedByMe?: boolean;
+    pinnedByMe?: boolean;
   };
 };
 
@@ -276,18 +324,182 @@ function linhaDeIdentidadeDoStory(
 }
 
 // ─── Story Viewer (fullscreen) ────────────────────────────────────────────────
+/**
+ * Escolha de quem entra na lista de favoritos.
+ *
+ * Abre em dois lugares e faz a mesma coisa nos dois: no cabeçalho da tela
+ * (para mexer na lista com calma) e dentro do composer (para ajustar na hora
+ * de postar, como no Instagram). Por isso ela guarda a seleção em estado
+ * local e só devolve ao pai no "Salvar" — quem abriu decide o que fazer com
+ * a lista: gravar direto ou levar junto com o story.
+ *
+ * O universo é quem o usuário curtiu. Se ele não curtiu ninguém ainda, não há
+ * o que escolher, e a tela diz isso em vez de mostrar uma lista vazia sem
+ * explicação.
+ */
+function FavoritesPicker({
+  open,
+  onClose,
+  onSave,
+  salvando,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSave: (ids: string[]) => void | Promise<void>;
+  salvando?: boolean;
+}) {
+  const { toast } = useToast();
+  const [carregando, setCarregando] = useState(true);
+  const [candidatos, setCandidatos] = useState<StoryFavoriteCandidate[]>([]);
+  const [escolhidos, setEscolhidos] = useState<Set<string>>(new Set());
+  const [busca, setBusca] = useState('');
+
+  useBodyScrollLock(open);
+
+  useEffect(() => {
+    if (!open) return;
+    let vivo = true;
+    setCarregando(true);
+    void storiesService.getFavorites()
+      .then((res) => {
+        if (!vivo) return;
+        setCandidatos(res.candidates);
+        setEscolhidos(new Set(res.favoriteIds));
+      })
+      .catch(() => {
+        if (!vivo) return;
+        toast({ title: 'Erro ao carregar seus favoritos', variant: 'destructive' });
+      })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, [open, toast]);
+
+  if (!open) return null;
+
+  const alterna = (id: string) => {
+    setEscolhidos((antes) => {
+      const novo = new Set(antes);
+      if (novo.has(id)) novo.delete(id); else novo.add(id);
+      return novo;
+    });
+  };
+
+  const termo = busca.trim().toLowerCase();
+  const visiveis = termo
+    ? candidatos.filter((c) => c.name.toLowerCase().includes(termo) || (c.city || '').toLowerCase().includes(termo))
+    : candidatos;
+
+  return createPortal((
+    <div className="fixed inset-0 z-[9998] flex items-end justify-center bg-black/70 sm:items-center" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-3xl border border-border bg-background sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div className="flex items-center gap-2">
+            <SeloFavoritos className="h-5 w-5" />
+            <div>
+              <h3 className="font-semibold leading-tight">Favoritos</h3>
+              <p className="text-[11px] text-muted-foreground">Só eles veem os stories marcados com a estrela</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="border-b border-border p-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar perfil"
+              className="w-full rounded-xl border border-border bg-secondary/40 py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          {carregando ? (
+            <div className="flex justify-center py-10">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : candidatos.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              Você ainda não curtiu nenhum perfil.<br />
+              Curta quem você quer acompanhar — os favoritos saem dessa lista.
+            </p>
+          ) : visiveis.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">Nenhum perfil com esse nome.</p>
+          ) : (
+            visiveis.map((c) => {
+              const marcado = escolhidos.has(c.id);
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => alterna(c.id)}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors',
+                    marcado ? 'bg-[#22c55e]/10' : 'hover:bg-secondary/50',
+                  )}
+                >
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-secondary">
+                    {c.avatar ? (
+                      <img src={resolveServerUrl(c.avatar)} alt={c.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-sm font-bold">{c.name.charAt(0)}</div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{c.name}</p>
+                    {(c.city || c.state) && (
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {[c.city, c.state].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                  <span className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+                    marcado ? 'border-[#22c55e] bg-[#22c55e] text-white' : 'border-border',
+                  )}>
+                    {marcado && <Check className="h-3.5 w-3.5" />}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="border-t border-border p-4">
+          <Button
+            className="w-full bg-[#22c55e] text-white hover:bg-[#22c55e]/90"
+            disabled={salvando || carregando}
+            onClick={() => void onSave(Array.from(escolhidos))}
+          >
+            {salvando
+              ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              : `Salvar (${escolhidos.size})`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  ), document.body);
+}
+
 function StoryViewer({
   stories,
   startIndex,
   myUserId,
   isPremium,
   onClose,
+  onTogglePin,
 }: {
   stories: FeedStory[];
   startIndex: number;
   myUserId: string;
   isPremium: boolean;
   onClose: () => void;
+  onTogglePin: (autorId: string) => void | Promise<void>;
 }) {
   const { toast } = useToast();
   const navigate  = useNavigate();
@@ -473,9 +685,25 @@ function StoryViewer({
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-white truncate">{story.author.name}</p>
-          <p className="text-xs text-white/60">{timeLeft(story.expiresAt)}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="truncate text-sm font-semibold text-white">{story.author.name}</p>
+            {/* Chegou até aqui = o viewer está nos favoritos do autor. */}
+            {story.audience === 'favorites' && <SeloFavoritos />}
+          </div>
+          <p className="text-xs text-white/60">
+            {story.author.pinnedByMe ? 'Fixado · ' : ''}{timeLeft(story.expiresAt)}
+          </p>
         </div>
+        {/* Fixar: a partir daqui os stories deste perfil vêm no topo da fileira. */}
+        <button
+          type="button"
+          onClick={() => void onTogglePin(story.author.id)}
+          className={cn('p-1 transition-colors', story.author.pinnedByMe ? 'text-brand-pink' : 'text-white/70 hover:text-white')}
+          aria-label={story.author.pinnedByMe ? 'Desfixar perfil' : 'Fixar perfil no topo'}
+          title={story.author.pinnedByMe ? 'Desfixar perfil' : 'Fixar no topo dos stories'}
+        >
+          {story.author.pinnedByMe ? <Pin className="h-5 w-5 fill-current" /> : <Pin className="h-5 w-5" />}
+        </button>
         {story.mimeType.startsWith('video/') && (
           <button
             type="button"
@@ -903,6 +1131,17 @@ export default function Stories() {
   const [paywallOpen,  setPaywallOpen]  = useState(false);
   const [returnTo,     setReturnTo]     = useState<string | null>(null); // rota de retorno ao fechar (ex.: /feed)
 
+  // Quem aparece na fileira de interesse. Ver FiltroStories para a diferença
+  // entre fixados e curtidos.
+  const [filtro,       setFiltro]       = useState<FiltroStories>(leFiltroSalvo);
+  // Audiência do story que está sendo composto AGORA. Volta para 'all' depois
+  // de cada publicação de propósito: restrito precisa ser uma escolha
+  // consciente a cada post, não um modo em que se esquece de estar.
+  const [audiencia,    setAudiencia]    = useState<StoryAudience>('all');
+  const [favOpen,      setFavOpen]      = useState(false);
+  const [favSalvando,  setFavSalvando]  = useState(false);
+  const [favCount,     setFavCount]     = useState(0);
+
   // Composer de story de texto
   const [textOpen,  setTextOpen]  = useState(false);
   const [storyText, setStoryText] = useState('');
@@ -931,10 +1170,14 @@ export default function Stories() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [mineRes, feedRes] = await Promise.allSettled([
+    const [mineRes, feedRes, favRes] = await Promise.allSettled([
       storiesService.getMyStory(),
       storiesService.getFeed(),
+      // Só o tamanho interessa aqui: o composer precisa saber se dá para
+      // publicar restrito antes de a pessoa tentar e levar um erro.
+      storiesService.getFavorites(),
     ]);
+    if (favRes.status === 'fulfilled') setFavCount(favRes.value.favoriteIds.length);
     if (mineRes.status === 'fulfilled') {
       const list = (mineRes.value as any).stories ?? (mineRes.value.story ? [mineRes.value.story] : []);
       setMyStories(list);
@@ -949,6 +1192,60 @@ export default function Stories() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    try { localStorage.setItem(CHAVE_FILTRO, filtro); } catch { /* modo restrito: só não lembra */ }
+  }, [filtro]);
+
+  // A fileira que está na tela. O viewer recebe ESTA lista, não a completa —
+  // senão avançar dentro do story pularia para perfis que o filtro escondeu.
+  const feedVisivel = feed.filter((s) => (
+    filtro === 'fixados'  ? !!s.author.pinnedByMe :
+    filtro === 'curtidos' ? !!s.author.likedByMe  : true
+  ));
+  const totalFixados  = feed.filter((s) => s.author.pinnedByMe).length;
+  const totalCurtidos = feed.filter((s) => s.author.likedByMe).length;
+
+  const salvaFavoritos = async (ids: string[]) => {
+    setFavSalvando(true);
+    try {
+      const res = await storiesService.setFavorites(ids);
+      setFavCount(res.favoriteIds.length);
+      setFavOpen(false);
+      toast({
+        title: res.favoriteIds.length === 0 ? 'Lista de favoritos vazia' : `${res.favoriteIds.length} favorito(s) salvos`,
+        description: res.favoriteIds.length === 0
+          ? 'Sem favoritos você não consegue publicar stories restritos.'
+          : 'Só eles veem os stories marcados com a estrela verde.',
+      });
+      // A lista mudou: um story restrito que já está no ar pode ter ganhado
+      // ou perdido público, e o feed do próprio autor não reflete isso, mas
+      // recarregar mantém a tela coerente com o servidor.
+      await load();
+    } catch {
+      toast({ title: 'Erro ao salvar favoritos', variant: 'destructive' });
+    } finally {
+      setFavSalvando(false);
+    }
+  };
+
+  const alternaPin = async (autorId: string) => {
+    try {
+      const { pinned } = await storiesService.togglePin(autorId);
+      // Atualiza em memória em vez de recarregar: o viewer pode estar aberto,
+      // e um load() aqui remontaria a fileira embaixo da pessoa.
+      setFeed((antes) => antes.map((s) => (
+        s.author.id === autorId ? { ...s, author: { ...s.author, pinnedByMe: pinned } } : s
+      )));
+      toast({
+        title: pinned ? '📌 Perfil fixado' : 'Perfil desfixado',
+        description: pinned ? 'Os stories dele passam a aparecer primeiro para você.' : undefined,
+      });
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.message;
+      toast({ title: msg || 'Erro ao fixar perfil', variant: 'destructive' });
+    }
+  };
 
   const handleOpenStory = useCallback(async (idx: number) => {
     if (!isPremium) {
@@ -979,7 +1276,15 @@ export default function Stories() {
       if (ownIdx >= 0) { setPreviewIdx(ownIdx); return; }
     }
     if (openId) {
-      const idx = feed.findIndex((s) => s.id === openId);
+      // O link manda abrir um story específico. Se o filtro ligado esconde
+      // esse story, o filtro cede: quem clicou no link quer ver aquilo, e
+      // uma tela que não abre nada seria um beco sem saída sem explicação.
+      if (filtro !== 'todos' && !feedVisivel.some((s) => s.id === openId) && feed.some((s) => s.id === openId)) {
+        autoOpenedRef.current = false;
+        setFiltro('todos');
+        return;
+      }
+      const idx = feedVisivel.findIndex((s) => s.id === openId);
       if (idx >= 0) {
         // Amostra grátis vinda da barra do feed: abre mesmo sem premium (o viewer
         // trava ao avançar). Caso normal segue pelo gate do handleOpenStory.
@@ -987,7 +1292,60 @@ export default function Stories() {
         else void handleOpenStory(idx);
       }
     }
-  }, [loading, feed, myStories, handleOpenStory, isPremium]);
+  }, [loading, feed, feedVisivel, filtro, myStories, handleOpenStory, isPremium]);
+
+  // Escolha da audiência, igual nos dois composers. Fica junto do botão de
+  // publicar de propósito: é a última coisa que a pessoa lê antes de postar.
+  //
+  // "Favoritos" com a lista vazia não é bloqueado aqui — o toque abre a
+  // seleção. Desabilitar o botão sem dizer por quê seria pior.
+  const seletorDeAudiencia = (tema: 'escuro' | 'claro') => {
+    const escuro = tema === 'escuro';
+    const opcoes = [
+      { id: 'all'       as const, rotulo: 'Todos',     icone: <Globe className="h-3.5 w-3.5" /> },
+      { id: 'favorites' as const, rotulo: favCount > 0 ? `Favoritos (${favCount})` : 'Favoritos', icone: <SeloFavoritos className="h-4 w-4" /> },
+    ];
+    return (
+      <div className="flex items-center justify-center gap-2">
+        {opcoes.map((o) => {
+          const ativo = audiencia === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => {
+                setAudiencia(o.id);
+                if (o.id === 'favorites' && favCount === 0) setFavOpen(true);
+              }}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                ativo
+                  ? (o.id === 'favorites'
+                      ? 'border-[#22c55e] bg-[#22c55e]/15 text-[#22c55e]'
+                      : 'border-primary bg-primary/15 text-primary')
+                  : escuro
+                    ? 'border-white/20 text-white/60 hover:text-white'
+                    : 'border-border text-muted-foreground hover:text-foreground',
+              )}
+              aria-pressed={ativo}
+            >
+              {o.icone}
+              {o.rotulo}
+            </button>
+          );
+        })}
+        {audiencia === 'favorites' && (
+          <button
+            type="button"
+            onClick={() => setFavOpen(true)}
+            className={cn('text-xs underline underline-offset-2', escuro ? 'text-white/60 hover:text-white' : 'text-muted-foreground hover:text-foreground')}
+          >
+            editar
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const handleUpload = async (file: File) => {
     if (!file) return;
@@ -1031,8 +1389,17 @@ export default function Stories() {
     try {
       const media = await profileService.uploadMedia(editorFile, { isPrivate: false, source: 'post' });
       const text = ovText.trim();
-      await storiesService.create(String(media.id), text ? { text, textOverlay: { x: ovX, y: ovY, color: ovColor, size: ovSize } } : undefined);
-      toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
+      await storiesService.create(String(media.id), {
+        ...(text ? { text, textOverlay: { x: ovX, y: ovY, color: ovColor, size: ovSize } } : {}),
+        audience: audiencia,
+      });
+      toast({
+        title: '✨ Story publicado!',
+        description: audiencia === 'favorites'
+          ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
+          : 'Expira em 24 horas.',
+      });
+      setAudiencia('all');
       closeEditor();
       await load();
     } catch (err) {
@@ -1074,8 +1441,14 @@ export default function Stories() {
     if (!text) return;
     setUploading(true);
     try {
-      await storiesService.createText(text, storyBg);
-      toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
+      await storiesService.createText(text, storyBg, { audience: audiencia });
+      toast({
+        title: '✨ Story publicado!',
+        description: audiencia === 'favorites'
+          ? `Só os seus ${favCount} favoritos veem. Expira em 24 horas.`
+          : 'Expira em 24 horas.',
+      });
+      setAudiencia('all');
       setTextOpen(false);
       setStoryText('');
       setStoryBg(STORY_BACKGROUNDS[0].id);
@@ -1102,7 +1475,10 @@ export default function Stories() {
 
   const handleUploadError = (err: unknown) => {
     const msg = (err as any)?.response?.data?.message ?? '';
-    if (msg.includes('max_stories') || msg.includes('10 stories')) {
+    if ((err as any)?.response?.data?.error === 'no_favorites') {
+      toast({ title: 'Nenhum favorito escolhido', description: 'Escolha os perfis favoritos antes de publicar só para eles.', variant: 'destructive' });
+      setFavOpen(true);
+    } else if (msg.includes('max_stories') || msg.includes('10 stories')) {
       toast({ title: 'Limite atingido', description: 'Você já tem 10 stories ativos. Apague um antes de postar.', variant: 'destructive' });
     } else {
       toast({ title: 'Erro ao publicar story', variant: 'destructive' });
@@ -1137,6 +1513,16 @@ export default function Stories() {
             Meus Stories {myStories.length > 0 && <span className="text-brand-pink ml-1">{myStories.length}</span>}
           </h2>
           {/* Botões de adicionar sempre visíveis */}
+          {myStories.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setFavOpen(true)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <SeloFavoritos className="h-4 w-4" />
+              Favoritos{favCount > 0 ? ` ${favCount}` : ''}
+            </button>
+          )}
           {myStories.length > 0 && (
             <div className="flex items-center gap-2">
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
@@ -1154,6 +1540,12 @@ export default function Stories() {
               <button type="button" disabled={uploading} onClick={() => setTextOpen(true)}
                 className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                 <span className="text-[13px] leading-none font-bold">Aa</span> Texto
+              </button>
+              <button type="button" onClick={() => setFavOpen(true)}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                title="Escolher quem vê seus stories de favoritos">
+                <SeloFavoritos className="h-4 w-4" />
+                {favCount > 0 ? favCount : ''}
               </button>
               {uploading && <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />}
             </div>
@@ -1174,6 +1566,8 @@ export default function Stories() {
                   <StoryContent story={s} thumb />
                   {/* Overlay com stats */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  {/* Para eu saber, de relance, qual dos meus stories é restrito. */}
+                  {s.audience === 'favorites' && <SeloFavoritos className="absolute left-1.5 top-1.5 h-5 w-5" />}
                   <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-2">
                     <span className="flex items-center gap-0.5 text-[10px] text-white/80">
                       <Eye className="h-3 w-3" />{s.viewCount}
@@ -1253,19 +1647,53 @@ export default function Stories() {
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Stories de interesse
-          {feed.length > 0 && <span className="ml-2 text-brand-pink">{feed.length}</span>}
+          {feedVisivel.length > 0 && <span className="ml-2 text-brand-pink">{feedVisivel.length}</span>}
         </h2>
 
-        {feed.length === 0 ? (
+        {/* Filtro da fileira. Só aparece quando existe o que filtrar — com a
+            fileira vazia os botões não teriam o que fazer. */}
+        {feed.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {([
+              { id: 'todos'    as const, rotulo: 'Todos',        icone: Globe, total: feed.length },
+              { id: 'fixados'  as const, rotulo: 'Fixados',      icone: Pin,   total: totalFixados },
+              { id: 'curtidos' as const, rotulo: 'Que eu curti', icone: Heart, total: totalCurtidos },
+            ]).map(({ id, rotulo, icone: Icone, total }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setFiltro(id)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                  filtro === id
+                    ? 'border-primary bg-primary/15 text-primary'
+                    : 'border-border text-muted-foreground hover:text-foreground',
+                )}
+                aria-pressed={filtro === id}
+              >
+                <Icone className="h-3.5 w-3.5" />
+                {rotulo}
+                <span className={cn('tabular-nums', filtro === id ? 'text-primary/70' : 'text-muted-foreground/70')}>{total}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {feedVisivel.length === 0 ? (
           <div className="rounded-2xl border border-border bg-muted/30 p-8 text-center">
             <p className="text-sm text-muted-foreground">
-              Nenhum story disponível no momento.<br />
-              Quando perfis compatíveis publicarem, aparecerão aqui.
+              {filtro === 'fixados' ? (
+                <>Você ainda não fixou nenhum perfil.<br />Abra um story e toque no 📌 para acompanhar como fã.</>
+              ) : filtro === 'curtidos' ? (
+                <>Ninguém que você curtiu tem story agora.<br />Curta perfis para acompanhar só eles por aqui.</>
+              ) : (
+                <>Nenhum story disponível no momento.<br />Quando perfis compatíveis publicarem, aparecerão aqui.</>
+              )}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {feed.map((story, i) => (
+            {feedVisivel.map((story, i) => (
               <button
                 key={story.id}
                 type="button"
@@ -1290,6 +1718,13 @@ export default function Stories() {
                   </div>
                 )}
 
+                {/* Fixado: o alfinete explica por que este story está no topo. */}
+                {story.author.pinnedByMe && (
+                  <div className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-pink/90" title="Perfil fixado">
+                    <Pin className="h-3 w-3 fill-current text-white" />
+                  </div>
+                )}
+
                 {/* Avatar ring */}
                 <div className={cn(
                   'absolute top-2 left-2 h-8 w-8 rounded-full overflow-hidden ring-2 ring-offset-1 ring-offset-black',
@@ -1304,14 +1739,23 @@ export default function Stories() {
                   )}
                 </div>
 
+                {/* Estrela verde: só chega aqui story restrito de quem colocou
+                    o viewer nos favoritos. */}
+                {story.audience === 'favorites' && (
+                  <SeloFavoritos className="absolute left-8 top-7 h-4 w-4" />
+                )}
+
                 {/* Name */}
                 <p className="absolute bottom-2 left-2 right-2 text-[10px] font-semibold text-white truncate">
                   {story.author.name}
                 </p>
 
-                {/* Viewed indicator */}
+                {/* Viewed indicator — desloca quando o alfinete ocupa o canto */}
                 {story.viewed && (
-                  <div className="absolute top-2 right-2 flex items-center justify-center h-5 w-5 rounded-full bg-white/20">
+                  <div className={cn(
+                    'absolute top-2 flex items-center justify-center h-5 w-5 rounded-full bg-white/20',
+                    story.author.pinnedByMe ? 'right-9' : 'right-2',
+                  )}>
                     <Eye className="h-3 w-3 text-white/80" />
                   </div>
                 )}
@@ -1403,11 +1847,12 @@ export default function Stories() {
       {/* Viewer fullscreen */}
       {viewerIdx !== null && (
         <StoryViewer
-          stories={feed}
+          stories={feedVisivel}
           startIndex={viewerIdx}
           myUserId={user?.id || ''}
           isPremium={isPremium}
           onClose={() => { setViewerIdx(null); if (returnTo) navigate(returnTo); else void load(); }}
+          onTogglePin={alternaPin}
         />
       )}
 
@@ -1483,6 +1928,7 @@ export default function Stories() {
             {ovText.trim() ? (
               <p className="text-center text-[11px] text-white/50">✋ Arraste o texto sobre a mídia para posicionar</p>
             ) : null}
+            {seletorDeAudiencia('escuro')}
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* tamanho da fonte */}
               <div className="flex items-center gap-1">
@@ -1559,6 +2005,8 @@ export default function Stories() {
               ))}
             </div>
 
+            <div className="mb-3">{seletorDeAudiencia('claro')}</div>
+
             <Button
               className="w-full gap-2 bg-gradient-to-r from-primary to-violet-600"
               disabled={uploading || !storyText.trim()}
@@ -1572,6 +2020,13 @@ export default function Stories() {
           </div>
         </div>
       )}
+
+      <FavoritesPicker
+        open={favOpen}
+        onClose={() => setFavOpen(false)}
+        onSave={salvaFavoritos}
+        salvando={favSalvando}
+      />
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 

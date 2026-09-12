@@ -1951,5 +1951,160 @@ describe('nosigilo backend', () => {
 
     const removed = await ctx.db.queryOne('SELECT id FROM push_subscriptions WHERE endpoint = ? LIMIT 1', [endpoint]);
     expect(removed).toBeNull();
+  });
+  // ── Stories: favoritos e perfis fixados ───────────────────────────────────
+  //
+  // As duas listas apontam para lados opostos e é fácil trocá-las ao mexer no
+  // feed de stories, então os testes prendem exatamente essa diferença:
+  //
+  //   favoritos → quem PODE VER o meu story restrito (muda permissão)
+  //   fixados   → quem eu vejo primeiro (muda só a minha ordem)
+  it('story de favoritos so aparece para quem esta na lista', async () => {
+    const autor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Favoritos', email: 'autor-fav@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const amigo = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Amigo Favorito', email: 'amigo-fav@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const estranho = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Estranho', email: 'estranho-fav@example.com', password: 'senha123', gender: 'Homem',
+    });
+
+    // Só quem o autor curtiu pode entrar na lista de favoritos.
+    await request(ctx.app)
+      .post('/api/likes')
+      .set('Authorization', `Bearer ${autor.token}`)
+      .send({ targetType: 'user', targetId: amigo.user.id })
+      .expect(200);
+
+    const candidatos = await request(ctx.app)
+      .get('/api/story-favorites')
+      .set('Authorization', `Bearer ${autor.token}`)
+      .expect(200);
+    expect(candidatos.body.candidates.map((c: any) => c.id)).toContain(amigo.user.id);
+    expect(candidatos.body.candidates.map((c: any) => c.id)).not.toContain(estranho.user.id);
+
+    // Publicar restrito sem ninguém na lista é recusado: seria um story que
+    // ninguém vê, e quase certamente não é o que a pessoa quis fazer.
+    await request(ctx.app)
+      .post('/api/stories')
+      .set('Authorization', `Bearer ${autor.token}`)
+      .send({ text: 'ninguem ve', background: 'sunset', audience: 'favorites', favoriteIds: [] })
+      .expect(400);
+
+    const criado = await request(ctx.app)
+      .post('/api/stories')
+      .set('Authorization', `Bearer ${autor.token}`)
+      .send({ text: 'so para os favoritos', background: 'sunset', audience: 'favorites', favoriteIds: [amigo.user.id] })
+      .expect(200);
+    expect(criado.body.audience).toBe('favorites');
+
+    const doAmigo = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${amigo.token}`)
+      .expect(200);
+    const visto = doAmigo.body.stories.find((st: any) => st.id === criado.body.id);
+    expect(visto).toBeTruthy();
+    expect(visto.audience).toBe('favorites');
+
+    const doEstranho = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${estranho.token}`)
+      .expect(200);
+    expect(doEstranho.body.stories.some((st: any) => st.id === criado.body.id)).toBe(false);
+
+    // O id sozinho não abre o story: ver e curtir também checam a lista.
+    await request(ctx.app)
+      .post(`/api/stories/${criado.body.id}/view`)
+      .set('Authorization', `Bearer ${estranho.token}`)
+      .send({})
+      .expect(403);
+    await request(ctx.app)
+      .post(`/api/stories/${criado.body.id}/like`)
+      .set('Authorization', `Bearer ${estranho.token}`)
+      .send({})
+      .expect(403);
+
+    // Tirar da lista tira o acesso ao story que já está no ar — a permissão é
+    // lida na hora, não congelada no momento do post.
+    await request(ctx.app)
+      .put('/api/story-favorites')
+      .set('Authorization', `Bearer ${autor.token}`)
+      .send({ favoriteIds: [] })
+      .expect(200);
+
+    const depois = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${amigo.token}`)
+      .expect(200);
+    expect(depois.body.stories.some((st: any) => st.id === criado.body.id)).toBe(false);
+  });
+
+  it('perfil fixado vem primeiro e nao muda quem pode ver', async () => {
+    const comum = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Comum', email: 'autor-comum@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const fixado = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Fixado', email: 'autor-fixado@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const fa = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Fa', email: 'fa-stories@example.com', password: 'senha123', gender: 'Homem',
+    });
+
+    // O fixado posta ANTES, então sem o pin ele ficaria atrás do mais recente.
+    const storyFixado = await request(ctx.app)
+      .post('/api/stories')
+      .set('Authorization', `Bearer ${fixado.token}`)
+      .send({ text: 'do perfil fixado', background: 'sunset' })
+      .expect(200);
+    const storyComum = await request(ctx.app)
+      .post('/api/stories')
+      .set('Authorization', `Bearer ${comum.token}`)
+      .send({ text: 'do perfil comum', background: 'sunset' })
+      .expect(200);
+
+    const antes = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .expect(200);
+    const posAntes = (id: string) => antes.body.stories.findIndex((st: any) => st.id === id);
+    expect(posAntes(storyComum.body.id)).toBeLessThan(posAntes(storyFixado.body.id));
+
+    const pin = await request(ctx.app)
+      .post('/api/story-pins')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .send({ userId: fixado.user.id })
+      .expect(200);
+    expect(pin.body.pinned).toBe(true);
+
+    const depois = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .expect(200);
+    expect(depois.body.stories[0].id).toBe(storyFixado.body.id);
+    expect(depois.body.stories[0].author.pinnedByMe).toBe(true);
+    // Fixar não é curtir: o filtro "que eu curti" continua sem este perfil.
+    expect(depois.body.stories[0].author.likedByMe).toBe(false);
+
+    // Fixar é privado: não muda nada na fileira de quem foi fixado.
+    const daVisaoDoFixado = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${fixado.token}`)
+      .expect(200);
+    expect(daVisaoDoFixado.body.stories.every((st: any) => st.author.pinnedByMe === false)).toBe(true);
+
+    // O mesmo endpoint desfixa.
+    const desfaz = await request(ctx.app)
+      .post('/api/story-pins')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .send({ userId: fixado.user.id })
+      .expect(200);
+    expect(desfaz.body.pinned).toBe(false);
+
+    const semPin = await request(ctx.app)
+      .get('/api/stories')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .expect(200);
+    expect(semPin.body.stories[0].id).toBe(storyComum.body.id);
   });
 });

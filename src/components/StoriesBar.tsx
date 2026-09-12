@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Eye, Crown } from 'lucide-react';
+import { Plus, Eye, Crown, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
@@ -11,7 +11,8 @@ import { hasPremiumAccess } from '@/utils/premium';
 type BarFeedStory = {
   id: string;
   viewed: boolean;
-  author: { id: string; name: string; avatar: string | null };
+  audience?: 'all' | 'favorites';
+  author: { id: string; name: string; avatar: string | null; pinnedByMe?: boolean };
 };
 
 type AuthorGroup = {
@@ -20,6 +21,11 @@ type AuthorGroup = {
   avatar: string | null;
   firstStoryId: string;
   allViewed: boolean;
+  // Fixado por mim: vem antes de todo o resto, igual à ordem da tela /stories.
+  pinned: boolean;
+  // Algum story do autor é restrito aos favoritos dele. Só chega aqui story
+  // que este usuário pode ver, então o anel verde diz "você está na lista".
+  paraFavoritos: boolean;
 };
 
 /**
@@ -58,6 +64,7 @@ export default function StoriesBar() {
         const existing = byAuthor.get(a.id);
         if (existing) {
           if (!s.viewed) existing.allViewed = false;
+          if (s.audience === 'favorites') existing.paraFavoritos = true;
         } else {
           byAuthor.set(a.id, {
             authorId: a.id,
@@ -65,12 +72,15 @@ export default function StoriesBar() {
             avatar: a.avatar,
             firstStoryId: s.id,
             allViewed: s.viewed,
+            pinned: !!a.pinnedByMe,
+            paraFavoritos: s.audience === 'favorites',
           });
         }
       }
-      // Não-vistos primeiro
+      // Fixados primeiro (é o que "acompanhar como fã" promete), e dentro de
+      // cada bloco os não-vistos antes dos vistos.
       const arr = Array.from(byAuthor.values()).sort(
-        (x, y) => Number(x.allViewed) - Number(y.allViewed),
+        (x, y) => Number(y.pinned) - Number(x.pinned) || Number(x.allViewed) - Number(y.allViewed),
       );
       setGroups(arr);
     }
@@ -160,7 +170,20 @@ export default function StoriesBar() {
             }
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
-            <div className={cn('h-16 w-16 rounded-full p-[2px]', !unlocked ? 'bg-gradient-to-tr from-yellow-400 to-amber-500' : g.allViewed ? ringMuted : ringActive)}>
+            <div className={cn(
+              'relative h-16 w-16 rounded-full p-[2px]',
+              !unlocked
+                ? 'bg-gradient-to-tr from-yellow-400 to-amber-500'
+                : g.allViewed
+                  ? ringMuted
+                  // Anel verde para story de favoritos, como no Instagram.
+                  : g.paraFavoritos ? 'bg-[#22c55e]' : ringActive,
+            )}>
+              {unlocked && g.pinned && (
+                <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-brand-pink" title="Perfil fixado">
+                  <Pin className="h-2.5 w-2.5 fill-current text-white" />
+                </span>
+              )}
               <div className="relative h-full w-full overflow-hidden rounded-full bg-background p-[2px]">
                 {/* Avatar — borrado p/ bloqueado (Premium) ou não-vistos (curiosidade) */}
                 <div className={cn('h-full w-full overflow-hidden rounded-full', (!unlocked || !g.allViewed) && 'scale-110 blur-[5px] brightness-90')}>

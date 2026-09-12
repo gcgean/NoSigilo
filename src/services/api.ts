@@ -1456,13 +1456,25 @@ export const suggestionsService = {
 export type StoryMine = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null;
+  audience?: StoryAudience;
   createdAt: string; expiresAt: string;
   viewCount: number; commentCount: number; likeCount: number;
+};
+
+// 'favorites' num story do feed significa "voce esta nos favoritos de quem
+// postou" — o backend so entrega o story restrito a quem pode ve-lo, entao o
+// campo aqui serve so para desenhar a estrela verde.
+export type StoryAudience = 'all' | 'favorites';
+
+export type StoryFavoriteCandidate = {
+  id: string; name: string; avatar: string | null;
+  city: string | null; state: string | null; isFavorite: boolean;
 };
 
 export type StoryFeedItem = {
   id: string; mediaUrl: string | null; mimeType: string;
   text?: string | null; background?: string | null;
+  audience?: StoryAudience;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
   reactions?: Array<{ type: string; count: number }>;
@@ -1472,6 +1484,11 @@ export type StoryFeedItem = {
     city: string | null; state: string | null; bio: string | null;
     fetiches: string[]; intentions: string[];
     distanceKm: number | null;
+    // Curtir perfil e o "seguir" deste app; alimenta o filtro da tela de Stories.
+    likedByMe?: boolean;
+    // Perfil fixado: os stories dele vem no topo da MINHA fileira. E preferencia
+    // de leitura, privada — nao tem relacao com quem pode ver o que eu posto.
+    pinnedByMe?: boolean;
   };
 };
 
@@ -1487,17 +1504,48 @@ export const storiesService = {
     const res = await apiClient.get('/stories');
     return res.data as { stories: StoryFeedItem[] };
   },
-  create: async (mediaId: string, opts?: { text?: string; textOverlay?: { x: number; y: number; color: string; size: string } }) => {
+  create: async (
+    mediaId: string,
+    opts?: {
+      text?: string;
+      textOverlay?: { x: number; y: number; color: string; size: string };
+      audience?: StoryAudience;
+      // So vai quando a audiencia e 'favorites': o backend regrava a lista com
+      // o que foi escolhido na hora de postar.
+      favoriteIds?: string[];
+    },
+  ) => {
     const res = await apiClient.post('/stories', {
       mediaId,
       ...(opts?.text ? { text: opts.text } : {}),
       ...(opts?.text && opts?.textOverlay ? { textOverlay: opts.textOverlay } : {}),
+      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : {}),
     });
     return res.data as { id: string; expiresAt: string };
   },
-  createText: async (text: string, background: string) => {
-    const res = await apiClient.post('/stories', { text, background });
+  createText: async (
+    text: string,
+    background: string,
+    opts?: { audience?: StoryAudience; favoriteIds?: string[] },
+  ) => {
+    const res = await apiClient.post('/stories', {
+      text,
+      background,
+      ...(opts?.audience === 'favorites' ? { audience: 'favorites', favoriteIds: opts.favoriteIds ?? [] } : {}),
+    });
     return res.data as { id: string; expiresAt: string };
+  },
+  getFavorites: async () => {
+    const res = await apiClient.get('/story-favorites');
+    return res.data as { candidates: StoryFavoriteCandidate[]; favoriteIds: string[] };
+  },
+  setFavorites: async (favoriteIds: string[]) => {
+    const res = await apiClient.put('/story-favorites', { favoriteIds });
+    return res.data as { ok: boolean; favoriteIds: string[] };
+  },
+  togglePin: async (userId: string) => {
+    const res = await apiClient.post('/story-pins', { userId });
+    return res.data as { pinned: boolean };
   },
   remove: async (id: string) => {
     const res = await apiClient.delete(`/stories/${id}`);
