@@ -58,7 +58,7 @@ const BENEFITS = [
   { icon: Repeat2,    text: 'Comissão recorrente enquanto o assinante mantiver o plano' },
   { icon: Shield,     text: 'Sem taxa de adesão, sem mensalidade — 100% gratuito participar' },
   { icon: Smartphone, text: 'Gerencie tudo pelo celular, pelo painel do promotor' },
-  { icon: Zap,        text: 'Pagamento automático via Pix todo mês' },
+  { icon: Zap,        text: 'Pagamento via Pix a partir de R$ 10,00 acumulados' },
   { icon: Users,      text: 'Sem limite de indicações — quanto mais você divulga, mais ganha' },
   { icon: Star,       text: 'Ganhe badges exclusivos conforme sobe de nível' },
 ];
@@ -70,7 +70,11 @@ const FAQS = [
   },
   {
     q: 'Como recebo o pagamento?',
-    a: 'Via Pix, mensalmente. Você cadastra a sua chave Pix ao ativar o perfil de promotor e recebemos o pagamento até o dia 10 do mês seguinte ao gerado.',
+    a: 'Via Pix, na chave que você cadastra ao ativar o perfil de promotor. O pagamento sai até o dia 10 do mês seguinte, desde que o seu saldo tenha atingido R$ 10,00.',
+  },
+  {
+    q: 'Existe valor mínimo para receber?',
+    a: 'Sim: R$ 10,00. É o mínimo para o Pix ser enviado, e vale sobre o saldo acumulado, não sobre o mês fechado — se você fizer R$ 6,00 num mês e R$ 5,00 no outro, os R$ 11,00 saem juntos. Nada é perdido: o saldo fica guardado até chegar lá.',
   },
   {
     q: 'Quando a comissão é confirmada?',
