@@ -38,19 +38,76 @@
 -- como se fosse o cabecalho e quebrava. Com --csv nenhum comando de barra
 -- imprime nada e o arquivo comeca direto no cabecalho.
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- DUAS FONTES, porque a Stripe nao passa pela tabela payments.
+--
+-- Mercado Pago / Asaas / LivePix: o hub cria fatura, cobranca e pagamento, e
+-- cada pagamento confirmado vira uma linha em payments com status 'captured'.
+--
+-- Stripe (recorrencia nativa): a Stripe cobra o cartao sozinha a cada ciclo e
+-- so avisa com invoice.paid. O hub traduz para 'subscription.renewed', ativa a
+-- assinatura e renova a licenca — e NAO grava nada em payments nem em charges.
+-- O unico registro de que entrou dinheiro e o proprio webhook guardado em
+-- webhook_events.
+--
+-- A primeira versao deste script lia so payments e, por isso, nao enxergava
+-- NENHUM pagamento da Stripe. Foi o que fez o bloco 4 do diagnostico de
+-- 12/09/2026 apontar 4 comissoes "sem pagamento": eram assinantes Stripe
+-- pagantes, com licenca de origem 'subscription' ativa.
+--
+-- Nao ha risco de contar o mesmo pagamento duas vezes: Stripe avulsa
+-- (checkout sem assinatura) segue pelo fluxo de fatura e aparece so na
+-- primeira parte; recorrencia aparece so na segunda. E webhook_events tem
+-- UNIQUE (gateway_name, external_event_id), entao reentrega da Stripe nao
+-- duplica linha.
+
+WITH todos AS (
+  -- 1) Fluxo de fatura: MP, Asaas, LivePix, Stripe avulsa.
+  SELECT
+    p.customer_id                                    AS customer_id,
+    COALESCE(s.product_id, o.product_id)             AS product_id,
+    COALESCE(p.captured_at, p.created_at)            AS pago_em,
+    p.amount::bigint                                 AS centavos
+  FROM payments p
+  JOIN charges  c ON c.id = p.charge_id
+  JOIN invoices i ON i.id = c.invoice_id
+  LEFT JOIN subscriptions s ON s.id = i.subscription_id
+  LEFT JOIN orders        o ON o.id = i.order_id
+  WHERE p.status = 'captured'
+    AND p.refunded_at IS NULL
+
+  UNION ALL
+
+  -- 2) Recorrencia Stripe: so existe como webhook.
+  SELECT
+    s.customer_id,
+    s.product_id,
+    -- created da fatura na Stripe (epoch em segundos); cai para a chegada do
+    -- webhook quando o campo nao vier.
+    COALESCE(
+      to_timestamp(NULLIF(w.payload #>> '{data,object,created}', '')::bigint),
+      w.created_at
+    )                                                AS pago_em,
+    COALESCE(NULLIF(w.payload #>> '{data,object,amount_paid}', '')::bigint, 0) AS centavos
+  FROM webhook_events w
+  JOIN subscriptions s
+    ON s.external_subscription_id = COALESCE(
+         NULLIF(w.payload ->> 'externalSubscriptionId', ''),
+         NULLIF(w.payload #>> '{data,object,subscription}', ''),
+         NULLIF(w.payload #>> '{data,object,parent,subscription_details,subscription}', '')
+       )
+  WHERE w.gateway_name = 'stripe'
+    AND w.event_type = 'subscription.renewed'
+    -- Fatura de R$ 0 (cupom, periodo de teste da Stripe) nao e pagamento.
+    AND COALESCE(NULLIF(w.payload #>> '{data,object,amount_paid}', '')::bigint, 0) > 0
+)
 SELECT
-  p.customer_id::text                                          AS hub_customer_id,
-  COALESCE(s.product_id, o.product_id)::text                   AS hub_product_id,
-  to_char(COALESCE(p.captured_at, p.created_at), 'YYYY-MM')    AS periodo,
-  COUNT(*)                                                     AS pagamentos,
-  SUM(p.amount)                                                AS total_centavos,
-  MIN(COALESCE(p.captured_at, p.created_at))::date             AS primeiro_do_mes
-FROM payments p
-JOIN charges  c ON c.id = p.charge_id
-JOIN invoices i ON i.id = c.invoice_id
-LEFT JOIN subscriptions s ON s.id = i.subscription_id
-LEFT JOIN orders        o ON o.id = i.order_id
-WHERE p.status = 'captured'
-  AND p.refunded_at IS NULL
+  customer_id::text                    AS hub_customer_id,
+  product_id::text                     AS hub_product_id,
+  to_char(pago_em, 'YYYY-MM')          AS periodo,
+  COUNT(*)                             AS pagamentos,
+  SUM(centavos)                        AS total_centavos,
+  MIN(pago_em)::date                   AS primeiro_do_mes
+FROM todos
 GROUP BY 1, 2, 3
 ORDER BY 1, 3;
