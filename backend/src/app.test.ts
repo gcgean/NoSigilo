@@ -2228,4 +2228,55 @@ describe('nosigilo backend', () => {
       .expect(200);
     expect(semPin.body.stories[0].id).toBe(storyComum.body.id);
   });
+
+  it('quem foi fixado ve a lista de fas, e so ele', async () => {
+    const idolo = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Idolo', email: 'idolo-fas@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const fa = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Fa Numero Um', email: 'fa-numero-um@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const terceiro = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Terceiro', email: 'terceiro-fas@example.com', password: 'senha123', gender: 'Mulher',
+    });
+
+    await request(ctx.app)
+      .post('/api/story-pins')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .send({ userId: idolo.user.id })
+      .expect(200);
+
+    const lista = await request(ctx.app)
+      .get('/api/story-fans')
+      .set('Authorization', `Bearer ${idolo.token}`)
+      .expect(200);
+    expect(lista.body.fans.map((x: any) => x.id)).toContain(fa.user.id);
+
+    // A lista é de quem fixou VOCÊ. Ninguém mais enxerga esse vínculo.
+    const doTerceiro = await request(ctx.app)
+      .get('/api/story-fans')
+      .set('Authorization', `Bearer ${terceiro.token}`)
+      .expect(200);
+    expect(doTerceiro.body.fans.map((x: any) => x.id)).not.toContain(fa.user.id);
+
+    // Desfixar tira da lista na hora.
+    await request(ctx.app)
+      .post('/api/story-pins')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .send({ userId: idolo.user.id })
+      .expect(200);
+
+    const depois = await request(ctx.app)
+      .get('/api/story-fans')
+      .set('Authorization', `Bearer ${idolo.token}`)
+      .expect(200);
+    expect(depois.body.fans.map((x: any) => x.id)).not.toContain(fa.user.id);
+
+    // Ver a lista é pago, igual a ver quem assistiu ao story. O fã é Homem,
+    // que nasce sem trial, então serve de caso não-assinante.
+    await request(ctx.app)
+      .get('/api/story-fans')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .expect(403);
+  });
 });

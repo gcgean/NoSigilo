@@ -171,6 +171,7 @@ type FeedStory = {
 };
 
 type Viewer   = { id: string; name: string; avatar: string | null; viewedAt: string; reaction: string | null; comment: string | null };
+type Fan      = { id: string; name: string; avatar: string | null; city: string | null; state: string | null; pinnedAt: string };
 type Comment  = { id: string; text: string; createdAt: string; commenter: { id: string; name: string; avatar: string | null } };
 
 function timeLeft(expiresAt: string) {
@@ -931,21 +932,27 @@ function StatsModal({
 }) {
   const navigate = useNavigate();
   const bottomInset = useBottomChromeInset();
-  const [tab, setTab]         = useState<'viewers' | 'comments'>('viewers');
+  const [tab, setTab]         = useState<'viewers' | 'comments' | 'fans'>('viewers');
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [fans, setFans]       = useState<Fan[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!isPremium) { setLoading(false); return; }
     setLoading(true);
-    Promise.all([
+    // allSettled, não all: a lista de fãs não pertence a este story (é do
+    // perfil), então uma falha nela não deve derrubar as outras duas — o
+    // que a pessoa abriu para ver foi quem assistiu.
+    Promise.allSettled([
       storiesService.getViewers(storyId),
       storiesService.getComments(storyId),
-    ]).then(([v, c]) => {
-      setViewers(v.viewers);
-      setComments(c.comments);
-    }).catch(() => {}).finally(() => setLoading(false));
+      storiesService.getFans(),
+    ]).then(([v, c, fa]) => {
+      if (v.status === 'fulfilled') setViewers(v.value.viewers);
+      if (c.status === 'fulfilled') setComments(c.value.comments);
+      if (fa.status === 'fulfilled') setFans(fa.value.fans);
+    }).finally(() => setLoading(false));
   }, [storyId, isPremium]);
 
   return (
@@ -985,17 +992,19 @@ function StatsModal({
           <>
             {/* Tabs */}
             <div className="flex border-b">
-              {(['viewers', 'comments'] as const).map((t) => (
+              {(['viewers', 'comments', 'fans'] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setTab(t)}
                   className={cn(
-                    'flex-1 py-3 text-sm font-medium transition-colors',
+                    'flex-1 py-3 text-xs font-medium transition-colors sm:text-sm',
                     tab === t ? 'border-b-2 border-primary text-brand-pink' : 'text-muted-foreground'
                   )}
                 >
-                  {t === 'viewers' ? `👁️ ${viewers.length} visualizações` : `💬 ${comments.length} comentários`}
+                  {t === 'viewers' ? `👁️ ${viewers.length}`
+                    : t === 'comments' ? `💬 ${comments.length}`
+                    : `📌 ${fans.length} fãs`}
                 </button>
               ))}
             </div>
@@ -1076,6 +1085,49 @@ function StatsModal({
                     </div>
                     );
                   })
+                )
+              ) : tab === 'fans' ? (
+                fans.length === 0 ? (
+                  <p className="px-6 py-8 text-center text-sm text-muted-foreground">
+                    Ninguém fixou seu perfil ainda.<br />
+                    Quem fixa recebe seus stories no topo da fileira — é o público que volta.
+                  </p>
+                ) : (
+                  fans.map((fa) => (
+                    <div key={fa.id} className="flex w-full items-center gap-3 border-b px-5 py-3 transition-colors last:border-0 hover:bg-secondary/40">
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); navigate(`/users/${fa.id}`); }}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                      >
+                        <div className="relative shrink-0">
+                          {fa.avatar ? (
+                            <img src={resolveServerUrl(fa.avatar)} alt={fa.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-brand-pink/60" />
+                          ) : (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary text-sm font-bold ring-2 ring-brand-pink/60">
+                              {fa.name.charAt(0)}
+                            </div>
+                          )}
+                          <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-brand-pink">
+                            <Pin className="h-2.5 w-2.5 fill-current text-white" />
+                          </span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="min-w-0 truncate text-sm font-medium hover:underline">{fa.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {[fa.city, fa.state].filter(Boolean).join(' · ') || 'Acompanha seus stories'}
+                          </p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); navigate(`/chat?userId=${fa.id}`); }}
+                        className="flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-primary/90 active:scale-95"
+                      >
+                        <Send className="h-3.5 w-3.5" /> Mensagem
+                      </button>
+                    </div>
+                  ))
                 )
               ) : (
                 comments.length === 0 ? (

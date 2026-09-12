@@ -10,7 +10,9 @@
 --
 --   story_pins      (085)  eu -> quem eu QUERO VER primeiro.
 --                          Nao muda permissao nenhuma; so muda a ordem da
---                          MINHA fileira. A pessoa fixada nao fica sabendo.
+--                          MINHA fileira. Nao e secreto, porem: quem foi
+--                          fixado ve a lista de fas em GET /api/story-fans,
+--                          junto de quem viu o story.
 --                          Na tela: "Fixados", alfinete.
 --
 -- Uma nao implica a outra: da para fixar quem nunca vai ver meus stories, e

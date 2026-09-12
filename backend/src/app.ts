@@ -5780,14 +5780,64 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true, favoriteIds: salvos });
   });
 
+  // GET /api/story-fans — quem me fixou.
+  //
+  // Aparece junto de "quem viu" porque responde a mesma pergunta por outro
+  // angulo: quem viu diz quem passou pelo story de hoje; quem fixou diz quem
+  // decidiu nao perder os proximos. Para quem posta, o segundo grupo vale mais
+  // — e publico recorrente, nao visita solta.
+  //
+  // Premium, igual a lista de quem viu: é o que a assinatura vende.
+  //
+  // ATENCAO: isto torna o ato de fixar VISIVEL para quem foi fixado. A migracao
+  // 085 nasceu dizendo o contrario ("a pessoa fixada nao fica sabendo") e o
+  // comentario de la foi corrigido junto com este endpoint. Nenhuma tela
+  // prometeu sigilo ao usuario — o botao so diz "Fixar no topo dos stories".
+  app.get('/api/story-fans', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+
+    const subscriptionsEnabled = await getSubscriptionsEnabled(db);
+    const me = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
+    if (!hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS)) {
+      res.status(403).json({ error: 'premium_required' });
+      return;
+    }
+
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.city, u.state, p.created_at,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS avatar_filename
+       FROM story_pins p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.pinned_user_id = ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND u.deleted_at IS NULL
+       ORDER BY p.created_at DESC
+       LIMIT 200`,
+      [userId]
+    )) as any[];
+
+    res.json({
+      fans: rows.map((r: any) => ({
+        id: String(r.id),
+        name: String(r.name),
+        avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        city: r.city ? String(r.city) : null,
+        state: r.state ? String(r.state) : null,
+        pinnedAt: String(r.created_at),
+      })),
+    });
+  });
+
   // POST /api/story-pins — fixa ou desfixa um perfil na MINHA fileira de stories.
   //
   // Toggle em vez de POST/DELETE separados porque é um botão só na tela, e o
   // cliente não precisa saber o estado atual para acertar a chamada.
   //
-  // Não mexe em permissão nenhuma e não notifica ninguém: fixar é uma
-  // preferência de leitura, privada de quem fixa. Ver story-favorites para a
-  // lista que vai no sentido contrário.
+  // Não mexe em permissão nenhuma e não notifica ninguém na hora. Mas não é
+  // secreto: quem foi fixado vê a lista de fãs em GET /api/story-fans, junto
+  // de quem viu o story. Ver story-favorites para a lista do sentido oposto.
   app.post('/api/story-pins', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const alvo = String(req.body?.userId || '').trim();

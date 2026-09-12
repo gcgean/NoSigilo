@@ -1543,6 +1543,12 @@ export const storiesService = {
     const res = await apiClient.put('/story-favorites', { favoriteIds });
     return res.data as { ok: boolean; favoriteIds: string[] };
   },
+  // Quem me fixou. Fica junto de quem viu o story na tela de estatisticas:
+  // quem viu e a visita de hoje, quem fixou e o publico que volta.
+  getFans: async () => {
+    const res = await apiClient.get('/story-fans');
+    return res.data as { fans: Array<{ id: string; name: string; avatar: string | null; city: string | null; state: string | null; pinnedAt: string }> };
+  },
   togglePin: async (userId: string) => {
     const res = await apiClient.post('/story-pins', { userId });
     return res.data as { pinned: boolean };
