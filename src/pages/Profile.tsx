@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, MoreVertical, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { NavLink, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -117,6 +120,15 @@ function PhotoItem({
   onRefreshPrivatePhotos?: () => Promise<void>;
 }) {
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  // Confirmação desenhada na própria página, e não window.confirm().
+  //
+  // Suporte de 13/09/2026: usuária tocava em "Excluir" e nada acontecia — o
+  // log do nginx não tinha NENHUM DELETE das fotos dela, ou seja, o pedido
+  // nunca saía do celular. Navegadores embutidos de app (Instagram, Facebook,
+  // TikTok...) bloqueiam window.confirm: ele volta false na hora, sem mostrar
+  // janela nenhuma, e o botão falha em silêncio. Boa parte do tráfego chega
+  // exatamente por esses navegadores.
+  const [confirmacao, setConfirmacao] = React.useState<null | 'excluir' | 'principal'>(null);
   const [likes, setLikes] = React.useState<Array<{ id: string; reaction?: string | null; user: { id: string; name: string; avatar?: string | null } }>>([]);
   const [isLoadingLikes, setIsLoadingLikes] = React.useState(false);
   const [showLikes, setShowLikes] = React.useState(false);
@@ -270,12 +282,7 @@ function PhotoItem({
                 variant="secondary"
                 className="h-10 flex-1 justify-center text-xs"
                 disabled={photo.isMain || photo.isPrivate}
-                onClick={() => {
-                  if (window.confirm('Definir esta foto como sua foto de perfil?')) {
-                    void onSetMain(photo.id);
-                    setIsPreviewOpen(false);
-                  }
-                }}
+                onClick={() => setConfirmacao('principal')}
               >
                 {photo.isMain ? 'Principal' : 'Definir principal'}
               </Button>
@@ -289,28 +296,18 @@ function PhotoItem({
               >
                 {photo.isPrivate ? 'Tornar pública' : 'Tornar privada'}
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    className="h-10 w-10 shrink-0"
-                    aria-label="Mais opções"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) { void onDelete(photo.id); setIsPreviewOpen(false); } }}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Excluir foto
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* Excluir fica à vista. Antes estava num menu de três pontinhos
+                  sem rótulo, e quem procurava "apagar" não achava. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-10 flex-1 justify-center gap-1.5 text-xs"
+                onClick={() => setConfirmacao('excluir')}
+              >
+                <Trash2 className="h-4 w-4" />
+                Excluir
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -331,13 +328,11 @@ function PhotoItem({
           variant="ghost"
           className="text-white pointer-events-auto"
           aria-label="Definir como foto de perfil"
-          onClick={() => {
-            if (window.confirm('Definir esta foto como sua foto de perfil?')) void onSetMain(photo.id);
-          }}
+          onClick={() => setConfirmacao('principal')}
         >
           <Edit2 className="w-4 h-4" />
         </Button>
-        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" aria-label="Excluir foto" onClick={() => { if (window.confirm('Excluir esta foto? Esta ação não pode ser desfeita.')) void onDelete(photo.id); }}>
+        <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" aria-label="Excluir foto" onClick={() => setConfirmacao('excluir')}>
           <Trash2 className="w-4 h-4" />
         </Button>
         <Button type="button" size="icon" variant="ghost" className="text-white pointer-events-auto" disabled={isTogglingVisibility} aria-label={photo.isPrivate ? 'Tornar foto pública' : 'Tornar foto privada'} onClick={() => void onToggleVisibility(photo.id, photo.isPrivate)}>
@@ -348,10 +343,53 @@ function PhotoItem({
         </Button>
       </div>
 
+      {/* Lixeira direto na miniatura, só no celular (no desktop o hover já
+          mostra). 36px com área de toque de 44px pelo padding: abaixo disso o
+          iOS erra o alvo. stopPropagation para não abrir a foto junto. */}
+      <button
+        type="button"
+        aria-label="Excluir foto"
+        onClick={(e) => { e.stopPropagation(); setConfirmacao('excluir'); }}
+        className="absolute right-0 top-0 p-1 sm:hidden"
+      >
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20">
+          <Trash2 className="h-4 w-4" />
+        </span>
+      </button>
+
       {/* Mobile hint */}
       <div className="absolute bottom-2 left-2 right-2 rounded-lg bg-black/55 px-2 py-1.5 text-[11px] text-white/90 sm:hidden pointer-events-none">
-        {photo.isPrivate ? 'Foto privada • toque para ver opções' : 'Foto pública • toque para ver curtidas'}
+        {photo.isPrivate ? 'Privada • toque para opções' : 'Pública • toque para opções'}
       </div>
+
+      <AlertDialog open={confirmacao !== null} onOpenChange={(aberto) => { if (!aberto) setConfirmacao(null); }}>
+        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmacao === 'excluir' ? 'Excluir esta foto?' : 'Usar como foto de perfil?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmacao === 'excluir'
+                ? 'A foto sai do seu perfil e dos posts em que aparece. Não dá para desfazer.'
+                : 'Ela passa a ser a primeira foto que as pessoas veem no seu perfil.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className={confirmacao === 'excluir' ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined}
+              onClick={() => {
+                if (confirmacao === 'excluir') void onDelete(photo.id);
+                if (confirmacao === 'principal') void onSetMain(photo.id);
+                setConfirmacao(null);
+                setIsPreviewOpen(false);
+              }}
+            >
+              {confirmacao === 'excluir' ? 'Excluir' : 'Usar como principal'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
