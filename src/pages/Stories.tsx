@@ -962,10 +962,10 @@ function StatsModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl border-t border-border bg-background pb-8"
+        className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background pb-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b">
+        <div className="flex shrink-0 items-center justify-between px-5 pt-5 pb-3 border-b">
           <h3 className="font-semibold">Estatísticas do story</h3>
           <button type="button" onClick={onClose}><X className="h-5 w-5" /></button>
         </div>
@@ -991,7 +991,7 @@ function StatsModal({
         ) : (
           <>
             {/* Tabs */}
-            <div className="flex border-b">
+            <div className="flex shrink-0 border-b">
               {(['viewers', 'comments', 'fans'] as const).map((t) => (
                 <button
                   key={t}
@@ -1009,7 +1009,7 @@ function StatsModal({
               ))}
             </div>
 
-            <div className="max-h-72 overflow-y-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {loading ? (
                 <div className="flex justify-center py-8">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -1560,8 +1560,8 @@ export default function Stories() {
 
       {/* ── Meu Story ─────────────────────────────── */}
       <section>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <h2 className="whitespace-nowrap text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             Meus Stories {myStories.length > 0 && <span className="text-brand-pink ml-1">{myStories.length}</span>}
           </h2>
           {/* Botões de adicionar sempre visíveis */}
@@ -1576,7 +1576,7 @@ export default function Stories() {
             </button>
           )}
           {myStories.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
                 className="flex items-center gap-1 text-xs text-brand-pink hover:text-brand-pink/80 font-medium disabled:opacity-40">
                 <Camera className="h-3.5 w-3.5" /> Câmera
