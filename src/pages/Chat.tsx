@@ -40,6 +40,20 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 // Quantas conversas são renderizadas por "página" da rolagem infinita da lista.
 const CONVERSATIONS_PAGE_SIZE = 20;
 
+// Preço nos avisos de bloqueio do chat.
+//
+// Mostrar o valor logo no bloqueio: R$ 9,90 é barato, e "Assine" sem número
+// deixa a pessoa imaginar um preço maior e desistir antes de ver os planos.
+// Os gatilhos usados são todos verdadeiros — preço por dia, sem fidelidade e
+// o fato de que alguém escreveu de verdade. Nada de contagem regressiva ou
+// escassez inventada: num site adulto, promessa falsa derruba a confiança que
+// faz a pessoa pagar.
+//
+// Fica escrito aqui como no resto do site (Layout, Login, SubscribeModal). Se
+// o plano mudar de preço, procurar "9,90" no projeto.
+const PRECO_MENSAL = 'R$ 9,90';
+const PRECO_POR_DIA = '33 centavos por dia'; // 9,90 / 30
+
 type Conversation = {
   id: string;
   user: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm?: number | null; isOnline?: boolean; lastSeenAt?: string | null };
@@ -1740,9 +1754,12 @@ export default function Chat() {
                           onClick={redirectToPlans}
                         >
                           <Lock className="w-4 h-4 shrink-0" />
-                          <p className="text-sm font-medium">
-                            Assine para ler o que {activeConversation?.user?.name || 'esta pessoa'} escreveu
-                          </p>
+                          <span>
+                            <span className="block text-sm font-medium">
+                              {activeConversation?.user?.name || 'Esta pessoa'} te escreveu — leia por {PRECO_MENSAL}/mês
+                            </span>
+                            <span className="block text-xs opacity-80">{PRECO_POR_DIA} · cancele quando quiser</span>
+                          </span>
                         </button>
                       ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
                         /* Premium gate — blur incoming messages for non-subscribers */
@@ -1762,9 +1779,10 @@ export default function Chat() {
                             </div>
                             <p className="mt-1.5 text-sm font-semibold text-brand-pink">
                               {activeConversation?.user?.name
-                                ? `${activeConversation.user.name} te escreveu — assine para ler`
-                                : 'Assine para ler a mensagem'}
+                                ? `${activeConversation.user.name} te escreveu — leia por ${PRECO_MENSAL}/mês`
+                                : `Leia a mensagem por ${PRECO_MENSAL}/mês`}
                             </p>
+                            <p className="text-xs text-muted-foreground">{PRECO_POR_DIA} · cancele quando quiser</p>
                           </div>
                         </button>
                       ) : (
@@ -1988,18 +2006,18 @@ export default function Chat() {
               <button
                 type="button"
                 onClick={() => navigate('/subscriptions')}
-                aria-label="Acesso bloqueado. Toque para assinar."
+                aria-label={`Assine por ${PRECO_MENSAL} por mês para responder.`}
                 className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 active:scale-[0.99]"
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="font-medium text-destructive">Acesso bloqueado</p>
-                  <p className="text-sm text-muted-foreground">Assine para ler e responder todas as mensagens.</p>
+                  <p className="font-medium text-destructive">Responda por só {PRECO_MENSAL}/mês</p>
+                  <p className="text-sm text-muted-foreground">São {PRECO_POR_DIA} · cancele quando quiser</p>
                 </div>
                 {/* Rotulo e seta explicitos: no celular nao ha hover, e sem eles a
                     caixa lia como aviso morto — a pessoa nem tentava tocar. O
                     cadeado sozinho parece decoracao, nao acao. */}
                 <span className="ml-3 flex shrink-0 items-center gap-1 rounded-full bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground">
-                  Assinar
+                  {PRECO_MENSAL}
                   <ChevronRight className="h-3.5 w-3.5" />
                 </span>
               </button>
