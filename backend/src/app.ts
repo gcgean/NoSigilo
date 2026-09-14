@@ -14238,7 +14238,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             { key: 'chat', label: 'Abriu o Chat', men: Number(jr?.chat || 0) },
             { key: 'feed', label: 'Foi ao Feed', men: Number(jr?.feed || 0) },
             { key: 'planos', label: 'Viu os Planos', men: Number(jr?.planos || 0) },
-            { key: 'checkout', label: 'Abriu o checkout', men: gerouNaoPagou },
+            // O valor e quem GEROU Pix e nao pagou, nao quem abriu o checkout — o rotulo
+            // antigo ("Abriu o checkout") levava a ler 13 como abandono de checkout.
+            { key: 'checkout', label: 'Gerou Pix, não pagou', men: gerouNaoPagou },
           ],
         },
         retorno: { naoAssinantes: naoAss, sumiram1aSessao: sumiram, voltaram, churnPct: pct(sumiram, naoAss) },

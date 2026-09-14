@@ -32,7 +32,6 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
-import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
@@ -210,7 +209,6 @@ export default function Chat() {
   // Marca que o long-press abriu o menu, para suprimir o clique sintético que o
   // iOS dispara ao soltar o dedo (senão abriria a conversa por cima do menu).
   const convLongPressFired = useRef(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
   // Estrela do cabeçalho: amarela quando o perfil já foi curtido.
   const [activeProfileLiked, setActiveProfileLiked] = useState(false);
   const [isTogglingLike, setIsTogglingLike] = useState(false);
@@ -431,8 +429,17 @@ export default function Chat() {
     };
   }, [selectedChat, isMobileViewport]);
 
+  // Todo bloqueio do chat vai para a PAGINA de planos.
+  //
+  // Antes havia dois destinos: a faixa "Acesso bloqueado" levava a
+  // /subscriptions, e a mensagem borrada abria o modal "Premium bloqueado"
+  // (convite ou assinatura), cujo "Assinar agora" abria OUTRO modal com os
+  // planos. Um passo a mais, com titulo que puxava para convite. E o painel so
+  // conta "Viu os Planos" por visita a /subscriptions, entao quem via os planos
+  // pelo modal sumia da metrica. O cartao "Convide 3 amigos" continua na
+  // propria pagina de planos.
   const redirectToPlans = () => {
-    setPaywallOpen(true);
+    navigate('/subscriptions');
   };
 
   const goToUserProfile = (userId?: string) => {
@@ -472,7 +479,7 @@ export default function Chat() {
       return;
     }
 
-    if (!premiumAccess) { setPaywallOpen(true); return; }
+    if (!premiumAccess) { redirectToPlans(); return; }
     setIsTogglingLike(true);
     try {
       const res = await matchService.like(target.id);
@@ -484,7 +491,7 @@ export default function Chat() {
       }
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status === 403) setPaywallOpen(true);
+      if (status === 403) redirectToPlans();
       else toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsTogglingLike(false);
@@ -669,8 +676,11 @@ export default function Chat() {
   useEffect(() => {
     const targetUserId = new URLSearchParams(location.search).get('userId');
     if (!targetUserId) return;
-    // Iniciar conversa é premium: abre a tela de pagamento em vez de falhar calado.
-    if (!premiumAccess) { setPaywallOpen(true); return; }
+    // Iniciar conversa é premium: leva aos planos em vez de falhar calado.
+    // replace: este efeito roda sozinho ao abrir /chat?userId=. Com navegacao
+    // normal, o "voltar" reabriria o chat, que mandaria de novo para os planos
+    // — a pessoa ficaria presa. Assim o voltar retorna para onde ela estava.
+    if (!premiumAccess) { navigate('/subscriptions', { replace: true }); return; }
     (async () => {
       try {
         const data = await chatService.createConversation(targetUserId);
@@ -1633,7 +1643,7 @@ export default function Chat() {
                             toast({ title: 'Perfil curtido' });
                           } catch (err) {
                             const status = (err as { response?: { status?: number } })?.response?.status;
-                            if (status === 403) setPaywallOpen(true);
+                            if (status === 403) redirectToPlans();
                             else toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
                           } finally {
                             setIsTogglingFollow(false);
@@ -2160,7 +2170,12 @@ export default function Chat() {
                     ? "border-yellow-400/50 bg-yellow-400/5 focus-visible:ring-yellow-400/40 placeholder:text-yellow-700/50 dark:placeholder:text-yellow-300/50"
                     : "border-primary/15 bg-background focus-visible:ring-primary/40"
                 )}
-                disabled={!premiumAccess}
+                // readOnly, nao disabled: navegador nao dispara clique em campo
+                // desativado. Com disabled, o onClick abaixo nunca rodava — o
+                // nao-assinante tocava na caixa (o gesto mais natural ao abrir
+                // uma conversa) e nada acontecia, nem teclado, nem aviso.
+                readOnly={!premiumAccess}
+                aria-label={premiumAccess ? undefined : 'Assine para enviar mensagens'}
                 onClick={() => {
                   if (!premiumAccess) redirectToPlans();
                 }}
@@ -2173,7 +2188,9 @@ export default function Chat() {
                   e.preventDefault();
                 }}
                 onClick={() => handleSendMessage(message)}
-                disabled={!premiumAccess || !message.trim() || isUploading}
+                // Para nao-assinante fica ativo: handleSendMessage ja manda para
+                // os planos logo na entrada. Desativado, esse caminho nunca rodava.
+                disabled={premiumAccess ? (!message.trim() || isUploading) : false}
                 aria-label="Enviar mensagem"
               >
                 <Send className="h-5 w-5" />
@@ -2404,7 +2421,6 @@ export default function Chat() {
         </div>
       )}
 
-      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
 }
