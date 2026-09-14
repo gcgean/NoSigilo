@@ -53,6 +53,21 @@ const CONVERSATIONS_PAGE_SIZE = 20;
 // o plano mudar de preço, procurar "9,90" no projeto.
 const PRECO_MENSAL = 'R$ 9,90';
 const PRECO_POR_DIA = '33 centavos por dia'; // 9,90 / 30
+// Regra de texto: o preço nunca fica colado a uma ação sobre UMA mensagem
+// ("leia por R$ 9,90"), que soa como cobrança por mensagem. Ele sempre vem com
+// "assinatura mensal" e com o que ela libera: todas as conversas.
+const LINHA_ASSINATURA = `Assinatura mensal · libera todas as conversas · cancele quando quiser`;
+
+/** "Olá, João! " a partir do nome do perfil de quem está lendo, ou vazio.
+ *  Só o primeiro nome, com inicial maiúscula ("joao silva" vira "Joao" — o
+ *  acento não se inventa). Muitos perfis usam apelido
+ *  ("cornudo01", "Casal_lascivo_PA"); o primeiro "pedaço" deles continua
+ *  sendo como a pessoa escolheu ser chamada. */
+function saudacaoDoLeitor(nome: string | null | undefined): string {
+  const primeiro = String(nome || '').trim().split(/\s+/)[0] || '';
+  if (!primeiro) return '';
+  return `Olá, ${primeiro.charAt(0).toLocaleUpperCase('pt-BR')}${primeiro.slice(1)}! `;
+}
 
 type Conversation = {
   id: string;
@@ -1756,9 +1771,9 @@ export default function Chat() {
                           <Lock className="w-4 h-4 shrink-0" />
                           <span>
                             <span className="block text-sm font-medium">
-                              {activeConversation?.user?.name || 'Esta pessoa'} te escreveu — leia por {PRECO_MENSAL}/mês
+                              {saudacaoDoLeitor(user?.name)}{activeConversation?.user?.name || 'Alguém'} te escreveu. Assine o Premium por {PRECO_MENSAL}/mês para ler
                             </span>
-                            <span className="block text-xs opacity-80">{PRECO_POR_DIA} · cancele quando quiser</span>
+                            <span className="block text-xs opacity-80">{LINHA_ASSINATURA}</span>
                           </span>
                         </button>
                       ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
@@ -1778,11 +1793,12 @@ export default function Chat() {
                               )}
                             </div>
                             <p className="mt-1.5 text-sm font-semibold text-brand-pink">
+                              {saudacaoDoLeitor(user?.name)}
                               {activeConversation?.user?.name
-                                ? `${activeConversation.user.name} te escreveu — leia por ${PRECO_MENSAL}/mês`
-                                : `Leia a mensagem por ${PRECO_MENSAL}/mês`}
+                                ? `${activeConversation.user.name} te escreveu. Assine o Premium por ${PRECO_MENSAL}/mês para ler`
+                                : `Assine o Premium por ${PRECO_MENSAL}/mês para ler`}
                             </p>
-                            <p className="text-xs text-muted-foreground">{PRECO_POR_DIA} · cancele quando quiser</p>
+                            <p className="text-xs text-muted-foreground">{LINHA_ASSINATURA}</p>
                           </div>
                         </button>
                       ) : (
@@ -2006,18 +2022,18 @@ export default function Chat() {
               <button
                 type="button"
                 onClick={() => navigate('/subscriptions')}
-                aria-label={`Assine por ${PRECO_MENSAL} por mês para responder.`}
+                aria-label={`Assinatura Premium de ${PRECO_MENSAL} por mês. Toque para assinar.`}
                 className="mb-2 flex w-full items-center justify-between rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-left transition-colors hover:bg-destructive/10 active:scale-[0.99]"
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="font-medium text-destructive">Responda por só {PRECO_MENSAL}/mês</p>
-                  <p className="text-sm text-muted-foreground">São {PRECO_POR_DIA} · cancele quando quiser</p>
+                  <p className="font-medium text-destructive">Premium por só {PRECO_MENSAL}/mês</p>
+                  <p className="text-sm text-muted-foreground">Assinatura mensal: leia e responda todas as conversas. Cerca de {PRECO_POR_DIA}.</p>
                 </div>
                 {/* Rotulo e seta explicitos: no celular nao ha hover, e sem eles a
                     caixa lia como aviso morto — a pessoa nem tentava tocar. O
                     cadeado sozinho parece decoracao, nao acao. */}
                 <span className="ml-3 flex shrink-0 items-center gap-1 rounded-full bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground">
-                  {PRECO_MENSAL}
+                  Assinar
                   <ChevronRight className="h-3.5 w-3.5" />
                 </span>
               </button>
