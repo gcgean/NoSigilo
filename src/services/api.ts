@@ -613,8 +613,14 @@ export const friendsService = {
 
 // Notifications Service
 export const notificationsService = {
-  getNotifications: async () => {
-    const response = await apiClient.get('/notifications');
+  getNotifications: async (opts?: { preview?: boolean }) => {
+    const response = await apiClient.get('/notifications', { params: opts?.preview ? { preview: 1 } : undefined });
+    return response.data;
+  },
+  // Contador do sino. Leve de propósito: roda a cada 20s para todo usuário
+  // logado — nunca trocar de volta pela lista completa.
+  getUnread: async (): Promise<{ count: number; hasUnreadMatch: boolean }> => {
+    const response = await apiClient.get('/notifications/unread');
     return response.data;
   },
 

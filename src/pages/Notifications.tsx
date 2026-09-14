@@ -90,7 +90,7 @@ export default function Notifications() {
   const load = async () => {
     setIsLoading(true);
     try {
-      const list = await notificationsService.getNotifications();
+      const list = await notificationsService.getNotifications({ preview: true });
       const itens: NotificationItem[] = Array.isArray(list) ? list : [];
       setItems(itens);
       // Zera o contador do sino no servidor, mas a lista desta visita continua

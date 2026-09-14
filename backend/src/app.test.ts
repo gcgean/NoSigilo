@@ -2080,7 +2080,7 @@ describe('nosigilo backend', () => {
 
     const removed = await ctx.db.queryOne('SELECT id FROM push_subscriptions WHERE endpoint = ? LIMIT 1', [endpoint]);
     expect(removed).toBeNull();
-  });
+  });
   // ── Stories: favoritos e perfis fixados ───────────────────────────────────
   //
   // As duas listas apontam para lados opostos e é fácil trocá-las ao mexer no
@@ -2576,12 +2576,18 @@ describe('nosigilo backend', () => {
     // Dona precisa ser premium para ver quem curtiu (senao o autor e censurado).
     await grantPremium(ctx, String(dona.user.id));
 
-    const lista = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    const lista = await request(ctx.app).get('/api/notifications?preview=1').set('Authorization', `Bearer ${dona.token}`).expect(200);
     const n = lista.body.find((x: any) => x.type === 'post.liked' && x.data?.postId === postId);
     expect(n).toBeTruthy();
     expect(n.preview?.imageUrl).toMatch(/^\/uploads\//);
     expect(n.preview?.removed).toBe(false);
     expect(n.actorAvatar).toMatch(/^\/uploads\//);
+
+    // O sino usa o contador leve; a lista sem ?preview=1 nao paga as consultas de miniatura.
+    const sino = await request(ctx.app).get('/api/notifications/unread').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    expect(sino.body.count).toBeGreaterThanOrEqual(1);
+    const semPreview = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    expect(semPreview.body.find((x: any) => x.data?.postId === postId)?.preview).toBeUndefined();
 
     // O post abre direto, com contagem e autor.
     const aberto = await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dona.token}`).expect(200);
@@ -2592,7 +2598,7 @@ describe('nosigilo backend', () => {
 
     // Apagado: a notificacao avisa que sumiu, e a rota responde 404.
     await run(ctx.db, 'DELETE FROM posts WHERE id = ?', [postId]);
-    const depois = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    const depois = await request(ctx.app).get('/api/notifications?preview=1').set('Authorization', `Bearer ${dona.token}`).expect(200);
     const n2 = depois.body.find((x: any) => x.type === 'post.liked' && x.data?.postId === postId);
     expect(n2.preview?.removed).toBe(true);
     await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dona.token}`).expect(404);

@@ -230,16 +230,15 @@ export default function Layout() {
   const refreshUnread = useCallback(async () => {
     try {
       const [notifs, chatUnread, supportUnread] = await Promise.all([
-        notificationsService.getNotifications(),
+        notificationsService.getUnread(),
         chatService.getUnreadCount(),
         supportService.getUnreadCount().catch(() => ({ count: 0 })),
       ]);
-      const unread = Array.isArray(notifs) ? notifs.filter((n: any) => !n?.isRead) : [];
-      setUnreadCount(unread.length);
+      setUnreadCount(notifs.count || 0);
       setUnreadMessagesCount(chatUnread.messagesCount || 0);
       setUnreadConversationsCount(chatUnread.conversationsCount || 0);
       setSupportUnreadCount(supportUnread.count || 0);
-      setHasUnreadMatch(unread.some((n: any) => n.type === 'profile.liked'));
+      setHasUnreadMatch(!!notifs.hasUnreadMatch);
     } catch {}
   }, []);
 
@@ -417,18 +416,18 @@ export default function Layout() {
     let cancelled = false;
     const refreshUnreadSafe = async () => {
       try {
+        // Contador leve, não a lista: isto roda a cada 20s para todo logado.
         const [notifs, chatUnread, supportUnread] = await Promise.all([
-          notificationsService.getNotifications(),
+          notificationsService.getUnread(),
           chatService.getUnreadCount(),
           supportService.getUnreadCount().catch(() => ({ count: 0 })),
         ]);
-        const unread = Array.isArray(notifs) ? notifs.filter((n: any) => !n?.isRead) : [];
         if (!cancelled) {
-          setUnreadCount(unread.length);
+          setUnreadCount(notifs.count || 0);
           setUnreadMessagesCount(chatUnread.messagesCount || 0);
           setUnreadConversationsCount(chatUnread.conversationsCount || 0);
           setSupportUnreadCount(supportUnread.count || 0);
-          setHasUnreadMatch(unread.some((n: any) => n.type === 'profile.liked'));
+          setHasUnreadMatch(!!notifs.hasUnreadMatch);
         }
       } catch {}
     };

@@ -11950,6 +11950,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
+  // GET /api/notifications/unread — só o que o sino precisa: quantas não lidas
+  // e se há curtida de perfil entre elas.
+  //
+  // Existe por causa de CPU: todo usuário logado chamava a LISTA completa a
+  // cada 20s só para contar. Em 14/09/2026, depois de a lista ganhar miniatura
+  // e avatar (≈5 consultas a mais por chamada), o backend ficou com um núcleo
+  // cheio e o Postgres em 120% — sem nenhuma consulta lenta, só volume. Duas
+  // contagens sobre idx_notif_user_read resolvem o sino.
+  app.get('/api/notifications/unread', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const [total, match] = await Promise.all([
+      queryOne(db, 'SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND is_read = 0', [userId]) as Promise<any>,
+      queryOne(db, "SELECT 1 AS x FROM notifications WHERE user_id = ? AND is_read = 0 AND type = 'profile.liked' LIMIT 1", [userId]) as Promise<any>,
+    ]);
+    res.json({ count: Number(total?.c || 0), hasUnreadMatch: !!match });
+  });
+
   app.get('/api/notifications', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const me = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
@@ -11997,6 +12014,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     //
     // Roda DEPOIS da censura acima: se o não-assinante teve o actorId
     // apagado ("Alguém curtiu"), não há actorId aqui e o avatar não vaza.
+    //
+    // Só com ?preview=1 (a tela de notificações). Sem isso a rota responde como
+    // antes: as consultas de miniatura custam caro para quem só quer a lista.
+    if (String(req.query.preview || '') !== '1') {
+      res.json(lista);
+      return;
+    }
     const ids = (chave: string) => Array.from(new Set(
       lista.map((n: any) => (n.data && n.data[chave] ? String(n.data[chave]) : '')).filter(Boolean)
     ));
