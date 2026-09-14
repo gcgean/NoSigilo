@@ -11956,8 +11956,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const isPremium = hasPremiumAccess(me, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
 
     const rows = await queryAll(db, 'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50', [req.auth!.userId]);
-    res.json(
-      rows.map((n: any) => {
+    const lista = rows.map((n: any) => {
         const type = String(n.type);
         const data = safeJsonParse(n.data_json);
         let title = n.title;
@@ -11986,8 +11985,186 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           isRead: !!n.is_read,
           createdAt: n.created_at,
         };
-      })
+      });
+
+    // ── Miniatura e avatar ─────────────────────────────────────────────────
+    //
+    // A lista só tinha ícone + texto, e três "Casaldosul curtiu sua
+    // publicação" seguidos eram indistinguíveis — não dava para saber QUAL
+    // post. Agora cada item traz a miniatura do post/story e o avatar de quem
+    // agiu. Tudo em poucas consultas em lote (uma por tipo de coisa), não uma
+    // por notificação.
+    //
+    // Roda DEPOIS da censura acima: se o não-assinante teve o actorId
+    // apagado ("Alguém curtiu"), não há actorId aqui e o avatar não vaza.
+    const ids = (chave: string) => Array.from(new Set(
+      lista.map((n: any) => (n.data && n.data[chave] ? String(n.data[chave]) : '')).filter(Boolean)
+    ));
+    const emLote = async (sql: (ph: string) => string, valores: string[]) => {
+      if (valores.length === 0) return [] as any[];
+      const ph = valores.map(() => '?').join(',');
+      return (await queryAll(db, sql(ph), valores)) as any[];
+    };
+
+    const postIds = ids('postId');
+    const storyIds = ids('storyId');
+    const pessoaIds = Array.from(new Set([
+      ...ids('actorId'), ...ids('fromUserId'), ...ids('viewerId'), ...ids('ownerId'), ...ids('inviteeUserId'),
+    ]));
+
+    const [postRows, storyRows, avatarRows] = await Promise.all([
+      emLote((ph) => `SELECT id, content, media_ids_json FROM posts WHERE id IN (${ph})`, postIds),
+      emLote((ph) => `SELECT s.id, s.text, s.background, s.expires_at, m.filename, m.mime_type
+                      FROM stories s LEFT JOIN media m ON m.id = s.media_id
+                      WHERE s.id IN (${ph})`, storyIds),
+      emLote((ph) => `SELECT m.user_id, m.filename FROM media m
+                      WHERE m.user_id IN (${ph}) AND m.is_main = 1 AND m.is_private = 0`, pessoaIds),
+    ]);
+
+    // Primeira mídia pública de cada post.
+    const primeiraMidia = new Map<string, string>();
+    for (const p of postRows) {
+      const lst = safeJsonParse(p.media_ids_json);
+      const first = Array.isArray(lst) ? lst.find((x: any) => typeof x === 'string') : null;
+      if (first) primeiraMidia.set(String(p.id), String(first));
+    }
+    const midiaRows = await emLote(
+      (ph) => `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${ph})`,
+      Array.from(new Set(primeiraMidia.values()))
     );
+    const midiaPorId = new Map(midiaRows.map((m: any) => [String(m.id), m]));
+    const postPorId = new Map(postRows.map((p: any) => [String(p.id), p]));
+    const storyPorId = new Map(storyRows.map((st: any) => [String(st.id), st]));
+    const avatarPorUsuario = new Map<string, string>();
+    for (const a of avatarRows) {
+      if (!avatarPorUsuario.has(String(a.user_id))) avatarPorUsuario.set(String(a.user_id), `/uploads/${a.filename}`);
+    }
+
+    const agoraMs = Date.now();
+    const trecho = (t: unknown) => {
+      const txt = String(t || '').replace(/\s+/g, ' ').trim();
+      return txt ? (txt.length > 80 ? `${txt.slice(0, 80)}…` : txt) : null;
+    };
+
+    res.json(lista.map((n: any) => {
+      const d = n.data || {};
+      let preview: null | { imageUrl: string | null; isVideo: boolean; text: string | null; removed: boolean; expired: boolean } = null;
+
+      if (d.postId) {
+        const post = postPorId.get(String(d.postId));
+        if (!post) {
+          preview = { imageUrl: null, isVideo: false, text: null, removed: true, expired: false };
+        } else {
+          const midia = midiaPorId.get(primeiraMidia.get(String(post.id)) || '');
+          const isVideo = String(midia?.mime_type || '').startsWith('video/');
+          preview = {
+            // Vídeo não vira <img>: o cliente mostra um marcador de vídeo.
+            imageUrl: midia && !isVideo ? `/uploads/${midia.filename}` : null,
+            isVideo,
+            text: trecho(post.content),
+            removed: false,
+            expired: false,
+          };
+        }
+      } else if (d.storyId) {
+        const st = storyPorId.get(String(d.storyId));
+        if (!st) {
+          preview = { imageUrl: null, isVideo: false, text: null, removed: true, expired: false };
+        } else {
+          const isVideo = String(st.mime_type || '').startsWith('video/');
+          preview = {
+            imageUrl: st.filename && !isVideo ? `/uploads/${st.filename}` : null,
+            isVideo,
+            text: trecho(st.text),
+            removed: false,
+            // Story vencido não abre mais: o cliente avisa em vez de levar a
+            // uma tela vazia.
+            expired: new Date(String(st.expires_at)).getTime() <= agoraMs,
+          };
+        }
+      }
+
+      const pessoa = String(d.actorId || d.fromUserId || d.viewerId || d.ownerId || d.inviteeUserId || '');
+      return {
+        ...n,
+        preview,
+        actorAvatar: pessoa ? (avatarPorUsuario.get(pessoa) ?? null) : null,
+      };
+    }));
+  });
+
+  // GET /api/posts/:postId — uma publicação sozinha.
+  //
+  // Existe para as notificações. Antes "curtiram sua publicação" levava a
+  // /feed?postId=, e o app tentava ACHAR o post rolando o feed. O post da
+  // própria pessoa frequentemente nem entra no feed dela (filtro de
+  // interesse, no máximo 2 posts por autor por página, janela de 400) — sem
+  // achar, o app parava no topo do feed sem avisar nada, e o toque na
+  // notificação parecia não funcionar.
+  //
+  // Mesmo formato de /api/users/:userId/posts, mais o autor.
+  app.get('/api/posts/:postId', requireAuth(env, db), async (req, res) => {
+    const viewerId = req.auth!.userId;
+    const post = (await queryOne(
+      db,
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.user_id,
+              u.name AS author_name,
+              (SELECT m.filename FROM media m WHERE m.user_id = u.id AND m.is_main = 1 AND m.is_private = 0 LIMIT 1) AS author_avatar
+       FROM posts p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = ?
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL OR u.id = ?)
+         AND u.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM blocks b
+           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+         )
+       LIMIT 1`,
+      [String(req.params.postId || ''), viewerId, viewerId, viewerId]
+    )) as any;
+    if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+
+    const pid = String(post.id);
+    const idsDaMidia = ((Array.isArray(safeJsonParse(post.media_ids_json)) ? safeJsonParse(post.media_ids_json) : []) as any[])
+      .filter((x) => typeof x === 'string') as string[];
+    const midias = idsDaMidia.length
+      ? (await queryAll(
+          db,
+          `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${idsDaMidia.map(() => '?').join(',')})`,
+          idsDaMidia
+        )) as any[]
+      : [];
+    const midiaPorId = new Map(midias.map((m: any) => [String(m.id), m]));
+
+    const [curtidas, comentarios, visualizacoes, minha] = await Promise.all([
+      queryOne(db, "SELECT COUNT(*) AS c FROM likes WHERE target_type = 'post' AND target_id = ?", [pid]) as Promise<any>,
+      queryOne(db, "SELECT COUNT(*) AS c FROM comments WHERE target_type = 'post' AND target_id = ?", [pid]) as Promise<any>,
+      queryOne(db, 'SELECT COUNT(*) AS c FROM post_views WHERE post_id = ?', [pid]) as Promise<any>,
+      queryOne(db, "SELECT 1 AS x FROM likes WHERE target_type = 'post' AND target_id = ? AND user_id = ? LIMIT 1", [pid, viewerId]) as Promise<any>,
+    ]);
+
+    res.json({
+      post: {
+        id: pid,
+        content: post.content,
+        createdAt: post.created_at,
+        media: idsDaMidia
+          .map((mid) => midiaPorId.get(mid))
+          .filter(Boolean)
+          .map((m: any) => ({ id: String(m.id), url: `/uploads/${m.filename}`, mimeType: m.mime_type ? String(m.mime_type) : null })),
+        likesCount: Number(curtidas?.c || 0),
+        commentsCount: Number(comentarios?.c || 0),
+        viewsCount: Number(visualizacoes?.c || 0),
+        likedByMe: !!minha,
+        author: {
+          id: String(post.user_id),
+          name: String(post.author_name || ''),
+          avatar: post.author_avatar ? `/uploads/${post.author_avatar}` : null,
+        },
+      },
+    });
   });
 
   app.patch('/api/notifications/:notificationId/read', requireAuth(env, db), async (req, res) => {

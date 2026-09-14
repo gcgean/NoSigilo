@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Heart, MessageCircle, Eye, Loader2 } from 'lucide-react';
 import { interactionsService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -45,6 +45,8 @@ type ProfilePostCardProps = {
   /** Sem premium, curtir/comentar leva para a tela de planos. */
   podeInteragir?: boolean;
   onPrecisaAssinar?: () => void;
+  /** Abre os comentários ao montar (notificação de comentário/resposta). */
+  abrirComentarios?: boolean;
 };
 
 export default function ProfilePostCard({
@@ -53,6 +55,7 @@ export default function ProfilePostCard({
   dataLabel,
   podeInteragir = true,
   onPrecisaAssinar,
+  abrirComentarios = false,
 }: ProfilePostCardProps) {
   const { toast } = useToast();
   const [curtido, setCurtido] = useState(!!post.likedByMe);
@@ -99,6 +102,14 @@ export default function ProfilePostCard({
       setCarregando(false);
     }
   };
+
+  // Uma vez só, na montagem: se a pessoa fechar os comentários, não reabre.
+  const jaAbriuSozinho = useRef(false);
+  useEffect(() => {
+    if (!abrirComentarios || jaAbriuSozinho.current) return;
+    jaAbriuSozinho.current = true;
+    void alternarComentarios();
+  }, [abrirComentarios]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const enviarComentario = async () => {
     const texto = rascunho.trim();

@@ -154,6 +154,19 @@ export const discoveryService = {
 };
 
 export const feedService = {
+  // Uma publicação sozinha (destino das notificações de post).
+  getPost: async (postId: string) => {
+    const response = await apiClient.get(`/posts/${encodeURIComponent(postId)}`);
+    return response.data as {
+      post: {
+        id: string; content: string; createdAt: string;
+        media: Array<{ id: string; url: string | null; mimeType: string | null }>;
+        likesCount: number; commentsCount: number; viewsCount: number; likedByMe: boolean;
+        author: { id: string; name: string; avatar: string | null };
+      };
+    };
+  },
+
   getFeed: async (params?: { page?: number; limit?: number; includeReelsOnly?: boolean; seenIds?: string; maxDistanceKm?: number; cityOnly?: boolean; filter?: string }) => {
     if (USE_MOCKS) {
       return { posts: [], hasMore: false, insights: null };

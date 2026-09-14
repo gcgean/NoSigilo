@@ -2538,4 +2538,63 @@ describe('nosigilo backend', () => {
     // Proximidade manda: a sumida de Fortaleza ainda vem antes da ativa de Porto Alegre.
     expect(pSumida).toBeLessThan(pDistante);
   });
+
+  // ── Notificações: miniatura, avatar e post aberto direto ──────────────────
+  it('notificacao de curtida traz miniatura do post e o post abre direto por id', async () => {
+    const dona = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dona do Post Notif', email: 'dona-post-notif@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const fa = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Curtidor Notif', email: 'curtidor-notif@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    // Quem curte precisa ter avatar para o card mostrar o rosto.
+    const avatarUp = await request(ctx.app)
+      .post('/api/media/upload')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .attach('file', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]), { filename: 'avatar.png', contentType: 'image/png' })
+      .expect(200);
+    await request(ctx.app).patch(`/api/media/${avatarUp.body.id}/main`).set('Authorization', `Bearer ${fa.token}`).expect(200);
+
+    const foto = await request(ctx.app)
+      .post('/api/media/upload')
+      .set('Authorization', `Bearer ${dona.token}`)
+      .attach('file', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]), { filename: 'post.png', contentType: 'image/png' })
+      .expect(200);
+    const post = await request(ctx.app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${dona.token}`)
+      .send({ content: 'Post com foto para a notificacao', mediaIds: [foto.body.id] })
+      .expect(200);
+    const postId = String(post.body.id);
+
+    await request(ctx.app)
+      .post('/api/likes')
+      .set('Authorization', `Bearer ${fa.token}`)
+      .send({ targetType: 'post', targetId: postId })
+      .expect(200);
+
+    // Dona precisa ser premium para ver quem curtiu (senao o autor e censurado).
+    await grantPremium(ctx, String(dona.user.id));
+
+    const lista = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    const n = lista.body.find((x: any) => x.type === 'post.liked' && x.data?.postId === postId);
+    expect(n).toBeTruthy();
+    expect(n.preview?.imageUrl).toMatch(/^\/uploads\//);
+    expect(n.preview?.removed).toBe(false);
+    expect(n.actorAvatar).toMatch(/^\/uploads\//);
+
+    // O post abre direto, com contagem e autor.
+    const aberto = await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dona.token}`).expect(200);
+    expect(aberto.body.post.id).toBe(postId);
+    expect(aberto.body.post.likesCount).toBe(1);
+    expect(aberto.body.post.media.length).toBe(1);
+    expect(aberto.body.post.author.id).toBe(String(dona.user.id));
+
+    // Apagado: a notificacao avisa que sumiu, e a rota responde 404.
+    await run(ctx.db, 'DELETE FROM posts WHERE id = ?', [postId]);
+    const depois = await request(ctx.app).get('/api/notifications').set('Authorization', `Bearer ${dona.token}`).expect(200);
+    const n2 = depois.body.find((x: any) => x.type === 'post.liked' && x.data?.postId === postId);
+    expect(n2.preview?.removed).toBe(true);
+    await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dona.token}`).expect(404);
+  });
 });

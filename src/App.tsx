@@ -48,6 +48,7 @@ const Search = lazy(() => import("./pages/Search"));
 const Reels = lazy(() => import("./pages/Reels"));
 const SearchVideos = lazy(() => import("./pages/SearchVideos"));
 const Notifications = lazy(() => import("./pages/Notifications"));
+const PostView = lazy(() => import("./pages/PostView"));
 const FriendRequests = lazy(() => import("./pages/FriendRequests"));
 const Friends = lazy(() => import("./pages/Friends"));
 const Favorites = lazy(() => import("./pages/Favorites"));
@@ -120,6 +121,7 @@ const App = () => (
                       <Route path="/reels" element={<Reels />} />
                       <Route path="/videos" element={<SearchVideos />} />
                       <Route path="/notifications" element={<Notifications />} />
+                      <Route path="/post/:postId" element={<PostView />} />
                       <Route path="/friend-requests" element={<FriendRequests />} />
                       <Route path="/friends" element={<Friends />} />
                       <Route path="/events" element={<Events />} />

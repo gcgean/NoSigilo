@@ -459,14 +459,16 @@ export default function Layout() {
     void syncPushSubscription().catch(() => {});
   }, [user?.id]);
 
+  // O sino só zera o contador na tela. Antes ele também marcava TODAS como
+  // lidas no servidor na hora do toque, e a lista, que carrega logo depois,
+  // chegava com tudo já lido — o destaque de "nova" aparecia ou não conforme
+  // quem ganhava a corrida. Quem marca no servidor agora é a própria tela de
+  // notificações, depois de carregar a lista.
   const handleNotificationsBellClick = useCallback(() => {
     if (unreadCount <= 0) return;
     setUnreadCount(0);
     setHasUnreadMatch(false);
-    void notificationsService.markAllAsRead().catch(() => {
-      void refreshUnread();
-    });
-  }, [refreshUnread, unreadCount]);
+  }, [unreadCount]);
 
   useEffect(() => {
     if (!socket || !user) return;
@@ -481,7 +483,7 @@ export default function Layout() {
             onClick={() => {
               if (n?.id) void notificationsService.markAsRead(String(n.id)).catch(() => {});
               setUnreadCount((c) => Math.max(0, c - 1));
-              navigate(href);
+              navigate(href || '/notifications');
             }}
           >
             Abrir
