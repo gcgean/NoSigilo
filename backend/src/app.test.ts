@@ -2494,4 +2494,48 @@ describe('nosigilo backend', () => {
     const depois = await request(ctx.app).get('/api/match/liked').set('Authorization', `Bearer ${eu.token}`).expect(200);
     expect(depois.body.map((u: any) => String(u.id))).toContain(String(curtidaAntes.user.id));
   });
+
+  // ── Match: atividade recente reordena dentro da faixa de proximidade ──────
+  it('match mostra primeiro quem esta ativo, sem passar na frente da proximidade', async () => {
+    const eu = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Viewer Atividade', email: 'viewer-atividade@example.com', password: 'senha123',
+      birthDate: '1990-01-01', gender: 'Homem', city: 'Fortaleza', state: 'CE', lookingFor: ['Mulher'],
+    });
+    const cria = async (nome: string, email: string) => registerInvitedUser(ctx, sponsorToken, {
+      name: nome, email, password: 'senha123', birthDate: '1994-01-01', gender: 'Mulher', city: 'Fortaleza', state: 'CE',
+    });
+    // Cadastrada POR ULTIMO de proposito: antes, "cadastro mais recente" era o
+    // desempate e ela vinha na frente mesmo sumida.
+    const ativa24h = await cria('Ativa 24h', 'ativa-24h@example.com');
+    const ativa7d = await cria('Ativa 7d', 'ativa-7d@example.com');
+    const distanteAtiva = await cria('Distante Ativa', 'distante-ativa@example.com');
+    const sumida = await cria('Sumida', 'sumida@example.com');
+
+    const horas = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    const fortaleza = { lat: -3.7319, lon: -38.5267 };
+    await run(ctx.db, 'UPDATE users SET lat = ?, lon = ? WHERE id IN (?, ?, ?, ?)', [
+      fortaleza.lat, fortaleza.lon, String(eu.user.id), String(ativa24h.user.id), String(ativa7d.user.id), String(sumida.user.id),
+    ]);
+    // Porto Alegre: outra faixa de distancia, mesmo estando ativa agora.
+    await run(ctx.db, "UPDATE users SET lat = -30.0346, lon = -51.2177, state = 'RS', city = 'Porto Alegre' WHERE id = ?", [String(distanteAtiva.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [horas(2), String(ativa24h.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [horas(72), String(ativa7d.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [horas(1), String(distanteAtiva.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [horas(24 * 60), String(sumida.user.id)]);
+
+    const cards = await request(ctx.app).get('/api/match/cards').set('Authorization', `Bearer ${eu.token}`).expect(200);
+    const pos = (id: string) => cards.body.findIndex((u: any) => String(u.id) === id);
+
+    const p24 = pos(String(ativa24h.user.id));
+    const p7 = pos(String(ativa7d.user.id));
+    const pSumida = pos(String(sumida.user.id));
+    const pDistante = pos(String(distanteAtiva.user.id));
+    for (const p of [p24, p7, pSumida, pDistante]) expect(p).toBeGreaterThanOrEqual(0);
+
+    // Dentro de Fortaleza: 24h -> 7 dias -> sumida.
+    expect(p24).toBeLessThan(p7);
+    expect(p7).toBeLessThan(pSumida);
+    // Proximidade manda: a sumida de Fortaleza ainda vem antes da ativa de Porto Alegre.
+    expect(pSumida).toBeLessThan(pDistante);
+  });
 });

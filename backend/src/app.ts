@@ -9208,11 +9208,57 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // grupo, e o boost (destaque pago) só desempata DENTRO da banda — a proximidade
     // sempre vence entre bandas diferentes.
     const bandDegrees = 0.9; // ~100km por banda
-    const distanceBandSql = distExpr
+    const distanceBandExpr = distExpr
       ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL
              THEN CAST((ABS(u.lat - ${myLat}) + ABS(u.lon - ${myLon}) * ${lonScale}) / ${bandDegrees} AS INTEGER)
-             ELSE 999999 END ASC,`
-      : '';
+             ELSE 999999 END`
+      : null;
+    const distanceBandSql = distanceBandExpr ? `${distanceBandExpr} ASC,` : '';
+
+    // ── Atividade recente, DENTRO da faixa de proximidade ───────────────────
+    //
+    // Diagnóstico de 14/09/2026: das saídas por "não encontrei pessoas na
+    // minha região", boa parte tinha 130–190 perfis ativos no próprio estado
+    // (um homem de Fortaleza saiu assim com 192 ativos no CE). A ordenação não
+    // olhava atividade nenhuma: com ~15% da base ativa, ~85% dos primeiros
+    // cards eram perfis parados há semanas. O novato curtia, ninguém
+    // respondia, e ele concluía que não tinha ninguém. Pior: no empate de
+    // distância (muitos perfis ficam no centro da cidade) o desempate era
+    // "cadastro mais recente" — o novato via primeiro outros novatos, que são
+    // justamente quem mais abandona no 1º dia.
+    //
+    // Faixas: 1 = visto nas últimas 24h, 2 = nos últimos 7 dias, 3 = o resto.
+    // "Online agora" (faixa 0) não sai daqui: last_seen_at só é gravado ao
+    // abrir o app e ao desconectar, então quem está conectado há horas parece
+    // velho no banco. Ela vem da presença do socket, aplicada depois da query.
+    //
+    // A proximidade continua mandando: a atividade só reordena dentro da mesma
+    // faixa de distância. Ninguém passa a ver gente de outro estado antes da
+    // própria cidade por estar mais ativo.
+    //
+    // Datas entram como literal gerado pelo servidor (não é dado de usuário) e
+    // não como "?", porque os parâmetros desta query são posicionais e já
+    // estão montados na ordem do WHERE/ORDER BY.
+    const vistoHa24h = new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const vistoHa7d = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
+    const activityTierExpr = `CASE
+        WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= '${vistoHa24h}' THEN 1
+        WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= '${vistoHa7d}' THEN 2
+        ELSE 3 END`;
+    // Sem coordenadas do viewer não existe faixa de distância; a proximidade
+    // aí é cidade → estado, e é ela que delimita onde a atividade pode
+    // reordenar. Valores escapados porque vêm do perfil.
+    const cidadeSql = String(myCity || '').replace(/'/g, "''");
+    const estadoSql = String(myState || '').replace(/'/g, "''");
+    const proximityBandExpr = distanceBandExpr
+      // Sem coordenadas, cidade e estado nao ha como medir proximidade: todos na
+      // mesma faixa. Sem este caso o CASE saia vazio ("CASE ELSE 2 END"), SQL
+      // invalido, e o Match quebrava para perfil sem localizacao.
+      ?? (!myCity && !myState ? '0' : null)
+      ?? `CASE
+          ${myCity ? `WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM('${cidadeSql}')) THEN 0` : ''}
+          ${myState ? `WHEN LOWER(TRIM(COALESCE(u.state, ''))) = LOWER(TRIM('${estadoSql}')) THEN 1` : ''}
+          ELSE 2 END`;
 
     const cityPrioritySql = myCity
       ? "CASE WHEN LOWER(TRIM(COALESCE(u.city, ''))) = LOWER(TRIM(?)) THEN 0 ELSE 1 END,"
@@ -9259,12 +9305,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           FROM conversations c
           WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
             AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)
-        ) as conversations_count
+        ) as conversations_count,
+        ${proximityBandExpr} AS match_proximity_band,
+        ${activityTierExpr} AS match_activity_tier
       FROM users u
       WHERE ${whereClause}
       ORDER BY
         ${hasRealDistanceSql}
         ${distanceBandSql}
+        ${activityTierExpr} ASC,
         ${boostPrioritySql}
         ${distanceOrderSql}
         ${cityPrioritySql}
@@ -9277,9 +9326,30 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       params
     );
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
+    const estaOnline = (id: string) => (presence?.isOnline ? presence.isOnline(id) : false);
+
+    // Quem está conectado agora vira faixa 0 dentro da própria faixa de
+    // proximidade. sort é estável, então todo o resto mantém a ordem que o
+    // banco devolveu (boost, distância exata, cidade, estado...).
+    const ordenados = (rows as any[])
+      .map((r, posicao) => ({
+        r,
+        posicao,
+        faixa: Number(r.match_proximity_band ?? 0),
+        atividade: estaOnline(String(r.id)) ? 0 : Number(r.match_activity_tier ?? 3),
+      }))
+      .sort((a, b) => {
+        // Sem coordenadas o perfil vai para o fim no SQL (hasRealDistanceSql);
+        // a faixa 999999 preserva isso aqui também.
+        if (a.faixa !== b.faixa) return a.faixa - b.faixa;
+        if (a.atividade !== b.atividade) return a.atividade - b.atividade;
+        return a.posicao - b.posicao;
+      })
+      .map((x) => x.r);
+
     res.json(
-      rows.map((r: any) => {
-        const u = rowToPublicUser(r, presence?.isOnline ? presence.isOnline(String(r.id)) : false);
+      ordenados.map((r: any) => {
+        const u = rowToPublicUser(r, estaOnline(String(r.id)));
         const mainUrl = r.main_filename ? `/uploads/${String(r.main_filename)}` : null;
         const photosCount = Number(r.photos_count || 0);
         const videosCount = Number(r.videos_count || 0);
