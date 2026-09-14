@@ -874,6 +874,18 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoters/send-incentive', {}, { timeout: 10 * 60 * 1000 });
     return response.data;
   },
+  // Comunicado unico: dryRun devolve a previa sem enviar nada.
+  previewRulesNotice: async (): Promise<{
+    dryRun: true; total: number; jaReceberam: number; semEmail: number;
+    promotores: Array<{ userId: string; nome: string; email: string | null; saldoCents: number; aprovadoCents: number; creditadoCents: number; jaRecebeu: boolean; textoNoApp: string }>;
+  }> => {
+    const response = await apiClient.post('/admin/promoters/send-rules-notice', { dryRun: true });
+    return response.data;
+  },
+  sendRulesNotice: async (): Promise<{ enviados: number; erros: number; jaReceberam: number; semEmail: number; total: number }> => {
+    const response = await apiClient.post('/admin/promoters/send-rules-notice', {}, { timeout: 10 * 60 * 1000 });
+    return response.data;
+  },
 };
 
 export const promoterSupportService = {

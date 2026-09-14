@@ -2375,4 +2375,72 @@ describe('nosigilo backend', () => {
     // 20% de R$ 9,90 em cada um dos dois meses.
     expect(Number(total?.s || 0)).toBe(396);
   });
+
+  // ── Comunicado unico sobre o pagamento de comissao ────────────────────────
+  it('comunicado de regras: previa nao envia, e cada promotor recebe uma unica vez', async () => {
+    const admin = await createBootstrapSponsor(ctx, { email: 'admin-comunicado@example.com', name: 'Admin Comunicado' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+
+    const promotor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Promotor Comunicado', email: 'promotor-comunicado@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const promotorId = String(promotor.user.id);
+    const agora = new Date().toISOString();
+    await run(
+      ctx.db,
+      `INSERT INTO promoters (id, user_id, full_name, pix_key, status, accepted_terms_at, activated_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [`promoter-comunicado-${Date.now()}`, promotorId, 'Promotor Comunicado', 'pix-comunicado', 'active', agora, agora, agora]
+    );
+    // Uma comissao aprovada normal e uma do retroativo.
+    await run(
+      ctx.db,
+      `INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at)
+       VALUES (?, ?, ?, 990, 198, 'approved', '2026-08', 'payment.approved', ?),
+              (?, ?, ?, 990, 198, 'approved', '2026-09', 'backfill_renovacao', ?)`,
+      [`c1-${Date.now()}`, promotorId, 'assinante-x', agora, `c2-${Date.now()}`, promotorId, 'assinante-x', agora]
+    );
+
+    const contarAvisos = async () => Number(((await ctx.db.queryOne(
+      "SELECT COUNT(*) AS c FROM notifications WHERE user_id = ? AND type = 'promoter.rules_notice'",
+      [promotorId]
+    )) as any)?.c || 0);
+
+    const previa = await request(ctx.app)
+      .post('/api/admin/promoters/send-rules-notice')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ dryRun: true })
+      .expect(200);
+    const linha = previa.body.promotores.find((p: any) => p.userId === promotorId);
+    expect(linha.saldoCents).toBe(396);
+    expect(linha.creditadoCents).toBe(198);
+    expect(linha.textoNoApp).toContain('R$ 1,98 de renovações');
+    expect(linha.textoNoApp).toContain('R$ 10,00');
+    // A previa nao pode ter enviado nada.
+    expect(await contarAvisos()).toBe(0);
+
+    const envio = await request(ctx.app)
+      .post('/api/admin/promoters/send-rules-notice')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({})
+      .expect(200);
+    expect(envio.body.enviados).toBeGreaterThanOrEqual(1);
+    expect(await contarAvisos()).toBe(1);
+
+    // Segundo clique: ninguem recebe de novo.
+    const repetido = await request(ctx.app)
+      .post('/api/admin/promoters/send-rules-notice')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({})
+      .expect(200);
+    expect(repetido.body.enviados).toBe(0);
+    expect(await contarAvisos()).toBe(1);
+
+    // Rota de admin.
+    await request(ctx.app)
+      .post('/api/admin/promoters/send-rules-notice')
+      .set('Authorization', `Bearer ${promotor.token}`)
+      .send({ dryRun: true })
+      .expect(403);
+  });
 });

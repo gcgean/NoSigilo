@@ -4547,6 +4547,10 @@ function AdminPromotersTab() {
   // Incentive email (para promotores já ativos, reforça o engajamento)
   const [isSendingIncentive, setIsSendingIncentive] = useState(false);
   const [incentiveResult, setIncentiveResult] = useState<{ sent: number; errors: number; skipped: number; total: number } | null>(null);
+  // Comunicado unico sobre o pagamento. A previa vem antes de qualquer envio.
+  const [rulesPreview, setRulesPreview] = useState<Awaited<ReturnType<typeof adminPromoterService.previewRulesNotice>> | null>(null);
+  const [isLoadingRules, setIsLoadingRules] = useState(false);
+  const [rulesResult, setRulesResult] = useState<{ enviados: number; erros: number; jaReceberam: number; semEmail: number; total: number } | null>(null);
 
   // Support chat state
   // Alvo mínimo do chat — atende tanto PromoterRow quanto um usuário comum de suporte.
@@ -4694,6 +4698,29 @@ function AdminPromotersTab() {
     finally { setIsSendingIncentive(false); }
   };
 
+  const handlePreviewRules = async () => {
+    setIsLoadingRules(true);
+    try {
+      setRulesPreview(await adminPromoterService.previewRulesNotice());
+    } catch { toast({ title: 'Erro ao gerar prévia', variant: 'destructive' }); }
+    finally { setIsLoadingRules(false); }
+  };
+
+  const handleSendRules = async () => {
+    if (!rulesPreview) return;
+    const pendentes = rulesPreview.total - rulesPreview.jaReceberam;
+    if (pendentes <= 0) { toast({ title: 'Todos os promotores já receberam este comunicado' }); return; }
+    if (!confirm(`Enviar o comunicado sobre pagamento de comissão para ${pendentes} promotor(es)? Vai por e-mail, notificação no app e push. Cada promotor recebe uma única vez.`)) return;
+    setIsLoadingRules(true);
+    try {
+      const result = await adminPromoterService.sendRulesNotice();
+      setRulesResult(result);
+      setRulesPreview(null);
+      toast({ title: `📣 Comunicado enviado para ${result.enviados} promotor(es)`, description: result.erros > 0 ? `${result.erros} erro(s) — clique de novo para tentar só esses.` : undefined });
+    } catch { toast({ title: 'Erro ao enviar comunicado', variant: 'destructive' }); }
+    finally { setIsLoadingRules(false); }
+  };
+
   // Group commissions by period
   const byPeriod = useMemo(() => {
     const map = new Map<string, CommissionRow[]>();
@@ -4820,6 +4847,67 @@ function AdminPromotersTab() {
               {isSendingSummary ? 'Enviando...' : `Enviar para ${promoters.length} promotor(es)`}
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Comunicado unico: como a comissao e paga */}
+      <div className="glass rounded-xl overflow-hidden border border-blue-500/30">
+        <div className="bg-gradient-to-r from-blue-600/10 to-indigo-600/10 px-6 py-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-blue-500" />
+                <h4 className="font-semibold">Comunicado: como a comissão é paga</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Envio único para todos os promotores ativos (e-mail, notificação e push): Pix a partir de R$ 10,00 aprovados, saldo acumula entre meses, comissão todo mês na renovação e o valor retroativo creditado a cada um. Quem já recebeu é pulado.
+              </p>
+              {rulesResult && (
+                <p className={`text-sm font-medium ${rulesResult.erros > 0 ? 'text-destructive' : 'text-emerald-600'}`}>
+                  ✓ {rulesResult.enviados} enviado(s)
+                  {rulesResult.jaReceberam > 0 && ` · ${rulesResult.jaReceberam} já tinham recebido`}
+                  {rulesResult.semEmail > 0 && ` · ${rulesResult.semEmail} só no app (sem e-mail)`}
+                  {rulesResult.erros > 0 && ` · ${rulesResult.erros} erro(s)`}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button onClick={handlePreviewRules} disabled={isLoadingRules} variant="outline" size="sm" className="gap-2">
+                {isLoadingRules && !rulesPreview ? <RefreshCw className="w-4 h-4 animate-spin" /> : null}
+                Pré-visualizar
+              </Button>
+              <Button
+                onClick={handleSendRules}
+                disabled={isLoadingRules || !rulesPreview}
+                className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                size="sm"
+                title={!rulesPreview ? 'Gere a prévia antes de enviar' : undefined}
+              >
+                {isLoadingRules && rulesPreview ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                {rulesPreview ? `Enviar para ${rulesPreview.total - rulesPreview.jaReceberam}` : 'Enviar'}
+              </Button>
+            </div>
+          </div>
+
+          {rulesPreview && (
+            <div className="rounded-lg border bg-background/60 max-h-80 overflow-y-auto">
+              <p className="px-3 py-2 text-xs text-muted-foreground border-b">
+                {rulesPreview.total} promotor(es) · {rulesPreview.jaReceberam} já receberam · {rulesPreview.semEmail} sem e-mail (recebem só no app)
+              </p>
+              {rulesPreview.promotores.map((p) => (
+                <div key={p.userId} className={`px-3 py-2 border-b last:border-0 text-xs ${p.jaRecebeu ? 'opacity-50' : ''}`}>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                    <span className="font-medium text-sm">{p.nome}</span>
+                    <span className="text-muted-foreground">{p.email ?? 'sem e-mail'}</span>
+                    <span>saldo {formatBRLAdmin(p.saldoCents)}</span>
+                    {p.creditadoCents > 0 && <span className="text-blue-600 font-medium">+{formatBRLAdmin(p.creditadoCents)} creditado</span>}
+                    {p.jaRecebeu && <span className="text-emerald-600">já recebeu</span>}
+                  </div>
+                  <p className="text-muted-foreground mt-0.5">{p.textoNoApp}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

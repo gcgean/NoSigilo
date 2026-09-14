@@ -16,7 +16,7 @@ import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
 import {
   cancelHubSubscription,
   createHubCheckout,
@@ -4057,6 +4057,137 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.json({ sent, errors, skipped, total: rows.length });
     } catch (err) {
       console.error('[admin/promoters/send-incentive]', err);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
+  // POST /api/admin/promoters/send-rules-notice — comunicado UNICO sobre como a
+  // comissao e paga (minimo acumulado de R$ 10,00, comissao mensal, retroativo
+  // creditado). Por e-mail + notificacao no app + push.
+  //
+  // { dryRun: true } nao envia nada: devolve a lista de quem receberia e com
+  // quais numeros, para revisar antes de disparar em massa.
+  //
+  // Unico de verdade: a notificacao 'promoter.rules_notice' e o registro de
+  // que a pessoa ja recebeu. Quem ja tem uma e pulado, entao clique duplo,
+  // timeout do navegador no meio do lote ou reenvio por engano nao mandam o
+  // mesmo aviso duas vezes. O e-mail vai ANTES da notificacao: se o e-mail
+  // falhar, nao grava o registro, e um novo clique tenta de novo so esses.
+  app.post('/api/admin/promoters/send-rules-notice', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const dryRun = req.body?.dryRun === true;
+    try {
+      const rows = (await queryAll(
+        db,
+        `SELECT p.user_id, p.full_name,
+                COALESCE(NULLIF(TRIM(p.contact_email), ''), u.email) AS notify_email,
+                COALESCE(SUM(CASE WHEN pc.status IN ('pending', 'approved') THEN pc.commission_amount ELSE 0 END), 0) AS saldo_cents,
+                COALESCE(SUM(CASE WHEN pc.status = 'approved' THEN pc.commission_amount ELSE 0 END), 0) AS aprovado_cents,
+                COALESCE(SUM(CASE WHEN pc.event_type = 'backfill_renovacao' AND pc.status <> 'cancelled' THEN pc.commission_amount ELSE 0 END), 0) AS creditado_cents,
+                (SELECT COUNT(*) FROM notifications n
+                  WHERE n.user_id = p.user_id AND n.type = 'promoter.rules_notice') AS ja_recebeu
+         FROM promoters p
+         JOIN users u ON u.id = p.user_id
+         LEFT JOIN promoter_commissions pc ON pc.promoter_user_id = p.user_id
+         WHERE p.status = 'active'
+           AND (u.is_banned = 0 OR u.is_banned IS NULL)
+           AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         GROUP BY p.user_id, p.full_name, p.contact_email, u.email`,
+        []
+      )) as any[];
+
+      const emReais = (c: number) => (c / 100).toFixed(2).replace('.', ',');
+      const textoDoApp = (saldo: number, aprovado: number, creditado: number) => {
+        const faltam = PROMOTER_MIN_PAYOUT_CENTS - aprovado;
+        const credito = creditado > 0
+          ? `Creditamos R$ ${emReais(creditado)} de renovações que tinham ficado sem comissão. `
+          : '';
+        const situacao = faltam <= 0
+          ? `Seu saldo é R$ ${emReais(saldo)} e já pode ser pago.`
+          : `Seu saldo é R$ ${emReais(saldo)}; faltam R$ ${emReais(faltam)} aprovados para o Pix.`;
+        return `${credito}Agora você ganha comissão todo mês em que o assinante renova. O Pix sai quando o saldo aprovado chega a R$ ${emReais(PROMOTER_MIN_PAYOUT_CENTS)} — acumula entre os meses, nada se perde. ${situacao}`;
+      };
+
+      if (dryRun) {
+        res.json({
+          dryRun: true,
+          total: rows.length,
+          jaReceberam: rows.filter((r) => Number(r.ja_recebeu) > 0).length,
+          semEmail: rows.filter((r) => !String(r.notify_email || '').trim()).length,
+          promotores: rows.map((r) => ({
+            userId: String(r.user_id),
+            nome: String(r.full_name || ''),
+            email: r.notify_email ? String(r.notify_email) : null,
+            saldoCents: Number(r.saldo_cents || 0),
+            aprovadoCents: Number(r.aprovado_cents || 0),
+            creditadoCents: Number(r.creditado_cents || 0),
+            jaRecebeu: Number(r.ja_recebeu) > 0,
+            textoNoApp: textoDoApp(Number(r.saldo_cents || 0), Number(r.aprovado_cents || 0), Number(r.creditado_cents || 0)),
+          })),
+        });
+        return;
+      }
+
+      const io = req.app.get('io') as SocketIOServer | undefined;
+      let enviados = 0; let erros = 0; let jaReceberam = 0; let semEmail = 0;
+      for (const row of rows) {
+        if (Number(row.ja_recebeu) > 0) { jaReceberam++; continue; }
+        const userId = String(row.user_id);
+        const saldo = Number(row.saldo_cents || 0);
+        const aprovado = Number(row.aprovado_cents || 0);
+        const creditado = Number(row.creditado_cents || 0);
+        const email = String(row.notify_email || '').trim();
+        try {
+          if (email) {
+            await sendPromoterRulesNoticeEmail(
+              { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+              {
+                to: email,
+                promoterName: String(row.full_name || 'Promotor'),
+                saldoCents: saldo,
+                aprovadoCents: aprovado,
+                minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS,
+                creditadoCents: creditado,
+              }
+            );
+          } else {
+            // Sem e-mail ainda recebe no app: a notificacao sozinha ja resolve
+            // o problema de ninguem ter avisado.
+            semEmail++;
+          }
+
+          const title = creditado > 0 ? '💰 Creditamos comissões para você' : '💰 Como funciona o pagamento da sua comissão';
+          const description = textoDoApp(saldo, aprovado, creditado);
+          await createNotification(
+            { db, io },
+            {
+              userId,
+              type: 'promoter.rules_notice',
+              title,
+              description,
+              dataJson: { saldoCents: saldo, aprovadoCents: aprovado, creditadoCents: creditado, minPayoutCents: PROMOTER_MIN_PAYOUT_CENTS },
+            }
+          );
+          try {
+            await sendPushToUser(
+              { db, env },
+              { userId, payload: { title, body: description, url: '/promoter', tag: 'promoter-rules-notice', data: {} } }
+            );
+          } catch {
+            // Push e bonus: quem nao tem inscricao ve a notificacao ao abrir o app.
+          }
+          enviados++;
+        } catch (e: any) {
+          console.error('[send-rules-notice] erro para', userId, e?.message);
+          erros++;
+        }
+        // Mesmo espacamento dos outros envios em massa, para nao estourar o
+        // limite de taxa do Resend.
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      await persist();
+      res.json({ enviados, erros, jaReceberam, semEmail, total: rows.length });
+    } catch (err) {
+      console.error('[admin/promoters/send-rules-notice]', err);
       res.status(500).json({ error: 'internal' });
     }
   });

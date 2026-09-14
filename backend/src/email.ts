@@ -733,6 +733,134 @@ export async function sendPromoterIncentiveEmail(
   return { skipped: false as const };
 }
 
+// ─── Promoter Rules Notice Email (comunicado unico sobre o pagamento) ────────
+//
+// Enviado uma vez para todos os promotores ativos. Existe por dois motivos:
+//
+//   1. O minimo de R$ 10,00 acumulado entrou em 16/08/2026 (c9be211). Quem ja
+//      era promotor antes aceitou os termos quando o Pix nao tinha minimo, e
+//      os unicos avisos da mudanca eram o painel (so quem abre) e e-mails que
+//      dependem de clique manual no admin. Nao ha registro de que chegaram.
+//   2. Em 12-13/09/2026 descobrimos que renovacao nao gerava comissao — nem a
+//      da Stripe, que nem avisava o NoSigilo do pagamento. Foi corrigido e o
+//      retroativo foi creditado. O promotor merece saber das duas coisas pela
+//      gente, e nao descobrindo um saldo que mudou sozinho.
+//
+// O texto e personalizado com o saldo atual e, quando houver, o valor
+// creditado de retroativo — um comunicado generico sobre "regras" seria lido
+// como aviso de corte; com o numero dele fica claro que e sobre o dinheiro dele.
+export async function sendPromoterRulesNoticeEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: {
+    to: string;
+    promoterName: string;
+    /** pending + approved: o que o promotor enxerga como "meu saldo". */
+    saldoCents: number;
+    /** Parte aprovada do saldo — e ela que conta para liberar o Pix. */
+    aprovadoCents: number;
+    minPayoutCents: number;
+    /** Soma das comissoes criadas pelo retroativo (event_type backfill_renovacao). */
+    creditadoCents: number;
+  }
+) {
+  if (!options.apiKey || !options.fromEmail) {
+    return { skipped: true as const };
+  }
+
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const dashboardUrl = `${siteUrl}/promoter`;
+  const safeName = escapeHtml(payload.promoterName.split(' ')[0] || payload.promoterName);
+  const brl = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const minimo = brl(payload.minPayoutCents);
+  const faltam = Math.max(0, payload.minPayoutCents - payload.aprovadoCents);
+  const liberado = faltam === 0 && payload.aprovadoCents > 0;
+
+  const subject = payload.creditadoCents > 0
+    ? `💰 ${safeName}, creditamos ${brl(payload.creditadoCents)} na sua conta de promotor`
+    : `💰 ${safeName}, como funciona o pagamento da sua comissão`;
+
+  const saldoHtml = `
+    <div style="display:flex;gap:12px;margin:0 0 24px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:140px;background:#dcfce7;border-radius:12px;padding:16px;text-align:center;border:1px solid #86efac;">
+        <p style="font-size:22px;font-weight:800;color:#15803d;margin:0;">${brl(payload.saldoCents)}</p>
+        <p style="font-size:12px;color:#166534;margin:4px 0 0;">seu saldo hoje</p>
+      </div>
+      <div style="flex:1;min-width:140px;background:${liberado ? '#dcfce7' : '#fef9c3'};border-radius:12px;padding:16px;text-align:center;border:1px solid ${liberado ? '#86efac' : '#fde047'};">
+        <p style="font-size:22px;font-weight:800;color:${liberado ? '#15803d' : '#854d0e'};margin:0;">${liberado ? 'Liberado' : brl(faltam)}</p>
+        <p style="font-size:12px;color:${liberado ? '#166534' : '#713f12'};margin:4px 0 0;">${liberado ? 'já pode receber via Pix' : `faltam para o Pix de ${minimo}`}</p>
+      </div>
+    </div>`;
+
+  const creditoHtml = payload.creditadoCents > 0 ? `
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:16px 20px;margin:0 0 24px;">
+      <p style="font-size:14px;font-weight:700;color:#1e40af;margin:0 0 6px;">✅ Creditamos ${brl(payload.creditadoCents)} para você</p>
+      <p style="font-size:14px;color:#1e3a8a;margin:0;">Encontramos uma falha: quando um assinante seu <strong>renovava</strong> o plano, a comissão da renovação não estava sendo registrada. Já corrigimos e lançamos no seu saldo tudo o que tinha ficado para trás.</p>
+    </div>` : '';
+
+  const regra = (n: string, texto: string) => `
+        <div style="display:flex;align-items:flex-start;gap:12px;font-size:14px;color:#1f2937;">
+          <span style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0;">${n}</span>
+          <span>${texto}</span>
+        </div>`;
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0fdf4;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <a href="${siteUrl}" style="text-decoration:none;">
+      <div style="display:inline-block;background:#e83e68;border-radius:16px;padding:10px 22px;">
+        <span style="color:white;font-size:20px;font-weight:800;">${appName}</span>
+      </div>
+    </a>
+  </div>
+  <div style="background:white;border-radius:20px;border:1px solid #bbf7d0;padding:36px 32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:48px;margin-bottom:8px;">💰</div>
+      <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#15803d;">Oi, ${safeName}! Tudo sobre a sua comissão</h1>
+      <p style="font-size:15px;color:#4b5563;margin:0;">Queremos que você saiba exatamente como e quando o seu dinheiro chega.</p>
+    </div>
+
+    ${saldoHtml}
+
+    ${creditoHtml}
+
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:14px;padding:20px;margin:0 0 24px;">
+      <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#15803d;margin:0 0 12px;">Como funciona</p>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        ${regra('1', 'Você ganha <strong>20% de cada pagamento</strong> de quem assinou pelo seu convite — <strong>todo mês</strong> em que a pessoa renova, não só na primeira vez.')}
+        ${regra('2', `O Pix é enviado quando o seu saldo aprovado chega a <strong>${minimo}</strong>.`)}
+        ${regra('3', `O saldo <strong>acumula entre os meses</strong>. Se você fizer R$ 6,00 num mês e R$ 5,00 no outro, os R$ 11,00 saem juntos. <strong>Nada se perde</strong> — fica guardado até chegar lá.`)}
+        ${regra('4', 'Cada comissão passa por uma conferência antes de ser aprovada, para cobrir cancelamentos e estornos. Só a parte aprovada conta para o Pix.')}
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:white;font-size:17px;font-weight:700;padding:18px 44px;border-radius:14px;text-decoration:none;">
+        Ver meu saldo no painel →
+      </a>
+    </div>
+
+    <div style="border-top:1px solid #e5e7eb;padding-top:16px;text-align:center;">
+      <p style="font-size:12px;color:#9ca3af;margin:0;">Você recebe este e-mail por ser promotor(a) ativo(a) no ${appName}. Dúvidas? Fale com a gente pelo chat do painel.<br>
+      <a href="${siteUrl}" style="color:#e83e68;text-decoration:none;">${appName.toLowerCase()}</a></p>
+    </div>
+  </div>
+</div>
+</body></html>`.trim();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject, html: withUnsubscribe(html, payload.to) }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_promoter_rules_notice_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
 // ─── Promoter Monthly Summary Email ──────────────────────────────────────────
 export async function sendPromoterMonthlySummaryEmail(
   options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
