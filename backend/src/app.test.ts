@@ -2443,4 +2443,55 @@ describe('nosigilo backend', () => {
       .send({ dryRun: true })
       .expect(403);
   });
+
+  // ── Match: conta desativada some da area de Match ─────────────────────────
+  it('match nao mostra perfil desativado, nem na lista de curtidos, e recusa curtir', async () => {
+    const eu = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Matcher Desativados', email: 'matcher-desativados@example.com', password: 'senha123',
+      birthDate: '1990-01-01', gender: 'Homem', city: 'Fortaleza', state: 'CE',
+    });
+    const ativa = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Ativo Match', email: 'perfil-ativo-match@example.com', password: 'senha123',
+      birthDate: '1994-01-01', gender: 'Mulher', city: 'Fortaleza', state: 'CE',
+    });
+    const curtidaAntes = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Curtida Depois Desativada', email: 'curtida-desativada@example.com', password: 'senha123',
+      birthDate: '1994-01-01', gender: 'Mulher', city: 'Fortaleza', state: 'CE',
+    });
+    const desativada = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Perfil Desativado Match', email: 'perfil-desativado-match@example.com', password: 'senha123',
+      birthDate: '1994-01-01', gender: 'Mulher', city: 'Fortaleza', state: 'CE',
+    });
+
+    // Curti enquanto ainda estava ativa.
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${eu.token}`)
+      .send({ userId: curtidaAntes.user.id })
+      .expect(200);
+
+    await run(ctx.db, 'UPDATE users SET is_deactivated = 1 WHERE id IN (?, ?)', [
+      String(desativada.user.id), String(curtidaAntes.user.id),
+    ]);
+
+    const cards = await request(ctx.app).get('/api/match/cards').set('Authorization', `Bearer ${eu.token}`).expect(200);
+    const idsNosCards = cards.body.map((u: any) => String(u.id));
+    expect(idsNosCards).toContain(String(ativa.user.id));
+    expect(idsNosCards).not.toContain(String(desativada.user.id));
+
+    const curtidos = await request(ctx.app).get('/api/match/liked').set('Authorization', `Bearer ${eu.token}`).expect(200);
+    expect(curtidos.body.map((u: any) => String(u.id))).not.toContain(String(curtidaAntes.user.id));
+
+    // Card que ficou aberto na tela antes da desativacao nao gera match.
+    await request(ctx.app)
+      .post('/api/match/like')
+      .set('Authorization', `Bearer ${eu.token}`)
+      .send({ userId: desativada.user.id })
+      .expect(404);
+
+    // Reativou: volta aos curtidos sozinho, porque a curtida nao foi apagada.
+    await run(ctx.db, 'UPDATE users SET is_deactivated = 0 WHERE id = ?', [String(curtidaAntes.user.id)]);
+    const depois = await request(ctx.app).get('/api/match/liked').set('Authorization', `Bearer ${eu.token}`).expect(200);
+    expect(depois.body.map((u: any) => String(u.id))).toContain(String(curtidaAntes.user.id));
+  });
 });

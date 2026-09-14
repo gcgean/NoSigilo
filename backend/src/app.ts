@@ -9123,6 +9123,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     // Perfis de vitrine não aparecem no Match (evita "match fantasma").
     whereClause += ' AND (u.is_showcase = 0 OR u.is_showcase IS NULL)';
+    // Conta desativada (pelo dono ou pelo admin), banida ou excluída não
+    // aparece. Antes o Match era a única descoberta sem esse filtro — feed,
+    // stories e busca já tinham — e a pessoa curtia um perfil que nunca ia
+    // responder, porque não estava mais na plataforma.
+    whereClause += ' AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)';
+    whereClause += ' AND (u.is_banned = 0 OR u.is_banned IS NULL)';
+    whereClause += ' AND u.deleted_at IS NULL';
     const effectiveGenders = genders ? String(genders).split(',').map((item) => item.trim()).filter(Boolean) : myLookingFor;
 
     if (city) {
@@ -9312,6 +9319,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     if (targetUserId === myId) {
       res.status(400).json({ error: 'cannot_like_self' });
+      return;
+    }
+
+    // Card aberto antes da desativação ainda pode mandar a curtida. Sem esta
+    // checagem ela gerava match e notificação para uma conta desativada.
+    const alvoAtivo = (await queryOne(
+      db,
+      `SELECT id FROM users
+       WHERE id = ?
+         AND (is_deactivated = 0 OR is_deactivated IS NULL)
+         AND (is_banned = 0 OR is_banned IS NULL)
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [targetUserId]
+    )) as any;
+    if (!alvoAtivo) {
+      res.status(404).json({ error: 'user_unavailable' });
       return;
     }
 
@@ -9572,6 +9596,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       WHERE l.user_id = ?
         AND l.target_type = 'user'
         ${viewerIsAdmin ? '' : 'AND (u.is_admin = 0 OR u.is_admin IS NULL)'}
+        -- A curtida continua gravada: se a conta for reativada, o perfil volta
+        -- para a lista sozinho. Só não se mostra quem não está na plataforma.
+        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND (u.is_banned = 0 OR u.is_banned IS NULL)
+        AND u.deleted_at IS NULL
       ORDER BY l.created_at DESC
       LIMIT 200
     `,
