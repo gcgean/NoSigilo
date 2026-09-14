@@ -112,7 +112,11 @@ SELECT
   'approved',
   periodo,
   'backfill_renovacao',
-  now()::text
+  -- Mesmo formato que o app grava (new Date().toISOString()): created_at e TEXT,
+  -- e now()::text sai como "2026-09-14 00:20:20.863491+00". O Safari nao le
+  -- esse formato (Invalid Date no painel do promotor) e a ordenacao por texto
+  -- erra, porque espaco vem antes do T do ISO.
+  to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
 FROM a_creditar;
 
 \echo
