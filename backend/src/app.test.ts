@@ -2667,4 +2667,23 @@ describe('nosigilo backend', () => {
       .send({ content: '   ' })
       .expect(400);
   });
+
+  // ── Conversa criada duas vezes ao mesmo tempo ──────────────────────────────
+  it('duas criacoes simultaneas da mesma conversa devolvem o mesmo id', async () => {
+    const a = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Conversa Dupla A', email: 'conversa-dupla-a@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const b = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Conversa Dupla B', email: 'conversa-dupla-b@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const criar = () => request(ctx.app)
+      .post('/api/conversations')
+      .set('Authorization', `Bearer ${a.token}`)
+      .send({ userId: b.user.id });
+    const [r1, r2] = await Promise.all([criar(), criar()]);
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
+    expect(r1.body.id).toBeTruthy();
+    expect(r1.body.id).toBe(r2.body.id);
+  });
 });

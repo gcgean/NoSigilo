@@ -2496,6 +2496,43 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const persist = () => db.persist();
   const app = express();
 
+  // Rota async que lança erro responde 500 NA HORA.
+  //
+  // Express 4 ignora promessa rejeitada: o erro subia até o processo (que
+  // antes caía e hoje só registra, ver index.ts) e a requisição ficava
+  // pendurada sem resposta até o nginx desistir com 504 — 60 segundos com a
+  // tela "travando". Em 15/09/2026 a tela de Grupos ficou assim para todo
+  // mundo: 8 de 10 chamadas em 504.
+  //
+  // Envolve cada handler registrado em get/post/put/patch/delete: se a
+  // promessa rejeitar, loga com método e rota e devolve 500 (se ainda não
+  // respondeu). Middlewares síncronos e handlers comuns passam intactos.
+  for (const metodo of ['get', 'post', 'put', 'patch', 'delete'] as const) {
+    const original = (app as any)[metodo].bind(app);
+    (app as any)[metodo] = (caminho: any, ...handlers: any[]) => {
+      // app.get('chave') com um argumento só é leitura de configuração.
+      if (metodo === 'get' && handlers.length === 0) return original(caminho);
+      const envolvidos = handlers.map((h) => (typeof h !== 'function' || h.length > 3)
+        ? h
+        : (req: any, res: any, next: any) => {
+            try {
+              const r = h(req, res, next);
+              if (r && typeof r.catch === 'function') {
+                r.catch((err: unknown) => {
+                  console.error(`[rota] ${metodo.toUpperCase()} ${String(caminho)} falhou:`, err);
+                  if (!res.headersSent) res.status(500).json({ error: 'internal' });
+                });
+              }
+              return r;
+            } catch (err) {
+              console.error(`[rota] ${metodo.toUpperCase()} ${String(caminho)} falhou:`, err);
+              if (!res.headersSent) res.status(500).json({ error: 'internal' });
+            }
+          });
+      return original(caminho, ...envolvidos);
+    };
+  }
+
   app.disable('x-powered-by');
   app.use(
     cors({
@@ -10717,10 +10754,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.json({ id: existing.id });
       return;
     }
-    const id = randomUUID();
-    await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [id, pair[0], pair[1], nowIso()]);
+    // ON CONFLICT e depois relê: duas chamadas juntas (toque duplo em "Mandar
+    // mensagem") passavam as duas pelo SELECT acima e a segunda violava
+    // conversations_user_a_id_user_b_id_key. Assim as duas recebem o id da
+    // mesma conversa.
+    await run(
+      db,
+      db.mode === 'pg'
+        ? 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+        : 'INSERT OR IGNORE INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)',
+      [randomUUID(), pair[0], pair[1], nowIso()]
+    );
     await persist();
-    res.json({ id });
+    const criada = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
+    res.json({ id: criada?.id });
   });
 
   app.delete('/api/conversations/:conversationId', requireAuth(env, db), async (req, res) => {
@@ -13202,7 +13249,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          JOIN event_groups eg ON eg.id = m.group_id
          JOIN events e ON e.id = eg.event_id
         WHERE m.user_id = ?
-        ORDER BY COALESCE(last_message_at, eg.created_at) DESC
+        -- Não dá para usar o alias last_message_at dentro de COALESCE no
+        -- ORDER BY: o Postgres só aceita alias sozinho ali ("column
+        -- last_message_at does not exist"). Isso quebrava /api/groups para
+        -- todo mundo em produção; no SQLite dos testes passava.
+        ORDER BY COALESCE(
+          (SELECT gm4.created_at FROM event_group_messages gm4 WHERE gm4.group_id = eg.id ORDER BY gm4.created_at DESC LIMIT 1),
+          eg.created_at
+        ) DESC
         LIMIT 200`,
       [userId]
     )) as any[];
@@ -13979,7 +14033,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ subscriptionsEnabled: parsed.data.enabled });
   });
 
-  app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), (_req, res) => {
+  // Uso real de CPU: mede o tempo ocioso de todos os núcleos em duas leituras
+  // separadas por 500ms. O painel usava loadavg()/núcleos, que não é CPU — a
+  // carga média conta também processo esperando disco e os ~15 containers da
+  // máquina. Em 15/09/2026 ela mostrava "100% Muito alto" com a CPU 93% livre,
+  // e isso mandou investigar um problema que não existia.
+  const medirCpuReal = async (): Promise<number> => {
+    const somar = () => cpus().reduce((acc, c) => {
+      const t = c.times;
+      const total = t.user + t.nice + t.sys + t.idle + t.irq;
+      return { ocioso: acc.ocioso + t.idle, total: acc.total + total };
+    }, { ocioso: 0, total: 0 });
+    const a = somar();
+    await new Promise((r) => setTimeout(r, 500));
+    const b = somar();
+    const total = b.total - a.total;
+    return total > 0 ? Math.max(0, Math.min(100, (1 - (b.ocioso - a.ocioso) / total) * 100)) : 0;
+  };
+
+  app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const cpuReal = await medirCpuReal();
     try {
       const processMemory = process.memoryUsage();
       const systemTotal = totalmem();
@@ -13993,7 +14066,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const toGb = (value: number) => Math.round((value / 1024 / 1024 / 1024) * 100) / 100;
       const toPct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 10000) / 100 : 0);
       const clampPct = (value: number) => Math.max(0, Math.min(100, Math.round(value * 100) / 100));
-      const cpuUsagePercent = clampPct((Number(currentLoad[0] || 0) / cpuCount) * 100);
+      const cpuUsagePercent = clampPct(cpuReal);
       const asNumber = (value: number | bigint | undefined | null) => typeof value === 'bigint' ? Number(value) : Number(value || 0);
       const diskStats = statfsSync(backendRootDir);
       const diskBlockSize = asNumber((diskStats as any).bsize || (diskStats as any).frsize || 0);

@@ -1287,7 +1287,7 @@ export default function Admin() {
                 <div className={`h-full rounded-full ${cpuHealth.bar}`} style={{ width: `${cpuUsagePercent}%` }} />
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Baseado na carga média do último minuto em {resourcesStatus.cpu.count} núcleo(s).
+                Uso real medido agora nos {resourcesStatus.cpu.count} núcleo(s) da máquina (todos os sistemas dela, não só o NoSigilo).
               </p>
             </div>
 

@@ -201,14 +201,29 @@ export async function initDb(options: {
   const db = existsSync(dbFile) ? new SQL.Database(new Uint8Array(readFileSync(dbFile))) : new SQL.Database();
   db.exec('PRAGMA foreign_keys = ON;');
 
+  // Só no SQLite (dev e testes); produção usa Postgres e não passa por aqui.
+  //
+  // No Windows a troca do arquivo falhava de forma intermitente com UNKNOWN
+  // (-4094): antivírus/indexação segurando o banco por um instante fazia o
+  // rename falhar, e o plano B reabria justamente o arquivo travado. E o nome
+  // temporário usava só Date.now(), então duas gravações no mesmo milissegundo
+  // (chamadas simultâneas) escreviam no MESMO temporário. Nome único e algumas
+  // tentativas curtas antes de desistir.
   const persist = async () => {
-    const tmp = `${dbFile}.${Date.now()}.tmp`;
+    const tmp = `${dbFile}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
     writeFileSync(tmp, Buffer.from(db.export()));
+    for (let tentativa = 0; tentativa < 8; tentativa += 1) {
+      try {
+        renameSync(tmp, dbFile);
+        return;
+      } catch {
+        await new Promise((r) => setTimeout(r, 25 * (tentativa + 1)));
+      }
+    }
     try {
-      renameSync(tmp, dbFile);
-    } catch {
       writeFileSync(dbFile, readFileSync(tmp));
-      unlinkSync(tmp);
+    } finally {
+      try { unlinkSync(tmp); } catch { /* temporário já sumiu */ }
     }
   };
 
