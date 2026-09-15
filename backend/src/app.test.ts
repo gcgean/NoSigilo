@@ -2603,4 +2603,29 @@ describe('nosigilo backend', () => {
     expect(n2.preview?.removed).toBe(true);
     await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dona.token}`).expect(404);
   });
+
+  // ── Match: "passar" duplicado nao pode derrubar o servidor ─────────────────
+  it('dois passar simultaneos no mesmo perfil respondem ok e gravam uma vez so', async () => {
+    const eu = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Passador Duplo', email: 'passador-duplo@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const alvo = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Alvo Passado', email: 'alvo-passado@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    // Toque duplo: as duas chamadas saem antes de qualquer resposta. Entre
+    // 14 e 15/09/2026 a segunda violava a chave unica e derrubava o backend.
+    const passar = () => request(ctx.app)
+      .post('/api/match/pass')
+      .set('Authorization', `Bearer ${eu.token}`)
+      .send({ userId: alvo.user.id });
+    const [a, b] = await Promise.all([passar(), passar()]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+
+    const linhas = (await ctx.db.queryOne(
+      'SELECT COUNT(*) AS c FROM match_passes WHERE user_id = ? AND passed_user_id = ?',
+      [String(eu.user.id), String(alvo.user.id)]
+    )) as any;
+    expect(Number(linhas?.c || 0)).toBe(1);
+  });
 });

@@ -1096,7 +1096,12 @@ async function ensurePromoterCommission(
   const commAmount = Math.round(subAmount * 0.20);
   await run(
     db,
-    'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    // ON CONFLICT: o indice unico (subscriber_user_id, period) da migracao 086
+    // e o que impede comissao em dobro quando webhook e sync de acesso chegam
+    // juntos. Sem isto o segundo INSERT violava o indice e derrubava o processo.
+    db.mode === 'pg'
+      ? 'INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING'
+      : 'INSERT OR IGNORE INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [randomUUID(), inviterUserId, subscriberUserId, subAmount, commAmount, 'pending', period, eventType, nowIso()]
   );
   console.log(`[promoter] commission created (${eventType}): promoter=${inviterUserId} subscriber=${subscriberUserId} R$${(commAmount / 100).toFixed(2)}`);
@@ -6153,7 +6158,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (await recusaDeStory(story, viewerId)) { res.status(403).json({ error: 'forbidden' }); return; }
     const existing = (await queryOne(db, 'SELECT id FROM story_views WHERE story_id = ? AND viewer_id = ?', [storyId, viewerId])) as any;
     if (!existing) {
-      await run(db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), storyId, viewerId, new Date().toISOString()]);
+      // Mesma corrida do match_passes: story_views tem UNIQUE(story_id, viewer_id),
+      // e abrir o mesmo story duas vezes rapido mandava dois INSERT.
+      await run(
+        db,
+        db.mode === 'pg'
+          ? 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+          : 'INSERT OR IGNORE INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)',
+        [randomUUID(), storyId, viewerId, new Date().toISOString()]
+      );
       await persist();
     }
     res.json({ ok: true });
@@ -9626,12 +9639,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     ])) as any;
 
     if (!existing?.id) {
-      await run(db, 'INSERT INTO match_passes (id, user_id, passed_user_id, created_at) VALUES (?, ?, ?, ?)', [
-        randomUUID(),
-        myId,
-        targetUserId,
-        nowIso(),
-      ]);
+      // ON CONFLICT / OR IGNORE, nao so o SELECT acima: duas chamadas juntas
+      // (toque duplo, reenvio de rede) passavam as duas pelo SELECT e a segunda
+      // violava idx_match_passes_user_target — o que derrubou o backend 13
+      // vezes entre 14 e 15/09/2026. "Passar" duas vezes o mesmo perfil e o
+      // mesmo que passar uma: ignorar a duplicata e o resultado certo.
+      await run(
+        db,
+        db.mode === 'pg'
+          ? 'INSERT INTO match_passes (id, user_id, passed_user_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING'
+          : 'INSERT OR IGNORE INTO match_passes (id, user_id, passed_user_id, created_at) VALUES (?, ?, ?, ?)',
+        [randomUUID(), myId, targetUserId, nowIso()]
+      );
     }
     await persist();
     res.json({ ok: true });

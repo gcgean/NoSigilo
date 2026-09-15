@@ -10,6 +10,24 @@ import jwt from 'jsonwebtoken';
 import { sendReengagementEmail, sendWeeklySummaryEmail } from './email.js';
 import { randomUUID } from 'node:crypto';
 
+// Uma promessa rejeitada sem tratamento NAO pode derrubar o site inteiro.
+//
+// Express 4 nao captura erro de rota async: a rejeicao sobe ate o processo, e
+// no Node 18 isso encerra o processo. Entre 14/09 17:00 e 15/09 07:41 (BRT) o
+// backend caiu 13 vezes assim, sempre pelo mesmo motivo: dois "passar" do
+// Match chegando juntos, o segundo violando a chave unica de match_passes. Um
+// toque duplo num botao derrubava feed, chat, admin e pagamentos de todo
+// mundo, e cada reinicio (tsx compilando app.ts) deixava o site em 504 por
+// varios segundos — foi o painel admin zerado com "CPU 100%".
+//
+// Aqui so se registra e segue. A requisicao que falhou fica sem resposta e o
+// nginx devolve 504 so para ela; o resto do site continua no ar. Erro
+// sincrono (uncaughtException) continua encerrando, porque ai o estado do
+// processo pode estar corrompido de verdade.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection] erro sem tratamento numa rota — processo mantido no ar:', reason);
+});
+
 // ─── Automation Scheduler ─────────────────────────────────────────────────────
 // Runs every hour and checks if daily/weekly tasks need to fire.
 // Timestamps are stored in-memory (survives restarts via re-check logic).
