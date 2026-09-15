@@ -1673,6 +1673,8 @@ export default function Profile() {
                   post={post}
                   viewerId={user?.id}
                   dataLabel={visitTimeAgo(post.createdAt)}
+                  podeGerenciar
+                  onRemovido={(id) => setMyPosts((atual) => atual.filter((p) => p.id !== id))}
                 />
               ))}
             </div>

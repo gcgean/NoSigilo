@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Heart, MessageCircle, Eye, Loader2 } from 'lucide-react';
-import { interactionsService } from '@/services/api';
+import { Heart, MessageCircle, Eye, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { feedService, interactionsService } from '@/services/api';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
@@ -47,6 +53,10 @@ type ProfilePostCardProps = {
   onPrecisaAssinar?: () => void;
   /** Abre os comentários ao montar (notificação de comentário/resposta). */
   abrirComentarios?: boolean;
+  /** Mostra "Editar" e "Excluir". Só para o dono — o backend confere de novo. */
+  podeGerenciar?: boolean;
+  /** Chamado depois de excluir, para quem usa o cartão tirar ele da lista. */
+  onRemovido?: (postId: string) => void;
 };
 
 export default function ProfilePostCard({
@@ -56,6 +66,8 @@ export default function ProfilePostCard({
   podeInteragir = true,
   onPrecisaAssinar,
   abrirComentarios = false,
+  podeGerenciar = false,
+  onRemovido,
 }: ProfilePostCardProps) {
   const { toast } = useToast();
   const [curtido, setCurtido] = useState(!!post.likedByMe);
@@ -66,6 +78,47 @@ export default function ProfilePostCard({
   const [carregando, setCarregando] = useState(false);
   const [rascunho, setRascunho] = useState('');
   const [enviando, setEnviando] = useState(false);
+  // Texto local: depois de editar, o cartão mostra o novo sem recarregar a lista.
+  const [texto, setTexto] = useState(post.content || '');
+  const [editando, setEditando] = useState(false);
+  const [rascunhoTexto, setRascunhoTexto] = useState('');
+  const [salvandoTexto, setSalvandoTexto] = useState(false);
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+  const temMidia = (post.media || []).length > 0;
+
+  const salvarTexto = async () => {
+    const novo = rascunhoTexto.trim();
+    if (!novo && !temMidia) {
+      toast({ title: 'A publicação não pode ficar vazia', variant: 'destructive' });
+      return;
+    }
+    setSalvandoTexto(true);
+    try {
+      const r = await feedService.updatePost(post.id, novo);
+      setTexto(r.content);
+      setEditando(false);
+      toast({ title: 'Publicação atualizada' });
+    } catch {
+      toast({ title: 'Não foi possível salvar', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setSalvandoTexto(false);
+    }
+  };
+
+  const excluir = async () => {
+    setExcluindo(true);
+    try {
+      await feedService.deletePost(post.id);
+      toast({ title: 'Publicação removida' });
+      setConfirmarExclusao(false);
+      onRemovido?.(post.id);
+    } catch {
+      toast({ title: 'Falha ao remover', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setExcluindo(false);
+    }
+  };
 
   const fotos = (post.media || []).filter((m) => m.url && !String(m.mimeType || '').startsWith('video/'));
   const videos = (post.media || []).filter((m) => m.url && String(m.mimeType || '').startsWith('video/'));
@@ -132,13 +185,77 @@ export default function ProfilePostCard({
 
   return (
     <article className="glass rounded-2xl p-4">
-      <p className="mb-2 text-xs text-muted-foreground">{dataLabel}</p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">{dataLabel}</p>
+        {podeGerenciar && !editando && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="-my-2 -mr-2 h-9 w-9 rounded-full" aria-label="Opções da publicação">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => { setRascunhoTexto(texto); setEditando(true); }}>
+                <Pencil className="h-4 w-4" />
+                Editar texto
+              </DropdownMenuItem>
+              {/* Confirmação desenhada na página, não window.confirm: navegador
+                  de app (Instagram etc.) bloqueia a janela nativa em silêncio. */}
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setConfirmarExclusao(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remover publicação
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
 
-      {post.content?.trim() ? (
+      {editando ? (
+        <div className="mb-3 space-y-2">
+          <textarea
+            value={rascunhoTexto}
+            onChange={(e) => setRascunhoTexto(e.target.value.slice(0, 5000))}
+            rows={4}
+            autoFocus
+            placeholder={temMidia ? 'Escreva uma legenda (opcional)' : 'Escreva sua publicação'}
+            className="w-full resize-y rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setEditando(false)} disabled={salvandoTexto}>Cancelar</Button>
+            <Button size="sm" onClick={() => void salvarTexto()} disabled={salvandoTexto}>
+              {salvandoTexto ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+            </Button>
+          </div>
+        </div>
+      ) : texto.trim() ? (
         <p className="mb-3 whitespace-pre-wrap break-words text-sm leading-6">
-          <PostContent content={post.content} />
+          <PostContent content={texto} />
         </p>
       ) : null}
+
+      <AlertDialog open={confirmarExclusao} onOpenChange={(aberto) => { if (!excluindo) setConfirmarExclusao(aberto); }}>
+        <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover esta publicação?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Ela sai do seu perfil e do feed, junto com curtidas e comentários. Não dá para desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={excluindo}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => { e.preventDefault(); void excluir(); }}
+              disabled={excluindo}
+            >
+              {excluindo ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Remover'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {fotos.length > 0 ? (
         <div className={cn('grid gap-2', fotos.length === 1 ? 'grid-cols-1' : 'grid-cols-2')}>

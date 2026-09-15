@@ -2628,4 +2628,43 @@ describe('nosigilo backend', () => {
     )) as any;
     expect(Number(linhas?.c || 0)).toBe(1);
   });
+
+  // ── Editar a propria publicacao ────────────────────────────────────────────
+  it('dono edita o texto do post; outra pessoa nao; post sem midia nao fica vazio', async () => {
+    const dono = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dono Edicao', email: 'dono-edicao@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const outro = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Outro Edicao', email: 'outro-edicao@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const post = await request(ctx.app)
+      .post('/api/posts')
+      .set('Authorization', `Bearer ${dono.token}`)
+      .send({ content: 'Texto original' })
+      .expect(200);
+    const postId = String(post.body.id);
+
+    const editado = await request(ctx.app)
+      .patch(`/api/posts/${postId}`)
+      .set('Authorization', `Bearer ${dono.token}`)
+      .send({ content: '  Texto corrigido  ' })
+      .expect(200);
+    expect(editado.body.content).toBe('Texto corrigido');
+
+    const aberto = await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${dono.token}`).expect(200);
+    expect(aberto.body.post.content).toBe('Texto corrigido');
+
+    await request(ctx.app)
+      .patch(`/api/posts/${postId}`)
+      .set('Authorization', `Bearer ${outro.token}`)
+      .send({ content: 'invasao' })
+      .expect(403);
+
+    // Post so de texto: apagar o texto deixaria uma publicacao vazia.
+    await request(ctx.app)
+      .patch(`/api/posts/${postId}`)
+      .set('Authorization', `Bearer ${dono.token}`)
+      .send({ content: '   ' })
+      .expect(400);
+  });
 });

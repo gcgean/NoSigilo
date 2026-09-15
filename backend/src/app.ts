@@ -6731,6 +6731,34 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ id });
   });
 
+  // PATCH /api/posts/:postId — editar o texto da própria publicação.
+  //
+  // Só o texto: a mídia continua a mesma (trocar foto é apagar e postar de
+  // novo, como nas redes que as pessoas conhecem). Mesmas regras de quando
+  // cria: até 5000 caracteres, e post sem mídia não pode ficar vazio.
+  //
+  // Não reenvia aviso de menção. Quem já foi marcado já foi avisado, e
+  // reavisar a cada ajuste de vírgula viraria spam de notificação.
+  app.patch('/api/posts/:postId', requireAuth(env, db), async (req, res) => {
+    const schema = z.object({ content: z.string().max(5000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+
+    const postId = String(req.params.postId || '');
+    const post = (await queryOne(db, 'SELECT id, user_id, media_ids_json FROM posts WHERE id = ?', [postId])) as any;
+    if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(post.user_id) !== req.auth!.userId) { res.status(403).json({ error: 'forbidden' }); return; }
+
+    const content = parsed.data.content.trim();
+    const midias = safeJsonParse(post.media_ids_json);
+    const temMidia = Array.isArray(midias) && midias.length > 0;
+    if (!content && !temMidia) { res.status(400).json({ error: 'empty_post' }); return; }
+
+    await run(db, 'UPDATE posts SET content = ? WHERE id = ? AND user_id = ?', [content, postId, req.auth!.userId]);
+    await persist();
+    res.json({ ok: true, content });
+  });
+
   app.delete('/api/posts/:postId', requireAuth(env, db), async (req, res) => {
     const postId = String(req.params.postId || '');
     const post = (await queryOne(db, 'SELECT id, user_id FROM posts WHERE id = ?', [postId])) as any;

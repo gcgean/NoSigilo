@@ -180,6 +180,11 @@ export const feedService = {
     return response.data;
   },
 
+  updatePost: async (postId: string, content: string) => {
+    const response = await apiClient.patch(`/posts/${encodeURIComponent(postId)}`, { content });
+    return response.data as { ok: boolean; content: string };
+  },
+
   deletePost: async (postId: string) => {
     const response = await apiClient.delete(`/posts/${postId}`);
     return response.data;
