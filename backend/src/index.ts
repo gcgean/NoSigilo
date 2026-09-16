@@ -567,6 +567,7 @@ async function main() {
   const app = createApp({ db, env });
   startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
   startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
+  startVisitasRetention(db);
   const httpServer = createServer(app);
   const onlineCounts = new Map<string, number>();
   const io = new SocketIOServer(httpServer, {
@@ -685,3 +686,124 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+// ─── Resumo diário de visitas + descarte do detalhe antigo ──────────────────
+//
+// Decidido com o dono em 15/09/2026: guardar resumo por dia para sempre e
+// apagar o detalhe visita a visita com mais de 90 dias.
+//
+// Motivo: site_visits estava com 1,36 milhão de linhas e 1,2 GB (53% do
+// banco), crescendo ~27 mil linhas/dia. O detalhe individual (página exata,
+// referência, IP) só é útil nos primeiros dias; o histórico longo é usado
+// como contagem por dia, que o resumo preserva.
+//
+// A contagem de únicos é resolvida NA AGREGAÇÃO: somar linhas do resumo
+// depois não daria o mesmo número, porque a mesma pessoa aparece em várias
+// combinações de origem/dispositivo/país. Por isso cada dia também ganha uma
+// linha com as três dimensões vazias, que é o total do dia.
+const DIAS_DE_DETALHE = 90;
+
+async function resumirEDescartarVisitas(db: DbHandle) {
+  const diasAtras = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const agora = new Date().toISOString();
+
+  // Reagrega os últimos 3 dias (o de hoje ainda muda) e qualquer dia antigo
+  // que ainda não tenha resumo.
+  const pendentes = (await db.queryAll(
+    `SELECT DISTINCT SUBSTR(sv.created_at, 1, 10) AS dia
+       FROM site_visits sv
+      WHERE SUBSTR(sv.created_at, 1, 10) >= ?
+         OR NOT EXISTS (SELECT 1 FROM site_visits_daily d WHERE d.dia = SUBSTR(sv.created_at, 1, 10))
+      ORDER BY dia`,
+    [diasAtras(2)]
+  )) as any[];
+
+  for (const linha of pendentes) {
+    const dia = String(linha.dia || '');
+    if (!dia) continue;
+    // Uma passada por dia: o detalhado por dimensões e o total do dia.
+    for (const porDimensao of [true, false]) {
+      const grupos = porDimensao
+        ? `COALESCE(origin_type, '') , COALESCE(device_type, ''), COALESCE(country, '')`
+        : `'', '', ''`;
+      const rows = (await db.queryAll(
+        `SELECT ${porDimensao ? "COALESCE(origin_type, '') AS o, COALESCE(device_type, '') AS d, COALESCE(country, '') AS c" : "'' AS o, '' AS d, '' AS c"},
+                COUNT(*) AS visitas,
+                COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) AS unicos,
+                COUNT(DISTINCT NULLIF(user_id, '')) AS logados
+           FROM site_visits
+          WHERE SUBSTR(created_at, 1, 10) = ?
+          ${porDimensao ? `GROUP BY ${grupos}` : ''}`,
+        [dia]
+      )) as any[];
+
+      for (const r of rows) {
+        const valores = [dia, String(r.o || ''), String(r.d || ''), String(r.c || ''),
+          Number(r.visitas || 0), Number(r.unicos || 0), Number(r.logados || 0), agora];
+        await db.run(
+          db.mode === 'pg'
+            ? `INSERT INTO site_visits_daily (dia, origin_type, device_type, country, visitas, unicos, logados, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (dia, origin_type, device_type, country)
+               DO UPDATE SET visitas = EXCLUDED.visitas, unicos = EXCLUDED.unicos,
+                             logados = EXCLUDED.logados, atualizado_em = EXCLUDED.atualizado_em`
+            : `INSERT OR REPLACE INTO site_visits_daily (dia, origin_type, device_type, country, visitas, unicos, logados, atualizado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          valores
+        );
+      }
+    }
+  }
+
+  // created_at é TEXT em ISO ("2026-09-16T01:02:03.000Z"), então comparar com
+  // "2026-06-18" funciona como data E usa o índice idx_site_visits_created.
+  // SUBSTR() no WHERE, que era o jeito óbvio, joga o índice fora e vira
+  // varredura de 1,3 milhão de linhas a cada lote.
+  const corte = diasAtras(DIAS_DE_DETALHE);
+  const aindaTem = async () => {
+    const r = (await db.queryOne(
+      `SELECT 1 AS x FROM site_visits sv
+        WHERE sv.created_at < ?
+          AND EXISTS (SELECT 1 FROM site_visits_daily d WHERE d.dia = SUBSTR(sv.created_at, 1, 10))
+        LIMIT 1`,
+      [corte]
+    )) as any;
+    return !!r;
+  };
+  if (!(await aindaTem())) return { resumidos: pendentes.length, lotesApagados: 0 };
+
+  // Em lotes, com respiro entre eles: apagar centenas de milhares de linhas de
+  // uma vez seguraria a tabela por minutos e o site esperaria por ela.
+  // db.run() não devolve quantas linhas saíram, então o fim do trabalho é
+  // decidido por "ainda existe alguma?" em vez de por contagem.
+  const POR_LOTE = 20000;
+  let lotes = 0;
+  for (let volta = 0; volta < 40; volta += 1) {
+    await db.run(
+      `DELETE FROM site_visits WHERE id IN (
+         SELECT sv.id FROM site_visits sv
+          WHERE sv.created_at < ?
+            AND EXISTS (SELECT 1 FROM site_visits_daily d WHERE d.dia = SUBSTR(sv.created_at, 1, 10))
+          LIMIT ${POR_LOTE})`,
+      [corte]
+    );
+    lotes += 1;
+    if (!(await aindaTem())) break;
+    await new Promise((espera) => setTimeout(espera, 1000));
+  }
+  return { resumidos: pendentes.length, lotesApagados: lotes };
+}
+
+function startVisitasRetention(db: DbHandle) {
+  const rodar = async () => {
+    try {
+      const r = await resumirEDescartarVisitas(db);
+      console.log(`[visitas] resumo de ${r.resumidos} dia(s); ${r.lotesApagados} lote(s) de ate 20 mil visitas antigas descartadas (detalhe fica ${DIAS_DE_DETALHE} dias)`);
+    } catch (err) {
+      console.error('[visitas] falha ao resumir/descartar:', err);
+    }
+  };
+  // 2 minutos depois do boot, para não competir com a subida, e a cada 6h.
+  setTimeout(() => void rodar(), 2 * 60 * 1000);
+  setInterval(() => void rodar(), 6 * 60 * 60 * 1000);
+}
