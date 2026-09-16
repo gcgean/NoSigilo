@@ -1848,7 +1848,11 @@ function extensionForMime(mime: string, originalName: string) {
   return '';
 }
 
-function sendLocalFile(req: express.Request, res: express.Response, options: { filePath: string; mimeType?: string | null }) {
+function sendLocalFile(
+  req: express.Request,
+  res: express.Response,
+  options: { filePath: string; mimeType?: string | null; publico?: boolean },
+) {
   const stat = statSync(options.filePath);
   const total = stat.size;
   const mimeType = options.mimeType ? String(options.mimeType) : undefined;
@@ -1859,9 +1863,28 @@ function sendLocalFile(req: express.Request, res: express.Response, options: { f
   res.setHeader('Accept-Ranges', 'bytes');
   // Prevent browser from offering "Save as" / download for media files
   res.setHeader('Content-Disposition', 'inline');
-  // Prevent caching of sensitive media in downstream proxies
+  // Cache da midia.
+  //
+  // Medido em 15/09/2026: a resposta vinha com "private", entao a Cloudflare
+  // respondia cf-cache-status: BYPASS e TODA foto e TODO video iam buscar no
+  // servidor. Sao ~4.300 imagens e ~3.400 videos a cada 33 minutos, e uma
+  // imagem de 91 KB levava 1,2s da casa do usuario.
+  //
+  // Publica (/uploads) pode ser guardada pela borda: o nome do arquivo e um
+  // UUID que nunca muda de conteudo, dai "immutable". Privada (/private-uploads)
+  // continua "private": ela sai com token de 2h e nao pode ficar em cache
+  // compartilhado, onde outra pessoa poderia pegar.
   if (mimeType && (mimeType.startsWith('video/') || mimeType.startsWith('image/'))) {
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader(
+      'Cache-Control',
+      // 1 dia, e nao 1 ano: se a pessoa tornar PRIVADA uma foto que estava
+      // publica, a copia ja guardada na borda continua servivel ate o cache
+      // vencer. O arquivo muda de pasta e a rota passa a responder 404, mas o
+      // que ja esta na Cloudflare nao. Um dia limita essa janela e ja tira
+      // quase toda a carga repetida do servidor. Para janela zero seria preciso
+      // trocar o nome do arquivo ao virar privada, ou limpar o cache pela API.
+      options.publico ? 'public, max-age=86400' : 'private, max-age=3600',
+    );
   }
 
   if (!range) {
@@ -2726,7 +2749,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       res.status(404).end();
       return;
     }
-    sendLocalFile(req, res, { filePath, mimeType: media.mime_type ? String(media.mime_type) : null });
+    sendLocalFile(req, res, { filePath, mimeType: media.mime_type ? String(media.mime_type) : null, publico: true });
   });
 
   app.get('/private-uploads/:mediaId', async (req, res) => {
