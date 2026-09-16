@@ -80,6 +80,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
   // Código de erro do último checkout falho (ex.: 'hub_customer_already_linked'),
   // para exibir uma ação específica além do toast — que some sozinho.
   const [checkoutErrorCode, setCheckoutErrorCode] = useState<string | null>(null);
+  // Boleto é o único que exige documento em qualquer gateway (é do título
+  // bancário). O resto depende da rota, que o servidor informa.
+  const [metodosComDocumento, setMetodosComDocumento] = useState<Array<'PIX' | 'CREDIT_CARD' | 'BOLETO'>>(['BOLETO']);
 
   const isPaid = String(checkout?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkout?.status || '').toLowerCase() === 'pending';
@@ -113,6 +116,23 @@ export default function SubscribeModal({ open, onClose }: Props) {
       })
       .catch(() => setPlans([]))
       .finally(() => setIsLoadingPlans(false));
+  }, [open]);
+
+  // Quais formas de pagamento exigem CPF/CNPJ. Quem decide é o gateway que vai
+  // processar, e só o Hub sabe a rota — por isso vem do servidor em vez de ser
+  // fixo aqui. Enquanto não responde, o padrão é não pedir (exceto boleto).
+  useEffect(() => {
+    if (!open) return;
+    let cancelado = false;
+    subscriptionsService.getPaymentMethods()
+      .then((metodos) => {
+        if (cancelado || !Array.isArray(metodos)) return;
+        setMetodosComDocumento(
+          metodos.filter((m) => m.documentRequired).map((m) => m.method)
+        );
+      })
+      .catch(() => { /* mantém o padrão */ });
+    return () => { cancelado = true; };
   }, [open]);
 
   // Scroll to PIX after generating
@@ -174,9 +194,20 @@ export default function SubscribeModal({ open, onClose }: Props) {
     }
   };
 
+  // Só pede CPF/CNPJ onde o gateway que vai processar realmente exige (Asaas em
+  // tudo, Mercado Pago no PIX, boleto sempre). Hoje o PIX sai pela LivePix e o
+  // cartão pela Stripe, que não coletam documento — pedir ali só barrava quem
+  // não tem CPF, ou seja, toda a América Latina fora do Brasil. Sem documento, o
+  // Hub gera um sintético a partir do e-mail.
+  const documentoObrigatorio = metodosComDocumento.includes(billingMethod);
+
   const handleCheckout = async () => {
-    if (!selectedPlanId || !billingLegalName.trim() || !billingDocument.trim()) {
-      toast({ title: 'Preencha nome e CPF/CNPJ', variant: 'destructive' });
+    if (!selectedPlanId || !billingLegalName.trim()) {
+      toast({ title: 'Preencha seu nome', variant: 'destructive' });
+      return;
+    }
+    if (documentoObrigatorio && !billingDocument.trim()) {
+      toast({ title: 'Esta forma de pagamento exige CPF ou CNPJ', variant: 'destructive' });
       return;
     }
     setIsCheckingOut(true);
@@ -187,7 +218,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, billingMethod, {
         billingLegalName: billingLegalName.trim(),
-        billingDocument: billingDocument.trim(),
+        // Vazio vira ausente: o backend só sobrescreve o documento salvo quando
+        // vem algum, e mandar "" apagaria o CPF de quem já tinha informado.
+        billingDocument: billingDocument.trim() || undefined,
         billingPersonType: 'PF',
         pagePath: normalizePagePath(location.pathname),
       });
@@ -473,16 +506,21 @@ export default function SubscribeModal({ open, onClose }: Props) {
                         autoComplete="name"
                       />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="sb-doc">CPF ou CNPJ</Label>
-                      <Input
-                        id="sb-doc"
-                        placeholder="000.000.000-00"
-                        value={billingDocument}
-                        onChange={(e) => setBillingDocument(e.target.value)}
-                        inputMode="numeric"
-                      />
-                    </div>
+                    {documentoObrigatorio && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="sb-doc">CPF ou CNPJ</Label>
+                        <Input
+                          id="sb-doc"
+                          placeholder="000.000.000-00"
+                          value={billingDocument}
+                          onChange={(e) => setBillingDocument(e.target.value)}
+                          inputMode="numeric"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Exigido pelo banco nesta forma de pagamento.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {/* CPF já vinculado a outra conta — ação persistente além do toast,

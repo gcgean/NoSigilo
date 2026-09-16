@@ -28,9 +28,11 @@ import {
   getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
+  listHubPaymentMethods,
   listHubPlans,
   resolveHubAccess,
   upsertHubCustomer,
+  type HubPaymentMethod,
   type HubResolveAccessResult,
 } from './hubBilling.js';
 
@@ -12474,6 +12476,51 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Onde o CPF/CNPJ é realmente exigido.
+  //
+  // Quem decide é o gateway que vai processar, e essa rota é do Hub (muda por
+  // produto e por método). A tela não pode chutar: hoje o PIX sai pela LivePix e
+  // o cartão pela Stripe, e nenhum dos dois coleta documento — exigir ali só
+  // barrava quem não tem CPF, que é todo mundo fora do Brasil.
+  //
+  // Cache curto porque isso quase nunca muda, e a tela de planos consulta a cada
+  // abertura do modal.
+  let cacheMetodos: { emMs: number; dados: HubPaymentMethod[] } | null = null;
+  const VALIDADE_METODOS_MS = 10 * 60 * 1000;
+
+  // Sem o Hub, o padrão espelha a rota de hoje (PIX/LivePix e cartão/Stripe não
+  // pedem documento; boleto pede sempre, é do título bancário). Errar para o
+  // lado de "não pedir" é reversível: se o gateway exigir, ele recusa com
+  // mensagem clara — errar para o lado de pedir barra a venda em silêncio.
+  const metodosPadrao: HubPaymentMethod[] = [
+    { method: 'PIX', gateway: '', documentRequired: false },
+    { method: 'CREDIT_CARD', gateway: '', documentRequired: false },
+    { method: 'BOLETO', gateway: '', documentRequired: true },
+  ];
+
+  async function carregarMetodosDePagamento(): Promise<HubPaymentMethod[]> {
+    if (cacheMetodos && Date.now() - cacheMetodos.emMs < VALIDADE_METODOS_MS) {
+      return cacheMetodos.dados;
+    }
+    if (!shouldUseHubBilling(env)) return metodosPadrao;
+    try {
+      const limite = new Promise<never>((_ok, erro) =>
+        setTimeout(() => erro(new Error('HubBilling timeout')), 5000)
+      );
+      const metodos = await Promise.race([listHubPaymentMethods(getHubConfig(env)), limite]);
+      if (!Array.isArray(metodos) || metodos.length === 0) return metodosPadrao;
+      cacheMetodos = { emMs: Date.now(), dados: metodos };
+      return metodos;
+    } catch (erro) {
+      console.warn('[subscriptions/payment-methods] Hub indisponivel, usando padrao:', (erro as Error).message);
+      return metodosPadrao;
+    }
+  }
+
+  app.get('/api/subscriptions/payment-methods', requireAuth(env, db), async (_req, res) => {
+    res.json(await carregarMetodosDePagamento());
+  });
+
   app.get('/api/subscriptions/discount', requireAuth(env, db), (_req, res) => {
     res.json({ percent: 0 });
   });
@@ -12621,17 +12668,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         personType: parsed.data.billingPersonType || user.billing_person_type || 'PF',
       };
 
+      // CPF/CNPJ só é exigido onde o gateway que vai processar exige — quem sabe
+      // a rota é o Hub. Exigir aqui de forma fixa barrava quem não tem CPF (todo
+      // mundo fora do Brasil) num PIX que sai pela LivePix, que nem coleta
+      // documento. Sem documento, o Hub gera um sintético a partir do e-mail (a
+      // coluna é NOT NULL lá).
+      const metodosDePagamento = await carregarMetodosDePagamento();
+      const exigeDocumento = metodosDePagamento.some(
+        (m) => m.method === (parsed.data.billingType || 'PIX') && m.documentRequired
+      );
       const requiredBillingFields = [
         ['legalName', 'Nome do titular'],
-        ['document', 'CPF/CNPJ'],
-      ] as const;
+        ...(exigeDocumento ? [['document', 'CPF/CNPJ'] as const] : []),
+      ] as ReadonlyArray<readonly ['legalName' | 'document', string]>;
       const missingBillingFields = requiredBillingFields
         .filter(([key]) => !String(checkoutBilling[key] ?? '').trim())
         .map(([, label]) => label);
       if (missingBillingFields.length > 0) {
         res.status(400).json({
           error: 'billing_data_required',
-          message: 'Complete seus dados de cobranca antes de gerar o PIX.',
+          message: 'Complete seus dados de cobranca antes de gerar a cobranca.',
           missingFields: missingBillingFields,
         });
         return;

@@ -183,6 +183,25 @@ export async function listHubPlans(config: HubConfig) {
   );
 }
 
+export type HubPaymentMethod = {
+  method: 'PIX' | 'CREDIT_CARD' | 'BOLETO';
+  gateway: string;
+  documentRequired: boolean;
+};
+
+/**
+ * Quais formas de pagamento o produto aceita e em quais delas o gateway que vai
+ * processar exige CPF/CNPJ do pagador. É o Hub quem sabe a rota (ela muda por
+ * produto e por método), então a tela não pode chutar: pedir documento onde não
+ * é preciso impede de vender para quem não tem CPF.
+ */
+export async function listHubPaymentMethods(config: HubConfig) {
+  return requestJson<HubPaymentMethod[]>(
+    buildUrl(config, `/access/products/${config.productId}/payment-methods`),
+    { method: 'GET', headers: { 'X-API-Key': config.apiKey } }
+  );
+}
+
 export async function upsertHubCustomer(
   config: HubConfig,
   data: {

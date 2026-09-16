@@ -990,6 +990,16 @@ export const subscriptionsService = {
     return response.data;
   },
 
+  /** Formas de pagamento e em quais delas o gateway exige CPF/CNPJ do pagador. */
+  getPaymentMethods: async (): Promise<Array<{
+    method: 'PIX' | 'CREDIT_CARD' | 'BOLETO';
+    gateway: string | null;
+    documentRequired: boolean;
+  }>> => {
+    const response = await apiClient.get('/subscriptions/payment-methods');
+    return response.data;
+  },
+
   getStatus: async () => {
     const response = await apiClient.get('/subscriptions/status');
     return response.data;
