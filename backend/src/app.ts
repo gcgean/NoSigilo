@@ -14604,7 +14604,65 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Resultado da aba Visitas, guardado por alguns minutos.
+  //
+  // Medido em 15/09/2026, com site_visits em 1,36 milhao de linhas e 1,2 GB
+  // (53% do banco): COUNT(*) leva 3,8s e o agrupamento por mes, 3,6s. A aba
+  // dispara ~17 consultas dessas em paralelo, e cada recarregar, "Tentar
+  // novamente" ou troca de periodo empilhava outro lote — o navegador desiste
+  // em 30s mas o Postgres continua trabalhando.
+  //
+  // Duas travas:
+  //   1. cache por 5 minutos, por combinacao de filtros;
+  //   2. uma computacao por vez: quem chegar durante o calculo espera o mesmo
+  //      resultado em vez de comecar outro (o "empilhar" do paragrafo acima).
+  //
+  // Sao numeros de painel, nao de tela de usuario: 5 minutos de atraso nao
+  // muda nenhuma decisao, e o botao de recarregar continua existindo.
+  const cacheVisitas = new Map<string, { emMs: number; dados: unknown }>();
+  const visitasEmCurso = new Map<string, Promise<unknown>>();
+  const VALIDADE_VISITAS_MS = 5 * 60 * 1000;
+
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const chave = `${String(req.query.limit || '')}|${String(req.query.cityUsersPeriodDays || '')}|${String(req.query.accessPeriodDays || '')}`;
+    const guardado = cacheVisitas.get(chave);
+    if (guardado && Date.now() - guardado.emMs < VALIDADE_VISITAS_MS) {
+      res.json(guardado.dados);
+      return;
+    }
+    const emCurso = visitasEmCurso.get(chave);
+    if (emCurso) {
+      try {
+        res.json(await emCurso);
+      } catch {
+        res.status(500).json({ error: 'internal' });
+      }
+      return;
+    }
+
+    // res.json do calculo original alimenta o cache: em vez de reescrever as
+    // ~17 consultas, capturamos o corpo que a rota ja monta.
+    let resolver: (v: unknown) => void = () => {};
+    let rejeitar: (e: unknown) => void = () => {};
+    const promessa = new Promise((ok, erro) => { resolver = ok; rejeitar = erro; });
+    // Sem espera pendente, uma promessa rejeitada viraria ruido no log da rede
+    // de seguranca; quem espera de verdade usa a mesma promessa e recebe o erro.
+    promessa.catch(() => {});
+    visitasEmCurso.set(chave, promessa);
+    const jsonOriginal = res.json.bind(res);
+    (res as any).json = (corpo: unknown) => {
+      cacheVisitas.set(chave, { emMs: Date.now(), dados: corpo });
+      visitasEmCurso.delete(chave);
+      resolver(corpo);
+      return jsonOriginal(corpo);
+    };
+    res.on('close', () => {
+      if (visitasEmCurso.has(chave)) {
+        visitasEmCurso.delete(chave);
+        rejeitar(new Error('conexao encerrada antes do fim'));
+      }
+    });
+
     try {
       const requestedLimit = Number(req.query.limit || 120);
       const limit = Number.isFinite(requestedLimit)
