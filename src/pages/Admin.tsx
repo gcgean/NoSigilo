@@ -368,6 +368,7 @@ export default function Admin() {
   const [statesBusy, setStatesBusy] = useState(false);
   const statesFileRef = useRef<HTMLInputElement>(null);
   const [subAnalytics, setSubAnalytics] = useState<SubscriptionAnalytics | null>(null);
+  const [vistaAssinaturas, setVistaAssinaturas] = useState<'mes' | 'dia'>('mes');
   const [subAnalyticsLoading, setSubAnalyticsLoading] = useState(true);
   const [subAnalyticsError, setSubAnalyticsError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2009,29 +2010,59 @@ export default function Admin() {
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
-                          <th className="py-2 pr-3">Mês</th>
-                          <th className="px-3 py-2 text-right">Faturamento</th>
-                          <th className="px-3 py-2 text-right">Novos</th>
-                          <th className="px-3 py-2 text-right">Renovações</th>
-                          <th className="px-3 py-2 text-right">Não renovaram</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {a.monthly.map((m) => (
-                          <tr key={m.month} className="border-b border-border/30">
-                            <td className="py-1.5 pr-3">{fmtMonth(m.month)}</td>
-                            <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
-                            <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
-                            <td className="px-3 py-1.5 text-right">{m.renewals}</td>
-                            <td className="px-3 py-1.5 text-right text-destructive">{m.churned}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div>
+                    <div className="mb-2 flex items-center gap-2">
+                      {([['mes', 'Por mês'], ['dia', 'Por dia (60 dias)']] as const).map(([v, rotulo]) => (
+                        <Button
+                          key={v}
+                          size="sm"
+                          variant={vistaAssinaturas === v ? 'default' : 'outline'}
+                          onClick={() => setVistaAssinaturas(v)}
+                        >
+                          {rotulo}
+                        </Button>
+                      ))}
+                    </div>
+                    {(() => {
+                      // Por dia: mais recente primeiro, que é o que se olha no dia a dia.
+                      const porDia = vistaAssinaturas === 'dia';
+                      const linhas = porDia
+                        ? [...(a.daily ?? [])].reverse().map((d) => {
+                            const [, mo, dd] = d.day.split('-');
+                            const semana = new Date(`${d.day}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+                            return { chave: d.day, rotulo: `${dd}/${mo} ${semana}`, ...d };
+                          })
+                        : a.monthly.map((m) => ({ chave: m.month, rotulo: fmtMonth(m.month), ...m }));
+                      if (porDia && linhas.length === 0) {
+                        return <p className="py-4 text-sm text-muted-foreground">O Hub ainda não envia a série diária.</p>;
+                      }
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
+                                <th className="py-2 pr-3">{porDia ? 'Dia' : 'Mês'}</th>
+                                <th className="px-3 py-2 text-right">Faturamento</th>
+                                <th className="px-3 py-2 text-right">Novos</th>
+                                <th className="px-3 py-2 text-right">Renovações</th>
+                                <th className="px-3 py-2 text-right">Não renovaram</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {linhas.map((m) => (
+                                <tr key={m.chave} className="border-b border-border/30">
+                                  <td className="py-1.5 pr-3 whitespace-nowrap">{m.rotulo}</td>
+                                  <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
+                                  <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
+                                  <td className="px-3 py-1.5 text-right">{m.renewals}</td>
+                                  <td className="px-3 py-1.5 text-right text-destructive">{m.churned}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>

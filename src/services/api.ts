@@ -1115,6 +1115,8 @@ export type SubscriptionAnalytics = {
     netMonthlyGrowthPct: number;
   };
   monthly: Array<{ month: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
+  /** Últimos 60 dias, dia no fuso de Brasília. Ausente em versões antigas do Hub. */
+  daily?: Array<{ day: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
   projection: Array<{ month: string; projectedRevenueCents: number }>;
 };
 
