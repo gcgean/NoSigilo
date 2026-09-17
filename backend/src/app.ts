@@ -3816,6 +3816,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         getSetting: (key) => getSystemSetting(db, key),
         persist,
         notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
+        // Mesma conferência do botão "Já paguei — verificar" (/api/subscriptions/status).
+        verificarPagamento: async (alvo) => {
+          if (!shouldUseHubBilling(env)) return;
+          const row = (await queryOne(db, 'SELECT hub_customer_id FROM users WHERE id = ? LIMIT 1', [alvo])) as any;
+          if (!row?.hub_customer_id) return;
+          const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
+          await syncHubAccessForUser(db, alvo, status, { io: req.app.get('io') as SocketIOServer | undefined, env });
+          await persist();
+        },
       },
       userId
     );
