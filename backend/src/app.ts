@@ -15,6 +15,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, SENDER_ID_IA, suporteEstaDigitando, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
+import { analisarPaineis } from './analistaIa.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
@@ -3872,6 +3873,64 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await setSystemSetting(db, CHAVE_INSTRUCOES, parsed.data.instructions.trim());
     await persist();
     res.json({ ok: true });
+  });
+
+  // Admin: Analista IA — responde perguntas sobre os dashboards abertos.
+  const analises = new Map<string, { dono: string; criadaEm: number; status: 'pendente' | 'pronto' | 'erro'; resposta?: string; modelo?: string }>();
+  app.post('/api/admin/analista', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({
+      pergunta: z.string().trim().min(1).max(2000),
+      abaAtiva: z.string().max(60).optional(),
+      paineis: z
+        .array(
+          z.object({
+            nome: z.string().max(80),
+            aba: z.string().max(60).optional(),
+            filtros: z.unknown().optional(),
+            dados: z.unknown(),
+            atualizadoEm: z.string().max(40).optional(),
+          })
+        )
+        .max(20),
+      historico: z
+        .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().max(20000) }))
+        .max(40)
+        .default([]),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    if (!env.DEEPSEEK_API_KEY) {
+      res.status(503).json({ error: 'ai_not_configured', message: 'A chave DEEPSEEK_API_KEY não está configurada no servidor.' });
+      return;
+    }
+    // Vira tarefa em segundo plano: o modelo que raciocina pode passar de 100s, e a
+    // Cloudflare derruba requisições nesse tempo. A tela consulta até ficar pronto.
+    for (const [id, t] of analises) if (Date.now() - t.criadaEm > 30 * 60 * 1000) analises.delete(id);
+    const id = randomUUID();
+    analises.set(id, { dono: req.auth!.userId, criadaEm: Date.now(), status: 'pendente' });
+    res.json({ id });
+    void analisarPaineis({
+      apiKey: env.DEEPSEEK_API_KEY,
+      pergunta: parsed.data.pergunta,
+      abaAtiva: parsed.data.abaAtiva,
+      paineis: parsed.data.paineis,
+      historico: parsed.data.historico,
+    })
+      .then((r) => analises.set(id, { ...analises.get(id)!, status: 'pronto', resposta: r.resposta, modelo: r.modelo }))
+      .catch((err) => {
+        console.error('[admin/analista] falha:', err);
+        analises.set(id, { ...analises.get(id)!, status: 'erro' });
+      });
+  });
+
+  app.get('/api/admin/analista/:id', requireAuth(env, db), requireAdmin(), (req, res) => {
+    const tarefa = analises.get(String(req.params.id));
+    if (!tarefa || tarefa.dono !== req.auth!.userId) { res.status(404).json({ error: 'not_found' }); return; }
+    if (tarefa.status === 'erro') {
+      res.json({ status: 'erro', message: 'A IA não conseguiu responder agora. Tente de novo em instantes.' });
+      return;
+    }
+    res.json({ status: tarefa.status, resposta: tarefa.resposta ?? null, modelo: tarefa.modelo ?? null });
   });
 
   // Admin: listar todos os chats de suporte (com última mensagem + não lidas)

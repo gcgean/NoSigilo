@@ -21,6 +21,8 @@ import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import AdminMetrics from '@/components/AdminMetrics';
+import AnalistaIa from '@/components/AnalistaIa';
+import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type AdminPhoto = {
   id: string;
@@ -412,6 +414,17 @@ export default function Admin() {
   const [menConvPeriod, setMenConvPeriod] = useState<1 | 7 | 30>(7);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
   const [accessPeriod, setAccessPeriod] = useState<'all' | '7' | '30' | '90'>('all');
+  const [abaAtiva, setAbaAtiva] = useState('metrics');
+
+  // Painéis que o Analista IA enxerga. Só números agregados: listas de pessoas
+  // (usuários, quem abandonou o PIX, promotores) não são publicadas.
+  usePublicarPainel('Finanças — resumo', 'finance', finance);
+  usePublicarPainel('Finanças — receita', 'finance', revenueReport);
+  usePublicarPainel('Finanças — PIX gerado e não pago', 'finance', pixAbandon);
+  usePublicarPainel('Funil de conversão', 'finance', funnel, { periodo_dias: funnelPeriod });
+  usePublicarPainel('Conversão de homens', 'finance', menConv, { periodo_dias: menConvPeriod });
+  usePublicarPainel('Assinaturas (Hub): mensal, diário, churn e projeção', 'finance', subAnalytics);
+  usePublicarPainel('Visitas', 'visits', visitAnalytics, { cidades_periodo: cityUsersPeriod, acessos_periodo: accessPeriod });
   const cpuUsagePercent = resourcesStatus
     ? clampPercent(
         resourcesStatus.cpu.usagePercent || (
@@ -1350,7 +1363,8 @@ export default function Admin() {
         ) : null}
       </Card>
 
-      <Tabs defaultValue="metrics" className="space-y-6">
+      <AnalistaIa abaAtiva={abaAtiva} />
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-6">
         <TabsList className="flex w-full max-w-full justify-start overflow-x-auto">
           <TabsTrigger value="metrics" className="gap-2">
             <TrendingUp className="w-4 h-4" />
@@ -3373,6 +3387,7 @@ function AdminReferralsTab() {
   const { toast } = useToast();
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  usePublicarPainel('Indicações (convites)', 'referrals', stats);
 
   const load = async () => {
     setIsLoading(true);
@@ -3630,6 +3645,7 @@ function AdminReengagementTab() {
   const [metrics, setMetrics] = useState<ReengagementMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
   const [metricsError, setMetricsError] = useState(false);
+  usePublicarPainel('Reengajamento', 'reengagement', metrics);
 
   const loadMetrics = async () => {
     setMetricsLoading(true);

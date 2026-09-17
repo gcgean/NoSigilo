@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { deletionReasonLabel } from '@/utils/accountDeletionReasons';
+import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type Metrics = Awaited<ReturnType<typeof adminService.getMetrics>>;
 
@@ -85,6 +86,9 @@ export default function AdminMetrics() {
   }, [city, state, gender]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // O Analista IA do admin enxerga os mesmos números, com os filtros aplicados.
+  usePublicarPainel('Métricas', 'metrics', data, { cidade: city, uf: state, genero: gender });
 
   if (loading && !data) {
     return (

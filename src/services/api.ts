@@ -1134,6 +1134,20 @@ export type SubscriptionAnalytics = {
 };
 
 export const adminService = {
+  // Analista IA: a pergunta vira tarefa no servidor; a tela consulta o resultado.
+  perguntarAnalista: async (data: {
+    pergunta: string;
+    abaAtiva?: string;
+    paineis: Array<{ nome: string; aba?: string; filtros?: unknown; dados: unknown; atualizadoEm?: string }>;
+    historico: Array<{ role: 'user' | 'assistant'; content: string }>;
+  }): Promise<{ id: string }> => {
+    const response = await apiClient.post('/admin/analista', data, { timeout: 30000 });
+    return response.data;
+  },
+  resultadoAnalista: async (id: string): Promise<{ status: 'pendente' | 'pronto' | 'erro'; resposta?: string | null; modelo?: string | null; message?: string }> => {
+    const response = await apiClient.get(`/admin/analista/${encodeURIComponent(id)}`);
+    return response.data;
+  },
   getPendingPhotos: async () => {
     const response = await apiClient.get('/admin/photos');
     return response.data;
