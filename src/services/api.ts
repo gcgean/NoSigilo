@@ -851,7 +851,7 @@ export const promoterService = {
   },
 };
 
-export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; message: string; readAt: string | null; createdAt: string };
+export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; isAi?: boolean; message: string; readAt: string | null; createdAt: string };
 
 export const adminPromoterService = {
   listPromoters: async (): Promise<{ promoters: Array<{
@@ -884,6 +884,14 @@ export const adminPromoterService = {
   },
   getSupportMessages: async (userId: string): Promise<{ messages: SupportMessage[] }> => {
     const response = await apiClient.get(`/admin/promoter-support/${userId}`);
+    return response.data;
+  },
+  getSupportAi: async (): Promise<{ enabled: boolean; instructions: string; apiKeyConfigured: boolean }> => {
+    const response = await apiClient.get('/admin/support-ai');
+    return response.data;
+  },
+  saveSupportAi: async (data: { enabled: boolean; instructions: string }) => {
+    const response = await apiClient.put('/admin/support-ai', data);
     return response.data;
   },
   sendSupportMessage: async (userId: string, message: string) => {

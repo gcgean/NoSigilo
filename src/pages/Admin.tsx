@@ -4593,6 +4593,24 @@ function AdminPromotersTab() {
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
   const [supportChats, setSupportChats] = useState<Awaited<ReturnType<typeof adminPromoterService.listSupportChats>>['chats']>([]);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [iaSuporte, setIaSuporte] = useState<{ enabled: boolean; instructions: string; apiKeyConfigured: boolean } | null>(null);
+  const [salvandoIa, setSalvandoIa] = useState(false);
+
+  useEffect(() => {
+    adminPromoterService.getSupportAi().then(setIaSuporte).catch(() => setIaSuporte(null));
+  }, []);
+
+  const salvarIaSuporte = async (proximo: { enabled: boolean; instructions: string }) => {
+    setSalvandoIa(true);
+    try {
+      await adminPromoterService.saveSupportAi(proximo);
+      setIaSuporte((atual) => (atual ? { ...atual, ...proximo } : atual));
+    } catch {
+      /* mantém o estado anterior na tela */
+    } finally {
+      setSalvandoIa(false);
+    }
+  };
 
   const loadAll = async () => {
     setIsLoading(true);
@@ -4792,6 +4810,7 @@ function AdminPromotersTab() {
             <div key={m.id} className={`flex ${m.senderType === 'admin' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.senderType === 'admin' ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border rounded-bl-sm'}`}>
                 {m.senderType === 'promoter' && <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{selectedChat.fullName}</p>}
+                {m.isAi && <p className="text-[10px] font-semibold mb-0.5 text-primary-foreground/80">🤖 Assistente IA</p>}
                 <p>{m.message}</p>
                 <p className={`text-[10px] mt-0.5 ${m.senderType === 'admin' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>{formatDateAdmin(m.createdAt)}</p>
               </div>
@@ -4974,6 +4993,52 @@ function AdminPromotersTab() {
           </div>
         </div>
       </div>
+
+      {/* IA do suporte — responde usuários e promotores no chat de suporte. */}
+      {iaSuporte && (
+        <div className="glass rounded-xl p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">🤖 Assistente IA do suporte</h3>
+              <p className="text-xs text-muted-foreground">
+                Responde sozinho no chat de suporte (usuários e promotores). Quando precisa de alguém da equipe, avisa no Telegram.
+                Se você responder uma conversa, a IA fica quieta nela por 12 horas.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant={iaSuporte.enabled ? 'default' : 'outline'}
+              disabled={salvandoIa}
+              onClick={() => void salvarIaSuporte({ enabled: !iaSuporte.enabled, instructions: iaSuporte.instructions })}
+            >
+              {iaSuporte.enabled ? 'Ligada — clique para desligar' : 'Desligada — clique para ligar'}
+            </Button>
+          </div>
+          {!iaSuporte.apiKeyConfigured && (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+              A chave ANTHROPIC_API_KEY não está configurada no servidor. Enquanto isso, a IA não responde mesmo ligada.
+            </p>
+          )}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium">Instruções extras (opcional)</p>
+            <textarea
+              className="min-h-[90px] w-full rounded-lg border bg-background p-2 text-sm"
+              placeholder="Ex.: Horário de atendimento humano: seg a sex, 9h às 18h."
+              maxLength={4000}
+              value={iaSuporte.instructions}
+              onChange={(e) => setIaSuporte({ ...iaSuporte, instructions: e.target.value })}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={salvandoIa}
+              onClick={() => void salvarIaSuporte({ enabled: iaSuporte.enabled, instructions: iaSuporte.instructions })}
+            >
+              {salvandoIa ? 'Salvando...' : 'Salvar instruções'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Suporte — conversas de usuários comuns (não-promotores). Promotores já
           têm acesso ao chat pela própria lista abaixo. */}

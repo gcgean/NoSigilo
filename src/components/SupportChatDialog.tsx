@@ -56,6 +56,31 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
+  // A resposta (do assistente virtual, em segundos, ou da equipe) chega depois do
+  // envio. Consulta por até 1 minuto em vez de deixar a pessoa sem ver nada até
+  // reabrir o chat.
+  const esperaRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aguardarResposta = () => {
+    if (esperaRef.current) clearInterval(esperaRef.current);
+    let voltas = 0;
+    esperaRef.current = setInterval(async () => {
+      voltas += 1;
+      try {
+        const data = await supportService.getMessages();
+        const lista = Array.isArray(data?.messages) ? data.messages : [];
+        setMessages(lista);
+        if (lista[lista.length - 1]?.senderType === 'admin' || voltas >= 15) {
+          if (esperaRef.current) clearInterval(esperaRef.current);
+          esperaRef.current = null;
+        }
+      } catch { /* tenta na próxima volta */ }
+    }, 4000);
+  };
+  useEffect(() => () => { if (esperaRef.current) clearInterval(esperaRef.current); }, []);
+  useEffect(() => {
+    if (!open && esperaRef.current) { clearInterval(esperaRef.current); esperaRef.current = null; }
+  }, [open]);
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isSending) return;
@@ -64,6 +89,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
       await supportService.sendMessage(text);
       setInput('');
       await load();
+      aguardarResposta();
     } catch {
       toast({ title: 'Não foi possível enviar', description: 'Tente novamente em instantes.', variant: 'destructive' });
     } finally {
@@ -117,7 +143,11 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
                     fromSupport ? 'rounded-bl-sm border bg-card' : 'rounded-br-sm bg-primary text-primary-foreground'
                   )}
                 >
-                  {fromSupport && <p className="mb-0.5 text-[10px] font-semibold text-muted-foreground">Suporte NoSigilo</p>}
+                  {fromSupport && (
+                    <p className="mb-0.5 text-[10px] font-semibold text-muted-foreground">
+                      {m.isAi ? 'Assistente virtual NoSigilo' : 'Suporte NoSigilo'}
+                    </p>
+                  )}
                   <p className="whitespace-pre-wrap break-words">{m.message}</p>
                 </div>
               </div>

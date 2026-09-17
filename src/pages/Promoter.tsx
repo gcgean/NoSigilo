@@ -236,6 +236,17 @@ export default function Promoter() {
       setSupportInput('');
       const data = await promoterSupportService.getMessages();
       setSupportMessages(data.messages);
+      // A resposta chega depois (assistente virtual em segundos, ou a equipe):
+      // consulta por até 1 minuto para ela aparecer sem recarregar a página.
+      let voltas = 0;
+      const espera = setInterval(async () => {
+        voltas += 1;
+        try {
+          const novo = await promoterSupportService.getMessages();
+          setSupportMessages(novo.messages);
+          if (novo.messages[novo.messages.length - 1]?.senderType === 'admin' || voltas >= 15) clearInterval(espera);
+        } catch { if (voltas >= 15) clearInterval(espera); }
+      }, 4000);
     } catch {
       toast({ title: 'Erro ao enviar mensagem', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -701,7 +712,7 @@ export default function Promoter() {
                   }`}
                 >
                   {m.senderType === 'admin' && (
-                    <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">Suporte</p>
+                    <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{m.isAi ? 'Assistente virtual' : 'Suporte'}</p>
                   )}
                   <p>{m.message}</p>
                   <p className={`text-[10px] mt-0.5 ${m.senderType === 'promoter' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>

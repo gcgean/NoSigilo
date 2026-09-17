@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
+import { agendarRespostaDaIa, CHAVE_ATIVA, CHAVE_INSTRUCOES, SENDER_ID_IA } from './supportAi.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
@@ -53,6 +54,7 @@ type Env = {
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
   TELEGRAM_BOT_TOKEN?: string;
+  ANTHROPIC_API_KEY?: string;
   TELEGRAM_BOT_USERNAME?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -3775,7 +3777,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     )) as any[];
     // Mark admin messages as read
     await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'admin' AND read_at IS NULL", [nowIso(), userId]);
-    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), isAi: String(m.sender_id) === SENDER_ID_IA, message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
   });
 
   // Contagem de respostas do suporte ainda não lidas — usado pro badge no menu.
@@ -3801,6 +3803,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
     res.json({ ok: true, id });
 
+    // IA do suporte: responde em alguns segundos se estiver ligada no admin e a
+    // equipe não tiver assumido a conversa. Nunca bloqueia nem derruba a rota.
+    agendarRespostaDaIa(
+      {
+        db,
+        apiKey: env.ANTHROPIC_API_KEY,
+        getSetting: (key) => getSystemSetting(db, key),
+        persist,
+        notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
+      },
+      userId
+    );
+
     // Notifica admins no Telegram assim que uma mensagem de suporte chega.
     try {
       const sender = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
@@ -3811,6 +3826,26 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     } catch (err) {
       console.error('[promoter/support] telegram notify error:', err);
     }
+  });
+
+  // Admin: configuração da IA do suporte (liga/desliga + instruções extras).
+  app.get('/api/admin/support-ai', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({
+      enabled: (await getSystemSetting(db, CHAVE_ATIVA)) === '1',
+      instructions: String((await getSystemSetting(db, CHAVE_INSTRUCOES)) || ''),
+      // Sem a chave no servidor, ligar no painel não faz nada — a tela avisa.
+      apiKeyConfigured: !!env.ANTHROPIC_API_KEY,
+    });
+  });
+
+  app.put('/api/admin/support-ai', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ enabled: z.boolean(), instructions: z.string().max(4000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    await setSystemSetting(db, CHAVE_ATIVA, parsed.data.enabled ? '1' : '0');
+    await setSystemSetting(db, CHAVE_INSTRUCOES, parsed.data.instructions.trim());
+    await persist();
+    res.json({ ok: true });
   });
 
   // Admin: listar todos os chats de suporte (com última mensagem + não lidas)
@@ -3849,7 +3884,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const msgs = (await queryAll(db, 'SELECT * FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at ASC', [targetUserId])) as any[];
     // Mark promoter messages as read
     await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'promoter' AND read_at IS NULL", [nowIso(), targetUserId]);
-    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), isAi: String(m.sender_id) === SENDER_ID_IA, message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
   });
 
   // Admin: responder a um promotor
