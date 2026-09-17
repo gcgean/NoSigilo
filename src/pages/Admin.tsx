@@ -418,13 +418,15 @@ export default function Admin() {
 
   // Painéis que o Analista IA enxerga. Só números agregados: listas de pessoas
   // (usuários, quem abandonou o PIX, promotores) não são publicadas.
-  usePublicarPainel('Finanças — resumo', 'finance', finance);
+  // Valores padrão (zerados) = ainda não carregou; publicar zeros levaria a IA a
+  // concluir em cima de um número que não existe.
+  usePublicarPainel('Finanças — resumo', 'finance', finance === DEFAULT_FINANCE ? null : finance);
   usePublicarPainel('Finanças — receita', 'finance', revenueReport);
   usePublicarPainel('Finanças — PIX gerado e não pago', 'finance', pixAbandon);
   usePublicarPainel('Funil de conversão', 'finance', funnel, { periodo_dias: funnelPeriod });
   usePublicarPainel('Conversão de homens', 'finance', menConv, { periodo_dias: menConvPeriod });
   usePublicarPainel('Assinaturas (Hub): mensal, diário, churn e projeção', 'finance', subAnalytics);
-  usePublicarPainel('Visitas', 'visits', visitAnalytics, { cidades_periodo: cityUsersPeriod, acessos_periodo: accessPeriod });
+  usePublicarPainel('Visitas', 'visits', visitAnalytics === DEFAULT_VISIT_ANALYTICS ? null : visitAnalytics, { cidades_periodo: cityUsersPeriod, acessos_periodo: accessPeriod });
   const cpuUsagePercent = resourcesStatus
     ? clampPercent(
         resourcesStatus.cpu.usagePercent || (
