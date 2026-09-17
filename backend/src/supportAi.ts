@@ -34,10 +34,11 @@ const MENSAGENS_DE_HISTORICO = 30;
 export const CHAVE_ATIVA = 'support_ai_enabled';
 export const CHAVE_INSTRUCOES = 'support_ai_instructions';
 
-type Dependencias = {
+export type Dependencias = {
   db: DbHandle;
   apiKey: string | undefined;
   getSetting: (key: string) => Promise<string | null>;
+  setSetting: (key: string, value: string) => Promise<void>;
   persist: () => Promise<void>;
   notificarEquipe: (texto: string) => Promise<void>;
   aoResponder?: (userId: string) => void;
@@ -64,11 +65,73 @@ O que você NUNCA faz:
 
 Quando passar para a equipe humana:
 - pagamento feito e Premium não liberado mesmo após verificar; pedido de estorno ou cancelamento com cobrança; dúvida sobre valor específico de comissão ou pagamento atrasado de promotor; denúncia, ameaça, golpe, conta invadida, menor de idade; pedido para falar com humano; qualquer caso em que você não tenha certeza.
-Nesses casos, responda com uma frase dizendo que a equipe vai verificar e responder por aqui, e termine a mensagem com o marcador ${MARCADOR_HUMANO} (ele é removido antes de a pessoa ver).
+Nesses casos (e também quando a conversa andar em círculos sem resolver, ou a pessoa demonstrar irritação), responda com uma frase dizendo que a equipe vai verificar e responder por aqui, e termine a mensagem com o marcador ${MARCADOR_HUMANO} (ele é removido antes de a pessoa ver).
 
 ${MANUAL_DO_SISTEMA}`;
 
 const temporizadores = new Map<string, ReturnType<typeof setTimeout>>();
+
+// ── Transferência para atendente humano ─────────────────────────────────────
+// Quando a IA não resolve ou o cliente pede gente, a conversa fica "com a
+// equipe": a IA para de responder nela e o Telegram avisa. Volta ao normal
+// quando alguém da equipe responde pelo admin (a rota de resposta limpa a marca).
+// Guardado em system_settings para sobreviver a reinício do servidor.
+export const chaveTransferido = (userId: string) => `support_handoff:${userId}`;
+
+export async function conversaComEquipe(deps: Pick<Dependencias, 'getSetting'>, userId: string): Promise<boolean> {
+  return !!String((await deps.getSetting(chaveTransferido(userId))) || '').trim();
+}
+
+/** A IA está de fato atendendo (ligada no admin e com chave no servidor)? */
+export async function iaAtendendo(deps: Pick<Dependencias, 'getSetting' | 'apiKey'>): Promise<boolean> {
+  return !!deps.apiKey && (await deps.getSetting(CHAVE_ATIVA)) === '1';
+}
+
+async function transferirParaEquipe(deps: Dependencias, userId: string, motivo: string): Promise<void> {
+  await deps.setSetting(chaveTransferido(userId), new Date().toISOString());
+  const usuario = (await queryOne(deps.db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const ultimas = (await queryAll(
+    deps.db,
+    `SELECT message FROM promoter_support_messages
+      WHERE promoter_user_id = ? AND sender_type = 'promoter'
+      ORDER BY created_at DESC LIMIT 3`,
+    [userId]
+  )) as any[];
+  const trecho = ultimas
+    .reverse()
+    .map((m) => `• ${String(m.message).slice(0, 200)}`)
+    .join('\n');
+  await deps.notificarEquipe(
+    `🙋 <b>Suporte precisa de atendente</b> (${motivo})\n\n<b>${String(usuario?.name || 'Usuário')}</b>\n${String(usuario?.email || '')}\n\n${trecho}\n\nResponda pelo admin. A IA fica fora desta conversa até alguém da equipe responder.`
+  );
+}
+
+/**
+ * Cliente tocou em "Falar com um atendente". Registra o pedido na conversa, dá
+ * um retorno imediato e avisa a equipe. Se já estava com a equipe, não repete.
+ */
+export async function pedirAtendenteHumano(deps: Dependencias, userId: string): Promise<{ jaEstavaComEquipe: boolean }> {
+  if (await conversaComEquipe(deps, userId)) return { jaEstavaComEquipe: true };
+  const pendente = temporizadores.get(userId);
+  if (pendente) {
+    clearTimeout(pendente);
+    temporizadores.delete(userId);
+  }
+  const agora = Date.now();
+  await run(
+    deps.db,
+    'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), userId, 'promoter', userId, 'Quero falar com um atendente.', new Date(agora).toISOString()]
+  );
+  await run(
+    deps.db,
+    'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), userId, 'admin', SENDER_ID_IA, 'Certo! Já chamei alguém da equipe. Assim que possível respondemos por aqui mesmo.', new Date(agora + 1).toISOString()]
+  );
+  await deps.persist();
+  await transferirParaEquipe(deps, userId, 'o cliente pediu');
+  return { jaEstavaComEquipe: false };
+}
 
 // "Digitando…": marcado quando a IA começa a escrever e desmarcado quando a
 // resposta é gravada (ou a tentativa termina). A tela consulta isso junto com as
@@ -124,6 +187,8 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   const { db } = deps;
   if (!deps.apiKey) return;
   if ((await deps.getSetting(CHAVE_ATIVA)) !== '1') return;
+  // Conversa já transferida: quem responde agora é a equipe.
+  if (await conversaComEquipe(deps, userId)) return;
 
   const mensagens = (await queryAll(
     db,
@@ -242,11 +307,7 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   deps.aoResponder?.(userId);
 
   if (precisaDeHumano) {
-    const usuario = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-    const pedido = String(ultima.message).slice(0, 300);
-    await deps.notificarEquipe(
-      `🙋 <b>Suporte precisa de humano</b>\n\n<b>${String(usuario?.name || 'Usuário')}</b>\n${String(usuario?.email || '')}\n\n${pedido}`
-    );
+    await transferirParaEquipe(deps, userId, 'a IA não conseguiu resolver');
   }
 }
 

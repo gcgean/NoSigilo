@@ -2686,4 +2686,44 @@ describe('nosigilo backend', () => {
     expect(r1.body.id).toBeTruthy();
     expect(r1.body.id).toBe(r2.body.id);
   });
+  // ── Suporte: pedir atendente humano ─────────────────────────────────────────
+  it('cliente pede atendente: conversa fica com a equipe ate alguem responder', async () => {
+    const cliente = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Cliente Atendente', email: 'cliente-atendente@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const equipe = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Equipe Atendente', email: 'equipe-atendente@example.com', password: 'senha123', gender: 'Homem',
+    });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [equipe.user.id]);
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    const antes = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
+    expect(antes.body.humanRequested).toBe(false);
+
+    const pedido = await request(ctx.app).post('/api/promoter/support/human').set(auth(cliente.token)).expect(200);
+    expect(pedido.body.jaEstavaComEquipe).toBe(false);
+
+    const depois = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
+    expect(depois.body.humanRequested).toBe(true);
+    // Pedido do cliente + retorno imediato do suporte; autor nunca vai para o cliente.
+    expect(depois.body.messages.map((m: any) => m.senderType)).toEqual(['promoter', 'admin']);
+    expect(depois.body.messages[1]).not.toHaveProperty('isAi');
+
+    // Pedir de novo não duplica.
+    const repetido = await request(ctx.app).post('/api/promoter/support/human').set(auth(cliente.token)).expect(200);
+    expect(repetido.body.jaEstavaComEquipe).toBe(true);
+
+    const lista = await request(ctx.app).get('/api/admin/promoter-support').set(auth(equipe.token)).expect(200);
+    const chat = lista.body.chats.find((c: any) => c.userId === cliente.user.id);
+    expect(chat.humanRequested).toBe(true);
+
+    await request(ctx.app)
+      .post(`/api/admin/promoter-support/${cliente.user.id}`)
+      .set(auth(equipe.token))
+      .send({ message: 'Oi, sou da equipe. Como posso ajudar?' })
+      .expect(200);
+
+    const final = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
+    expect(final.body.humanRequested).toBe(false);
+  });
 });

@@ -5059,7 +5059,12 @@ function AdminPromotersTab() {
                   className="w-full flex items-center justify-between gap-3 rounded-xl border bg-secondary/20 p-3 text-left hover:bg-secondary/40 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="font-medium truncate">{c.fullName}</p>
+                    <p className="font-medium truncate">
+                      {c.fullName}
+                      {c.humanRequested && (
+                        <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-600">🙋 aguarda atendente</span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground truncate">{c.userEmail}</p>
                     {c.lastMessage && <p className="text-xs text-muted-foreground truncate">{c.lastMessage}</p>}
                   </div>
@@ -5148,6 +5153,7 @@ function AdminPromotersTab() {
                   className="relative text-xs rounded-lg border px-3 py-1.5 hover:bg-secondary flex items-center gap-1"
                 >
                   <MessageCircle className="w-3 h-3" /> Chat
+                  {supportChats.some((c) => c.userId === p.userId && c.humanRequested) && <span title="Aguarda atendente">🙋</span>}
                   {(unreadMap[p.userId] ?? 0) > 0 && (
                     <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
                       {unreadMap[p.userId]}

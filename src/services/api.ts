@@ -878,7 +878,7 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
     return response.data;
   },
-  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; isPromoter?: boolean; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number }> }> => {
+  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; isPromoter?: boolean; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number; humanRequested?: boolean }> }> => {
     const response = await apiClient.get('/admin/promoter-support');
     return response.data;
   },
@@ -921,7 +921,12 @@ export const adminPromoterService = {
 };
 
 export const promoterSupportService = {
-  getMessages: async (): Promise<{ messages: SupportMessage[]; typing?: boolean }> => {
+  // Cliente pede atendente humano: a IA sai da conversa e a equipe é avisada.
+  requestHuman: async (): Promise<{ ok: boolean; jaEstavaComEquipe: boolean }> => {
+    const response = await apiClient.post('/promoter/support/human');
+    return response.data;
+  },
+  getMessages: async (): Promise<{ messages: SupportMessage[]; typing?: boolean; humanRequested?: boolean }> => {
     const response = await apiClient.get('/promoter/support');
     return response.data;
   },

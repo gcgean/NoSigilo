@@ -74,6 +74,8 @@ export default function Promoter() {
   // Support chat
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
   const [suporteDigitando, setSuporteDigitando] = useState(false);
+  const [suporteComEquipe, setSuporteComEquipe] = useState(false);
+  const [pedindoAtendente, setPedindoAtendente] = useState(false);
   const [supportInput, setSupportInput] = useState('');
   const [isSendingSupport, setIsSendingSupport] = useState(false);
 
@@ -106,6 +108,7 @@ export default function Promoter() {
         setCommissions(dash.commissions);
         setReferredUsers(dash.referredUsers ?? []);
         setSupportMessages(supportData.messages);
+        setSuporteComEquipe(!!(supportData as { humanRequested?: boolean }).humanRequested);
         const active = Array.isArray(invites) ? invites.find((i: any) => i.status === 'created') : null;
         if (active?.token) {
           setInviteUrl(`${getSiteUrl()}/invite/${encodeURIComponent(active.token)}`);
@@ -228,6 +231,20 @@ export default function Promoter() {
     {} as Record<string, number>
   );
 
+  const pedirAtendente = async () => {
+    setPedindoAtendente(true);
+    try {
+      await promoterSupportService.requestHuman();
+      setSuporteComEquipe(true);
+      const data = await promoterSupportService.getMessages();
+      setSupportMessages(data.messages);
+    } catch {
+      toast({ title: 'Não foi possível chamar um atendente', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setPedindoAtendente(false);
+    }
+  };
+
   const handleSendSupport = async () => {
     const msg = supportInput.trim();
     if (!msg) return;
@@ -246,6 +263,7 @@ export default function Promoter() {
           const novo = await promoterSupportService.getMessages();
           setSupportMessages(novo.messages);
           setSuporteDigitando(!!novo.typing);
+          setSuporteComEquipe(!!novo.humanRequested);
           if (novo.messages[novo.messages.length - 1]?.senderType === 'admin' || voltas >= 30) {
             clearInterval(espera);
             setSuporteDigitando(false);
@@ -737,6 +755,25 @@ export default function Promoter() {
                   </span>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Atendente humano: some quando a conversa já está com a equipe. */}
+          <div className="flex items-center justify-between gap-2 px-1 pb-2 text-xs text-muted-foreground">
+            {suporteComEquipe ? (
+              <span>👤 Um atendente foi chamado e responde por aqui.</span>
+            ) : (
+              <>
+                <span>Não resolveu?</span>
+                <button
+                  type="button"
+                  onClick={() => void pedirAtendente()}
+                  disabled={pedindoAtendente}
+                  className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                >
+                  {pedindoAtendente ? 'Chamando...' : 'Falar com um atendente'}
+                </button>
+              </>
             )}
           </div>
 

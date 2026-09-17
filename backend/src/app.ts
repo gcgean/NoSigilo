@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
-import { agendarRespostaDaIa, CHAVE_ATIVA, CHAVE_INSTRUCOES, SENDER_ID_IA, suporteEstaDigitando } from './supportAi.js';
+import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, SENDER_ID_IA, suporteEstaDigitando, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
@@ -3781,6 +3781,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({
       messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })),
       typing: suporteEstaDigitando(userId),
+      humanRequested: await conversaComEquipe({ getSetting: (key) => getSystemSetting(db, key) }, userId),
     });
   });
 
@@ -3793,6 +3794,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       [req.auth!.userId]
     )) as any;
     res.json({ count: Number(row?.c || 0) });
+  });
+
+  // Dependências da IA do suporte, montadas por requisição (o io vem do req).
+  const depsSuporteIa = (req: express.Request): DependenciasSuporteIa => ({
+    db,
+    apiKey: env.DEEPSEEK_API_KEY,
+    getSetting: (key) => getSystemSetting(db, key),
+    setSetting: (key, value) => setSystemSetting(db, key, value),
+    persist,
+    notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
+    // Mesma conferência do botão "Já paguei — verificar" (/api/subscriptions/status).
+    verificarPagamento: async (alvo) => {
+      if (!shouldUseHubBilling(env)) return;
+      const row = (await queryOne(db, 'SELECT hub_customer_id FROM users WHERE id = ? LIMIT 1', [alvo])) as any;
+      if (!row?.hub_customer_id) return;
+      const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
+      await syncHubAccessForUser(db, alvo, status, { io: req.app.get('io') as SocketIOServer | undefined, env });
+      await persist();
+    },
+  });
+
+  // Cliente pede atendente humano (botão no chat de suporte).
+  app.post('/api/promoter/support/human', requireAuth(env, db), async (req, res) => {
+    const resultado = await pedirAtendenteHumano(depsSuporteIa(req), req.auth!.userId);
+    res.json({ ok: true, ...resultado });
   });
 
   // Enviar mensagem para o suporte (qualquer usuário autenticado, ver acima).
@@ -3809,28 +3835,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
     // IA do suporte: responde em alguns segundos se estiver ligada no admin e a
     // equipe não tiver assumido a conversa. Nunca bloqueia nem derruba a rota.
-    agendarRespostaDaIa(
-      {
-        db,
-        apiKey: env.DEEPSEEK_API_KEY,
-        getSetting: (key) => getSystemSetting(db, key),
-        persist,
-        notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
-        // Mesma conferência do botão "Já paguei — verificar" (/api/subscriptions/status).
-        verificarPagamento: async (alvo) => {
-          if (!shouldUseHubBilling(env)) return;
-          const row = (await queryOne(db, 'SELECT hub_customer_id FROM users WHERE id = ? LIMIT 1', [alvo])) as any;
-          if (!row?.hub_customer_id) return;
-          const status = await getHubAccessStatus(getHubConfig(env), String(row.hub_customer_id));
-          await syncHubAccessForUser(db, alvo, status, { io: req.app.get('io') as SocketIOServer | undefined, env });
-          await persist();
-        },
-      },
-      userId
-    );
+    const depsIa = depsSuporteIa(req);
+    agendarRespostaDaIa(depsIa, userId);
 
-    // Notifica admins no Telegram assim que uma mensagem de suporte chega.
+    // Telegram só quando é trabalho para gente: com a IA atendendo, o aviso sai
+    // na transferência (pedido do cliente ou IA sem solução) e nas mensagens de
+    // conversas já transferidas. Com a IA desligada, toda mensagem avisa — senão
+    // ninguém ficaria sabendo.
     try {
+      if ((await iaAtendendo(depsIa)) && !(await conversaComEquipe(depsIa, userId))) return;
       const sender = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
       const preview = parsed.data.message.length > 300 ? `${parsed.data.message.slice(0, 300)}…` : parsed.data.message;
       void notifyAdminsTelegram({ db, env },
@@ -3875,7 +3888,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          u.email as user_email, u.avatar as user_avatar,
          (SELECT message FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
          (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
-         (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count
+         (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count,
+         (SELECT value FROM system_settings WHERE key = 'support_handoff:' || s.user_id LIMIT 1) as handoff_at
        FROM (SELECT DISTINCT promoter_user_id as user_id FROM promoter_support_messages) s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN promoters p ON p.user_id = s.user_id
@@ -3888,6 +3902,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       userEmail: String(r.user_email || ''), userAvatar: r.user_avatar ?? null,
       lastMessage: r.last_message ?? null, lastMessageAt: r.last_message_at ?? null,
       unreadCount: Number(r.unread_count || 0),
+      humanRequested: !!String(r.handoff_at || '').trim(),
     })) });
   });
 
@@ -3909,6 +3924,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const now = nowIso();
     const id = randomUUID();
     await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, targetUserId, 'admin', req.auth!.userId, parsed.data.message, now]);
+    // A equipe respondeu: a conversa deixa de estar "aguardando atendente". A IA
+    // continua quieta nela por 12h (regra do supportAi), para não atropelar.
+    await setSystemSetting(db, chaveTransferido(targetUserId), '');
     await persist();
     res.json({ ok: true, id });
 

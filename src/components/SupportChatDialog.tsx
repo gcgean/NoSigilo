@@ -24,6 +24,8 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [digitando, setDigitando] = useState(false);
+  const [comEquipe, setComEquipe] = useState(false);
+  const [pedindoAtendente, setPedindoAtendente] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -31,6 +33,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
     try {
       const data = await supportService.getMessages();
       setMessages(Array.isArray(data?.messages) ? data.messages : []);
+      setComEquipe(!!data?.humanRequested);
     } catch {
       setMessages([]);
     } finally {
@@ -71,6 +74,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
         const lista = Array.isArray(data?.messages) ? data.messages : [];
         setMessages(lista);
         setDigitando(!!data?.typing);
+        setComEquipe(!!data?.humanRequested);
         if (lista[lista.length - 1]?.senderType === 'admin' || voltas >= 30) {
           if (esperaRef.current) clearInterval(esperaRef.current);
           esperaRef.current = null;
@@ -83,6 +87,19 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
   useEffect(() => {
     if (!open && esperaRef.current) { clearInterval(esperaRef.current); esperaRef.current = null; }
   }, [open]);
+
+  const pedirAtendente = async () => {
+    setPedindoAtendente(true);
+    try {
+      await supportService.requestHuman();
+      setComEquipe(true);
+      await load();
+    } catch {
+      toast({ title: 'Não foi possível chamar um atendente', description: 'Tente novamente em instantes.', variant: 'destructive' });
+    } finally {
+      setPedindoAtendente(false);
+    }
+  };
 
   const handleSend = async () => {
     const text = input.trim();
@@ -171,8 +188,29 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
           <div ref={endRef} />
         </div>
 
+        <div className="shrink-0 border-t bg-background px-3 pt-2">
+          {/* Atendente humano: some quando a conversa já está com a equipe. */}
+          <div className="flex items-center justify-between gap-2 px-1 pb-2 text-xs text-muted-foreground">
+            {comEquipe ? (
+              <span>👤 Um atendente foi chamado e responde por aqui.</span>
+            ) : (
+              <>
+                <span>Não resolveu?</span>
+                <button
+                  type="button"
+                  onClick={() => void pedirAtendente()}
+                  disabled={pedindoAtendente}
+                  className="font-medium text-primary underline-offset-2 hover:underline disabled:opacity-50"
+                >
+                  {pedindoAtendente ? 'Chamando...' : 'Falar com um atendente'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* Input */}
-        <div className="flex shrink-0 items-end gap-2 border-t bg-background p-3">
+        <div className="flex shrink-0 items-end gap-2 bg-background p-3 pt-0">
           <textarea
             className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder="Escreva sua mensagem..."
