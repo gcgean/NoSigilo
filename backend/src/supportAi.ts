@@ -27,7 +27,7 @@ const MARCADOR_HUMANO = '[[HUMANO]]';
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const MODELO = 'deepseek-chat';
 const LIMITE_DA_CHAMADA_MS = 60_000;
-const ESPERA_ANTES_DE_RESPONDER_MS = 8_000; // junta mensagens mandadas em sequência
+const ESPERA_ANTES_DE_RESPONDER_MS = 2_500; // junta mensagens mandadas em sequência
 const SILENCIO_APOS_HUMANO_MS = 12 * 60 * 60 * 1000;
 const MENSAGENS_DE_HISTORICO = 30;
 
@@ -84,11 +84,11 @@ export function suporteEstaDigitando(userId: string): boolean {
   return true;
 }
 
-// Uma resposta que surge pronta em 1 segundo denuncia a máquina. Espera o tempo
-// de alguém digitando o texto (~35 ms por caractere), entre 3 e 12 segundos,
-// descontando o tempo que a IA já levou para gerar.
+// Uma resposta que surge pronta em 1 segundo denuncia a máquina, mas espera longa
+// irrita. Mira ~15 ms por caractere, entre 1,5 e 5 segundos, descontando o tempo
+// que a IA já levou para gerar (que costuma cobrir quase tudo).
 function tempoDeDigitacaoMs(texto: string, jaPassouMs: number): number {
-  const alvo = Math.min(12_000, Math.max(3_000, texto.length * 35));
+  const alvo = Math.min(5_000, Math.max(1_500, texto.length * 15));
   return Math.max(0, alvo - jaPassouMs);
 }
 
