@@ -73,6 +73,7 @@ export default function Promoter() {
 
   // Support chat
   const [supportMessages, setSupportMessages] = useState<SupportMessage[]>([]);
+  const [suporteDigitando, setSuporteDigitando] = useState(false);
   const [supportInput, setSupportInput] = useState('');
   const [isSendingSupport, setIsSendingSupport] = useState(false);
 
@@ -244,9 +245,13 @@ export default function Promoter() {
         try {
           const novo = await promoterSupportService.getMessages();
           setSupportMessages(novo.messages);
-          if (novo.messages[novo.messages.length - 1]?.senderType === 'admin' || voltas >= 15) clearInterval(espera);
-        } catch { if (voltas >= 15) clearInterval(espera); }
-      }, 4000);
+          setSuporteDigitando(!!novo.typing);
+          if (novo.messages[novo.messages.length - 1]?.senderType === 'admin' || voltas >= 30) {
+            clearInterval(espera);
+            setSuporteDigitando(false);
+          }
+        } catch { if (voltas >= 30) { clearInterval(espera); setSuporteDigitando(false); } }
+      }, 2000);
     } catch {
       toast({ title: 'Erro ao enviar mensagem', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -712,7 +717,7 @@ export default function Promoter() {
                   }`}
                 >
                   {m.senderType === 'admin' && (
-                    <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{m.isAi ? 'Assistente virtual' : 'Suporte'}</p>
+                    <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">Suporte</p>
                   )}
                   <p>{m.message}</p>
                   <p className={`text-[10px] mt-0.5 ${m.senderType === 'promoter' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>
@@ -721,6 +726,18 @@ export default function Promoter() {
                 </div>
               </div>
             ))}
+            {suporteDigitando && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-2xl rounded-bl-sm bg-secondary px-3.5 py-2 text-sm text-foreground">
+                  <p className="text-[10px] font-semibold mb-1 text-muted-foreground">Suporte está digitando</p>
+                  <span className="flex items-center gap-1 py-1" aria-label="digitando">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Input */}

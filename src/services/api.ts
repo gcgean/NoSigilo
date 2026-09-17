@@ -921,7 +921,7 @@ export const adminPromoterService = {
 };
 
 export const promoterSupportService = {
-  getMessages: async (): Promise<{ messages: SupportMessage[] }> => {
+  getMessages: async (): Promise<{ messages: SupportMessage[]; typing?: boolean }> => {
     const response = await apiClient.get('/promoter/support');
     return response.data;
   },

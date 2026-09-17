@@ -23,6 +23,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [digitando, setDigitando] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -47,7 +48,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [messages]);
+  }, [messages, digitando]);
 
   useEffect(() => {
     if (!open) return;
@@ -69,12 +70,14 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
         const data = await supportService.getMessages();
         const lista = Array.isArray(data?.messages) ? data.messages : [];
         setMessages(lista);
-        if (lista[lista.length - 1]?.senderType === 'admin' || voltas >= 15) {
+        setDigitando(!!data?.typing);
+        if (lista[lista.length - 1]?.senderType === 'admin' || voltas >= 30) {
           if (esperaRef.current) clearInterval(esperaRef.current);
           esperaRef.current = null;
+          setDigitando(false);
         }
       } catch { /* tenta na próxima volta */ }
-    }, 4000);
+    }, 2000);
   };
   useEffect(() => () => { if (esperaRef.current) clearInterval(esperaRef.current); }, []);
   useEffect(() => {
@@ -145,7 +148,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
                 >
                   {fromSupport && (
                     <p className="mb-0.5 text-[10px] font-semibold text-muted-foreground">
-                      {m.isAi ? 'Assistente virtual NoSigilo' : 'Suporte NoSigilo'}
+                      Suporte NoSigilo
                     </p>
                   )}
                   <p className="whitespace-pre-wrap break-words">{m.message}</p>
@@ -153,6 +156,18 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
               </div>
             );
           })}
+          {digitando && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl rounded-bl-sm border bg-card px-3.5 py-2 text-sm">
+                <p className="mb-1 text-[10px] font-semibold text-muted-foreground">Suporte NoSigilo está digitando</p>
+                <span className="flex items-center gap-1 py-1" aria-label="digitando">
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+                  <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground" />
+                </span>
+              </div>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
 

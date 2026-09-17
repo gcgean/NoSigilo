@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
-import { agendarRespostaDaIa, CHAVE_ATIVA, CHAVE_INSTRUCOES, SENDER_ID_IA } from './supportAi.js';
+import { agendarRespostaDaIa, CHAVE_ATIVA, CHAVE_INSTRUCOES, SENDER_ID_IA, suporteEstaDigitando } from './supportAi.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
@@ -3777,7 +3777,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     )) as any[];
     // Mark admin messages as read
     await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'admin' AND read_at IS NULL", [nowIso(), userId]);
-    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), isAi: String(m.sender_id) === SENDER_ID_IA, message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+    // Quem é o autor (equipe ou IA) não vai para o cliente: para ele é tudo "Suporte".
+    res.json({
+      messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })),
+      typing: suporteEstaDigitando(userId),
+    });
   });
 
   // Contagem de respostas do suporte ainda não lidas — usado pro badge no menu.

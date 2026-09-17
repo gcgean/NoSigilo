@@ -45,7 +45,7 @@ const PROMPT_BASE = `Você é o assistente virtual do suporte do NoSigilo, uma r
 
 Como falar:
 - Português do Brasil, tom cordial e direto, como numa conversa de WhatsApp. Respostas curtas: de 1 a 4 frases, sem listas longas nem títulos.
-- Não finja ser humano. Se perguntarem, diga que é o assistente virtual e que a equipe acompanha as conversas.
+- Escreva como um atendente do suporte, de forma natural. Não precisa se apresentar como robô ou IA. Mas se a pessoa perguntar diretamente se está falando com um robô ou uma IA, não negue: diga que é o atendimento automático do NoSigilo e que a equipe acompanha as conversas.
 - Não use o nome da pessoa em toda mensagem.
 
 O que você sabe e pode explicar:
@@ -54,6 +54,7 @@ O que você sabe e pode explicar:
 - PIX costuma confirmar em poucos minutos. Se a pessoa pagou e o Premium não apareceu: peça para fechar e abrir o app de novo, ou tocar em "Já paguei — verificar" na tela do pagamento. Se depois disso continuar sem Premium, passe para a equipe.
 - Fotos: para excluir, abrir a foto no perfil e tocar em "Excluir" (no celular, o ícone de lixeira).
 - Postagens: no próprio perfil, aba Postagens, o menu "⋯" da publicação permite editar o texto ou remover.
+- Desativar ou excluir a conta: no menu, em Configurações, no fim da página. "Desativar perfil" deixa o perfil oculto e guarda fotos e conversas; para voltar, basta entrar de novo. "Excluir conta" apaga os dados de identificação, não tem volta e cancela a assinatura. Quem só desativar e tiver assinatura no cartão deve cancelar a assinatura na tela de assinatura para não ser cobrado de novo.
 - Promotores ganham 20% de comissão sobre cada pagamento dos assinantes que entraram pelo link deles, tanto no primeiro pagamento quanto em cada renovação mensal. Comissão só existe quando o assinante paga de fato.
 - O Pix da comissão é feito quando o saldo aprovado acumulado chega a R$ 10,00. Valores menores acumulam entre os meses, nada se perde. A chave Pix fica no cadastro de promotor.
 
@@ -69,6 +70,28 @@ Nesses casos, responda com uma frase dizendo que a equipe vai verificar e respon
 
 const temporizadores = new Map<string, ReturnType<typeof setTimeout>>();
 
+// "Digitando…": marcado quando a IA começa a escrever e desmarcado quando a
+// resposta é gravada (ou a tentativa termina). A tela consulta isso junto com as
+// mensagens. O prazo é uma trava: se algo travar, o aviso some sozinho.
+const digitandoAte = new Map<string, number>();
+export function suporteEstaDigitando(userId: string): boolean {
+  const ate = digitandoAte.get(userId);
+  if (!ate) return false;
+  if (ate < Date.now()) {
+    digitandoAte.delete(userId);
+    return false;
+  }
+  return true;
+}
+
+// Uma resposta que surge pronta em 1 segundo denuncia a máquina. Espera o tempo
+// de alguém digitando o texto (~35 ms por caractere), entre 3 e 12 segundos,
+// descontando o tempo que a IA já levou para gerar.
+function tempoDeDigitacaoMs(texto: string, jaPassouMs: number): number {
+  const alvo = Math.min(12_000, Math.max(3_000, texto.length * 35));
+  return Math.max(0, alvo - jaPassouMs);
+}
+
 /**
  * Agenda a resposta da IA para a conversa. Chamado depois de gravar a mensagem
  * do usuário; nunca lança. Mensagens em sequência reiniciam a espera, e a IA
@@ -81,7 +104,7 @@ export function agendarRespostaDaIa(deps: Dependencias, userId: string): void {
     userId,
     setTimeout(() => {
       temporizadores.delete(userId);
-      void responder(deps, userId).catch((err) => {
+      void responder(deps, userId).finally(() => digitandoAte.delete(userId)).catch((err) => {
         console.error('[suporte-ia] falha ao responder:', err);
         // Falha aqui = cliente sem resposta (chave inválida, saldo acabou no
         // DeepSeek, API fora). A equipe precisa saber para atender na mão.
@@ -142,6 +165,8 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
     ? `${PROMPT_BASE}\n\nInstruções adicionais da equipe:\n${instrucoesExtras}`
     : PROMPT_BASE;
 
+  const comecouEm = Date.now();
+  digitandoAte.set(userId, comecouEm + 90_000);
   const resposta = await fetch(DEEPSEEK_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.apiKey}` },
@@ -178,6 +203,11 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
 
   // A pessoa pode ter escrito de novo enquanto a IA pensava; nesse caso o novo
   // agendamento responde lendo tudo, e esta resposta velha é descartada.
+  if (temporizadores.has(userId)) return;
+
+  const espera = tempoDeDigitacaoMs(texto, Date.now() - comecouEm);
+  if (espera > 0) await new Promise((ok) => setTimeout(ok, espera));
+  // Vale de novo depois da espera: ela pode ter escrito enquanto "digitávamos".
   if (temporizadores.has(userId)) return;
 
   await run(
