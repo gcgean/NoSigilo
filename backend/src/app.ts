@@ -54,7 +54,7 @@ type Env = {
   VAPID_PRIVATE_KEY?: string;
   VAPID_SUBJECT?: string;
   TELEGRAM_BOT_TOKEN?: string;
-  ANTHROPIC_API_KEY?: string;
+  DEEPSEEK_API_KEY?: string;
   TELEGRAM_BOT_USERNAME?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -3808,7 +3808,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     agendarRespostaDaIa(
       {
         db,
-        apiKey: env.ANTHROPIC_API_KEY,
+        apiKey: env.DEEPSEEK_API_KEY,
         getSetting: (key) => getSystemSetting(db, key),
         persist,
         notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
@@ -3834,7 +3834,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       enabled: (await getSystemSetting(db, CHAVE_ATIVA)) === '1',
       instructions: String((await getSystemSetting(db, CHAVE_INSTRUCOES)) || ''),
       // Sem a chave no servidor, ligar no painel não faz nada — a tela avisa.
-      apiKeyConfigured: !!env.ANTHROPIC_API_KEY,
+      apiKeyConfigured: !!env.DEEPSEEK_API_KEY,
     });
   });
 

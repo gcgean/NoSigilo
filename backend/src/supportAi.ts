@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'node:crypto';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
@@ -7,7 +6,7 @@ import { queryAll, queryOne, run } from './db.js';
 //
 // Um chat só atende usuários comuns e promotores (promoter_support_messages), então
 // a IA entra num ponto só: depois que alguém manda mensagem, ela responde como se
-// fosse o suporte. A resposta é gravada como sender_type 'admin' com sender_id
+// fosse o suporte, usando o DeepSeek. A resposta é gravada como sender_type 'admin' com sender_id
 // 'ia', para aparecer nas telas que já existem sem mudar o esquema; as telas usam
 // o sender_id para mostrar que foi o assistente.
 //
@@ -20,7 +19,12 @@ import { queryAll, queryOne, run } from './db.js';
 
 export const SENDER_ID_IA = 'ia';
 const MARCADOR_HUMANO = '[[HUMANO]]';
-const MODELO = 'claude-opus-5';
+// DeepSeek expõe API compatível com a da OpenAI. "deepseek-chat" responde direto;
+// o "deepseek-reasoner" gasta a saída raciocinando e demora mais, sem ganho para
+// conversa de suporte.
+const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+const MODELO = 'deepseek-chat';
+const LIMITE_DA_CHAMADA_MS = 60_000;
 const ESPERA_ANTES_DE_RESPONDER_MS = 8_000; // junta mensagens mandadas em sequência
 const SILENCIO_APOS_HUMANO_MS = 12 * 60 * 60 * 1000;
 const MENSAGENS_DE_HISTORICO = 30;
@@ -79,6 +83,15 @@ export function agendarRespostaDaIa(deps: Dependencias, userId: string): void {
       temporizadores.delete(userId);
       void responder(deps, userId).catch((err) => {
         console.error('[suporte-ia] falha ao responder:', err);
+        // Falha aqui = cliente sem resposta (chave inválida, saldo acabou no
+        // DeepSeek, API fora). A equipe precisa saber para atender na mão.
+        void deps
+          .notificarEquipe(
+            `⚠️ <b>IA do suporte falhou</b>
+Conversa do usuário ${userId} ficou sem resposta.
+${String((err as Error)?.message || err).slice(0, 200)}`
+          )
+          .catch(() => {});
       });
     }, ESPERA_ANTES_DE_RESPONDER_MS)
   );
@@ -114,55 +127,50 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
     return;
   }
 
-  const historico: Anthropic.Beta.BetaMessageParam[] = mensagens.map((m) => ({
+  type Mensagem = { role: 'system' | 'user' | 'assistant'; content: string };
+  const historico: Mensagem[] = mensagens.map((m) => ({
     role: String(m.sender_type) === 'promoter' ? 'user' : 'assistant',
     content: String(m.message),
   }));
-  // A API exige começar pelo usuário; mensagens antigas da equipe no topo saem.
+  // Começa sempre pelo usuário; mensagens antigas da equipe no topo saem.
   while (historico.length > 0 && historico[0].role !== 'user') historico.shift();
   if (historico.length === 0) return;
 
   const contexto = await montarContexto(db, userId);
   const instrucoesExtras = String((await deps.getSetting(CHAVE_INSTRUCOES)) || '').trim();
+  const prompt = instrucoesExtras
+    ? `${PROMPT_BASE}\n\nInstruções adicionais da equipe:\n${instrucoesExtras}`
+    : PROMPT_BASE;
 
-  const client = new Anthropic({ apiKey: deps.apiKey });
-  const resposta = await client.beta.messages.create({
-    model: MODELO,
-    max_tokens: 16000,
-    betas: ['server-side-fallback-2026-07-01'],
-    fallbacks: 'default',
-    // Conversa de suporte não precisa de raciocínio longo; "medium" mantém a
-    // qualidade com resposta mais rápida e barata.
-    output_config: { effort: 'medium' },
-    system: [
-      {
-        type: 'text',
-        text: instrucoesExtras
-          ? `${PROMPT_BASE}\n\nInstruções adicionais da equipe:\n${instrucoesExtras}`
-          : PROMPT_BASE,
-        cache_control: { type: 'ephemeral' },
-      },
-    ],
-    messages: [
-      ...historico,
-      // Dados da conta vão no fim, como mensagem de sistema: mudam a cada conversa
-      // e, no topo, invalidariam o cache do prompt fixo.
-      { role: 'system', content: contexto },
-    ],
+  const resposta = await fetch(DEEPSEEK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.apiKey}` },
+    signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
+    body: JSON.stringify({
+      model: MODELO,
+      // Prompt fixo primeiro e dados da conta por último: o DeepSeek faz cache
+      // automático do começo igual entre chamadas, e isso barateia cada resposta.
+      messages: [{ role: 'system', content: prompt }, ...historico, { role: 'system', content: contexto }],
+      temperature: 0.4, // suporte pede consistência, não criatividade
+      max_tokens: 1024,
+      stream: false,
+    }),
   });
-
-  if (resposta.stop_reason === 'refusal') {
+  if (!resposta.ok) {
+    throw new Error(`DeepSeek respondeu HTTP ${resposta.status}: ${(await resposta.text()).slice(0, 300)}`);
+  }
+  const corpo = (await resposta.json()) as {
+    choices?: Array<{ message?: { content?: string | null }; finish_reason?: string }>;
+  };
+  const escolha = corpo.choices?.[0];
+  if (escolha?.finish_reason === 'content_filter') {
     await deps.notificarEquipe(
-      `🤖 <b>IA do suporte não respondeu</b> (recusa do modelo)\nConversa do usuário ${userId} precisa de atendimento humano.`
+      `🤖 <b>IA do suporte não respondeu</b> (filtro de conteúdo do DeepSeek)\nConversa do usuário ${userId} precisa de atendimento humano.`
     );
     return;
   }
 
-  let texto = resposta.content
-    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
+  let texto = String(escolha?.message?.content || '').trim();
   const precisaDeHumano = texto.includes(MARCADOR_HUMANO);
   texto = texto.split(MARCADOR_HUMANO).join('').trim();
   if (!texto) return;

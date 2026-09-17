@@ -4999,7 +4999,7 @@ function AdminPromotersTab() {
         <div className="glass rounded-xl p-5 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-semibold">🤖 Assistente IA do suporte</h3>
+              <h3 className="font-semibold">🤖 Assistente IA do suporte (DeepSeek)</h3>
               <p className="text-xs text-muted-foreground">
                 Responde sozinho no chat de suporte (usuários e promotores). Quando precisa de alguém da equipe, avisa no Telegram.
                 Se você responder uma conversa, a IA fica quieta nela por 12 horas.
@@ -5016,7 +5016,7 @@ function AdminPromotersTab() {
           </div>
           {!iaSuporte.apiKeyConfigured && (
             <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-              A chave ANTHROPIC_API_KEY não está configurada no servidor. Enquanto isso, a IA não responde mesmo ligada.
+              A chave DEEPSEEK_API_KEY não está configurada no servidor. Enquanto isso, a IA não responde mesmo ligada.
             </p>
           )}
           <div className="space-y-1.5">

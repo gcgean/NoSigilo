@@ -36,7 +36,7 @@ export const env = {
   // Comma-separated emails that can use billing even when subscriptions are globally disabled
   BILLING_TEST_EMAILS: process.env.BILLING_TEST_EMAILS || '',
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
-  // Chave da API da Anthropic para a IA do chat de suporte. Sem ela, a IA fica desligada.
-  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+  // Chave da API do DeepSeek para a IA do chat de suporte. Sem ela, a IA fica desligada.
+  DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
   TELEGRAM_BOT_USERNAME: process.env.TELEGRAM_BOT_USERNAME || '',
 };
