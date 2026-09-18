@@ -522,6 +522,37 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* Cidades com mais gente, linkadas direto da home.
+            Página linkada da home é a primeira que o Google rastreia — e em
+            18/09/2026 o Search Console tinha 154 páginas "Detectada, mas não
+            indexada", ou seja, descobertas pelo sitemap e nunca abertas. */}
+        <section className="landing-cidades landing-section">
+          <div className="landing-shell">
+            <h2>Swing e troca de casais por cidade</h2>
+            <p>
+              Veja quem já está no NoSigilo na sua cidade — quantos perfis, quantos casais e
+              as cidades vizinhas com gente cadastrada.
+            </p>
+            <nav className="landing-cidades-lista" aria-label="Cidades com mais perfis">
+                <a href="/swing/ceara/fortaleza/">Fortaleza</a>
+                <a href="/swing/sao-paulo/sao-paulo/">São Paulo</a>
+                <a href="/swing/rondonia/porto-velho/">Porto Velho</a>
+                <a href="/swing/pernambuco/recife/">Recife</a>
+                <a href="/swing/paraiba/campina-grande/">Campina Grande</a>
+                <a href="/swing/minas-gerais/belo-horizonte/">Belo Horizonte</a>
+                <a href="/swing/rio-de-janeiro/rio-de-janeiro/">Rio de Janeiro</a>
+                <a href="/swing/rio-grande-do-norte/natal/">Natal</a>
+                <a href="/swing/amazonas/manaus/">Manaus</a>
+                <a href="/swing/paraiba/joao-pessoa/">João Pessoa</a>
+                <a href="/swing/bahia/salvador/">Salvador</a>
+                <a href="/swing/piaui/teresina/">Teresina</a>
+            </nav>
+            <p className="landing-cidades-todas">
+              <a href="/swing/">Ver todos os estados e cidades</a>
+            </p>
+          </div>
+        </section>
+
         <section className="landing-seo">
           <div className="landing-shell landing-seo-inner">
             <button
