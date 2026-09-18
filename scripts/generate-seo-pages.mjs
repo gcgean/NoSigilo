@@ -89,7 +89,14 @@ const MIN_ESTADO = 100;
 // Corte para uma cidade GANHAR pagina — nao confundir com MIN_CIDADE, que decide
 // se a pagina exibe o numero de perfis. Abaixo disto a pagina existiria sem ter
 // gente para entregar a quem chegasse por ela.
-const MIN_PERFIS_CIDADE = 8;
+const MIN_PERFIS_CIDADE = 15;
+
+// Cidade abaixo disto continua com página (os links para ela seguem valendo),
+// mas sai do sitemap e vai com noindex: o Google para de gastar rastreamento em
+// página que não sustenta conteúdo próprio, e concentra nas que sustentam.
+// Medido em 17/09/2026: com 8 perfis eram 128 cidades quase iguais entre si e
+// só 31 páginas indexadas de 190; com 15, sobram ~63 com dado real para mostrar.
+const MIN_PERFIS_INDEXAVEL = 15;
 
 const UF_PARA_SLUG = {
   AC: 'acre', AL: 'alagoas', AP: 'amapa', AM: 'amazonas', BA: 'bahia', CE: 'ceara',
@@ -482,7 +489,14 @@ const semAcentos = (t) => String(t ?? '')
 const slugCidade = (t) => semAcentos(t).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
 const SQL_STATS = `
-  WITH visiveis AS (
+  WITH detalhado AS (
+    SELECT trim(city) AS city, trim(state) AS state, gender, last_seen_at, created_at, lat, lon
+    FROM users
+    WHERE COALESCE(is_banned, 0) = 0
+      AND COALESCE(is_deactivated, 0) = 0
+      AND deleted_at IS NULL
+  ),
+  visiveis AS (
     SELECT trim(city) AS city, trim(state) AS state
     FROM users
     -- is_banned e is_deactivated sao INTEGER, nao boolean (heranca do SQLite):
@@ -498,7 +512,25 @@ const SQL_STATS = `
                      WHERE char_length(COALESCE(state, '')) = 2 GROUP BY 1) t),
     'porCidade',  (SELECT json_object_agg(city, n) FROM (
                      SELECT city, COUNT(*) AS n FROM visiveis
-                     WHERE char_length(COALESCE(city, '')) >= 3 GROUP BY 1) t)
+                     WHERE char_length(COALESCE(city, '')) >= 3 GROUP BY 1) t),
+    -- Detalhe por cidade: é o que faz uma página de cidade dizer algo que a
+    -- outra não diz. Agrupado por nome (igual ao porCidade acima) porque parte
+    -- dos perfis está sem UF.
+    'detalhe',    (SELECT json_agg(json_build_object(
+                     'cidade', cidade, 'n', n, 'casais', casais, 'mulheres', mulheres,
+                     'ativos30', ativos30, 'novos30', novos30, 'lat', lat, 'lon', lon))
+                   FROM (
+                     SELECT trim(city) AS cidade,
+                            COUNT(*) AS n,
+                            COUNT(*) FILTER (WHERE lower(COALESCE(gender, '')) LIKE 'casal%') AS casais,
+                            COUNT(*) FILTER (WHERE lower(COALESCE(gender, '')) LIKE 'mulher%') AS mulheres,
+                            COUNT(*) FILTER (WHERE last_seen_at >= NOW() - INTERVAL '30 days') AS ativos30,
+                            COUNT(*) FILTER (WHERE created_at >= to_char(NOW() - INTERVAL '30 days', 'YYYY-MM-DD')) AS novos30,
+                            round(avg(lat)::numeric, 4) AS lat,
+                            round(avg(lon)::numeric, 4) AS lon
+                       FROM detalhado
+                      WHERE char_length(COALESCE(city, '')) >= 3
+                      GROUP BY 1) d)
   )::text;
 `;
 
@@ -575,10 +607,37 @@ function statsDoBanco() {
     const n = porNome.get(k);
     if (typeof n === 'number') cidades[`${c.state.slug}/${c.slug}`] = n;
   }
+
+  // Mesmo cuidado do bloco acima: cidade de nome repetido fica sem detalhe, em
+  // vez de mostrar os números de uma homônima.
+  const detalhePorNome = new Map();
+  for (const d of dados.detalhe || []) {
+    const k = semAcentos(d.cidade);
+    const atual = detalhePorNome.get(k) || { n: 0, casais: 0, mulheres: 0, ativos30: 0, novos30: 0, lat: null, lon: null };
+    // Variantes do mesmo nome ("Fortaleza"/"FORTALEZA") somam; as coordenadas
+    // ficam com a variante de maior peso, que é a que representa a cidade.
+    const maior = Number(d.n || 0) > atual.n;
+    detalhePorNome.set(k, {
+      n: atual.n + Number(d.n || 0),
+      casais: atual.casais + Number(d.casais || 0),
+      mulheres: atual.mulheres + Number(d.mulheres || 0),
+      ativos30: atual.ativos30 + Number(d.ativos30 || 0),
+      novos30: atual.novos30 + Number(d.novos30 || 0),
+      lat: maior && d.lat != null ? Number(d.lat) : atual.lat,
+      lon: maior && d.lon != null ? Number(d.lon) : atual.lon,
+    });
+  }
+  const detalhe = {};
+  for (const c of SELECTED_CITIES) {
+    const k = semAcentos(c.name);
+    if (vezes.get(k) > 1) continue;
+    const d = detalhePorNome.get(k);
+    if (d) detalhe[`${c.state.slug}/${c.slug}`] = d;
+  }
   if (ambiguas) console.warn(`[seo] ${ambiguas} cidade(s) de nome repetido ficaram sem numero proprio`);
 
-  console.log(`[seo] numeros do banco: ${dados.nacional} perfis, ${Object.keys(estados).length} estados, ${Object.keys(cidades).length} cidades`);
-  return { nacional: dados.nacional, estados, cidades };
+  console.log(`[seo] numeros do banco: ${dados.nacional} perfis, ${Object.keys(estados).length} estados, ${Object.keys(cidades).length} cidades (${Object.keys(detalhe).length} com detalhe)`);
+  return { nacional: dados.nacional, estados, cidades, detalhe };
 }
 
 // ---------------------------------------------------------------------------
@@ -741,6 +800,46 @@ function neighborCities(city) {
     .slice(0, 6);
 }
 
+/** Números reais da cidade, vindos do banco no momento do build. */
+function dadosCidade(city) {
+  return STATS?.detalhe?.[`${city.state.slug}/${city.slug}`] ?? null;
+}
+
+/** A cidade tem gente suficiente para sustentar uma página que o Google indexe? */
+function cidadeIndexavel(city) {
+  const d = dadosCidade(city);
+  const n = d ? d.n : (STATS?.cidades?.[`${city.state.slug}/${city.slug}`] ?? 0);
+  // Sem banco (--sem-banco) ninguém é cortado: melhor publicar tudo do que
+  // esvaziar o sitemap por falta de dado.
+  return STATS?.detalhe ? n >= MIN_PERFIS_INDEXAVEL : true;
+}
+
+const RAIO_TERRA_KM = 6371;
+function distanciaKm(a, b) {
+  const rad = (g) => (g * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.lon - a.lon);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * RAIO_TERRA_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/** Cidades publicadas mais próximas, pela média das coordenadas dos perfis de
+ *  cada uma. Sai diferente em cada página — é o oposto do bloco de template. */
+function cidadesProximas(city, limite = 4) {
+  const aqui = dadosCidade(city);
+  if (!aqui || aqui.lat == null || aqui.lon == null) return [];
+  return SELECTED_CITIES
+    .filter((c) => c.slug !== city.slug)
+    .map((c) => {
+      const d = dadosCidade(c);
+      if (!d || d.lat == null || d.lon == null) return null;
+      return { city: c, perfis: d.n, km: Math.round(distanciaKm(aqui, d)) };
+    })
+    .filter((x) => x && x.km <= 400 && x.perfis >= 8)
+    .sort((a, b) => a.km - b.km)
+    .slice(0, limite);
+}
+
 /** Estados publicados da mesma região, exceto o próprio. */
 function neighborStates(st) {
   return SELECTED_STATES.filter((s) => s.region === st.region && s.slug !== st.slug);
@@ -783,7 +882,15 @@ function faqJsonLd(itens) {
  *  realmente faz — nada de número de perfis por cidade ou nomes de casas
  *  noturnas, que seriam invenção. */
 function faqCidade(city, st) {
+  const d = dadosCidade(city);
+  const perguntaNumeros = d && d.n >= MIN_PERFIS_INDEXAVEL
+    ? [{
+        p: `Quantas pessoas usam o NoSigilo em ${city.name}?`,
+        r: `Hoje ${city.name} tem ${fmt(d.n)} perfis ativos e visíveis no NoSigilo${d.casais >= 3 ? `, sendo ${fmt(d.casais)} casais` : ''}${d.ativos30 >= 3 ? `. Nos últimos 30 dias, ${fmt(d.ativos30)} perfis estiveram ativos` : ''}. O número é contado no momento em que esta página foi atualizada e não inclui perfis banidos, desativados ou apagados.`,
+      }]
+    : [];
   return [
+    ...perguntaNumeros,
     {
       p: `O NoSigilo é gratuito em ${city.name}?`,
       r: `Sim, o cadastro é gratuito e permite criar seu perfil, navegar e ser encontrado por outros perfis de ${esc(city.name)}. Recursos avançados, como enviar mensagens sem limite e ver quem visitou seu perfil, fazem parte do plano premium.`,
@@ -942,6 +1049,12 @@ body{margin:0;background:#fff8f8;color:#1d1216;font-family:"Inter",ui-sans-serif
 .cl-faq{padding-block:clamp(3rem,6vw,5rem);}
 .cl-faq h2{font-size:clamp(1.9rem,3vw,2.6rem);margin-bottom:1.6rem;}
 .cl-faq-list{border-top:1px solid #ead7d3;}
+/* Bloco de números da cidade: mesma família visual das listas da landing. */
+.cl-dados-lista { list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 8px; }
+.cl-dados-lista li { padding-left: 18px; position: relative; }
+.cl-dados-lista li::before { content: ''; position: absolute; left: 0; top: 9px; width: 8px; height: 8px; border-radius: 50%; background: #e11d63; }
+.cl-dados-nota { font-size: 13px; opacity: .7; }
+
 .cl-faq-item{padding:1.3rem 0;border-bottom:1px solid #ead7d3;}
 .cl-faq-item summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:.9rem;font-family:Georgia,serif;font-size:1.05rem;}
 .cl-faq-item summary::-webkit-details-marker{display:none;}
@@ -1051,7 +1164,7 @@ function campaignFaqSection(itens) {
 
 /** Monta o documento HTML completo: head (meta/JSON-LD/CSS) + body no layout
  *  da landing. `body` já vem pronto (header, seções, footer). */
-function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body }) {
+function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noindex }) {
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -1059,7 +1172,7 @@ function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body }) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${esc(title)}</title>
   <meta name="description" content="${esc(desc)}" />
-  <meta name="robots" content="index, follow, max-image-preview:large" />
+  <meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}" />
   <meta name="rating" content="adult" />
   <meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
   ${geoUf ? `<meta name="geo.region" content="BR-${geoUf}" />` : ''}
@@ -1238,6 +1351,48 @@ function statePage(st) {
   return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: st.name, jsonld, body });
 }
 
+/** O que esta cidade tem que as outras não têm: números do banco e vizinhança
+ *  real. É o bloco que tira a página do lugar de "mesmo texto com outro nome".
+ *
+ *  Não publicamos a contagem de homens de propósito: ela existe no banco, mas
+ *  numa rede liberal o número que interessa a quem procura é quantos casais e
+ *  mulheres há na cidade. Nada aqui é estimado — se o dado não existe, a frase
+ *  não aparece. */
+function blocoDadosCidade(city) {
+  const d = dadosCidade(city);
+  const proximas = cidadesProximas(city);
+  if (!d || d.n < MIN_PERFIS_INDEXAVEL) return '';
+
+  const linhas = [];
+  linhas.push(`<li><strong>${fmt(d.n)} perfis</strong> com cadastro ativo em ${esc(city.name)}</li>`);
+  if (d.casais >= 3) linhas.push(`<li><strong>${fmt(d.casais)} casais</strong> do meio liberal na cidade</li>`);
+  if (d.mulheres >= 3) linhas.push(`<li><strong>${fmt(d.mulheres)} mulheres</strong> cadastradas em ${esc(city.name)}</li>`);
+  if (d.ativos30 >= 3) linhas.push(`<li><strong>${fmt(d.ativos30)} perfis ativos</strong> nos últimos 30 dias</li>`);
+  if (d.novos30 >= 3) linhas.push(`<li><strong>${fmt(d.novos30)} cadastros novos</strong> nos últimos 30 dias</li>`);
+
+  const vizinhas = proximas.length
+    ? `<div class="cl-alt-copy">
+        <h3>Quem está por perto de ${esc(city.name)}</h3>
+        <p>O raio de busca não para no limite do município. Estas cidades têm gente cadastrada e ficam a uma distância que dá para combinar um encontro:</p>
+        <ul class="cl-dados-lista">
+          ${proximas.map((v) => `<li><a href="/swing/${v.city.state.slug}/${v.city.slug}/">${esc(v.city.name)}</a> — ${fmt(v.perfis)} perfis, a cerca de ${v.km} km</li>`).join('\n          ')}
+        </ul>
+      </div>`
+    : '';
+
+  return `<section class="cl-section" id="numeros">
+      <div class="cl-alt-copy">
+        <h2>O meio liberal de <em>${esc(city.name)}</em> em números</h2>
+        <p>Dados dos perfis visíveis de ${esc(city.name)} no NoSigilo, atualizados em ${TODAY.split('-').reverse().join('/')}:</p>
+        <ul class="cl-dados-lista">
+          ${linhas.join('\n          ')}
+        </ul>
+        <p class="cl-dados-nota">Contamos apenas perfis ativos e visíveis: quem foi banido, desativou a conta ou apagou o cadastro fica de fora.</p>
+      </div>
+      ${vizinhas}
+    </section>`;
+}
+
 function cityPage(city) {
   const st = city.state;
   const url = `${REGIONAL}/swing/${st.slug}/${city.slug}/`;
@@ -1287,6 +1442,7 @@ function cityPage(city) {
 
   const vizinhas = neighborCities(city);
   const prova = provaSocialCidade(city, st);
+  const indexavel = cidadeIndexavel(city);
   const outrasDoEstado = st.cities.filter((c) => c !== city.name);
 
   const body = `${campaignHeader(`swing/${st.slug}/${city.slug}`)}
@@ -1314,6 +1470,8 @@ function cityPage(city) {
       </figure>
     </section>
 
+
+    ${blocoDadosCidade(city)}
     <section class="cl-section cl-alt">
       <div class="cl-alt-copy">
         <h2>Como <em>funciona</em></h2>
@@ -1393,7 +1551,9 @@ function cityPage(city) {
 
     ${campaignFooter(st.slug)}`;
 
-  return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld, body });
+  return campaignDocument({
+    noindex: !indexavel,
+title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld, body });
 }
 
 function hubPage() {
@@ -1676,18 +1836,19 @@ function dataFixa(chave) {
 }
 
 function sitemap() {
+  // Só entram páginas com HTML próprio. /register, /login, /subscriptions,
+  // /terms, /privacy e /guidelines estavam aqui e são rotas do app: servem o
+  // mesmo index.html da home, com o mesmo título e canonical apontando para "/".
+  // Pedir indexação delas era pedir para indexar seis cópias da home — e as seis
+  // entravam na conta de "não indexadas" do Search Console (17/09/2026).
   const base = [
     { loc: `${SITE}/`, freq: 'weekly', pri: '1.0' },
     { loc: `${REGIONAL}/swing/`, freq: 'weekly', pri: '0.9' },
-    { loc: `${SITE}/register`, freq: 'monthly', pri: '0.9' },
-    { loc: `${SITE}/login`, freq: 'monthly', pri: '0.7' },
-    { loc: `${SITE}/subscriptions`, freq: 'monthly', pri: '0.8' },
-    { loc: `${SITE}/terms`, freq: 'yearly', pri: '0.4' },
-    { loc: `${SITE}/privacy`, freq: 'yearly', pri: '0.4' },
-    { loc: `${SITE}/guidelines`, freq: 'yearly', pri: '0.4' },
   ];
   const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8', chave: `/swing/${s.slug}/` }));
-  const cityUrls = SELECTED_CITIES.map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7', chave: `/swing/${c.state.slug}/${c.slug}/` }));
+  const cityUrls = SELECTED_CITIES
+    .filter(cidadeIndexavel)
+    .map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7', chave: `/swing/${c.state.slug}/${c.slug}/` }));
   const urls = [...base, ...stateUrls, ...cityUrls]
     .map((u) => {
       const quando = u.chave ? (LASTMOD[u.chave]?.lastmod || TODAY) : dataFixa(new URL(u.loc).pathname);
@@ -1725,7 +1886,9 @@ const gravou = gravaLastmodNoBanco(LASTMOD);
 // O arquivo e escrito de qualquer jeito: espelho para quando o banco faltar.
 writeFileSync(LASTMOD_FILE, JSON.stringify(LASTMOD, null, 2) + String.fromCharCode(10), 'utf8');
 
+const fracas = SELECTED_CITIES.filter((c) => !cidadeIndexavel(c)).length;
 console.log(`[seo] ${stateCount} estado(s) + ${cityCount} cidade(s) + hub /swing/ + sitemap.xml gerados em ${OUT_DIR_NAME}/`);
+console.log(`[seo] ${cityCount - fracas} cidade(s) no sitemap; ${fracas} com menos de ${MIN_PERFIS_INDEXAVEL} perfis ficaram noindex`);
 console.log(inedito
   ? `[seo] seo-lastmod.json criado com ${Object.keys(LASTMOD).length} pagina(s)`
   : `[seo] ${mudaram} pagina(s) mudaram de conteudo — as outras ${Object.keys(LASTMOD).length - mudaram} mantiveram o lastmod anterior`);
