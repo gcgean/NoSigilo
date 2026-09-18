@@ -7664,6 +7664,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         state: z.string().max(50).optional().nullable(),
         birthDate: z.string().max(20).optional().nullable(),
         partnerBirthDate: z.string().max(20).optional().nullable(),
+        // Dados do parceiro, nos perfis de casal. A tela de Configurações sempre
+        // mandou estes campos e o mapa de colunas abaixo sempre soube gravá-los,
+        // mas eles faltavam aqui — e com .strict() um campo desconhecido derruba
+        // o salvamento inteiro. Resultado, até 18/09/2026: nenhum dos 3.368
+        // casais tinha conseguido salvar dado do parceiro, e quem preenchia um
+        // deles perdia também o resto das alterações.
+        partnerName: z.string().max(60).optional().nullable(),
+        partnerSexualOrientation: z.string().max(50).optional().nullable(),
+        partnerEthnicity: z.string().max(50).optional().nullable(),
+        partnerHair: z.string().max(50).optional().nullable(),
+        partnerEyes: z.string().max(50).optional().nullable(),
+        partnerHeight: z.string().max(20).optional().nullable(),
+        partnerBodyType: z.string().max(50).optional().nullable(),
         gender: z.string().max(50).optional().nullable(),
         maritalStatus: z.string().max(50).optional().nullable(),
         sexualOrientation: z.string().max(50).optional().nullable(),
@@ -7700,7 +7713,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       .strict();
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: 'invalid_input' });
+      // Diz qual campo recusou: "invalid_input" sozinho chegava na tela como
+      // "Erro ao salvar: invalid_input", sem pista do que corrigir.
+      const campos = Array.from(new Set(parsed.error.issues.map((i) => i.path.join('.') || String((i as any).keys?.join(', ') || ''))))
+        .filter(Boolean);
+      console.warn(`[profile] PUT recusado (usuario ${req.auth!.userId}): ${campos.join(', ') || 'formato'}`);
+      res.status(400).json({
+        error: 'invalid_input',
+        message: campos.length ? `Não foi possível salvar: verifique ${campos.join(', ')}.` : 'Não foi possível salvar o perfil.',
+        campos,
+      });
       return;
     }
 

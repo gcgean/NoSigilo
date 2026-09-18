@@ -2726,4 +2726,43 @@ describe('nosigilo backend', () => {
     const final = await request(ctx.app).get('/api/promoter/support').set(auth(cliente.token)).expect(200);
     expect(final.body.humanRequested).toBe(false);
   });
+  // ── Perfil de casal: dados do parceiro ──────────────────────────────────────
+  it('casal salva os dados do parceiro junto com o resto do perfil', async () => {
+    const casal = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Casal Parceiro', email: 'casal-parceiro@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+    });
+    const r = await request(ctx.app)
+      .put('/api/profile')
+      .set('Authorization', `Bearer ${casal.token}`)
+      .send({
+        sexualOrientation: 'Bissexual',
+        ethnicity: 'Parda',
+        partnerName: 'Ana',
+        partnerSexualOrientation: 'Heterossexual',
+        partnerEthnicity: 'Branca',
+        partnerHair: 'Castanho',
+        partnerEyes: 'Verdes',
+        partnerHeight: '1,65',
+        partnerBodyType: 'Magra',
+        lookingFor: ['Casal (Ele/Ela)', 'Mulher'],
+      });
+    expect(r.status).toBe(200);
+    expect(r.body.partnerSexualOrientation).toBe('Heterossexual');
+    expect(r.body.partnerEthnicity).toBe('Branca');
+    expect(r.body.partnerName).toBe('Ana');
+    expect(r.body.ethnicity).toBe('Parda');
+    expect(r.body.lookingFor).toEqual(['Casal (Ele/Ela)', 'Mulher']);
+  });
+
+  it('perfil recusado diz qual campo esta errado', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Campo Errado', email: 'campo-errado@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const r = await request(ctx.app)
+      .put('/api/profile')
+      .set('Authorization', `Bearer ${u.token}`)
+      .send({ campoQueNaoExiste: 'x' });
+    expect(r.status).toBe(400);
+    expect(r.body.message).toContain('campoQueNaoExiste');
+  });
 });

@@ -4611,6 +4611,7 @@ function AdminPromotersTab() {
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
   const [supportChats, setSupportChats] = useState<Awaited<ReturnType<typeof adminPromoterService.listSupportChats>>['chats']>([]);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const [filtroSuporte, setFiltroSuporte] = useState<'pendentes' | 'todos' | 'usuarios' | 'promotores'>('pendentes');
   const [iaSuporte, setIaSuporte] = useState<{ enabled: boolean; instructions: string; apiKeyConfigured: boolean } | null>(null);
   const [salvandoIa, setSalvandoIa] = useState(false);
 
@@ -5058,42 +5059,85 @@ function AdminPromotersTab() {
         </div>
       )}
 
-      {/* Suporte — conversas de usuários comuns (não-promotores). Promotores já
-          têm acesso ao chat pela própria lista abaixo. */}
+      {/* Suporte — todas as conversas num lugar só: usuários e promotores usam o
+          mesmo chat, então separar em duas listas só fazia o admin procurar em
+          dois cantos. Quem aguarda atendente vem primeiro, depois não lidas,
+          depois as mais recentes. */}
       {(() => {
-        const userChats = supportChats.filter((c) => !c.isPromoter);
-        if (userChats.length === 0) return null;
+        if (supportChats.length === 0) return null;
+        const naoLidas = (c: (typeof supportChats)[number]) => unreadMap[c.userId] ?? c.unreadCount;
+        const filtradas = supportChats.filter((c) =>
+          filtroSuporte === 'todos' ? true
+            : filtroSuporte === 'promotores' ? !!c.isPromoter
+            : filtroSuporte === 'usuarios' ? !c.isPromoter
+            : !!c.humanRequested || naoLidas(c) > 0
+        );
+        const ordenadas = [...filtradas].sort((a, b) =>
+          Number(!!b.humanRequested) - Number(!!a.humanRequested)
+          || Number(naoLidas(b) > 0) - Number(naoLidas(a) > 0)
+          || String(b.lastMessageAt || '').localeCompare(String(a.lastMessageAt || ''))
+        );
+        const contagem = {
+          todos: supportChats.length,
+          pendentes: supportChats.filter((c) => !!c.humanRequested || naoLidas(c) > 0).length,
+          usuarios: supportChats.filter((c) => !c.isPromoter).length,
+          promotores: supportChats.filter((c) => !!c.isPromoter).length,
+        };
         return (
           <div className="glass rounded-xl p-5 space-y-4">
             <h3 className="font-semibold flex items-center gap-2">
               <Users className="w-4 h-4 text-primary" />
-              Suporte — Usuários ({userChats.length})
+              Suporte — Conversas ({supportChats.length})
             </h3>
-            <div className="space-y-2">
-              {userChats.map((c) => (
+            <div className="flex flex-wrap gap-2">
+              {([
+                ['pendentes', 'Precisam de resposta'],
+                ['todos', 'Todas'],
+                ['usuarios', 'Usuários'],
+                ['promotores', 'Promotores'],
+              ] as const).map(([valor, rotulo]) => (
                 <button
-                  key={c.userId}
-                  onClick={() => void openChat({ userId: c.userId, fullName: c.fullName, pixKey: c.pixKey, userEmail: c.userEmail })}
-                  className="w-full flex items-center justify-between gap-3 rounded-xl border bg-secondary/20 p-3 text-left hover:bg-secondary/40 transition-colors"
+                  key={valor}
+                  type="button"
+                  onClick={() => setFiltroSuporte(valor)}
+                  className={`rounded-full border px-3 py-1 text-xs ${filtroSuporte === valor ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-secondary'}`}
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">
-                      {c.fullName}
-                      {c.humanRequested && (
-                        <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-600">🙋 aguarda atendente</span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{c.userEmail}</p>
-                    {c.lastMessage && <p className="text-xs text-muted-foreground truncate">{c.lastMessage}</p>}
-                  </div>
-                  {(unreadMap[c.userId] ?? c.unreadCount) > 0 && (
-                    <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                      {unreadMap[c.userId] ?? c.unreadCount}
-                    </span>
-                  )}
+                  {rotulo} ({contagem[valor]})
                 </button>
               ))}
             </div>
+            {ordenadas.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{filtroSuporte === 'pendentes' ? 'Nenhuma conversa esperando resposta.' : 'Nenhuma conversa neste filtro.'}</p>
+            ) : (
+              <div className="space-y-2 max-h-[32rem] overflow-y-auto pr-1">
+                {ordenadas.map((c) => (
+                  <button
+                    key={c.userId}
+                    onClick={() => void openChat({ userId: c.userId, fullName: c.fullName, pixKey: c.pixKey, userEmail: c.userEmail })}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl border bg-secondary/20 p-3 text-left hover:bg-secondary/40 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">
+                        {c.fullName}
+                        {c.isPromoter && (
+                          <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">Promotor</span>
+                        )}
+                        {c.humanRequested && (
+                          <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-600">🙋 aguarda atendente</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{c.userEmail}</p>
+                      {c.lastMessage && <p className="text-xs text-muted-foreground truncate">{c.lastMessage}</p>}
+                    </div>
+                    {naoLidas(c) > 0 && (
+                      <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                        {naoLidas(c)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         );
       })()}
