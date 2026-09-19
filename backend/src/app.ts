@@ -12891,8 +12891,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     if (!shouldUseHubBilling(env)) {
+      // Modo de desenvolvimento, sem sistema de pagamentos: libera Premium sem
+      // cobrar. Em produção isto NÃO pode acontecer — entre 28/05 e 16/06/2026,
+      // antes de o Hub estar configurado, este caminho deu Premium grátis e sem
+      // data de vencimento a 21 contas, que nunca eram bloqueadas.
+      if (process.env.NODE_ENV === 'production') {
+        console.error('[checkout] Hub Billing nao configurado em producao — checkout recusado');
+        res.status(503).json({ error: 'billing_unavailable', message: 'Pagamentos indisponíveis no momento. Tente novamente em instantes.' });
+        return;
+      }
       const isPremium = planId !== 'basic' ? 1 : 0;
-      await run(db, 'UPDATE users SET is_premium = ? WHERE id = ?', [isPremium, req.auth!.userId]);
+      // Mesmo em desenvolvimento, com vencimento: Premium sem data é tratado
+      // como vitalício pela checagem de acesso.
+      const venceEm = isPremium ? new Date(Date.now() + 30 * 86_400_000).toISOString() : null;
+      await run(db, 'UPDATE users SET is_premium = ?, hub_license_end_at = ? WHERE id = ?', [isPremium, venceEm, req.auth!.userId]);
       await persist();
       res.json({ ok: true, planId, mode: 'fallback' });
       return;
