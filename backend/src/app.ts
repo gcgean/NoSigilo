@@ -12640,9 +12640,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // lado de "não pedir" é reversível: se o gateway exigir, ele recusa com
   // mensagem clara — errar para o lado de pedir barra a venda em silêncio.
   const metodosPadrao: HubPaymentMethod[] = [
-    { method: 'PIX', gateway: '', documentRequired: false },
-    { method: 'CREDIT_CARD', gateway: '', documentRequired: false },
-    { method: 'BOLETO', gateway: '', documentRequired: true },
+    { method: 'PIX', gateway: '', documentRequired: false, nameRequired: false },
+    { method: 'CREDIT_CARD', gateway: '', documentRequired: false, nameRequired: false },
+    { method: 'BOLETO', gateway: '', documentRequired: true, nameRequired: true },
   ];
 
   async function carregarMetodosDePagamento(): Promise<HubPaymentMethod[]> {
@@ -12821,9 +12821,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // documento. Sem documento, o Hub gera um sintético a partir do e-mail (a
       // coluna é NOT NULL lá).
       const metodosDePagamento = await carregarMetodosDePagamento();
-      const exigeDocumento = metodosDePagamento.some(
-        (m) => m.method === (parsed.data.billingType || 'PIX') && m.documentRequired
-      );
+      const metodoEscolhido = metodosDePagamento.find((m) => m.method === (parsed.data.billingType || 'PIX'));
+      const exigeDocumento = !!metodoEscolhido?.documentRequired;
+      const exigeNome = metodoEscolhido?.nameRequired ?? exigeDocumento;
+      // Onde o gateway não pede nome (PIX na LivePix, cartão na Stripe), a tela
+      // nem mostra o campo e o nome do perfil vai para o Hub no lugar dele — o
+      // legalName acima já cai para user.name. Onde pede, tem que ser o nome
+      // digitado ou já salvo como titular, não o apelido do perfil.
+      const nomeDoTitular = String(parsed.data.billingLegalName || user.billing_legal_name || '').trim();
+      if (exigeNome && !nomeDoTitular) {
+        res.status(400).json({
+          error: 'billing_data_required',
+          message: 'Informe o nome completo do titular para esta forma de pagamento.',
+          missingFields: ['Nome do titular'],
+        });
+        return;
+      }
       const requiredBillingFields = [
         ['legalName', 'Nome do titular'],
         ...(exigeDocumento ? [['document', 'CPF/CNPJ'] as const] : []),

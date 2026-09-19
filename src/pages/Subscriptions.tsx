@@ -101,6 +101,8 @@ export default function Subscriptions() {
   // Boleto é o único que exige documento em qualquer gateway (é do título
   // bancário). O resto depende da rota, que o servidor informa.
   const [metodosComDocumento, setMetodosComDocumento] = useState<Array<'PIX' | 'CREDIT_CARD' | 'BOLETO'>>(['BOLETO']);
+  // Mesma lógica para o nome: só aparece onde o gateway pede.
+  const [metodosComNome, setMetodosComNome] = useState<Array<'PIX' | 'CREDIT_CARD' | 'BOLETO'>>(['BOLETO']);
 
   const isPaid = String(checkoutResult?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkoutResult?.status || '').toLowerCase() === 'pending';
@@ -136,6 +138,9 @@ export default function Subscriptions() {
         if (methodsData.status === 'fulfilled' && Array.isArray(methodsData.value)) {
           setMetodosComDocumento(
             methodsData.value.filter((m) => m.documentRequired).map((m) => m.method)
+          );
+          setMetodosComNome(
+            methodsData.value.filter((m) => m.nameRequired ?? m.documentRequired).map((m) => m.method)
           );
         }
 
@@ -252,11 +257,12 @@ export default function Subscriptions() {
   // cartão pela Stripe, que não coletam documento — pedir ali só barrava quem
   // não tem CPF, ou seja, toda a América Latina fora do Brasil.
   const documentoObrigatorio = metodosComDocumento.includes(billingMethod);
+  const nomeObrigatorio = metodosComNome.includes(billingMethod);
 
   const handleCheckout = async () => {
     if (!selectedPlanId) return;
-    if (!billingLegalName.trim()) {
-      toast({ title: 'Preencha seu nome', variant: 'destructive' });
+    if (nomeObrigatorio && !billingLegalName.trim()) {
+      toast({ title: 'Preencha seu nome completo', variant: 'destructive' });
       return;
     }
     if (documentoObrigatorio && !billingDocument.trim()) {
@@ -269,7 +275,8 @@ export default function Subscriptions() {
     preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, billingMethod, {
-        billingLegalName: billingLegalName.trim(),
+        // Sem nome digitado, o servidor usa o do perfil.
+        billingLegalName: billingLegalName.trim() || undefined,
         // Vazio vira ausente: o backend só sobrescreve o documento salvo quando
         // vem algum, e mandar "" apagaria o CPF de quem já tinha informado.
         billingDocument: billingDocument.trim() || undefined,
@@ -674,15 +681,17 @@ export default function Subscriptions() {
 
               {/* Billing fields */}
               <div className="grid sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="billingLegalName">Nome completo</Label>
-                  <Input
-                    id="billingLegalName"
-                    placeholder="Como no documento"
-                    value={billingLegalName}
-                    onChange={(e) => setBillingLegalName(e.target.value)}
-                  />
-                </div>
+                {nomeObrigatorio && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="billingLegalName">Nome completo</Label>
+                    <Input
+                      id="billingLegalName"
+                      placeholder="Como no documento"
+                      value={billingLegalName}
+                      onChange={(e) => setBillingLegalName(e.target.value)}
+                    />
+                  </div>
+                )}
                 {documentoObrigatorio && (
                   <div className="space-y-1.5">
                     <Label htmlFor="billingDocument">CPF ou CNPJ</Label>
@@ -706,7 +715,7 @@ export default function Subscriptions() {
                 disabled={
                   isCheckingOut ||
                   !selectedPlanId ||
-                  !billingLegalName.trim() ||
+                  (nomeObrigatorio && !billingLegalName.trim()) ||
                   (documentoObrigatorio && !billingDocument.trim())
                 }
                 onClick={() => void handleCheckout()}

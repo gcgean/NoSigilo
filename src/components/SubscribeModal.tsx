@@ -83,6 +83,8 @@ export default function SubscribeModal({ open, onClose }: Props) {
   // Boleto é o único que exige documento em qualquer gateway (é do título
   // bancário). O resto depende da rota, que o servidor informa.
   const [metodosComDocumento, setMetodosComDocumento] = useState<Array<'PIX' | 'CREDIT_CARD' | 'BOLETO'>>(['BOLETO']);
+  // Mesma lógica para o nome: só aparece onde o gateway pede.
+  const [metodosComNome, setMetodosComNome] = useState<Array<'PIX' | 'CREDIT_CARD' | 'BOLETO'>>(['BOLETO']);
 
   const isPaid = String(checkout?.status || '').toLowerCase() === 'paid';
   const isPending = String(checkout?.status || '').toLowerCase() === 'pending';
@@ -129,6 +131,9 @@ export default function SubscribeModal({ open, onClose }: Props) {
         if (cancelado || !Array.isArray(metodos)) return;
         setMetodosComDocumento(
           metodos.filter((m) => m.documentRequired).map((m) => m.method)
+        );
+        setMetodosComNome(
+          metodos.filter((m) => m.nameRequired ?? m.documentRequired).map((m) => m.method)
         );
       })
       .catch(() => { /* mantém o padrão */ });
@@ -200,10 +205,12 @@ export default function SubscribeModal({ open, onClose }: Props) {
   // não tem CPF, ou seja, toda a América Latina fora do Brasil. Sem documento, o
   // Hub gera um sintético a partir do e-mail.
   const documentoObrigatorio = metodosComDocumento.includes(billingMethod);
+  const nomeObrigatorio = metodosComNome.includes(billingMethod);
 
   const handleCheckout = async () => {
-    if (!selectedPlanId || !billingLegalName.trim()) {
-      toast({ title: 'Preencha seu nome', variant: 'destructive' });
+    if (!selectedPlanId) return;
+    if (nomeObrigatorio && !billingLegalName.trim()) {
+      toast({ title: 'Preencha seu nome completo', variant: 'destructive' });
       return;
     }
     if (documentoObrigatorio && !billingDocument.trim()) {
@@ -217,7 +224,8 @@ export default function SubscribeModal({ open, onClose }: Props) {
     preCheckoutLicenseRef.current = user?.hubLicenseEndAt ?? null;
     try {
       const result = await subscriptionsService.checkout(selectedPlanId, billingMethod, {
-        billingLegalName: billingLegalName.trim(),
+        // Sem nome digitado, o servidor usa o do perfil.
+        billingLegalName: billingLegalName.trim() || undefined,
         // Vazio vira ausente: o backend só sobrescreve o documento salvo quando
         // vem algum, e mandar "" apagaria o CPF de quem já tinha informado.
         billingDocument: billingDocument.trim() || undefined,
@@ -496,16 +504,18 @@ export default function SubscribeModal({ open, onClose }: Props) {
 
                   {/* Billing fields */}
                   <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="sb-name">Nome completo</Label>
-                      <Input
-                        id="sb-name"
-                        placeholder="Como no documento"
-                        value={billingLegalName}
-                        onChange={(e) => setBillingLegalName(e.target.value)}
-                        autoComplete="name"
-                      />
-                    </div>
+                    {nomeObrigatorio && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="sb-name">Nome completo</Label>
+                        <Input
+                          id="sb-name"
+                          placeholder="Como no documento"
+                          value={billingLegalName}
+                          onChange={(e) => setBillingLegalName(e.target.value)}
+                          autoComplete="name"
+                        />
+                      </div>
+                    )}
                     {documentoObrigatorio && (
                       <div className="space-y-1.5">
                         <Label htmlFor="sb-doc">CPF ou CNPJ</Label>
@@ -549,7 +559,12 @@ export default function SubscribeModal({ open, onClose }: Props) {
                   {/* Generate checkout */}
                   <Button
                     className="w-full py-6 text-base font-bold bg-gradient-to-r from-rose-500 via-primary to-violet-500 hover:opacity-90 gap-2"
-                    disabled={isCheckingOut || !selectedPlanId || !billingLegalName.trim() || !billingDocument.trim()}
+                    disabled={
+                      isCheckingOut ||
+                      !selectedPlanId ||
+                      (nomeObrigatorio && !billingLegalName.trim()) ||
+                      (documentoObrigatorio && !billingDocument.trim())
+                    }
                     onClick={() => void handleCheckout()}
                   >
                     {isCheckingOut ? (

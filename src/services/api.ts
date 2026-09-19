@@ -1008,6 +1008,7 @@ export const subscriptionsService = {
     method: 'PIX' | 'CREDIT_CARD' | 'BOLETO';
     gateway: string | null;
     documentRequired: boolean;
+    nameRequired?: boolean;
   }>> => {
     const response = await apiClient.get('/subscriptions/payment-methods');
     return response.data;

@@ -187,6 +187,8 @@ export type HubPaymentMethod = {
   method: 'PIX' | 'CREDIT_CARD' | 'BOLETO';
   gateway: string;
   documentRequired: boolean;
+  // Hub antigo não manda: nesse caso vale o mesmo que documentRequired.
+  nameRequired?: boolean;
 };
 
 /**
