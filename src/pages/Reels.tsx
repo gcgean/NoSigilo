@@ -10,6 +10,7 @@ import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import MobileState from '@/components/MobileState';
+import QuemCurtiuDialog from '@/components/QuemCurtiuDialog';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -90,6 +91,7 @@ export default function Reels() {
   const premiumAccess = hasPremiumAccess(user);
   const { requireFields } = useProfileGate();
   const [reels, setReels] = useState<ReelItem[]>([]);
+  const [quemCurtiuPostId, setQuemCurtiuPostId] = useState<string | null>(null);
   const [initialSeenReelIds, setInitialSeenReelIds] = useState<string[]>([]);
   const [, setSeenReelIds] = useState<string[]>([]);
   // "Não vistos" salvo na Busca de Vídeos: quando ligado, o Reels pula os já vistos.
@@ -1064,13 +1066,26 @@ export default function Reels() {
               {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
 
-            {/* Like */}
-            <button type="button" onClick={() => void handleToggleLike(reel)} className="flex flex-col items-center gap-1 text-white">
-              <div className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11 ${likedByPostId[reel.postId] ? 'bg-rose-500/75' : 'bg-black/45'}`}>
+            {/* Like: o coração curte; o número abre quem curtiu. */}
+            <div className="flex flex-col items-center gap-1 text-white">
+              <button
+                type="button"
+                onClick={() => void handleToggleLike(reel)}
+                aria-label={likedByPostId[reel.postId] ? 'Descurtir' : 'Curtir'}
+                className={`flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-sm transition hover:bg-black/60 sm:h-11 sm:w-11 ${likedByPostId[reel.postId] ? 'bg-rose-500/75' : 'bg-black/45'}`}
+              >
                 <Heart className={`h-5 w-5 ${likedByPostId[reel.postId] ? 'fill-white' : ''}`} />
-              </div>
-              <span className="text-xs font-medium text-white/85">{reel.stats.likesCount}</span>
-            </button>
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuemCurtiuPostId(reel.postId)}
+                disabled={!reel.stats.likesCount}
+                aria-label="Ver quem curtiu"
+                className="rounded px-1.5 text-xs font-medium text-white/85 underline-offset-2 hover:underline disabled:no-underline"
+              >
+                {reel.stats.likesCount}
+              </button>
+            </div>
 
             {/* Comments */}
             <button
@@ -1411,6 +1426,7 @@ export default function Reels() {
         </DialogContent>
       </Dialog>
 
+      <QuemCurtiuDialog postId={quemCurtiuPostId} onClose={() => setQuemCurtiuPostId(null)} />
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   );
