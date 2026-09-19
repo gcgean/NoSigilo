@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -2313,49 +2313,36 @@ export default function Feed() {
           <Card className="overflow-hidden px-3 py-2.5 glass border-2 border-primary/30 ring-1 ring-primary/10 shadow-[0_2px_16px_rgba(139,92,246,0.18)]">
             {/* Tab bar container */}
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {/* Segmented pill group */}
-              <div className="flex shrink-0 items-center gap-0.5 rounded-xl bg-white/5 p-0.5 ring-1 ring-white/8">
-                <button
-                  type="button"
-                  onClick={() => setFeedFilter('all')}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
-                    feedFilter === 'all'
-                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
-                      // Em Contos, o caminho de volta fica verde para ficar óbvio.
-                      : feedFilter === 'experiences'
-                        ? 'bg-emerald-500 text-white shadow-[0_2px_12px_rgba(16,185,129,0.45)] hover:bg-emerald-600'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-                  )}
-                >
-                  {feedFilter === 'experiences' && <Home className="h-3.5 w-3.5" />}
-                  Todos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFeedFilter('friends')}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
-                    feedFilter === 'friends'
-                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-                  )}
-                >
-                  <Users className="h-3.5 w-3.5" />
-                  Perfis curtidos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFeedFilter('experiences')}
-                  className={cn(
-                    'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
-                    feedFilter === 'experiences'
-                      ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
-                  )}
-                >
-                  ✍️ Meus Contos Eróticos
-                </button>
+              {/* Seletor de aba: só a ativa fica preenchida; as outras têm cara de
+                  botão clicável, com "Trocar para" no title para não deixar dúvida. */}
+              <div className="flex shrink-0 items-center gap-1 rounded-xl bg-white/5 p-1 ring-1 ring-white/8" role="tablist">
+                {([
+                  { id: 'all', rotulo: 'Feed', icone: <Home className="h-3.5 w-3.5" /> },
+                  { id: 'friends', rotulo: 'Perfis curtidos', icone: <Users className="h-3.5 w-3.5" /> },
+                  { id: 'experiences', rotulo: 'Contos eróticos', icone: <span aria-hidden>✍️</span> },
+                ] as const).map((aba) => {
+                  const ativa = feedFilter === aba.id;
+                  return (
+                    <button
+                      key={aba.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={ativa}
+                      title={ativa ? `Você está em ${aba.rotulo}` : `Trocar para ${aba.rotulo}`}
+                      onClick={() => setFeedFilter(aba.id)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm transition-all duration-200',
+                        ativa
+                          ? 'bg-gradient-primary font-bold text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
+                          : 'border border-dashed border-white/20 font-medium text-muted-foreground hover:border-primary/40 hover:bg-white/5 hover:text-foreground'
+                      )}
+                    >
+                      {ativa && <Check className="h-3.5 w-3.5" />}
+                      {aba.icone}
+                      {aba.rotulo}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Separator */}
@@ -2403,7 +2390,7 @@ export default function Feed() {
                 </button>
               )}
 
-              {/* Voltar ao feed (modo Experiências, mobile) */}
+              {/* Saída explícita do modo Contos */}
               {feedFilter === 'experiences' && (
                 <button
                   type="button"
@@ -2415,6 +2402,22 @@ export default function Feed() {
                 </button>
               )}
             </div>
+
+            {/* Onde você está e como sair — some quando está no feed comum. */}
+            {feedFilter !== 'all' && (
+              <p className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  Você está em {feedFilter === 'experiences' ? 'Contos eróticos' : feedFilter === 'friends' ? 'Perfis curtidos' : 'Curtidos'}.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFeedFilter('all')}
+                  className="font-semibold text-emerald-500 underline underline-offset-2 hover:text-emerald-600"
+                >
+                  Voltar ao feed normal
+                </button>
+              </p>
+            )}
 
             {/* Proximity filter row — segunda linha, só quando tem localização e não está em Experiências */}
             {(user?.lat || user?.city) && feedFilter !== 'experiences' ? (
