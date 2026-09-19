@@ -39,9 +39,9 @@ const semAcentos = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 // conto encontrado vai para a revisão do admin, que decide. Falso positivo
 // ("casados há 10 anos") custa uma revisão; falso negativo custa muito mais.
 const SINAIS: Array<{ motivo: string; padrao: RegExp }> = [
-  { motivo: 'idade abaixo de 18 anos', padrao: /\b(tinha|tem|tenho|tinhamos|tinham|com|aos|completou|completei|completar|de)\s+(1[0-7]|[1-9])\s*(anos|aninhos)\b/ },
+  { motivo: 'idade abaixo de 18 anos', padrao: /\b(tinha|tem|tenho|tinhamos|tinham|com|aos|completou|completei|completar|(?<!\b(mais|menos|ha|a|por|cerca|quase|uns|umas) )de)\s+(1[0-7]|[1-9])\s*(anos|aninhos)\b/ },
   { motivo: 'idade abaixo de 18 anos', padrao: /\b(onze|doze|treze|quatorze|catorze|quinze|dezesseis|dezessete)\s+(anos|aninhos)\b/ },
-  { motivo: 'menção a menor de idade', padrao: /\b(menor de idade|menores de idade|colegial|ensino fundamental|ensino medio|pre[- ]?adolescente|puberdade|crianca|criancinha|infantil|pedofil\w*|lolita|ninfeta|garotinh[ao]|menininh[ao]|novinh[ao] de \d|bebezinh[ao])\b/ },
+  { motivo: 'menção a menor de idade', padrao: /\b(menor de idade|menores de idade|colegial|ensino fundamental|ensino medio|pre[- ]?adolescente|puberdade|(?<!\b(como|feito|parecia|igual|que nem) (uma )?)crianca|criancinha|infantil|pedofil\w*|lolita|ninfeta|garotinh[ao]|menininh[ao]|novinh[ao] de \d|bebezinh[ao])\b/ },
   { motivo: 'menção a sexo com animal', padrao: /\b(zoofilia|bestialidade|sexo com (um |o |a )?(animal|cachorro|cao|cavalo|egua|bode|cabra))\b/ },
   { motivo: 'menção a incesto', padrao: /\b(incesto|incestuos\w*|com (o )?meu pai|com (a )?minha mae|com (o )?meu filho|com (a )?minha filha|meu pai me (comeu|fodeu|comia)|minha mae me|comi (a )?minha (mae|irma|filha|sobrinha))\b/ },
 ];
