@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
-import { authService, experienceService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
+import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
@@ -743,6 +743,19 @@ export default function Feed() {
     void reloadExperiences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroCategoria, ordemContos, leituraContos]);
+
+  // Admin classifica o conto direto no feed.
+  const classificarConto = async (experience: FeedExperience, categoria: string) => {
+    const nome = contagemContos.categorias.find((c) => c.slug === categoria)?.nome ?? categoria;
+    try {
+      await adminContosService.atualizar(experience.id, { categoria });
+      setAllExperiences((lista) => lista.map((e) => (e.id === experience.id ? { ...e, categoria, categoriaNome: nome } : e)));
+      toast({ title: `Classificado como ${nome}` });
+      void experienceService.categorias().then(setContagemContos).catch(() => {});
+    } catch {
+      toast({ title: 'Não foi possível classificar', variant: 'destructive' });
+    }
+  };
 
   const lerConto = (experience: FeedExperience) => {
     const abrindo = !expandedExp[experience.id];
@@ -2647,6 +2660,20 @@ export default function Feed() {
                           <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">✓ Lido</span>
                         ) : (
                           <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">Novo pra você</span>
+                        )}
+                        {user?.isAdmin && (
+                          <select
+                            value={experience.categoria ?? ''}
+                            onChange={(e) => e.target.value && void classificarConto(experience, e.target.value)}
+                            className="ml-auto h-7 rounded-md border border-dashed border-primary/50 bg-background px-2 text-[11px]"
+                            aria-label="Classificar conto (admin)"
+                            title="Classificar conto (só admin vê)"
+                          >
+                            {!experience.categoria && <option value="">🛡️ Classificar…</option>}
+                            {contagemContos.categorias.filter((c) => c.slug !== 'sem').map((c) => (
+                              <option key={c.slug} value={c.slug}>🛡️ {c.nome}</option>
+                            ))}
+                          </select>
                         )}
                       </div>
                       <button
