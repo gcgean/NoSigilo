@@ -301,7 +301,7 @@ export const feedService = {
 };
 
 export const experienceService = {
-  getFeed: async (params?: { page?: number; limit?: number; categoria?: string; ordem?: 'recentes' | 'votados'; leitura?: 'todos' | 'nao_lidos' | 'lidos' }) => {
+  getFeed: async (params?: { page?: number; limit?: number; categoria?: string; ordem?: 'recentes' | 'votados'; leitura?: 'todos' | 'nao_lidos' | 'lidos'; q?: string }) => {
     const response = await apiClient.get('/feed/experiences', { params });
     return response.data;
   },

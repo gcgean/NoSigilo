@@ -7514,6 +7514,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const filtroParams: unknown[] = [];
     if (categoria === 'sem') filtros.push('e.categoria IS NULL');
     else if ((SLUGS_CATEGORIAS as readonly string[]).includes(categoria)) { filtros.push('e.categoria = ?'); filtroParams.push(categoria); }
+    // Busca por palavra dentro do tema escolhido (título ou texto do conto).
+    const busca = String(req.query.q || '').trim().slice(0, 60);
+    if (busca.length >= 2) {
+      filtros.push('(LOWER(e.title) LIKE ? OR LOWER(e.description) LIKE ?)');
+      const termo = `%${busca.toLowerCase()}%`;
+      filtroParams.push(termo, termo);
+    }
     if (leitura === 'nao_lidos') { filtros.push('NOT EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
     if (leitura === 'lidos') { filtros.push('EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
     const ordenacao = ordem === 'votados'

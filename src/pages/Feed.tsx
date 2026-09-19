@@ -387,6 +387,7 @@ export default function Feed() {
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [ordemContos, setOrdemContos] = useState<OrdemContos>('recentes');
   const [leituraContos, setLeituraContos] = useState<LeituraContos>('todos');
+  const [buscaContos, setBuscaContos] = useState('');
   const [contagemContos, setContagemContos] = useState<{ categorias: CategoriaContagem[]; total: number; naoLidos: number }>({ categorias: [], total: 0, naoLidos: 0 });
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string; isVideo?: boolean }>>([]);
@@ -715,7 +716,7 @@ export default function Feed() {
     setIsLoadingExperiences(true);
     try {
       const [feed, contagem] = await Promise.all([
-        experienceService.getFeed({ page: 1, limit: 50, categoria: filtroCategoria || undefined, ordem: ordemContos, leitura: leituraContos }),
+        experienceService.getFeed({ page: 1, limit: 50, categoria: filtroCategoria || undefined, ordem: ordemContos, leitura: leituraContos, q: buscaContos || undefined }),
         experienceService.categorias().catch(() => null),
       ]);
       setAllExperiences(Array.isArray(feed?.experiences) ? feed.experiences : []);
@@ -742,7 +743,7 @@ export default function Feed() {
   useEffect(() => {
     void reloadExperiences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroCategoria, ordemContos, leituraContos]);
+  }, [filtroCategoria, ordemContos, leituraContos, buscaContos]);
 
   // Admin classifica o conto direto no feed.
   const classificarConto = async (experience: FeedExperience, categoria: string) => {
@@ -2580,9 +2581,11 @@ export default function Feed() {
                 categoria={filtroCategoria}
                 ordem={ordemContos}
                 leitura={leituraContos}
+                busca={buscaContos}
                 onCategoria={setFiltroCategoria}
                 onOrdem={setOrdemContos}
                 onLeitura={setLeituraContos}
+                onBusca={setBuscaContos}
               />
 
               {isLoadingExperiences ? (
