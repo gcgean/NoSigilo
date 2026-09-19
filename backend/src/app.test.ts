@@ -2765,4 +2765,27 @@ describe('nosigilo backend', () => {
     expect(r.status).toBe(400);
     expect(r.body.message).toContain('campoQueNaoExiste');
   });
+  // ── Buscar Vídeos: coleções da pessoa ───────────────────────────────────────
+  it('colecoes de videos: vistos, curtidos e comentados respondem e validam', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Colecao Videos', email: 'colecao-videos@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const auth = { Authorization: `Bearer ${u.token}` };
+
+    const vistos = await request(ctx.app).post('/api/videos/by-ids').set(auth).send({ mediaIds: ['nao-existe-1', 'nao-existe-2'] });
+    expect(vistos.status).toBe(200);
+    expect(vistos.body.videos).toEqual([]);
+
+    const vazio = await request(ctx.app).post('/api/videos/by-ids').set(auth).send({ mediaIds: [] });
+    expect(vazio.status).toBe(200);
+
+    for (const tipo of ['curtidos', 'comentados']) {
+      const r = await request(ctx.app).get(`/api/videos/minhas?tipo=${tipo}`).set(auth);
+      expect(r.status).toBe(200);
+      expect(Array.isArray(r.body.videos)).toBe(true);
+    }
+
+    const invalido = await request(ctx.app).get('/api/videos/minhas?tipo=outro').set(auth);
+    expect(invalido.status).toBe(400);
+  });
 });

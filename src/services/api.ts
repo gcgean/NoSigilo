@@ -140,6 +140,19 @@ export const videoSearchService = {
   },
 };
 
+/** Vídeos pelos ids de mídia, na ordem pedida — base do filtro "Vistos". */
+export const videosVistosService = {
+  buscar: async (mediaIds: string[]) => {
+    const response = await apiClient.post('/videos/by-ids', { mediaIds }, { timeout: 30000 });
+    return response.data as Awaited<ReturnType<typeof videoSearchService.search>>;
+  },
+  /** Vídeos que a pessoa curtiu ou comentou, da interação mais recente. */
+  minhas: async (tipo: 'curtidos' | 'comentados') => {
+    const response = await apiClient.get('/videos/minhas', { params: { tipo }, timeout: 30000 });
+    return response.data as Awaited<ReturnType<typeof videoSearchService.search>>;
+  },
+};
+
 export const discoveryService = {
   // Quantos perfis procuram alguém do gênero do usuário (+ prévias de avatar).
   getSeekingMe: async (): Promise<{ count: number; previews: string[] }> => {

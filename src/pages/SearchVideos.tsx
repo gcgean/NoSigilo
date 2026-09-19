@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
-import { videoSearchService } from '@/services/api';
+import { videoSearchService, videosVistosService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
@@ -275,6 +275,36 @@ export default function SearchVideos() {
   const [showFilters,    setShowFilters]    = useState(false);
   const [onlyUnseen,     setOnlyUnseen]     = useState(savedFilters.onlyUnseen);
   const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds(user?.id));
+  // Coleções da pessoa: vídeos que ela já viu, curtiu ou comentou. Não são
+  // filtros sobre o que a busca carregou (ela vem em ordem aleatória e quase
+  // nunca traria esses vídeos) — cada uma busca a sua lista no servidor.
+  // "Vistos" vem da lista guardada no aparelho; curtidos e comentados, do banco.
+  const [colecao,        setColecao]        = useState<'vistos' | 'curtidos' | 'comentados' | null>(null);
+  const soVistos = colecao !== null;
+  const [vistos,         setVistos]         = useState<VideoItem[]>([]);
+  const [carregandoVistos, setCarregandoVistos] = useState(false);
+  const [erroVistos,     setErroVistos]     = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!colecao) return;
+    let cancelado = false;
+    setErroVistos(null);
+    let pedido: ReturnType<typeof videosVistosService.buscar>;
+    if (colecao === 'vistos') {
+      // Mais recente primeiro: a lista local cresce no fim.
+      const ids = Array.from(readSeenVideoIds(user?.id)).reverse();
+      if (ids.length === 0) { setVistos([]); return; }
+      pedido = videosVistosService.buscar(ids);
+    } else {
+      pedido = videosVistosService.minhas(colecao);
+    }
+    setCarregandoVistos(true);
+    pedido
+      .then((r) => { if (!cancelado) setVistos(Array.isArray(r?.videos) ? (r.videos as VideoItem[]) : []); })
+      .catch(() => { if (!cancelado) setErroVistos('Não foi possível carregar seus vídeos vistos.'); })
+      .finally(() => { if (!cancelado) setCarregandoVistos(false); });
+    return () => { cancelado = true; };
+  }, [colecao, user?.id]);
 
   // Persiste os filtros sempre que mudarem.
   useEffect(() => {
@@ -483,9 +513,10 @@ export default function SearchVideos() {
               </button>
               {/* Filtro "Não vistos" — posicionado logo após "Mais curtidos" e antes de "Mais comentados" */}
               {value === 'liked' && (
+                <>
                 <button
                   type="button"
-                  onClick={() => setOnlyUnseen((v) => !v)}
+                  onClick={() => { setOnlyUnseen((v) => !v); setColecao(null); }}
                   className={cn(
                     'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                     onlyUnseen
@@ -496,6 +527,27 @@ export default function SearchVideos() {
                   <EyeOff className="h-3.5 w-3.5" />
                   Não vistos
                 </button>
+                {([
+                  ['vistos', 'Vistos', Eye],
+                  ['curtidos', 'Curti', Heart],
+                  ['comentados', 'Comentei', MessageCircle],
+                ] as const).map(([valor, rotulo, Icone]) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => { setColecao((atual) => (atual === valor ? null : valor)); setOnlyUnseen(false); }}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                      colecao === valor
+                        ? 'border-sky-500 bg-sky-500 text-white'
+                        : 'border-border bg-background text-muted-foreground hover:border-sky-500/50 hover:text-foreground'
+                    )}
+                  >
+                    <Icone className="h-3.5 w-3.5" />
+                    {rotulo}
+                  </button>
+                ))}
+                </>
               )}
             </Fragment>
           ))}
@@ -557,6 +609,53 @@ export default function SearchVideos() {
         )}
       </div>
 
+      {soVistos && (
+        <div>
+          {carregandoVistos ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="aspect-[9/16] animate-pulse rounded-xl bg-muted" />
+              ))}
+            </div>
+          ) : erroVistos ? (
+            <MobileState icon={Clapperboard} title="Erro ao carregar" description={erroVistos} />
+          ) : vistos.length === 0 ? (
+            <MobileState
+              icon={colecao === 'curtidos' ? Heart : colecao === 'comentados' ? MessageCircle : Eye}
+              title={
+                colecao === 'curtidos' ? 'Você ainda não curtiu nenhum vídeo'
+                  : colecao === 'comentados' ? 'Você ainda não comentou em nenhum vídeo'
+                  : 'Nenhum vídeo visto ainda'
+              }
+              description={
+                colecao === 'vistos'
+                  ? 'Os vídeos que você assistir aparecem aqui. A lista fica guardada neste aparelho.'
+                  : 'Quando você curtir ou comentar um vídeo, ele aparece aqui.'
+              }
+            />
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted-foreground">
+                <Eye className="inline h-3.5 w-3.5 mr-1" />
+                {vistos.length} vídeo{vistos.length !== 1 ? 's' : ''} que você {colecao === 'curtidos' ? 'curtiu' : colecao === 'comentados' ? 'comentou' : 'já viu'}, do mais recente para o mais antigo
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {vistos.map((item) => (
+                  <VideoCard
+                    key={item.mediaId}
+                    item={item}
+                    premiumAccess={premiumAccess}
+                    seen={seenIds.has(item.mediaId)}
+                    onClick={() => void handleVideoClick(item)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {!soVistos && (<>
       {/* Loading skeleton */}
       {isLoading && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -642,6 +741,7 @@ export default function SearchVideos() {
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       )}
+      </>)}
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>

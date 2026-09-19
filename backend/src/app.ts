@@ -6596,6 +6596,214 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // ── Video search (browse reels like profile search) ───────────────────────
+  // Monta os cards de vídeo a partir de linhas de posts (com autor já juntado).
+  // Usado pela busca e pela lista de vídeos que a pessoa já assistiu.
+  async function montarVideosDosPosts(
+    slice: any[],
+    opcoes: { viewerLat: number | null; viewerLon: number | null; aceitaAutor?: (gender: unknown) => boolean; maxKm?: number | null },
+  ): Promise<any[]> {
+    // Load video media for each post
+    const mediaIdSet = new Set<string>();
+    const mediaIdsByPostId = new Map<string, string[]>();
+    for (const r of slice) {
+      const ids = Array.isArray(safeJsonParse(r.media_ids_json)) ? (safeJsonParse(r.media_ids_json) as any[]) : [];
+      const list = ids.filter((x: any) => typeof x === 'string') as string[];
+      mediaIdsByPostId.set(String(r.post_id), list);
+      for (const mid of list) mediaIdSet.add(mid);
+    }
+
+    const mediaById = new Map<string, { id: string; url: string; mimeType: string }>();
+    if (mediaIdSet.size > 0) {
+      const mediaIds = Array.from(mediaIdSet);
+      const placeholders = mediaIds.map(() => '?').join(', ');
+      const mediaRows = await queryAll(
+        db,
+        `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${placeholders})`,
+        mediaIds
+      ) as any[];
+      for (const mr of mediaRows) {
+        const mimeType = String(mr.mime_type || '');
+        if (mimeType.startsWith('video/')) {
+          mediaById.set(String(mr.id), { id: String(mr.id), url: `/uploads/${mr.filename}`, mimeType });
+        }
+      }
+    }
+
+    // Likes counts
+    const postIds = slice.map((r: any) => String(r.post_id));
+    const likesCountByPostId = new Map<string, number>();
+    const commentsCountByPostId = new Map<string, number>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const [likeCounts, commentCounts] = await Promise.all([
+        queryAll(
+          db,
+          `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
+          postIds
+        ) as Promise<any[]>,
+        queryAll(
+          db,
+          `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
+          postIds
+        ) as Promise<any[]>,
+      ]);
+      for (const lr of likeCounts) likesCountByPostId.set(String(lr.target_id), Number(lr.c || 0));
+      for (const cr of commentCounts) commentsCountByPostId.set(String(cr.target_id), Number(cr.c || 0));
+    }
+
+    const viewsCountByPostId = new Map<string, number>();
+    if (postIds.length > 0) {
+      const placeholders = postIds.map(() => '?').join(', ');
+      const viewCounts = await queryAll(
+        db,
+        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+        postIds
+      ) as any[];
+      for (const vr of viewCounts) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
+    }
+
+    // Build result entries (one per video media item), with distance calc + filter
+    const videos: any[] = [];
+    for (const r of slice) {
+      // Filtro por interesse do viewer: por padrão só vídeos de perfis que ele curte.
+      // Ignorado se o usuário escolheu um gênero específico (filterGender) ou pediu "ver todos" (all=true).
+      if (opcoes.aceitaAutor && !opcoes.aceitaAutor(r.author_gender)) continue;
+
+      const videoMedia = (mediaIdsByPostId.get(String(r.post_id)) ?? [])
+        .map((mid) => mediaById.get(mid))
+        .filter(Boolean) as { id: string; url: string; mimeType: string }[];
+
+      if (videoMedia.length === 0) continue;
+
+      const aLat = typeof r.author_lat === 'number' ? r.author_lat : null;
+      const aLon = typeof r.author_lon === 'number' ? r.author_lon : null;
+      const distanceKm =
+        opcoes.viewerLat !== null && opcoes.viewerLon !== null && aLat !== null && aLon !== null
+          ? roundDistanceKm(haversineKm({ lat: opcoes.viewerLat, lon: opcoes.viewerLon }, { lat: aLat, lon: aLon }))
+          : null;
+
+      if (opcoes.maxKm != null && (distanceKm === null || distanceKm > opcoes.maxKm)) continue;
+
+      for (const media of videoMedia) {
+        videos.push({
+          mediaId: media.id,
+          postId: String(r.post_id),
+          videoUrl: media.url,
+          content: String(r.content || ''),
+          createdAt: String(r.created_at || ''),
+          likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
+          commentsCount: commentsCountByPostId.get(String(r.post_id)) ?? 0,
+          viewsCount: viewsCountByPostId.get(String(r.post_id)) ?? 0,
+          distanceKm,
+          author: {
+            id: String(r.author_id),
+            name: String(r.author_name || ''),
+            avatar: r.author_avatar ?? null,
+            gender: r.author_gender ?? null,
+            city: r.author_city ?? null,
+            state: r.author_state ?? null,
+          },
+        });
+      }
+    }
+    return videos;
+  }
+
+  // Vídeos que a pessoa já assistiu. A lista de "vistos" fica no aparelho
+  // (lib/videoSeen.ts, até 500 ids); filtrar só o que a busca já carregou
+  // mostraria quase nada, porque a busca vem em ordem aleatória. Aqui o
+  // servidor devolve exatamente esses vídeos, na ordem pedida (mais recente
+  // primeiro), com as mesmas regras de visibilidade da busca.
+  // Vídeos que a pessoa curtiu ou comentou, da interação mais recente para a
+  // mais antiga. Diferente dos "vistos", isso o servidor já sabe (likes e
+  // comments guardam quem fez), então vale em qualquer aparelho.
+  app.get('/api/videos/minhas', requireAuth(env, db), async (req, res) => {
+    const tipo = String(req.query.tipo || '');
+    if (tipo !== 'curtidos' && tipo !== 'comentados') { res.status(400).json({ error: 'invalid_input' }); return; }
+    const tabela = tipo === 'curtidos' ? 'likes' : 'comments';
+    const myId = req.auth!.userId;
+    const viewerRow = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ? LIMIT 1', [myId])) as any;
+    const rows = (await queryAll(
+      db,
+      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+              u.id as author_id,
+              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
+              u.gender as author_gender, u.city as author_city, u.state as author_state,
+              u.lat as author_lat, u.lon as author_lon,
+              i.ultima
+         FROM (SELECT target_id, MAX(created_at) AS ultima
+                 FROM ${tabela}
+                WHERE user_id = ? AND target_type = 'post'
+                GROUP BY target_id) i
+         JOIN posts p ON p.id = i.target_id
+         JOIN users u ON u.id = p.user_id
+        WHERE p.media_ids_json IS NOT NULL
+          AND p.media_ids_json != '[]'
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND NOT EXISTS (
+            SELECT 1 FROM blocks b
+             WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+                OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+          )
+        ORDER BY i.ultima DESC
+        LIMIT 200`,
+      [myId, myId, myId]
+    )) as any[];
+    // montarVideosDosPosts percorre as linhas na ordem recebida, então a ordem
+    // da interação mais recente é preservada.
+    const videos = await montarVideosDosPosts(rows, {
+      viewerLat: typeof viewerRow?.lat === 'number' ? viewerRow.lat : null,
+      viewerLon: typeof viewerRow?.lon === 'number' ? viewerRow.lon : null,
+    });
+    res.json({ videos });
+  });
+
+  app.post('/api/videos/by-ids', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ mediaIds: z.array(z.string().min(1).max(64)).max(500) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const ids = Array.from(new Set(parsed.data.mediaIds));
+    if (ids.length === 0) { res.json({ videos: [] }); return; }
+    const myId = req.auth!.userId;
+    const viewerRow = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ? LIMIT 1', [myId])) as any;
+    const marcadores = ids.map(() => '?').join(', ');
+    // media não guarda o post; o post é achado pelo id da mídia dentro de
+    // media_ids_json, restrito aos posts do mesmo dono para não varrer tudo.
+    const rows = (await queryAll(
+      db,
+      `SELECT DISTINCT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+              u.id as author_id,
+              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
+              u.gender as author_gender, u.city as author_city, u.state as author_state,
+              u.lat as author_lat, u.lon as author_lon
+         FROM media m
+         JOIN posts p ON p.user_id = m.user_id AND p.media_ids_json LIKE '%' || m.id || '%'
+         JOIN users u ON u.id = p.user_id
+        WHERE m.id IN (${marcadores})
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND NOT EXISTS (
+            SELECT 1 FROM blocks b
+             WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+                OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+          )`,
+      [...ids, myId, myId]
+    )) as any[];
+    const videos = await montarVideosDosPosts(rows, {
+      viewerLat: typeof viewerRow?.lat === 'number' ? viewerRow.lat : null,
+      viewerLon: typeof viewerRow?.lon === 'number' ? viewerRow.lon : null,
+    });
+    const pedidos = new Set(ids);
+    const ordem = new Map(ids.map((id, i) => [id, i]));
+    res.json({
+      videos: videos
+        .filter((v) => pedidos.has(v.mediaId))
+        .sort((a, b) => (ordem.get(a.mediaId) ?? 0) - (ordem.get(b.mediaId) ?? 0)),
+    });
+  });
+
   app.get('/api/videos/search', requireAuth(env, db), async (req, res) => {
     const myId = req.auth!.userId;
     const viewerRow = await queryOne(db, 'SELECT id, lat, lon, looking_for_json FROM users WHERE id = ? LIMIT 1', [myId]) as any;
@@ -6694,110 +6902,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Process all fetched rows; hasMore is determined after video filtering below
     const slice = rows;
 
-    // Load video media for each post
-    const mediaIdSet = new Set<string>();
-    const mediaIdsByPostId = new Map<string, string[]>();
-    for (const r of slice) {
-      const ids = Array.isArray(safeJsonParse(r.media_ids_json)) ? (safeJsonParse(r.media_ids_json) as any[]) : [];
-      const list = ids.filter((x: any) => typeof x === 'string') as string[];
-      mediaIdsByPostId.set(String(r.post_id), list);
-      for (const mid of list) mediaIdSet.add(mid);
-    }
-
-    const mediaById = new Map<string, { id: string; url: string; mimeType: string }>();
-    if (mediaIdSet.size > 0) {
-      const mediaIds = Array.from(mediaIdSet);
-      const placeholders = mediaIds.map(() => '?').join(', ');
-      const mediaRows = await queryAll(
-        db,
-        `SELECT id, filename, mime_type FROM media WHERE is_private = 0 AND id IN (${placeholders})`,
-        mediaIds
-      ) as any[];
-      for (const mr of mediaRows) {
-        const mimeType = String(mr.mime_type || '');
-        if (mimeType.startsWith('video/')) {
-          mediaById.set(String(mr.id), { id: String(mr.id), url: `/uploads/${mr.filename}`, mimeType });
-        }
-      }
-    }
-
-    // Likes counts
-    const postIds = slice.map((r: any) => String(r.post_id));
-    const likesCountByPostId = new Map<string, number>();
-    const commentsCountByPostId = new Map<string, number>();
-    if (postIds.length > 0) {
-      const placeholders = postIds.map(() => '?').join(', ');
-      const [likeCounts, commentCounts] = await Promise.all([
-        queryAll(
-          db,
-          `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
-          postIds
-        ) as Promise<any[]>,
-        queryAll(
-          db,
-          `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${placeholders}) GROUP BY target_id`,
-          postIds
-        ) as Promise<any[]>,
-      ]);
-      for (const lr of likeCounts) likesCountByPostId.set(String(lr.target_id), Number(lr.c || 0));
-      for (const cr of commentCounts) commentsCountByPostId.set(String(cr.target_id), Number(cr.c || 0));
-    }
-
-    const viewsCountByPostId = new Map<string, number>();
-    if (postIds.length > 0) {
-      const placeholders = postIds.map(() => '?').join(', ');
-      const viewCounts = await queryAll(
-        db,
-        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
-        postIds
-      ) as any[];
-      for (const vr of viewCounts) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
-    }
-
-    // Build result entries (one per video media item), with distance calc + filter
-    const videos: any[] = [];
-    for (const r of slice) {
-      // Filtro por interesse do viewer: por padrão só vídeos de perfis que ele curte.
-      // Ignorado se o usuário escolheu um gênero específico (filterGender) ou pediu "ver todos" (all=true).
-      if (!filterGender && !showAllProfiles && !matchesLookingFor(myLookingFor, r.author_gender)) continue;
-
-      const videoMedia = (mediaIdsByPostId.get(String(r.post_id)) ?? [])
-        .map((mid) => mediaById.get(mid))
-        .filter(Boolean) as { id: string; url: string; mimeType: string }[];
-
-      if (videoMedia.length === 0) continue;
-
-      const aLat = typeof r.author_lat === 'number' ? r.author_lat : null;
-      const aLon = typeof r.author_lon === 'number' ? r.author_lon : null;
-      const distanceKm =
-        viewerLat !== null && viewerLon !== null && aLat !== null && aLon !== null
-          ? roundDistanceKm(haversineKm({ lat: viewerLat, lon: viewerLon }, { lat: aLat, lon: aLon }))
-          : null;
-
-      if (filterMaxKm !== null && (distanceKm === null || distanceKm > filterMaxKm)) continue;
-
-      for (const media of videoMedia) {
-        videos.push({
-          mediaId: media.id,
-          postId: String(r.post_id),
-          videoUrl: media.url,
-          content: String(r.content || ''),
-          createdAt: String(r.created_at || ''),
-          likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
-          commentsCount: commentsCountByPostId.get(String(r.post_id)) ?? 0,
-          viewsCount: viewsCountByPostId.get(String(r.post_id)) ?? 0,
-          distanceKm,
-          author: {
-            id: String(r.author_id),
-            name: String(r.author_name || ''),
-            avatar: r.author_avatar ?? null,
-            gender: r.author_gender ?? null,
-            city: r.author_city ?? null,
-            state: r.author_state ?? null,
-          },
-        });
-      }
-    }
+    const videos = await montarVideosDosPosts(slice, {
+      viewerLat,
+      viewerLon,
+      aceitaAutor: !filterGender && !showAllProfiles ? (g) => matchesLookingFor(myLookingFor, g as any) : undefined,
+      maxKm: filterMaxKm,
+    });
 
     // Retorna todos os vídeos encontrados no lote escaneado. Há mais páginas se a
     // varredura de posts veio cheia (rows.length === scanLimit) — assim o offset por
