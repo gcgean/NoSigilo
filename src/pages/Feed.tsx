@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -2322,9 +2322,13 @@ export default function Feed() {
                     'flex items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition-all duration-200',
                     feedFilter === 'all'
                       ? 'bg-gradient-primary text-white shadow-[0_2px_12px_rgba(139,92,246,0.45)]'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                      // Em Contos, o caminho de volta fica verde para ficar óbvio.
+                      : feedFilter === 'experiences'
+                        ? 'bg-emerald-500 text-white shadow-[0_2px_12px_rgba(16,185,129,0.45)] hover:bg-emerald-600'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
                   )}
                 >
+                  {feedFilter === 'experiences' && <Home className="h-3.5 w-3.5" />}
                   Todos
                 </button>
                 <button
@@ -2404,10 +2408,10 @@ export default function Feed() {
                 <button
                   type="button"
                   onClick={() => setFeedFilter('all')}
-                  className="flex shrink-0 items-center gap-1.5 rounded-[10px] px-3.5 py-1.5 text-sm font-medium text-muted-foreground ring-1 ring-white/10 transition hover:bg-white/5 hover:text-foreground md:hidden"
+                  className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-emerald-500 px-3.5 py-1.5 text-sm font-semibold text-white shadow-[0_2px_12px_rgba(16,185,129,0.45)] transition hover:bg-emerald-600"
                 >
                   <ChevronLeft className="h-4 w-4" />
-                  Voltar
+                  Voltar ao feed
                 </button>
               )}
             </div>
