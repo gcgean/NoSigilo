@@ -1323,3 +1323,78 @@ export async function sendAdminAlertEmail(
   }
   return { skipped: false as const };
 }
+
+// ─── Verificação em duas etapas ─────────────────────────────────────────────
+
+async function enviarPorResend(options: SendPasswordResetCodeOptions, to: string, subject: string, html: string) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [to], subject, html }),
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`resend_error:${response.status}:${body}`);
+  }
+  return { skipped: false as const };
+}
+
+/** Código de 6 dígitos: entrar num aparelho novo ou ligar a verificação. */
+export async function sendTwoFactorCodeEmail(
+  options: SendPasswordResetCodeOptions,
+  payload: { to: string; code: string; userName?: string | null; motivo: 'login' | 'ativar' }
+) {
+  const appName = options.appName || 'NoSigilo';
+  const safeCode = escapeHtml(payload.code);
+  const safeName = payload.userName ? escapeHtml(payload.userName) : 'você';
+  const frase = payload.motivo === 'ativar'
+    ? 'Use este código para confirmar seu e-mail e ligar a verificação em duas etapas:'
+    : 'Alguém entrou com a sua senha num aparelho novo. Se foi você, use este código para concluir:';
+  const aviso = payload.motivo === 'ativar'
+    ? 'Se você não pediu isso, pode ignorar este e-mail.'
+    : '<strong>Se não foi você, troque sua senha agora</strong> — a verificação impediu o acesso, mas a sua senha é conhecida por outra pessoa.';
+  const html = `
+    <div style="font-family: Arial, sans-serif; background:#fff7fa; padding:24px; color:#2b1720;">
+      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #f4c7d7; border-radius:18px; padding:32px;">
+        <h1 style="margin:0 0 12px; font-size:28px; color:#e83e68;">${appName}</h1>
+        <p style="font-size:16px; line-height:1.6; margin:0 0 16px;">Oi, ${safeName}.</p>
+        <p style="font-size:16px; line-height:1.6; margin:0 0 20px;">${frase}</p>
+        <div style="font-size:34px; letter-spacing:8px; font-weight:700; text-align:center; padding:18px; border-radius:14px; background:#fff1f5; color:#c81e58; margin:0 0 20px;">
+          ${safeCode}
+        </div>
+        <p style="font-size:14px; line-height:1.6; margin:0 0 8px; color:#6b4b57;">O código vale por 10 minutos.</p>
+        <p style="font-size:14px; line-height:1.6; margin:0; color:#6b4b57;">${aviso}</p>
+      </div>
+    </div>`.trim();
+  const assunto = payload.motivo === 'ativar'
+    ? `${appName}: código para ligar a verificação em duas etapas`
+    : `${appName}: código para entrar num aparelho novo`;
+  return enviarPorResend(options, payload.to, assunto, html);
+}
+
+/** Aviso depois que um aparelho novo passou pela verificação. */
+export async function sendNewDeviceLoginEmail(
+  options: SendPasswordResetCodeOptions & { siteUrl?: string },
+  payload: { to: string; userName?: string | null; aparelho: string; quando: string }
+) {
+  const appName = options.appName || 'NoSigilo';
+  const site = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const safeName = payload.userName ? escapeHtml(payload.userName) : 'você';
+  const html = `
+    <div style="font-family: Arial, sans-serif; background:#fff7fa; padding:24px; color:#2b1720;">
+      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #f4c7d7; border-radius:18px; padding:32px;">
+        <h1 style="margin:0 0 12px; font-size:28px; color:#e83e68;">${appName}</h1>
+        <p style="font-size:16px; line-height:1.6; margin:0 0 16px;">Oi, ${safeName}. Sua conta acabou de ser acessada num aparelho novo:</p>
+        <p style="font-size:16px; line-height:1.6; margin:0 0 16px; padding:14px; background:#fff1f5; border-radius:12px;">
+          <strong>${escapeHtml(payload.aparelho)}</strong><br/>${escapeHtml(payload.quando)}
+        </p>
+        <p style="font-size:14px; line-height:1.6; margin:0 0 8px; color:#6b4b57;">Se foi você, não precisa fazer nada.</p>
+        <p style="font-size:14px; line-height:1.6; margin:0; color:#6b4b57;">
+          Se não foi, troque sua senha e tire a confiança desse aparelho em
+          <a href="${site}/settings" style="color:#c81e58;">Configurações › Segurança</a>.
+        </p>
+      </div>
+    </div>`.trim();
+  return enviarPorResend(options, payload.to, `${appName}: acesso num aparelho novo`, html);
+}

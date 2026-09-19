@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, type DesafioDoisFatores } from '@/contexts/AuthContext';
+import { authService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Mail, Lock, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiErrorInfo } from '@/utils/apiError';
 import BrandLogo from '@/components/BrandLogo';
@@ -16,7 +17,12 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isAuthenticated } = useAuth();
+  const { login, confirmarLoginDoisFatores, isAuthenticated } = useAuth();
+  // Segundo passo: verificação em duas etapas pediu código neste aparelho.
+  const [desafio, setDesafio] = useState<DesafioDoisFatores | null>(null);
+  const [codigo, setCodigo] = useState('');
+  const [confiar, setConfiar] = useState(true);
+  const [reenviando, setReenviando] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -56,29 +62,66 @@ export default function Login() {
     return <Navigate to={target} replace />;
   }
 
+  const concluirEntrada = (loggedUser: { id: string; avatar?: string | null }) => {
+    const pendingReadyEmail = sessionStorage.getItem('nosigilo_first_access_ready');
+    if (pendingReadyEmail && pendingReadyEmail === email) {
+      localStorage.setItem(
+        `nosigilo:first-access-flow:${loggedUser.id}`,
+        JSON.stringify({ needsPhoto: !loggedUser?.avatar, needsPost: true, startedAt: new Date().toISOString() })
+      );
+      sessionStorage.removeItem('nosigilo_first_access_ready');
+    }
+    const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
+    const target = from?.pathname
+      ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+      : getLastAuthRoute('/feed');
+    navigate(target, { replace: true });
+  };
+
+  const handleCodigo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!desafio) return;
+    setIsLoading(true);
+    try {
+      const loggedUser = await confirmarLoginDoisFatores(email, desafio.challengeId, codigo.trim(), confiar);
+      concluirEntrada(loggedUser);
+    } catch (error) {
+      const info = getApiErrorInfo(error, { title: 'Código não aceito', description: 'Confira o código e tente de novo.' });
+      toast({ title: info.title, description: info.description, variant: 'destructive' });
+      setCodigo('');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const reenviarCodigo = async () => {
+    if (!desafio) return;
+    setReenviando(true);
+    try {
+      const r = await authService.loginResend(desafio.challengeId);
+      setDesafio({ ...desafio, challengeId: r.challengeId, previewCode: r.previewCode });
+      setCodigo('');
+      toast({ title: 'Código reenviado', description: `Confira o e-mail ${desafio.emailMasked}.` });
+    } catch (error) {
+      const info = getApiErrorInfo(error, { title: 'Não foi possível reenviar', description: 'Aguarde um minuto e tente de novo.' });
+      toast({ title: info.title, description: info.description, variant: 'destructive' });
+    } finally {
+      setReenviando(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     
     try {
-      const loggedUser = await login(email, password);
-      const pendingReadyEmail = sessionStorage.getItem('nosigilo_first_access_ready');
-      if (pendingReadyEmail && pendingReadyEmail === email) {
-        localStorage.setItem(
-          `nosigilo:first-access-flow:${loggedUser.id}`,
-          JSON.stringify({
-            needsPhoto: !loggedUser?.avatar,
-            needsPost: true,
-            startedAt: new Date().toISOString(),
-          })
-        );
-        sessionStorage.removeItem('nosigilo_first_access_ready');
+      const resultado = await login(email, password);
+      if ('requires2fa' in resultado) {
+        setDesafio(resultado);
+        setCodigo('');
+        return;
       }
-      const from = (location.state as { from?: { pathname?: string; search?: string; hash?: string } } | null)?.from;
-      const target = from?.pathname
-        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
-        : getLastAuthRoute('/feed');
-      navigate(target, { replace: true });
+      concluirEntrada(resultado);
     } catch (error) {
       const info = getApiErrorInfo(error, { title: 'Erro ao entrar', description: 'Não foi possível entrar na sua conta.' });
       toast({
@@ -128,6 +171,49 @@ export default function Login() {
             </div>
           </div>
 
+          {desafio ? (
+            <form onSubmit={handleCodigo} className="space-y-5">
+              <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">
+                <p className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-5 w-5 text-primary" /> Verificação em duas etapas</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Este aparelho ainda não é de confiança. Enviamos um código de 6 números para <strong>{desafio.emailMasked}</strong>. Ele vale por 10 minutos.
+                </p>
+                {desafio.previewCode && <p className="mt-2 text-xs text-muted-foreground">Código (ambiente de teste): {desafio.previewCode}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="codigo-2fa">Código</Label>
+                <Input
+                  id="codigo-2fa"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={codigo}
+                  onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="h-12 text-center text-2xl tracking-[0.5em]"
+                  autoFocus
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={confiar} onChange={(e) => setConfiar(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
+                Confiar neste aparelho (não pedir o código de novo aqui)
+              </label>
+              <Button type="submit" className="w-full" disabled={isLoading || codigo.length !== 6}>
+                {isLoading ? 'Conferindo…' : 'Entrar'}
+              </Button>
+              <div className="flex items-center justify-between text-sm">
+                <button type="button" onClick={() => { setDesafio(null); setCodigo(''); }} className="text-muted-foreground hover:text-foreground">
+                  Voltar
+                </button>
+                <button type="button" onClick={() => void reenviarCodigo()} disabled={reenviando} className="text-primary hover:underline disabled:opacity-50">
+                  {reenviando ? 'Reenviando…' : 'Reenviar código'}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Não recebeu? Confira a caixa de spam. Se perdeu o acesso a esse e-mail, fale com o suporte.
+              </p>
+            </form>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
@@ -190,6 +276,7 @@ export default function Login() {
             </Button>
 
           </form>
+          )}
 
           <p className="mt-8 text-center text-muted-foreground">
             Não tem uma conta?{' '}

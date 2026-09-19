@@ -37,11 +37,22 @@ export const appService = {
 
 // Auth Service
 export const authService = {
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string, deviceToken?: string) => {
     if (USE_MOCKS) {
       return { token: 'mock-token', user: { id: '1', email, name: 'Mock User' } };
     }
-    const response = await apiClient.post('/auth/login', { email, password });
+    const response = await apiClient.post('/auth/login', { email, password, ...(deviceToken ? { deviceToken } : {}) });
+    return response.data;
+  },
+
+  // Segundo passo do login quando a verificação em duas etapas pede código.
+  loginVerify: async (challengeId: string, code: string, trustDevice: boolean) => {
+    const response = await apiClient.post('/auth/login/2fa', { challengeId, code, trustDevice });
+    return response.data;
+  },
+
+  loginResend: async (challengeId: string): Promise<{ challengeId: string; previewCode?: string }> => {
+    const response = await apiClient.post('/auth/login/2fa/resend', { challengeId });
     return response.data;
   },
 
@@ -99,6 +110,38 @@ export const authService = {
 
   changePassword: async (data: { currentPassword: string; newPassword: string }) => {
     const response = await apiClient.put('/auth/change-password', data);
+    return response.data;
+  },
+};
+
+// Verificação em duas etapas (Configurações › Segurança)
+export const twoFactorService = {
+  status: async (deviceToken?: string): Promise<{
+    enabled: boolean;
+    hasPassword: boolean;
+    devices: Array<{ id: string; label: string; createdAt: string; lastUsedAt: string | null; current: boolean }>;
+  }> => {
+    const response = await apiClient.get('/auth/2fa', { params: deviceToken ? { deviceToken } : {} });
+    return response.data;
+  },
+  enableStart: async (): Promise<{ challengeId: string; emailMasked: string; previewCode?: string }> => {
+    const response = await apiClient.post('/auth/2fa/enable/start');
+    return response.data;
+  },
+  enableConfirm: async (challengeId: string, code: string): Promise<{ ok: boolean; deviceToken: string }> => {
+    const response = await apiClient.post('/auth/2fa/enable/confirm', { challengeId, code });
+    return response.data;
+  },
+  disable: async (password: string) => {
+    const response = await apiClient.post('/auth/2fa/disable', { password });
+    return response.data;
+  },
+  revokeDevice: async (id: string) => {
+    const response = await apiClient.delete(`/auth/2fa/devices/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+  revokeAll: async () => {
+    const response = await apiClient.delete('/auth/2fa/devices');
     return response.data;
   },
 };

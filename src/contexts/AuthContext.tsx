@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { appService, authService, profileService, subscriptionsService } from '@/services/api';
 import { hasPremiumAccess } from '@/utils/premium';
+import { guardarTokenDoAparelho, lerTokenDoAparelho } from '@/lib/aparelhoConfiavel';
 
 export interface User {
   id: string;
@@ -78,11 +79,15 @@ export interface User {
   isShowcase?: boolean;
 }
 
+export type DesafioDoisFatores = { requires2fa: true; challengeId: string; emailMasked: string; previewCode?: string };
+
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<User>;
+  /** Devolve o usuário, ou o pedido de código quando a verificação em duas etapas exige. */
+  login: (email: string, password: string) => Promise<User | DesafioDoisFatores>;
+  confirmarLoginDoisFatores: (email: string, challengeId: string, code: string, confiar: boolean) => Promise<User>;
   register: (data: RegisterData) => Promise<any>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -306,15 +311,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const [result, settings] = await Promise.all([
-      authService.login(email, password),
+      authService.login(email, password, lerTokenDoAparelho(email)),
       appService.getSettings().catch(() => ({ subscriptionsEnabled: true })),
     ]);
+    // Aparelho novo com a verificação ligada: ainda não há token, só o desafio.
+    if (result?.requires2fa) return result as DesafioDoisFatores;
+    return concluirSessao(result, settings);
+  };
+
+  const concluirSessao = (result: any, settings?: { subscriptionsEnabled?: boolean }) => {
     const mergedUser = { ...result.user, subscriptionsEnabled: settings?.subscriptionsEnabled !== false };
     localStorage.setItem('token', result.token);
     saveUserToStorage(mergedUser);
     setUser(mergedUser);
     localStorage.setItem('nosigilo_feed_filter', 'all'); // sempre abrir o feed em "Todos" ao logar
-    return mergedUser;
+    return mergedUser as User;
+  };
+
+  const confirmarLoginDoisFatores = async (email: string, challengeId: string, code: string, confiar: boolean) => {
+    const [result, settings] = await Promise.all([
+      authService.loginVerify(challengeId, code, confiar),
+      appService.getSettings().catch(() => ({ subscriptionsEnabled: true })),
+    ]);
+    if (result?.deviceToken) guardarTokenDoAparelho(email, String(result.deviceToken));
+    return concluirSessao(result, settings);
   };
 
   const register = async (data: RegisterData) => {
@@ -434,6 +454,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         isAuthenticated: USE_MOCKS ? !!user : !!user && !!localStorage.getItem('token'),
         login,
+        confirmarLoginDoisFatores,
         register,
         logout,
         updateUser,

@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { CitySearch } from '@/components/CitySearch';
 import MySubscriptionCard from '@/components/MySubscriptionCard';
+import VerificacaoDuasEtapas from '@/components/VerificacaoDuasEtapas';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { ACCOUNT_DELETION_REASONS } from '@/utils/accountDeletionReasons';
@@ -1646,6 +1647,8 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
+          {user?.email && <VerificacaoDuasEtapas email={String(user.email)} />}
+
           <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>

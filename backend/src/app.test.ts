@@ -2788,4 +2788,96 @@ describe('nosigilo backend', () => {
     const invalido = await request(ctx.app).get('/api/videos/minhas?tipo=outro').set(auth);
     expect(invalido.status).toBe(400);
   });
+  // ── Verificação em duas etapas por e-mail ───────────────────────────────────
+  it('verificacao em duas etapas: ligar, aparelho novo pede codigo, aparelho de confianca entra direto', async () => {
+    const email = 'dois-fatores@example.com';
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dois Fatores', email, password: 'senha123', gender: 'Mulher',
+    });
+    const auth = { Authorization: `Bearer ${u.token}` };
+    const entrar = (extra: Record<string, unknown> = {}) =>
+      request(ctx.app).post('/api/auth/login').send({ email, password: 'senha123', ...extra });
+
+    // Desligada: entra direto.
+    const semVerificacao = await entrar();
+    expect(semVerificacao.status).toBe(200);
+    expect(semVerificacao.body.token).toBeTruthy();
+
+    // Ligar exige confirmar o código do e-mail.
+    const inicio = await request(ctx.app).post('/api/auth/2fa/enable/start').set(auth);
+    expect(inicio.status).toBe(200);
+    expect(inicio.body.previewCode).toMatch(/^\d{6}$/);
+    const errado = inicio.body.previewCode === '000000' ? '111111' : '000000';
+    const confirmaErrado = await request(ctx.app).post('/api/auth/2fa/enable/confirm').set(auth)
+      .send({ challengeId: inicio.body.challengeId, code: errado });
+    expect(confirmaErrado.status).toBe(400);
+    const confirma = await request(ctx.app).post('/api/auth/2fa/enable/confirm').set(auth)
+      .send({ challengeId: inicio.body.challengeId, code: inicio.body.previewCode });
+    expect(confirma.status).toBe(200);
+    const aparelhoQueLigou = confirma.body.deviceToken as string;
+    expect(aparelhoQueLigou).toBeTruthy();
+
+    // Aparelho novo: senha certa não basta.
+    const novo = await entrar();
+    expect(novo.status).toBe(200);
+    expect(novo.body.token).toBeUndefined();
+    expect(novo.body.requires2fa).toBe(true);
+    expect(novo.body.emailMasked).not.toContain('dois-fatores');
+
+    const codigoErrado = novo.body.previewCode === '000000' ? '111111' : '000000';
+    const tentativaErrada = await request(ctx.app).post('/api/auth/login/2fa')
+      .send({ challengeId: novo.body.challengeId, code: codigoErrado });
+    expect(tentativaErrada.status).toBe(400);
+    expect(tentativaErrada.body.error).toBe('code_invalido');
+
+    const certo = await request(ctx.app).post('/api/auth/login/2fa')
+      .send({ challengeId: novo.body.challengeId, code: novo.body.previewCode, trustDevice: true });
+    expect(certo.status).toBe(200);
+    expect(certo.body.token).toBeTruthy();
+    const aparelhoNovo = certo.body.deviceToken as string;
+    expect(aparelhoNovo).toBeTruthy();
+
+    // Código já usado não serve de novo.
+    const reuso = await request(ctx.app).post('/api/auth/login/2fa')
+      .send({ challengeId: novo.body.challengeId, code: novo.body.previewCode });
+    expect(reuso.status).toBe(400);
+
+    // Aparelho de confiança entra direto — os dois.
+    expect((await entrar({ deviceToken: aparelhoNovo })).body.token).toBeTruthy();
+    expect((await entrar({ deviceToken: aparelhoQueLigou })).body.token).toBeTruthy();
+
+    // Lista de aparelhos marca o atual.
+    const lista = await request(ctx.app).get(`/api/auth/2fa?deviceToken=${aparelhoNovo}`).set(auth);
+    expect(lista.body.enabled).toBe(true);
+    expect(lista.body.devices).toHaveLength(2);
+    expect(lista.body.devices.filter((d: any) => d.current)).toHaveLength(1);
+
+    // "Perdi o celular": tira a confiança de todos.
+    await request(ctx.app).delete('/api/auth/2fa/devices').set(auth).expect(200);
+    expect((await entrar({ deviceToken: aparelhoNovo })).body.requires2fa).toBe(true);
+
+    // Desligar pede a senha.
+    await request(ctx.app).post('/api/auth/2fa/disable').set(auth).send({ password: 'errada' }).expect(401);
+    await request(ctx.app).post('/api/auth/2fa/disable').set(auth).send({ password: 'senha123' }).expect(200);
+    expect((await entrar()).body.token).toBeTruthy();
+  });
+
+  it('verificacao em duas etapas: cinco erros matam o codigo', async () => {
+    const email = 'dois-fatores-erros@example.com';
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dois Fatores Erros', email, password: 'senha123', gender: 'Mulher',
+    });
+    await run(ctx.db, 'UPDATE users SET two_factor_email = 1 WHERE id = ?', [u.user.id]);
+    const novo = await request(ctx.app).post('/api/auth/login').send({ email, password: 'senha123' });
+    expect(novo.body.requires2fa).toBe(true);
+    const errado = novo.body.previewCode === '000000' ? '111111' : '000000';
+    let ultimo: any;
+    for (let i = 0; i < 5; i += 1) {
+      ultimo = await request(ctx.app).post('/api/auth/login/2fa').send({ challengeId: novo.body.challengeId, code: errado });
+    }
+    expect(ultimo.body.error).toBe('code_esgotado');
+    const certoDepois = await request(ctx.app).post('/api/auth/login/2fa')
+      .send({ challengeId: novo.body.challengeId, code: novo.body.previewCode });
+    expect(certoDepois.status).toBe(400);
+  });
 });

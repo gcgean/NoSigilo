@@ -6,7 +6,7 @@ import multer from 'multer';
 import path from 'node:path';
 import { mkdirSync, existsSync, createReadStream, statSync, statfsSync, renameSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { cpus, freemem, loadavg, totalmem } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import webpush from 'web-push';
@@ -18,7 +18,7 @@ import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, c
 import { analisarPaineis } from './analistaIa.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail } from './email.js';
 import {
   cancelHubSubscription,
   createHubCheckout,
@@ -3224,49 +3224,236 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
   });
 
-  app.post('/api/auth/login', authRateLimiter, async (req, res) => {
-    const schema = z.object({ email: z.string().email(), password: z.string().min(1) });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'invalid_input' });
-      return;
+  // ─── Verificação em duas etapas por e-mail ────────────────────────────────
+  //
+  // Opcional, ligada pela pessoa em Configurações. Com ela ligada, entrar com
+  // senha num aparelho que ainda não é de confiança pede um código de 6 dígitos
+  // enviado ao e-mail (10 minutos, 5 tentativas). "Confiar neste aparelho"
+  // grava um token aleatório no aparelho; aqui só o hash dele.
+  // Login pelo Google não passa por aqui: o Google já faz essa proteção.
+  const CODIGO_2FA_MINUTOS = 10;
+  const CODIGO_2FA_TENTATIVAS = 5;
+  const hashAparelho = (token: string) => createHash('sha256').update(token).digest('hex');
+  const mascararEmail = (email: string) => {
+    const [nome, dominio] = email.split('@');
+    if (!dominio) return email;
+    return `${nome.slice(0, 2)}${'*'.repeat(Math.max(1, nome.length - 2))}@${dominio}`;
+  };
+  // "Chrome no Android", "Safari no iPhone"… o bastante para a pessoa se reconhecer.
+  const nomeDoAparelho = (ua: string) => {
+    const u = ua || '';
+    const navegador = /Edg\//.test(u) ? 'Edge' : /SamsungBrowser/.test(u) ? 'Samsung Internet' : /OPR\//.test(u) ? 'Opera'
+      : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : 'Navegador';
+    const sistema = /iPhone/.test(u) ? 'iPhone' : /iPad/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android'
+      : /Windows/.test(u) ? 'Windows' : /Mac OS X/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : 'aparelho desconhecido';
+    return `${navegador} no ${sistema}`;
+  };
+
+  async function aparelhoConfiavel(userId: string, deviceToken?: string) {
+    if (!deviceToken) return false;
+    const linha = (await queryOne(
+      db,
+      'SELECT id FROM trusted_devices WHERE token_hash = ? AND user_id = ? AND revoked_at IS NULL LIMIT 1',
+      [hashAparelho(deviceToken), userId]
+    )) as any;
+    if (!linha) return false;
+    await run(db, 'UPDATE trusted_devices SET last_used_at = ? WHERE id = ?', [nowIso(), String(linha.id)]);
+    return true;
+  }
+
+  async function criarDesafioDoisFatores(usuario: any, purpose: 'login' | 'ativar'):
+    Promise<{ id: string; previewCode?: string } | { erro: true }> {
+    if (process.env.NODE_ENV === 'production' && (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL)) return { erro: true };
+    const code = generateVerificationCode();
+    const agora = nowIso();
+    try {
+      await sendTwoFactorCodeEmail(
+        { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME },
+        { to: String(usuario.email), code, userName: usuario.name ? String(usuario.name) : null, motivo: purpose }
+      );
+    } catch (err) {
+      console.error('[2fa] falha ao enviar codigo:', err);
+      return { erro: true };
     }
-    const email = parsed.data.email.toLowerCase();
+    // Um código vivo por vez: pedir outro invalida o anterior.
+    await run(db, 'UPDATE two_factor_codes SET consumed_at = ? WHERE user_id = ? AND purpose = ? AND consumed_at IS NULL', [agora, String(usuario.id), purpose]);
+    const id = randomUUID();
+    await run(
+      db,
+      'INSERT INTO two_factor_codes (id, user_id, purpose, code_hash, attempts, created_at, expires_at, consumed_at) VALUES (?, ?, ?, ?, 0, ?, ?, NULL)',
+      [id, String(usuario.id), purpose, await bcrypt.hash(code, 10), agora, addMinutesIso(agora, CODIGO_2FA_MINUTOS)]
+    );
+    await persist();
+    return process.env.NODE_ENV !== 'production' && !env.RESEND_API_KEY ? { id, previewCode: code } : { id };
+  }
+
+  /** Confere o código. Erro conta tentativa; na quinta, o código morre. */
+  async function conferirDesafio(challengeId: string, purpose: 'login' | 'ativar', code: string, userId?: string):
+    Promise<{ ok: true; userId: string } | { ok: false; motivo: 'invalido' | 'expirado' | 'esgotado' }> {
+    const desafio = (await queryOne(db, 'SELECT * FROM two_factor_codes WHERE id = ? AND purpose = ? LIMIT 1', [challengeId, purpose])) as any;
+    if (!desafio || desafio.consumed_at || (userId && String(desafio.user_id) !== userId)) return { ok: false, motivo: 'expirado' };
+    if (new Date(String(desafio.expires_at)).getTime() < Date.now()) return { ok: false, motivo: 'expirado' };
+    if (Number(desafio.attempts || 0) >= CODIGO_2FA_TENTATIVAS) return { ok: false, motivo: 'esgotado' };
+    const certo = await bcrypt.compare(code.trim(), String(desafio.code_hash));
+    if (!certo) {
+      const tentativas = Number(desafio.attempts || 0) + 1;
+      await run(
+        db,
+        'UPDATE two_factor_codes SET attempts = ?, consumed_at = ? WHERE id = ?',
+        [tentativas, tentativas >= CODIGO_2FA_TENTATIVAS ? nowIso() : null, challengeId]
+      );
+      await persist();
+      return { ok: false, motivo: tentativas >= CODIGO_2FA_TENTATIVAS ? 'esgotado' : 'invalido' };
+    }
+    await run(db, 'UPDATE two_factor_codes SET consumed_at = ? WHERE id = ?', [nowIso(), challengeId]);
+    return { ok: true, userId: String(desafio.user_id) };
+  }
+
+  async function confiarNoAparelho(userId: string, ua: string) {
+    const token = randomBytes(32).toString('hex');
+    await run(
+      db,
+      'INSERT INTO trusted_devices (id, user_id, token_hash, label, created_at, last_used_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, NULL)',
+      [randomUUID(), userId, hashAparelho(token), nomeDoAparelho(ua), nowIso(), nowIso()]
+    );
+    return token;
+  }
+
+  const mensagemDoMotivo = {
+    invalido: 'Código incorreto. Confira e tente de novo.',
+    expirado: 'Este código expirou. Peça um novo.',
+    esgotado: 'Muitas tentativas erradas. Peça um novo código.',
+  } as const;
+
+  // Segundo passo do login: código certo libera o token.
+  app.post('/api/auth/login/2fa', authRateLimiter, async (req, res) => {
+    const parsed = z.object({
+      challengeId: z.string().min(1).max(64),
+      code: z.string().trim().regex(/^\d{6}$/),
+      trustDevice: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Digite os 6 números do código.' }); return; }
+    const r = await conferirDesafio(parsed.data.challengeId, 'login', parsed.data.code);
+    if (!r.ok) { res.status(400).json({ error: `code_${r.motivo}`, message: mensagemDoMotivo[r.motivo] }); return; }
+
     const row = (await queryOne(
       db,
       `SELECT u.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
-       FROM users u
-       LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
-       WHERE u.email = ?
-       LIMIT 1`,
-      [email]
+       FROM users u LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
+       WHERE u.id = ? LIMIT 1`,
+      [r.userId]
     )) as any;
-    if (!row) {
-      res.status(401).json({ error: 'invalid_credentials' });
+    if (!row || Number(row.is_banned || 0) === 1 || row.deleted_at) { res.status(403).json({ error: 'account_unavailable' }); return; }
+
+    const ua = String(req.headers['user-agent'] || '');
+    const deviceToken = parsed.data.trustDevice ? await confiarNoAparelho(String(row.id), ua) : undefined;
+    await persist();
+
+    // Aviso por e-mail em segundo plano: se não foi a pessoa, ela sabe na hora.
+    void sendNewDeviceLoginEmail(
+      { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME, siteUrl: env.FRONTEND_ORIGIN },
+      {
+        to: String(row.email),
+        userName: row.name ? String(row.name) : null,
+        aparelho: nomeDoAparelho(ua),
+        quando: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+      }
+    ).catch((err) => console.error('[2fa] aviso de aparelho novo falhou:', err));
+
+    await concluirLogin(req, res, row, deviceToken ? { deviceToken } : {});
+  });
+
+  // Reenviar o código do login (no máximo um por minuto).
+  app.post('/api/auth/login/2fa/resend', authRateLimiter, async (req, res) => {
+    const parsed = z.object({ challengeId: z.string().min(1).max(64) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const antigo = (await queryOne(db, "SELECT * FROM two_factor_codes WHERE id = ? AND purpose = 'login' LIMIT 1", [parsed.data.challengeId])) as any;
+    if (!antigo) { res.status(404).json({ error: 'not_found', message: 'Volte e entre de novo com a senha.' }); return; }
+    if (Date.now() - new Date(String(antigo.created_at)).getTime() < 60_000) {
+      res.status(429).json({ error: 'too_soon', message: 'Aguarde um minuto para pedir outro código.' });
       return;
     }
-    if (Number(row.is_banned || 0) === 1) {
-      res.status(403).json({ error: 'account_banned' });
+    const usuario = (await queryOne(db, 'SELECT id, email, name FROM users WHERE id = ? LIMIT 1', [String(antigo.user_id)])) as any;
+    const desafio = await criarDesafioDoisFatores(usuario, 'login');
+    if ('erro' in desafio) { res.status(500).json({ error: 'email_send_failed' }); return; }
+    res.json({ challengeId: desafio.id, ...(desafio.previewCode ? { previewCode: desafio.previewCode } : {}) });
+  });
+
+  // Configurações › Segurança: situação e aparelhos de confiança.
+  app.get('/api/auth/2fa', requireAuth(env, db), async (req, res) => {
+    const u = (await queryOne(db, 'SELECT two_factor_email, password_hash FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const atual = typeof req.query.deviceToken === 'string' && req.query.deviceToken ? hashAparelho(req.query.deviceToken) : null;
+    const aparelhos = (await queryAll(
+      db,
+      'SELECT id, label, created_at, last_used_at, token_hash FROM trusted_devices WHERE user_id = ? AND revoked_at IS NULL ORDER BY COALESCE(last_used_at, created_at) DESC',
+      [req.auth!.userId]
+    )) as any[];
+    res.json({
+      enabled: Number(u?.two_factor_email || 0) === 1,
+      // Conta só do Google não tem login com senha, então não há o que proteger aqui.
+      hasPassword: !!u?.password_hash,
+      devices: aparelhos.map((a) => ({
+        id: String(a.id),
+        label: String(a.label || 'Aparelho'),
+        createdAt: a.created_at,
+        lastUsedAt: a.last_used_at ?? null,
+        current: !!atual && atual === String(a.token_hash),
+      })),
+    });
+  });
+
+  // Ligar, passo 1: manda o código para confirmar que o e-mail funciona.
+  app.post('/api/auth/2fa/enable/start', requireAuth(env, db), authRateLimiter, async (req, res) => {
+    const u = (await queryOne(db, 'SELECT id, email, name, password_hash FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    if (!u?.password_hash) { res.status(400).json({ error: 'no_password', message: 'Sua conta entra pelo Google, que já tem a própria verificação.' }); return; }
+    const desafio = await criarDesafioDoisFatores(u, 'ativar');
+    if ('erro' in desafio) { res.status(500).json({ error: 'email_send_failed', message: 'Não foi possível enviar o código agora.' }); return; }
+    res.json({ challengeId: desafio.id, emailMasked: mascararEmail(String(u.email)), ...(desafio.previewCode ? { previewCode: desafio.previewCode } : {}) });
+  });
+
+  // Ligar, passo 2: código certo liga, e o aparelho atual já fica de confiança.
+  app.post('/api/auth/2fa/enable/confirm', requireAuth(env, db), authRateLimiter, async (req, res) => {
+    const parsed = z.object({ challengeId: z.string().min(1).max(64), code: z.string().trim().regex(/^\d{6}$/) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Digite os 6 números do código.' }); return; }
+    const r = await conferirDesafio(parsed.data.challengeId, 'ativar', parsed.data.code, req.auth!.userId);
+    if (!r.ok) { res.status(400).json({ error: `code_${r.motivo}`, message: mensagemDoMotivo[r.motivo] }); return; }
+    await run(db, 'UPDATE users SET two_factor_email = 1 WHERE id = ?', [req.auth!.userId]);
+    const deviceToken = await confiarNoAparelho(req.auth!.userId, String(req.headers['user-agent'] || ''));
+    await persist();
+    res.json({ ok: true, deviceToken });
+  });
+
+  // Desligar pede a senha: quem pegou um aparelho logado não desliga sozinho.
+  app.post('/api/auth/2fa/disable', requireAuth(env, db), authRateLimiter, async (req, res) => {
+    const parsed = z.object({ password: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const u = (await queryOne(db, 'SELECT password_hash FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    if (!u?.password_hash || !bcrypt.compareSync(parsed.data.password, String(u.password_hash))) {
+      res.status(401).json({ error: 'invalid_password', message: 'Senha incorreta.' });
       return;
     }
-    if (row.deleted_at) {
-      res.status(403).json({ error: 'account_deleted' });
-      return;
-    }
-    if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) === 1) {
-      res.status(403).json({ error: 'account_deactivated_by_admin' });
-      return;
-    }
-    if (!row.password_hash) {
-      // Google-only account — cannot log in with password
-      res.status(401).json({ error: 'use_google_login' });
-      return;
-    }
-    const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
-    if (!ok) {
-      res.status(401).json({ error: 'invalid_credentials' });
-      return;
-    }
+    await run(db, 'UPDATE users SET two_factor_email = 0 WHERE id = ?', [req.auth!.userId]);
+    await run(db, 'UPDATE trusted_devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', [nowIso(), req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Tirar a confiança de um aparelho, ou de todos ("perdi o celular").
+  app.delete('/api/auth/2fa/devices/:id', requireAuth(env, db), async (req, res) => {
+    await run(db, 'UPDATE trusted_devices SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL', [nowIso(), String(req.params.id), req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+  app.delete('/api/auth/2fa/devices', requireAuth(env, db), async (req, res) => {
+    await run(db, 'UPDATE trusted_devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', [nowIso(), req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Final comum do login com senha: reativa perfil desativado pela própria
+  // pessoa, sincroniza a assinatura com o Hub e devolve o token. Chamado direto
+  // pelo login, ou depois do código quando a verificação em duas etapas pede.
+  async function concluirLogin(req: express.Request, res: express.Response, row: any, extra: Record<string, unknown> = {}) {
     // Auto-reactivate deactivated profile on successful login
     if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) !== 1) {
       await run(
@@ -3328,7 +3515,68 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       showEmail: true,
       subscriptionsEnabled,
     });
-    res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user });
+    res.json({ token: issueToken(env, { id: user.id, isAdmin: user.isAdmin }), user, ...extra });
+  }
+
+  app.post('/api/auth/login', authRateLimiter, async (req, res) => {
+    const schema = z.object({ email: z.string().email(), password: z.string().min(1), deviceToken: z.string().max(200).optional() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    const email = parsed.data.email.toLowerCase();
+    const row = (await queryOne(
+      db,
+      `SELECT u.*, inviter.name AS inviter_name, inviter.avatar AS inviter_avatar
+       FROM users u
+       LEFT JOIN users inviter ON inviter.id = u.invited_by_user_id
+       WHERE u.email = ?
+       LIMIT 1`,
+      [email]
+    )) as any;
+    if (!row) {
+      res.status(401).json({ error: 'invalid_credentials' });
+      return;
+    }
+    if (Number(row.is_banned || 0) === 1) {
+      res.status(403).json({ error: 'account_banned' });
+      return;
+    }
+    if (row.deleted_at) {
+      res.status(403).json({ error: 'account_deleted' });
+      return;
+    }
+    if (Number(row.is_deactivated || 0) === 1 && Number(row.deactivated_by_admin || 0) === 1) {
+      res.status(403).json({ error: 'account_deactivated_by_admin' });
+      return;
+    }
+    if (!row.password_hash) {
+      // Google-only account — cannot log in with password
+      res.status(401).json({ error: 'use_google_login' });
+      return;
+    }
+    const ok = bcrypt.compareSync(parsed.data.password, String(row.password_hash));
+    if (!ok) {
+      res.status(401).json({ error: 'invalid_credentials' });
+      return;
+    }
+    // Verificação em duas etapas: aparelho que ainda não é de confiança recebe
+    // um código por e-mail antes do token. Vem antes de reativar o perfil —
+    // quem só sabe a senha não pode nem isso.
+    if (Number(row.two_factor_email || 0) === 1) {
+      const confiavel = await aparelhoConfiavel(String(row.id), parsed.data.deviceToken);
+      if (!confiavel) {
+        const desafio = await criarDesafioDoisFatores(row, 'login');
+        if ('erro' in desafio) {
+          res.status(500).json({ error: 'email_send_failed', message: 'Não foi possível enviar o código agora. Tente de novo em instantes.' });
+          return;
+        }
+        res.json({ requires2fa: true, challengeId: desafio.id, emailMasked: mascararEmail(String(row.email)), ...(desafio.previewCode ? { previewCode: desafio.previewCode } : {}) });
+        return;
+      }
+    }
+    await concluirLogin(req, res, row);
   });
 
   app.get('/api/auth/pending-access', async (req, res) => {
