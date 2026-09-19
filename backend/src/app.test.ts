@@ -2880,4 +2880,69 @@ describe('nosigilo backend', () => {
       .send({ challengeId: novo.body.challengeId, code: novo.body.previewCode });
     expect(certoDepois.status).toBe(400);
   });
+  // ── Embaixador Oficial ──────────────────────────────────────────────────────
+  it('embaixador oficial: ranking, condecorar, esconder selo e revogar', async () => {
+    const promotor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Promotor Ranking', email: 'promotor-ranking@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const admin = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Admin Ranking', email: 'admin-ranking@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const visitante = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Visitante Ranking', email: 'visitante-ranking@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const comoAdmin = { Authorization: `Bearer ${admin.token}` };
+    const comoPromotor = { Authorization: `Bearer ${promotor.token}` };
+
+    await request(ctx.app).post('/api/promoter/activate').set(comoPromotor)
+      .send({ fullName: 'Promotor Ranking', pixKey: 'pix-ranking@example.com', acceptTerms: true }).expect(200);
+
+    // Duas assinaturas pagas trazidas por ele.
+    const agora = new Date().toISOString();
+    for (const [id, assinante] of [['pc-r1', 'assinante-1'], ['pc-r2', 'assinante-2']]) {
+      await run(ctx.db,
+        "INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, 990, 198, 'approved', '2026-09', 'payment.approved', ?)",
+        [id, promotor.user.id, assinante, agora]);
+    }
+
+    const ranking = await request(ctx.app).get('/api/admin/promoters/ranking?periodo=total').set(comoAdmin).expect(200);
+    const linha = ranking.body.ranking.find((r: any) => r.userId === promotor.user.id);
+    expect(linha.receitaCents).toBe(1980);
+    expect(linha.assinantes).toBe(2);
+    expect(linha.embaixadorDesde).toBeNull();
+
+    // Promotor não vê o ranking do admin, só a própria posição.
+    await request(ctx.app).get('/api/admin/promoters/ranking').set(comoPromotor).expect(403);
+    const posicao = await request(ctx.app).get('/api/promoter/ranking').set(comoPromotor).expect(200);
+    expect(posicao.body.posicao).toBeGreaterThan(0);
+
+    // Só promotor pode ser condecorado.
+    await request(ctx.app).post(`/api/admin/promoters/${visitante.user.id}/embaixador`).set(comoAdmin).send({}).expect(400);
+
+    await request(ctx.app).post(`/api/admin/promoters/${promotor.user.id}/embaixador`).set(comoAdmin)
+      .send({ nota: 'top de setembro' }).expect(200);
+
+    const perfil = await request(ctx.app).get(`/api/users/${promotor.user.id}`).set({ Authorization: `Bearer ${visitante.token}` }).expect(200);
+    const dados = perfil.body.user ?? perfil.body;
+    expect(dados.officialAmbassador).toBe(true);
+    expect(dados.badges).toContain('official_ambassador');
+
+    // Premium grátis via trial estendido.
+    const comTitulo = await ctx.db.queryOne('SELECT trial_ends_at, embaixador_oficial_em FROM users WHERE id = ?', [promotor.user.id]) as any;
+    expect(String(comTitulo.trial_ends_at)).toContain('2099');
+
+    // Esconder o selo: some do perfil público, o título continua.
+    await request(ctx.app).put('/api/embaixador/visibilidade').set(comoPromotor).send({ oculto: true }).expect(200);
+    const escondido = await request(ctx.app).get(`/api/users/${promotor.user.id}`).set({ Authorization: `Bearer ${visitante.token}` }).expect(200);
+    const dadosEscondido = escondido.body.user ?? escondido.body;
+    expect(dadosEscondido.officialAmbassador).toBe(false);
+    expect(dadosEscondido.badges ?? []).not.toContain('official_ambassador');
+
+    // Revogar devolve o trial de antes.
+    await request(ctx.app).delete(`/api/admin/promoters/${promotor.user.id}/embaixador`).set(comoAdmin).expect(200);
+    const depois = await ctx.db.queryOne('SELECT trial_ends_at, embaixador_oficial_em FROM users WHERE id = ?', [promotor.user.id]) as any;
+    expect(depois.embaixador_oficial_em).toBeNull();
+    expect(String(depois.trial_ends_at || '')).not.toContain('2099');
+  });
 });

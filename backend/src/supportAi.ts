@@ -224,8 +224,13 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   while (historico.length > 0 && historico[0].role !== 'user') historico.shift();
   if (historico.length === 0) return;
 
-  const usuario = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-  const contexto = `Quem está no chat se chama ${String(usuario?.name || 'não informado')} no perfil. Para qualquer outro dado da conta, use as consultas.`;
+  const usuario = (await queryOne(db, 'SELECT name, embaixador_oficial_em FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  // Embaixador Oficial tem suporte prioritário: a IA não insiste — se não
+  // resolver de primeira, passa para a equipe.
+  const prioridade = usuario?.embaixador_oficial_em
+    ? ' Esta pessoa é Embaixador(a) Oficial do NoSigilo e tem suporte prioritário: trate com atenção especial e, se não resolver na primeira resposta, passe para a equipe.'
+    : '';
+  const contexto = `Quem está no chat se chama ${String(usuario?.name || 'não informado')} no perfil.${prioridade} Para qualquer outro dado da conta, use as consultas.`;
   const instrucoesExtras = String((await deps.getSetting(CHAVE_INSTRUCOES)) || '').trim();
   const prompt = instrucoesExtras
     ? `${PROMPT_BASE}\n\nInstruções adicionais da equipe:\n${instrucoesExtras}`

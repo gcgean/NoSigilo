@@ -1136,6 +1136,11 @@ export default function Profile() {
                   Premium
                 </Badge>
               )}
+              {user?.officialAmbassadorSince && (
+                <Badge className="gap-1 border border-amber-400/50 bg-gradient-to-r from-amber-400/25 to-rose-500/20 font-semibold text-amber-600 dark:text-amber-400">
+                  👑 Embaixador Oficial{user.officialAmbassadorHidden ? ' (selo escondido)' : ''}
+                </Badge>
+              )}
               {user?.ambassadorBadges?.includes('ambassador_elite') && (
                 <Badge className="bg-purple-500/15 text-purple-500 border border-purple-500/30 gap-1">
                   🏅 Embaixador(a) Elite

@@ -1398,3 +1398,52 @@ export async function sendNewDeviceLoginEmail(
     </div>`.trim();
   return enviarPorResend(options, payload.to, `${appName}: acesso num aparelho novo`, html);
 }
+
+// ─── Embaixador Oficial ─────────────────────────────────────────────────────
+
+/** Parabéns pela condecoração, com o que o título dá — sem nada de dinheiro. */
+export async function sendEmbaixadorOficialEmail(
+  options: SendPasswordResetCodeOptions & { siteUrl?: string },
+  payload: { to: string; userName?: string | null }
+) {
+  const appName = options.appName || 'NoSigilo';
+  const site = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const nome = payload.userName ? escapeHtml(payload.userName.split(' ')[0]) : 'promotor';
+  const beneficio = (emoji: string, titulo: string, texto: string) => `
+        <tr>
+          <td style="width:40px; vertical-align:top; font-size:22px; padding:8px 0;">${emoji}</td>
+          <td style="padding:8px 0;">
+            <p style="margin:0; font-size:15px; font-weight:700; color:#2b1720;">${titulo}</p>
+            <p style="margin:2px 0 0; font-size:14px; line-height:1.5; color:#6b4b57;">${texto}</p>
+          </td>
+        </tr>`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; background:#fff7fa; padding:24px; color:#2b1720;">
+      <div style="max-width:560px; margin:0 auto; background:white; border:1px solid #f4c7d7; border-radius:18px; overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#f59e0b,#e83e68); padding:32px 28px; text-align:center; color:white;">
+          <div style="font-size:48px; line-height:1;">👑</div>
+          <h1 style="margin:12px 0 4px; font-size:24px;">Parabéns, ${nome}!</h1>
+          <p style="margin:0; font-size:16px; opacity:.95;">Você agora é <strong>Embaixador Oficial do ${appName}</strong></p>
+        </div>
+        <div style="padding:28px;">
+          <p style="font-size:15px; line-height:1.6; margin:0 0 18px;">
+            Esse título é dado a quem se destaca trazendo gente para a comunidade. Você foi escolhido pelo seu resultado como promotor — e ele vem com vantagens:
+          </p>
+          <table role="presentation" style="width:100%; border-collapse:collapse;">
+            ${beneficio('👑', 'Selo de Embaixador Oficial', 'Aparece no seu perfil para todo mundo ver. Se preferir discrição, você pode esconder o selo em Configurações e mantém todos os benefícios.')}
+            ${beneficio('✨', 'Destaque na busca', 'Seu perfil aparece entre os primeiros quando as pessoas buscam perfis.')}
+            ${beneficio('💎', 'Premium grátis', 'Todos os recursos Premium liberados enquanto você for Embaixador Oficial, sem pagar nada.')}
+            ${beneficio('💬', 'Suporte prioritário', 'Suas mensagens no suporte passam na frente da fila e vão direto para a equipe.')}
+            ${beneficio('🏆', 'Sua posição no ranking', 'Na sua área de promotor, você acompanha sua posição entre os promotores do mês.')}
+          </table>
+          <div style="text-align:center; margin:26px 0 8px;">
+            <a href="${site}/promoter" style="display:inline-block; background:#e83e68; color:white; text-decoration:none; font-weight:700; padding:14px 28px; border-radius:999px;">Ver minha área de promotor</a>
+          </div>
+          <p style="font-size:13px; line-height:1.6; margin:16px 0 0; color:#9a7a86; text-align:center;">
+            Continue divulgando seu link — o título é mantido enquanto você seguir ativo como promotor.
+          </p>
+        </div>
+      </div>
+    </div>`.trim();
+  return enviarPorResend(options, payload.to, `👑 Você agora é Embaixador Oficial do ${appName}`, html);
+}

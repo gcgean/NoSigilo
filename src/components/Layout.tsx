@@ -249,6 +249,15 @@ export default function Layout() {
     const hasAccess = hasPremiumAccess(user);
 
     if (hasAccess) {
+      // Embaixador Oficial tem Premium enquanto tiver o título, sem prazo.
+      if ((user as { officialAmbassadorSince?: string | null }).officialAmbassadorSince) {
+        return {
+          href: '/promoter',
+          tone: 'premium',
+          title: 'Embaixador Oficial: Premium incluso',
+          label: '👑 Embaixador Oficial',
+        };
+      }
       if (user.isPremium && licenseEnds !== null) {
         const diff = licenseEnds - clockNow;
         return {

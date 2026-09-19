@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { authService, feedService, profileService, suggestionsService, usersService } from '@/services/api';
+import { authService, feedService, profileService, promoterService, suggestionsService, usersService } from '@/services/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1648,6 +1648,30 @@ export default function Settings() {
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
           {user?.email && <VerificacaoDuasEtapas email={String(user.email)} />}
+
+          {user?.officialAmbassadorSince && (
+            <div className="glass flex items-start justify-between gap-4 rounded-xl p-4 sm:p-6">
+              <div>
+                <h3 className="font-semibold">👑 Selo de Embaixador Oficial</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Mostra no seu perfil que você é Embaixador Oficial e te dá destaque na busca. Se preferir discrição, esconda o selo — o Premium e o suporte prioritário continuam.
+                </p>
+              </div>
+              <Switch
+                checked={!user.officialAmbassadorHidden}
+                onCheckedChange={async (mostrar) => {
+                  try {
+                    await promoterService.visibilidadeEmbaixador(!mostrar);
+                    updateUser({ officialAmbassadorHidden: !mostrar });
+                    toast({ title: mostrar ? 'Selo visível no seu perfil' : 'Selo escondido' });
+                  } catch {
+                    toast({ title: 'Não foi possível salvar', variant: 'destructive' });
+                  }
+                }}
+                aria-label="Mostrar selo de Embaixador Oficial"
+              />
+            </div>
+          )}
 
           <div className="glass rounded-xl p-4 sm:p-6 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

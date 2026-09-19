@@ -65,6 +65,10 @@ export default function Promoter() {
   const [isLoading, setIsLoading] = useState(true);
   const [promoter, setPromoter] = useState<PromoterProfile | null>(null);
   const [stats, setStats] = useState<PromoterStats | null>(null);
+  const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
+  useEffect(() => {
+    promoterService.minhaPosicao().then(setPosicaoRanking).catch(() => setPosicaoRanking(null));
+  }, []);
   const [commissions, setCommissions] = useState<PromoterCommission[]>([]);
   const [referredUsers, setReferredUsers] = useState<PromoterReferredUser[]>([]);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -525,6 +529,23 @@ export default function Promoter() {
                   Compartilhar
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Posição no ranking do mês e título de Embaixador Oficial */}
+        {(posicaoRanking?.posicao || user?.officialAmbassadorSince) && (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-400/15 to-rose-500/10 p-4">
+            <span className="text-3xl" aria-hidden>{user?.officialAmbassadorSince ? '👑' : '🏆'}</span>
+            <div className="min-w-0 flex-1">
+              {user?.officialAmbassadorSince && <p className="font-bold text-amber-600 dark:text-amber-400">Você é Embaixador Oficial do NoSigilo</p>}
+              {posicaoRanking?.posicao ? (
+                <p className="text-sm">
+                  Você está em <strong>{posicaoRanking.posicao}º lugar</strong> no ranking de promotores deste mês, entre {posicaoRanking.total}.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">Traga assinantes este mês para entrar no ranking.</p>
+              )}
             </div>
           </div>
         )}

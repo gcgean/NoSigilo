@@ -1252,6 +1252,11 @@ export default function UserProfile() {
                   Perfil Novo
                 </Badge>
               )}
+              {profile?.officialAmbassador && (
+                <Badge className="gap-1 border border-amber-400/50 bg-gradient-to-r from-amber-400/25 to-rose-500/20 font-semibold text-amber-600 dark:text-amber-400">
+                  👑 Embaixador Oficial
+                </Badge>
+              )}
               {profile?.ambassadorBadges?.includes('ambassador_elite') && (
                 <Badge className="bg-purple-500/15 text-purple-500 border border-purple-500/30 gap-1">
                   🏅 Embaixador(a) Elite
@@ -1271,12 +1276,12 @@ export default function UserProfile() {
 
             {/* Achievement badges */}
             {(profile?.badges ?? []).filter(b =>
-              !['verified','premium','ambassador','ambassador_gold','ambassador_elite'].includes(b)
+              !['verified','premium','ambassador','ambassador_gold','ambassador_elite','official_ambassador'].includes(b)
             ).length > 0 && (
               <div className="mb-3 flex justify-center sm:justify-start">
                 <UserBadges
                   badges={(profile?.badges ?? []).filter(b =>
-                    !['verified','premium','ambassador','ambassador_gold','ambassador_elite'].includes(b)
+                    !['verified','premium','ambassador','ambassador_gold','ambassador_elite','official_ambassador'].includes(b)
                   )}
                   size="md"
                 />

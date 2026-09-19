@@ -12,7 +12,8 @@ export type BadgeType =
   | 'premium'
   | 'ambassador'
   | 'ambassador_gold'
-  | 'ambassador_elite';
+  | 'ambassador_elite'
+  | 'official_ambassador';
 
 const BADGE_META: Record<BadgeType, { emoji: string; label: string; color: string }> = {
   verified:         { emoji: '✅', label: 'Perfil Verificado',    color: 'bg-sky-500/15 text-sky-400 ring-sky-500/30' },
@@ -27,11 +28,12 @@ const BADGE_META: Record<BadgeType, { emoji: string; label: string; color: strin
   ambassador:       { emoji: '🌟', label: 'Embaixador(a)',        color: 'bg-primary/15 text-primary ring-primary/30' },
   ambassador_gold:  { emoji: '⭐', label: 'Embaixador(a) Gold',  color: 'bg-yellow-500/15 text-yellow-400 ring-yellow-500/30' },
   ambassador_elite: { emoji: '💎', label: 'Embaixador(a) Elite', color: 'bg-cyan-500/15 text-cyan-400 ring-cyan-500/30' },
+  official_ambassador: { emoji: '👑', label: 'Embaixador Oficial', color: 'bg-gradient-to-r from-amber-400/25 to-rose-500/20 text-amber-500 ring-amber-500/40' },
 };
 
 // Priority order — most impressive first
 const BADGE_ORDER: BadgeType[] = [
-  'verified', 'popular', 'active', 'premium', 'ambassador_elite',
+  'official_ambassador', 'verified', 'popular', 'active', 'premium', 'ambassador_elite',
   'ambassador_gold', 'ambassador', 'quick_reply', 'connected',
   'event_goer', 'photographer', 'veteran',
 ];

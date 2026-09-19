@@ -22,6 +22,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import AdminMetrics from '@/components/AdminMetrics';
 import AnalistaIa from '@/components/AnalistaIa';
+import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type AdminPhoto = {
@@ -5013,6 +5014,9 @@ function AdminPromotersTab() {
         </div>
       </div>
 
+      {/* Ranking de promotores e título de Embaixador Oficial */}
+      <AdminRankingPromotores />
+
       {/* IA do suporte — responde usuários e promotores no chat de suporte. */}
       {iaSuporte && (
         <div className="glass rounded-xl p-5 space-y-3">
@@ -5074,6 +5078,7 @@ function AdminPromotersTab() {
         );
         const ordenadas = [...filtradas].sort((a, b) =>
           Number(!!b.humanRequested) - Number(!!a.humanRequested)
+          || Number(!!b.officialAmbassador && naoLidas(b) > 0) - Number(!!a.officialAmbassador && naoLidas(a) > 0)
           || Number(naoLidas(b) > 0) - Number(naoLidas(a) > 0)
           || String(b.lastMessageAt || '').localeCompare(String(a.lastMessageAt || ''))
         );
@@ -5119,7 +5124,9 @@ function AdminPromotersTab() {
                     <div className="min-w-0">
                       <p className="font-medium truncate">
                         {c.fullName}
-                        {c.isPromoter && (
+                        {c.officialAmbassador ? (
+                          <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-600">👑 Embaixador · prioridade</span>
+                        ) : c.isPromoter && (
                           <span className="ml-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600">Promotor</span>
                         )}
                         {c.humanRequested && (

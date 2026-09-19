@@ -18,7 +18,7 @@ import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, c
 import { analisarPaineis } from './analistaIa.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
 import {
   cancelHubSubscription,
   createHubCheckout,
@@ -120,6 +120,9 @@ export type PublicUser = {
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
   badges?: string[];
+  officialAmbassador?: boolean;
+  officialAmbassadorSince?: string | null;
+  officialAmbassadorHidden?: boolean;
   boosted?: boolean;
   topMonth?: { position: number; month: string | null } | null;
   telegramChatId?: string | null;
@@ -1936,6 +1939,11 @@ const BADGE_THRESHOLDS = {
   event_goer:   { events: 1 },
 } as const;
 
+/** Embaixador Oficial com o selo público à mostra (a pessoa pode esconder). */
+function embaixadorOficialVisivel(row: any): boolean {
+  return !!row?.embaixador_oficial_em && Number(row?.embaixador_oficial_oculto || 0) !== 1;
+}
+
 function computeBadges(row: any): string[] {
   const badges: string[] = [];
   const now = Date.now();
@@ -1982,6 +1990,9 @@ function computeBadges(row: any): string[] {
 
   // 🏆 Premium
   if (row.is_premium) badges.push('premium');
+
+  // 👑 Embaixador Oficial — concedido pelo admin; some se a pessoa escondeu.
+  if (embaixadorOficialVisivel(row)) badges.push('official_ambassador');
 
   return badges;
 }
@@ -2075,6 +2086,14 @@ function rowToPublicUser(
       return s as 'now' | 'week' | 'month' | 'online_only' | 'not_looking';
     })(),
     badges: computeBadges(row),
+    officialAmbassador: embaixadorOficialVisivel(row),
+    // Só para o dono da conta: ele vê o próprio título mesmo com o selo escondido.
+    ...(options?.showEmail
+      ? {
+          officialAmbassadorSince: row.embaixador_oficial_em ?? null,
+          officialAmbassadorHidden: Number(row.embaixador_oficial_oculto || 0) === 1,
+        }
+      : {}),
     boosted: !!(row.boost_until && new Date(row.boost_until).getTime() > Date.now()),
     topMonth: row.top_month_position
       ? { position: Number(row.top_month_position), month: row.top_month_month ? String(row.top_month_month) : null }
@@ -4181,6 +4200,148 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ status: tarefa.status, resposta: tarefa.resposta ?? null, modelo: tarefa.modelo ?? null });
   });
 
+  // ─── Embaixador Oficial ─────────────────────────────────────────────────
+  //
+  // Ranking de promotores pela receita que trouxeram e título concedido à mão.
+  // Receita = pagamentos de assinantes que geraram comissão (a comissão só
+  // nasce de pagamento confirmado); canceladas ficam de fora.
+  const EMBAIXADOR_TRIAL_ATE = '2099-12-31T00:00:00.000Z';
+
+  async function rankingDePromotores(periodo: 'mes' | '3meses' | 'total') {
+    const desde = periodo === 'mes'
+      ? new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()
+      : periodo === '3meses'
+        ? new Date(Date.now() - 90 * 86_400_000).toISOString()
+        : '1970-01-01T00:00:00.000Z';
+    const linhas = (await queryAll(
+      db,
+      `SELECT pc.promoter_user_id,
+              COALESCE(p.full_name, u.name) AS nome,
+              u.avatar, u.embaixador_oficial_em, u.embaixador_oficial_nota,
+              COUNT(DISTINCT pc.subscriber_user_id) AS assinantes,
+              COALESCE(SUM(pc.subscription_amount), 0) AS receita,
+              COALESCE(SUM(pc.commission_amount), 0) AS comissao
+         FROM promoter_commissions pc
+         JOIN users u ON u.id = pc.promoter_user_id
+         LEFT JOIN promoters p ON p.user_id = pc.promoter_user_id
+        WHERE pc.status <> 'cancelled' AND pc.created_at >= ?
+        GROUP BY pc.promoter_user_id, p.full_name, u.name, u.avatar, u.embaixador_oficial_em, u.embaixador_oficial_nota
+        ORDER BY receita DESC, assinantes DESC`,
+      [desde]
+    )) as any[];
+    // Renovação: dos assinantes cujo 1º pagamento tem mais de 35 dias (já
+    // teriam renovado), quantos pagaram de novo. Mede quem traz assinante que
+    // fica, não só volume. Calculada sobre todo o histórico.
+    const corte = new Date(Date.now() - 35 * 86_400_000).toISOString();
+    const renov = (await queryAll(
+      db,
+      `SELECT promoter_user_id,
+              COUNT(*) AS elegiveis,
+              SUM(CASE WHEN pagamentos > 1 THEN 1 ELSE 0 END) AS renovaram
+         FROM (SELECT promoter_user_id, subscriber_user_id, COUNT(*) AS pagamentos, MIN(created_at) AS primeiro
+                 FROM promoter_commissions WHERE status <> 'cancelled'
+                GROUP BY promoter_user_id, subscriber_user_id) x
+        WHERE primeiro < ?
+        GROUP BY promoter_user_id`,
+      [corte]
+    )) as any[];
+    const renovPorPromotor = new Map(renov.map((r) => [String(r.promoter_user_id), r]));
+    return linhas.map((l, i) => {
+      const r = renovPorPromotor.get(String(l.promoter_user_id));
+      const elegiveis = Number(r?.elegiveis || 0);
+      return {
+        posicao: i + 1,
+        userId: String(l.promoter_user_id),
+        nome: String(l.nome || 'Promotor'),
+        avatar: l.avatar ?? null,
+        assinantes: Number(l.assinantes || 0),
+        receitaCents: Number(l.receita || 0),
+        comissaoCents: Number(l.comissao || 0),
+        renovacaoPct: elegiveis >= 3 ? Math.round((Number(r?.renovaram || 0) / elegiveis) * 100) : null,
+        embaixadorDesde: l.embaixador_oficial_em ?? null,
+        nota: l.embaixador_oficial_nota ?? null,
+        // Sugestão para o admin olhar — quem condecora é sempre ele.
+        sugerido: !l.embaixador_oficial_em && i < 10 && Number(l.receita || 0) >= 5000, // R$ 50+
+      };
+    });
+  }
+
+  app.get('/api/admin/promoters/ranking', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const periodo = (['mes', '3meses', 'total'] as const).find((p) => p === req.query.periodo) ?? 'total';
+    res.json({ periodo, ranking: await rankingDePromotores(periodo) });
+  });
+
+  app.post('/api/admin/promoters/:userId/embaixador', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const alvo = String(req.params.userId || '');
+    const parsed = z.object({ nota: z.string().max(300).optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const u = (await queryOne(
+      db,
+      'SELECT u.id, u.name, u.email, u.trial_ends_at, u.embaixador_oficial_em, p.user_id AS eh_promotor FROM users u LEFT JOIN promoters p ON p.user_id = u.id WHERE u.id = ? LIMIT 1',
+      [alvo]
+    )) as any;
+    if (!u) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!u.eh_promotor) { res.status(400).json({ error: 'not_promoter', message: 'Só promotores podem ser condecorados.' }); return; }
+    if (u.embaixador_oficial_em) { res.json({ ok: true, jaEra: true }); return; }
+    const agora = nowIso();
+    // Premium grátis enquanto for embaixador: o trial é estendido e o valor
+    // antigo guardado, para revogar devolver exatamente o que era.
+    await run(
+      db,
+      `UPDATE users SET embaixador_oficial_em = ?, embaixador_oficial_nota = ?,
+              embaixador_trial_anterior = trial_ends_at, trial_ends_at = ?
+        WHERE id = ?`,
+      [agora, parsed.data.nota?.trim() || null, EMBAIXADOR_TRIAL_ATE, alvo]
+    );
+    await persist();
+
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const titulo = '👑 Você é Embaixador Oficial do NoSigilo!';
+    const texto = 'Você foi condecorado pelo resultado como promotor. Ganhou selo no perfil, destaque na busca, Premium grátis e suporte prioritário.';
+    try {
+      await createNotification({ db, io }, { userId: alvo, type: 'promoter.embaixador_oficial', title: titulo, description: texto, dataJson: { url: '/promoter' } });
+      void sendPushToUser({ db, env }, { userId: alvo, payload: { title: titulo, body: texto, url: '/promoter', tag: 'embaixador-oficial' } }).catch(() => {});
+      void sendEmbaixadorOficialEmail(
+        { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME, siteUrl: env.FRONTEND_ORIGIN },
+        { to: String(u.email), userName: u.name ? String(u.name) : null }
+      ).catch((err) => console.error('[embaixador] e-mail falhou:', err));
+    } catch (err) {
+      console.error('[embaixador] aviso falhou:', err);
+    }
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/admin/promoters/:userId/embaixador', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const alvo = String(req.params.userId || '');
+    const u = (await queryOne(db, 'SELECT embaixador_oficial_em, embaixador_trial_anterior FROM users WHERE id = ? LIMIT 1', [alvo])) as any;
+    if (!u?.embaixador_oficial_em) { res.json({ ok: true }); return; }
+    await run(
+      db,
+      `UPDATE users SET embaixador_oficial_em = NULL, embaixador_oficial_nota = NULL,
+              trial_ends_at = ?, embaixador_trial_anterior = NULL, embaixador_oficial_oculto = 0
+        WHERE id = ?`,
+      [u.embaixador_trial_anterior ?? null, alvo]
+    );
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Área do promotor: a própria posição no ranking (sem expor os outros).
+  app.get('/api/promoter/ranking', requireAuth(env, db), async (req, res) => {
+    const ranking = await rankingDePromotores('mes');
+    const eu = ranking.find((r) => r.userId === req.auth!.userId);
+    res.json({ posicao: eu?.posicao ?? null, total: ranking.length, periodo: 'mes' });
+  });
+
+  // A própria pessoa escolhe mostrar ou esconder o selo (os benefícios ficam).
+  app.put('/api/embaixador/visibilidade', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ oculto: z.boolean() }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    await run(db, 'UPDATE users SET embaixador_oficial_oculto = ? WHERE id = ? AND embaixador_oficial_em IS NOT NULL', [parsed.data.oculto ? 1 : 0, req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
   // Admin: listar todos os chats de suporte (com última mensagem + não lidas)
   app.get('/api/admin/promoter-support', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     // Lista TODOS os usuários com histórico de suporte (promotor ou não). Parte
@@ -4196,7 +4357,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          (SELECT message FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
          (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
          (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count,
-         (SELECT value FROM system_settings WHERE key = 'support_handoff:' || s.user_id LIMIT 1) as handoff_at
+         (SELECT value FROM system_settings WHERE key = 'support_handoff:' || s.user_id LIMIT 1) as handoff_at,
+         u.embaixador_oficial_em
        FROM (SELECT DISTINCT promoter_user_id as user_id FROM promoter_support_messages) s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN promoters p ON p.user_id = s.user_id
@@ -4210,6 +4372,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       lastMessage: r.last_message ?? null, lastMessageAt: r.last_message_at ?? null,
       unreadCount: Number(r.unread_count || 0),
       humanRequested: !!String(r.handoff_at || '').trim(),
+      officialAmbassador: !!r.embaixador_oficial_em,
     })) });
   });
 
@@ -9794,7 +9957,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
 
     // Perfis com destaque ativo (comprado com tokens) aparecem primeiro.
-    const boostPrioritySql = "CASE WHEN u.boost_until IS NOT NULL AND u.boost_until > ? THEN 0 ELSE 1 END,";
+    // Embaixador Oficial com selo à mostra ganha o mesmo destaque, sem prazo.
+    const boostPrioritySql = "CASE WHEN (u.boost_until IS NOT NULL AND u.boost_until > ?) OR (u.embaixador_oficial_em IS NOT NULL AND COALESCE(u.embaixador_oficial_oculto, 0) = 0) THEN 0 ELSE 1 END,";
     params.push(nowIso());
 
     // Proximidade real: distância euclidiana ao quadrado com escala de longitude

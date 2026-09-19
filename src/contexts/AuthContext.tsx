@@ -70,6 +70,9 @@ export interface User {
   subscriptionsEnabled?: boolean;
   ambassadorBadges?: string[] | null;
   badges?: string[];
+  officialAmbassador?: boolean;
+  officialAmbassadorSince?: string | null;
+  officialAmbassadorHidden?: boolean;
   telegramChatId?: string | null;
   lat?: number | null;
   lon?: number | null;

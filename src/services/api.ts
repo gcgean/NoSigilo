@@ -893,6 +893,16 @@ export type PromoterReferredStatus = 'subscriber' | 'trial' | 'expired' | 'deact
 export type PromoterReferredUser = { id: string; name: string; avatar: string | null; status: PromoterReferredStatus; joinedAt: string; licenseEndAt: string | null };
 
 export const promoterService = {
+  // Posição do próprio promotor no ranking do mês (sem expor os outros).
+  minhaPosicao: async (): Promise<{ posicao: number | null; total: number; periodo: string }> => {
+    const response = await apiClient.get('/promoter/ranking');
+    return response.data;
+  },
+  // Embaixador Oficial escolhe mostrar ou esconder o selo público.
+  visibilidadeEmbaixador: async (oculto: boolean) => {
+    const response = await apiClient.put('/embaixador/visibilidade', { oculto });
+    return response.data;
+  },
   activate: async (data: { fullName: string; pixKey: string; whatsapp?: string; contactEmail?: string; acceptTerms: true }) => {
     const response = await apiClient.post('/promoter/activate', data);
     return response.data;
@@ -909,7 +919,25 @@ export const promoterService = {
 
 export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; isAi?: boolean; message: string; readAt: string | null; createdAt: string };
 
+export type RankingPromotor = {
+  posicao: number; userId: string; nome: string; avatar: string | null;
+  assinantes: number; receitaCents: number; comissaoCents: number;
+  renovacaoPct: number | null; embaixadorDesde: string | null; nota: string | null; sugerido: boolean;
+};
+
 export const adminPromoterService = {
+  ranking: async (periodo: 'mes' | '3meses' | 'total'): Promise<{ periodo: string; ranking: RankingPromotor[] }> => {
+    const response = await apiClient.get('/admin/promoters/ranking', { params: { periodo } });
+    return response.data;
+  },
+  condecorar: async (userId: string, nota?: string) => {
+    const response = await apiClient.post(`/admin/promoters/${encodeURIComponent(userId)}/embaixador`, { nota });
+    return response.data;
+  },
+  revogarEmbaixador: async (userId: string) => {
+    const response = await apiClient.delete(`/admin/promoters/${encodeURIComponent(userId)}/embaixador`);
+    return response.data;
+  },
   listPromoters: async (): Promise<{ promoters: Array<{
     id: string; userId: string; fullName: string; pixKey: string; whatsapp: string | null; contactEmail: string | null;
     status: string; activatedAt: string; userName: string; userEmail: string; userAvatar: string | null;
@@ -934,7 +962,7 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
     return response.data;
   },
-  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; isPromoter?: boolean; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number; humanRequested?: boolean }> }> => {
+  listSupportChats: async (): Promise<{ chats: Array<{ userId: string; fullName: string; pixKey: string; isPromoter?: boolean; userEmail: string; userAvatar: string | null; lastMessage: string | null; lastMessageAt: string | null; unreadCount: number; humanRequested?: boolean; officialAmbassador?: boolean }> }> => {
     const response = await apiClient.get('/admin/promoter-support');
     return response.data;
   },
