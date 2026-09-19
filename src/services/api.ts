@@ -301,13 +301,23 @@ export const feedService = {
 };
 
 export const experienceService = {
-  getFeed: async (params?: { page?: number; limit?: number }) => {
+  getFeed: async (params?: { page?: number; limit?: number; categoria?: string; ordem?: 'recentes' | 'votados'; leitura?: 'todos' | 'nao_lidos' | 'lidos' }) => {
     const response = await apiClient.get('/feed/experiences', { params });
     return response.data;
   },
 
-  create: async (data: { title: string; description: string; mediaIds?: string[] }) => {
+  create: async (data: { title: string; description: string; categoria: string; mediaIds?: string[] }): Promise<{ id: string; status: 'publicado' | 'em_revisao' }> => {
     const response = await apiClient.post('/experiences', data);
+    return response.data;
+  },
+
+  categorias: async (): Promise<{ categorias: Array<{ slug: string; nome: string; total: number; naoLidos: number }>; total: number; naoLidos: number }> => {
+    const response = await apiClient.get('/experiences/categorias');
+    return response.data;
+  },
+
+  marcarLido: async (experienceId: string) => {
+    const response = await apiClient.post(`/experiences/${encodeURIComponent(experienceId)}/lido`);
     return response.data;
   },
 
@@ -923,6 +933,35 @@ export type RankingPromotor = {
   posicao: number; userId: string; nome: string; avatar: string | null;
   assinantes: number; receitaCents: number; comissaoCents: number;
   renovacaoPct: number | null; embaixadorDesde: string | null; nota: string | null; sugerido: boolean;
+};
+
+export type ContoAdmin = {
+  id: string; titulo: string; trecho: string; createdAt: string; categoria: string | null;
+  status: 'publicado' | 'em_revisao'; motivo: string | null; votos: number; leituras: number;
+  autor: { id: string; nome: string; email: string };
+};
+
+export const adminContosService = {
+  listar: async (params: { status?: string; categoria?: string; page?: number }): Promise<{
+    contos: ContoAdmin[]; temMais: boolean;
+    contagem: { revisao: number; semCategoria: number; total: number };
+    categorias: Array<{ slug: string; nome: string }>;
+  }> => {
+    const response = await apiClient.get('/admin/contos', { params });
+    return response.data;
+  },
+  atualizar: async (id: string, data: { categoria?: string; status?: 'publicado' | 'em_revisao' }) => {
+    const response = await apiClient.patch(`/admin/contos/${encodeURIComponent(id)}`, data);
+    return response.data;
+  },
+  remover: async (id: string) => {
+    const response = await apiClient.delete(`/admin/contos/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+  varredura: async (): Promise<{ analisados: number; segurados: number }> => {
+    const response = await apiClient.post('/admin/contos/varredura');
+    return response.data;
+  },
 };
 
 export const adminPromoterService = {

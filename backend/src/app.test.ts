@@ -2945,4 +2945,75 @@ describe('nosigilo backend', () => {
     expect(depois.embaixador_oficial_em).toBeNull();
     expect(String(depois.trial_ends_at || '')).not.toContain('2099');
   });
+  // ── Contos: categoria, trava, lidos e admin ─────────────────────────────────
+  it('contos: categoria obrigatoria, trava de conteudo proibido, lidos e moderacao', async () => {
+    const autor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Contos', email: 'autor-contos@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const leitor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Leitor Contos', email: 'leitor-contos@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const admin = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Admin Contos', email: 'admin-contos@example.com', password: 'senha123', gender: 'Homem',
+    });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const A = { Authorization: `Bearer ${autor.token}` };
+    const L = { Authorization: `Bearer ${leitor.token}` };
+    const ADM = { Authorization: `Bearer ${admin.token}` };
+    const texto = 'Fomos a uma casa de swing no sabado e a noite foi inesquecivel para nos dois.';
+
+    // Sem categoria não publica.
+    const sem = await request(ctx.app).post('/api/experiences').set(A).send({ title: 'Noite', description: texto });
+    expect(sem.status).toBe(400);
+    expect(sem.body.message).toContain('categoria');
+
+    const ok = await request(ctx.app).post('/api/experiences').set(A).send({ title: 'Noite no clube', description: texto, categoria: 'swing' });
+    expect(ok.body.status).toBe('publicado');
+
+    // Conteúdo com menor vai para revisão: autor vê, leitor não.
+    const proibido = await request(ctx.app).post('/api/experiences').set(A)
+      .send({ title: 'Lembranca', description: 'Ela tinha 16 anos quando tudo aconteceu naquela festa.', categoria: 'confissao' });
+    expect(proibido.body.status).toBe('em_revisao');
+    const feedAutor = await request(ctx.app).get('/api/feed/experiences').set(A);
+    expect(feedAutor.body.experiences.find((e: any) => e.id === proibido.body.id)?.emRevisao).toBe(true);
+    const feedLeitor = await request(ctx.app).get('/api/feed/experiences').set(L);
+    expect(feedLeitor.body.experiences.find((e: any) => e.id === proibido.body.id)).toBeUndefined();
+
+    // Filtro por categoria, contador e leitura.
+    const cats = await request(ctx.app).get('/api/experiences/categorias').set(L);
+    expect(cats.body.categorias.find((c: any) => c.slug === 'swing').total).toBeGreaterThanOrEqual(1);
+    const soSwing = await request(ctx.app).get('/api/feed/experiences?categoria=swing').set(L);
+    expect(soSwing.body.experiences.every((e: any) => e.categoria === 'swing')).toBe(true);
+
+    const naoLidosAntes = await request(ctx.app).get('/api/feed/experiences?leitura=nao_lidos').set(L);
+    expect(naoLidosAntes.body.experiences.some((e: any) => e.id === ok.body.id)).toBe(true);
+    await request(ctx.app).post(`/api/experiences/${ok.body.id}/lido`).set(L).expect(200);
+    await request(ctx.app).post(`/api/experiences/${ok.body.id}/lido`).set(L).expect(200); // repetir não quebra
+    const naoLidosDepois = await request(ctx.app).get('/api/feed/experiences?leitura=nao_lidos').set(L);
+    expect(naoLidosDepois.body.experiences.some((e: any) => e.id === ok.body.id)).toBe(false);
+    const lidos = await request(ctx.app).get('/api/feed/experiences?leitura=lidos').set(L);
+    expect(lidos.body.experiences.find((e: any) => e.id === ok.body.id)?.lido).toBe(true);
+
+    // Mais votados responde.
+    await request(ctx.app).get('/api/feed/experiences?ordem=votados').set(L).expect(200);
+
+    // Admin: lista com revisão primeiro, reclassifica, aprova e remove.
+    await request(ctx.app).get('/api/admin/contos').set(L).expect(403);
+    const listaAdmin = await request(ctx.app).get('/api/admin/contos').set(ADM).expect(200);
+    expect(listaAdmin.body.contos[0].status).toBe('em_revisao');
+    expect(listaAdmin.body.contagem.revisao).toBeGreaterThanOrEqual(1);
+    await request(ctx.app).patch(`/api/admin/contos/${ok.body.id}`).set(ADM).send({ categoria: 'exibicionismo' }).expect(200);
+    const reclass = await request(ctx.app).get('/api/feed/experiences?categoria=exibicionismo').set(L);
+    expect(reclass.body.experiences.some((e: any) => e.id === ok.body.id)).toBe(true);
+    await request(ctx.app).delete(`/api/admin/contos/${proibido.body.id}`).set(ADM).expect(200);
+    const apagado = await request(ctx.app).get('/api/feed/experiences').set(A);
+    expect(apagado.body.experiences.some((e: any) => e.id === proibido.body.id)).toBe(false);
+
+    // Varredura dos antigos segura o que a trava pega.
+    await run(ctx.db, "INSERT INTO experiences (id, user_id, title, description, created_at, status) VALUES ('antigo-1', ?, 'Antigo', 'Transei com meu pai quando visitei o sitio da familia.', ?, 'publicado')", [autor.user.id, new Date().toISOString()]);
+    const varredura = await request(ctx.app).post('/api/admin/contos/varredura').set(ADM).expect(200);
+    expect(varredura.body.segurados).toBeGreaterThanOrEqual(1);
+    const antigo = await ctx.db.queryOne("SELECT status FROM experiences WHERE id = 'antigo-1'") as any;
+    expect(antigo.status).toBe('em_revisao');
+  });
 });

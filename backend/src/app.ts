@@ -16,6 +16,7 @@ import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, SENDER_ID_IA, suporteEstaDigitando, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { analisarPaineis } from './analistaIa.js';
+import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
@@ -7503,10 +7504,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const page = Number(req.query.page || 1);
     const limit = Math.min(50, Math.max(1, Number(req.query.limit || 20)));
     const offset = (Math.max(1, page) - 1) * limit;
+    const me = req.auth!.userId;
+    // Filtros: categoria (slug ou 'sem'), ordem (recentes | votados) e leitura
+    // (todos | nao_lidos | lidos). Contos em revisão só aparecem para o autor.
+    const categoria = String(req.query.categoria || '');
+    const ordem = req.query.ordem === 'votados' ? 'votados' : 'recentes';
+    const leitura = ['nao_lidos', 'lidos'].includes(String(req.query.leitura)) ? String(req.query.leitura) : 'todos';
+    const filtros: string[] = [];
+    const filtroParams: unknown[] = [];
+    if (categoria === 'sem') filtros.push('e.categoria IS NULL');
+    else if ((SLUGS_CATEGORIAS as readonly string[]).includes(categoria)) { filtros.push('e.categoria = ?'); filtroParams.push(categoria); }
+    if (leitura === 'nao_lidos') { filtros.push('NOT EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
+    if (leitura === 'lidos') { filtros.push('EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?)'); filtroParams.push(me); }
+    const ordenacao = ordem === 'votados'
+      ? "(SELECT COUNT(*) FROM likes lk WHERE lk.target_type = 'experience' AND lk.target_id = e.id) DESC, e.created_at DESC"
+      : 'e.created_at DESC';
     const rows = await queryAll(
       db,
       `
-      SELECT e.id, e.title, e.description, e.created_at,
+      SELECT e.id, e.title, e.description, e.created_at, e.categoria, e.status,
+        EXISTS (SELECT 1 FROM experience_reads er WHERE er.experience_id = e.id AND er.user_id = ?) AS lido,
         u.id as author_id,
         CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
         CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -7520,10 +7537,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
              OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
         )
-      ORDER BY e.created_at DESC
+        AND (e.status = 'publicado' OR e.user_id = ?)
+        ${filtros.map((f) => `AND ${f}`).join(' ')}
+      ORDER BY ${ordenacao}
       LIMIT ? OFFSET ?
     `,
-      [req.auth!.userId, req.auth!.userId, limit + 1, offset]
+      [me, me, me, me, ...filtroParams, limit + 1, offset]
     );
 
     const slice = rows.slice(0, limit);
@@ -7581,6 +7600,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         title: String(r.title || ''),
         description: String(r.description || ''),
         createdAt: r.created_at,
+        categoria: r.categoria ?? null,
+        categoriaNome: r.categoria ? (CATEGORIAS_CONTOS as Record<string, string>)[String(r.categoria)] ?? null : null,
+        emRevisao: String(r.status || 'publicado') === 'em_revisao',
+        lido: !!Number(r.lido || 0) || r.lido === true,
         media: mediaByExpId.get(String(r.id)) ?? [],
         author: {
           id: r.author_id,
@@ -7603,27 +7626,43 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       title: z.string().max(120).optional().or(z.literal('')),
       description: z.string().min(20).max(50000),
       mediaIds: z.array(z.string()).max(10).optional(),
+      categoria: z.enum(SLUGS_CATEGORIAS),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: 'invalid_input' });
+      const semCategoria = parsed.error.issues.some((i) => i.path[0] === 'categoria');
+      res.status(400).json({ error: 'invalid_input', message: semCategoria ? 'Escolha a categoria do conto.' : undefined });
       return;
     }
     const id = randomUUID();
-    await run(db, 'INSERT INTO experiences (id, user_id, title, description, created_at) VALUES (?, ?, ?, ?, ?)', [
+    const titulo = buildExperienceTitle(parsed.data.title, parsed.data.description);
+    // Conteúdo proibido (menores, animais, incesto) não vai ao ar direto: fica
+    // em revisão, visível só para o autor e o admin, que decide.
+    const motivos = sinaisDeConteudoProibido(titulo, parsed.data.description);
+    const status = motivos.length ? 'em_revisao' : 'publicado';
+    await run(db, 'INSERT INTO experiences (id, user_id, title, description, created_at, categoria, status, revisao_motivo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
-      buildExperienceTitle(parsed.data.title, parsed.data.description),
+      titulo,
       parsed.data.description.trim(),
       nowIso(),
+      parsed.data.categoria,
+      status,
+      motivos.length ? motivos.join('; ') : null,
     ]);
+    if (motivos.length) {
+      const autor = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+      void notifyAdminsTelegram({ db, env },
+        `🚫 <b>Conto segurado para revisão</b> (${motivos.join(', ')})\n\n<b>${String(autor?.name || 'Usuário')}</b> ${String(autor?.email || '')}\n\n${titulo.slice(0, 200)}\n\nRevise em Admin › Contos.`
+      );
+    }
     if (parsed.data.mediaIds && parsed.data.mediaIds.length > 0) {
       for (let i = 0; i < parsed.data.mediaIds.length; i++) {
         await run(db, 'INSERT INTO experience_media (experience_id, media_id, sort_order) VALUES (?, ?, ?)', [id, parsed.data.mediaIds[i], i]);
       }
     }
     await persist();
-    res.json({ id });
+    res.json({ id, status });
   });
 
   app.delete('/api/experiences/:experienceId', requireAuth(env, db), async (req, res) => {
@@ -7644,16 +7683,147 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
+  // Categorias com contador (só contos publicados) e quantos a pessoa ainda
+  // não leu em cada uma.
+  app.get('/api/experiences/categorias', requireAuth(env, db), async (req, res) => {
+    const linhas = (await queryAll(
+      db,
+      `SELECT COALESCE(e.categoria, 'sem') AS categoria, COUNT(*) AS total,
+              SUM(CASE WHEN er.user_id IS NULL THEN 1 ELSE 0 END) AS nao_lidos
+         FROM experiences e
+         JOIN users u ON u.id = e.user_id
+         LEFT JOIN experience_reads er ON er.experience_id = e.id AND er.user_id = ?
+        WHERE e.status = 'publicado'
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        GROUP BY COALESCE(e.categoria, 'sem')`,
+      [req.auth!.userId]
+    )) as any[];
+    const porSlug = new Map(linhas.map((l) => [String(l.categoria), l]));
+    const categorias = [
+      ...SLUGS_CATEGORIAS.map((slug) => ({ slug, nome: CATEGORIAS_CONTOS[slug] })),
+      { slug: 'sem', nome: 'Sem categoria' },
+    ].map((c) => ({
+      ...c,
+      total: Number(porSlug.get(c.slug)?.total || 0),
+      naoLidos: Number(porSlug.get(c.slug)?.nao_lidos || 0),
+    }));
+    res.json({
+      categorias,
+      total: categorias.reduce((a, c) => a + c.total, 0),
+      naoLidos: categorias.reduce((a, c) => a + c.naoLidos, 0),
+    });
+  });
+
+  // Marca o conto como lido (ao abrir "Ler conto completo").
+  app.post('/api/experiences/:experienceId/lido', requireAuth(env, db), async (req, res) => {
+    const id = String(req.params.experienceId || '');
+    await run(
+      db,
+      db.mode === 'pg'
+        ? 'INSERT INTO experience_reads (user_id, experience_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
+        : 'INSERT OR IGNORE INTO experience_reads (user_id, experience_id, created_at) VALUES (?, ?, ?)',
+      [req.auth!.userId, id, nowIso()]
+    );
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // ── Admin › Contos ─────────────────────────────────────────────────────────
+  app.get('/api/admin/contos', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const status = ['em_revisao', 'publicado'].includes(String(req.query.status)) ? String(req.query.status) : '';
+    const categoria = String(req.query.categoria || '');
+    const pagina = Math.max(1, Number(req.query.page || 1));
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (status) { where.push('e.status = ?'); params.push(status); }
+    if (categoria === 'sem') where.push('e.categoria IS NULL');
+    else if ((SLUGS_CATEGORIAS as readonly string[]).includes(categoria)) { where.push('e.categoria = ?'); params.push(categoria); }
+    const rows = (await queryAll(
+      db,
+      `SELECT e.id, e.title, e.description, e.created_at, e.categoria, e.status, e.revisao_motivo,
+              u.id AS author_id, u.name AS author_name, u.email AS author_email,
+              (SELECT COUNT(*) FROM likes lk WHERE lk.target_type = 'experience' AND lk.target_id = e.id) AS votos,
+              (SELECT COUNT(*) FROM experience_reads er WHERE er.experience_id = e.id) AS leituras
+         FROM experiences e JOIN users u ON u.id = e.user_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY CASE WHEN e.status = 'em_revisao' THEN 0 ELSE 1 END, e.created_at DESC
+        LIMIT 51 OFFSET ?`,
+      [...params, (pagina - 1) * 50]
+    )) as any[];
+    const contagem = (await queryOne(db, "SELECT SUM(CASE WHEN status = 'em_revisao' THEN 1 ELSE 0 END) AS revisao, SUM(CASE WHEN categoria IS NULL THEN 1 ELSE 0 END) AS sem_categoria, COUNT(*) AS total FROM experiences", [])) as any;
+    res.json({
+      contos: rows.slice(0, 50).map((r) => ({
+        id: String(r.id),
+        titulo: String(r.title || ''),
+        trecho: String(r.description || '').slice(0, 400),
+        createdAt: r.created_at,
+        categoria: r.categoria ?? null,
+        status: String(r.status || 'publicado'),
+        motivo: r.revisao_motivo ?? null,
+        votos: Number(r.votos || 0),
+        leituras: Number(r.leituras || 0),
+        autor: { id: String(r.author_id), nome: String(r.author_name || ''), email: String(r.author_email || '') },
+      })),
+      temMais: rows.length > 50,
+      contagem: { revisao: Number(contagem?.revisao || 0), semCategoria: Number(contagem?.sem_categoria || 0), total: Number(contagem?.total || 0) },
+      categorias: SLUGS_CATEGORIAS.map((slug) => ({ slug, nome: CATEGORIAS_CONTOS[slug] })),
+    });
+  });
+
+  // Classificar (trocar categoria) e aprovar / segurar.
+  app.patch('/api/admin/contos/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const parsed = z.object({
+      categoria: z.enum(SLUGS_CATEGORIAS).optional(),
+      status: z.enum(['publicado', 'em_revisao']).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success || (!parsed.data.categoria && !parsed.data.status)) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const id = String(req.params.id || '');
+    if (parsed.data.categoria) await run(db, 'UPDATE experiences SET categoria = ? WHERE id = ?', [parsed.data.categoria, id]);
+    if (parsed.data.status) {
+      await run(db, 'UPDATE experiences SET status = ?, revisao_motivo = ? WHERE id = ?',
+        [parsed.data.status, parsed.data.status === 'publicado' ? null : 'segurado pelo admin', id]);
+    }
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Remover de vez (com curtidas, comentários e leituras).
+  app.delete('/api/admin/contos/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const id = String(req.params.id || '');
+    await run(db, "DELETE FROM likes WHERE target_type = 'experience' AND target_id = ?", [id]);
+    await run(db, "DELETE FROM comments WHERE target_type = 'experience' AND target_id = ?", [id]);
+    await run(db, 'DELETE FROM experience_reads WHERE experience_id = ?', [id]);
+    await run(db, 'DELETE FROM experiences WHERE id = ?', [id]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Passa a trava nos contos já publicados: os que ela pegar saem do ar e vão
+  // para a revisão. Não apaga nada.
+  app.post('/api/admin/contos/varredura', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const todos = (await queryAll(db, "SELECT id, title, description FROM experiences WHERE status = 'publicado'", [])) as any[];
+    let segurados = 0;
+    for (const c of todos) {
+      const motivos = sinaisDeConteudoProibido(String(c.title || ''), String(c.description || ''));
+      if (!motivos.length) continue;
+      await run(db, "UPDATE experiences SET status = 'em_revisao', revisao_motivo = ? WHERE id = ?", [motivos.join('; '), String(c.id)]);
+      segurados++;
+    }
+    await persist();
+    res.json({ analisados: todos.length, segurados });
+  });
+
   app.get('/api/users/:userId/experiences', requireAuth(env, db), async (req, res) => {
     const targetUserId = String(req.params.userId || '');
     const rows = await queryAll(
       db,
       `SELECT e.id, e.title, e.description, e.created_at
        FROM experiences e
-       WHERE e.user_id = ?
+       WHERE e.user_id = ? AND (e.status = 'publicado' OR e.user_id = ?)
        ORDER BY e.created_at DESC
        LIMIT 50`,
-      [targetUserId]
+      [targetUserId, req.auth!.userId]
     );
     const experienceIds = rows.map((r: any) => String(r.id));
     const likesCountMap = new Map<string, number>();

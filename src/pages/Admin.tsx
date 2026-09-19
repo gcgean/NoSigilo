@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import AdminMetrics from '@/components/AdminMetrics';
 import AnalistaIa from '@/components/AnalistaIa';
 import AdminRankingPromotores from '@/components/AdminRankingPromotores';
+import AdminContos from '@/components/AdminContos';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type AdminPhoto = {
@@ -1421,6 +1422,10 @@ export default function Admin() {
           <TabsTrigger value="promoters" className="gap-2">
             <BadgeDollarSign className="w-4 h-4" />
             Promotores
+          </TabsTrigger>
+          <TabsTrigger value="contos" className="gap-2">
+            <FileText className="w-4 h-4" />
+            Contos
           </TabsTrigger>
         </TabsList>
 
@@ -3360,6 +3365,10 @@ export default function Admin() {
 
         <TabsContent value="promoters">
           <AdminPromotersTab />
+        </TabsContent>
+
+        <TabsContent value="contos">
+          <AdminContos />
         </TabsContent>
       </Tabs>
     </div>

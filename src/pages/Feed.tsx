@@ -29,6 +29,7 @@ import { SERVER_ORIGIN, resolveServerUrl } from '@/utils/serverUrl';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import { PostMediaCarousel } from '@/components/PostMediaCarousel';
 import MobileState from '@/components/MobileState';
+import FiltrosContos, { type CategoriaContagem, type LeituraContos, type OrdemContos } from '@/components/FiltrosContos';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import EventPromoCard from '@/components/EventPromoCard';
 import { getPushActivationState, enablePushNotifications } from '@/utils/pushNotifications';
@@ -110,6 +111,10 @@ type FeedExperience = {
   likesCount: number;
   commentsCount: number;
   likedByMe: boolean;
+  categoria?: string | null;
+  categoriaNome?: string | null;
+  emRevisao?: boolean;
+  lido?: boolean;
 };
 
 type Comment = {
@@ -377,6 +382,12 @@ export default function Feed() {
   const [showFirstAccessPostHint, setShowFirstAccessPostHint] = useState(false);
   const [checkedFirstAccessPostHint, setCheckedFirstAccessPostHint] = useState(false);
   const [allExperiences, setAllExperiences] = useState<FeedExperience[]>([]);
+  // Contos: categoria no formulário e filtros da lista.
+  const [expCategoria, setExpCategoria] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [ordemContos, setOrdemContos] = useState<OrdemContos>('recentes');
+  const [leituraContos, setLeituraContos] = useState<LeituraContos>('todos');
+  const [contagemContos, setContagemContos] = useState<{ categorias: CategoriaContagem[]; total: number; naoLidos: number }>({ categorias: [], total: 0, naoLidos: 0 });
   const [isLoadingExperiences, setIsLoadingExperiences] = useState(false);
   const [expAttachments, setExpAttachments] = useState<Array<{ id: string; file: File; url: string; isVideo?: boolean }>>([]);
   const [expPhotoIndex, setExpPhotoIndex] = useState<Record<string, number>>({});
@@ -703,8 +714,12 @@ export default function Feed() {
   const reloadExperiences = async () => {
     setIsLoadingExperiences(true);
     try {
-      const feed = await experienceService.getFeed({ page: 1, limit: 50 });
+      const [feed, contagem] = await Promise.all([
+        experienceService.getFeed({ page: 1, limit: 50, categoria: filtroCategoria || undefined, ordem: ordemContos, leitura: leituraContos }),
+        experienceService.categorias().catch(() => null),
+      ]);
       setAllExperiences(Array.isArray(feed?.experiences) ? feed.experiences : []);
+      if (contagem) setContagemContos(contagem);
     } catch (err: any) {
       const status = err?.response?.status;
       const msg = err?.response?.data?.message || err?.message || '';
@@ -721,8 +736,23 @@ export default function Feed() {
 
   useEffect(() => {
     void reload();
-    void reloadExperiences();
   }, []);
+
+  // Contos recarregam a cada troca de filtro.
+  useEffect(() => {
+    void reloadExperiences();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroCategoria, ordemContos, leituraContos]);
+
+  const lerConto = (experience: FeedExperience) => {
+    const abrindo = !expandedExp[experience.id];
+    setExpandedExp((prev) => ({ ...prev, [experience.id]: !prev[experience.id] }));
+    if (abrindo && !experience.lido) {
+      setAllExperiences((lista) => lista.map((e) => (e.id === experience.id ? { ...e, lido: true } : e)));
+      setContagemContos((c) => ({ ...c, naoLidos: Math.max(0, c.naoLidos - 1) }));
+      void experienceService.marcarLido(experience.id).catch(() => {});
+    }
+  };
 
   // Ao VOLTAR para o feed depois de sair do app/aba, recarrega para mostrar
   // conteúdo novo. Navegar dentro do app (Feed → Chat → Feed) já remonta o
@@ -1275,6 +1305,10 @@ export default function Feed() {
       toast({ title: 'Descrição muito curta', description: 'A descrição precisa ter pelo menos 20 caracteres.', variant: 'destructive' });
       return;
     }
+    if (!expCategoria) {
+      toast({ title: 'Escolha a categoria do conto', description: 'Ela ajuda quem lê a encontrar o que procura.', variant: 'destructive' });
+      return;
+    }
     if (publishExperienceGuardRef.current) return;
     publishExperienceGuardRef.current = true;
     setIsPublishingExperience(true);
@@ -1284,11 +1318,19 @@ export default function Feed() {
         const uploaded = await profileService.uploadMedia(a.file);
         if (uploaded?.id) mediaIds.push(String(uploaded.id));
       }
-      await experienceService.create({ title, description, ...(mediaIds.length ? { mediaIds } : {}) });
+      const criado = await experienceService.create({ title, description, categoria: expCategoria, ...(mediaIds.length ? { mediaIds } : {}) });
       setExperienceTitle('');
       setExperienceDescription('');
       setExpAttachments([]);
+      setExpCategoria('');
       await reloadExperiences();
+      if (criado?.status === 'em_revisao') {
+        toast({
+          title: 'Conto enviado para revisão',
+          description: 'Ele passa pela equipe antes de aparecer. Conteúdo com menores de idade, animais ou incesto não é permitido.',
+        });
+        return;
+      }
       toast({
         title: 'Experiência publicada',
         description: 'Seu conto já está visível na aba Meus Contos Eróticos.',
@@ -1932,6 +1974,17 @@ export default function Feed() {
               </div>
             )}
 
+            <select
+              value={expCategoria}
+              onChange={(e) => setExpCategoria(e.target.value)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              aria-label="Categoria do conto"
+            >
+              <option value="">Categoria do conto (obrigatório)</option>
+              {contagemContos.categorias.filter((c) => c.slug !== 'sem').map((c) => (
+                <option key={c.slug} value={c.slug}>{c.nome}</option>
+              ))}
+            </select>
             <Input
               placeholder="Título do conto (ex.: Nossa noite mais quente 🔥)"
               value={experienceTitle}
@@ -2014,13 +2067,16 @@ export default function Feed() {
               <Button
                 size="sm"
                 className="h-11 rounded-xl bg-gradient-primary px-4 text-sm font-medium hover:opacity-90 gap-2 sm:h-9 sm:rounded-md sm:px-3"
-                disabled={experienceDescription.trim().length < 20 || isPublishingExperience}
+                disabled={experienceDescription.trim().length < 20 || !expCategoria || isPublishingExperience}
                 onClick={handlePublishExperience}
               >
                 <Send className="w-4 h-4" />
                 {isPublishingExperience ? 'Publicando...' : 'Publicar experiência'}
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Somente entre adultos e com consentimento. Contos com menores de idade, animais ou incesto são proibidos e não são publicados.
+            </p>
           </div>
         </Card>
       ) : (
@@ -2496,6 +2552,18 @@ export default function Feed() {
                 </div>
               </Card>
 
+              <FiltrosContos
+                categorias={contagemContos.categorias}
+                total={contagemContos.total}
+                naoLidos={contagemContos.naoLidos}
+                categoria={filtroCategoria}
+                ordem={ordemContos}
+                leitura={leituraContos}
+                onCategoria={setFiltroCategoria}
+                onOrdem={setOrdemContos}
+                onLeitura={setLeituraContos}
+              />
+
               {isLoadingExperiences ? (
                 <MobileState
                   loading
@@ -2505,8 +2573,14 @@ export default function Feed() {
               ) : null}
               {!isLoadingExperiences && allExperiences.length === 0 ? (
                 <MobileState
-                  title="Sem experiências por enquanto"
-                  description="Seja o primeiro a compartilhar um conto e iniciar essa aba."
+                  title={leituraContos === 'nao_lidos' ? 'Você já leu todos 🎉' : 'Nenhum conto por aqui'}
+                  description={
+                    leituraContos === 'nao_lidos'
+                      ? 'Não há contos novos neste filtro. Troque a categoria ou volte mais tarde.'
+                      : filtroCategoria || leituraContos !== 'todos'
+                        ? 'Nada neste filtro ainda. Experimente outra categoria.'
+                        : 'Seja o primeiro a compartilhar um conto e iniciar essa aba.'
+                  }
                 />
               ) : null}
               {!isLoadingExperiences &&
@@ -2557,11 +2631,27 @@ export default function Feed() {
                       ) : null}
                     </div>
                     <div className="px-3 pb-3 sm:px-4">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                        {experience.categoriaNome && (
+                          <button
+                            type="button"
+                            onClick={() => experience.categoria && setFiltroCategoria(experience.categoria)}
+                            className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-brand-pink hover:bg-primary/20"
+                          >
+                            {experience.categoriaNome}
+                          </button>
+                        )}
+                        {experience.emRevisao ? (
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600">Em revisão — só você vê</span>
+                        ) : experience.lido ? (
+                          <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">✓ Lido</span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-600">Novo pra você</span>
+                        )}
+                      </div>
                       <button
                         type="button"
-                        onClick={() =>
-                          setExpandedExp((prev) => ({ ...prev, [experience.id]: !prev[experience.id] }))
-                        }
+                        onClick={() => lerConto(experience)}
                         className="block w-full text-left"
                         aria-expanded={!!expandedExp[experience.id]}
                       >
