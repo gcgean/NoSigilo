@@ -36,6 +36,7 @@ let lastDailyRunDate = '';     // "YYYY-MM-DD" — reengagement emails
 let lastWeeklyRunDate = '';    // "YYYY-MM-DD" — weekly summary emails
 let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
 let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
+let lastSundayStoryPushDate = ''; // "YYYY-MM-DD" — domingo 11h: "como foi o seu sábado à noite?"
 let lastTopDayDate = '';       // "YYYY-MM-DD" — "você está no Top do Dia" notification
 let lastExpirePremiumDate = ''; // "YYYY-MM-DD" — limpa is_premium de licenças vencidas
 let lastExpireEventGroupsDate = ''; // "YYYY-MM-DD" — remove grupos-por-evento vencidos
@@ -298,6 +299,40 @@ async function runNearbyOnlinePush(db: DbHandle, onlineCount: number) {
   console.log(`[scheduler] Online push sent to ${sent} users`);
 }
 
+// Domingo 11h: convida quem aceitou notificações a contar como foi o sábado.
+// O clique abre a aba de contos com o modelo "Rolou ontem!" preenchido.
+async function runSundayStoryPush(db: DbHandle) {
+  const users = await db.queryAll(
+    `SELECT DISTINCT ps.user_id AS id FROM push_subscriptions ps
+     JOIN users u ON u.id = ps.user_id
+     WHERE u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND (u.is_admin = 0 OR u.is_admin IS NULL)
+     LIMIT 2000`
+  ) as any[];
+  const { default: webpush } = await import('web-push');
+  let sent = 0;
+  for (const u of users) {
+    try {
+      const subs = await db.queryAll(
+        'SELECT subscription_json FROM push_subscriptions WHERE user_id = ?',
+        [u.id]
+      ) as any[];
+      for (const sub of subs) {
+        const parsed = JSON.parse(String(sub.subscription_json || '{}'));
+        if (!parsed?.endpoint) continue;
+        await webpush.sendNotification(parsed, JSON.stringify({
+          title: 'Como foi o seu sábado à noite? 😈',
+          body: 'Rolou algo quente? Conta pra galera nos contos — em 1 minuto.',
+          url: '/feed?contar=sabado',
+          tag: 'sunday-story',
+        })).catch(() => {});
+      }
+      sent++;
+    } catch { /* ignore */ }
+  }
+  console.log(`[scheduler] Push de domingo ("como foi o sábado") enviado para ${sent} usuário(s)`);
+}
+
 async function runNightlyRitualPush(db: DbHandle) {
   console.log('[scheduler] Sending nightly "novos na sua cidade" push (19h30)...');
   const startOfToday = new Date();
@@ -493,6 +528,12 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     if (hour === 11 && lastTopDayDate !== dateStr) {
       lastTopDayDate = dateStr;
       runTopDayNotifications(db).catch(err => console.error('[scheduler/top-day] fatal', err));
+    }
+
+    // Domingo 11h: "como foi o seu sábado à noite?" (uma vez).
+    if (weekday === 0 && hour === 11 && lastSundayStoryPushDate !== dateStr) {
+      lastSundayStoryPushDate = dateStr;
+      runSundayStoryPush(db).catch(err => console.error('[scheduler/sunday-story] fatal', err));
     }
 
     // Push noturno: "novos perfis na sua cidade entraram hoje" — ~19h30 (ritual)

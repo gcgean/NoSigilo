@@ -832,15 +832,23 @@ export default function Feed() {
 
   // Open experience form when coming from WeekendAdventureModal (works even if already on /feed)
   useEffect(() => {
-    if ((location.state as any)?.openExperienceForm) {
+    const vindoDoPush = new URLSearchParams(location.search).get('contar') === 'sabado';
+    if ((location.state as any)?.openExperienceForm || vindoDoPush) {
       setFeedFilter('experiences');
+      if ((location.state as any)?.modelo === 'rolou-ontem' || vindoDoPush) {
+        const modelo = EXP_TEMPLATES.find((t) => t.title === 'Rolou ontem!');
+        if (modelo) {
+          setExperienceTitle((atual) => atual || modelo.title);
+          setExperienceDescription((atual) => atual || modelo.body);
+        }
+      }
       // Clear state so back-navigation doesn't re-trigger
-      window.history.replaceState({}, '');
+      window.history.replaceState({}, '', location.pathname);
       window.setTimeout(() => {
         expFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 400);
     }
-  }, [location.state]);
+  }, [location.state, location.search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!firstAccessPostMode) return;

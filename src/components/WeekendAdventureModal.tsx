@@ -32,7 +32,7 @@ export default function WeekendAdventureModal() {
     dismiss();
     setVisible(false);
     // Pass state so Feed.tsx opens the experience form even if already mounted
-    navigate('/feed', { state: { openExperienceForm: true } });
+    navigate('/feed', { state: { openExperienceForm: true, modelo: 'rolou-ontem' } });
   };
 
   const handleSkip = () => {
@@ -57,10 +57,10 @@ export default function WeekendAdventureModal() {
           {/* Copy */}
           <div className="space-y-2">
             <h2 className="text-xl font-bold leading-tight">
-              E aí, rolou algo quente esse fim de semana? 🔥
+              Como foi o seu sábado à noite? 😈
             </h2>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Teve uma aventura especial? Conta pra galera —{' '}
+              Rolou algo quente? Conta pra galera nos contos —{' '}
               <span className="text-primary font-medium">aqui é lugar seguro!</span>
               {' '}Você pode compartilhar texto, foto ou vídeo.
             </p>
@@ -72,7 +72,7 @@ export default function WeekendAdventureModal() {
               className="w-full bg-gradient-to-r from-rose-500 via-primary to-violet-500 text-base font-semibold py-5 hover:opacity-90"
               onClick={handleShare}
             >
-              🔥 Sim! Quero compartilhar
+              🔥 Quero contar como foi
             </Button>
             <button
               type="button"
