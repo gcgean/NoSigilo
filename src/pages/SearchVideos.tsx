@@ -1,9 +1,6 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Clapperboard, SlidersHorizontal, Heart, Play,
-  X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle,
-} from 'lucide-react';
+import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -494,63 +491,112 @@ export default function SearchVideos() {
           </Button>
         </div>
 
-        {/* Sort pills */}
-        <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
-          {sortOptions.map(({ value, label, icon: Icon }) => (
-            <Fragment key={value}>
+        {/* Filtros: a opção ativa fica preenchida e com ✓; as outras ficam
+            tracejadas, com cara de botão. "Ordenar" e "Ver" em linhas separadas
+            para o usuário entender que são coisas diferentes. */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ordenar</span>
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none" role="tablist">
+              {sortOptions.map(({ value, label, icon: Icon }) => {
+                const ativo = sortFilter === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    aria-selected={ativo}
+                    title={ativo ? `Ordenando por ${label}` : `Ordenar por ${label}`}
+                    onClick={() => setSortFilter(value)}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                      ativo
+                        ? 'bg-primary font-bold text-primary-foreground shadow-[0_2px_10px_rgba(236,72,153,0.35)]'
+                        : 'border border-dashed border-border font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                    )}
+                  >
+                    {ativo ? <Check className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ver</span>
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
               <button
                 type="button"
-                onClick={() => setSortFilter(value)}
+                aria-pressed={!onlyUnseen && colecao === null}
+                onClick={() => { setOnlyUnseen(false); setColecao(null); }}
                 className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                  sortFilter === value
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
+                  'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                  !onlyUnseen && colecao === null
+                    ? 'bg-primary font-bold text-primary-foreground shadow-[0_2px_10px_rgba(236,72,153,0.35)]'
+                    : 'border border-dashed border-border font-medium text-muted-foreground hover:border-primary/50 hover:text-foreground'
                 )}
               >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
+                {!onlyUnseen && colecao === null && <Check className="h-3.5 w-3.5" />}
+                Todos
               </button>
-              {/* Filtro "Não vistos" — posicionado logo após "Mais curtidos" e antes de "Mais comentados" */}
-              {value === 'liked' && (
-                <>
-                <button
-                  type="button"
-                  onClick={() => { setOnlyUnseen((v) => !v); setColecao(null); }}
-                  className={cn(
-                    'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                    onlyUnseen
-                      ? 'border-emerald-500 bg-emerald-500 text-white'
-                      : 'border-border bg-background text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
-                  )}
-                >
-                  <EyeOff className="h-3.5 w-3.5" />
-                  Não vistos
-                </button>
-                {([
-                  ['vistos', 'Vistos', Eye],
-                  ['curtidos', 'Curti', Heart],
-                  ['comentados', 'Comentei', MessageCircle],
-                ] as const).map(([valor, rotulo, Icone]) => (
+              <button
+                type="button"
+                aria-pressed={onlyUnseen}
+                title={onlyUnseen ? 'Vendo só os que você ainda não viu' : 'Ver só os que você ainda não viu'}
+                onClick={() => { setOnlyUnseen((v) => !v); setColecao(null); }}
+                className={cn(
+                  'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                  onlyUnseen
+                    ? 'bg-emerald-500 font-bold text-white shadow-[0_2px_10px_rgba(16,185,129,0.35)]'
+                    : 'border border-dashed border-border font-medium text-muted-foreground hover:border-emerald-500/50 hover:text-foreground'
+                )}
+              >
+                {onlyUnseen ? <Check className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                Não vistos
+              </button>
+              {([
+                ['vistos', 'Vistos', Eye],
+                ['curtidos', 'Curti', Heart],
+                ['comentados', 'Comentei', MessageCircle],
+              ] as const).map(([valor, rotulo, Icone]) => {
+                const ativo = colecao === valor;
+                return (
                   <button
                     key={valor}
                     type="button"
+                    aria-pressed={ativo}
+                    title={ativo ? `Vendo ${rotulo}` : `Ver ${rotulo}`}
                     onClick={() => { setColecao((atual) => (atual === valor ? null : valor)); setOnlyUnseen(false); }}
                     className={cn(
-                      'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
-                      colecao === valor
-                        ? 'border-sky-500 bg-sky-500 text-white'
-                        : 'border-border bg-background text-muted-foreground hover:border-sky-500/50 hover:text-foreground'
+                      'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                      ativo
+                        ? 'bg-sky-500 font-bold text-white shadow-[0_2px_10px_rgba(14,165,233,0.35)]'
+                        : 'border border-dashed border-border font-medium text-muted-foreground hover:border-sky-500/50 hover:text-foreground'
                     )}
                   >
-                    <Icone className="h-3.5 w-3.5" />
+                    {ativo ? <Check className="h-3.5 w-3.5" /> : <Icone className="h-3.5 w-3.5" />}
                     {rotulo}
                   </button>
-                ))}
-                </>
-              )}
-            </Fragment>
-          ))}
+                );
+              })}
+            </div>
+          </div>
+
+          {(onlyUnseen || colecao !== null) && (
+            <p className="flex flex-wrap items-center gap-1 pl-16 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">
+                Você está vendo {onlyUnseen ? 'só os vídeos que ainda não viu' : colecao === 'vistos' ? 'os vídeos que já viu' : colecao === 'curtidos' ? 'os vídeos que você curtiu' : 'os vídeos que você comentou'}.
+              </span>
+              <button
+                type="button"
+                onClick={() => { setOnlyUnseen(false); setColecao(null); }}
+                className="font-semibold text-emerald-500 underline underline-offset-2 hover:text-emerald-600"
+              >
+                Ver todos os vídeos
+              </button>
+            </p>
+          )}
         </div>
 
         {/* Expanded filters */}
