@@ -83,6 +83,7 @@ import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { syncPushSubscription } from '@/utils/pushNotifications';
+import PwaInstallTutorial from '@/components/PwaInstallTutorial';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -214,6 +215,7 @@ export default function Layout() {
   }, [isMobileChatRoute, isMobileReelsRoute, location.pathname]);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
+  const [showPwaInstallTutorial, setShowPwaInstallTutorial] = useState(false);
   const [interestsNudgeDismissed, setInterestsNudgeDismissed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
     return localStorage.getItem(INTERESTS_NUDGE_DISMISS_KEY) === today;
@@ -535,6 +537,7 @@ export default function Layout() {
   useEffect(() => {
     const installedHandler = () => {
       setShowPwaInstallPrompt(false);
+      setShowPwaInstallTutorial(false);
       setDeferredInstallPrompt(null);
     };
     window.addEventListener('appinstalled', installedHandler);
@@ -542,10 +545,6 @@ export default function Layout() {
   }, []);
 
   useEffect(() => {
-    if (!isMobile) {
-      setShowPwaInstallPrompt(false);
-      return;
-    }
     if (typeof window === 'undefined') return;
     const standalone = window.matchMedia?.('(display-mode: standalone)')?.matches || (window.navigator as any)?.standalone === true;
     if (standalone) {
@@ -558,7 +557,7 @@ export default function Layout() {
       return;
     }
     setShowPwaInstallPrompt(true);
-  }, [isMobile, location.pathname]);
+  }, [location.pathname]);
 
   const dismissPwaInstallPrompt = () => {
     localStorage.setItem(PWA_INSTALL_DISMISS_KEY, new Date().toISOString().slice(0, 10));
@@ -589,20 +588,15 @@ export default function Layout() {
         const choice = await deferredInstallPrompt.userChoice;
         if (choice?.outcome === 'accepted') {
           setShowPwaInstallPrompt(false);
+          setShowPwaInstallTutorial(false);
           setDeferredInstallPrompt(null);
           return;
         }
-      } catch {}
-      dismissPwaInstallPrompt();
+      } catch {
+        // O navegador pode cancelar ou recusar a instalação; o tutorial permanece aberto.
+      }
       return;
     }
-
-    toast({
-      title: 'Instalar NoSigilo.net',
-      description:
-        'No iPhone: toque no botão Compartilhar do Safari e depois em "Adicionar à Tela de Início".',
-    });
-    dismissPwaInstallPrompt();
   };
 
   // min-h-[100svh] em vez de min-h-screen (100vh): no iOS o 100vh é a altura
@@ -980,15 +974,15 @@ export default function Layout() {
                     <div>
                       <p className="font-semibold text-primary">Deseja instalar o app?</p>
                       <p className="text-sm text-muted-foreground">
-                        Instale o NoSigilo.net no celular para abrir como aplicativo e acessar mais rápido.
+                        Instale o NoSigilo.net para abrir como aplicativo e acessar mais rápido.
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Button type="button" size="sm" variant="outline" onClick={dismissPwaInstallPrompt}>
                         Agora não
                       </Button>
-                      <Button type="button" size="sm" className="bg-gradient-primary hover:opacity-90" onClick={() => void handlePwaInstall()}>
-                        Instalar app
+                      <Button type="button" size="sm" className="bg-gradient-primary hover:opacity-90" onClick={() => setShowPwaInstallTutorial(true)}>
+                        Ver como instalar
                       </Button>
                     </div>
                   </div>
@@ -1181,6 +1175,8 @@ export default function Layout() {
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
             <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />
+            <PwaInstallTutorial open={showPwaInstallTutorial} onOpenChange={setShowPwaInstallTutorial}
+              onInstall={deferredInstallPrompt ? handlePwaInstall : undefined} />
 
             {/* "Sair" era um clique só, sem confirmação, a 42px do avatar —
                 erro de toque comum. Vale para o menu do avatar (mobile) e a
