@@ -8757,6 +8757,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            password_hash = ?,
            google_id = NULL,
            hub_subscription_id = NULL,
+           hub_customer_id = NULL,
+           hub_access_status = NULL,
            is_deactivated = 1,
            deactivated_at = ?,
            deactivated_by_admin = 0,
@@ -13600,7 +13602,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const existingCustomerOwner = (await queryOne(
         db,
-        'SELECT id, email FROM users WHERE hub_customer_id = ? AND id <> ? LIMIT 1',
+        'SELECT id, email, deleted_at, is_deactivated FROM users WHERE hub_customer_id = ? AND id <> ? LIMIT 1',
         [customerId, req.auth!.userId]
       )) as any;
 
@@ -13615,7 +13617,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // acesso pago de alguém.
         const oldEmail = String(existingCustomerOwner.email || '').trim().toLowerCase();
         const newEmail = String(user.email || '').trim().toLowerCase();
-        const sameOwner = !!oldEmail && oldEmail === newEmail;
+        // Conta excluída não segura o CPF de ninguém: quem apaga a conta e faz
+        // outra com o mesmo e-mail reaproveita o mesmo cliente no hub, e o
+        // vínculo antigo ficava travando o checkout novo.
+        const ownerExcluido = !!existingCustomerOwner.deleted_at;
+        const sameOwner = ownerExcluido || (!!oldEmail && oldEmail === newEmail);
 
         if (!sameOwner) {
           res.status(409).json({
