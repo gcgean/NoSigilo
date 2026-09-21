@@ -281,6 +281,9 @@ export default function Layout() {
           tone: diff <= 24 * 60 * 60 * 1000 ? 'danger' : 'premium',
           title: `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
           label: `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
+          // Contagem regressiva cheia, só usada na última semana.
+          contagem: formatDetailedRemainingTime(licenseEnds, clockNow),
+          naSemanaFinal: diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000,
         };
       }
       if (trialEnds !== null && trialEnds > clockNow) {
@@ -1045,9 +1048,11 @@ export default function Layout() {
             <BannerSlot
               id="subscription-countdown"
               priority={10}
-              eligible={!isMobileChatRoute && accessCountdown?.tone === 'premium' && !bannerDismissed}
+              // Só na reta final (7 dias ou menos): antes disso o aviso vira
+              // paisagem e deixa de funcionar quando realmente importa.
+              eligible={!isMobileChatRoute && accessCountdown?.tone === 'premium' && !!accessCountdown?.naSemanaFinal && !bannerDismissed}
             >
-              <div className="mb-4 sm:hidden">
+              <div className="mb-4">
                 {/* Era 11px em --gold (3,63:1 sobre o próprio fundo) — a
                     mensagem que evita cancelamento era a menos legível do
                     app. Agora 14px em --gold-text (mais escuro no tema
@@ -1055,16 +1060,16 @@ export default function Layout() {
                 <div className="flex max-w-full items-center gap-2 rounded-full border border-gold/30 bg-gold/15 py-1.5 pl-3 pr-1.5">
                   <NavLink
                     to="/subscriptions"
-                    className="min-w-0 flex-1 truncate text-sm font-medium text-gold-text"
+                    className="min-w-0 flex-1 text-sm font-medium text-gold-text"
                     title={accessCountdown?.title}
                   >
-                    {accessCountdown?.label}
+                    ⏳ Faltam <span className="font-bold">{accessCountdown?.contagem}</span> para acabar sua assinatura
                   </NavLink>
                   <NavLink
                     to="/subscriptions"
                     className="shrink-0 rounded-full bg-gold px-3 py-1 text-xs font-semibold text-black/80 transition-opacity hover:opacity-90"
                   >
-                    Renovar
+                    Renovar agora
                   </NavLink>
                 </div>
               </div>
