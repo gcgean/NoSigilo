@@ -660,7 +660,10 @@ function StoryViewer({
     // depende de nenhuma dessas duas coisas — é o que o Chat já fazia.
     <div
       className="fixed inset-0 z-[9995] flex flex-col bg-black"
-      style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+      }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -958,7 +961,10 @@ function StatsModal({
   return (
     <div
       className="fixed inset-0 z-[9996] flex items-end justify-center bg-black/70"
-      style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+      }}
       onClick={onClose}
     >
       <div
@@ -1829,7 +1835,10 @@ export default function Stories() {
         return (
           <div
             className="fixed inset-0 z-[9995] flex flex-col bg-black"
-            style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
+            style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+      }}
           >
             {/* Barras de progresso */}
             <div className="flex gap-1 px-3 pt-3 pb-2">
@@ -1922,7 +1931,10 @@ export default function Stories() {
       {editorUrl && (
         <div
           className="fixed inset-0 z-[9997] flex flex-col bg-black/95"
-          style={{ paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)' }}
+          style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+      }}
         >
           {/* topo */}
           <div className="flex shrink-0 items-center justify-between p-4">
