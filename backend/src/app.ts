@@ -5068,6 +5068,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const miniaturaBorrada = async (filename: string): Promise<string | null> => {
     const destino = path.join(blurDir, `${filename.replace(/\.[^.]+$/, '')}.jpg`);
     if (existsSync(destino)) return destino;
+    // A pasta pode ter sido apagada com o servidor de pé (limpeza de cache).
+    try { mkdirSync(blurDir, { recursive: true }); } catch { /* já existe */ }
     const origem = ensureMediaFileInExpectedDir(filename, false);
     if (!origem) return null;
     await new Promise<void>((resolve, reject) => {
