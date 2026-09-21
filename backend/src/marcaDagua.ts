@@ -25,20 +25,22 @@ export function textoDaMarca(apelido: string | null | undefined, quando = new Da
 
 /**
  * Filtro do ffmpeg que desenha a marca. A fonte vem do pacote ttf-dejavu,
- * instalado na imagem do backend (sem fonte, o drawtext não desenha nada).
+ * instalado na imagem do backend em /usr/share/fonts/dejavu (sem fonte, o drawtext não desenha nada).
  * Tamanho proporcional à largura para ficar legível tanto em foto pequena
  * quanto em vídeo grande.
  */
 export function filtroMarcaDagua(texto: string): string {
   const seguro = texto.replace(/\\/g, '').replace(/'/g, '').replace(/:/g, '-').replace(/%/g, '');
   return [
-    "drawtext=fontfile=/usr/share/fonts/ttf-dejavu/DejaVuSans.ttf",
+    "drawtext=fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf",
     `text='${seguro}'`,
-    'fontcolor=white@0.75',
-    'fontsize=h/28',
-    'shadowcolor=black@0.6',
-    'shadowx=2',
-    'shadowy=2',
+    // Discreta de propósito: pequena e bem transparente, para identificar a
+    // origem sem atrapalhar quem está olhando a foto.
+    'fontcolor=white@0.38',
+    'fontsize=h/45',
+    'shadowcolor=black@0.35',
+    'shadowx=1',
+    'shadowy=1',
     'x=w-tw-h/40',
     'y=h-th-h/40',
   ].join(':');
