@@ -10,7 +10,7 @@ export const appService = {
     return response.data;
   },
 
-  getStats: async (): Promise<{ totalUsers: number; onlineNow: number }> => {
+  getStats: async (): Promise<{ totalUsers: number; realUsers?: number; onlineNow: number }> => {
     const response = await apiClient.get('/app/stats');
     return response.data;
   },

@@ -12,7 +12,7 @@ import { leOrigem, limpaOrigem } from '@/utils/origemCadastro';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
-import { onboardingService, authService, marcarPassoCadastro } from '@/services/api';
+import { onboardingService, authService, appService, marcarPassoCadastro } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { CitySearch } from '@/components/CitySearch';
@@ -74,9 +74,9 @@ function defaultLookingFor(gender: string): string[] {
 
 // ─── Social proof ticker ───────────────────────────────────────────────────────
 
+// Frases fixas saíram: no lugar entra o total real de perfis cadastrados,
+// buscado do servidor. As duas últimas continuam porque são fato, não número.
 const SOCIAL_PROOFS = [
-  { icon: '✨', text: '247 pessoas se cadastraram hoje' },
-  { icon: '📍', text: '18 casais ativos na plataforma agora' },
   { icon: '🔒', text: 'Seu perfil é 100% privado por padrão' },
   { icon: '🔥', text: 'Conexões reais, sem julgamentos' },
 ];
@@ -289,6 +289,14 @@ export default function Register() {
       });
     }
   }, [searchParams, toast]);
+
+  // Total real de perfis cadastrados na plataforma.
+  const [totalPerfis, setTotalPerfis] = useState<number | null>(null);
+  useEffect(() => {
+    appService.getStats()
+      .then((s: any) => setTotalPerfis(Number(s?.realUsers ?? s?.totalUsers ?? 0) || null))
+      .catch(() => setTotalPerfis(null));
+  }, []);
 
   // ── Social proof ticker ───────────────────────────────────────────────────
   useEffect(() => {
@@ -650,7 +658,9 @@ export default function Register() {
           <div className="mb-5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-primary/15 bg-primary/8 px-3.5 py-2.5">
             <span className="shrink-0 animate-pulse text-xs text-primary">●</span>
             <span className="truncate text-sm text-muted-foreground">
-              {SOCIAL_PROOFS[proofIndex].icon} {SOCIAL_PROOFS[proofIndex].text}
+              {totalPerfis
+                ? `👥 ${totalPerfis.toLocaleString('pt-BR')} perfis já cadastrados na plataforma`
+                : `${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
             </span>
           </div>
 

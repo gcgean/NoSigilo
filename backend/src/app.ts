@@ -5198,8 +5198,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const totalRow = await queryOne(db, `SELECT COUNT(*) as c FROM users WHERE is_banned = 0 AND deactivated_by_admin = 0`, []);
       const presenceSvc = req.app.get('presence');
       const onlineNow = presenceSvc?.countOnline ? Number(presenceSvc.countOnline()) : 0;
+      // realUsers é o número que aparece para o visitante: fora perfis de
+      // vitrine e contas excluídas. totalUsers segue igual para não mexer nos
+      // painéis que já o usam.
+      const reaisRow = await queryOne(
+        db,
+        `SELECT COUNT(*) as c FROM users
+          WHERE is_banned = 0 AND deactivated_by_admin = 0
+            AND deleted_at IS NULL AND COALESCE(is_showcase,0) = 0`,
+        []
+      );
       res.json({
         totalUsers: Number((totalRow as any)?.c || 0),
+        realUsers: Number((reaisRow as any)?.c || 0),
         onlineNow,
       });
     } catch {
