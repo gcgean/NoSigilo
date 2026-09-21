@@ -40,6 +40,30 @@ const allOptions = [...primaryOptions, ...otherOptions];
 
 // Derive a sensible default lookingFor from the profile type so the user
 // doesn't need to fill an extra step — they can refine it inside the platform.
+// Respostas do "Espiar" na página inicial (estado e quem a pessoa procura).
+// Chegam pela URL e também ficam na sessão, caso ela navegue no meio do caminho.
+function lerEspiar(params: URLSearchParams): { uf: string; interesse: string } {
+  const daUrl = { uf: (params.get('uf') || '').toUpperCase(), interesse: params.get('interesse') || '' };
+  if (daUrl.uf || daUrl.interesse) return daUrl;
+  try {
+    const bruto = sessionStorage.getItem('nosigilo:espiar');
+    if (bruto) {
+      const salvo = JSON.parse(bruto);
+      return { uf: String(salvo?.uf || '').toUpperCase(), interesse: String(salvo?.interesse || '') };
+    }
+  } catch { /* sessão indisponível */ }
+  return { uf: '', interesse: '' };
+}
+
+// O que a pessoa respondeu no Espiar vale mais que o padrão por tipo de perfil.
+function lookingForDoEspiar(interesse: string, gender: string): string[] {
+  if (interesse === 'Casal (Ele/Ela)') return ['Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)'];
+  if (interesse === 'Mulher') return ['Mulher'];
+  if (interesse === 'Homem') return ['Homem'];
+  if (interesse === 'outros') return ['Transexual', 'Crossdresser (CD)', 'Travesti'];
+  return defaultLookingFor(gender);
+}
+
 function defaultLookingFor(gender: string): string[] {
   if (gender === 'Mulher') return ['Casal (Ele/Ela)', 'Homem'];
   if (gender === 'Homem')  return ['Casal (Ele/Ela)', 'Mulher'];
@@ -240,6 +264,15 @@ export default function Register() {
     // Depois do render, para o campo já existir quando pedirmos o foco.
     window.setTimeout(() => refDoCampo[campo]?.current?.focus(), 60);
   };
+
+  // Estado já preenchido a partir do Espiar — um campo a menos para digitar.
+  const [respostasEspiar] = useState(() => lerEspiar(new URLSearchParams(window.location.search)));
+  useEffect(() => {
+    if (respostasEspiar.uf && !formData.state) {
+      setFormData((atual) => ({ ...atual, state: respostasEspiar.uf }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Medição do funil: uma marcação por abertura da tela de cadastro.
   useEffect(() => {
@@ -504,7 +537,7 @@ export default function Register() {
       gender: formData.gender,
       city: formData.city || undefined,
       state: formData.state || undefined,
-      lookingFor: defaultLookingFor(formData.gender),
+      lookingFor: lookingForDoEspiar(respostasEspiar.interesse, formData.gender),
     };
 
     const attemptRegister = async (attempt: number): Promise<Awaited<ReturnType<typeof register>>> => {

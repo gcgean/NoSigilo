@@ -396,6 +396,25 @@
   filter: grayscale(0.2);
 }
 
+.landing-quick-register-peek {
+  margin-top: 0.75rem;
+  width: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 0.9rem;
+  background: transparent;
+  padding: 0.7rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.landing-quick-register-peek:hover {
+  border-color: rgba(236, 72, 153, 0.7);
+  background: rgba(236, 72, 153, 0.08);
+}
+
 .landing-quick-register-login {
   display: flex;
   align-items: center;

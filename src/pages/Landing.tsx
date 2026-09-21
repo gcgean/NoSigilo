@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import EspiarModal from '@/components/EspiarModal';
 import BrandLogo from '@/components/BrandLogo';
 import { appService } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,6 +93,7 @@ export default function Landing() {
   const [subscriptionsEnabled, setSubscriptionsEnabled] = useState(true);
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [espiarAberto, setEspiarAberto] = useState(false);
   // O header vira sólido só depois de passar o hero — em cima da foto ele
   // continua transparente, como sempre foi.
   const [headerSolid, setHeaderSolid] = useState(false);
@@ -327,6 +329,14 @@ export default function Landing() {
                 Criar meu perfil grátis
                 <ArrowRight data-icon="inline-end" />
               </Button>
+
+              <button
+                type="button"
+                onClick={() => setEspiarAberto(true)}
+                className="landing-quick-register-peek"
+              >
+                👀 Espiar quem está na minha região
+              </button>
 
               <p className="landing-quick-register-login">
                 Já tenho cadastro
@@ -602,6 +612,8 @@ export default function Landing() {
           <p>© {new Date().getFullYear()} NoSigilo.net</p>
         </div>
       </footer>
+
+      <EspiarModal aberto={espiarAberto} aoFechar={() => setEspiarAberto(false)} />
     </div>
   );
 }

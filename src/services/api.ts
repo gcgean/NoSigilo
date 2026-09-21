@@ -973,6 +973,20 @@ export type VisitantesRelatorio = {
   porDominio: VisitantesRelatorio['porOrigem'];
 };
 
+export type RegiaoPublica = {
+  uf: string;
+  cadastrados: number;
+  novos30Dias: number;
+  porTipo: Array<{ tipo: string; total: number }>;
+};
+
+export const regiaoPublicaService = {
+  porUf: async (uf: string): Promise<RegiaoPublica> => {
+    const response = await apiClient.get('/public/regiao', { params: { uf } });
+    return response.data;
+  },
+};
+
 // Marca a etapa alcançada no cadastro. Só o nome da etapa: nada digitado.
 export const marcarPassoCadastro = (evento: string) => {
   void apiClient.post('/analytics/signup-step', { evento }).catch(() => {});

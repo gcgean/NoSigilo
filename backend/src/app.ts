@@ -5051,6 +5051,39 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ subscriptionsEnabled });
   });
 
+  // Prova social por estado para quem ainda não tem conta: só CONTAGEM de
+  // cadastros reais (perfis de vitrine fora). Nenhuma foto, nome ou perfil sai
+  // daqui — é o que o "Espiar" mostra antes do cadastro.
+  app.get('/api/public/regiao', async (req, res) => {
+    try {
+      const uf = String(req.query.uf || '').trim().toUpperCase().slice(0, 2);
+      if (!/^[A-Z]{2}$/.test(uf)) { res.status(400).json({ error: 'uf_invalida' }); return; }
+      const vivos = `is_banned = 0 AND COALESCE(is_deactivated,0) = 0 AND deleted_at IS NULL AND COALESCE(is_showcase,0) = 0`;
+      const totalRow = (await queryOne(db, `SELECT COUNT(*) AS c FROM users WHERE ${vivos} AND UPPER(COALESCE(state,'')) = ?`, [uf])) as any;
+      const porTipo = (await queryAll(
+        db,
+        `SELECT COALESCE(NULLIF(gender,''),'Outros') AS tipo, COUNT(*) AS c
+           FROM users WHERE ${vivos} AND UPPER(COALESCE(state,'')) = ?
+          GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
+        [uf]
+      )) as any[];
+      const novosRow = (await queryOne(
+        db,
+        `SELECT COUNT(*) AS c FROM users WHERE ${vivos} AND UPPER(COALESCE(state,'')) = ? AND created_at >= ?`,
+        [uf, new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()]
+      )) as any;
+      res.json({
+        uf,
+        cadastrados: Number(totalRow?.c || 0),
+        novos30Dias: Number(novosRow?.c || 0),
+        porTipo: porTipo.map((l) => ({ tipo: String(l.tipo), total: Number(l.c || 0) })),
+      });
+    } catch (error) {
+      console.error('[public/regiao]', error);
+      res.status(500).json({ error: 'regiao_indisponivel' });
+    }
+  });
+
   app.get('/api/app/stats', async (req, res) => {
     try {
       const totalRow = await queryOne(db, `SELECT COUNT(*) as c FROM users WHERE is_banned = 0 AND deactivated_by_admin = 0`, []);
