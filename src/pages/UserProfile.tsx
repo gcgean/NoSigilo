@@ -477,6 +477,8 @@ export default function UserProfile() {
   const [isRequesting, setIsRequesting] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  // Guarda de onde veio o paywall, para o texto explicar o que é grátis.
+  const [paywallMotivo, setPaywallMotivo] = useState<'chat' | undefined>(undefined);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [isLoadingTestimonials, setIsLoadingTestimonials] = useState(false);
   const [userVideos, setUserVideos] = useState<Array<{ id: string; postId: string; url: string; content: string; createdAt: string }>>([]);
@@ -803,6 +805,7 @@ export default function UserProfile() {
   
   const startChat = async () => {
     if (!premiumAccess) {
+      setPaywallMotivo('chat');
       setPaywallOpen(true);
       return;
     }
@@ -1211,7 +1214,7 @@ export default function UserProfile() {
           </div>
         </div>
 
-        <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+        <ReferralPaywallModal open={paywallOpen} contexto={paywallMotivo} onClose={() => { setPaywallOpen(false); setPaywallMotivo(undefined); }} />
       </div>
     );
   }
@@ -2110,7 +2113,7 @@ export default function UserProfile() {
         </DialogContent>
       </Dialog>
 
-      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <ReferralPaywallModal open={paywallOpen} contexto={paywallMotivo} onClose={() => { setPaywallOpen(false); setPaywallMotivo(undefined); }} />
 
       {userId ? (
         <FollowListDialog

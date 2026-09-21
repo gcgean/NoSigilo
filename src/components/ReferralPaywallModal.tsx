@@ -9,6 +9,12 @@ import InviteModal from '@/components/InviteModal';
 interface Props {
   open: boolean;
   onClose: () => void;
+  /**
+   * De onde o paywall foi aberto. Com 'chat' explicamos o que continua grátis:
+   * gente saía achando que "tudo é pago" sem saber que comentar e ver perfis
+   * são livres, e quem acha que nada funciona não assina.
+   */
+  contexto?: 'chat';
 }
 
 // Steps 1→10d, 2→20d, 3→30d (each tier grants +10d, accumulates)
@@ -18,7 +24,7 @@ const INVITE_STEPS = [
   { invites: 3, totalDays: 30 },
 ];
 
-export default function ReferralPaywallModal({ open, onClose }: Props) {
+export default function ReferralPaywallModal({ open, onClose, contexto }: Props) {
   const [validatedCount, setValidatedCount] = useState<number | null>(null);
   const [showSubscribeModal, setShowSubscribeModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -68,10 +74,18 @@ export default function ReferralPaywallModal({ open, onClose }: Props) {
               <Crown className="w-5 h-5 text-yellow-300" />
               <span className="text-sm font-semibold text-white/90 uppercase tracking-wide">Premium bloqueado</span>
             </div>
-            <h2 className="text-2xl font-bold mb-1">Desbloqueie o acesso</h2>
+            <h2 className="text-2xl font-bold mb-1">
+              {contexto === 'chat' ? 'A conversa é para assinantes' : 'Desbloqueie o acesso'}
+            </h2>
             <p className="text-white/80 text-sm">
               Indique amigos e ganhe dias grátis — ou assine um plano Premium.
             </p>
+            {contexto === 'chat' && (
+              <p className="mt-3 rounded-xl bg-white/15 px-3 py-2 text-sm text-white">
+                ✅ <strong>Continua grátis:</strong> ver perfis, ver fotos, curtir, comentar e publicar.
+                A assinatura libera o chat.
+              </p>
+            )}
           </div>
 
           {/* Cards */}

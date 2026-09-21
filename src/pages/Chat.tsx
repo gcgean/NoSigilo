@@ -57,6 +57,9 @@ const PRECO_POR_DIA = '33 centavos por dia'; // 9,90 / 30
 // ("leia por R$ 9,90"), que soa como cobrança por mensagem. Ele sempre vem com
 // "assinatura mensal" e com o que ela libera: todas as conversas.
 const LINHA_ASSINATURA = `Assinatura mensal · libera todas as conversas · cancele quando quiser`;
+// Quem topa no bloqueio do chat sai achando que "tudo é pago". Dizer o que
+// continua livre evita a conta ser abandonada por engano.
+const LINHA_GRATIS = 'Ver perfis, fotos, curtir e comentar continuam grátis — a assinatura libera o chat.';
 
 /** "Olá, João! " a partir do nome do perfil de quem está lendo, ou vazio.
  *  Só o primeiro nome, com inicial maiúscula ("joao silva" vira "Joao" — o
@@ -1774,6 +1777,7 @@ export default function Chat() {
                               {saudacaoDoLeitor(user?.name)}{activeConversation?.user?.name || 'Alguém'} te escreveu. Assine o Premium por {PRECO_MENSAL}/mês para ler
                             </span>
                             <span className="block text-xs opacity-80">{LINHA_ASSINATURA}</span>
+                            <span className="mt-1 block text-xs font-medium text-emerald-600">✅ {LINHA_GRATIS}</span>
                           </span>
                         </button>
                       ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
@@ -1799,6 +1803,7 @@ export default function Chat() {
                                 : `Assine o Premium por ${PRECO_MENSAL}/mês para ler`}
                             </p>
                             <p className="text-xs text-muted-foreground">{LINHA_ASSINATURA}</p>
+                            <p className="mt-1 text-xs font-medium text-emerald-600">✅ {LINHA_GRATIS}</p>
                           </div>
                         </button>
                       ) : (
