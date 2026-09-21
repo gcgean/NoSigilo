@@ -212,10 +212,10 @@ export default function Landing() {
   const handleEnter = () => navigate('/login');
   const handleQuickRegister = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedProfile) return;
-
+    // Sem escolher nada o botão continua valendo: a pessoa escolhe o perfil
+    // no primeiro passo do cadastro. Botão desativado só fazia ela desistir.
     navigate(
-      selectedProfile === 'other'
+      !selectedProfile || selectedProfile === 'other'
         ? '/register'
         : `/register?profile=${encodeURIComponent(selectedProfile)}`
     );
@@ -341,7 +341,6 @@ export default function Landing() {
                 type="submit"
                 size="lg"
                 className="landing-primary-button landing-quick-register-submit"
-                disabled={!selectedProfile}
               >
                 Criar meu perfil grátis
                 <ArrowRight data-icon="inline-end" />
