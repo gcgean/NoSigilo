@@ -603,9 +603,8 @@ export default function Register() {
       limparRascunho(); // cadastro concluído: nada mais a restaurar
       marcarPassoCadastro('criou_conta');
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
-      // Homem cai direto na aba de Busca (descoberta de perfis = maior gatilho p/ assinar).
-      const isMan = String(formData.gender || '').toLowerCase().startsWith('homem');
-      navigate(isMan ? '/search' : '/feed');
+      // Todo cadastro novo cai no Feed, independente do tipo de perfil.
+      navigate('/feed');
     } catch (error) {
       const info = getApiErrorInfo(error, {
         title: 'Erro ao criar conta',

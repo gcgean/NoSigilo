@@ -54,11 +54,9 @@ export default function AuthCallback() {
           );
         }
       }
-      // Homem recém-cadastrado cai direto na aba de Busca (descoberta de perfis =
-      // maior gatilho p/ assinar). Demais vão para o feed.
-      const isMan = String((user as any)?.gender || '').toLowerCase().startsWith('homem');
+      // Todo cadastro novo cai no Feed, qualquer que seja o tipo de perfil.
       // Force full page reload so AuthContext re-initialises with new token/user
-      window.location.replace(isNew && isMan ? '/search' : '/feed');
+      window.location.replace('/feed');
     }).catch(() => {
       // Even if getMe fails, the token is stored — the app will retry on load
       window.location.replace('/feed');
