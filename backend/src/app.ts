@@ -5083,7 +5083,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     return existsSync(destino) ? destino : null;
   };
 
-  app.get('/espiar-foto/:filename', async (req, res) => {
+  app.get('/api/public/espiar-foto/:filename', async (req, res) => {
     try {
       const filename = String(req.params.filename || '');
       if (!/^[a-zA-Z0-9._-]+$/.test(filename)) { res.status(400).end(); return; }
@@ -5138,7 +5138,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           cidade: l.city ? String(l.city) : null,
           estado: l.state ? String(l.state) : uf,
           tipo: l.gender ? String(l.gender) : null,
-          foto: arquivoDoAvatar(l.avatar) ? `/espiar-foto/${arquivoDoAvatar(l.avatar)}` : null,
+          foto: arquivoDoAvatar(l.avatar) ? `/api/public/espiar-foto/${arquivoDoAvatar(l.avatar)}` : null,
         })).filter((p) => p.foto),
       });
     } catch (error) {

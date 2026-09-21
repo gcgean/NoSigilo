@@ -991,11 +991,8 @@ export type PerfilEspiado = {
 export const espiarService = {
   perfis: async (uf: string, interesse?: string): Promise<{ uf: string; perfis: PerfilEspiado[] }> => {
     const response = await apiClient.get('/public/espiar', { params: { uf, interesse } });
-    const base = String(apiClient.defaults.baseURL || '').replace(/\/api\/?$/, '');
-    return {
-      ...response.data,
-      perfis: (response.data?.perfis ?? []).map((p: PerfilEspiado) => ({ ...p, foto: p.foto ? `${base}${p.foto}` : null })),
-    };
+    // A foto já vem no caminho /api/public/..., servido pelo mesmo backend.
+    return response.data;
   },
   regiao: async (uf: string, interesse?: string): Promise<RegiaoPublica> => {
     const response = await apiClient.get('/public/regiao', { params: { uf, interesse } });
