@@ -5051,6 +5051,102 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ subscriptionsEnabled });
   });
 
+  // ─── Espiar: vitrine para quem ainda não tem conta ─────────────────────────
+  // Mostra perfis REAIS da região, mas a foto que sai daqui é uma miniatura
+  // borrada gerada no servidor (32px + desfoque). O arquivo original nunca é
+  // enviado para quem não está logado, então não há borrão para "desligar" no
+  // navegador. Nome sai só o primeiro; nada de e-mail, bio ou contato.
+  const blurDir = path.join(storageRootDir, 'blur');
+  try { mkdirSync(blurDir, { recursive: true }); } catch { /* já existe */ }
+
+  const arquivoDoAvatar = (avatar: string | null | undefined) => {
+    const nome = String(avatar || '').split('/').pop() || '';
+    return /^[a-zA-Z0-9._-]+$/.test(nome) ? nome : '';
+  };
+
+  // Gera (uma vez) a versão borrada e devolve o caminho local dela.
+  const miniaturaBorrada = async (filename: string): Promise<string | null> => {
+    const destino = path.join(blurDir, `${filename.replace(/\.[^.]+$/, '')}.jpg`);
+    if (existsSync(destino)) return destino;
+    const origem = ensureMediaFileInExpectedDir(filename, false);
+    if (!origem) return null;
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn('ffmpeg', [
+        '-y', '-i', origem,
+        '-vf', 'scale=32:-1,boxblur=3:2,scale=360:-1',
+        '-frames:v', '1', '-q:v', '14',
+        destino,
+      ]);
+      proc.on('error', reject);
+      proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
+    });
+    return existsSync(destino) ? destino : null;
+  };
+
+  app.get('/espiar-foto/:filename', async (req, res) => {
+    try {
+      const filename = String(req.params.filename || '');
+      if (!/^[a-zA-Z0-9._-]+$/.test(filename)) { res.status(400).end(); return; }
+      // Só avatar público de perfil real: nada de mídia privada entra aqui.
+      const dono = (await queryOne(
+        db,
+        `SELECT id FROM users
+          WHERE avatar LIKE ? AND is_banned = 0 AND COALESCE(is_deactivated,0) = 0
+            AND deleted_at IS NULL AND COALESCE(is_showcase,0) = 0 LIMIT 1`,
+        [`%${filename}`]
+      )) as any;
+      if (!dono) { res.status(404).end(); return; }
+      const caminho = await miniaturaBorrada(filename);
+      if (!caminho) { res.status(404).end(); return; }
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.type('image/jpeg');
+      createReadStream(caminho).pipe(res);
+    } catch (error) {
+      console.error('[espiar-foto]', error);
+      res.status(404).end();
+    }
+  });
+
+  app.get('/api/public/espiar', async (req, res) => {
+    try {
+      const uf = String(req.query.uf || '').trim().toUpperCase().slice(0, 2);
+      if (!/^[A-Z]{2}$/.test(uf)) { res.status(400).json({ error: 'uf_invalida' }); return; }
+      const generosDoInteresse: Record<string, string[]> = {
+        'Casal (Ele/Ela)': ['Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)'],
+        Mulher: ['Mulher'],
+        Homem: ['Homem'],
+        outros: ['Transexual', 'Crossdresser (CD)', 'Travesti'],
+      };
+      const generos = generosDoInteresse[String(req.query.interesse || '')] || null;
+      const filtroGenero = generos ? ` AND u.gender IN (${generos.map(() => '?').join(',')})` : '';
+      const linhas = (await queryAll(
+        db,
+        `SELECT u.name, u.city, u.state, u.gender, u.avatar
+           FROM users u
+          WHERE u.is_banned = 0 AND COALESCE(u.is_deactivated,0) = 0 AND u.deleted_at IS NULL
+            AND COALESCE(u.is_showcase,0) = 0 AND UPPER(COALESCE(u.state,'')) = ?
+            AND u.avatar IS NOT NULL AND u.avatar <> ''${filtroGenero}
+          ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 1 ELSE 0 END, u.last_seen_at DESC
+          LIMIT 12`,
+        generos ? [uf, ...generos] : [uf]
+      )) as any[];
+
+      res.json({
+        uf,
+        perfis: linhas.map((l) => ({
+          nome: String(l.name || '').trim().split(/\s+/)[0] || 'Membro',
+          cidade: l.city ? String(l.city) : null,
+          estado: l.state ? String(l.state) : uf,
+          tipo: l.gender ? String(l.gender) : null,
+          foto: arquivoDoAvatar(l.avatar) ? `/espiar-foto/${arquivoDoAvatar(l.avatar)}` : null,
+        })).filter((p) => p.foto),
+      });
+    } catch (error) {
+      console.error('[public/espiar]', error);
+      res.status(500).json({ error: 'espiar_indisponivel' });
+    }
+  });
+
   // Prova social por estado para quem ainda não tem conta: só CONTAGEM de
   // cadastros reais (perfis de vitrine fora). Nenhuma foto, nome ou perfil sai
   // daqui — é o que o "Espiar" mostra antes do cadastro.
@@ -5059,7 +5155,20 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const uf = String(req.query.uf || '').trim().toUpperCase().slice(0, 2);
       if (!/^[A-Z]{2}$/.test(uf)) { res.status(400).json({ error: 'uf_invalida' }); return; }
       const vivos = `is_banned = 0 AND COALESCE(is_deactivated,0) = 0 AND deleted_at IS NULL AND COALESCE(is_showcase,0) = 0`;
-      const totalRow = (await queryOne(db, `SELECT COUNT(*) AS c FROM users WHERE ${vivos} AND UPPER(COALESCE(state,'')) = ?`, [uf])) as any;
+      // A contagem já sai filtrada pelo tipo de perfil que a pessoa procura.
+      const generosDoInteresse: Record<string, string[]> = {
+        'Casal (Ele/Ela)': ['Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)'],
+        Mulher: ['Mulher'],
+        Homem: ['Homem'],
+        outros: ['Transexual', 'Crossdresser (CD)', 'Travesti'],
+      };
+      const generos = generosDoInteresse[String(req.query.interesse || '')] || null;
+      const filtroGenero = generos ? ` AND gender IN (${generos.map(() => '?').join(',')})` : '';
+      const totalRow = (await queryOne(
+        db,
+        `SELECT COUNT(*) AS c FROM users WHERE ${vivos} AND UPPER(COALESCE(state,'')) = ?${filtroGenero}`,
+        generos ? [uf, ...generos] : [uf]
+      )) as any;
       const porTipo = (await queryAll(
         db,
         `SELECT COALESCE(NULLIF(gender,''),'Outros') AS tipo, COUNT(*) AS c

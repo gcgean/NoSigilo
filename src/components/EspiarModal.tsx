@@ -32,13 +32,16 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
 
   if (!aberto) return null;
 
-  const consultar = async (estado: string) => {
+  // Só consulta quando já sabemos estado e interesse: o número mostrado é o de
+  // perfis daquele tipo no estado da pessoa.
+  const consultar = async (estado: string, tipo: string) => {
     setUf(estado);
+    setInteresse(tipo);
     setDados(null);
-    if (!estado) return;
+    if (!estado || !tipo) return;
     setCarregando(true);
     try {
-      setDados(await regiaoPublicaService.porUf(estado));
+      setDados(await regiaoPublicaService.porUf(estado, tipo));
     } catch {
       setDados(null);
     } finally {
@@ -50,6 +53,14 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
     try {
       sessionStorage.setItem(CHAVE_ESPIAR, JSON.stringify({ uf, interesse }));
     } catch { /* sessão bloqueada: segue sem guardar */ }
+    const params = new URLSearchParams();
+    if (uf) params.set('uf', uf);
+    if (interesse) params.set('interesse', interesse);
+    navigate(`/espiar?${params.toString()}`);
+  };
+
+  const irDireto = () => {
+    try { sessionStorage.setItem(CHAVE_ESPIAR, JSON.stringify({ uf, interesse })); } catch { /* ok */ }
     const params = new URLSearchParams();
     if (uf) params.set('uf', uf);
     if (interesse) params.set('interesse', interesse);
@@ -77,7 +88,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
         </label>
         <select
           value={uf}
-          onChange={(e) => void consultar(e.target.value)}
+          onChange={(e) => void consultar(e.target.value, interesse)}
           className="mb-4 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
         >
           <option value="">Escolha seu estado</option>
@@ -92,7 +103,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
             <button
               key={i.valor}
               type="button"
-              onClick={() => setInteresse(i.valor)}
+              onClick={() => void consultar(uf, i.valor)}
               className={
                 interesse === i.valor
                   ? 'rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground'
@@ -116,17 +127,9 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
               <MapPin className="h-3.5 w-3.5" /> {dados.uf}
             </p>
             <p className="mt-1 text-3xl font-bold text-brand-pink">{dados.cadastrados.toLocaleString('pt-BR')}</p>
-            <p className="text-sm">pessoas já cadastradas no seu estado</p>
-            {dados.novos30Dias > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {dados.novos30Dias.toLocaleString('pt-BR')} entraram nos últimos 30 dias
-              </p>
-            )}
-            {dados.porTipo.length > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {dados.porTipo.slice(0, 3).map((t) => `${t.total.toLocaleString('pt-BR')} ${t.tipo}`).join(' · ')}
-              </p>
-            )}
+            <p className="text-sm">
+              {INTERESSES.find((i) => i.valor === interesse)?.rotulo.toLowerCase() ?? 'perfis'} cadastrados no seu estado
+            </p>
           </div>
         )}
 
@@ -136,8 +139,15 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
           disabled={!uf || !interesse}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
         >
-          Criar minha conta grátis
+          Espiar agora
           <ArrowRight className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={irDireto}
+          className="mt-2 w-full rounded-xl px-4 py-2 text-sm text-muted-foreground hover:bg-secondary"
+        >
+          Já quero criar minha conta grátis
         </button>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5" />

@@ -1,3 +1,4 @@
+import Espiar from '@/pages/Espiar';
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -94,6 +95,7 @@ const App = () => (
                     {/* Public Routes */}
                     <Route path="/" element={<Landing />} />
                     <Route path="/descobrir" element={<CampaignLanding />} />
+                    <Route path="/espiar" element={<Espiar />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/register" element={<Register />} />

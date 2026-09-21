@@ -980,9 +980,32 @@ export type RegiaoPublica = {
   porTipo: Array<{ tipo: string; total: number }>;
 };
 
+export type PerfilEspiado = {
+  nome: string;
+  cidade: string | null;
+  estado: string;
+  tipo: string | null;
+  foto: string | null;
+};
+
+export const espiarService = {
+  perfis: async (uf: string, interesse?: string): Promise<{ uf: string; perfis: PerfilEspiado[] }> => {
+    const response = await apiClient.get('/public/espiar', { params: { uf, interesse } });
+    const base = String(apiClient.defaults.baseURL || '').replace(/\/api\/?$/, '');
+    return {
+      ...response.data,
+      perfis: (response.data?.perfis ?? []).map((p: PerfilEspiado) => ({ ...p, foto: p.foto ? `${base}${p.foto}` : null })),
+    };
+  },
+  regiao: async (uf: string, interesse?: string): Promise<RegiaoPublica> => {
+    const response = await apiClient.get('/public/regiao', { params: { uf, interesse } });
+    return response.data;
+  },
+};
+
 export const regiaoPublicaService = {
-  porUf: async (uf: string): Promise<RegiaoPublica> => {
-    const response = await apiClient.get('/public/regiao', { params: { uf } });
+  porUf: async (uf: string, interesse?: string): Promise<RegiaoPublica> => {
+    const response = await apiClient.get('/public/regiao', { params: { uf, interesse } });
     return response.data;
   },
 };
