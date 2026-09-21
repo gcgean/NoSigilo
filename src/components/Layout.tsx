@@ -34,6 +34,7 @@ import {
   Plus,
   LifeBuoy,
   UsersRound,
+  Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -216,6 +217,19 @@ export default function Layout() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const [showPwaInstallTutorial, setShowPwaInstallTutorial] = useState(false);
+  // iPhone/iPad no Safari: não existe botão automático de instalar, então o
+  // caminho é sempre manual — por isso o convite tem prioridade e há um item
+  // fixo no menu, que não some quando a pessoa dispensa o banner.
+  const [ehIos] = useState(() => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const iPadOS = /Macintosh/.test(ua) && (navigator as any).maxTouchPoints > 1;
+    return /iPad|iPhone|iPod/.test(ua) || iPadOS;
+  });
+  const [appInstalado] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia?.('(display-mode: standalone)')?.matches === true || (window.navigator as any)?.standalone === true;
+  });
   const [interestsNudgeDismissed, setInterestsNudgeDismissed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
     return localStorage.getItem(INTERESTS_NUDGE_DISMISS_KEY) === today;
@@ -888,6 +902,17 @@ export default function Layout() {
               </NavLink>
             )}
 
+            {!appInstalado && (
+              <button
+                type="button"
+                onClick={() => setShowPwaInstallTutorial(true)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground transition-colors hover:text-primary hover:bg-primary/10"
+              >
+                <Smartphone className="w-5 h-5" />
+                <span className="font-medium">Instalar o app</span>
+              </button>
+            )}
+
             <NavLink
               to="/settings"
               className={cn(
@@ -967,7 +992,7 @@ export default function Layout() {
                 </div>
               </div>
             ) : null}
-            <BannerSlot id="pwa-install" priority={30} eligible={!isMobileChatRoute && showPwaInstallPrompt}>
+            <BannerSlot id="pwa-install" priority={ehIos ? 20 : 30} eligible={!isMobileChatRoute && showPwaInstallPrompt}>
               <div className="mb-4">
                 <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
