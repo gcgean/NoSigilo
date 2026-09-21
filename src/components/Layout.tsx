@@ -2,6 +2,7 @@ import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'r
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
+import { appService } from '@/services/api';
 import { BannerSlot, FeedBannerQueueProvider } from '@/contexts/FeedBannerQueueContext';
 import {
   Home,
@@ -628,10 +629,11 @@ export default function Layout() {
   };
 
   // Usa pelo navegador há mais de uma semana: o item do menu fica destacado.
+  // trialStartedAt é gravado no cadastro — serve como idade da conta.
   const noNavegadorHaSemanas =
     !appInstalado &&
-    !!user?.createdAt &&
-    Date.now() - new Date(user.createdAt).getTime() > 7 * 24 * 60 * 60 * 1000;
+    !!user?.trialStartedAt &&
+    Date.now() - new Date(user.trialStartedAt).getTime() > 7 * 24 * 60 * 60 * 1000;
 
   const hasEmptyInterests =
     !interestsNudgeDismissed &&

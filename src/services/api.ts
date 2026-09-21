@@ -1064,6 +1064,13 @@ export type RelatorioExclusoes = {
   }>;
 };
 
+export const adminDenunciasIaService = {
+  triagem: async (): Promise<{ analisadas: number; graves: number }> => {
+    const response = await apiClient.post('/admin/reports/triagem');
+    return response.data;
+  },
+};
+
 export const notaDoAppService = {
   pendente: async (): Promise<{ perguntar: boolean }> => {
     const response = await apiClient.get('/app-rating/pendente');
@@ -1744,6 +1751,8 @@ export const adminService = {
         byCity: { city: string; uf?: string; count: number }[];
         byState: { state: string; count: number }[];
         byOrigin: { origin: string; count: number }[];
+        // O backend manda desde a origem por pagina de SEO; faltava no tipo.
+        byPage?: { page: string; count: number }[];
       };
       activation: {
         addedPhoto: number; addedVideo: number; likedProfile: number;

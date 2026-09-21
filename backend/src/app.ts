@@ -17,6 +17,7 @@ import { queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, SENDER_ID_IA, suporteEstaDigitando, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
+import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
@@ -16878,7 +16879,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          FROM reports r
          LEFT JOIN users u ON u.id = r.reporter_user_id
          WHERE r.status = ?
-         ORDER BY r.created_at DESC
+         ORDER BY COALESCE(r.ia_gravidade, 0) DESC, r.created_at DESC
          LIMIT 100`,
         [status]
       );
@@ -16895,6 +16896,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           status: String(r.status),
           createdAt: String(r.created_at),
           resolvedAt: r.resolved_at ? String(r.resolved_at) : null,
+          ia: r.ia_acao
+            ? {
+                acao: String(r.ia_acao),
+                gravidade: Number(r.ia_gravidade || 0),
+                justificativa: r.ia_justificativa ? String(r.ia_justificativa) : '',
+                em: r.ia_analisado_em ? String(r.ia_analisado_em) : null,
+              }
+            : null,
         }))
       );
     } catch (err) {
@@ -16902,6 +16911,90 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(500).json({ error: 'internal' });
     }
   });
+
+  // Triagem das denúncias pendentes pela IA. Ela só recomenda: a punição
+  // continua dependendo de um clique do admin.
+  async function triarDenunciasPendentes(limite = 20): Promise<{ analisadas: number; graves: number }> {
+    const pendentes = (await queryAll(
+      db,
+      `SELECT r.id, r.target_type, r.target_id, r.target_name, r.reason, r.details
+         FROM reports r
+        WHERE r.status = 'pending' AND r.ia_analisado_em IS NULL
+        ORDER BY r.created_at DESC LIMIT ?`,
+      [limite]
+    )) as any[];
+
+    let analisadas = 0;
+    let graves = 0;
+    for (const d of pendentes) {
+      const alvoId = String(d.target_id || '');
+      const tipo = String(d.target_type || '');
+      const conteudo = await textoDoAlvo((sql, params) => queryOne(db, sql, params), tipo, alvoId);
+      const anteriores = (await queryOne(
+        db,
+        "SELECT COUNT(*) AS c FROM reports WHERE target_id = ? AND id <> ?",
+        [alvoId, String(d.id)]
+      )) as any;
+      // Dados do dono do conteúdo, quando dá para chegar nele.
+      const dono = tipo === 'user'
+        ? ((await queryOne(db, 'SELECT created_at, is_premium FROM users WHERE id = ?', [alvoId])) as any)
+        : null;
+      const diasDeConta = dono?.created_at
+        ? Math.round((Date.now() - new Date(String(dono.created_at)).getTime()) / (24 * 60 * 60 * 1000))
+        : null;
+
+      const analise = await analisarDenuncia(env.DEEPSEEK_API_KEY, {
+        motivo: String(d.reason || ''),
+        detalhes: d.details ? String(d.details) : null,
+        tipoAlvo: tipo,
+        nomeAlvo: d.target_name ? String(d.target_name) : null,
+        conteudoDenunciado: conteudo,
+        denunciasAnterioresDoAlvo: Number(anteriores?.c || 0),
+        diasDeConta,
+        alvoEhAssinante: Number(dono?.is_premium || 0) === 1,
+      });
+      if (!analise) continue;
+
+      await run(
+        db,
+        'UPDATE reports SET ia_acao = ?, ia_gravidade = ?, ia_justificativa = ?, ia_analisado_em = ? WHERE id = ?',
+        [analise.acao, analise.gravidade, analise.justificativa, nowIso(), String(d.id)]
+      );
+      analisadas++;
+
+      // Gravidade máxima não espera o admin abrir o painel.
+      if (analise.gravidade >= 5) {
+        graves++;
+        void notifyAdminsTelegram(
+          { db, env },
+          `🚨 Denúncia grave (${analise.acao}): ${String(d.reason || '')}\n${analise.justificativa}\nAlvo: ${d.target_name || alvoId}`
+        ).catch(() => undefined);
+      }
+    }
+    await persist();
+    return { analisadas, graves };
+  }
+
+  app.post('/api/admin/reports/triagem', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    try {
+      if (!env.DEEPSEEK_API_KEY) {
+        res.status(400).json({ error: 'ia_sem_chave', message: 'A chave da IA não está configurada no servidor.' });
+        return;
+      }
+      const r = await triarDenunciasPendentes(20);
+      res.json(r);
+    } catch (error) {
+      console.error('[admin/reports/triagem]', error);
+      res.status(500).json({ error: 'triagem_indisponivel' });
+    }
+  });
+
+  // A cada 30 minutos a IA passa nas denúncias novas, para a fila já chegar
+  // ordenada e os casos graves avisarem no Telegram sem ninguém abrir o painel.
+  setInterval(() => {
+    if (!env.DEEPSEEK_API_KEY) return;
+    triarDenunciasPendentes(10).catch((e) => console.error('[denuncias/triagem-automatica]', e));
+  }, 30 * 60 * 1000);
 
   app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

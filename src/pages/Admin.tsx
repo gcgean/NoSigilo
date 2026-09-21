@@ -3,7 +3,7 @@ import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
-  Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle,
+  Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle, Sparkles,
   BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
-import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
+import { adminDenunciasIaService, adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { deletionReasonLabel } from '@/utils/accountDeletionReasons';
@@ -125,6 +125,15 @@ type AdminResourcesStatus = {
   };
 };
 
+// Como a recomendação da IA aparece para o admin.
+const ACOES_IA: Record<string, string> = {
+  banir: 'banir o autor',
+  advertir: 'advertir',
+  remover_conteudo: 'remover o conteúdo',
+  descartar: 'descartar',
+  revisar_humano: 'precisa de você',
+};
+
 type AdminReport = {
   id: string;
   reporterName: string;
@@ -136,6 +145,13 @@ type AdminReport = {
   details: string | null;
   status: string;
   createdAt: string;
+  // Recomendação da IA. A decisão continua sendo do admin.
+  ia?: {
+    acao: string;
+    gravidade: number;
+    justificativa: string;
+    em: string | null;
+  } | null;
 };
 
 type VisitBreakdown = {
@@ -604,6 +620,7 @@ export default function Admin() {
                   details: item.details ? String(item.details) : null,
                   status: String(item.status || 'pending'),
                   createdAt: String(item.createdAt || ''),
+                  ia: (item as any).ia ?? null,
                 };
               })
             : []
@@ -1104,6 +1121,40 @@ export default function Admin() {
       toast({ title: 'Erro ao remover da vitrine', variant: 'destructive' });
     } finally {
       setBusyUserId(null);
+    }
+  };
+
+  const [triandoDenuncias, setTriandoDenuncias] = useState(false);
+  const handleTriagemIa = async () => {
+    setTriandoDenuncias(true);
+    try {
+      const r = await adminDenunciasIaService.triagem();
+      const atualizadas = await adminService.getReports('pending').catch(() => null);
+      if (Array.isArray(atualizadas)) {
+        setReports(atualizadas.map((item: any) => ({
+          id: String(item.id || ''),
+          reporterName: String(item.reporterName || 'Usuário'),
+          reporterEmail: item.reporterEmail ? String(item.reporterEmail) : null,
+          targetType: String(item.targetType || 'user'),
+          targetId: String(item.targetId || ''),
+          targetName: item.targetName ? String(item.targetName) : null,
+          reason: String(item.reason || ''),
+          details: item.details ? String(item.details) : null,
+          status: String(item.status || 'pending'),
+          createdAt: String(item.createdAt || ''),
+          ia: item.ia ?? null,
+        })));
+      }
+      toast({
+        title: `${r.analisadas} denúncia(s) analisada(s)`,
+        description: r.graves > 0
+          ? `${r.graves} com gravidade máxima — elas subiram para o topo da fila.`
+          : 'Nenhum caso grave encontrado agora.',
+      });
+    } catch {
+      toast({ title: 'Não foi possível analisar agora', variant: 'destructive' });
+    } finally {
+      setTriandoDenuncias(false);
     }
   };
 
@@ -1866,10 +1917,23 @@ export default function Admin() {
           <div className="glass rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold">Denúncias pendentes</h3>
-              <Badge variant="outline" className="gap-1">
-                <Flag className="w-3 h-3" />
-                {reports.length} pendente(s)
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={triandoDenuncias}
+                  onClick={() => void handleTriagemIa()}
+                >
+                  {triandoDenuncias ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  Analisar com IA
+                </Button>
+                <Badge variant="outline" className="gap-1">
+                  <Flag className="w-3 h-3" />
+                  {reports.length} pendente(s)
+                </Badge>
+              </div>
             </div>
 
             {isLoading ? (
@@ -1897,7 +1961,24 @@ export default function Admin() {
                              report.reason === 'underage' ? 'Menor de idade' : 'Outro motivo'}
                           </Badge>
                           <span className="text-xs text-muted-foreground">{formatDateTime(report.createdAt)}</span>
+                          {report.ia ? (
+                            <Badge
+                              className={cn(
+                                'text-xs',
+                                report.ia.gravidade >= 5 ? 'bg-destructive text-white'
+                                  : report.ia.gravidade >= 3 ? 'bg-amber-500 text-black'
+                                    : 'bg-secondary text-secondary-foreground'
+                              )}
+                            >
+                              IA: {ACOES_IA[report.ia.acao] ?? report.ia.acao} · gravidade {report.ia.gravidade}/5
+                            </Badge>
+                          ) : null}
                         </div>
+                        {report.ia?.justificativa ? (
+                          <p className="rounded-md bg-primary/5 px-2 py-1 text-xs text-muted-foreground">
+                            🤖 {report.ia.justificativa}
+                          </p>
+                        ) : null}
                         <p className="font-medium">
                           Denunciado:{' '}
                           {report.targetId && (report.targetType === 'user' || report.targetType === 'post') ? (
