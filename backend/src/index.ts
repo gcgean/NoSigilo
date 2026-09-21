@@ -586,7 +586,8 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
   // Semeia sinal para homens novos já na subida
   seedInterestForNewUsers(db).catch(err => console.error('[scheduler/seed-interest] startup', err));
   // Correção pontual: preenche DMs órfãs (conversas de vitrine sem mensagem)
-  backfillOrphanShowcaseDMs(db).catch(err => console.error('[scheduler/backfill-dms] startup', err));
+  // Backfill de DMs órfãs desligado junto com a DM da vitrine (showcase.ts).
+  // backfillOrphanShowcaseDMs(db).catch(err => console.error('[scheduler/backfill-dms] startup', err));
   console.log('[scheduler] Started — expire premium 01:00, reengagement 08:00, weekly Mon 09:00, top-day 11:00, nightly push 19:30, online push 20:00, vitrine 09/13/17/20/23');
 }
 

@@ -181,6 +181,15 @@ function compatibleSenders(recipientToken: 'homem' | 'mulher' | 'casal' | '', lo
   });
 }
 
+/**
+ * Mensagem automática dos perfis de vitrine: PAUSADA.
+ *
+ * Visita, curtida, story e like em post continuam — o que saiu de cena é a DM
+ * de abertura, que criava uma conversa que nunca ia ter resposta do outro
+ * lado. Para religar, basta voltar para true.
+ */
+const DM_DA_VITRINE_ATIVA = false;
+
 // Aplica os sinais de interesse de 1–2 perfis de vitrine para UM usuário.
 // opts.like = curtir o perfil (match) — só quando o usuário já tem post.
 // opts.message = abrir DM. A visita é sempre feita e gera notificação "X visitou
@@ -282,7 +291,8 @@ export async function seedInterestForNewUser(
 
   // No cadastro: visita (com notificação) + DM. SEM like — o like/match só é dado
   // depois, para perfis que já postaram (runShowcaseProfileLikes).
-  const r = await applyInterestSignals(db, String(u.id), recipientToken, senders, new Date().toISOString(), { like: false, message: true });
+  // DM da vitrine PAUSADA: visita e curtida continuam, mensagem não.
+  const r = await applyInterestSignals(db, String(u.id), recipientToken, senders, new Date().toISOString(), { like: false, message: DM_DA_VITRINE_ATIVA });
   await db.persist();
   console.log(`[showcase] Sinal semeado no cadastro (${recipientToken}) ${userId}: +${r.visits} visitas, +${r.messaged} DMs`);
   return { seeded: true, ...r };
@@ -331,7 +341,7 @@ export async function seedInterestForNewUsers(
     const recipientToken = genderToken(c.gender);
     const senders = compatibleSenders(recipientToken, c.looking_for_json, showcase);
     if (senders.length === 0) continue;
-    const r = await applyInterestSignals(db, String(c.id), recipientToken, senders, nowStr, { like: false, message: true });
+    const r = await applyInterestSignals(db, String(c.id), recipientToken, senders, nowStr, { like: false, message: DM_DA_VITRINE_ATIVA });
     seeded++;
     visits += r.visits;
     likes += r.likes;
