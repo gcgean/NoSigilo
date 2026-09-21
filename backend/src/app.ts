@@ -5073,12 +5073,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const origem = ensureMediaFileInExpectedDir(filename, false);
     if (!origem) return null;
     await new Promise<void>((resolve, reject) => {
+      // stdio ignorado: ffmpeg fala muito no stderr e um pipe cheio trava o
+      // processo. '-update 1' é o jeito certo de gravar uma imagem única.
       const proc = spawn('ffmpeg', [
         '-y', '-i', origem,
         '-vf', 'scale=48:-1,boxblur=3:2,scale=360:-1',
-        '-frames:v', '1', '-q:v', '14',
+        '-frames:v', '1', '-update', '1', '-q:v', '14',
         destino,
-      ]);
+      ], { stdio: 'ignore' });
       proc.on('error', reject);
       proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
     });
@@ -5099,7 +5101,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       )) as any;
       if (!dono) { res.status(404).end(); return; }
       const caminho = await miniaturaBorrada(filename);
-      if (!caminho) { res.status(404).end(); return; }
+      if (!caminho) { console.warn('[espiar-foto] sem miniatura para', filename); res.status(404).end(); return; }
       res.setHeader('Cache-Control', 'public, max-age=86400');
       res.type('image/jpeg');
       createReadStream(caminho).pipe(res);
