@@ -72,6 +72,7 @@ import BrandLogo from '@/components/BrandLogo';
 import PhotoGateOverlay from '@/components/PhotoGateOverlay';
 import ScreenGuard from '@/components/ScreenGuard';
 import RadarNightPrompt from '@/components/RadarNightPrompt';
+import NotaDoApp from '@/components/NotaDoApp';
 import OnboardingModal from '@/components/OnboardingModal';
 import CityRequiredModal from '@/components/CityRequiredModal';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
@@ -1266,6 +1267,7 @@ export default function Layout() {
             <PhotoGateOverlay pathname={location.pathname} />
             <ScreenGuard />
             <RadarNightPrompt />
+            <NotaDoApp />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
             <SupportChatDialog open={supportOpen} onClose={() => setSupportOpen(false)} />
             <InviteModal open={showInviteModal} onClose={() => setShowInviteModal(false)} />

@@ -35,7 +35,7 @@ import MySubscriptionCard from '@/components/MySubscriptionCard';
 import VerificacaoDuasEtapas from '@/components/VerificacaoDuasEtapas';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { getApiErrorInfo } from '@/utils/apiError';
-import { ACCOUNT_DELETION_REASONS } from '@/utils/accountDeletionReasons';
+import { ACCOUNT_DELETION_REASONS, MOTIVO_EXIGE_TEXTO, PERGUNTA_POR_MOTIVO } from '@/utils/accountDeletionReasons';
 import {
   disablePushNotifications,
   enablePushNotifications,
@@ -464,6 +464,15 @@ export default function Settings() {
   const [deleteReasonText, setDeleteReasonText] = useState('');
 
   const handleDeleteAccount = async () => {
+    // "Outro motivo" sem texto não diz nada — é o único caso em que exigimos.
+    if (deleteReasonCode === MOTIVO_EXIGE_TEXTO && !deleteReasonText.trim()) {
+      toast({
+        title: 'Conte o que aconteceu',
+        description: 'Em "Outro motivo" precisamos da sua resposta para entender.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsDeletingAccount(true);
     try {
       await profileService.deleteAccount({
@@ -1922,14 +1931,22 @@ export default function Settings() {
                         </label>
                       ))}
                     </div>
-                    <Textarea
-                      value={deleteReasonText}
-                      onChange={(e) => setDeleteReasonText(e.target.value.slice(0, 500))}
-                      placeholder="Quer contar mais? Escreva aqui (opcional)"
-                      rows={2}
-                      className="text-sm"
-                    />
-                    <p className="text-right text-xs text-muted-foreground">{deleteReasonText.length}/500</p>
+                    {deleteReasonCode ? (
+                      <>
+                        <p className="text-sm font-medium">
+                          {PERGUNTA_POR_MOTIVO[deleteReasonCode] ?? 'O que faltou para você ficar?'}
+                          {deleteReasonCode === MOTIVO_EXIGE_TEXTO && <span className="ml-1 text-destructive">*</span>}
+                        </p>
+                        <Textarea
+                          value={deleteReasonText}
+                          onChange={(e) => setDeleteReasonText(e.target.value.slice(0, 500))}
+                          placeholder={deleteReasonCode === MOTIVO_EXIGE_TEXTO ? 'Escreva aqui (obrigatório)' : 'Escreva aqui — sua resposta ajuda a corrigir'}
+                          rows={2}
+                          className="text-sm"
+                        />
+                        <p className="text-right text-xs text-muted-foreground">{deleteReasonText.length}/500</p>
+                      </>
+                    ) : null}
                   </div>
 
                   <AlertDialogFooter>

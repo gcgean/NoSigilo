@@ -4,7 +4,7 @@ import {
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import AdminContos from '@/components/AdminContos';
 import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
+import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type AdminPhoto = {
@@ -1439,6 +1440,10 @@ export default function Admin() {
           <TabsTrigger value="visitantes" className="gap-2">
             <MousePointerClick className="w-4 h-4" />
             Visitantes
+          </TabsTrigger>
+          <TabsTrigger value="notas" className="gap-2">
+            <Star className="w-4 h-4" />
+            Nota do app
           </TabsTrigger>
           <TabsTrigger value="exclusoes" className="gap-2">
             <UserCheck className="w-4 h-4" />
@@ -3410,6 +3415,10 @@ export default function Admin() {
 
         <TabsContent value="visitantes">
           <AdminVisitantes />
+        </TabsContent>
+
+        <TabsContent value="notas">
+          <AdminNotas />
         </TabsContent>
 
         <TabsContent value="exclusoes">

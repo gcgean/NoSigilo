@@ -22,6 +22,26 @@ export const ACCOUNT_DELETION_REASONS = [
 
 export type AccountDeletionReasonCode = (typeof ACCOUNT_DELETION_REASONS)[number]['code'];
 
+/**
+ * Pergunta específica para cada motivo. Campo em branco quase ninguém
+ * preenche (10 textos em 218 saídas); pergunta concreta dá resposta útil.
+ */
+export const PERGUNTA_POR_MOTIVO: Record<string, string> = {
+  no_one_in_region: 'De qual cidade você é? Assim sabemos onde precisamos crescer.',
+  few_active_users: 'Você chegou a mandar mensagem para alguém? O que aconteceu?',
+  found_someone: 'Que bom! Foi aqui na plataforma que você encontrou?',
+  too_expensive: 'Qual preço faria valer a pena para você?',
+  privacy_concern: 'O que te deixou inseguro? Queremos corrigir.',
+  fake_profiles: 'Lembra de algum perfil falso? Pode dizer o nome que verificamos.',
+  bad_experience: 'O que aconteceu? Se foi com alguém da plataforma, conte aqui.',
+  technical_issues: 'O que deu errado e em qual aparelho?',
+  temporary_break: 'O que faria você voltar?',
+  other: 'Conte com suas palavras o que te fez sair.',
+};
+
+/** Só em "Outro motivo" o texto é obrigatório: sem ele a resposta não diz nada. */
+export const MOTIVO_EXIGE_TEXTO = 'other';
+
 /** Rótulo legível de um código; cobre também exclusões antigas, sem motivo. */
 export function deletionReasonLabel(code: string | null | undefined): string {
   if (!code || code === 'not_informed') return 'Não informado';

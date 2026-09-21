@@ -15470,6 +15470,114 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // ─── Nota do app (0 a 10) ──────────────────────────────────────────────────
+  // Uma pergunta só, respondida de tempos em tempos, para acompanhar se a base
+  // está gostando antes de as pessoas sumirem.
+  const DIAS_ENTRE_PERGUNTAS = 90;
+  const DIAS_MINIMOS_DE_CONTA = 7;
+
+  app.get('/api/app-rating/pendente', requireAuth(env, db), async (req, res) => {
+    try {
+      const userId = req.auth!.userId;
+      const u = (await queryOne(db, 'SELECT created_at FROM users WHERE id = ?', [userId])) as any;
+      const cadastro = u?.created_at ? new Date(String(u.created_at)).getTime() : Date.now();
+      // Conta nova ainda não tem opinião formada.
+      if (Date.now() - cadastro < DIAS_MINIMOS_DE_CONTA * 24 * 60 * 60 * 1000) {
+        res.json({ perguntar: false });
+        return;
+      }
+      const ultima = (await queryOne(
+        db, 'SELECT created_at FROM app_ratings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId]
+      )) as any;
+      if (ultima?.created_at) {
+        const quando = new Date(String(ultima.created_at)).getTime();
+        if (Date.now() - quando < DIAS_ENTRE_PERGUNTAS * 24 * 60 * 60 * 1000) {
+          res.json({ perguntar: false });
+          return;
+        }
+      }
+      res.json({ perguntar: true });
+    } catch {
+      res.json({ perguntar: false });
+    }
+  });
+
+  app.post('/api/app-rating', requireAuth(env, db), async (req, res) => {
+    try {
+      const parsed = z.object({
+        nota: z.number().int().min(0).max(10),
+        sugestao: z.string().max(1000).optional(),
+      }).safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      await run(
+        db,
+        'INSERT INTO app_ratings (id, user_id, nota, sugestao, created_at) VALUES (?, ?, ?, ?, ?)',
+        [randomUUID(), req.auth!.userId, parsed.data.nota, parsed.data.sugestao?.trim() || null, nowIso()]
+      );
+      await persist();
+      // Nota baixa de quem paga é o alerta mais caro de ignorar.
+      if (parsed.data.nota <= 6) {
+        const quem = (await queryOne(db, 'SELECT name, is_premium FROM users WHERE id = ?', [req.auth!.userId])) as any;
+        void notifyAdminsTelegram(
+          { db, env },
+          `⚠️ Nota ${parsed.data.nota}/10 de ${quem?.name || 'usuário'}${Number(quem?.is_premium || 0) === 1 ? ' (assinante)' : ''}` +
+          (parsed.data.sugestao ? `\n"${String(parsed.data.sugestao).slice(0, 300)}"` : '')
+        ).catch(() => undefined);
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('[app-rating]', error);
+      res.status(500).json({ error: 'nota_indisponivel' });
+    }
+  });
+
+  app.get('/api/admin/analytics/notas', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 90);
+      const dias = [7, 30, 90, 365].includes(pedido) ? pedido : 90;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+      const linhas = (await queryAll(
+        db,
+        `SELECT r.nota, r.sugestao, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
+           FROM app_ratings r LEFT JOIN users u ON u.id = r.user_id
+          WHERE r.created_at >= ? ORDER BY r.created_at DESC`,
+        [desde]
+      )) as any[];
+
+      const notas = linhas.map((l) => Number(l.nota));
+      const total = notas.length;
+      const promotores = notas.filter((n) => n >= 9).length;
+      const neutros = notas.filter((n) => n >= 7 && n <= 8).length;
+      const detratores = notas.filter((n) => n <= 6).length;
+      const media = total > 0 ? Math.round((notas.reduce((a, b) => a + b, 0) / total) * 10) / 10 : null;
+      const nps = total > 0 ? Math.round(((promotores - detratores) / total) * 100) : null;
+
+      res.json({
+        dias,
+        total,
+        media,
+        nps,
+        promotores,
+        neutros,
+        detratores,
+        distribuicao: Array.from({ length: 11 }, (_, n) => ({ nota: n, total: notas.filter((x) => x === n).length })),
+        respostas: linhas.slice(0, 60).map((l) => ({
+          nota: Number(l.nota),
+          sugestao: l.sugestao ?? null,
+          em: l.created_at,
+          nome: l.name ?? null,
+          local: [l.city, l.state].filter(Boolean).join('/') || null,
+          tipo: l.gender ?? null,
+          assinante: Number(l.is_premium || 0) === 1,
+        })),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/notas]', error);
+      res.status(500).json({ error: 'notas_indisponivel' });
+    }
+  });
+
   // Quem está saindo: motivos, evolução por semana e o perfil de quem sai.
   app.get('/api/admin/analytics/exclusoes', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

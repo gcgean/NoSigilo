@@ -1064,6 +1064,39 @@ export type RelatorioExclusoes = {
   }>;
 };
 
+export const notaDoAppService = {
+  pendente: async (): Promise<{ perguntar: boolean }> => {
+    const response = await apiClient.get('/app-rating/pendente');
+    return response.data;
+  },
+  enviar: async (nota: number, sugestao?: string) => {
+    const response = await apiClient.post('/app-rating', { nota, sugestao });
+    return response.data;
+  },
+};
+
+export type RelatorioNotas = {
+  dias: number;
+  total: number;
+  media: number | null;
+  nps: number | null;
+  promotores: number;
+  neutros: number;
+  detratores: number;
+  distribuicao: Array<{ nota: number; total: number }>;
+  respostas: Array<{
+    nota: number; sugestao: string | null; em: string; nome: string | null;
+    local: string | null; tipo: string | null; assinante: boolean;
+  }>;
+};
+
+export const adminNotasService = {
+  relatorio: async (dias: number): Promise<RelatorioNotas> => {
+    const response = await apiClient.get('/admin/analytics/notas', { params: { dias } });
+    return response.data;
+  },
+};
+
 export const adminExclusoesService = {
   relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
     const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });
