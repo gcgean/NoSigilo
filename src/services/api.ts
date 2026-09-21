@@ -973,7 +973,22 @@ export type VisitantesRelatorio = {
   porDominio: VisitantesRelatorio['porOrigem'];
 };
 
+// Marca a etapa alcançada no cadastro. Só o nome da etapa: nada digitado.
+export const marcarPassoCadastro = (evento: string) => {
+  void apiClient.post('/analytics/signup-step', { evento }).catch(() => {});
+};
+
+export type CadastroPassos = {
+  dias: number;
+  etapas: Array<{ etapa: string; pessoas: number; pct: number; perdeu: number }>;
+  travas: Array<{ campo: string; pessoas: number; vezes: number }>;
+};
+
 export const adminVisitantesService = {
+  cadastroPassos: async (dias: number): Promise<CadastroPassos> => {
+    const response = await apiClient.get('/admin/analytics/cadastro-passos', { params: { dias } });
+    return response.data;
+  },
   relatorio: async (dias: number): Promise<VisitantesRelatorio> => {
     const response = await apiClient.get('/admin/analytics/visitantes', { params: { dias } });
     return response.data;

@@ -5065,6 +5065,28 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
   });
 
+  // Onde a pessoa para no cadastro. Guarda só o nome da etapa e o ip_hash —
+  // nada do que foi digitado. Serve para achar o campo que derruba o funil.
+  const EVENTOS_CADASTRO = [
+    'abriu', 'passo1_ok', 'passo2_ok', 'enviou', 'criou_conta',
+    'erro_gender', 'erro_name', 'erro_email', 'erro_password', 'erro_city', 'erro_terms', 'erro_envio',
+  ] as const;
+
+  app.post('/api/analytics/signup-step', async (req, res) => {
+    try {
+      const parsed = z.object({ evento: z.enum(EVENTOS_CADASTRO) }).safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      await run(
+        db,
+        'INSERT INTO signup_steps (id, ip_hash, evento, created_at) VALUES (?, ?, ?, ?)',
+        [randomUUID(), hashRequestIp(env, getRequestIp(req)), parsed.data.evento, nowIso()]
+      );
+      res.json({ ok: true });
+    } catch {
+      res.json({ ok: true }); // medição nunca atrapalha o cadastro
+    }
+  });
+
   app.post('/api/analytics/visit', async (req, res) => {
     try {
       const schema = z.object({
@@ -15215,6 +15237,56 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // Onde as pessoas param no cadastro, etapa a etapa.
+  app.get('/api/admin/analytics/cadastro-passos', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 7);
+      const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+      const linhas = (await queryAll(
+        db,
+        `SELECT evento, COUNT(DISTINCT ip_hash) AS pessoas, COUNT(*) AS eventos
+           FROM signup_steps WHERE created_at >= ? GROUP BY evento`,
+        [desde]
+      )) as any[];
+      const por = new Map(linhas.map((l) => [String(l.evento), l]));
+      const pessoas = (e: string) => Number(por.get(e)?.pessoas || 0);
+      const eventos = (e: string) => Number(por.get(e)?.eventos || 0);
+      const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+
+      const abriu = pessoas('abriu');
+      const p1 = pessoas('passo1_ok');
+      const p2 = pessoas('passo2_ok');
+      const enviou = pessoas('enviou');
+      const criou = pessoas('criou_conta');
+
+      res.json({
+        dias,
+        // Só há dado a partir do dia em que a medição entrou no ar.
+        etapas: [
+          { etapa: 'Abriram o cadastro', pessoas: abriu, pct: 100, perdeu: abriu - p1 },
+          { etapa: 'Passaram do passo 1 (perfil e nome)', pessoas: p1, pct: pct(p1, abriu), perdeu: p1 - p2 },
+          { etapa: 'Passaram do passo 2 (e-mail, senha e cidade)', pessoas: p2, pct: pct(p2, abriu), perdeu: p2 - enviou },
+          { etapa: 'Clicaram em criar conta', pessoas: enviou, pct: pct(enviou, abriu), perdeu: enviou - criou },
+          { etapa: 'Conta criada', pessoas: criou, pct: pct(criou, abriu), perdeu: 0 },
+        ],
+        travas: [
+          { campo: 'Tipo de perfil', pessoas: pessoas('erro_gender'), vezes: eventos('erro_gender') },
+          { campo: 'Nome / apelido', pessoas: pessoas('erro_name'), vezes: eventos('erro_name') },
+          { campo: 'E-mail', pessoas: pessoas('erro_email'), vezes: eventos('erro_email') },
+          { campo: 'Senha', pessoas: pessoas('erro_password'), vezes: eventos('erro_password') },
+          { campo: 'Cidade', pessoas: pessoas('erro_city'), vezes: eventos('erro_city') },
+          { campo: 'Aceite dos termos', pessoas: pessoas('erro_terms'), vezes: eventos('erro_terms') },
+          { campo: 'Falha ao enviar', pessoas: pessoas('erro_envio'), vezes: eventos('erro_envio') },
+        ].filter((t) => t.vezes > 0).sort((a, b) => b.pessoas - a.pessoas),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/cadastro-passos]', error);
+      res.status(500).json({ error: 'cadastro_passos_indisponivel' });
+    }
+  });
+
   // ─── Visitantes que não se cadastram ───────────────────────────────────────
   // Mede o topo do funil (quem chega sem conta) usando site_visits. O elo com o
   // cadastro é o ip_hash: users.registration_ip_hash usa o mesmo hash. Não

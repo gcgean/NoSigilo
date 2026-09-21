@@ -12,7 +12,7 @@ import { leOrigem, limpaOrigem } from '@/utils/origemCadastro';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
-import { onboardingService, authService } from '@/services/api';
+import { onboardingService, authService, marcarPassoCadastro } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { CitySearch } from '@/components/CitySearch';
@@ -234,11 +234,17 @@ export default function Register() {
   // Marca o campo, leva o foco até ele e avisa também no toast (para quem
   // estiver com o campo fora da tela).
   const marcarErro = (campo: CampoErro, titulo: string, descricao?: string) => {
+    marcarPassoCadastro(`erro_${campo}`);
     setFieldErrors({ [campo]: descricao ? `${titulo} ${descricao}` : titulo });
     toast({ title: titulo, description: descricao, variant: 'destructive' });
     // Depois do render, para o campo já existir quando pedirmos o foco.
     window.setTimeout(() => refDoCampo[campo]?.current?.focus(), 60);
   };
+
+  // Medição do funil: uma marcação por abertura da tela de cadastro.
+  useEffect(() => {
+    marcarPassoCadastro('abriu');
+  }, []);
 
   // Erro vindo do OAuth (ex.: Google sem escolher o tipo de perfil).
   useEffect(() => {
@@ -420,6 +426,7 @@ export default function Register() {
           setIsLoading(false);
         }
       }
+      marcarPassoCadastro('passo1_ok');
       setCurrentStep(2);
       return;
     }
@@ -458,6 +465,7 @@ export default function Register() {
       } finally {
         setIsLoading(false);
       }
+      marcarPassoCadastro('passo2_ok');
       setCurrentStep(3);
     }
   };
@@ -478,12 +486,14 @@ export default function Register() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.acceptTerms) {
+      marcarPassoCadastro('erro_terms');
       toast({
         title: 'Aceite os termos para continuar.',
         variant: 'destructive',
       });
       return;
     }
+    marcarPassoCadastro('enviou');
 
     const payload = {
       name: formData.name,
@@ -550,6 +560,7 @@ export default function Register() {
       }
       confirmAge(); // user accepted 18+ terms during registration
       limparRascunho(); // cadastro concluído: nada mais a restaurar
+      marcarPassoCadastro('criou_conta');
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
       // Homem cai direto na aba de Busca (descoberta de perfis = maior gatilho p/ assinar).
       const isMan = String(formData.gender || '').toLowerCase().startsWith('homem');
@@ -564,6 +575,7 @@ export default function Register() {
         data?.debug ||
         data?.message ||
         (Array.isArray(data?.errors) ? data.errors.map((e: any) => e.message).join(', ') : null);
+      marcarPassoCadastro('erro_envio');
       console.error('[Register handleSubmit]', data ?? error);
       toast({
         title: info.title,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, TrendingDown, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { adminVisitantesService, type VisitantesRelatorio } from '@/services/api';
+import { adminVisitantesService, type CadastroPassos, type VisitantesRelatorio } from '@/services/api';
 
 const PERIODOS = [
   { dias: 1, rotulo: 'Hoje' },
@@ -60,6 +60,7 @@ function Barra({ linhas, titulo, ajuda }: { linhas: VisitantesRelatorio['porOrig
 export default function AdminVisitantes() {
   const [dias, setDias] = useState(7);
   const [dados, setDados] = useState<VisitantesRelatorio | null>(null);
+  const [passos, setPassos] = useState<CadastroPassos | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
 
@@ -67,7 +68,12 @@ export default function AdminVisitantes() {
     setCarregando(true);
     setErro(false);
     try {
-      setDados(await adminVisitantesService.relatorio(dias));
+      const [relatorio, cadastro] = await Promise.all([
+        adminVisitantesService.relatorio(dias),
+        adminVisitantesService.cadastroPassos(dias).catch(() => null),
+      ]);
+      setDados(relatorio);
+      setPassos(cadastro);
     } catch {
       setErro(true);
     } finally {
@@ -147,6 +153,46 @@ export default function AdminVisitantes() {
               </li>
             </ul>
           </Card>
+
+          {passos && passos.etapas[0].pessoas > 0 && (
+            <Card className="p-4 space-y-3">
+              <div>
+                <h4 className="font-semibold">Onde elas param dentro do cadastro</h4>
+                <p className="text-xs text-muted-foreground">
+                  Medido etapa a etapa, sem guardar nada do que a pessoa digita. Só conta quem abriu o cadastro depois que esta medição entrou no ar.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {passos.etapas.map((e) => (
+                  <div key={e.etapa} className="space-y-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm">{e.etapa}</span>
+                      <span className="text-sm font-semibold">
+                        {e.pessoas.toLocaleString('pt-BR')}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">{e.pct}%</span>
+                        {e.perdeu > 0 && <span className="ml-2 text-xs font-normal text-destructive">-{e.perdeu.toLocaleString('pt-BR')} aqui</span>}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-gradient-primary" style={{ width: `${Math.max(1, e.pct)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {passos.travas.length > 0 && (
+                <div className="border-t border-border/50 pt-3">
+                  <p className="mb-1.5 text-sm font-semibold">Campos que mais travaram</p>
+                  <ul className="space-y-1 text-sm text-muted-foreground">
+                    {passos.travas.map((t) => (
+                      <li key={t.campo}>
+                        <span className="font-medium text-foreground">{t.campo}</span>: barrou {t.pessoas.toLocaleString('pt-BR')} pessoa(s), {t.vezes.toLocaleString('pt-BR')} vez(es).
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          )}
 
           <div className="grid gap-4 md:grid-cols-2">
             <Barra linhas={dados.porOrigem} titulo="De onde elas vêm" ajuda="Compare a conversão: origem com muita visita e pouco cadastro é dinheiro na mesa." />
