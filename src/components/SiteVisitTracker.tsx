@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { appService } from '@/services/api';
+import { modoDeUso } from '@/utils/modoDeUso';
 
 function getDeviceType(width: number) {
   if (width < 768) return 'mobile' as const;
@@ -33,6 +34,7 @@ export default function SiteVisitTracker() {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       language: typeof navigator !== 'undefined' ? navigator.language : 'pt-BR',
       deviceType: getDeviceType(screenWidth),
+      displayMode: modoDeUso(),
       screenWidth,
       screenHeight,
     }).catch(() => undefined);

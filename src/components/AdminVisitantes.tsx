@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, TrendingDown, Users } from 'lucide-react';
+import { Loader2, Smartphone, TrendingDown, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { adminVisitantesService, type CadastroPassos, type TesteEspiar, type VisitantesRelatorio } from '@/services/api';
+import { adminVisitantesService, type CadastroPassos, type TesteEspiar, type UsoDoApp, type VisitantesRelatorio } from '@/services/api';
 
 const PERIODOS = [
   { dias: 1, rotulo: 'Hoje' },
@@ -62,6 +62,7 @@ export default function AdminVisitantes() {
   const [dados, setDados] = useState<VisitantesRelatorio | null>(null);
   const [passos, setPassos] = useState<CadastroPassos | null>(null);
   const [teste, setTeste] = useState<TesteEspiar | null>(null);
+  const [uso, setUso] = useState<UsoDoApp | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
 
@@ -69,14 +70,16 @@ export default function AdminVisitantes() {
     setCarregando(true);
     setErro(false);
     try {
-      const [relatorio, cadastro, ab] = await Promise.all([
+      const [relatorio, cadastro, ab, app] = await Promise.all([
         adminVisitantesService.relatorio(dias),
         adminVisitantesService.cadastroPassos(dias).catch(() => null),
         adminVisitantesService.testeEspiar(dias).catch(() => null),
+        adminVisitantesService.usoDoApp(dias).catch(() => null),
       ]);
       setDados(relatorio);
       setPassos(cadastro);
       setTeste(ab);
+      setUso(app);
     } catch {
       setErro(true);
     } finally {
@@ -156,6 +159,45 @@ export default function AdminVisitantes() {
               </li>
             </ul>
           </Card>
+
+          {uso && (
+            <Card className="p-4 space-y-3">
+              <div>
+                <h4 className="flex items-center gap-2 font-semibold"><Smartphone className="h-4 w-4" /> App instalado x navegador</h4>
+                <p className="text-xs text-muted-foreground">
+                  Quem abre pelo aplicativo instalado e quem abre pelo navegador, e quanto de cada grupo assina.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { titulo: '📲 Pelo app instalado', v: uso.visitas.app, c: uso.contas.comApp },
+                  { titulo: '🌐 Pelo navegador', v: uso.visitas.navegador, c: uso.contas.semApp },
+                ].map(({ titulo, v, c }) => (
+                  <div key={titulo} className="rounded-xl border border-border/60 p-3">
+                    <p className="text-sm font-semibold">{titulo}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {v.visitas.toLocaleString('pt-BR')} aberturas de {v.pessoas.toLocaleString('pt-BR')} pessoas no período
+                    </p>
+                    <p className="mt-2 text-2xl font-bold">{c.pctAssina}%</p>
+                    <p className="text-xs text-muted-foreground">
+                      assinam ({c.assinantes.toLocaleString('pt-BR')} de {c.total.toLocaleString('pt-BR')} contas)
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {uso.contas.comApp.total > 30 && (
+                <p className="text-sm">
+                  {uso.contas.comApp.pctAssina > uso.contas.semApp.pctAssina ? (
+                    <span className="font-semibold text-emerald-600">
+                      Quem instala assina mais: {Math.round((uso.contas.comApp.pctAssina - uso.contas.semApp.pctAssina) * 10) / 10} pontos percentuais de diferença. Vale insistir no convite.
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Ainda não há vantagem clara de quem usa o app.</span>
+                  )}
+                </p>
+              )}
+            </Card>
+          )}
 
           {teste && (teste.semBotao.visitantes > 0 || teste.comBotao.visitantes > 0) && (
             <Card className="p-4 space-y-3">

@@ -509,6 +509,8 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   story:   { points: 8,  dailyCap: 3 },
   post:    { points: 5,  dailyCap: 3 },
   checkin: { points: 5,  dailyCap: 1 },
+  // Pago uma vez só, na primeira abertura pelo app instalado.
+  app_instalado: { points: 20, dailyCap: 1 },
 };
 
 // Só perfis de mulheres e casais recebem tokens por postagem feita.
@@ -5239,6 +5241,31 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     'ab_espiar_a', 'ab_espiar_b', 'espiar_abriu', 'espiar_parede',
   ] as const;
 
+  // Primeira abertura pelo app instalado: marca o usuário e paga 20 tokens,
+  // uma única vez por conta.
+  app.post('/api/app/instalado', requireAuth(env, db), async (req, res) => {
+    try {
+      const userId = req.auth!.userId;
+      const u = (await queryOne(db, 'SELECT app_instalado_em, app_recompensa_em FROM users WHERE id = ?', [userId])) as any;
+      if (!u) { res.status(404).json({ error: 'not_found' }); return; }
+      const agora = nowIso();
+      if (!u.app_instalado_em) {
+        await run(db, 'UPDATE users SET app_instalado_em = ? WHERE id = ?', [agora, userId]);
+      }
+      if (u.app_recompensa_em) {
+        res.json({ recompensado: false, tokens: 0 });
+        return;
+      }
+      await run(db, 'UPDATE users SET app_recompensa_em = ? WHERE id = ?', [agora, userId]);
+      await awardTokens(db, userId, 'app_instalado', `app-${userId}`, req.app.get('io'));
+      await persist();
+      res.json({ recompensado: true, tokens: TOKEN_RULES.app_instalado.points });
+    } catch (error) {
+      console.error('[app/instalado]', error);
+      res.status(500).json({ error: 'app_instalado_indisponivel' });
+    }
+  });
+
   app.post('/api/analytics/signup-step', async (req, res) => {
     try {
       const parsed = z.object({ evento: z.enum(EVENTOS_CADASTRO) }).safeParse(req.body);
@@ -5268,6 +5295,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         timezone: z.string().trim().max(120).optional(),
         language: z.string().trim().max(80).optional(),
         deviceType: z.enum(['mobile', 'tablet', 'desktop']).optional(),
+        displayMode: z.enum(['app', 'navegador']).optional(),
         screenWidth: z.number().int().min(0).max(10000).optional(),
         screenHeight: z.number().int().min(0).max(10000).optional(),
       });
@@ -5293,8 +5321,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           id, user_id, page_path, page_title, referrer, referrer_domain, origin_type,
           utm_source, utm_medium, utm_campaign, utm_term, utm_content,
           country, timezone, language, device_type, screen_width, screen_height,
-          user_agent, ip_hash, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          user_agent, ip_hash, created_at, display_mode
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           randomUUID(),
           userId,
@@ -5317,6 +5345,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           userAgent,
           ipHash,
           nowIso(),
+          payload.displayMode || 'navegador',
         ]
       );
       await persist();
@@ -15404,6 +15433,58 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // App instalado x navegador: volume de uso e se quem instala assina mais.
+  app.get('/api/admin/analytics/uso-do-app', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 7);
+      const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const visitas = (await queryAll(
+        db,
+        `SELECT COALESCE(NULLIF(display_mode,''),'navegador') AS modo,
+                COUNT(*) AS visitas, COUNT(DISTINCT user_id) AS pessoas
+           FROM site_visits WHERE created_at >= ? AND user_id IS NOT NULL
+          GROUP BY 1`,
+        [desde]
+      )) as any[];
+      const porModo = new Map(visitas.map((l) => [String(l.modo), l]));
+
+      const vivos = `is_banned = 0 AND COALESCE(is_deactivated,0) = 0 AND deleted_at IS NULL AND COALESCE(is_showcase,0) = 0`;
+      const assina = `(COALESCE(is_premium,0) = 1 OR COALESCE(hub_access_status,'') = 'licensed')`;
+      const linha = (await queryOne(
+        db,
+        `SELECT
+           SUM(CASE WHEN app_instalado_em IS NOT NULL THEN 1 ELSE 0 END) AS com_app,
+           SUM(CASE WHEN app_instalado_em IS NOT NULL AND ${assina} THEN 1 ELSE 0 END) AS com_app_assina,
+           SUM(CASE WHEN app_instalado_em IS NULL THEN 1 ELSE 0 END) AS sem_app,
+           SUM(CASE WHEN app_instalado_em IS NULL AND ${assina} THEN 1 ELSE 0 END) AS sem_app_assina
+         FROM users WHERE ${vivos}`,
+        []
+      )) as any;
+
+      const n = (v: any) => Number(v || 0);
+      const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+      const comApp = n(linha?.com_app);
+      const semApp = n(linha?.sem_app);
+
+      res.json({
+        dias,
+        visitas: {
+          app: { visitas: n(porModo.get('app')?.visitas), pessoas: n(porModo.get('app')?.pessoas) },
+          navegador: { visitas: n(porModo.get('navegador')?.visitas), pessoas: n(porModo.get('navegador')?.pessoas) },
+        },
+        contas: {
+          comApp: { total: comApp, assinantes: n(linha?.com_app_assina), pctAssina: pct(n(linha?.com_app_assina), comApp) },
+          semApp: { total: semApp, assinantes: n(linha?.sem_app_assina), pctAssina: pct(n(linha?.sem_app_assina), semApp) },
+        },
+      });
+    } catch (error) {
+      console.error('[admin/analytics/uso-do-app]', error);
+      res.status(500).json({ error: 'uso_do_app_indisponivel' });
+    }
+  });
+
   // Teste A/B do Espiar: conversão de cada grupo, ligada pelo ip_hash.
   app.get('/api/admin/analytics/teste-espiar', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

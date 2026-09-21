@@ -1,5 +1,6 @@
 import apiClient from '@/utils/apiClient';
 import { compressImageFile } from '@/utils/mediaCompression';
+import { marcarEngajamento } from '@/utils/modoDeUso';
 import axios from 'axios';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
@@ -7,6 +8,12 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === 'true';
 export const appService = {
   getSettings: async () => {
     const response = await apiClient.get('/app/settings');
+    return response.data;
+  },
+
+  // Primeira abertura pelo app instalado: marca a conta e paga os tokens.
+  registrarAppInstalado: async (): Promise<{ recompensado: boolean; tokens: number }> => {
+    const response = await apiClient.post('/app/instalado');
     return response.data;
   },
 
@@ -27,6 +34,7 @@ export const appService = {
     timezone?: string;
     language?: string;
     deviceType?: 'mobile' | 'tablet' | 'desktop';
+    displayMode?: 'app' | 'navegador';
     screenWidth?: number;
     screenHeight?: number;
   }) => {
@@ -571,6 +579,7 @@ export const chatService = {
   },
 
   sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean; replyToMessageId?: string }) => {
+    marcarEngajamento(); // curtir/comentar/conversar = hora certa de convidar a instalar
     const response = await apiClient.post(`/conversations/${conversationId}/messages`, data);
     return response.data;
   },
@@ -624,6 +633,7 @@ export const interactionsService = {
     targetId: string,
     reaction?: 'heart' | 'fire' | 'love' | 'wow' | 'devil' | 'splash'
   ) => {
+    marcarEngajamento();
     const response = await apiClient.post('/likes', { targetType, targetId, reaction });
     return response.data;
   },
@@ -639,6 +649,7 @@ export const interactionsService = {
   },
 
   comment: async (targetType: string, targetId: string, content: string, parentCommentId?: string) => {
+    marcarEngajamento(); // curtir/comentar/conversar = hora certa de convidar a instalar
     const response = await apiClient.post('/comments', { targetType, targetId, content, ...(parentCommentId ? { parentCommentId } : {}) });
     return response.data;
   },
@@ -1027,7 +1038,20 @@ export type CadastroPassos = {
   travas: Array<{ campo: string; pessoas: number; vezes: number }>;
 };
 
+export type UsoDoApp = {
+  dias: number;
+  visitas: { app: { visitas: number; pessoas: number }; navegador: { visitas: number; pessoas: number } };
+  contas: {
+    comApp: { total: number; assinantes: number; pctAssina: number };
+    semApp: { total: number; assinantes: number; pctAssina: number };
+  };
+};
+
 export const adminVisitantesService = {
+  usoDoApp: async (dias: number): Promise<UsoDoApp> => {
+    const response = await apiClient.get('/admin/analytics/uso-do-app', { params: { dias } });
+    return response.data;
+  },
   testeEspiar: async (dias: number): Promise<TesteEspiar> => {
     const response = await apiClient.get('/admin/analytics/teste-espiar', { params: { dias } });
     return response.data;

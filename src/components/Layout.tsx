@@ -1,6 +1,7 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { BannerSlot, FeedBannerQueueProvider } from '@/contexts/FeedBannerQueueContext';
 import {
   Home,
@@ -237,10 +238,8 @@ export default function Layout() {
     const iPadOS = /Macintosh/.test(ua) && (navigator as any).maxTouchPoints > 1;
     return /iPad|iPhone|iPod/.test(ua) || iPadOS;
   });
-  const [appInstalado] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia?.('(display-mode: standalone)')?.matches === true || (window.navigator as any)?.standalone === true;
-  });
+  const [appInstalado] = useState(() => ehAppInstalado());
+  const [visitasHoje] = useState(() => registrarVisitaDoDia());
   const [interestsNudgeDismissed, setInterestsNudgeDismissed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
     return localStorage.getItem(INTERESTS_NUDGE_DISMISS_KEY) === today;
@@ -589,8 +588,28 @@ export default function Layout() {
       setShowPwaInstallPrompt(false);
       return;
     }
-    setShowPwaInstallPrompt(true);
+    // Hora certa: só depois da pessoa curtir/comentar/conversar ou voltar
+    // pela segunda vez no dia. No primeiro acesso o convite só atrapalha.
+    setShowPwaInstallPrompt(jaEngajou() || visitasHoje >= 2);
   }, [location.pathname]);
+
+  // Abriu pelo app instalado: marca a conta e paga os 20 tokens uma vez só.
+  useEffect(() => {
+    if (!appInstalado || !user?.id) return;
+    const chave = `nosigilo:app-instalado-avisado:${user.id}`;
+    try { if (localStorage.getItem(chave)) return; } catch { /* ok */ }
+    void appService.registrarAppInstalado()
+      .then((r) => {
+        try { localStorage.setItem(chave, '1'); } catch { /* ok */ }
+        if (r?.recompensado) {
+          toast({
+            title: `🎉 +${r.tokens} tokens por usar o app!`,
+            description: 'Continue usando pelo aplicativo: é mais rápido e você recebe os avisos na hora.',
+          });
+        }
+      })
+      .catch(() => undefined);
+  }, [appInstalado, user?.id, toast]);
 
   const dismissPwaInstallPrompt = () => {
     localStorage.setItem(PWA_INSTALL_DISMISS_KEY, new Date().toISOString().slice(0, 10));
@@ -606,6 +625,12 @@ export default function Layout() {
     localStorage.setItem(INTERESTS_NUDGE_DISMISS_KEY, new Date().toISOString().slice(0, 10));
     setInterestsNudgeDismissed(true);
   };
+
+  // Usa pelo navegador há mais de uma semana: o item do menu fica destacado.
+  const noNavegadorHaSemanas =
+    !appInstalado &&
+    !!user?.createdAt &&
+    Date.now() - new Date(user.createdAt).getTime() > 7 * 24 * 60 * 60 * 1000;
 
   const hasEmptyInterests =
     !interestsNudgeDismissed &&
@@ -930,10 +955,18 @@ export default function Layout() {
               <button
                 type="button"
                 onClick={() => setShowPwaInstallTutorial(true)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-muted-foreground transition-colors hover:text-primary hover:bg-primary/10"
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                  noNavegadorHaSemanas
+                    ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                    : 'text-muted-foreground hover:text-primary hover:bg-primary/10'
+                )}
               >
                 <Smartphone className="w-5 h-5" />
                 <span className="font-medium">Instalar o app</span>
+                <span className="ml-auto rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+                  +20 tokens
+                </span>
               </button>
             )}
 
@@ -1021,9 +1054,11 @@ export default function Layout() {
                 <div className="rounded-2xl border border-primary/25 bg-primary/10 p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="font-semibold text-primary">Deseja instalar o app?</p>
+                      <p className="font-semibold text-primary">Instale o app e ganhe 20 tokens 🎁</p>
                       <p className="text-sm text-muted-foreground">
-                        Instale o NoSigilo.net para abrir como aplicativo e acessar mais rápido.
+                        {ehIos
+                          ? 'Abre direto da tela de início, carrega mais rápido e você ganha 20 tokens na primeira vez que entrar pelo app.'
+                          : 'Receba aviso de mensagem nova na hora, abra mais rápido e ganhe 20 tokens na primeira vez que entrar pelo app.'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
