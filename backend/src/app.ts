@@ -16991,10 +16991,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // A cada 30 minutos a IA passa nas denúncias novas, para a fila já chegar
   // ordenada e os casos graves avisarem no Telegram sem ninguém abrir o painel.
-  setInterval(() => {
+  const triagemAutomatica = () => {
     if (!env.DEEPSEEK_API_KEY) return;
-    triarDenunciasPendentes(10).catch((e) => console.error('[denuncias/triagem-automatica]', e));
-  }, 30 * 60 * 1000);
+    triarDenunciasPendentes(10)
+      .then((r) => { if (r.analisadas > 0) console.log(`[denuncias] IA analisou ${r.analisadas} denúncia(s), ${r.graves} grave(s)`); })
+      .catch((e) => console.error('[denuncias/triagem-automatica]', e));
+  };
+  // Uma passada logo depois de subir (senão a fila espera meia hora a cada
+  // deploy) e depois a cada 30 minutos.
+  setTimeout(triagemAutomatica, 60 * 1000);
+  setInterval(triagemAutomatica, 30 * 60 * 1000);
 
   app.put('/api/admin/reports/:reportId/resolve', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
