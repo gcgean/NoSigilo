@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, TrendingDown, Users } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { adminVisitantesService, type CadastroPassos, type VisitantesRelatorio } from '@/services/api';
+import { adminVisitantesService, type CadastroPassos, type TesteEspiar, type VisitantesRelatorio } from '@/services/api';
 
 const PERIODOS = [
   { dias: 1, rotulo: 'Hoje' },
@@ -61,6 +61,7 @@ export default function AdminVisitantes() {
   const [dias, setDias] = useState(7);
   const [dados, setDados] = useState<VisitantesRelatorio | null>(null);
   const [passos, setPassos] = useState<CadastroPassos | null>(null);
+  const [teste, setTeste] = useState<TesteEspiar | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
 
@@ -68,12 +69,14 @@ export default function AdminVisitantes() {
     setCarregando(true);
     setErro(false);
     try {
-      const [relatorio, cadastro] = await Promise.all([
+      const [relatorio, cadastro, ab] = await Promise.all([
         adminVisitantesService.relatorio(dias),
         adminVisitantesService.cadastroPassos(dias).catch(() => null),
+        adminVisitantesService.testeEspiar(dias).catch(() => null),
       ]);
       setDados(relatorio);
       setPassos(cadastro);
+      setTeste(ab);
     } catch {
       setErro(true);
     } finally {
@@ -153,6 +156,48 @@ export default function AdminVisitantes() {
               </li>
             </ul>
           </Card>
+
+          {teste && (teste.semBotao.visitantes > 0 || teste.comBotao.visitantes > 0) && (
+            <Card className="p-4 space-y-3">
+              <div>
+                <h4 className="font-semibold">Teste do botão Espiar</h4>
+                <p className="text-xs text-muted-foreground">
+                  Metade dos visitantes vê o botão na página inicial e metade não. Comparando quanto cada grupo virou cadastro.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { titulo: 'Sem o botão', g: teste.semBotao },
+                  { titulo: 'Com o botão Espiar', g: teste.comBotao },
+                ].map(({ titulo, g }) => (
+                  <div key={titulo} className="rounded-xl border border-border/60 p-3 text-center">
+                    <p className="text-xs text-muted-foreground">{titulo}</p>
+                    <p className="text-2xl font-bold">{g.pctCadastro}%</p>
+                    <p className="text-xs text-muted-foreground">
+                      {g.cadastros.toLocaleString('pt-BR')} cadastros de {g.visitantes.toLocaleString('pt-BR')} visitantes
+                    </p>
+                    <p className="text-xs text-muted-foreground">{g.assinantes.toLocaleString('pt-BR')} viraram assinantes</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm">
+                {teste.confiavel ? (
+                  <span className={teste.diferencaPct > 0 ? 'font-semibold text-emerald-600' : teste.diferencaPct < 0 ? 'font-semibold text-destructive' : 'font-semibold'}>
+                    {teste.diferencaPct > 0
+                      ? `O botão está ajudando: ${teste.diferencaPct} pontos percentuais a mais de cadastro.`
+                      : teste.diferencaPct < 0
+                        ? `O botão está atrapalhando: ${Math.abs(teste.diferencaPct)} pontos percentuais a menos de cadastro.`
+                        : 'Empate entre os dois grupos até agora.'}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">
+                    Ainda é cedo para decidir: espere pelo menos 200 visitantes em cada grupo.
+                  </span>
+                )}
+                <span className="ml-1 text-muted-foreground">{teste.abriramEspiar.toLocaleString('pt-BR')} pessoas abriram o espião no período.</span>
+              </p>
+            </Card>
+          )}
 
           {passos && passos.etapas[0].pessoas > 0 && (
             <Card className="p-4 space-y-3">

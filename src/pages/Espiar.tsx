@@ -4,7 +4,7 @@ import {
   ArrowRight, BookOpen, Calendar, Clapperboard, Coins, Heart, Lock, MapPin,
   MessageCircle, Radio, Search, ShieldCheck, Sparkles, Users, Video,
 } from 'lucide-react';
-import { espiarService, type PerfilEspiado } from '@/services/api';
+import { espiarService, marcarPassoCadastro, type PerfilEspiado } from '@/services/api';
 
 // Todas as funções que a plataforma oferece. A pessoa vê o que existe; abrir
 // qualquer uma pede cadastro.
@@ -115,7 +115,7 @@ export default function Espiar() {
             <button
               key={`${p.nome}-${i}`}
               type="button"
-              onClick={() => setParede(p.nome)}
+              onClick={() => { marcarPassoCadastro('espiar_parede'); setParede(p.nome); }}
               className="group relative overflow-hidden rounded-2xl border border-border/60 text-left"
             >
               <div className="relative aspect-[3/4] w-full bg-muted">

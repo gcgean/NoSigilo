@@ -5212,6 +5212,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const EVENTOS_CADASTRO = [
     'abriu', 'passo1_ok', 'passo2_ok', 'enviou', 'criou_conta',
     'erro_gender', 'erro_name', 'erro_email', 'erro_password', 'erro_city', 'erro_terms', 'erro_envio',
+    // Teste A/B do botão Espiar: A = página inicial sem o botão, B = com.
+    'ab_espiar_a', 'ab_espiar_b', 'espiar_abriu', 'espiar_parede',
   ] as const;
 
   app.post('/api/analytics/signup-step', async (req, res) => {
@@ -15379,6 +15381,58 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // Teste A/B do Espiar: conversão de cada grupo, ligada pelo ip_hash.
+  app.get('/api/admin/analytics/teste-espiar', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 7);
+      const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+      const grupo = async (evento: string) => {
+        const linha = (await queryOne(
+          db,
+          `WITH g AS (SELECT DISTINCT ip_hash FROM signup_steps WHERE evento = ? AND created_at >= ? AND ip_hash IS NOT NULL)
+           SELECT COUNT(*) AS visitantes,
+                  SUM(CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = g.ip_hash) THEN 1 ELSE 0 END) AS cadastros,
+                  SUM(CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = g.ip_hash
+                        AND (COALESCE(u.is_premium,0) = 1 OR COALESCE(u.hub_access_status,'') = 'licensed')) THEN 1 ELSE 0 END) AS assinantes
+             FROM g`,
+          [evento, desde]
+        )) as any;
+        const visitantes = Number(linha?.visitantes || 0);
+        const cadastros = Number(linha?.cadastros || 0);
+        const assinantes = Number(linha?.assinantes || 0);
+        return {
+          visitantes,
+          cadastros,
+          assinantes,
+          pctCadastro: visitantes > 0 ? Math.round((cadastros / visitantes) * 1000) / 10 : 0,
+        };
+      };
+
+      const semBotao = await grupo('ab_espiar_a');
+      const comBotao = await grupo('ab_espiar_b');
+      const abriram = (await queryOne(
+        db,
+        `SELECT COUNT(DISTINCT ip_hash) AS c FROM signup_steps WHERE evento = 'espiar_abriu' AND created_at >= ?`,
+        [desde]
+      )) as any;
+
+      res.json({
+        dias,
+        semBotao,
+        comBotao,
+        abriramEspiar: Number(abriram?.c || 0),
+        diferencaPct: Math.round((comBotao.pctCadastro - semBotao.pctCadastro) * 10) / 10,
+        // Menos de 200 por grupo ainda é pouco para decidir.
+        confiavel: semBotao.visitantes >= 200 && comBotao.visitantes >= 200,
+      });
+    } catch (error) {
+      console.error('[admin/analytics/teste-espiar]', error);
+      res.status(500).json({ error: 'teste_espiar_indisponivel' });
+    }
+  });
+
   // Onde as pessoas param no cadastro, etapa a etapa.
   app.get('/api/admin/analytics/cadastro-passos', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

@@ -19,7 +19,7 @@ import {
 import { Button } from '@/components/ui/button';
 import EspiarModal from '@/components/EspiarModal';
 import BrandLogo from '@/components/BrandLogo';
-import { appService } from '@/services/api';
+import { appService, marcarPassoCadastro } from '@/services/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLastAuthRoute } from '@/utils/sessionNavigation';
 import './Landing.css';
@@ -94,6 +94,23 @@ export default function Landing() {
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [espiarAberto, setEspiarAberto] = useState(false);
+  // Teste A/B: metade dos visitantes vê o botão Espiar. O grupo é sorteado uma
+  // vez por aparelho e marcado no funil, para comparar a conversão dos dois.
+  const [mostraEspiar] = useState(() => {
+    try {
+      let grupo = localStorage.getItem('nosigilo:ab-espiar');
+      if (grupo !== 'a' && grupo !== 'b') {
+        grupo = Math.random() < 0.5 ? 'a' : 'b';
+        localStorage.setItem('nosigilo:ab-espiar', grupo);
+      }
+      return grupo === 'b';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    marcarPassoCadastro(mostraEspiar ? 'ab_espiar_b' : 'ab_espiar_a');
+  }, [mostraEspiar]);
   // O header vira sólido só depois de passar o hero — em cima da foto ele
   // continua transparente, como sempre foi.
   const [headerSolid, setHeaderSolid] = useState(false);
@@ -330,13 +347,15 @@ export default function Landing() {
                 <ArrowRight data-icon="inline-end" />
               </Button>
 
-              <button
-                type="button"
-                onClick={() => setEspiarAberto(true)}
-                className="landing-quick-register-peek"
-              >
-                👀 Espiar quem está na minha região
-              </button>
+              {mostraEspiar && (
+                <button
+                  type="button"
+                  onClick={() => { marcarPassoCadastro('espiar_abriu'); setEspiarAberto(true); }}
+                  className="landing-quick-register-peek"
+                >
+                  👀 Espiar quem está na minha região
+                </button>
+              )}
 
               <p className="landing-quick-register-login">
                 Já tenho cadastro

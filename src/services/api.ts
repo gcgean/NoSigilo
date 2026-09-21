@@ -1012,6 +1012,15 @@ export const marcarPassoCadastro = (evento: string) => {
   void apiClient.post('/analytics/signup-step', { evento }).catch(() => {});
 };
 
+export type TesteEspiar = {
+  dias: number;
+  semBotao: { visitantes: number; cadastros: number; assinantes: number; pctCadastro: number };
+  comBotao: TesteEspiar['semBotao'];
+  abriramEspiar: number;
+  diferencaPct: number;
+  confiavel: boolean;
+};
+
 export type CadastroPassos = {
   dias: number;
   etapas: Array<{ etapa: string; pessoas: number; pct: number; perdeu: number }>;
@@ -1019,6 +1028,10 @@ export type CadastroPassos = {
 };
 
 export const adminVisitantesService = {
+  testeEspiar: async (dias: number): Promise<TesteEspiar> => {
+    const response = await apiClient.get('/admin/analytics/teste-espiar', { params: { dias } });
+    return response.data;
+  },
   cadastroPassos: async (dias: number): Promise<CadastroPassos> => {
     const response = await apiClient.get('/admin/analytics/cadastro-passos', { params: { dias } });
     return response.data;
