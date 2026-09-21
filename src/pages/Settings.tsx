@@ -12,7 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
@@ -479,6 +480,26 @@ export default function Settings() {
     }
   };
 
+  // A aba vem da URL (?aba=security). Com #excluir-conta, rola até a Zona de
+  // Perigo e pisca a borda — é o caminho que o suporte mais repete.
+  const [parametrosUrl] = useSearchParams();
+  const abaPedida = parametrosUrl.get('aba') || '';
+  const [abaAtiva, setAbaAtiva] = useState(
+    ['profile', 'privacy', 'notifications', 'security', 'suggestions'].includes(abaPedida) ? abaPedida : 'profile'
+  );
+  const zonaPerigoRef = useRef<HTMLDivElement | null>(null);
+  const [destacarZonaPerigo, setDestacarZonaPerigo] = useState(false);
+  useEffect(() => {
+    if (window.location.hash !== '#excluir-conta') return;
+    setAbaAtiva('security');
+    const t = window.setTimeout(() => {
+      zonaPerigoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setDestacarZonaPerigo(true);
+      window.setTimeout(() => setDestacarZonaPerigo(false), 2600);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, []);
+
   return (
     <div className="max-w-3xl mx-auto w-full">
       <h1 className="text-2xl font-bold mb-6">Configurações</h1>
@@ -489,7 +510,7 @@ export default function Settings() {
         <MySubscriptionCard />
       </div>
 
-      <Tabs defaultValue="profile" className="space-y-6">
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-6">
         <TabsList className="grid h-auto w-full grid-cols-5">
           <TabsTrigger value="profile" className="flex-col gap-0.5 py-2 sm:flex-row sm:gap-2">
             <User className="w-4 h-4" />
@@ -1791,7 +1812,14 @@ export default function Settings() {
             </Button>
           </div>
 
-          <div className="glass rounded-xl p-4 sm:p-6 space-y-6 border border-destructive/20">
+          <div
+            id="excluir-conta"
+            ref={zonaPerigoRef}
+            className={cn(
+              'glass rounded-xl p-4 sm:p-6 space-y-6 border border-destructive/20 scroll-mt-24 transition-shadow',
+              destacarZonaPerigo && 'ring-2 ring-destructive ring-offset-2 ring-offset-background'
+            )}
+          >
             <h3 className="font-semibold text-destructive">Zona de Perigo</h3>
 
             {/* Deactivate profile */}

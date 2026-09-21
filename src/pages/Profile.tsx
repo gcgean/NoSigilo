@@ -1268,6 +1268,14 @@ export default function Profile() {
                   Configurações
                 </Button>
               </NavLink>
+              {/* Atalho pedido o tempo todo no suporte: leva direto à Zona de
+                  Perigo, já com a aba certa aberta. */}
+              <NavLink to="/settings?aba=security#excluir-conta">
+                <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="w-4 h-4" />
+                  Excluir minha conta
+                </Button>
+              </NavLink>
               <Button
                 type="button"
                 variant="ghost"
