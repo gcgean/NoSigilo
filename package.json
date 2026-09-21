@@ -9,6 +9,8 @@
     "build:staged": "vite build --outDir dist_new --emptyOutDir && node scripts/generate-seo-pages.mjs --outDir=dist_new",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:all": "npm run typecheck && npm --prefix backend run typecheck",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
