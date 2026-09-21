@@ -5073,7 +5073,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await new Promise<void>((resolve, reject) => {
       const proc = spawn('ffmpeg', [
         '-y', '-i', origem,
-        '-vf', 'scale=32:-1,boxblur=3:2,scale=360:-1',
+        '-vf', 'scale=48:-1,boxblur=3:2,scale=360:-1',
         '-frames:v', '1', '-q:v', '14',
         destino,
       ]);
