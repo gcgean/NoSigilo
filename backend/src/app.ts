@@ -5123,20 +5123,28 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       };
       const generos = generosDoInteresse[String(req.query.interesse || '')] || null;
       const filtroGenero = generos ? ` AND u.gender IN (${generos.map(() => '?').join(',')})` : '';
-      const linhas = (await queryAll(
+      // Rolagem infinita: 24 por página, pedindo um a mais só para saber se
+      // ainda há próxima.
+      const porPagina = 24;
+      const pagina = Math.max(1, Number(req.query.pagina || 1));
+      const offset = (pagina - 1) * porPagina;
+      const linhasBrutas = (await queryAll(
         db,
         `SELECT u.name, u.city, u.state, u.gender, u.avatar
            FROM users u
           WHERE u.is_banned = 0 AND COALESCE(u.is_deactivated,0) = 0 AND u.deleted_at IS NULL
             AND COALESCE(u.is_showcase,0) = 0 AND UPPER(COALESCE(u.state,'')) = ?
             AND u.avatar IS NOT NULL AND u.avatar <> ''${filtroGenero}
-          ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 1 ELSE 0 END, u.last_seen_at DESC
-          LIMIT 12`,
-        generos ? [uf, ...generos] : [uf]
+          ORDER BY CASE WHEN u.last_seen_at IS NULL THEN 1 ELSE 0 END, u.last_seen_at DESC, u.id
+          LIMIT ? OFFSET ?`,
+        generos ? [uf, ...generos, porPagina + 1, offset] : [uf, porPagina + 1, offset]
       )) as any[];
+      const linhas = linhasBrutas.slice(0, porPagina);
 
       res.json({
         uf,
+        pagina,
+        temMais: linhasBrutas.length > porPagina,
         perfis: linhas.map((l) => ({
           nome: String(l.name || '').trim().split(/\s+/)[0] || 'Membro',
           cidade: l.city ? String(l.city) : null,

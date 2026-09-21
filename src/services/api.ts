@@ -989,8 +989,8 @@ export type PerfilEspiado = {
 };
 
 export const espiarService = {
-  perfis: async (uf: string, interesse?: string): Promise<{ uf: string; perfis: PerfilEspiado[] }> => {
-    const response = await apiClient.get('/public/espiar', { params: { uf, interesse } });
+  perfis: async (uf: string, interesse?: string, pagina = 1): Promise<{ uf: string; pagina: number; temMais: boolean; perfis: PerfilEspiado[] }> => {
+    const response = await apiClient.get('/public/espiar', { params: { uf, interesse, pagina } });
     // A foto já vem no caminho /api/public/..., servido pelo mesmo backend.
     return response.data;
   },
