@@ -989,6 +989,15 @@ async function syncHubAccessForUser(
 // Motivos de exclusão de conta oferecidos ao usuário. O código é o que fica
 // gravado (estável para agregação no painel); o rótulo em português vive no
 // frontend, para poder ser reescrito sem invalidar o histórico.
+/** "jose.silva@gmail.com" -> "jos***@gmail.com". */
+function mascararEmail(email: unknown): string | null {
+  const bruto = String(email || '').trim();
+  if (!bruto.includes('@')) return null;
+  const [usuario, dominio] = bruto.split('@');
+  const visivel = usuario.slice(0, Math.min(3, usuario.length));
+  return `${visivel}***@${dominio}`;
+}
+
 const ACCOUNT_DELETION_REASON_CODES = [
   'no_one_in_region',
   'few_active_users',
@@ -8941,7 +8950,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // anonimização apagar/alterar esses campos.
       const row = (await queryOne(
         db,
-        'SELECT hub_subscription_id, gender, city, state, is_premium FROM users WHERE id = ? LIMIT 1',
+        'SELECT hub_subscription_id, gender, city, state, is_premium, name, email FROM users WHERE id = ? LIMIT 1',
         [userId]
       )) as any;
       const subscriptionId = String(row?.hub_subscription_id || '').trim();
@@ -8992,12 +9001,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         await run(
           db,
           `INSERT INTO account_deletions
-             (id, user_id, reason_code, reason_text, gender, city, state, was_premium, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (id, user_id, reason_code, reason_text, gender, city, state, was_premium, created_at, nome, email_mascarado)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             randomUUID(), userId, reasonCode, reasonText,
             row?.gender ?? null, row?.city ?? null, row?.state ?? null,
             Number(row?.is_premium || 0) === 1 ? 1 : 0, now,
+            // Quem era, para o admin reconhecer a conta na lista. O e-mail vai
+            // mascarado: dá para identificar sem guardar o endereço inteiro de
+            // quem pediu para sair.
+            row?.name ?? null, mascararEmail(row?.email),
           ]
         );
       } catch (e) {
@@ -14827,6 +14840,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         for (const p of promRows) promoterInviterSet.add(String(p.user_id));
       }
 
+      // Contas excluídas: quem era e por que saiu, vindo do registro de saída.
+      const idsExcluidos = (rows as any[]).filter((r) => r.deleted_at).map((r) => String(r.id));
+      const exclusoes = new Map<string, any>();
+      if (idsExcluidos.length > 0) {
+        const ph = idsExcluidos.map(() => '?').join(',');
+        const linhas = (await queryAll(
+          db,
+          `SELECT user_id, reason_code, reason_text, nome, email_mascarado, created_at
+             FROM account_deletions WHERE user_id IN (${ph})`,
+          idsExcluidos
+        )) as any[];
+        for (const l of linhas) exclusoes.set(String(l.user_id), l);
+      }
+
       const mappedUsers = rows.map((row) => ({
         ...rowToPublicUser(row, presence?.isOnline ? presence.isOnline(String(row.id)) : false, {
           showEmail: true,
@@ -14841,6 +14868,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // null = veio pelo caminho principal do site. Nao e dado faltando:
         // e a origem mais comum, e o que as paginas regionais disputam.
         signupSource: row.signup_source ? String(row.signup_source) : null,
+        deletedAt: row.deleted_at ?? null,
+        exclusao: row.deleted_at
+          ? {
+              nome: exclusoes.get(String(row.id))?.nome ?? null,
+              email: exclusoes.get(String(row.id))?.email_mascarado ?? null,
+              motivo: exclusoes.get(String(row.id))?.reason_code ?? null,
+              motivoTexto: exclusoes.get(String(row.id))?.reason_text ?? null,
+              em: exclusoes.get(String(row.id))?.created_at ?? row.deleted_at,
+            }
+          : null,
       }));
 
       res.json({

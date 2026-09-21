@@ -19,6 +19,7 @@ import { Navigate } from 'react-router-dom';
 import { adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { deletionReasonLabel } from '@/utils/accountDeletionReasons';
 import { cn } from '@/lib/utils';
 import AdminMetrics from '@/components/AdminMetrics';
 import AnalistaIa from '@/components/AnalistaIa';
@@ -56,6 +57,14 @@ type AdminUser = {
   isDeactivated?: boolean;
   deactivatedAt?: string | null;
   deactivatedByAdmin?: boolean;
+  // Preenchido só quando a própria pessoa excluiu a conta.
+  exclusao?: {
+    nome: string | null;
+    email: string | null;
+    motivo: string | null;
+    motivoTexto: string | null;
+    em: string | null;
+  } | null;
   fromPromoter?: boolean;
   /** Pagina de SEO de onde o cadastro partiu (/swing/ceara/fortaleza/).
    *  null = veio pelo caminho principal do site. */
@@ -489,6 +498,7 @@ export default function Admin() {
           isDeactivated: !!item.isDeactivated,
           deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
           deactivatedByAdmin: !!item.deactivatedByAdmin,
+          exclusao: (item as any).exclusao ?? null,
           // Estes dois faltavam aqui e existiam so na recarga com filtros. Como
           // e esta a lista que aparece ao abrir o admin, os badges de origem
           // ficavam invisiveis ate alguem filtrar alguma coisa — o de promotor
@@ -844,6 +854,7 @@ export default function Admin() {
         isDeactivated: !!item.isDeactivated,
         deactivatedAt: item.deactivatedAt ? String(item.deactivatedAt) : null,
         deactivatedByAdmin: !!item.deactivatedByAdmin,
+        exclusao: (item as any).exclusao ?? null,
         fromPromoter: !!item.fromPromoter,
         signupSource: item.signupSource ? String(item.signupSource) : null,
         reports: reportCountMap.get(String(item.id || '')) || 0,
@@ -1721,7 +1732,9 @@ export default function Admin() {
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
-                        {entry.isDeactivated && <Badge variant="outline" className="text-xs">Conta desativada</Badge>}
+                        {entry.exclusao
+                          ? <Badge variant="destructive" className="text-xs">Excluída pelo usuário</Badge>
+                          : entry.isDeactivated && <Badge variant="outline" className="text-xs">Conta desativada</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{entry.email || 'Sem e-mail público'}</p>
                       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -1734,8 +1747,26 @@ export default function Admin() {
                           {entry.isPremium ? 'Assinatura' : 'Trial'}: <strong className="text-foreground">{formatAccessRemaining(entry)}</strong>
                         </span>
                         {entry.hubAccessStatus ? <span>Status Hub: {entry.hubAccessStatus}</span> : null}
-                        {entry.isDeactivated ? <span>Desativada em: {formatDateTime(entry.deactivatedAt)}</span> : null}
+                        {entry.isDeactivated && !entry.exclusao ? <span>Desativada em: {formatDateTime(entry.deactivatedAt)}</span> : null}
                       </div>
+                      {/* Conta excluída: quem era e por que saiu. */}
+                      {entry.exclusao ? (
+                        <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs">
+                          <p className="font-semibold text-destructive">
+                            Excluída pelo próprio usuário em {formatDateTime(entry.exclusao.em)}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Era: <span className="font-medium text-foreground">{entry.exclusao.nome || 'nome não registrado'}</span>
+                            {entry.exclusao.email ? ` · ${entry.exclusao.email}` : ''}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Motivo: <span className="font-medium text-foreground">{deletionReasonLabel(entry.exclusao.motivo)}</span>
+                          </p>
+                          {entry.exclusao.motivoTexto ? (
+                            <p className="mt-0.5 italic text-muted-foreground">“{entry.exclusao.motivoTexto}”</p>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
