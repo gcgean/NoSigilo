@@ -140,6 +140,17 @@ function formatRemainingTime(targetMs: number, nowMs: number) {
   return `${days} dia(s) restantes`;
 }
 
+// Versão curta para a pílula do topo: "3d 12h 40m".
+function formatShortCountdown(targetMs: number, nowMs: number) {
+  const diff = targetMs - nowMs;
+  if (diff <= 0) return null;
+  const totalMinutes = Math.floor(diff / (1000 * 60));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes - days * 24 * 60) / 60);
+  const minutes = totalMinutes - days * 24 * 60 - hours * 60;
+  return days > 0 ? `${days}d ${hours}h ${minutes}m` : `${hours}h ${minutes}m`;
+}
+
 function formatDetailedRemainingTime(targetMs: number, nowMs: number) {
   const diff = targetMs - nowMs;
   if (diff <= 0) return null;
@@ -276,14 +287,19 @@ export default function Layout() {
       }
       if (user.isPremium && licenseEnds !== null) {
         const diff = licenseEnds - clockNow;
+        const naSemanaFinal = diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000;
+        // Na última semana a pílula mostra o relógio correndo (3d 12h 40m);
+        // antes disso, o texto calmo de sempre.
+        const curta = formatShortCountdown(licenseEnds, clockNow);
         return {
           href: '/subscriptions',
           tone: diff <= 24 * 60 * 60 * 1000 ? 'danger' : 'premium',
           title: `Assinatura ativa: ${formatRemainingTime(licenseEnds, clockNow)}`,
-          label: `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
+          label: naSemanaFinal && curta ? `⏳ ${curta}` : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
           // Contagem regressiva cheia, só usada na última semana.
           contagem: formatDetailedRemainingTime(licenseEnds, clockNow),
-          naSemanaFinal: diff > 0 && diff <= 7 * 24 * 60 * 60 * 1000,
+          naSemanaFinal,
+          ultimasHoras: diff > 0 && diff <= 24 * 60 * 60 * 1000,
         };
       }
       if (trialEnds !== null && trialEnds > clockNow) {
@@ -1050,24 +1066,32 @@ export default function Layout() {
               priority={10}
               // Só na reta final (7 dias ou menos): antes disso o aviso vira
               // paisagem e deixa de funcionar quando realmente importa.
-              eligible={!isMobileChatRoute && accessCountdown?.tone === 'premium' && !!accessCountdown?.naSemanaFinal && !bannerDismissed}
+              eligible={!isMobileChatRoute && (accessCountdown?.tone === 'premium' || accessCountdown?.tone === 'danger') && !!accessCountdown?.naSemanaFinal && !bannerDismissed}
             >
               <div className="mb-4">
                 {/* Era 11px em --gold (3,63:1 sobre o próprio fundo) — a
                     mensagem que evita cancelamento era a menos legível do
                     app. Agora 14px em --gold-text (mais escuro no tema
                     claro) e com um botão de renovar ao lado. */}
-                <div className="flex max-w-full items-center gap-2 rounded-full border border-gold/30 bg-gold/15 py-1.5 pl-3 pr-1.5">
+                <div className={cn(
+                  'flex max-w-full items-center gap-2 rounded-full border py-1.5 pl-3 pr-1.5',
+                  accessCountdown?.ultimasHoras
+                    ? 'border-destructive/40 bg-destructive/15'
+                    : 'border-gold/30 bg-gold/15'
+                )}>
                   <NavLink
                     to="/subscriptions"
-                    className="min-w-0 flex-1 text-sm font-medium text-gold-text"
+                    className={cn('min-w-0 flex-1 text-sm font-medium', accessCountdown?.ultimasHoras ? 'text-destructive' : 'text-gold-text')}
                     title={accessCountdown?.title}
                   >
                     ⏳ Faltam <span className="font-bold">{accessCountdown?.contagem}</span> para acabar sua assinatura
                   </NavLink>
                   <NavLink
                     to="/subscriptions"
-                    className="shrink-0 rounded-full bg-gold px-3 py-1 text-xs font-semibold text-black/80 transition-opacity hover:opacity-90"
+                    className={cn(
+                      'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-90',
+                      accessCountdown?.ultimasHoras ? 'bg-destructive text-white' : 'bg-gold text-black/80'
+                    )}
                   >
                     Renovar agora
                   </NavLink>
