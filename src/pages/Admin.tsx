@@ -24,6 +24,7 @@ import AdminMetrics from '@/components/AdminMetrics';
 import AnalistaIa from '@/components/AnalistaIa';
 import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import AdminContos from '@/components/AdminContos';
+import AdminVisitantes from '@/components/AdminVisitantes';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 
 type AdminPhoto = {
@@ -1422,6 +1423,10 @@ export default function Admin() {
           <TabsTrigger value="promoters" className="gap-2">
             <BadgeDollarSign className="w-4 h-4" />
             Promotores
+          </TabsTrigger>
+          <TabsTrigger value="visitantes" className="gap-2">
+            <MousePointerClick className="w-4 h-4" />
+            Visitantes
           </TabsTrigger>
           <TabsTrigger value="contos" className="gap-2">
             <FileText className="w-4 h-4" />
@@ -3365,6 +3370,10 @@ export default function Admin() {
 
         <TabsContent value="promoters">
           <AdminPromotersTab />
+        </TabsContent>
+
+        <TabsContent value="visitantes">
+          <AdminVisitantes />
         </TabsContent>
 
         <TabsContent value="contos">

@@ -964,6 +964,22 @@ export const adminContosService = {
   },
 };
 
+export type VisitantesRelatorio = {
+  dias: number;
+  funil: Array<{ etapa: string; pessoas: number; pct: number }>;
+  perdas: { naoCadastraram: number; soUmaPagina: number; desistiramNoCadastro: number; pctDesistenciaNoCadastro: number };
+  porOrigem: Array<{ chave: string; visitantes: number; cadastraram: number; pct: number }>;
+  porAparelho: VisitantesRelatorio['porOrigem'];
+  porDominio: VisitantesRelatorio['porOrigem'];
+};
+
+export const adminVisitantesService = {
+  relatorio: async (dias: number): Promise<VisitantesRelatorio> => {
+    const response = await apiClient.get('/admin/analytics/visitantes', { params: { dias } });
+    return response.data;
+  },
+};
+
 export const adminPromoterService = {
   ranking: async (periodo: 'mes' | '3meses' | 'total'): Promise<{ periodo: string; ranking: RankingPromotor[] }> => {
     const response = await apiClient.get('/admin/promoters/ranking', { params: { periodo } });

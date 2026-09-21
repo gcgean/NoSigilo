@@ -15215,6 +15215,98 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // ─── Visitantes que não se cadastram ───────────────────────────────────────
+  // Mede o topo do funil (quem chega sem conta) usando site_visits. O elo com o
+  // cadastro é o ip_hash: users.registration_ip_hash usa o mesmo hash. Não
+  // identifica ninguém — é hash, serve só para contar.
+  app.get('/api/admin/analytics/visitantes', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 7);
+      const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      const base = `
+        SELECT sv.ip_hash,
+               MIN(sv.created_at) AS primeira,
+               MAX(CASE WHEN sv.page_path LIKE '/register%' THEN 1 ELSE 0 END) AS abriu_cadastro,
+               MAX(CASE WHEN sv.page_path LIKE '/invite/%' THEN 1 ELSE 0 END) AS veio_convite,
+               COUNT(*) AS paginas,
+               MIN(sv.origin_type) AS origem,
+               MIN(sv.device_type) AS aparelho,
+               MIN(sv.referrer_domain) AS dominio
+          FROM site_visits sv
+         WHERE sv.user_id IS NULL AND sv.ip_hash IS NOT NULL AND sv.created_at >= ?
+         GROUP BY sv.ip_hash`;
+
+      const [totais] = (await queryAll(
+        db,
+        `WITH v AS (${base}), c AS (
+           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash) THEN 1 ELSE 0 END AS cadastrou,
+                  CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash
+                                      AND (COALESCE(u.is_premium,0) = 1 OR COALESCE(u.hub_access_status,'') = 'licensed')) THEN 1 ELSE 0 END AS assinou
+             FROM v
+         )
+         SELECT COUNT(*) AS visitantes,
+                SUM(abriu_cadastro) AS abriram_cadastro,
+                SUM(cadastrou) AS cadastraram,
+                SUM(assinou) AS assinaram,
+                SUM(CASE WHEN paginas = 1 THEN 1 ELSE 0 END) AS so_uma_pagina,
+                SUM(CASE WHEN abriu_cadastro = 1 AND cadastrou = 0 THEN 1 ELSE 0 END) AS desistiram_no_cadastro
+           FROM c`,
+        [desde]
+      )) as any[];
+
+      const recorte = async (coluna: string, limite: number) => (await queryAll(
+        db,
+        `WITH v AS (${base}), c AS (
+           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash) THEN 1 ELSE 0 END AS cadastrou
+             FROM v
+         )
+         SELECT COALESCE(NULLIF(${coluna}, ''), 'direto') AS chave,
+                COUNT(*) AS visitantes,
+                SUM(cadastrou) AS cadastraram
+           FROM c GROUP BY 1 ORDER BY 2 DESC LIMIT ${limite}`,
+        [desde]
+      )) as any[];
+
+      const n = (v: any) => Number(v || 0);
+      const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+      const mapear = (linhas: any[]) => linhas.map((l) => ({
+        chave: String(l.chave || 'direto'),
+        visitantes: n(l.visitantes),
+        cadastraram: n(l.cadastraram),
+        pct: pct(n(l.cadastraram), n(l.visitantes)),
+      }));
+
+      const visitantes = n(totais?.visitantes);
+      const abriram = n(totais?.abriram_cadastro);
+      const cadastraram = n(totais?.cadastraram);
+      const assinaram = n(totais?.assinaram);
+
+      res.json({
+        dias,
+        funil: [
+          { etapa: 'Entraram no site sem conta', pessoas: visitantes, pct: 100 },
+          { etapa: 'Abriram a tela de cadastro', pessoas: abriram, pct: pct(abriram, visitantes) },
+          { etapa: 'Criaram a conta', pessoas: cadastraram, pct: pct(cadastraram, visitantes) },
+          { etapa: 'Viraram assinantes', pessoas: assinaram, pct: pct(assinaram, visitantes) },
+        ],
+        perdas: {
+          naoCadastraram: visitantes - cadastraram,
+          soUmaPagina: n(totais?.so_uma_pagina),
+          desistiramNoCadastro: n(totais?.desistiram_no_cadastro),
+          pctDesistenciaNoCadastro: pct(n(totais?.desistiram_no_cadastro), abriram),
+        },
+        porOrigem: mapear(await recorte('origem', 8)),
+        porAparelho: mapear(await recorte('aparelho', 5)),
+        porDominio: mapear(await recorte('dominio', 10)),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/visitantes]', error);
+      res.status(500).json({ error: 'visitantes_indisponivel' });
+    }
+  });
+
   app.get('/api/admin/finance/conversion-funnel', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const nowIso2 = nowIso();
