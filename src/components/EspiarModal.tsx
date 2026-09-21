@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Loader2, MapPin, ShieldCheck, X } from 'lucide-react';
-import { regiaoPublicaService, type RegiaoPublica } from '@/services/api';
+import { ArrowRight, ShieldCheck, X } from 'lucide-react';
 
 const UFS = [
   'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT',
@@ -27,27 +26,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
   const navigate = useNavigate();
   const [uf, setUf] = useState('');
   const [interesse, setInteresse] = useState('');
-  const [dados, setDados] = useState<RegiaoPublica | null>(null);
-  const [carregando, setCarregando] = useState(false);
-
   if (!aberto) return null;
-
-  // Só consulta quando já sabemos estado e interesse: o número mostrado é o de
-  // perfis daquele tipo no estado da pessoa.
-  const consultar = async (estado: string, tipo: string) => {
-    setUf(estado);
-    setInteresse(tipo);
-    setDados(null);
-    if (!estado || !tipo) return;
-    setCarregando(true);
-    try {
-      setDados(await regiaoPublicaService.porUf(estado, tipo));
-    } catch {
-      setDados(null);
-    } finally {
-      setCarregando(false);
-    }
-  };
 
   const continuar = () => {
     try {
@@ -88,7 +67,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
         </label>
         <select
           value={uf}
-          onChange={(e) => void consultar(e.target.value, interesse)}
+          onChange={(e) => setUf(e.target.value)}
           className="mb-4 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
         >
           <option value="">Escolha seu estado</option>
@@ -103,7 +82,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
             <button
               key={i.valor}
               type="button"
-              onClick={() => void consultar(uf, i.valor)}
+              onClick={() => setInteresse(i.valor)}
               className={
                 interesse === i.valor
                   ? 'rounded-xl bg-primary px-3 py-2 text-sm font-bold text-primary-foreground'
@@ -114,24 +93,6 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
             </button>
           ))}
         </div>
-
-        {carregando && (
-          <div className="mb-4 flex items-center justify-center gap-2 rounded-xl bg-muted/50 p-4 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Contando quem já está aí...
-          </div>
-        )}
-
-        {dados && !carregando && (
-          <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-4 text-center">
-            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5" /> {dados.uf}
-            </p>
-            <p className="mt-1 text-3xl font-bold text-brand-pink">{dados.cadastrados.toLocaleString('pt-BR')}</p>
-            <p className="text-sm">
-              {INTERESSES.find((i) => i.valor === interesse)?.rotulo.toLowerCase() ?? 'perfis'} cadastrados no seu estado
-            </p>
-          </div>
-        )}
 
         <button
           type="button"
