@@ -15470,6 +15470,116 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Funil de conversão: cadastrou → usou o app → trial expirou (viu o paywall) →
   // gerou PIX → assinou. Mostra onde os usuários caem fora e o comportamento de
   // quem viu que precisa pagar e não assinou — para saber onde atuar.
+  // Quem está saindo: motivos, evolução por semana e o perfil de quem sai.
+  app.get('/api/admin/analytics/exclusoes', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 30);
+      const dias = [7, 30, 90, 365].includes(pedido) ? pedido : 30;
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      const motivo = String(req.query.motivo || '');
+      const filtroMotivo = motivo ? ' AND COALESCE(d.reason_code, \'not_informed\') = ?' : '';
+      const paramsMotivo = motivo ? [desde, motivo] : [desde];
+
+      const total = (await queryOne(
+        db, 'SELECT COUNT(*) AS c FROM account_deletions d WHERE d.created_at >= ?', [desde]
+      )) as any;
+
+      const porMotivo = (await queryAll(
+        db,
+        `SELECT COALESCE(d.reason_code,'not_informed') AS motivo, COUNT(*) AS total
+           FROM account_deletions d WHERE d.created_at >= ?
+          GROUP BY 1 ORDER BY 2 DESC`,
+        [desde]
+      )) as any[];
+
+      // Semana começando na segunda, no formato YYYY-MM-DD.
+      const porSemana = (await queryAll(
+        db,
+        `SELECT SUBSTR(d.created_at, 1, 10) AS dia, COUNT(*) AS total
+           FROM account_deletions d WHERE d.created_at >= ?${filtroMotivo}
+          GROUP BY 1 ORDER BY 1`,
+        paramsMotivo
+      )) as any[];
+
+      const porGenero = (await queryAll(
+        db,
+        `SELECT COALESCE(NULLIF(d.gender,''),'Não informado') AS chave, COUNT(*) AS total
+           FROM account_deletions d WHERE d.created_at >= ?${filtroMotivo}
+          GROUP BY 1 ORDER BY 2 DESC LIMIT 8`,
+        paramsMotivo
+      )) as any[];
+
+      const porEstado = (await queryAll(
+        db,
+        `SELECT COALESCE(NULLIF(d.state,''),'?') AS chave, COUNT(*) AS total
+           FROM account_deletions d WHERE d.created_at >= ?${filtroMotivo}
+          GROUP BY 1 ORDER BY 2 DESC LIMIT 10`,
+        paramsMotivo
+      )) as any[];
+
+      const eramPremium = (await queryOne(
+        db,
+        `SELECT SUM(CASE WHEN d.was_premium = 1 THEN 1 ELSE 0 END) AS c
+           FROM account_deletions d WHERE d.created_at >= ?${filtroMotivo}`,
+        paramsMotivo
+      )) as any;
+
+      // Últimas saídas, com quem era (nome e e-mail mascarado, quando houver).
+      const recentes = (await queryAll(
+        db,
+        `SELECT d.user_id, d.created_at, d.reason_code, d.reason_text, d.gender, d.city, d.state,
+                d.was_premium, d.nome, d.email_mascarado, u.created_at AS cadastrado_em
+           FROM account_deletions d
+           LEFT JOIN users u ON u.id = d.user_id
+          WHERE d.created_at >= ?${filtroMotivo}
+          ORDER BY d.created_at DESC LIMIT 60`,
+        paramsMotivo
+      )) as any[];
+
+      const n = (v: any) => Number(v || 0);
+      const totalGeral = n(total?.c);
+      const diasDeVida = (cadastro: any, saida: any) => {
+        const ini = cadastro ? new Date(String(cadastro)).getTime() : NaN;
+        const fim = saida ? new Date(String(saida)).getTime() : NaN;
+        if (Number.isNaN(ini) || Number.isNaN(fim) || fim < ini) return null;
+        return Math.round((fim - ini) / (24 * 60 * 60 * 1000));
+      };
+      const vidas = recentes.map((r) => diasDeVida(r.cadastrado_em, r.created_at)).filter((v): v is number => v !== null);
+      const mediaDeVida = vidas.length ? Math.round(vidas.reduce((a, b) => a + b, 0) / vidas.length) : null;
+
+      res.json({
+        dias,
+        motivo: motivo || null,
+        total: totalGeral,
+        eramPremium: n(eramPremium?.c),
+        mediaDeVidaEmDias: mediaDeVida,
+        porMotivo: porMotivo.map((l) => ({
+          motivo: String(l.motivo),
+          total: n(l.total),
+          pct: totalGeral > 0 ? Math.round((n(l.total) / totalGeral) * 1000) / 10 : 0,
+        })),
+        porDia: porSemana.map((l) => ({ dia: String(l.dia), total: n(l.total) })),
+        porGenero: porGenero.map((l) => ({ chave: String(l.chave), total: n(l.total) })),
+        porEstado: porEstado.map((l) => ({ chave: String(l.chave), total: n(l.total) })),
+        recentes: recentes.map((r) => ({
+          em: r.created_at,
+          nome: r.nome ?? null,
+          email: r.email_mascarado ?? null,
+          motivo: r.reason_code ?? null,
+          motivoTexto: r.reason_text ?? null,
+          genero: r.gender ?? null,
+          cidade: r.city ?? null,
+          estado: r.state ?? null,
+          eraPremium: Number(r.was_premium || 0) === 1,
+          diasDeVida: diasDeVida(r.cadastrado_em, r.created_at),
+        })),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/exclusoes]', error);
+      res.status(500).json({ error: 'exclusoes_indisponivel' });
+    }
+  });
+
   // App instalado x navegador: volume de uso e se quem instala assina mais.
   app.get('/api/admin/analytics/uso-do-app', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

@@ -1047,6 +1047,30 @@ export type UsoDoApp = {
   };
 };
 
+export type RelatorioExclusoes = {
+  dias: number;
+  motivo: string | null;
+  total: number;
+  eramPremium: number;
+  mediaDeVidaEmDias: number | null;
+  porMotivo: Array<{ motivo: string; total: number; pct: number }>;
+  porDia: Array<{ dia: string; total: number }>;
+  porGenero: Array<{ chave: string; total: number }>;
+  porEstado: Array<{ chave: string; total: number }>;
+  recentes: Array<{
+    em: string; nome: string | null; email: string | null; motivo: string | null;
+    motivoTexto: string | null; genero: string | null; cidade: string | null;
+    estado: string | null; eraPremium: boolean; diasDeVida: number | null;
+  }>;
+};
+
+export const adminExclusoesService = {
+  relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
+    const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });
+    return response.data;
+  },
+};
+
 export const adminVisitantesService = {
   usoDoApp: async (dias: number): Promise<UsoDoApp> => {
     const response = await apiClient.get('/admin/analytics/uso-do-app', { params: { dias } });
