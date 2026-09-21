@@ -1,4 +1,5 @@
 import Espiar from '@/pages/Espiar';
+import ProtecaoDeMidia from '@/components/ProtecaoDeMidia';
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -86,6 +87,7 @@ const App = () => (
             <FavoritesProvider>
               <FriendsProvider>
                 <ActivityTrackerProvider>
+                <ProtecaoDeMidia />
                 <Toaster />
                 <Sonner />
                 <BrowserRouter>

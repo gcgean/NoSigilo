@@ -18,6 +18,7 @@ import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, c
 import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
+import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
@@ -1478,7 +1479,7 @@ function replaceFileExtension(filename: string, nextExtension: string) {
   return `${filename.slice(0, -ext.length)}${nextExtension}`;
 }
 
-async function compressUploadedVideo(file: Express.Multer.File) {
+async function compressUploadedVideo(file: Express.Multer.File, marca?: string) {
   const currentPath = file.path;
   const tempOutputPath = `${currentPath}.compressed.mp4`;
   const nextFilename = replaceFileExtension(file.filename, '.mp4');
@@ -1489,7 +1490,7 @@ async function compressUploadedVideo(file: Express.Multer.File) {
     '-y',
     '-i', currentPath,
     '-t', String(VIDEO_MAX_DURATION_SECONDS),
-    '-vf', "scale='min(1280,iw)':-2",
+    '-vf', marca ? `scale='min(1280,iw)':-2,${filtroMarcaDagua(marca)}` : "scale='min(1280,iw)':-2",
     '-c:v', 'libx264',
     '-preset', 'faster',
     '-crf', '24',
@@ -1586,7 +1587,7 @@ function hammingHex(a: string, b: string): number {
   return dist;
 }
 
-async function compressUploadedImage(file: Express.Multer.File) {
+async function compressUploadedImage(file: Express.Multer.File, marca?: string) {
   const currentPath = file.path;
   const tempOutputPath = `${currentPath}.compressed.webp`;
   const nextFilename = replaceFileExtension(file.filename, '.webp');
@@ -1595,7 +1596,7 @@ async function compressUploadedImage(file: Express.Multer.File) {
   const args = [
     '-y',
     '-i', currentPath,
-    '-vf', "scale='min(1600,iw)':-2",
+    '-vf', marca ? `scale='min(1600,iw)':-2,${filtroMarcaDagua(marca)}` : "scale='min(1600,iw)':-2",
     '-compression_level', '6',
     '-quality', '82',
     tempOutputPath,
@@ -10077,10 +10078,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
+    // Marca d'água só no que vai para o feed/perfil. Mídia de chat é conversa
+    // privada entre duas pessoas e não precisa carregar o apelido gravado.
+    const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const marca = mediaSource === 'chat' ? undefined : textoDaMarca(autor?.name);
     const storedFile = mime.startsWith('video/')
-      ? await compressUploadedVideo(req.file)
+      ? await compressUploadedVideo(req.file, marca)
       : mime.startsWith('image/') && mime !== 'image/gif'
-      ? await compressUploadedImage(req.file)
+      ? await compressUploadedImage(req.file, marca)
       : {
           filename: req.file.filename,
           mimetype: req.file.mimetype,
