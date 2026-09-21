@@ -643,7 +643,12 @@ export default function Layout() {
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
-      <header className="sticky top-0 z-40 glass-strong border-b">
+      {/* No app instalado do iPhone a barra de status fica POR CIMA da tela:
+          sem este recuo o topo do app briga com o relógio e a bateria. */}
+      <header
+        className="sticky top-0 z-40 glass-strong border-b"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
         <div className="container mx-auto flex h-14 items-center justify-between gap-2 px-3 sm:h-16 sm:gap-4 sm:px-4">
           <NavLink to="/feed" className="flex min-w-0 shrink-0 items-center gap-2">
             <BrandLogo
