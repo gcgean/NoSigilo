@@ -705,6 +705,26 @@ export default function Register() {
                   </p>
                 </div>
 
+                {/* Caminho de um toque, no primeiro passo: no celular digitar
+                    e-mail e inventar senha é o maior atrito do cadastro.
+                    O Google só pede o tipo de perfil antes de seguir. */}
+                {formData.gender ? (
+                  <>
+                    <GoogleSignInButton
+                      label="Criar conta com Google (1 toque)"
+                      gender={formData.gender}
+                      name={formData.name}
+                      city={formData.city}
+                      state={formData.state}
+                    />
+                    <div className="flex items-center gap-3">
+                      <div className="h-px flex-1 bg-border" />
+                      <span className="text-xs text-muted-foreground">ou escolha um apelido</span>
+                      <div className="h-px flex-1 bg-border" />
+                    </div>
+                  </>
+                ) : null}
+
                 {/* Primary cards */}
                 <div className="grid grid-cols-3 gap-2.5">
                   {primaryOptions.map((opt) => {
@@ -933,26 +953,6 @@ export default function Register() {
                     <span className="ml-1 text-xs font-normal text-destructive">*</span>
                   </Label>
 
-                  <Button
-                    type="button"
-                    onClick={handleGpsLocation}
-                    disabled={gpsLoading}
-                    variant="outline"
-                    className="h-12 w-full gap-2 rounded-xl border-primary/40 bg-primary/8 font-medium text-primary hover:bg-primary/15 sm:h-10 sm:rounded-md"
-                  >
-                    {gpsLoading ? (
-                      <>
-                        <Locate className="h-5 w-5 animate-spin" />
-                        Obtendo localização...
-                      </>
-                    ) : (
-                      <>
-                        <MapPin className="h-5 w-5" />
-                        Usar minha localização atual
-                      </>
-                    )}
-                  </Button>
-
                   {formData.city && cityConfirmed ? (
                     <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 animate-fade-in">
                       <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
@@ -970,11 +970,9 @@ export default function Register() {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground/60">
-                        <div className="h-px flex-1 bg-border/50" />
-                        ou digite manualmente
-                        <div className="h-px flex-1 bg-border/50" />
-                      </div>
+                      {/* Digitar a cidade vem primeiro: quem nega a permissão de
+                          GPS (a maioria, no celular) caía num caminho secundário
+                          e escondido. O GPS virou o atalho, não o plano A. */}
                       <CitySearch
                         value={formData.city}
                         onChange={(val) => { updateField('city', val); setCityConfirmed(false); }}
@@ -984,6 +982,15 @@ export default function Register() {
                           setCityConfirmed(true);
                         }}
                       />
+                      <button
+                        type="button"
+                        onClick={handleGpsLocation}
+                        disabled={gpsLoading}
+                        className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
+                      >
+                        {gpsLoading ? <Locate className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
+                        {gpsLoading ? 'Obtendo localização...' : 'ou usar minha localização atual'}
+                      </button>
                     </div>
                   )}
 
