@@ -94,23 +94,11 @@ export default function Landing() {
   const [seoOpen, setSeoOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [espiarAberto, setEspiarAberto] = useState(false);
-  // Teste A/B: metade dos visitantes vê o botão Espiar. O grupo é sorteado uma
-  // vez por aparelho e marcado no funil, para comparar a conversão dos dois.
-  const [mostraEspiar] = useState(() => {
-    try {
-      let grupo = localStorage.getItem('nosigilo:ab-espiar');
-      if (grupo !== 'a' && grupo !== 'b') {
-        grupo = Math.random() < 0.5 ? 'a' : 'b';
-        localStorage.setItem('nosigilo:ab-espiar', grupo);
-      }
-      return grupo === 'b';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    marcarPassoCadastro(mostraEspiar ? 'ab_espiar_b' : 'ab_espiar_a');
-  }, [mostraEspiar]);
+  // Botão Espiar DESLIGADO (22/09/2026). No teste A/B o grupo com botão
+  // converteu mais, mas o ganho aparecia também em quem nem clicou (só 4% dos
+  // visitantes abriram) — sinal de acaso, não de efeito do botão. O código do
+  // Espiar continua inteiro em /espiar; basta voltar para true para religar.
+  const mostraEspiar = false;
   // O header vira sólido só depois de passar o hero — em cima da foto ele
   // continua transparente, como sempre foi.
   const [headerSolid, setHeaderSolid] = useState(false);
