@@ -412,8 +412,9 @@ export default function Register() {
     );
   };
 
-  // O Passo 3 já desabilitava o envio até aceitar os termos; os passos 1 e 2
-  // passam a seguir o mesmo padrão em vez de só reclamar depois do clique.
+  // Guardado só para destacar o que falta (o botão continua clicável de
+  // propósito: botão apagado no celular não diz o que fazer, e a pessoa
+  // desiste. Ao clicar, handleNext aponta o campo que falta).
   const passoAtualValido =
     currentStep === 1
       ? Boolean(formData.gender) &&
@@ -929,7 +930,7 @@ export default function Register() {
                 <div className="space-y-3">
                   <Label>
                     {isCouple ? 'Onde vocês estão?' : 'Onde você está?'}
-                    <span className="ml-1 text-xs font-normal text-muted-foreground">(opcional)</span>
+                    <span className="ml-1 text-xs font-normal text-destructive">*</span>
                   </Label>
 
                   <Button
@@ -1182,10 +1183,10 @@ export default function Register() {
                 <Button
                   type="button"
                   onClick={handleNext}
-                  disabled={isLoading || !passoAtualValido}
+                  disabled={isLoading}
                   className="h-12 flex-1 rounded-xl bg-gradient-primary hover:opacity-90 gap-2 sm:h-10 sm:rounded-md"
                 >
-                  {isLoading ? 'Verificando...' : 'Próximo'}
+                  {isLoading ? 'Verificando...' : passoAtualValido ? 'Próximo' : 'Continuar'}
                   {!isLoading && <ArrowRight className="h-4 w-4" />}
                 </Button>
               )}
