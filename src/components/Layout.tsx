@@ -4,40 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { appService } from '@/services/api';
 import { BannerSlot, FeedBannerQueueProvider } from '@/contexts/FeedBannerQueueContext';
-import {
-  Home,
-  Heart,
-  MessageCircle,
-  User,
-  Bell,
-  Search,
-  Clapperboard,
-  LogOut,
-  Settings,
-  Calendar,
-  Shield,
-  Star,
-  Crown,
-  Radio,
-  Sparkles,
-  UserPlus,
-  Users,
-  CheckCircle2,
-  Circle,
-  Camera,
-  Send,
-  PartyPopper,
-  X,
-  Gift,
-  Moon,
-  Sun,
-  BadgeDollarSign,
-  Coins,
-  Plus,
-  LifeBuoy,
-  UsersRound,
-  Smartphone,
-} from 'lucide-react';
+import { Home, Heart, MessageCircle, User, Bell, Search, Clapperboard, LogOut, Settings, Calendar, Shield, Star, Crown, Radio, Sparkles, UserPlus, Users, CheckCircle2, Circle, Camera, Send, PartyPopper, X, Gift, Moon, Sun, BadgeDollarSign, Coins, Plus, LifeBuoy, UsersRound, Smartphone, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -808,10 +775,17 @@ export default function Layout() {
               <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel className="truncate">{user?.name || 'Minha conta'}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => navigate('/profile')}>
-                  <User className="mr-2 h-4 w-4" />
+                {/* É o item mais procurado do menu (o suporte repete "onde vejo
+                    meu perfil?"): fonte maior, negrito e cor da marca. */}
+                <DropdownMenuItem
+                  onClick={() => navigate('/profile')}
+                  className="my-1 rounded-lg bg-primary/10 py-2.5 text-base font-bold text-brand-pink focus:bg-primary/20 focus:text-brand-pink"
+                >
+                  <User className="mr-2 h-5 w-5" />
                   Meu perfil
+                  <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={toggleTheme}>
                   {theme === 'dark'
                     ? <Sun className="mr-2 h-4 w-4 text-amber-400" />
