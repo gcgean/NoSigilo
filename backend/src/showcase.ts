@@ -5,6 +5,14 @@ import type { DbHandle } from './db.js';
 // partir da mídia do perfil) e resurge 1 post por perfil (bump created_at), pra
 // deixar o feed/stories vivos e gerar o "efeito manada".
 // Usado tanto pelo scheduler (horários de pico) quanto pelo botão do admin.
+/**
+ * Stories automáticos dos perfis de vitrine.
+ *
+ * Desligado em 24/09/2026: os próprios usuários passaram a postar bastante e a
+ * fileira de stories não precisa mais de enchimento. Voltar para true religa.
+ */
+const STORY_AUTOMATICO_ATIVO = false;
+
 export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: number; storiesCreated: number; postsBumped: number }> {
   const now = new Date();
   const nowStr = now.toISOString();
@@ -39,10 +47,12 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
         seenMedia.add(mid);
       }
     }
-    // 1) Mantém stories ativos: se tem menos que o alvo, cria a partir da mídia
-    //    pública do perfil que ainda não está num story ativo (revezando).
+    // 1) Stories automáticos das vitrines: DESLIGADOS em 24/09/2026 — os
+    //    próprios usuários passaram a postar bastante, e a fileira de stories
+    //    não precisa mais de enchimento. Para religar, volte a constante para
+    //    true; o resto da rotina (resurgir post, revezar) continua igual.
     const activeRow = (await db.queryOne('SELECT COUNT(*) AS c FROM stories WHERE user_id = ? AND expires_at > ?', [uid, nowStr])) as any;
-    const need = STORY_TARGET - Number(activeRow?.c || 0);
+    const need = STORY_AUTOMATICO_ATIVO ? STORY_TARGET - Number(activeRow?.c || 0) : 0;
     if (need > 0) {
       const media = (await db.queryAll(
         `SELECT m.id FROM media m
