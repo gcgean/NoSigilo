@@ -339,9 +339,14 @@ export default function Chat() {
       return;
     }
 
-    // Header height in px: h-14 (56 px) below 640 px, sm:h-16 (64 px) above.
-    const headerPx = isSmMobile ? 64 : 56;
-    const headerRem = isSmMobile ? '4rem' : '3.5rem';
+    // Altura do cabeçalho medida pelo Layout (--app-header-h). Antes era fixa
+    // em 56/64px — no app instalado do iPhone o cabeçalho tem também o recuo
+    // da barra de status, e a lista ficava com a conta errada.
+    const alturaMedida = () => {
+      const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-header-h'));
+      return Number.isFinite(v) && v > 0 ? v : (isSmMobile ? 64 : 56);
+    };
+    const headerRem = 'var(--app-header-h, 3.5rem)';
 
     const vv = window.visualViewport;
 
@@ -396,7 +401,7 @@ export default function Chat() {
           top: 0,
           left: 0,
           width: '100%',
-          height: Math.max(Math.floor(vh) - headerPx - 56, 260),
+          height: Math.max(Math.floor(vh) - alturaMedida() - 56, 260),
           maxHeight: `calc(var(--vh, 100dvh) - ${headerRem} - 3.5rem - env(safe-area-inset-bottom, 0px))`,
           overflowX: 'hidden',
         });

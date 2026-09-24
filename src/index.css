@@ -7,6 +7,10 @@
    so position:sticky on the bottom nav continues to work correctly. */
 html, body {
   overflow-x: clip;
+  /* Sem o "elástico" do iPhone ao passar do fim da página: no app instalado
+     ele arrastava a tela inteira, mostrava uma faixa preta embaixo e deixava
+     a barra de navegação parecendo solta no meio da tela. */
+  overscroll-behavior-y: none;
 }
 
 @layer base {

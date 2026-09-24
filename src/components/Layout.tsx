@@ -1,4 +1,4 @@
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
@@ -198,6 +198,21 @@ export default function Layout() {
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPwaInstallPrompt, setShowPwaInstallPrompt] = useState(false);
   const [showPwaInstallTutorial, setShowPwaInstallTutorial] = useState(false);
+  // Altura real do cabeçalho, publicada para o resto do app. Com o recuo da
+  // barra de status do iPhone ela deixou de ser 56px fixos, e as telas que
+  // descontavam "56px" (lista do chat, trava de foto) sobravam ou cortavam.
+  const cabecalhoRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = cabecalhoRef.current;
+    if (!el) return;
+    const publicar = () => {
+      document.documentElement.style.setProperty('--app-header-h', `${el.offsetHeight}px`);
+    };
+    publicar();
+    const obs = new ResizeObserver(publicar);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   // iPhone/iPad no Safari: não existe botão automático de instalar, então o
   // caminho é sempre manual — por isso o convite tem prioridade e há um item
   // fixo no menu, que não some quando a pessoa dispensa o banner.
@@ -639,6 +654,7 @@ export default function Layout() {
       {/* Header */}
       {!isMobileReelsMaximized && (
       <header
+        ref={cabecalhoRef}
         className="sticky top-0 z-40 glass-strong border-b"
         // No app instalado do iPhone a barra de status fica por cima da tela:
         // sem este recuo o topo briga com o relógio e a bateria.

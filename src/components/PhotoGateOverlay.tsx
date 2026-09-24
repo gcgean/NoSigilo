@@ -91,7 +91,7 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
   // z-[35] fica ABAIXO do header (z-40) e do nav inferior (z-40):
   // usuário navega normalmente pelo header/nav mas não interage com o conteúdo bloqueado.
   return (
-    <div className="fixed inset-x-0 top-14 sm:top-16 bottom-0 z-[35] flex flex-col">
+    <div className="fixed inset-x-0 bottom-0 z-[35] flex flex-col" style={{ top: 'var(--app-header-h, 3.5rem)' }}>
       {/* Blurred frosted background */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-xl" />
 
