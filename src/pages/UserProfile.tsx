@@ -33,6 +33,7 @@ import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialo
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import SeloAtividade from '@/components/SeloAtividade';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -1321,12 +1322,11 @@ export default function UserProfile() {
                   <span className="font-medium">Opções sexuais:</span> {sexualOptionsLabel}
                 </div>
               ) : null}
-              {profile?.isOnline && (
-                <div className="text-xs text-success font-medium flex items-center justify-center sm:justify-start gap-1">
-                  <span className="w-2 h-2 rounded-full bg-success" />
-                  Online agora
-                </div>
-              )}
+              {/* Quando esta pessoa apareceu por último: quem escreve para um
+                  perfil sumido há meses não recebe resposta e culpa o site. */}
+              <div className="flex justify-center sm:justify-start">
+                <SeloAtividade lastSeenAt={(profile as any)?.lastSeenAt} isOnline={profile?.isOnline} />
+              </div>
               {(profile as any)?.availabilityStatus && (profile as any).availabilityStatus !== 'not_looking' && (() => {
                 const s = (profile as any).availabilityStatus as string;
                 const map: Record<string, { label: string; cls: string; emoji: string }> = {

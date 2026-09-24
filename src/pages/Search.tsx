@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import SeloAtividade from '@/components/SeloAtividade';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usersService, matchService, locationService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -532,13 +533,13 @@ export default function SearchPage() {
               {distanceLabel}
             </Badge>
           ) : null}
-          {profile.isOnline ? (
-            <span className="h-2.5 w-2.5 rounded-full bg-success ring-2 ring-background" title="Online agora" />
-          ) : profile.lastSeenAt ? (
-            <Badge variant="secondary" className="h-5 rounded-full border-none bg-black/40 px-2 text-[10px] font-medium text-white backdrop-blur-md">
-              {format(new Date(profile.lastSeenAt), 'HH:mm', { locale: ptBR })}
-            </Badge>
-          ) : null}
+          {/* Antes mostrava só a hora do último acesso ("20:34"), o que não
+              diz se foi hoje ou em maio. Agora diz a faixa. */}
+          <SeloAtividade
+            lastSeenAt={profile.lastSeenAt}
+            isOnline={profile.isOnline}
+            className="h-5 border-none backdrop-blur-md"
+          />
         </div>
 
         {/* Top-left: verified + availability badge */}

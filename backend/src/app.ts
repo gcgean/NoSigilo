@@ -4061,7 +4061,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'admin' AND read_at IS NULL", [nowIso(), userId]);
     // Quem é o autor (equipe ou IA) não vai para o cliente: para ele é tudo "Suporte".
     res.json({
-      messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })),
+      messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), message: String(m.message), imageUrl: m.image_url ?? null, readAt: m.read_at ?? null, createdAt: String(m.created_at) })),
       typing: suporteEstaDigitando(userId),
       humanRequested: await conversaComEquipe({ getSetting: (key) => getSystemSetting(db, key) }, userId),
     });
@@ -4368,7 +4368,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
          COALESCE(p.pix_key, '') as pix_key,
          CASE WHEN p.user_id IS NULL THEN 0 ELSE 1 END as is_promoter,
          u.email as user_email, u.avatar as user_avatar,
-         (SELECT message FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
+         (SELECT CASE WHEN message = '' AND image_url IS NOT NULL THEN '📷 Imagem' ELSE message END FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message,
          (SELECT created_at FROM promoter_support_messages WHERE promoter_user_id = s.user_id ORDER BY created_at DESC LIMIT 1) as last_message_at,
          (SELECT COUNT(*) FROM promoter_support_messages WHERE promoter_user_id = s.user_id AND sender_type = 'promoter' AND read_at IS NULL) as unread_count,
          (SELECT value FROM system_settings WHERE key = 'support_handoff:' || s.user_id LIMIT 1) as handoff_at,
@@ -4396,18 +4396,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const msgs = (await queryAll(db, 'SELECT * FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at ASC', [targetUserId])) as any[];
     // Mark promoter messages as read
     await run(db, "UPDATE promoter_support_messages SET read_at = ? WHERE promoter_user_id = ? AND sender_type = 'promoter' AND read_at IS NULL", [nowIso(), targetUserId]);
-    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), isAi: String(m.sender_id) === SENDER_ID_IA, message: String(m.message), readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
+    res.json({ messages: msgs.map((m) => ({ id: String(m.id), senderType: String(m.sender_type), isAi: String(m.sender_id) === SENDER_ID_IA, message: String(m.message), imageUrl: m.image_url ?? null, readAt: m.read_at ?? null, createdAt: String(m.created_at) })) });
   });
 
   // Admin: responder a um promotor
   app.post('/api/admin/promoter-support/:userId', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const targetUserId = String(req.params.userId || '');
-    const schema = z.object({ message: z.string().min(1).max(2000) });
+    // Texto, imagem (print/foto enviada antes por /api/media/upload) ou os dois.
+    const schema = z.object({
+      message: z.string().max(2000).optional().default(''),
+      imageUrl: z.string().regex(/^\/uploads\/[A-Za-z0-9._-]+$/).optional(),
+    }).refine((d) => d.message.trim() || d.imageUrl, { message: 'empty' });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const texto = parsed.data.message.trim();
+    const imageUrl = parsed.data.imageUrl ?? null;
     const now = nowIso();
     const id = randomUUID();
-    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, targetUserId, 'admin', req.auth!.userId, parsed.data.message, now]);
+    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, targetUserId, 'admin', req.auth!.userId, texto, imageUrl, now]);
     // A equipe respondeu: a conversa deixa de estar "aguardando atendente". A IA
     // continua quieta nela por 12h (regra do supportAi), para não atropelar.
     await setSystemSetting(db, chaveTransferido(targetUserId), '');
@@ -4427,7 +4433,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             appName: env.APP_NAME || 'NoSigilo',
             siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net',
           },
-          { to: String(target.email), userName: target.name, message: parsed.data.message }
+          { to: String(target.email), userName: target.name, message: texto || 'A equipe enviou uma imagem no chat de suporte. Abra o chat no site para ver.' }
         );
       }
     } catch (err) {
@@ -9485,10 +9491,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } else {
       // 'nearby' — mesma cidade primeiro, depois distância, depois online, recência.
       const onlineThresholdIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      params.push(onlineThresholdIso);
+      // Faixa de atividade ANTES da distância e DEPOIS de cidade/estado: as
+      // regras de região continuam mandando. Medido em 23/09/2026: 60% dos
+      // perfis visíveis não abriam o app havia 30 dias, e 80% das mensagens de
+      // quem nunca foi respondido iam para esses. Perfil sumido a 2 km não
+      // vale mais que uma pessoa ativa a 30 km.
+      const seteDiasIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const trintaDiasIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      params.push(seteDiasIso, trintaDiasIso, onlineThresholdIso);
       orderBy = `
         ${sameCityOrderBy}
         ${sameStateOrderBy}
+        CASE
+          WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0
+          WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 1
+          ELSE 2
+        END ASC,
         ${distanceOrderBy}
         CASE WHEN u.last_seen_at IS NOT NULL AND u.last_seen_at >= ? THEN 0 ELSE 1 END ASC,
         CASE WHEN u.last_seen_at IS NOT NULL THEN 0 ELSE 1 END ASC,
