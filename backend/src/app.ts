@@ -15286,6 +15286,83 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     return total > 0 ? Math.max(0, Math.min(100, (1 - (b.ocioso - a.ocioso) / total) * 100)) : 0;
   };
 
+  // ─── Vigia dos recursos do servidor ────────────────────────────────────────
+  // Mede de 5 em 5 minutos e avisa no Telegram quando aperta. Só avisa depois
+  // de DUAS medições seguidas acima do limite: pico de 1 minuto (um build, um
+  // vídeo sendo convertido) não é problema e não deve acordar ninguém.
+  const LIMITES = { cpu: 85, memoria: 90, disco: 85 };
+  const ESPERA_ENTRE_AVISOS_MS = 3 * 60 * 60 * 1000;
+  const seguidas = { cpu: 0, memoria: 0, disco: 0 };
+  const ultimoAviso: Record<string, number> = {};
+
+  const medirRecursos = async () => {
+    const cpu = await medirCpuReal();
+    const totalMem = totalmem();
+    const memoria = totalMem > 0 ? ((totalMem - freemem()) / totalMem) * 100 : 0;
+    let disco = 0;
+    try {
+      const d = statfsSync(backendRootDir) as any;
+      const bloco = Number(d.bsize || d.frsize || 0);
+      const total = bloco * Number(d.blocks || 0);
+      const livre = bloco * Number(d.bavail ?? d.bfree ?? 0);
+      if (total > 0) disco = ((total - livre) / total) * 100;
+    } catch { /* sem leitura de disco: ignora */ }
+    return { cpu, memoria, disco };
+  };
+
+  const vigiarRecursos = async () => {
+    try {
+      const agora = await medirRecursos();
+      const rotulos: Record<string, string> = {
+        cpu: 'CPU', memoria: 'Memória', disco: 'Disco',
+      };
+      for (const chave of ['cpu', 'memoria', 'disco'] as const) {
+        const valor = agora[chave];
+        if (valor >= LIMITES[chave]) {
+          seguidas[chave] += 1;
+        } else {
+          seguidas[chave] = 0;
+          continue;
+        }
+        if (seguidas[chave] < 2) continue; // espera confirmar
+        const ultimo = ultimoAviso[chave] ?? 0;
+        if (Date.now() - ultimo < ESPERA_ENTRE_AVISOS_MS) continue;
+        ultimoAviso[chave] = Date.now();
+        const extra = chave === 'disco'
+          ? '\nDisco cheio derruba upload de foto e vídeo.'
+          : chave === 'memoria'
+            ? '\nMemória no limite costuma vir antes de o site cair.'
+            : '\nSe não for build nem conversão de vídeo, vale olhar.';
+        void notifyAdminsTelegram(
+          { db, env },
+          `⚠️ ${rotulos[chave]} em ${valor.toFixed(1)}% no servidor (limite ${LIMITES[chave]}%), sustentado por 10 minutos.${extra}`
+        ).catch(() => undefined);
+        console.warn(`[recursos] ${rotulos[chave]} em ${valor.toFixed(1)}% — aviso enviado`);
+      }
+    } catch (erro) {
+      console.error('[recursos] falha ao medir', erro);
+    }
+  };
+
+  setInterval(() => { void vigiarRecursos(); }, 5 * 60 * 1000);
+  setTimeout(() => { void vigiarRecursos(); }, 90 * 1000);
+
+  // Leitura pontual, para o Analista de IA e para qualquer conferência rápida.
+  app.get('/api/admin/resources-alerts', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const agora = await medirRecursos();
+    res.json({
+      medidoEm: nowIso(),
+      cpu: Math.round(agora.cpu * 10) / 10,
+      memoria: Math.round(agora.memoria * 10) / 10,
+      disco: Math.round(agora.disco * 10) / 10,
+      limites: LIMITES,
+      medicoesSeguidasAcimaDoLimite: seguidas,
+      ultimoAviso: Object.fromEntries(
+        Object.entries(ultimoAviso).map(([k, v]) => [k, new Date(v).toISOString()])
+      ),
+    });
+  });
+
   app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     const cpuReal = await medirCpuReal();
     try {
