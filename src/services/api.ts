@@ -1105,6 +1105,20 @@ export const adminNotasService = {
   },
 };
 
+export type RelatorioRitmo = {
+  dias: number;
+  porDiaDaSemana: Array<{ dia: string; aberturas: number; pessoas: number }>;
+  serie: Array<{ dia: string; entraram: number; sairam: number; saldo: number; taxa: number }>;
+  totais: { entraram: number; sairam: number; saldo: number; taxaDeSaida: number };
+};
+
+export const adminRitmoService = {
+  relatorio: async (dias: number): Promise<RelatorioRitmo> => {
+    const response = await apiClient.get('/admin/analytics/ritmo', { params: { dias } });
+    return response.data;
+  },
+};
+
 export const adminExclusoesService = {
   relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
     const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });

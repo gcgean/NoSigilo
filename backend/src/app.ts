@@ -15602,6 +15602,89 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Ritmo da plataforma: que dia da semana as pessoas usam, e o cruzamento
+  // diário de quem entrou x quem saiu nos últimos 30 dias.
+  app.get('/api/admin/analytics/ritmo', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 30);
+      const dias = [7, 30, 90].includes(pedido) ? pedido : 30;
+      const desdeData = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      // Dia da semana: 0 = domingo (padrão do Postgres em EXTRACT(DOW)).
+      const semana = (await queryAll(
+        db,
+        `SELECT EXTRACT(DOW FROM created_at::timestamptz) AS dow,
+                COUNT(*) AS aberturas,
+                COUNT(DISTINCT user_id) AS pessoas
+           FROM site_visits
+          WHERE created_at >= ? AND user_id IS NOT NULL
+          GROUP BY 1 ORDER BY 1`,
+        [desdeData]
+      )) as any[];
+
+      const cadastros = (await queryAll(
+        db,
+        `SELECT SUBSTR(created_at, 1, 10) AS dia, COUNT(*) AS total
+           FROM users
+          WHERE created_at >= ? AND COALESCE(is_showcase,0) = 0
+          GROUP BY 1`,
+        [desdeData]
+      )) as any[];
+
+      const exclusoes = (await queryAll(
+        db,
+        `SELECT SUBSTR(created_at, 1, 10) AS dia, COUNT(*) AS total
+           FROM account_deletions WHERE created_at >= ? GROUP BY 1`,
+        [desdeData]
+      )) as any[];
+
+      const porDiaCadastro = new Map(cadastros.map((l) => [String(l.dia), Number(l.total || 0)]));
+      const porDiaExclusao = new Map(exclusoes.map((l) => [String(l.dia), Number(l.total || 0)]));
+
+      // Série contínua: dia sem movimento também aparece, senão a linha mente.
+      const serie: Array<{ dia: string; entraram: number; sairam: number; saldo: number; taxa: number }> = [];
+      for (let i = dias - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const entraram = porDiaCadastro.get(d) ?? 0;
+        const sairam = porDiaExclusao.get(d) ?? 0;
+        serie.push({
+          dia: d,
+          entraram,
+          sairam,
+          saldo: entraram - sairam,
+          taxa: entraram > 0 ? Math.round((sairam / entraram) * 1000) / 10 : 0,
+        });
+      }
+
+      const totalEntraram = serie.reduce((a, l) => a + l.entraram, 0);
+      const totalSairam = serie.reduce((a, l) => a + l.sairam, 0);
+
+      const NOMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+      res.json({
+        dias,
+        porDiaDaSemana: Array.from({ length: 7 }, (_, i) => {
+          const linha = semana.find((l) => Number(l.dow) === i);
+          return {
+            dia: NOMES[i],
+            aberturas: Number(linha?.aberturas || 0),
+            pessoas: Number(linha?.pessoas || 0),
+          };
+        }),
+        serie,
+        totais: {
+          entraram: totalEntraram,
+          sairam: totalSairam,
+          saldo: totalEntraram - totalSairam,
+          // Quantos saíram para cada 100 que entraram no período.
+          taxaDeSaida: totalEntraram > 0 ? Math.round((totalSairam / totalEntraram) * 1000) / 10 : 0,
+        },
+      });
+    } catch (error) {
+      console.error('[admin/analytics/ritmo]', error);
+      res.status(500).json({ error: 'ritmo_indisponivel' });
+    }
+  });
+
   // Quem está saindo: motivos, evolução por semana e o perfil de quem sai.
   app.get('/api/admin/analytics/exclusoes', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {

@@ -4,7 +4,7 @@ import {
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle, Sparkles,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star, ImagePlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
-import { adminDenunciasIaService, adminService, adminPromoterService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
+import { adminDenunciasIaService, adminService, adminPromoterService, profileService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { deletionReasonLabel } from '@/utils/accountDeletionReasons';
@@ -27,6 +27,7 @@ import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import AdminContos from '@/components/AdminContos';
 import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
+import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 
@@ -3503,7 +3504,10 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="exclusoes">
-          <AdminExclusoes />
+          <div className="space-y-4">
+            <AdminRitmo />
+            <AdminExclusoes />
+          </div>
         </TabsContent>
 
         <TabsContent value="contos">
@@ -4756,6 +4760,9 @@ function AdminPromotersTab() {
   const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
   const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  // Print/foto anexada à resposta do suporte (botão ou Ctrl+V no campo).
+  const [chatImage, setChatImage] = useState<{ file: File; preview: string } | null>(null);
+  const chatFileRef = useRef<HTMLInputElement>(null);
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [unreadMap, setUnreadMap] = useState<Record<string, number>>({});
   const [supportChats, setSupportChats] = useState<Awaited<ReturnType<typeof adminPromoterService.listSupportChats>>['chats']>([]);
@@ -4815,12 +4822,38 @@ function AdminPromotersTab() {
     } catch {}
   };
 
+  const escolherImagemChat = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast({ title: 'Só imagens', description: 'Envie um print ou foto (JPG, PNG, WEBP ou GIF).', variant: 'destructive' });
+      return;
+    }
+    setChatImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview);
+      return { file, preview: URL.createObjectURL(file) };
+    });
+  };
+
+  const limparImagemChat = () => {
+    setChatImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview);
+      return null;
+    });
+    if (chatFileRef.current) chatFileRef.current.value = '';
+  };
+
   const handleSendChat = async () => {
-    if (!selectedChat || !chatInput.trim()) return;
+    if (!selectedChat || (!chatInput.trim() && !chatImage)) return;
     setIsSendingChat(true);
     try {
-      await adminPromoterService.sendSupportMessage(selectedChat.userId, chatInput.trim());
+      let imageUrl: string | undefined;
+      if (chatImage) {
+        const up = await profileService.uploadMedia(chatImage.file, { source: 'chat' });
+        imageUrl = String(up.url);
+      }
+      await adminPromoterService.sendSupportMessage(selectedChat.userId, chatInput.trim(), imageUrl);
       setChatInput('');
+      limparImagemChat();
       const data = await adminPromoterService.getSupportMessages(selectedChat.userId);
       setChatMessages(data.messages);
     } catch {
@@ -4979,7 +5012,12 @@ function AdminPromotersTab() {
               <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.senderType === 'admin' ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border rounded-bl-sm'}`}>
                 {m.senderType === 'promoter' && <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{selectedChat.fullName}</p>}
                 {m.isAi && <p className="text-[10px] font-semibold mb-0.5 text-primary-foreground/80">🤖 Assistente IA</p>}
-                <p>{m.message}</p>
+                {m.imageUrl && (
+                  <a href={resolveServerUrl(m.imageUrl)} target="_blank" rel="noreferrer" className="block mb-1">
+                    <img src={resolveServerUrl(m.imageUrl)} alt="Imagem enviada" className="max-h-64 rounded-lg" />
+                  </a>
+                )}
+                {m.message && <p>{m.message}</p>}
                 <p className={`text-[10px] mt-0.5 ${m.senderType === 'admin' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>{formatDateAdmin(m.createdAt)}</p>
               </div>
             </div>
@@ -4988,17 +5026,45 @@ function AdminPromotersTab() {
         </div>
 
         {/* Input */}
+        {chatImage && (
+          <div className="flex items-center gap-2 rounded-xl border bg-secondary/30 p-2">
+            <img src={chatImage.preview} alt="Prévia" className="h-16 w-16 rounded-lg object-cover" />
+            <p className="flex-1 truncate text-xs text-muted-foreground">{chatImage.file.name || 'print colado'}</p>
+            <button onClick={limparImagemChat} className="rounded-full p-1.5 hover:bg-secondary" title="Remover imagem">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex gap-2">
           <input
+            ref={chatFileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => escolherImagemChat(e.target.files?.[0])}
+          />
+          <button
+            onClick={() => chatFileRef.current?.click()}
+            disabled={isSendingChat}
+            className="rounded-xl border px-3 py-2 text-muted-foreground hover:bg-secondary disabled:opacity-50"
+            title="Enviar foto ou print (também dá para colar com Ctrl+V)"
+          >
+            <ImagePlus className="w-4 h-4" />
+          </button>
+          <input
             className="flex-1 rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            placeholder="Responder..."
+            placeholder="Responder... (Ctrl+V cola um print)"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
+            onPaste={(e) => {
+              const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith('image/'));
+              if (item) { e.preventDefault(); escolherImagemChat(item.getAsFile()); }
+            }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat(); }}}
           />
           <button
             onClick={handleSendChat}
-            disabled={!chatInput.trim() || isSendingChat}
+            disabled={(!chatInput.trim() && !chatImage) || isSendingChat}
             className="rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
           >
             {isSendingChat ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
