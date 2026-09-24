@@ -185,6 +185,33 @@ export default function AdminVisitantes() {
                   </div>
                 ))}
               </div>
+              {/* Por sistema: onde o convite de instalar tem mais o que fazer. */}
+              {uso.porSistema?.length > 0 && (
+                <div className="border-t border-border/50 pt-3">
+                  <p className="mb-2 text-sm font-semibold">Por sistema (pessoas ativas no período)</p>
+                  <div className="space-y-1.5">
+                    {uso.porSistema.map((l) => (
+                      <div key={l.sistema} className="flex items-center gap-2 text-sm">
+                        <span className="w-24 shrink-0 truncate">{l.sistema}</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary/70"
+                            style={{ width: `${Math.max(2, (l.pessoas / Math.max(1, uso.porSistema[0].pessoas)) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">{l.pessoas.toLocaleString('pt-BR')}</span>
+                        <span className={cn(
+                          'w-28 shrink-0 text-right text-xs font-semibold',
+                          l.pctApp >= 15 ? 'text-emerald-600' : l.pctApp >= 5 ? 'text-amber-600' : 'text-muted-foreground'
+                        )}>
+                          {l.peloApp.toLocaleString('pt-BR')} no app ({l.pctApp}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {uso.contas.comApp.total > 30 && (
                 <p className="text-sm">
                   {uso.contas.comApp.pctAssina > uso.contas.semApp.pctAssina ? (

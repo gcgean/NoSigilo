@@ -15742,6 +15742,33 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         []
       )) as any;
 
+      // Quebra por sistema: quem usa Android instala muito mais que quem usa
+      // iPhone (lá a instalação é manual), e isso muda onde vale insistir.
+      const porSistema = (await queryAll(
+        db,
+        `WITH v AS (
+           SELECT user_id, display_mode, LOWER(COALESCE(user_agent,'')) AS ua
+             FROM site_visits
+            WHERE created_at >= ? AND user_id IS NOT NULL
+         ), c AS (
+           SELECT DISTINCT user_id, display_mode,
+                  CASE
+                    WHEN ua LIKE '%iphone%' OR ua LIKE '%ipad%' OR ua LIKE '%ipod%' THEN 'iPhone/iPad'
+                    WHEN ua LIKE '%android%' THEN 'Android'
+                    WHEN ua LIKE '%windows%' THEN 'Windows'
+                    WHEN ua LIKE '%macintosh%' OR ua LIKE '%mac os%' THEN 'Mac'
+                    WHEN ua LIKE '%linux%' THEN 'Linux'
+                    ELSE 'Outro'
+                  END AS sistema
+             FROM v
+         )
+         SELECT sistema,
+                COUNT(DISTINCT user_id) AS pessoas,
+                COUNT(DISTINCT CASE WHEN display_mode = 'app' THEN user_id END) AS pelo_app
+           FROM c GROUP BY sistema ORDER BY 2 DESC`,
+        [desde]
+      )) as any[];
+
       const n = (v: any) => Number(v || 0);
       const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
       const comApp = n(linha?.com_app);
@@ -15757,6 +15784,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           comApp: { total: comApp, assinantes: n(linha?.com_app_assina), pctAssina: pct(n(linha?.com_app_assina), comApp) },
           semApp: { total: semApp, assinantes: n(linha?.sem_app_assina), pctAssina: pct(n(linha?.sem_app_assina), semApp) },
         },
+        porSistema: porSistema.map((l) => ({
+          sistema: String(l.sistema),
+          pessoas: n(l.pessoas),
+          peloApp: n(l.pelo_app),
+          pctApp: pct(n(l.pelo_app), n(l.pessoas)),
+        })),
       });
     } catch (error) {
       console.error('[admin/analytics/uso-do-app]', error);

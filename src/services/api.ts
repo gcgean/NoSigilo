@@ -938,7 +938,7 @@ export const promoterService = {
   },
 };
 
-export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; isAi?: boolean; message: string; readAt: string | null; createdAt: string };
+export type SupportMessage = { id: string; senderType: 'promoter' | 'admin'; isAi?: boolean; message: string; imageUrl?: string | null; readAt: string | null; createdAt: string };
 
 export type RankingPromotor = {
   posicao: number; userId: string; nome: string; avatar: string | null;
@@ -1045,6 +1045,7 @@ export type UsoDoApp = {
     comApp: { total: number; assinantes: number; pctAssina: number };
     semApp: { total: number; assinantes: number; pctAssina: number };
   };
+  porSistema: Array<{ sistema: string; pessoas: number; peloApp: number; pctApp: number }>;
 };
 
 export type RelatorioExclusoes = {
@@ -1183,8 +1184,8 @@ export const adminPromoterService = {
     const response = await apiClient.put('/admin/support-ai', data);
     return response.data;
   },
-  sendSupportMessage: async (userId: string, message: string) => {
-    const response = await apiClient.post(`/admin/promoter-support/${userId}`, { message });
+  sendSupportMessage: async (userId: string, message: string, imageUrl?: string) => {
+    const response = await apiClient.post(`/admin/promoter-support/${userId}`, { message, imageUrl });
     return response.data;
   },
   sendMonthlySummary: async (period: string): Promise<{ sent: number; errors: number; skipped: number; total: number; period: string; dueDate: string }> => {
