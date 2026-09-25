@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
 import EditarCapaDialog from '@/components/EditarCapaDialog';
 import MuralDoPerfil from '@/components/MuralDoPerfil';
-import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
+import { twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -422,6 +422,15 @@ export default function Profile() {
   const [capaBorrada, setCapaBorrada] = useState(false);
   const [capaEscolhida, setCapaEscolhida] = useState(false);
   const [editarCapaAberto, setEditarCapaAberto] = useState(false);
+  // Estado da verificação em duas etapas, para o selo do botão no perfil.
+  const [duasEtapasAtiva, setDuasEtapasAtiva] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    twoFactorService.status()
+      .then((r) => { if (!cancelado) setDuasEtapasAtiva(!!r?.enabled); })
+      .catch(() => undefined);
+    return () => { cancelado = true; };
+  }, []);
   useEffect(() => {
     if (!user?.id) return;
     let cancelado = false;
@@ -1125,7 +1134,7 @@ export default function Profile() {
           aoSalvar={(r) => { setCapa(r.capa); setCapaBorrada(r.capaBorrada); setCapaEscolhida(r.capaEscolhida); }}
         />
 
-        <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 sm:gap-6">
           {/* Avatar */}
           <div id="profile-photo" className="relative -mt-16 sm:-mt-20">
             <Dialog>
@@ -1314,6 +1323,22 @@ export default function Profile() {
               </NavLink>
               {/* Atalho pedido o tempo todo no suporte: leva direto à Zona de
                   Perigo, já com a aba certa aberta. */}
+              {/* Verificação em duas etapas: mostra se está ligada e leva direto
+                  para o bloco nas Configurações, já destacado. */}
+              <NavLink to="/settings?aba=security#duas-etapas">
+                <Button variant="ghost" size="sm" className="w-full gap-2">
+                  <ShieldCheck className={cn('w-4 h-4', duasEtapasAtiva ? 'text-emerald-500' : 'text-muted-foreground')} />
+                  Verificação em duas etapas
+                  {duasEtapasAtiva !== null && (
+                    <span className={cn(
+                      'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                      duasEtapasAtiva ? 'bg-emerald-500/15 text-emerald-600' : 'bg-amber-500/15 text-amber-600'
+                    )}>
+                      {duasEtapasAtiva ? 'Ativada' : 'Desativada'}
+                    </span>
+                  )}
+                </Button>
+              </NavLink>
               <NavLink to="/settings?aba=security#excluir-conta">
                 <Button variant="ghost" size="sm" className="w-full gap-2 text-muted-foreground hover:text-destructive">
                   <Trash2 className="w-4 h-4" />

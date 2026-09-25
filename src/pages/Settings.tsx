@@ -498,6 +498,20 @@ export default function Settings() {
   );
   const zonaPerigoRef = useRef<HTMLDivElement | null>(null);
   const [destacarZonaPerigo, setDestacarZonaPerigo] = useState(false);
+  // Mesmo atalho para a verificação em duas etapas (link vindo do Perfil).
+  const duasEtapasRef = useRef<HTMLDivElement | null>(null);
+  const [destacarDuasEtapas, setDestacarDuasEtapas] = useState(false);
+  useEffect(() => {
+    if (window.location.hash !== '#duas-etapas') return;
+    setAbaAtiva('security');
+    const t = window.setTimeout(() => {
+      duasEtapasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setDestacarDuasEtapas(true);
+      window.setTimeout(() => setDestacarDuasEtapas(false), 2600);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     if (window.location.hash !== '#excluir-conta') return;
     setAbaAtiva('security');
@@ -1677,7 +1691,18 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
-          {user?.email && <VerificacaoDuasEtapas email={String(user.email)} />}
+          {user?.email && (
+            <div
+              id="duas-etapas"
+              ref={duasEtapasRef}
+              className={cn(
+                'scroll-mt-24 rounded-xl transition-shadow',
+                destacarDuasEtapas && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+              )}
+            >
+              <VerificacaoDuasEtapas email={String(user.email)} />
+            </div>
+          )}
 
           {user?.officialAmbassadorSince && (
             <div className="glass flex items-start justify-between gap-4 rounded-xl p-4 sm:p-6">

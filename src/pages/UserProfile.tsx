@@ -1234,8 +1234,8 @@ export default function UserProfile() {
             onEditar={() => navigate('/profile?editarCapa=1')}
           />
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-6 min-w-0">
-          <div className="relative -mt-16 sm:-mt-20">
+        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 min-w-0">
+          <div className="relative -mt-16 sm:-mt-20 shrink-0">
             <UserAvatar 
               user={profile} 
               className="w-32 h-32 sm:w-40 sm:h-40 border-4 border-white shadow-xl" 
