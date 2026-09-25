@@ -9379,6 +9379,156 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // ─── Mural do perfil ───────────────────────────────────────────────────────
+  // Recado público no perfil de outra pessoa. Só aparece depois que o dono
+  // aprova. Escrever exige assinatura, como o chat: o mural é um jeito de
+  // falar com alguém, e aberto a todos viraria atalho grátis para o chat pago
+  // e porta de entrada de perfil falso.
+  const LIMITE_MURAL_POR_DIA = 5;
+
+  const linhaDoMural = (r: any) => ({
+    id: String(r.id),
+    conteudo: String(r.content),
+    status: String(r.status),
+    criadoEm: r.created_at,
+    autor: {
+      id: String(r.author_id),
+      nome: String(r.author_name || 'Usuário'),
+      avatar: r.author_avatar ? String(r.author_avatar) : null,
+      tipo: r.author_gender ? String(r.author_gender) : null,
+      cidade: r.author_city ? String(r.author_city) : null,
+      estado: r.author_state ? String(r.author_state) : null,
+    },
+  });
+
+  app.get('/api/users/:userId/mural', requireAuth(env, db), async (req, res) => {
+    try {
+      const donoId = String(req.params.userId || '');
+      const ehDono = donoId === req.auth!.userId;
+      // O dono vê também os pendentes (para aprovar); os outros, só aprovados.
+      const linhas = (await queryAll(
+        db,
+        `SELECT pm.*, u.name AS author_name, u.avatar AS author_avatar, u.gender AS author_gender,
+                u.city AS author_city, u.state AS author_state
+           FROM profile_mural pm
+           JOIN users u ON u.id = pm.author_id
+          WHERE pm.owner_id = ?
+            AND ${ehDono ? "pm.status IN ('aprovado','pendente')" : "pm.status = 'aprovado'"}
+            AND u.is_banned = 0 AND COALESCE(u.is_deactivated,0) = 0 AND u.deleted_at IS NULL
+          ORDER BY CASE WHEN pm.status = 'pendente' THEN 0 ELSE 1 END, pm.created_at DESC
+          LIMIT 60`,
+        [donoId]
+      )) as any[];
+      res.json({ recados: linhas.map(linhaDoMural), ehDono });
+    } catch (error) {
+      console.error('[mural/listar]', error);
+      res.status(500).json({ error: 'mural_indisponivel' });
+    }
+  });
+
+  app.post('/api/users/:userId/mural', requireAuth(env, db), async (req, res) => {
+    try {
+      const donoId = String(req.params.userId || '');
+      const autorId = req.auth!.userId;
+      if (donoId === autorId) { res.status(400).json({ error: 'proprio_perfil', message: 'Você não pode escrever no seu próprio mural.' }); return; }
+      if (!(await userHasPremiumAccess(db, autorId))) { res.status(403).json({ error: 'premium_required' }); return; }
+
+      const parsed = z.object({ conteudo: z.string().trim().min(3).max(1000) }).safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Escreva entre 3 e 1000 caracteres.' }); return; }
+
+      const dono = (await queryOne(db, 'SELECT id, name FROM users WHERE id = ? AND is_banned = 0 AND deleted_at IS NULL', [donoId])) as any;
+      if (!dono) { res.status(404).json({ error: 'not_found' }); return; }
+
+      const bloqueio = await queryOne(
+        db,
+        'SELECT 1 AS x FROM blocks WHERE (blocker_user_id = ? AND blocked_user_id = ?) OR (blocker_user_id = ? AND blocked_user_id = ?) LIMIT 1',
+        [donoId, autorId, autorId, donoId]
+      );
+      if (bloqueio) { res.status(403).json({ error: 'blocked' }); return; }
+
+      // Anti-spam: poucos recados por dia, e um por perfil enquanto estiver pendente.
+      const hoje = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const doDia = (await queryOne(db, 'SELECT COUNT(*) AS c FROM profile_mural WHERE author_id = ? AND created_at >= ?', [autorId, hoje])) as any;
+      if (Number(doDia?.c || 0) >= LIMITE_MURAL_POR_DIA) {
+        res.status(429).json({ error: 'limite', message: `Você já deixou ${LIMITE_MURAL_POR_DIA} recados hoje. Tente amanhã.` });
+        return;
+      }
+      const pendente = await queryOne(db, "SELECT 1 AS x FROM profile_mural WHERE author_id = ? AND owner_id = ? AND status = 'pendente' LIMIT 1", [autorId, donoId]);
+      if (pendente) {
+        res.status(409).json({ error: 'ja_pendente', message: 'Você já tem um recado esperando aprovação neste perfil.' });
+        return;
+      }
+
+      const id = randomUUID();
+      const agora = nowIso();
+      await run(
+        db,
+        "INSERT INTO profile_mural (id, owner_id, author_id, content, status, created_at) VALUES (?, ?, ?, ?, 'pendente', ?)",
+        [id, donoId, autorId, parsed.data.conteudo, agora]
+      );
+      const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [autorId])) as any;
+      const nomeAutor = String(autor?.name || 'Alguém');
+      await run(
+        db,
+        `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+         VALUES (?, ?, 'mural.recado', ?, ?, ?, 0, ?)`,
+        [randomUUID(), donoId, 'Novo recado no seu mural', `${nomeAutor} deixou um recado. Aprove para ele aparecer no seu perfil.`,
+          JSON.stringify({ actorId: autorId, actorName: nomeAutor, url: '/profile?aba=mural' }), agora]
+      );
+      void sendPushToUser({ db, env }, {
+        userId: donoId,
+        payload: { title: 'Novo recado no seu mural', body: `${nomeAutor} deixou um recado para você aprovar.`, url: '/profile?aba=mural', tag: 'mural' },
+      }).catch(() => undefined);
+      await persist();
+      res.json({ ok: true, status: 'pendente' });
+    } catch (error) {
+      console.error('[mural/criar]', error);
+      res.status(500).json({ error: 'mural_indisponivel' });
+    }
+  });
+
+  // Dono aprova ou recusa.
+  app.patch('/api/mural/:id', requireAuth(env, db), async (req, res) => {
+    try {
+      const parsed = z.object({ acao: z.enum(['aprovar', 'recusar']) }).safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      const recado = (await queryOne(db, 'SELECT id, owner_id, author_id FROM profile_mural WHERE id = ?', [String(req.params.id)])) as any;
+      if (!recado || String(recado.owner_id) !== req.auth!.userId) { res.status(404).json({ error: 'not_found' }); return; }
+      const status = parsed.data.acao === 'aprovar' ? 'aprovado' : 'recusado';
+      await run(db, 'UPDATE profile_mural SET status = ?, decidido_em = ? WHERE id = ?', [status, nowIso(), String(recado.id)]);
+      if (status === 'aprovado') {
+        const dono = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [String(recado.owner_id)])) as any;
+        await run(
+          db,
+          `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+           VALUES (?, ?, 'mural.aprovado', ?, ?, ?, 0, ?)`,
+          [randomUUID(), String(recado.author_id), 'Seu recado foi aprovado', `${dono?.name || 'O perfil'} aprovou seu recado no mural.`,
+            JSON.stringify({ actorId: String(recado.owner_id), url: `/users/${recado.owner_id}` }), nowIso()]
+        );
+      }
+      await persist();
+      res.json({ ok: true, status });
+    } catch (error) {
+      console.error('[mural/decidir]', error);
+      res.status(500).json({ error: 'mural_indisponivel' });
+    }
+  });
+
+  // Apagar: o dono tira do mural dele; o autor pode apagar o que escreveu.
+  app.delete('/api/mural/:id', requireAuth(env, db), async (req, res) => {
+    try {
+      const recado = (await queryOne(db, 'SELECT id, owner_id, author_id FROM profile_mural WHERE id = ?', [String(req.params.id)])) as any;
+      const eu = req.auth!.userId;
+      if (!recado || (String(recado.owner_id) !== eu && String(recado.author_id) !== eu)) { res.status(404).json({ error: 'not_found' }); return; }
+      await run(db, 'DELETE FROM profile_mural WHERE id = ?', [String(recado.id)]);
+      await persist();
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('[mural/apagar]', error);
+      res.status(500).json({ error: 'mural_indisponivel' });
+    }
+  });
+
   // Block / Unblock endpoints
   app.post('/api/users/:userId/block', requireAuth(env, db), async (req, res) => {
     const targetId = String(req.params.userId || '');

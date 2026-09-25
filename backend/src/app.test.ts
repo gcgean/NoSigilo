@@ -3016,4 +3016,54 @@ describe('nosigilo backend', () => {
     const antigo = await ctx.db.queryOne("SELECT status FROM experiences WHERE id = 'antigo-1'") as any;
     expect(antigo.status).toBe('em_revisao');
   });
+  // ── Mural do perfil: recado só aparece depois que o dono aprova ─────────────
+  it('mural: assinante deixa recado pendente, so o dono ve, e aparece depois de aprovado', async () => {
+    const dona = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Dona Mural', email: 'dona-mural@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const autor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Mural', email: 'autor-mural@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const curioso = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Curioso Mural', email: 'curioso-mural@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const D = { Authorization: `Bearer ${dona.token}` };
+    const A = { Authorization: `Bearer ${autor.token}` };
+    const C = { Authorization: `Bearer ${curioso.token}` };
+
+    // Sem assinatura não escreve (mural não pode virar atalho grátis do chat).
+    await run(ctx.db, "UPDATE users SET is_premium = 0, trial_ends_at = '2000-01-01T00:00:00.000Z' WHERE id = ?", [curioso.user.id]);
+    const semPremium = await request(ctx.app).post(`/api/users/${dona.user.id}/mural`).set(C).send({ conteudo: 'Oi, adorei o perfil' });
+    expect(semPremium.status).toBe(403);
+
+    // Ninguém escreve no próprio mural.
+    await request(ctx.app).post(`/api/users/${dona.user.id}/mural`).set(D).send({ conteudo: 'Oi eu mesma' }).expect(400);
+
+    await run(ctx.db, 'UPDATE users SET is_premium = 1 WHERE id = ?', [autor.user.id]);
+    const criado = await request(ctx.app).post(`/api/users/${dona.user.id}/mural`).set(A).send({ conteudo: 'Olá, adoramos o perfil!' });
+    expect(criado.status).toBe(200);
+    expect(criado.body.status).toBe('pendente');
+
+    // Segundo recado enquanto o primeiro está pendente: recusado.
+    await request(ctx.app).post(`/api/users/${dona.user.id}/mural`).set(A).send({ conteudo: 'Outro recado' }).expect(409);
+
+    // Pendente: visitante não vê; a dona vê para aprovar.
+    const antesVisitante = await request(ctx.app).get(`/api/users/${dona.user.id}/mural`).set(C).expect(200);
+    expect(antesVisitante.body.recados).toHaveLength(0);
+    const antesDona = await request(ctx.app).get(`/api/users/${dona.user.id}/mural`).set(D).expect(200);
+    expect(antesDona.body.recados[0].status).toBe('pendente');
+
+    // Só a dona aprova.
+    const id = antesDona.body.recados[0].id;
+    await request(ctx.app).patch(`/api/mural/${id}`).set(A).send({ acao: 'aprovar' }).expect(404);
+    await request(ctx.app).patch(`/api/mural/${id}`).set(D).send({ acao: 'aprovar' }).expect(200);
+
+    const depois = await request(ctx.app).get(`/api/users/${dona.user.id}/mural`).set(C).expect(200);
+    expect(depois.body.recados).toHaveLength(1);
+    expect(depois.body.recados[0].conteudo).toBe('Olá, adoramos o perfil!');
+
+    // Visitante não apaga; a dona apaga.
+    await request(ctx.app).delete(`/api/mural/${id}`).set(C).expect(404);
+    await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
+  });
 });

@@ -1072,6 +1072,34 @@ export const adminDenunciasIaService = {
   },
 };
 
+export type RecadoDoMural = {
+  id: string;
+  conteudo: string;
+  status: 'pendente' | 'aprovado' | 'recusado';
+  criadoEm: string;
+  autor: { id: string; nome: string; avatar: string | null; tipo: string | null; cidade: string | null; estado: string | null };
+};
+
+// Mural do perfil: recado público que só aparece depois que o dono aprova.
+export const muralService = {
+  listar: async (donoId: string): Promise<{ recados: RecadoDoMural[]; ehDono: boolean }> => {
+    const response = await apiClient.get(`/users/${encodeURIComponent(donoId)}/mural`);
+    return response.data;
+  },
+  escrever: async (donoId: string, conteudo: string) => {
+    const response = await apiClient.post(`/users/${encodeURIComponent(donoId)}/mural`, { conteudo });
+    return response.data;
+  },
+  decidir: async (id: string, acao: 'aprovar' | 'recusar') => {
+    const response = await apiClient.patch(`/mural/${encodeURIComponent(id)}`, { acao });
+    return response.data;
+  },
+  apagar: async (id: string) => {
+    const response = await apiClient.delete(`/mural/${encodeURIComponent(id)}`);
+    return response.data;
+  },
+};
+
 // Capa do perfil: até 2 fotos públicas e a opção de aparecer borrada.
 export const capaService = {
   salvar: async (dados: { mediaIds?: string[]; borrada?: boolean }): Promise<{

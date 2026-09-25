@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star } from 'lucide-react';
+import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,6 +23,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
 import EditarCapaDialog from '@/components/EditarCapaDialog';
+import MuralDoPerfil from '@/components/MuralDoPerfil';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
@@ -436,6 +437,8 @@ export default function Profile() {
   }, [user?.id, photos.length]);
   useEffect(() => {
     if (searchParams.get('editarCapa') === '1') setEditarCapaAberto(true);
+    // Notificação de recado novo abre direto a aba do mural.
+    if (searchParams.get('aba') === 'mural') setActiveTab('mural');
   }, [searchParams]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
@@ -1705,6 +1708,10 @@ export default function Profile() {
             <Video className="w-4 h-4" />
             Vídeos{myVideos.length > 0 ? ` (${myVideos.length})` : ''}
           </TabsTrigger>
+          <TabsTrigger value="mural" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <MessageSquareQuote className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Mural</span>
+          </TabsTrigger>
           <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <Star className="w-4 h-4" />
             Recomendações{approvedTestimonials.length > 0 ? ` (${approvedTestimonials.length})` : ''}
@@ -1914,6 +1921,10 @@ export default function Profile() {
             </div>
           </div>
 
+        </TabsContent>
+
+        <TabsContent value="mural">
+          {user?.id ? <MuralDoPerfil donoId={String(user.id)} donoNome={user.name} podeEscrever={false} /> : null}
         </TabsContent>
 
         <TabsContent value="testimonials">

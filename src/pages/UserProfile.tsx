@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink, MessageSquareQuote } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import SeloAtividade from '@/components/SeloAtividade';
 import CapaDoPerfil from '@/components/CapaDoPerfil';
+import MuralDoPerfil from '@/components/MuralDoPerfil';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -469,7 +470,7 @@ export default function UserProfile() {
   const location = useLocation();
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'posts' | 'public' | 'private' | 'testimonials' | 'videos' | 'experiences'>('posts');
+  const [activeTab, setActiveTab] = useState<'posts' | 'public' | 'private' | 'testimonials' | 'videos' | 'experiences' | 'mural'>('posts');
   const [profile, setProfile] = useState<any | null>(null);
   const [publicPhotos, setPublicPhotos] = useState<Photo[]>([]);
   const [privatePhotos, setPrivatePhotos] = useState<Photo[]>([]);
@@ -1409,6 +1410,22 @@ export default function UserProfile() {
                 {String(profile?.allowMessages || 'everyone') === 'nobody' ? 'Mensagens desativadas' : isStartingChat ? 'Abrindo...' : 'Mandar mensagem'}
               </Button>
 
+              {/* Atalho para o mural: abre a aba já com o campo de escrever. */}
+              {!isSelf && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => {
+                    setActiveTab('mural');
+                    window.setTimeout(() => document.getElementById('abas-do-perfil')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+                  }}
+                >
+                  <MessageSquareQuote className="h-4 w-4" />
+                  Postar no mural
+                </Button>
+              )}
+
               {/* Like profile button */}
               <Button
                 variant={profileLiked ? 'default' : 'outline'}
@@ -1521,7 +1538,7 @@ export default function UserProfile() {
         recipientName={String(profile?.name || '')}
       />
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+      <Tabs id="abas-do-perfil" value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
         <TabsList className="w-full mb-4 flex flex-wrap gap-1 h-auto p-1">
           <TabsTrigger value="posts" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <ImageIcon className="w-3.5 h-3.5 shrink-0" />
@@ -1546,6 +1563,10 @@ export default function UserProfile() {
           {/* Antes a aba só existia com testimonialsCount > 0, o que tornava
               impossível ser o PRIMEIRO a recomendar alguém: todo perfil começa
               com zero, então nunca havia onde escrever. Agora sempre aparece. */}
+          <TabsTrigger value="mural" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <MessageSquareQuote className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Mural</span>
+          </TabsTrigger>
           <TabsTrigger value="testimonials" className="flex-1 gap-1.5 text-xs sm:text-sm">
             <Star className="w-3.5 h-3.5 shrink-0" />
             <span className="truncate">Recomendações {testimonialsCount > 0 ? `(${testimonialsCount})` : ''}</span>
@@ -1702,6 +1723,15 @@ export default function UserProfile() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="mural">
+          <MuralDoPerfil
+            donoId={String(userId || '')}
+            donoNome={profile?.name}
+            podeEscrever={!isSelf}
+            onPrecisaAssinar={() => { setPaywallMotivo('chat'); setPaywallOpen(true); }}
+          />
         </TabsContent>
 
         <TabsContent value="testimonials">
