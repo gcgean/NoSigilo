@@ -27,7 +27,10 @@ self.addEventListener('fetch', (event) => {
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/uploads') ||
-    url.pathname.startsWith('/private-uploads')
+    url.pathname.startsWith('/private-uploads') ||
+    // Checagem de versão nova: sempre da rede e nunca no cache (cada checagem
+    // tem um ?t= diferente, e guardar todas enchia o cache do aparelho).
+    url.pathname === '/version.json'
   ) {
     return;
   }

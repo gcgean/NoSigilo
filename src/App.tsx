@@ -1,5 +1,6 @@
 import Espiar from '@/pages/Espiar';
 import ProtecaoDeMidia from '@/components/ProtecaoDeMidia';
+import AtualizacaoDisponivel from '@/components/AtualizacaoDisponivel';
 import { Suspense, lazy } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -88,6 +89,7 @@ const App = () => (
               <FriendsProvider>
                 <ActivityTrackerProvider>
                 <ProtecaoDeMidia />
+                <AtualizacaoDisponivel />
                 <Toaster />
                 <Sonner />
                 <BrowserRouter>
