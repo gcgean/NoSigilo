@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nosigilo-shell-v6';
+const CACHE_NAME = 'nosigilo-shell-v7';
 const OFFLINE_SHELL = ['/index.html', '/manifest.webmanifest', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
