@@ -1,5 +1,5 @@
-const CACHE_NAME = 'nosigilo-shell-v5';
-const OFFLINE_SHELL = ['/index.html', '/manifest.webmanifest', '/favicon.svg', '/apple-touch-icon.svg', '/icon-192.svg', '/icon-512.svg'];
+const CACHE_NAME = 'nosigilo-shell-v6';
+const OFFLINE_SHELL = ['/index.html', '/manifest.webmanifest', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -75,8 +75,8 @@ self.addEventListener('push', (event) => {
   const title = String(payload?.title || 'NoSigilo.net');
   const options = {
     body: payload?.body ? String(payload.body) : '',
-    icon: payload?.icon ? String(payload.icon) : '/icon-192.svg',
-    badge: payload?.badge ? String(payload.badge) : '/icon-192.svg',
+    icon: payload?.icon ? String(payload.icon) : '/icon-192.png',
+    badge: payload?.badge ? String(payload.badge) : '/icon-96.png',
     tag: payload?.tag ? String(payload.tag) : 'nosigilo-push',
     data: {
       url: payload?.url ? String(payload.url) : '/notifications',

@@ -1332,8 +1332,8 @@ function buildWebPushPayload(payload: PushDeliveryPayload) {
     url: payload.url ?? '/notifications',
     tag: payload.tag ?? 'nosigilo',
     data: payload.data ?? null,
-    icon: payload.icon ?? '/icon-192.svg',
-    badge: payload.badge ?? '/icon-192.svg',
+    icon: payload.icon ?? '/icon-192.png',
+    badge: payload.badge ?? '/icon-96.png',
   });
 }
 
