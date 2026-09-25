@@ -34,6 +34,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import SeloAtividade from '@/components/SeloAtividade';
+import CapaDoPerfil from '@/components/CapaDoPerfil';
 import {
   COMMENT_ACTION_BUTTON_BASE,
   COMMENT_ACTION_DELETE_CLASS,
@@ -1223,8 +1224,17 @@ export default function UserProfile() {
   return (
     <div className="max-w-2xl lg:max-w-4xl mx-auto w-full min-w-0 overflow-x-hidden">
       <div className="glass rounded-2xl p-6 mb-6">
+        {/* Capa: duas fotos públicas lado a lado, com o avatar sobreposto. */}
+        <div className="-mx-6 -mt-6">
+          <CapaDoPerfil
+            fotos={Array.isArray((profile as any)?.capa) ? (profile as any).capa : []}
+            borrada={!!(profile as any)?.capaBorrada}
+            ehDono={isSelf}
+            onEditar={() => navigate('/profile?editarCapa=1')}
+          />
+        </div>
         <div className="flex flex-col sm:flex-row items-center gap-6 min-w-0">
-          <div className="relative">
+          <div className="relative -mt-16 sm:-mt-20">
             <UserAvatar 
               user={profile} 
               className="w-32 h-32 sm:w-40 sm:h-40 border-4 border-white shadow-xl" 

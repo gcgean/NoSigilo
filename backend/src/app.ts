@@ -9181,6 +9181,94 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // ─── Capa do perfil ────────────────────────────────────────────────────────
+  // Duas fotos lado a lado no topo do perfil. Regra de ouro: só foto PÚBLICA
+  // de post/perfil. Foto privada ou de chat nunca vai para a capa, senão a capa
+  // vira um jeito de vazar o que a pessoa escondeu.
+  const FILTRO_FOTO_DE_CAPA = `m.is_private = 0 AND m.mime_type LIKE 'image/%' AND (m.source IS NULL OR m.source != 'chat')`;
+
+  async function montarCapa(usuarioId: string, escolhidasJson: unknown) {
+    let escolhidas: string[] = [];
+    try {
+      const bruto = escolhidasJson ? JSON.parse(String(escolhidasJson)) : [];
+      if (Array.isArray(bruto)) escolhidas = bruto.map(String).slice(0, 2);
+    } catch { /* json inválido: cai no automático */ }
+
+    const fotos: Array<{ mediaId: string; url: string }> = [];
+    if (escolhidas.length > 0) {
+      const ph = escolhidas.map(() => '?').join(',');
+      const linhas = (await queryAll(
+        db,
+        `SELECT m.id, m.filename FROM media m WHERE m.user_id = ? AND m.id IN (${ph}) AND ${FILTRO_FOTO_DE_CAPA}`,
+        [usuarioId, ...escolhidas]
+      )) as any[];
+      // Mantém a ordem que o dono escolheu.
+      for (const id of escolhidas) {
+        const l = linhas.find((x) => String(x.id) === id);
+        if (l) fotos.push({ mediaId: String(l.id), url: `/uploads/${l.filename}` });
+      }
+    }
+    // Automático (ou completa o que faltou): as fotos públicas mais curtidas.
+    if (fotos.length < 2) {
+      const jaTem = fotos.map((f) => f.mediaId);
+      const filtroJaTem = jaTem.length ? ` AND m.id NOT IN (${jaTem.map(() => '?').join(',')})` : '';
+      const linhas = (await queryAll(
+        db,
+        `SELECT m.id, m.filename,
+                (SELECT COUNT(*) FROM likes l WHERE l.target_type = 'photo' AND l.target_id = m.id) AS curtidas
+           FROM media m
+          WHERE m.user_id = ? AND ${FILTRO_FOTO_DE_CAPA}${filtroJaTem}
+          ORDER BY curtidas DESC, m.created_at DESC
+          LIMIT ?`,
+        [usuarioId, ...jaTem, 2 - fotos.length]
+      )) as any[];
+      for (const l of linhas) fotos.push({ mediaId: String(l.id), url: `/uploads/${l.filename}` });
+    }
+    return fotos;
+  }
+
+  // O dono escolhe as fotos da capa e se ela aparece borrada.
+  app.put('/api/profile/capa', requireAuth(env, db), async (req, res) => {
+    try {
+      const parsed = z.object({
+        mediaIds: z.array(z.string().min(1)).max(2).optional(),
+        borrada: z.boolean().optional(),
+      }).safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      const userId = req.auth!.userId;
+
+      if (parsed.data.mediaIds) {
+        const ids = Array.from(new Set(parsed.data.mediaIds));
+        if (ids.length > 0) {
+          const ph = ids.map(() => '?').join(',');
+          const validas = (await queryAll(
+            db,
+            `SELECT m.id FROM media m WHERE m.user_id = ? AND m.id IN (${ph}) AND ${FILTRO_FOTO_DE_CAPA}`,
+            [userId, ...ids]
+          )) as any[];
+          if (validas.length !== ids.length) {
+            res.status(400).json({ error: 'foto_invalida', message: 'Só dá para usar na capa fotos públicas suas.' });
+            return;
+          }
+        }
+        await run(db, 'UPDATE users SET capa_media_ids = ? WHERE id = ?', [ids.length ? JSON.stringify(ids) : null, userId]);
+      }
+      if (typeof parsed.data.borrada === 'boolean') {
+        await run(db, 'UPDATE users SET capa_borrada = ? WHERE id = ?', [parsed.data.borrada ? 1 : 0, userId]);
+      }
+      await persist();
+      const u = (await queryOne(db, 'SELECT capa_media_ids, capa_borrada FROM users WHERE id = ?', [userId])) as any;
+      res.json({
+        capa: await montarCapa(userId, u?.capa_media_ids),
+        capaBorrada: Number(u?.capa_borrada || 0) === 1,
+        capaEscolhida: !!u?.capa_media_ids,
+      });
+    } catch (error) {
+      console.error('[profile/capa]', error);
+      res.status(500).json({ error: 'capa_indisponivel' });
+    }
+  });
+
   app.get('/api/users/:userId', requireAuth(env, db), async (req, res) => {
     const userId = req.params.userId;
     const viewerId = req.auth!.userId;
@@ -9285,6 +9373,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       followersCount: Number((row as any).followers_count || 0),
       followingCount: Number((row as any).following_count || 0),
       distanceKm,
+      capa: await montarCapa(String((row as any).id), (row as any).capa_media_ids),
+      capaBorrada: Number((row as any).capa_borrada || 0) === 1,
+      capaEscolhida: !!(row as any).capa_media_ids,
     });
   });
 

@@ -21,6 +21,8 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import SupportChatDialog from '@/components/SupportChatDialog';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
+import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
+import EditarCapaDialog from '@/components/EditarCapaDialog';
 import { feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
@@ -413,6 +415,28 @@ export default function Profile() {
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  // Capa do perfil (duas fotos públicas no topo). Vem do mesmo endpoint que
+  // os visitantes usam, para o dono ver exatamente o que os outros veem.
+  const [capa, setCapa] = useState<FotoDeCapa[]>([]);
+  const [capaBorrada, setCapaBorrada] = useState(false);
+  const [capaEscolhida, setCapaEscolhida] = useState(false);
+  const [editarCapaAberto, setEditarCapaAberto] = useState(false);
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelado = false;
+    usersService.getUser(String(user.id))
+      .then((u: any) => {
+        if (cancelado) return;
+        setCapa(Array.isArray(u?.capa) ? u.capa : []);
+        setCapaBorrada(!!u?.capaBorrada);
+        setCapaEscolhida(!!u?.capaEscolhida);
+      })
+      .catch(() => undefined);
+    return () => { cancelado = true; };
+  }, [user?.id, photos.length]);
+  useEffect(() => {
+    if (searchParams.get('editarCapa') === '1') setEditarCapaAberto(true);
+  }, [searchParams]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
   const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
@@ -1081,9 +1105,26 @@ export default function Profile() {
           </div>
         ) : null}
 
+        <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6">
+          <CapaDoPerfil
+            fotos={capa}
+            borrada={capaBorrada}
+            ehDono
+            onEditar={() => setEditarCapaAberto(true)}
+          />
+        </div>
+        <EditarCapaDialog
+          aberto={editarCapaAberto}
+          aoFechar={() => setEditarCapaAberto(false)}
+          fotosPublicas={photos.filter((f) => !f.isPrivate && !f.broken).map((f) => ({ id: f.id, url: f.url }))}
+          escolhidasAtuais={capaEscolhida ? capa.map((c) => c.mediaId) : []}
+          borradaAtual={capaBorrada}
+          aoSalvar={(r) => { setCapa(r.capa); setCapaBorrada(r.capaBorrada); setCapaEscolhida(r.capaEscolhida); }}
+        />
+
         <div className="flex flex-col sm:flex-row items-center gap-5 sm:gap-6">
           {/* Avatar */}
-          <div id="profile-photo" className="relative">
+          <div id="profile-photo" className="relative -mt-16 sm:-mt-20">
             <Dialog>
               <DialogTrigger asChild>
                 <button

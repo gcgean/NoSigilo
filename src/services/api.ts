@@ -1072,6 +1072,16 @@ export const adminDenunciasIaService = {
   },
 };
 
+// Capa do perfil: até 2 fotos públicas e a opção de aparecer borrada.
+export const capaService = {
+  salvar: async (dados: { mediaIds?: string[]; borrada?: boolean }): Promise<{
+    capa: Array<{ mediaId: string; url: string }>; capaBorrada: boolean; capaEscolhida: boolean;
+  }> => {
+    const response = await apiClient.put('/profile/capa', dados);
+    return response.data;
+  },
+};
+
 export const notaDoAppService = {
   pendente: async (): Promise<{ perguntar: boolean }> => {
     const response = await apiClient.get('/app-rating/pendente');
