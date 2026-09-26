@@ -1436,6 +1436,12 @@ export default function Admin() {
       <AnalistaIa abaAtiva={abaAtiva} />
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="space-y-6">
         <TabsList className="flex w-full max-w-full justify-start overflow-x-auto">
+          {/* Suporte em primeiro: é a aba mais aberta no dia a dia. As conversas
+              ficavam escondidas no fim da aba Promotores. */}
+          <TabsTrigger value="suporte" className="gap-2">
+            <MessageCircle className="w-4 h-4" />
+            Suporte
+          </TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2">
             <TrendingUp className="w-4 h-4" />
             Métricas
@@ -3491,8 +3497,12 @@ export default function Admin() {
           <AdminReengagementTab />
         </TabsContent>
 
+        <TabsContent value="suporte">
+          <AdminPromotersTab modo="suporte" />
+        </TabsContent>
+
         <TabsContent value="promoters">
-          <AdminPromotersTab />
+          <AdminPromotersTab modo="promotores" />
         </TabsContent>
 
         <TabsContent value="visitantes">
@@ -4729,7 +4739,7 @@ function calcDueDate(period: string | null): string {
   return due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function AdminPromotersTab() {
+function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'suporte' }) {
   const { toast } = useToast();
   const [promoters, setPromoters] = useState<PromoterRow[]>([]);
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
@@ -5076,8 +5086,11 @@ function AdminPromotersTab() {
   }
 
   // ── Main view ──────────────────────────────────────────────────────────────
+  // Suporte ganhou aba própria no admin: mesmo componente, cada aba mostra só a
+  // sua parte (as conversas abertas usam o mesmo estado nas duas).
   return (
     <div className="space-y-6">
+      {modo === 'promotores' && (<>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -5231,6 +5244,9 @@ function AdminPromotersTab() {
       {/* Ranking de promotores e título de Embaixador Oficial */}
       <AdminRankingPromotores />
 
+      </>)}
+
+      {modo === 'suporte' && (<>
       {/* IA do suporte — responde usuários e promotores no chat de suporte. */}
       {iaSuporte && (
         <div className="glass rounded-xl p-5 space-y-3">
@@ -5363,6 +5379,9 @@ function AdminPromotersTab() {
         );
       })()}
 
+      </>)}
+
+      {modo === 'promotores' && (<>
       {/* Fila de pagamento — pagamento é sempre pelo saldo aprovado ACUMULADO
           (todos os períodos) e só é liberado ao atingir o mínimo de minPayoutCents,
           pra acabar com o Pix picado de comissões pequenas. */}
@@ -5594,6 +5613,7 @@ function AdminPromotersTab() {
           );
         })}
       </div>
+      </>)}
     </div>
   );
 }
