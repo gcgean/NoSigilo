@@ -27,7 +27,7 @@ Premium
 - Assinatura mensal de R$ 9,90 por mês (não é cobrança por mensagem).
 - Pagamento: cartão (renova automaticamente todo mês e pode ser cancelado quando quiser na tela de assinatura), PIX ou boleto. PIX e cartão não pedem CPF; boleto pede.
 - PIX costuma confirmar em poucos minutos.
-- Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
+- Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem curtiu suas fotos, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
 - Dias grátis ganhos (tokens, convites) valem mesmo depois que a assinatura paga vence.
 
 Tokens (menu Tokens)
@@ -58,6 +58,7 @@ Perfil, fotos e postagens
 - Fotos privadas: outras pessoas pedem acesso; o dono aprova, nega ou revoga depois.
 - Postagens: no perfil, aba Postagens, menu "⋯" para editar o texto ou remover.
 - Quem visitou o perfil fica em Perfil > Visitantes (Premium).
+- Quem curtiu as fotos e publicações: Perfil > botão "Ver quem curtiu suas fotos" (Premium). Mostra todas as curtidas numa lista só, com a foto curtida e, no topo, quem mais curtiu.
 - Selo de verificado aparece em perfis verificados.
 
 Chat, grupos e eventos

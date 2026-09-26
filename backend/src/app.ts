@@ -12767,6 +12767,118 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
   });
 
+  // Quem curtiu MINHAS fotos e publicações, tudo numa lista só. Antes só dava
+  // para ver curtida por curtida, abrindo cada post. Premium, como "quem
+  // visitou seu perfil": é o mesmo tipo de informação sobre interesse alheio.
+  app.get('/api/profile/curtidas-recebidas', requireAuth(env, db), async (req, res) => {
+    try {
+      const eu = req.auth!.userId;
+      if (!(await userHasPremiumAccess(db, eu))) { res.status(403).json({ error: 'premium_required' }); return; }
+      const porPagina = 30;
+      const pagina = Math.max(1, Number(req.query.pagina || 1));
+
+      const linhas = (await queryAll(
+        db,
+        `SELECT * FROM (
+           SELECT l.id, l.created_at, l.reaction, l.user_id, 'foto' AS tipo, m.filename AS arquivo, NULL AS post_id, NULL AS midias
+             FROM likes l
+             JOIN media m ON m.id = l.target_id
+            WHERE l.target_type = 'photo' AND m.user_id = ? AND l.user_id <> ?
+           UNION ALL
+           SELECT l.id, l.created_at, l.reaction, l.user_id, 'post' AS tipo,
+                  NULL AS arquivo, p.id AS post_id, p.media_ids_json AS midias
+             FROM likes l
+             JOIN posts p ON p.id = l.target_id
+            WHERE l.target_type = 'post' AND p.user_id = ? AND l.user_id <> ?
+         ) t
+         ORDER BY t.created_at DESC
+         LIMIT ? OFFSET ?`,
+        [eu, eu, eu, eu, porPagina + 1, (pagina - 1) * porPagina]
+      )) as any[];
+
+      // Miniatura do post: a primeira mídia da lista dele.
+      const primeiraMidia = new Map<string, string>();
+      for (const l of linhas) {
+        if (l.tipo !== 'post' || !l.midias) continue;
+        const lista = safeJsonParse(String(l.midias));
+        if (Array.isArray(lista) && lista[0]) primeiraMidia.set(String(l.id), String(lista[0]));
+      }
+      const idsMidia = Array.from(new Set(primeiraMidia.values()));
+      const arquivoDaMidia = new Map<string, string>();
+      if (idsMidia.length) {
+        const ph = idsMidia.map(() => '?').join(',');
+        const ms = (await queryAll(db, `SELECT id, filename FROM media WHERE id IN (${ph}) AND is_private = 0`, idsMidia)) as any[];
+        for (const m of ms) arquivoDaMidia.set(String(m.id), String(m.filename));
+      }
+      for (const l of linhas) {
+        const mid = primeiraMidia.get(String(l.id));
+        if (mid && arquivoDaMidia.has(mid)) l.arquivo = arquivoDaMidia.get(mid);
+      }
+
+      const ids = Array.from(new Set(linhas.map((l) => String(l.user_id))));
+      const pessoas = new Map<string, any>();
+      if (ids.length) {
+        const ph = ids.map(() => '?').join(',');
+        const us = (await queryAll(
+          db,
+          `SELECT id, name, avatar, gender, city, state FROM users
+            WHERE id IN (${ph}) AND is_banned = 0 AND deleted_at IS NULL`,
+          ids
+        )) as any[];
+        for (const u of us) pessoas.set(String(u.id), u);
+      }
+
+      // Quem mais curtiu (entre todas as curtidas recebidas), para o topo da tela.
+      const fas = (await queryAll(
+        db,
+        `SELECT t.user_id, COUNT(*) AS total FROM (
+           SELECT l.user_id FROM likes l JOIN media m ON m.id = l.target_id
+            WHERE l.target_type = 'photo' AND m.user_id = ? AND l.user_id <> ?
+           UNION ALL
+           SELECT l.user_id FROM likes l JOIN posts p ON p.id = l.target_id
+            WHERE l.target_type = 'post' AND p.user_id = ? AND l.user_id <> ?
+         ) t GROUP BY t.user_id ORDER BY total DESC LIMIT 5`,
+        [eu, eu, eu, eu]
+      )) as any[];
+      const idsFas = fas.map((f) => String(f.user_id)).filter((id) => !pessoas.has(id));
+      if (idsFas.length) {
+        const ph = idsFas.map(() => '?').join(',');
+        const us = (await queryAll(db, `SELECT id, name, avatar, gender, city, state FROM users WHERE id IN (${ph}) AND is_banned = 0 AND deleted_at IS NULL`, idsFas)) as any[];
+        for (const u of us) pessoas.set(String(u.id), u);
+      }
+
+      const pessoa = (id: string) => {
+        const u = pessoas.get(id);
+        return u ? {
+          id, nome: String(u.name || 'Usuário'), avatar: u.avatar ? String(u.avatar) : null,
+          tipo: u.gender ? String(u.gender) : null, cidade: u.city ? String(u.city) : null, estado: u.state ? String(u.state) : null,
+        } : null;
+      };
+
+      res.json({
+        pagina,
+        temMais: linhas.length > porPagina,
+        curtidas: linhas.slice(0, porPagina)
+          .map((l) => ({
+            id: String(l.id),
+            em: l.created_at,
+            reacao: l.reaction ? String(l.reaction) : null,
+            tipo: String(l.tipo) as 'foto' | 'post',
+            miniatura: l.arquivo ? `/uploads/${l.arquivo}` : null,
+            postId: l.post_id ? String(l.post_id) : null,
+            pessoa: pessoa(String(l.user_id)),
+          }))
+          .filter((c) => c.pessoa),
+        quemMaisCurtiu: fas
+          .map((f) => ({ pessoa: pessoa(String(f.user_id)), total: Number(f.total || 0) }))
+          .filter((f) => f.pessoa),
+      });
+    } catch (error) {
+      console.error('[profile/curtidas-recebidas]', error);
+      res.status(500).json({ error: 'curtidas_indisponivel' });
+    }
+  });
+
   app.post('/api/comments', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     // Comentar e curtir são GRÁTIS: interação social básica, é o que gera

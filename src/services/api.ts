@@ -1072,6 +1072,21 @@ export const adminDenunciasIaService = {
   },
 };
 
+type PessoaQueCurtiu = { id: string; nome: string; avatar: string | null; tipo: string | null; cidade: string | null; estado: string | null };
+export type CurtidaRecebida = {
+  id: string; em: string; reacao: string | null; tipo: 'foto' | 'post';
+  miniatura: string | null; postId: string | null; pessoa: PessoaQueCurtiu;
+};
+export type Fa = { pessoa: PessoaQueCurtiu; total: number };
+
+// Quem curtiu minhas fotos e publicações, numa lista só (Premium).
+export const curtidasRecebidasService = {
+  listar: async (pagina = 1): Promise<{ pagina: number; temMais: boolean; curtidas: CurtidaRecebida[]; quemMaisCurtiu: Fa[] }> => {
+    const response = await apiClient.get('/profile/curtidas-recebidas', { params: { pagina } });
+    return response.data;
+  },
+};
+
 export type RecadoDoMural = {
   id: string;
   conteudo: string;

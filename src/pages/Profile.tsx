@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
 import EditarCapaDialog from '@/components/EditarCapaDialog';
 import MuralDoPerfil from '@/components/MuralDoPerfil';
+import QuemCurtiuMinhasFotos from '@/components/QuemCurtiuMinhasFotos';
 import { twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
@@ -413,6 +414,7 @@ export default function Profile() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [listaDeFollow, setListaDeFollow] = useState<TipoDeLista | null>(null);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [quemCurtiuAberto, setQuemCurtiuAberto] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [supportUnreadCount, setSupportUnreadCount] = useState(0);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -1408,6 +1410,21 @@ export default function Profile() {
             </button>
           </div>
         </div>
+
+        {/* Quem curtiu suas fotos e publicações, tudo numa lista só. */}
+        <button
+          type="button"
+          onClick={() => setQuemCurtiuAberto(true)}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-500/5 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400"
+        >
+          <Heart className="h-4 w-4 fill-current" />
+          Ver quem curtiu suas fotos
+        </button>
+        <QuemCurtiuMinhasFotos
+          aberto={quemCurtiuAberto}
+          aoFechar={() => setQuemCurtiuAberto(false)}
+          onPrecisaAssinar={() => setPaywallOpen(true)}
+        />
       </div>
 
       {/* Objetivos e Fetiches */}
