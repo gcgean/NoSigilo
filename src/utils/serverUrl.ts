@@ -27,7 +27,29 @@ function isLegacyLocalAssetUrl(url: string) {
   }
 }
 
+// Domínios servidos pelo mesmo nginx, que repassa /api, /uploads e /socket.io
+// para o backend. Neles a API é chamada no próprio domínio da página.
+//
+// Antes o app em nosigilo.net chamava nosigilo.baselider.com.br: outro
+// domínio obriga o navegador a mandar uma consulta de permissão (CORS) antes
+// de cada chamada autenticada, e a abrir uma segunda conexão segura. O Feed
+// faz ~20 chamadas ao abrir — em internet lenta isso dobrava a espera.
+const DOMINIOS_COM_API_PROPRIA = ['nosigilo.net', 'www.nosigilo.net', 'nosigilo.baselider.com.br'];
+
+function origemPropriaComApi(): string {
+  const origem = getBrowserOrigin();
+  if (!origem) return '';
+  try {
+    return DOMINIOS_COM_API_PROPRIA.includes(new URL(origem).hostname) ? origem : '';
+  } catch {
+    return '';
+  }
+}
+
 function deriveServerOrigin() {
+  const propria = origemPropriaComApi();
+  if (propria) return propria;
+
   const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
   if (configuredApiUrl) {
     return trimTrailingSlash(configuredApiUrl.replace(/\/api\/?$/, ''));
@@ -42,7 +64,9 @@ function deriveServerOrigin() {
 }
 
 export const SERVER_ORIGIN = deriveServerOrigin();
-export const API_URL = import.meta.env.VITE_API_URL?.trim() || `${SERVER_ORIGIN}/api`;
+export const API_URL = origemPropriaComApi()
+  ? `${SERVER_ORIGIN}/api`
+  : import.meta.env.VITE_API_URL?.trim() || `${SERVER_ORIGIN}/api`;
 export const SOCKET_URL = SERVER_ORIGIN;
 
 /**

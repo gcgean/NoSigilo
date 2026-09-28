@@ -1,4 +1,7 @@
-const CACHE_NAME = 'nosigilo-shell-v7';
+const CACHE_NAME = 'nosigilo-shell-v8';
+// Cache próprio para os arquivos do build. Separado do shell para não ser
+// apagado a cada versão nova do service worker.
+const CACHE_ASSETS = 'nosigilo-assets-v1';
 const OFFLINE_SHELL = ['/index.html', '/manifest.webmanifest', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -11,7 +14,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME && key !== CACHE_ASSETS).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
@@ -45,8 +48,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Arquivos do build têm o hash no nome: o mesmo nome nunca muda de
+  // conteúdo. Então vale o que já está no aparelho, e só vai à rede na
+  // primeira vez. Antes era 'no-store' — baixava ~860 KB de JavaScript a
+  // cada abertura, o que em 3G custava vários segundos.
   if (url.pathname.startsWith('/assets/')) {
-    event.respondWith(fetch(request, { cache: 'no-store' }));
+    event.respondWith(
+      caches.open(CACHE_ASSETS).then(async (cache) => {
+        const guardado = await cache.match(request);
+        if (guardado) return guardado;
+        const resposta = await fetch(request);
+        if (resposta && resposta.ok && resposta.type === 'basic') cache.put(request, resposta.clone());
+        return resposta;
+      })
+    );
     return;
   }
 
