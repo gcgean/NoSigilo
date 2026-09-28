@@ -21,7 +21,12 @@ type MissionsData = {
   totalCount: number;
 };
 
-export default function DailyMissions() {
+/**
+ * `embutido`: versão de uma linha que vive dentro do cartão das abas do Feed
+ * (antes era um cartão próprio acima dele e empurrava o primeiro post para
+ * baixo no celular).
+ */
+export default function DailyMissions({ embutido = false }: { embutido?: boolean }) {
   const [data, setData] = useState<MissionsData | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [newlyCompleted, setNewlyCompleted] = useState<Set<string>>(new Set());
@@ -72,15 +77,26 @@ export default function DailyMissions() {
   const pct = Math.round((completedCount / totalCount) * 100);
 
   return (
-    <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-background to-rose-500/5 overflow-hidden glass">
+    <div className={cn(
+      'overflow-hidden',
+      embutido
+        ? '-mx-3 -mb-2.5 mt-2 border-t border-white/8'
+        : 'rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-background to-rose-500/5 glass'
+    )}>
       {/* Header — always visible */}
       <button
         type="button"
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+        className={cn(
+          'flex w-full items-center text-left hover:bg-white/5 transition-colors',
+          embutido ? 'min-h-[40px] gap-2.5 px-3 py-1.5' : 'gap-3 px-4 py-3'
+        )}
         onClick={() => setIsOpen((v) => !v)}
         aria-expanded={isOpen}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-lg">
+        <div className={cn(
+          'flex shrink-0 items-center justify-center bg-primary/15',
+          embutido ? 'h-7 w-7 rounded-lg text-sm' : 'h-9 w-9 rounded-xl text-lg'
+        )}>
           {allDone ? '🏆' : '⚡'}
         </div>
         <div className="min-w-0 flex-1">
@@ -96,7 +112,7 @@ export default function DailyMissions() {
             </span>
           </div>
           {/* Mini progress bar */}
-          <div className="mt-1.5 h-1.5 w-full rounded-full bg-white/10">
+          <div className={cn('w-full rounded-full bg-white/10', embutido ? 'mt-1 h-1' : 'mt-1.5 h-1.5')}>
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-700',

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Heart, Crown, Lock } from 'lucide-react';
+import { Heart, Crown, Lock, ChevronDown, ChevronUp } from 'lucide-react';
 import { radarService, type TopDayPost } from '@/services/api';
 import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -19,12 +19,31 @@ const RANK_STYLE: Record<number, string> = {
  * Prova social no topo do feed — tocar abre o perfil de quem publicou, que é
  * o que o card promete ao mostrar o rosto e o nome. Renova diariamente.
  */
+const CHAVE_VISTO = 'ns_topdia_visto';
+const hojeLocal = () => new Date().toLocaleDateString('sv-SE');
+
 export default function TopDayBar() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const premium = hasPremiumAccess(user);
   const [posts, setPosts] = useState<TopDayPost[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // No celular a régua ocupa ~190px e empurrava o primeiro post para fora da
+  // tela. Na primeira visita do dia ela aparece aberta; depois disso fica
+  // recolhida numa linha (tocar abre de novo).
+  const [aberto, setAberto] = useState(() => {
+    try {
+      if (!window.matchMedia('(max-width: 639px)').matches) return true;
+      return localStorage.getItem(CHAVE_VISTO) !== hojeLocal();
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    if (posts.length === 0) return;
+    try { localStorage.setItem(CHAVE_VISTO, hojeLocal()); } catch { /* sem storage: sempre aberto */ }
+  }, [posts.length]);
 
   useEffect(() => {
     let active = true;
@@ -49,12 +68,36 @@ export default function TopDayBar() {
   // Some enquanto carrega e quando não há nada em alta
   if (!loaded || posts.length === 0) return null;
 
+  if (!aberto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="mb-3 flex min-h-[40px] w-full items-center gap-1.5 rounded-xl bg-white/5 px-3 py-1.5 text-left ring-1 ring-white/8"
+      >
+        <Crown className="h-4 w-4 shrink-0 text-amber-400" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top do Dia</span>
+        <span className="flex-1 truncate text-xs text-muted-foreground/60">· {posts.length} em alta</span>
+        <span className="flex items-center gap-0.5 text-xs font-semibold text-brand-pink">
+          Ver <ChevronDown className="h-4 w-4" />
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div className="mb-3 sm:mb-4">
       <div className="mb-2 flex items-center gap-1.5 px-0.5">
         <Crown className="h-4 w-4 text-amber-400" />
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top do Dia</span>
-        <span className="text-xs text-muted-foreground/60">· mais curtidos</span>
+        <span className="flex-1 text-xs text-muted-foreground/60">· mais curtidos</span>
+        <button
+          type="button"
+          onClick={() => setAberto(false)}
+          className="-my-2 flex min-h-[36px] items-center gap-0.5 px-2 text-xs text-muted-foreground sm:hidden"
+        >
+          Recolher <ChevronUp className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

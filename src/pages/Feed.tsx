@@ -2320,7 +2320,6 @@ export default function Feed() {
       <div className="grid min-w-0 gap-4 md:grid-cols-3 md:gap-6">
         {/* Posts Feed */}
         <div className="min-w-0 space-y-4 md:col-span-2 md:space-y-6">
-          <DailyMissions />
           <Card className="overflow-hidden px-3 py-2.5 glass border-2 border-primary/30 ring-1 ring-primary/10 shadow-[0_2px_16px_rgba(139,92,246,0.18)]">
             {/* Tab bar container */}
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -2475,6 +2474,8 @@ export default function Feed() {
                 </div>
               </div>
             ) : null}
+            {/* Missões do dia numa linha dentro deste cartão (era um cartão à parte). */}
+            <DailyMissions embutido />
           </Card>
           {/* Social Pulse — variable reward curiosity gap card (mobile only; moves to sidebar on desktop) */}
           {feedFilter === 'all' && nearbyRadius === null && !cityOnly ? (
