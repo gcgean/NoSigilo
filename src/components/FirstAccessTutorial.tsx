@@ -213,7 +213,8 @@ export default function FirstAccessTutorial() {
           />
           <div className="first-access-tour__media-shade" />
           <div className="first-access-tour__brand">
-            <span className="first-access-tour__brand-mark">NS</span>
+            {/* Logo oficial (o cadeado com a chama), o mesmo do ícone do app. */}
+            <img src="/icon-96.png" alt="" aria-hidden className="first-access-tour__brand-mark" width={96} height={96} />
             <span>NoSigilo<em>.net</em></span>
           </div>
 
@@ -233,7 +234,7 @@ export default function FirstAccessTutorial() {
         <section className="first-access-tour__content" key={step.id} aria-live="polite">
           <div className="first-access-tour__progress-row">
             <span>{stepIndex + 1} de {TOUR_STEPS.length}</span>
-            <button type="button" onClick={finishTutorial}>Pular tutorial</button>
+            <button type="button" onClick={finishTutorial} className="first-access-tour__skip">Pular tutorial ›</button>
           </div>
 
           <div className="first-access-tour__copy">

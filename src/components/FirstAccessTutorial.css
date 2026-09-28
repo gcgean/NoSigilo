@@ -87,17 +87,12 @@
 }
 
 .first-access-tour__brand-mark {
-  display: grid;
+  display: block;
   width: 42px;
   height: 42px;
-  place-items: center;
-  border: 1px solid rgba(255, 115, 139, 0.55);
   border-radius: 50%;
-  background: rgba(12, 9, 14, 0.72);
-  color: var(--tour-accent-soft);
-  font-size: 16px;
-  letter-spacing: -0.08em;
-  backdrop-filter: blur(12px);
+  object-fit: cover;
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.45);
 }
 
 .first-access-tour__rail {
@@ -201,6 +196,24 @@
 .first-access-tour__progress-row button:hover,
 .first-access-tour__explore:hover {
   color: var(--tour-text);
+}
+
+/* "Pular tutorial" em destaque: quem já conhece o app precisa achar a saída
+   de primeira, sem ler seis telas. Era texto cinza pequeno. */
+.first-access-tour__progress-row .first-access-tour__skip {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 115, 139, 0.6);
+  border-radius: 999px;
+  background: rgba(236, 72, 153, 0.16);
+  padding: 7px 14px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.first-access-tour__progress-row .first-access-tour__skip:hover {
+  background: rgba(236, 72, 153, 0.3);
+  color: #fff;
 }
 
 .first-access-tour__copy {
@@ -419,7 +432,6 @@
   .first-access-tour__brand-mark {
     width: 36px;
     height: 36px;
-    font-size: 13px;
   }
 
   .first-access-tour__rail {
