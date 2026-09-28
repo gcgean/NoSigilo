@@ -1,6 +1,6 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { resolveServerUrl } from "@/utils/serverUrl";
+import { resolveServerUrl, urlMiniatura } from "@/utils/serverUrl";
 
 interface UserAvatarProps {
   user?: {
@@ -10,13 +10,18 @@ interface UserAvatarProps {
   };
   className?: string;
   indicatorClassName?: string;
+  /**
+   * Largura da miniatura pedida ao servidor. Padrão 240px (avatar redondo em
+   * tela 2x); cartão grande da Busca pede 480. Evita baixar a foto cheia.
+   */
+  largura?: 120 | 240 | 360 | 480;
 }
 
-export function UserAvatar({ user, className, indicatorClassName }: UserAvatarProps) {
+export function UserAvatar({ user, className, indicatorClassName, largura = 240 }: UserAvatarProps) {
   return (
     <div className="relative inline-block">
       <Avatar className={className}>
-        <AvatarImage src={user?.avatar ? resolveServerUrl(user.avatar) : undefined} />
+        <AvatarImage src={user?.avatar ? urlMiniatura(resolveServerUrl(user.avatar), largura) : undefined} />
         <AvatarFallback>{user?.name?.[0] || 'U'}</AvatarFallback>
       </Avatar>
       {user?.isOnline && (

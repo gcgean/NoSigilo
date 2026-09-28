@@ -64,6 +64,19 @@ function deriveServerOrigin() {
 }
 
 export const SERVER_ORIGIN = deriveServerOrigin();
+
+/**
+ * Versão reduzida de uma foto pública (/uploads/…?w=360), gerada pelo servidor.
+ * Listas e avatares mostram a foto pequena; baixar o arquivo cheio (720px) era
+ * 4x mais dados à toa — em internet lenta, a Busca demorava por isso.
+ * Larguras aceitas pelo servidor: 120, 240, 360, 480. Outros endereços
+ * (foto privada, blob, externos) voltam como estão.
+ */
+export function urlMiniatura(url: string | null | undefined, largura: 120 | 240 | 360 | 480): string {
+  const u = String(url || '');
+  if (!u || !/\/uploads\/[^/?#]+$/.test(u)) return u;
+  return `${u}?w=${largura}`;
+}
 export const API_URL = origemPropriaComApi()
   ? `${SERVER_ORIGIN}/api`
   : import.meta.env.VITE_API_URL?.trim() || `${SERVER_ORIGIN}/api`;

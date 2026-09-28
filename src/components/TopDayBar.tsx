@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Heart, Crown, Lock } from 'lucide-react';
 import { radarService, type TopDayPost } from '@/services/api';
-import { resolveServerUrl } from '@/utils/serverUrl';
+import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -84,8 +84,10 @@ export default function TopDayBar() {
                 />
               ) : p.mediaUrl ? (
                 <img
-                  src={resolveServerUrl(p.mediaUrl)}
+                  src={urlMiniatura(resolveServerUrl(p.mediaUrl), 360)}
                   alt={unlocked ? p.author.name : 'Top do Dia'}
+                  loading="lazy"
+                  decoding="async"
                   className={cn('h-full w-full object-cover', !unlocked && 'scale-110 blur-lg')}
                 />
               ) : (

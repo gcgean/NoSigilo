@@ -512,6 +512,7 @@ export default function SearchPage() {
             <UserAvatar
               user={{ ...profile, avatar: avatarUrl ?? profile.avatar }}
               className="w-full h-full rounded-none"
+              largura={360}
               indicatorClassName="hidden"
             />
           ) : (

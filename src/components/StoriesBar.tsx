@@ -3,7 +3,7 @@ import { Plus, Eye, Crown, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
-import { resolveServerUrl } from '@/utils/serverUrl';
+import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -133,7 +133,7 @@ export default function StoriesBar() {
             <div className={cn('h-16 w-16 rounded-full p-[2px]', myCount > 0 ? ringActive : ringMuted)}>
               <div className="h-full w-full rounded-full bg-background p-[2px]">
                 {user?.avatar ? (
-                  <img src={resolveServerUrl(user.avatar)} alt="Seu story" className="h-full w-full rounded-full object-cover" />
+                  <img src={urlMiniatura(resolveServerUrl(user.avatar), 120)} alt="Seu story" className="h-full w-full rounded-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
                     {String(user?.name || 'U')[0]}
@@ -188,7 +188,7 @@ export default function StoriesBar() {
                 {/* Avatar — borrado p/ bloqueado (Premium) ou não-vistos (curiosidade) */}
                 <div className={cn('h-full w-full overflow-hidden rounded-full', (!unlocked || !g.allViewed) && 'scale-110 blur-[5px] brightness-90')}>
                   {g.avatar ? (
-                    <img src={resolveServerUrl(g.avatar)} alt={unlocked ? g.name : 'Premium'} className="h-full w-full rounded-full object-cover" />
+                    <img src={urlMiniatura(resolveServerUrl(g.avatar), 120)} alt={unlocked ? g.name : 'Premium'} loading="lazy" decoding="async" className="h-full w-full rounded-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
                       {unlocked ? g.name[0] : '★'}

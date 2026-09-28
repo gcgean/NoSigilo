@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { radarService, type ActiveNowProfile } from '@/services/api';
-import { resolveServerUrl } from '@/utils/serverUrl';
+import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 
 const REASON_LABEL: Record<ActiveNowProfile['reason'], string> = {
@@ -65,7 +65,7 @@ export default function ActiveNowBar({ maxDistanceKm, cityOnly }: { maxDistanceK
               )}>
                 <div className="h-full w-full rounded-full bg-background p-[2px]">
                   {p.avatar ? (
-                    <img src={resolveServerUrl(p.avatar)} alt={p.name} className="h-full w-full rounded-full object-cover" />
+                    <img src={urlMiniatura(resolveServerUrl(p.avatar), 120)} alt={p.name} loading="lazy" decoding="async" className="h-full w-full rounded-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center rounded-full bg-secondary text-sm font-bold">
                       {p.name[0]}

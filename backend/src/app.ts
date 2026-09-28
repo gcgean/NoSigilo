@@ -2769,6 +2769,46 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
   };
 
+  const pastaMiniaturas = path.join(storageRootDir, 'thumbs');
+  const miniaturasEmAndamento = new Map<string, Promise<string | null>>();
+
+  // Gera (uma vez) a versão reduzida da foto e devolve o caminho dela. Pedidos
+  // simultâneos da mesma miniatura esperam a mesma geração.
+  const gerarMiniatura = (origem: string, filename: string, largura: number): Promise<string | null> => {
+    const destino = path.join(pastaMiniaturas, `${largura}`, `${filename.replace(/\.[^.]+$/, '')}.webp`);
+    if (existsSync(destino)) return Promise.resolve(destino);
+    const chave = destino;
+    const andando = miniaturasEmAndamento.get(chave);
+    if (andando) return andando;
+    const trabalho = (async () => {
+      try {
+        mkdirSync(path.dirname(destino), { recursive: true });
+        const temporario = `${destino}.${process.pid}.tmp.webp`;
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn('ffmpeg', [
+            '-y', '-i', origem,
+            // Nunca amplia: foto menor que a largura pedida fica do tamanho dela.
+            '-vf', `scale='min(${largura},iw)':-2`,
+            '-frames:v', '1', '-quality', '72', '-compression_level', '4',
+            temporario,
+          ], { stdio: 'ignore' });
+          proc.on('error', reject);
+          proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`ffmpeg ${code}`))));
+        });
+        if (!existsSync(temporario)) return null;
+        renameSync(temporario, destino);
+        return destino;
+      } catch (erro) {
+        console.warn('[miniatura] falhou, entregando a original:', filename, erro);
+        return null;
+      } finally {
+        miniaturasEmAndamento.delete(chave);
+      }
+    })();
+    miniaturasEmAndamento.set(chave, trabalho);
+    return trabalho;
+  };
+
   app.get('/uploads/:filename', async (req, res) => {
     const filename = String(req.params.filename || '');
     if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
@@ -2786,6 +2826,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (!filePath) {
       res.status(404).end();
       return;
+    }
+
+    // Miniatura: /uploads/foto.webp?w=360. As listas (Busca, avatares) mostram
+    // a foto a ~170px e baixavam o arquivo de 720px — 4x mais bytes à toa,
+    // o que em 3G deixava a Busca lenta (48 fotos, 1,6 MB de uma vez).
+    // Só larguras fixas, para não virar um jeito de encher o disco com
+    // variações. Gerada uma vez e guardada; se falhar, entrega a original.
+    const larguraPedida = Number(req.query.w || 0);
+    const LARGURAS = [120, 240, 360, 480];
+    const ehImagem = String(media.mime_type || '').startsWith('image/');
+    if (ehImagem && LARGURAS.includes(larguraPedida)) {
+      const miniatura = await gerarMiniatura(filePath, filename, larguraPedida);
+      if (miniatura) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.type('image/webp');
+        createReadStream(miniatura).pipe(res);
+        return;
+      }
     }
     sendLocalFile(req, res, { filePath, mimeType: media.mime_type ? String(media.mime_type) : null, publico: true });
   });
