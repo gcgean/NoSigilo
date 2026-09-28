@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nosigilo-shell-v9';
+const CACHE_NAME = 'nosigilo-shell-v10';
 // Cache próprio para os arquivos do build. Separado do shell para não ser
 // apagado a cada versão nova do service worker.
 const CACHE_ASSETS = 'nosigilo-assets-v1';
@@ -6,7 +6,11 @@ const OFFLINE_SHELL = ['/index.html', '/manifest.webmanifest', '/favicon.ico', '
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(OFFLINE_SHELL)).then(() => self.skipWaiting())
+    // cache: 'reload' busca da rede: sem isso a instalação podia guardar um
+    // HTML antigo que o navegador ainda tinha em cache.
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(OFFLINE_SHELL.map((url) => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
