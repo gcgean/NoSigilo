@@ -758,7 +758,12 @@ export default function Promoter() {
                   {m.senderType === 'admin' && (
                     <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">Suporte</p>
                   )}
-                  <p>{m.message}</p>
+                  {m.imageUrl && (
+                    <a href={resolveServerUrl(m.imageUrl)} target="_blank" rel="noreferrer" className="block mb-1">
+                      <img src={resolveServerUrl(m.imageUrl)} alt="Imagem do suporte" className="max-h-72 rounded-lg" />
+                    </a>
+                  )}
+                  {m.message && <p>{m.message}</p>}
                   <p className={`text-[10px] mt-0.5 ${m.senderType === 'promoter' ? 'text-primary-foreground/70 text-right' : 'text-muted-foreground'}`}>
                     {formatDate(m.createdAt)}
                   </p>

@@ -3,6 +3,7 @@ import { X, Send, Loader2, LifeBuoy } from 'lucide-react';
 import { supportService, type SupportMessage } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { resolveServerUrl } from '@/utils/serverUrl';
 
 type Props = {
   open: boolean;
@@ -168,7 +169,12 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
                       Suporte NoSigilo
                     </p>
                   )}
-                  <p className="whitespace-pre-wrap break-words">{m.message}</p>
+                  {m.imageUrl && (
+                    <a href={resolveServerUrl(m.imageUrl)} target="_blank" rel="noreferrer" className="mb-1 block">
+                      <img src={resolveServerUrl(m.imageUrl)} alt="Imagem do suporte" className="max-h-72 rounded-lg" />
+                    </a>
+                  )}
+                  {m.message && <p className="whitespace-pre-wrap break-words">{m.message}</p>}
                 </div>
               </div>
             );
