@@ -118,6 +118,11 @@ createRoot(root).render(
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
+    // A versão no endereço fura qualquer cache no caminho (a Cloudflare
+    // guardava o sw.js por 4h): cada versão publicada registra o service
+    // worker daquela versão, e as correções chegam na hora.
+    navigator.serviceWorker
+      .register(`/sw.js?v=${encodeURIComponent(__APP_VERSION__)}`, { updateViaCache: 'none' })
+      .catch(() => {});
   });
 }
