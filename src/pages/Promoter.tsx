@@ -477,20 +477,25 @@ export default function Promoter() {
               <Share2 className="w-4 h-4 text-primary" />
               Seu link de convite
             </p>
-            <div className="flex gap-2">
+            {/* No celular o link ocupa a linha inteira e os botões vão embaixo —
+                lado a lado, o "Compartilhar" estourava para fora da tela. */}
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 readOnly
                 value={inviteUrl}
-                className="flex-1 rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground font-mono"
+                onFocus={(e) => e.currentTarget.select()}
+                className="h-10 min-w-0 w-full rounded-xl border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground font-mono sm:flex-1"
               />
-              <Button size="sm" variant="outline" onClick={handleCopyInvite} className="gap-1.5 shrink-0">
-                <Copy className="w-3.5 h-3.5" />
-                Copiar
-              </Button>
-              <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5 shrink-0" onClick={handleShareInvite}>
-                <Share2 className="w-3.5 h-3.5" />
-                Compartilhar
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleCopyInvite} className="h-10 flex-1 gap-1.5 sm:flex-none">
+                  <Copy className="w-3.5 h-3.5" />
+                  Copiar
+                </Button>
+                <Button size="sm" className="h-10 flex-1 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5 sm:flex-none" onClick={handleShareInvite}>
+                  <Share2 className="w-3.5 h-3.5" />
+                  Compartilhar
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground italic">
               "Entre para a plataforma pelo meu convite exclusivo e faça parte da comunidade: [link]"
