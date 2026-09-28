@@ -896,6 +896,12 @@ function faqCidade(city, st) {
       r: `Sim, o cadastro é gratuito e permite criar seu perfil, navegar e ser encontrado por outros perfis de ${esc(city.name)}. Recursos avançados, como enviar mensagens sem limite e ver quem visitou seu perfil, fazem parte do plano premium.`,
     },
     {
+      // "encontro casual em <cidade>" apareceu no Search Console (set/2026)
+      // sem a página ter o termo em lugar nenhum — ficou na posição 87.
+      p: `Dá para marcar um encontro casual em ${city.name}?`,
+      r: `Sim. Além de swing e troca de casais, muita gente de ${esc(city.name)} usa o NoSigilo para encontro casual entre adultos: você filtra por cidade, conversa no chat privado e combina só quando os dois lados quiserem, sem nada aparecer nas suas redes sociais.`,
+    },
+    {
       p: 'Preciso ser um casal para entrar?',
       r: 'Não. O NoSigilo é aberto a casais, mulheres solteiras e homens solteiros do meio liberal. Os filtros permitem que cada perfil encontre exatamente o tipo de conexão que procura.',
     },
@@ -1264,7 +1270,7 @@ function statePage(st) {
           Procurando <strong>swing em ${esc(st.name)}</strong> ou <strong>troca de casais em ${esc(st.capital)}</strong>?
           O NoSigilo.net reúne o meio liberal de ${esc(cities)} num só lugar, longe da exposição das redes sociais
           comuns — casais liberais e singles com os mesmos interesses para swing, ménage e encontros liberais,
-          com total discrição.
+          com total discrição — e também para quem procura <strong>encontro casual em ${esc(st.name)}</strong>.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
         <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}`)}">Criar conta grátis ${icon('arrow')}</a>
@@ -1455,7 +1461,8 @@ function cityPage(city) {
           Procurando <strong>swing em ${esc(city.name)}</strong> ou <strong>troca de casais em ${esc(city.name)}</strong>?
           O NoSigilo.net reúne o meio liberal de ${esc(city.name)} e região num só lugar, longe da exposição das
           redes sociais comuns — casais liberais, mulheres solteiras e homens solteiros com os mesmos interesses
-          para swing, ménage e encontros liberais, com total discrição.
+          para swing, ménage e encontros liberais, com total discrição. Também é o lugar para quem busca
+          <strong>encontro casual em ${esc(city.name)}</strong> entre adultos, sem expor nada nas redes.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
         <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}/${city.slug}`)}">Criar conta grátis ${icon('arrow')}</a>
