@@ -106,6 +106,10 @@ class ErrorBoundary extends React.Component<
 
 const root = document.getElementById("root")!;
 root.innerHTML = '';
+// App montando: sai a tela de abertura (index.html) e o aviso de falha não
+// aparece mais.
+(window as unknown as { __nsMontado?: boolean }).__nsMontado = true;
+document.getElementById('boot-ns')?.remove();
 createRoot(root).render(
   <ErrorBoundary>
     <App />

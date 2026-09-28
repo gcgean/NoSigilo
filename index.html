@@ -129,6 +129,56 @@
   </head>
 
   <body>
+    <!--
+      Tela de abertura do app. Cobre o texto de apresentação (que existe para
+      os buscadores) enquanto o app carrega, e vira um aviso com "Tentar de
+      novo" se o código não chegar — antes, com 4G ruim, a pessoa ficava presa
+      no texto de apresentação sem saber o que fazer. O main.tsx remove este
+      bloco assim que o app monta.
+    -->
+    <div id="boot-ns" style="position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0b0716;color:#f5f3ff;font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:24px;">
+      <img src="/icon-192.png" alt="NoSigilo.net" width="88" height="88" style="border-radius:22px;box-shadow:0 0 32px rgba(236,72,153,.45)" />
+      <div id="boot-ns-carregando" style="font-size:14px;color:#c4b5fd;">Carregando…</div>
+      <div id="boot-ns-falhou" style="display:none;max-width:300px;">
+        <p style="margin:0 0 6px;font-size:17px;font-weight:700;">Sua conexão está instável</p>
+        <p style="margin:0 0 16px;font-size:14px;color:#c4b5fd;line-height:1.45;">Não conseguimos abrir o NoSigilo agora. Verifique a internet e tente de novo.</p>
+        <button id="boot-ns-tentar" type="button" style="border:0;border-radius:14px;padding:12px 22px;font-size:15px;font-weight:700;color:#fff;background:linear-gradient(90deg,#ec4899,#8b5cf6);cursor:pointer;">Tentar de novo</button>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var falhou = false;
+        function mostrarFalha() {
+          if (falhou || window.__nsMontado) return;
+          falhou = true;
+          var c = document.getElementById('boot-ns-carregando');
+          var f = document.getElementById('boot-ns-falhou');
+          if (c) c.style.display = 'none';
+          if (f) f.style.display = 'block';
+        }
+        // O código do app (ou o CSS) não chegou: não adianta esperar.
+        window.addEventListener('error', function (e) {
+          var t = e && e.target;
+          // Só o código do próprio app conta (fonte externa que falha não trava nada).
+          var url = t && (t.src || t.href) || '';
+          if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK') && url.indexOf('/assets/') !== -1) mostrarFalha();
+        }, true);
+        // Rede muito lenta: depois de 20s oferece a saída em vez de só girar.
+        setTimeout(mostrarFalha, 20000);
+        document.addEventListener('click', function (e) {
+          if (!e.target || e.target.id !== 'boot-ns-tentar') return;
+          // Descarta a cópia guardada do HTML (pode ser de versão antiga) e recarrega.
+          var recarregar = function () { location.reload(); };
+          if (window.caches && caches.keys) {
+            caches.keys().then(function (ks) {
+              return Promise.all(ks.filter(function (k) { return k.indexOf('nosigilo-shell') === 0; }).map(function (k) { return caches.delete(k); }));
+            }).then(recarregar, recarregar);
+          } else {
+            recarregar();
+          }
+        });
+      })();
+    </script>
     <div id="root">
       <!--
         Conteúdo estático para indexação (Bing/Google e robôs sem JS).

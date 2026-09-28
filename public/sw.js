@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nosigilo-shell-v8';
+const CACHE_NAME = 'nosigilo-shell-v9';
 // Cache próprio para os arquivos do build. Separado do shell para não ser
 // apagado a cada versão nova do service worker.
 const CACHE_ASSETS = 'nosigilo-assets-v1';
@@ -38,13 +38,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Abrir uma tela do app. Sempre a rede primeiro — e, quando dá certo, a
+  // cópia guardada para uso sem internet é ATUALIZADA com o HTML novo.
+  //
+  // Antes a cópia era gravada só na instalação e nunca mais mudava. Numa
+  // falha de rede (4G instável), o app abria esse HTML velho, que aponta para
+  // um código que não existe mais no servidor: 404 e o usuário ficava preso
+  // no texto de apresentação, sem saída. Agora: tenta a rede de novo antes de
+  // desistir, e a cópia de reserva é sempre a da última versão que funcionou.
   if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request, { cache: 'no-store' }).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
+      const buscar = () => fetch(request, { cache: 'no-store' });
+      try {
+        let resposta;
+        try {
+          resposta = await buscar();
+        } catch {
+          await new Promise((r) => setTimeout(r, 800));
+          resposta = await buscar(); // segunda chance antes da cópia
+        }
+        if (resposta && resposta.ok && resposta.type === 'basic') {
+          cache.put('/index.html', resposta.clone());
+        }
+        return resposta;
+      } catch {
         return (await cache.match('/index.html')) || Response.error();
-      })
-    );
+      }
+    })());
     return;
   }
 
@@ -57,7 +78,13 @@ self.addEventListener('fetch', (event) => {
       caches.open(CACHE_ASSETS).then(async (cache) => {
         const guardado = await cache.match(request);
         if (guardado) return guardado;
-        const resposta = await fetch(request);
+        let resposta;
+        try {
+          resposta = await fetch(request);
+        } catch {
+          await new Promise((r) => setTimeout(r, 800));
+          resposta = await fetch(request);
+        }
         if (resposta && resposta.ok && resposta.type === 'basic') cache.put(request, resposta.clone());
         return resposta;
       })
