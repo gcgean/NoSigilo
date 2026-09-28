@@ -369,6 +369,10 @@ export default function Feed() {
   const [hasNewPosts, setHasNewPosts] = useState(false);
   const currentTopPostIdRef = useRef<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  // No celular a caixa de publicar ocupava ~250px antes do primeiro post. Ela
+  // fica compacta (uma linha) até a pessoa tocar nela; aí abre com Foto/Vídeo.
+  const [composerAtivo, setComposerAtivo] = useState(false);
+  const composerEmUso = composerAtivo || postContent.trim().length > 0 || attachments.length > 0;
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredPostIdRef = useRef<string | null>(null);
   // Hover-intent (desktop): abre/fecha o seletor de reações ao passar o mouse.
@@ -1923,14 +1927,14 @@ export default function Feed() {
                 setPushLoading(false);
               }
             }}
-            className="shrink-0 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+            className="min-h-[36px] shrink-0 rounded-full bg-primary px-4 py-2 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
           >
             {pushLoading ? '…' : 'Ativar'}
           </button>
           <button
             type="button"
             aria-label="Dispensar aviso de notificações"
-            className="shrink-0 rounded-full p-1 text-muted-foreground hover:text-foreground"
+            className="-mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={() => { localStorage.setItem('nosigilo:notif-banner-date', new Date().toISOString().slice(0, 10)); setNotifBannerDismissed(true); }}
           >
             <X className="h-3.5 w-3.5" />
@@ -2113,7 +2117,7 @@ export default function Feed() {
             {streakState.streak >= 2 && (
               <span
                 title={`${streakState.streak} dias seguidos`}
-                className="absolute -bottom-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-orange-500 px-0.5 text-[9px] font-bold text-white ring-2 ring-background"
+                className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold text-white ring-2 ring-background"
               >
                 🔥{streakState.streak}
               </span>
@@ -2128,8 +2132,12 @@ export default function Feed() {
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 onPaste={handlePasteOnComposer}
-                className="min-h-[92px] resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input"
-                rows={2}
+                onFocus={() => setComposerAtivo(true)}
+                className={cn(
+                  'resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
+                  composerEmUso ? 'min-h-[92px]' : 'min-h-[48px]'
+                )}
+                rows={composerEmUso ? 2 : 1}
               />
               <MentionAutocomplete
                 textareaRef={composerRef}
@@ -2228,7 +2236,10 @@ export default function Feed() {
               <PostRulesNotice className="mt-3" />
             )}
 
-            <div className="mt-3 flex flex-col gap-3 border-t pt-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:mt-4 sm:pt-4">
+            <div className={cn(
+              'mt-3 flex-col gap-3 border-t pt-3 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between sm:mt-4 sm:flex sm:pt-4',
+              composerEmUso ? 'flex' : 'hidden'
+            )}>
               <div className="flex min-w-0 flex-wrap gap-2">
                 <Button
                   type="button"
@@ -2379,7 +2390,7 @@ export default function Feed() {
                   Curtidos
                   <span
                     className={cn(
-                      'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                      'rounded-full px-1.5 py-0.5 text-[11px] font-bold',
                       feedFilter === 'favorites'
                         ? 'bg-white/20 text-white'
                         : 'bg-pink-500/15 text-pink-500'
@@ -2429,7 +2440,7 @@ export default function Feed() {
                     type="button"
                     onClick={handleCityOnly}
                     className={cn(
-                      'rounded-full px-3 py-1 text-xs font-semibold transition-all',
+                      'min-h-[36px] rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
                       cityOnly
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
@@ -2443,7 +2454,7 @@ export default function Feed() {
                       type="button"
                       onClick={() => handleNearbyRadius(km)}
                       className={cn(
-                        'rounded-full px-3 py-1 text-xs font-semibold transition-all',
+                        'min-h-[36px] rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
                         nearbyRadius === km
                           ? 'bg-emerald-500 text-white shadow-sm'
                           : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
@@ -2456,7 +2467,7 @@ export default function Feed() {
                     <button
                       type="button"
                       onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}
-                      className="ml-1 rounded-full px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="ml-1 min-h-[36px] rounded-full px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ✕ limpar
                     </button>
@@ -2574,7 +2585,7 @@ export default function Feed() {
                     <p className="mt-0.5 text-xs text-muted-foreground">{WEEKLY_THEME.description}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-brand-pink text-[10px]">
+                    <Badge variant="outline" className="border-primary/25 bg-primary/5 text-brand-pink text-[11px]">
                       {WEEKLY_THEME.deadline}
                     </Badge>
                   </div>
@@ -2774,7 +2785,7 @@ export default function Feed() {
                               onMouseEnter={keepReactionPickerOpen}
                               onMouseLeave={scheduleReactionHoverClose}
                             >
-                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">Como você reagiu?</p>
+                              <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-white/40">Como você reagiu?</p>
                               <div className="grid grid-cols-2 gap-1.5">
                                 {EXP_REACTIONS.map((item) => {
                                   const counts = expReactionCounts[experience.id] || EMPTY_REACTION_COUNTS;
@@ -3010,17 +3021,17 @@ export default function Feed() {
                         return (
                           <>
                             {badge && (
-                              <Badge variant="outline" className={cn('shrink-0 border text-[10px] font-semibold px-1.5 py-0 leading-5', badge.cls)}>
+                              <Badge variant="outline" className={cn('shrink-0 border text-[11px] font-semibold px-1.5 py-0 leading-5', badge.cls)}>
                                 {badge.emoji} {badge.label}
                               </Badge>
                             )}
                             {ctx?.label && ctx.label !== 'Novo agora' && (
-                              <Badge variant="outline" className="shrink-0 max-w-[10rem] truncate border-primary/20 bg-primary/5 text-[10px] font-medium text-brand-pink">
+                              <Badge variant="outline" className="shrink-0 max-w-[10rem] truncate border-primary/20 bg-primary/5 text-[11px] font-medium text-brand-pink">
                                 {ctx.reason === 'nearby' ? '📍' : ctx.reason === 'affinity' ? '💬' : ctx.reason === 'popular_local' ? '🔥' : ''} {ctx.label}
                               </Badge>
                             )}
                             {isVeryRecent && (
-                              <Badge variant="outline" className="shrink-0 border-emerald-400/30 bg-emerald-500/10 text-[10px] font-bold text-emerald-600 px-1.5 py-0 leading-5 animate-pulse-slow">
+                              <Badge variant="outline" className="shrink-0 border-emerald-400/30 bg-emerald-500/10 text-[11px] font-bold text-emerald-600 px-1.5 py-0 leading-5 animate-pulse-slow">
                                 NOVO
                               </Badge>
                             )}
@@ -3363,7 +3374,7 @@ export default function Feed() {
                                   <div className="flex-1">
                                     <div className="flex items-center gap-2">
                                       <Link to={getUserProfileHref(r.user.id, user?.id, '/feed')} className="text-xs font-medium hover:underline">{r.user.name}</Link>
-                                      <span className="text-[10px] text-muted-foreground">{formatWhen(r.createdAt)}</span>
+                                      <span className="text-[11px] text-muted-foreground">{formatWhen(r.createdAt)}</span>
                                       {String(r.user.id) === String(user?.id || '') && (
                                         <button type="button" className={`ml-auto ${COMMENT_ACTION_BUTTON_BASE} ${COMMENT_ACTION_DELETE_CLASS}`} onClick={() => void deleteComment(item.post.id, r.id)}>Excluir</button>
                                       )}
@@ -3448,7 +3459,7 @@ export default function Feed() {
                   <p className="text-sm font-semibold text-foreground">Mais chance agora</p>
                   <p className="mt-1 text-xs leading-5 text-muted-foreground">{feedInsightsSummary}</p>
                 </div>
-                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink text-[10px]">
+                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink text-[11px]">
                   Ao vivo
                 </Badge>
               </div>
@@ -3482,14 +3493,14 @@ export default function Feed() {
                         <div className="flex items-center gap-1.5">
                           <span className="truncate text-xs font-semibold text-foreground">{item.sender.name}</span>
                           {typeof item.distanceKm === 'number' ? (
-                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[10px] font-medium text-rose-600 px-1.5 py-0">
+                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[11px] font-medium text-rose-600 px-1.5 py-0">
                               {item.distanceKm} km
                             </Badge>
                           ) : null}
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">{item.message}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1 text-[10px] font-medium text-rose-600">
+                      <div className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-rose-600">
                         <TimerReset className="h-3 w-3" />
                         <span>{formatRemainingRadarTime(item.expiresAt)}</span>
                       </div>
@@ -3694,7 +3705,7 @@ export default function Feed() {
                                 <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
                                 <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
                               </Avatar>
-                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[11px] ring-1 ring-border">
                                 {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
                               </span>
                             </div>
@@ -3780,7 +3791,7 @@ export default function Feed() {
                                 <AvatarImage src={r.user.avatar ? resolveServerUrl(r.user.avatar) : undefined} />
                                 <AvatarFallback>{String(r.user.name || 'U')[0]}</AvatarFallback>
                               </Avatar>
-                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[10px] ring-1 ring-border">
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-background text-[11px] ring-1 ring-border">
                                 {REACTION_EMOJI[r.reaction || 'heart'] ?? '💜'}
                               </span>
                             </div>

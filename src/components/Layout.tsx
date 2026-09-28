@@ -678,7 +678,7 @@ export default function Layout() {
               <Button variant="ghost" size="icon" className="relative h-11 w-11 rounded-full sm:h-10 sm:w-10">
                 <Bell className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
                 {unreadCount > 0 ? (
-                  <span className="absolute right-0.5 top-0.5 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground sm:right-1 sm:top-1 sm:min-w-5 sm:h-5 sm:text-xs">
+                  <span className="absolute right-0.5 top-0.5 inline-flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground sm:right-1 sm:top-1 sm:min-w-5 sm:h-5 sm:text-xs">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 ) : null}
@@ -1343,7 +1343,7 @@ export default function Layout() {
                     <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
                   )}
                   {item.path === '/chat' && unreadMessagesCount > 0 && (
-                    <span className="absolute right-2.5 top-0.5 flex h-4.5 min-w-[1.1rem] items-center justify-center rounded-full border-2 border-background bg-destructive px-1 text-[9px] font-bold text-white">
+                    <span className="absolute right-2.5 top-0.5 flex h-4.5 min-w-[1.1rem] items-center justify-center rounded-full border-2 border-background bg-destructive px-1 text-[10px] font-bold text-white">
                       {unreadMessagesCount > 99 ? '99+' : unreadMessagesCount}
                     </span>
                   )}
