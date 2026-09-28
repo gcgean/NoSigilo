@@ -96,7 +96,7 @@ export default function TopDayBar() {
             <Crown className="h-4 w-4 shrink-0" /> Top do Dia
           </span>
           <span className="block truncate text-xs font-semibold text-foreground/90">
-            🔥 {posts.length} em alta agora · quem será?
+            🔥 {posts.length} em alta · veja quem
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-primary px-3 py-1.5 text-xs font-bold text-white shadow-[0_2px_10px_rgba(236,72,153,0.4)]">
