@@ -69,17 +69,38 @@ export default function TopDayBar() {
   if (!loaded || posts.length === 0) return null;
 
   if (!aberto) {
+    // Recolhido, mas chamando atenção: prévia borrada das 3 primeiras fotos
+    // desperta a curiosidade de tocar para ver quem está em alta.
+    const previas = posts.filter((p) => p.mediaUrl && !p.mimeType?.startsWith('video/')).slice(0, 3);
     return (
       <button
         type="button"
         onClick={() => setAberto(true)}
-        className="mb-3 flex min-h-[40px] w-full items-center gap-1.5 rounded-xl bg-white/5 px-3 py-1.5 text-left ring-1 ring-white/8"
+        className="mb-3 flex min-h-[52px] w-full items-center gap-2.5 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 via-rose-500/10 to-primary/15 px-3 py-2 text-left shadow-[0_0_18px_rgba(245,158,11,0.18)]"
       >
-        <Crown className="h-4 w-4 shrink-0 text-amber-400" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top do Dia</span>
-        <span className="flex-1 truncate text-xs text-muted-foreground/60">· {posts.length} em alta</span>
-        <span className="flex items-center gap-0.5 text-xs font-semibold text-brand-pink">
-          Ver <ChevronDown className="h-4 w-4" />
+        <div className="flex shrink-0 -space-x-2.5">
+          {previas.map((p) => (
+            <span key={p.id} className="h-9 w-9 overflow-hidden rounded-full ring-2 ring-amber-400/70">
+              <img
+                src={urlMiniatura(resolveServerUrl(p.mediaUrl!), 120)}
+                alt=""
+                loading="lazy"
+                className="h-full w-full scale-125 object-cover blur-[3px]"
+              />
+            </span>
+          ))}
+          {previas.length === 0 && <Crown className="h-6 w-6 text-amber-400" />}
+        </div>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1 text-sm font-extrabold uppercase tracking-wide text-amber-300">
+            <Crown className="h-4 w-4 shrink-0" /> Top do Dia
+          </span>
+          <span className="block truncate text-xs font-semibold text-foreground/90">
+            🔥 {posts.length} em alta agora · quem será?
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-gradient-primary px-3 py-1.5 text-xs font-bold text-white shadow-[0_2px_10px_rgba(236,72,153,0.4)]">
+          Ver <ChevronDown className="h-3.5 w-3.5" />
         </span>
       </button>
     );
