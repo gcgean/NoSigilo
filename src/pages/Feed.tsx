@@ -2433,13 +2433,15 @@ export default function Feed() {
             {(user?.lat || user?.city) && feedFilter !== 'experiences' ? (
               <div className="mt-2.5 pt-2.5 border-t border-border/40 flex items-center gap-2">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                <span className="text-xs text-muted-foreground font-medium shrink-0">Perto de mim:</span>
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="hidden text-xs text-muted-foreground font-medium shrink-0 sm:inline">Perto de mim:</span>
+                {/* Uma linha só, rolando para o lado: quebrando, os 7 filtros
+                    ocupavam 4 linhas no celular e empurravam os posts para baixo. */}
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap">
                   <button
                     type="button"
                     onClick={handleCityOnly}
                     className={cn(
-                      'min-h-[36px] rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
+                      'min-h-[36px] shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
                       cityOnly
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
@@ -2453,7 +2455,7 @@ export default function Feed() {
                       type="button"
                       onClick={() => handleNearbyRadius(km)}
                       className={cn(
-                        'min-h-[36px] rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
+                        'min-h-[36px] shrink-0 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition-all',
                         nearbyRadius === km
                           ? 'bg-emerald-500 text-white shadow-sm'
                           : 'bg-muted text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-400'
@@ -2466,7 +2468,7 @@ export default function Feed() {
                     <button
                       type="button"
                       onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}
-                      className="ml-1 min-h-[36px] rounded-full px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="ml-1 min-h-[36px] shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       ✕ limpar
                     </button>
