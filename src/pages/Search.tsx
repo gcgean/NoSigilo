@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, Check, Loader2 } from 'lucide-react';
+import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, ChevronDown, Check, Loader2 } from 'lucide-react';
 import ActiveNowBar from '@/components/ActiveNowBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { usersService, matchService, locationService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { calculateAge } from '@/utils/age';
+import FiltroIdade, { FAIXA_QUALQUER, IDADE_MIN, IDADE_TETO, faixaAtiva, rotuloFaixa, type FaixaIdade } from '@/components/FiltroIdade';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
@@ -81,7 +82,18 @@ export default function SearchPage() {
   const [filteredLiked, setFilteredLiked] = useState<any[]>([]);
 
   // Filters
-  const [ageRange, setAgeRange] = useState('all');
+  const [faixaIdade, setFaixaIdade] = useState<FaixaIdade>(FAIXA_QUALQUER);
+  const [idadeAberta, setIdadeAberta] = useState(false);
+  // Muda a faixa e guarda como padrão da pessoa (volta assim na próxima visita).
+  const aplicarFaixaIdade = useCallback((f: FaixaIdade) => {
+    setFaixaIdade(f);
+    const ativa = faixaAtiva(f);
+    void usersService.salvarFaixaIdade({
+      ageMin: ativa && f.min > IDADE_MIN ? f.min : null,
+      ageMax: ativa && f.max < IDADE_TETO ? f.max : null,
+      ageBoth: f.ambos,
+    }).catch(() => {});
+  }, []);
   const [city, setCity] = useState('');
   const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
@@ -134,14 +146,16 @@ export default function SearchPage() {
       limit: PAGE_SIZE,
       search: search.trim() || undefined,
       city: city.trim() || undefined,
-      ageRange: ageRange !== 'all' ? ageRange : undefined,
+      ageMin: faixaIdade.min > IDADE_MIN ? faixaIdade.min : undefined,
+      ageMax: faixaIdade.max < IDADE_TETO ? faixaIdade.max : undefined,
+      ageBoth: faixaAtiva(faixaIdade) && faixaIdade.ambos ? true : undefined,
       genders: selectedGenders.length > 0 ? selectedGenders.join(',') : undefined,
       radar: radar !== 'all' ? radar : undefined,
       sort,
       availableOnly: availableOnly || undefined,
       intention: selectedIntention || undefined,
     }),
-    [search, city, ageRange, selectedGenders, radar, sort, availableOnly, selectedIntention]
+    [search, city, faixaIdade, selectedGenders, radar, sort, availableOnly, selectedIntention]
   );
 
   const applyLikedFilters = useCallback(
@@ -158,12 +172,16 @@ export default function SearchPage() {
           if (q && !name.includes(q) && !pCity.includes(q) && !pState.includes(q)) return false;
           if (c && !pCity.includes(c) && !pState.includes(c)) return false;
           if (selectedGenders.length > 0 && !selectedGenders.includes(String(p?.gender || ''))) return false;
-          if (ageRange !== 'all') {
-            if (!age) return false;
-            if (ageRange === '18-25' && (age < 18 || age > 25)) return false;
-            if (ageRange === '26-35' && (age < 26 || age > 35)) return false;
-            if (ageRange === '36-45' && (age < 36 || age > 45)) return false;
-            if (ageRange === '45+' && age < 45) return false;
+          if (faixaAtiva(faixaIdade)) {
+            // Mesma regra do servidor: em casal, conta a idade do parceiro(a).
+            const naFaixa = (a: number | null) =>
+              a != null && a >= faixaIdade.min && (faixaIdade.max >= IDADE_TETO || a <= faixaIdade.max);
+            const ehCasal = String(p?.gender || '').startsWith('Casal');
+            const idadeParceiro = ehCasal ? calculateAge(p?.partnerBirthDate) : null;
+            const passa = faixaIdade.ambos
+              ? naFaixa(age) && (idadeParceiro == null || naFaixa(idadeParceiro))
+              : naFaixa(age) || naFaixa(idadeParceiro);
+            if (!passa) return false;
           }
           // Radar (distância): perfis sem distância conhecida saem quando um
           // raio está ativo — igual à busca normal, evita falso positivo.
@@ -186,7 +204,7 @@ export default function SearchPage() {
           return String(b?.likedAt || '').localeCompare(String(a?.likedAt || ''));
         });
     },
-    [search, city, ageRange, selectedGenders, radar, availableOnly]
+    [search, city, faixaIdade, selectedGenders, radar, availableOnly]
   );
 
   // ── fetch first page (reset) ───────────────────────────────────────────────
@@ -283,6 +301,13 @@ export default function SearchPage() {
           // Apply saved prefs as initial filter state
           if (prefs.profileTypes?.length > 0) setSelectedGenders(prefs.profileTypes);
           if (prefs.maxDistance) setRadar(String(prefs.maxDistance));
+          if (prefs.ageMin != null || prefs.ageMax != null || prefs.ageBoth) {
+            setFaixaIdade({
+              min: prefs.ageMin ?? IDADE_MIN,
+              max: prefs.ageMax ?? IDADE_TETO,
+              ambos: !!prefs.ageBoth,
+            });
+          }
           // Intention defaults to "Tudo" — user picks manually per session
           if (prefs.availabilityFilter === 'available') {
             setAvailableOnly(true);
@@ -322,7 +347,7 @@ export default function SearchPage() {
     if (!prefsReady) return;
     void fetchFirstPage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ageRange, radar, selectedGenders, onlyLiked, sort, availableOnly, selectedIntention, prefsReady]);
+  }, [faixaIdade, radar, selectedGenders, onlyLiked, sort, availableOnly, selectedIntention, prefsReady]);
 
   // ── Update filtered liked when raw list changes ────────────────────────────
   useEffect(() => {
@@ -349,7 +374,7 @@ export default function SearchPage() {
   useEffect(() => {
     setIsFallback(false);
     setFallbackResults([]);
-  }, [search, city, ageRange, selectedGenders, radar, sort, availableOnly, selectedIntention, onlyLiked]);
+  }, [search, city, faixaIdade, selectedGenders, radar, sort, availableOnly, selectedIntention, onlyLiked]);
 
   useEffect(() => {
     // Only trigger when we genuinely have 0 results (not still loading, not liked mode)
@@ -358,7 +383,7 @@ export default function SearchPage() {
       radar !== 'all' ||
       availableOnly ||
       !!selectedIntention ||
-      ageRange !== 'all' ||
+      faixaAtiva(faixaIdade) ||
       !!search.trim() ||
       !!city.trim();
 
@@ -485,6 +510,8 @@ export default function SearchPage() {
   // ── Profile Card ───────────────────────────────────────────────────────────
   const ProfileCard = ({ profile }: { profile: any }) => {
     const age = calculateAge(profile.birthDate);
+    const idadeParceiro = String(profile.gender || '').startsWith('Casal') ? calculateAge(profile.partnerBirthDate) : null;
+    const idades = age && idadeParceiro ? `${age} e ${idadeParceiro}` : age ? String(age) : '';
     const avatarUrl = profile.mainMediaUrl ? resolveServerUrl(profile.mainMediaUrl) : undefined;
     const distanceLabel = formatDistanceKm(profile.distanceKm);
     const availStatus = profile.availabilityStatus as string | null;
@@ -580,7 +607,7 @@ export default function SearchPage() {
         {/* Bottom info */}
         <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-3.5">
           <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-base">
-            {profile.name}{age ? `, ${age}` : ''}
+            {profile.name}{idades ? `, ${idades}` : ''}
           </h3>
           {distanceLabel ? (
             <div className="truncate text-xs text-white/80">{distanceLabel} de você</div>
@@ -1019,6 +1046,33 @@ export default function SearchPage() {
       {!onlyLiked && (
         <div className="mb-4 flex flex-col gap-2 sm:mb-5">
 
+          {/* Idade à vista: antes ficava escondida dentro de "Filtros". */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setIdadeAberta((v) => !v)}
+              aria-expanded={idadeAberta}
+              className={cn(
+                'flex min-h-[40px] w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors',
+                faixaAtiva(faixaIdade)
+                  ? 'border-primary/50 bg-primary/10 font-semibold text-brand-pink'
+                  : 'border-border bg-background/50 text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <span aria-hidden>🎂</span>
+              <span className="flex-1">
+                Idade: <strong className={faixaAtiva(faixaIdade) ? '' : 'font-medium text-foreground'}>{rotuloFaixa(faixaIdade)}</strong>
+                {faixaAtiva(faixaIdade) && faixaIdade.ambos ? <span className="text-xs font-normal"> · casal: os dois</span> : null}
+              </span>
+              <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', idadeAberta && 'rotate-180')} />
+            </button>
+            {idadeAberta && (
+              <div className="mt-2 rounded-xl border border-border bg-background/60 p-3">
+                <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
+              </div>
+            )}
+          </div>
+
           {/* Distance quick buttons */}
           <div className="relative">
             <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
@@ -1115,19 +1169,7 @@ export default function SearchPage() {
         <div ref={filtersPanelRef} className="glass mb-4 animate-slide-up space-y-5 rounded-xl p-4 sm:mb-6 sm:p-6 sm:space-y-6">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
             <div>
-              <label className="text-sm font-medium mb-2 block">Idade</label>
-              <Select value={ageRange} onValueChange={setAgeRange}>
-                <SelectTrigger className="h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm">
-                  <SelectValue placeholder="Qualquer" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Qualquer</SelectItem>
-                  <SelectItem value="18-25">18–25</SelectItem>
-                  <SelectItem value="26-35">26–35</SelectItem>
-                  <SelectItem value="36-45">36–45</SelectItem>
-                  <SelectItem value="45+">45+</SelectItem>
-                </SelectContent>
-              </Select>
+              <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block">Radar (km)</label>
@@ -1254,7 +1296,7 @@ export default function SearchPage() {
                   setRadar('all');
                   setAvailableOnly(false);
                   setSelectedIntention('');
-                  setAgeRange('all');
+                  aplicarFaixaIdade(FAIXA_QUALQUER);
                   setSearch('');
                   setCity('');
                   setSort('nearby');

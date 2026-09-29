@@ -745,6 +745,9 @@ export const usersService = {
     search?: string;
     city?: string;
     ageRange?: string;
+    ageMin?: number;
+    ageMax?: number;
+    ageBoth?: boolean;
     genders?: string;
     radar?: string;
     sort?: string;
@@ -800,8 +803,16 @@ export const usersService = {
       maxDistance: number | null;
       intentions: string[];
       availabilityFilter: 'any' | 'available' | null;
+      ageMin?: number | null;
+      ageMax?: number | null;
+      ageBoth?: boolean;
       updatedAt: string;
     } | null;
+  },
+
+  salvarFaixaIdade: async (faixa: { ageMin: number | null; ageMax: number | null; ageBoth: boolean }) => {
+    const response = await apiClient.put('/users/search-preferences/idade', faixa);
+    return response.data as { success: boolean };
   },
 
   saveSearchPreferences: async (prefs: {

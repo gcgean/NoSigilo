@@ -8890,8 +8890,37 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       maxDistance: row.max_distance ?? null,
       intentions: safeJsonParse(row.intentions_json) ?? [],
       availabilityFilter: row.availability_filter ?? null,
+      ageMin: row.age_min ?? null,
+      ageMax: row.age_max ?? null,
+      ageBoth: Number(row.age_both || 0) === 1,
       updatedAt: row.updated_at,
     });
+  });
+
+  // Faixa de idade salva à parte: o PUT acima regrava todas as outras colunas,
+  // e a idade muda sozinha (no controle da Busca), sem passar pelo assistente.
+  app.put('/api/users/search-preferences/idade', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({
+      ageMin: z.number().int().min(18).max(70).nullable(),
+      ageMax: z.number().int().min(18).max(70).nullable(),
+      ageBoth: z.boolean().optional(),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const { ageMin, ageMax, ageBoth } = parsed.data;
+    if (ageMin != null && ageMax != null && ageMin > ageMax) { res.status(400).json({ error: 'invalid_input' }); return; }
+    await run(
+      db,
+      `INSERT INTO user_search_preferences (user_id, age_min, age_max, age_both, updated_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         age_min = excluded.age_min,
+         age_max = excluded.age_max,
+         age_both = excluded.age_both,
+         updated_at = excluded.updated_at`,
+      [req.auth!.userId, ageMin, ageMax, ageBoth ? 1 : 0, nowIso()]
+    );
+    await persist();
+    res.json({ success: true });
   });
 
   app.put('/api/users/search-preferences', requireAuth(env, db), async (req, res) => {
@@ -9636,6 +9665,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // ─── Search / browse users ───────────────────────────────────────────────
+  // Idades aceitas no filtro da busca. IDADE_TETO = "70+" (sem limite de cima).
+  const IDADE_MINIMA = 18;
+  const IDADE_TETO = 70;
+  // Data de nascimento no limite de uma idade: 'mais_novo' = o último dia em
+  // que alguém com essa idade pode ter nascido (já fez aniversário hoje);
+  // 'mais_velho' = o primeiro dia (faz idade+1 amanhã).
+  const dataNascimentoLimite = (idade: number, lado: 'mais_novo' | 'mais_velho') => {
+    const hoje = new Date();
+    const d = lado === 'mais_novo'
+      ? new Date(Date.UTC(hoje.getFullYear() - idade, hoje.getMonth(), hoje.getDate()))
+      : new Date(Date.UTC(hoje.getFullYear() - idade - 1, hoje.getMonth(), hoje.getDate() + 1));
+    return d.toISOString().slice(0, 10);
+  };
+
   app.get('/api/users', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const viewerRow = (await queryOne(db, 'SELECT is_admin, lat, lon, city, state FROM users WHERE id = ?', [viewerId])) as any;
@@ -9689,15 +9732,39 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       params.push(...genders);
     }
 
-    if (ageRange !== 'all') {
-      const [minStr, maxStr] = ageRange.replace('+', '-150').split('-');
-      const minAge = Number(minStr);
-      const maxAge = Number(maxStr) || 150;
-      const now = new Date();
-      const maxBirth = new Date(now.getFullYear() - minAge, now.getMonth(), now.getDate()).toISOString().split('T')[0];
-      const minBirth = new Date(now.getFullYear() - maxAge - 1, now.getMonth(), now.getDate() + 1).toISOString().split('T')[0];
-      conditions.push('u.birth_date BETWEEN ? AND ?');
-      params.push(minBirth, maxBirth);
+    // Faixa de idade: ageMin/ageMax (novo, livre) ou ageRange ("26-35", "45+",
+    // formato antigo). Em casal, conta também a idade do parceiro(a): antes só
+    // valia a de quem criou a conta, e o casal "Ele 48, Ela 32" sumia de quem
+    // buscava 26–35. ageBoth=1 exige os dois na faixa.
+    let idadeMin = req.query.ageMin != null ? Number(req.query.ageMin) : NaN;
+    let idadeMax = req.query.ageMax != null ? Number(req.query.ageMax) : NaN;
+    if (Number.isNaN(idadeMin) && Number.isNaN(idadeMax) && ageRange !== 'all') {
+      const [minStr, maxStr] = ageRange.replace('+', '-').split('-');
+      idadeMin = Number(minStr);
+      idadeMax = maxStr ? Number(maxStr) : NaN;
+    }
+    const temMin = Number.isFinite(idadeMin) && idadeMin > IDADE_MINIMA;
+    const temMax = Number.isFinite(idadeMax) && idadeMax < IDADE_TETO;
+    if (temMin || temMax) {
+      const nascidoAte = temMin ? dataNascimentoLimite(idadeMin, 'mais_novo') : null;
+      const nascidoDesde = temMax ? dataNascimentoLimite(idadeMax, 'mais_velho') : null;
+      const faixa = (coluna: string) => {
+        const partes: string[] = [];
+        if (nascidoDesde) { partes.push(`${coluna} >= ?`); params.push(nascidoDesde); }
+        if (nascidoAte) { partes.push(`${coluna} <= ?`); params.push(nascidoAte); }
+        return `(${partes.join(' AND ')})`;
+      };
+      const ehCasal = `u.gender LIKE 'Casal%'`;
+      const semParceiro = `(u.partner_birth_date IS NULL OR u.partner_birth_date = '')`;
+      if (req.query.ageBoth === '1' || req.query.ageBoth === 'true') {
+        const titular = faixa('u.birth_date');
+        const parceiro = faixa('u.partner_birth_date');
+        conditions.push(`(${titular} AND (NOT (${ehCasal}) OR ${semParceiro} OR ${parceiro}))`);
+      } else {
+        const titular = faixa('u.birth_date');
+        const parceiro = faixa('u.partner_birth_date');
+        conditions.push(`(${titular} OR (${ehCasal} AND ${parceiro}))`);
+      }
     }
 
     if (availableOnly) {
