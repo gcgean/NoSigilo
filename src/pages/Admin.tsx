@@ -395,6 +395,9 @@ export default function Admin() {
     try { const d = await adminService.getShowcaseProfiles(); setShowcaseProfiles(d.profiles); } catch { /* ignora */ }
   };
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
+  // Simulador da projeção com cancelamentos: null = usar a média real do Hub.
+  const [simCancelPct, setSimCancelPct] = useState<number | null>(null);
+  const [simNovosMes, setSimNovosMes] = useState<number | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
   const [missingStateLoading, setMissingStateLoading] = useState(false);
@@ -2582,6 +2585,163 @@ export default function Admin() {
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
                   Projeção linear: cada mês soma {novos.toLocaleString('pt-BR')} assinantes ao anterior, no preço atual do plano ({brl(revenueReport.planPriceCents)}). É estimativa, não garantia, e o mês atual ainda está em andamento.
+                </p>
+              </Card>
+            );
+          })()}
+
+          {/* Receita ativa com cancelamentos — dados reais de pagamento do Hub.
+              A seção de cima só soma assinantes; esta desconta, todo mês, a
+              média de quem não renovou (em %) e soma a média de novos. */}
+          {subAnalytics && subAnalytics.monthly.length > 0 && (() => {
+            const a = subAnalytics;
+            const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+            const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            const lbl = (m: string) => { const [y, mm] = m.split('-'); return `${MESES[Number(mm) - 1]}/${y.slice(2)}`; };
+            const compacto = (reais: number) => reais >= 1000 ? `${(reais / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k` : String(reais);
+
+            // Base ativa no começo de cada mês, reconstruída de trás para frente a
+            // partir dos ativos de hoje: início = fim − novos + cancelados.
+            const meses = [...a.monthly].sort((x, y) => x.month.localeCompare(y.month));
+            const inicioDoMes = new Map<string, number>();
+            let fim = a.summary.activeSubscribers;
+            for (let i = meses.length - 1; i >= 0; i--) {
+              const inicio = Math.max(0, fim - meses[i].newCustomers + meses[i].churned);
+              inicioDoMes.set(meses[i].month, inicio);
+              fim = inicio;
+            }
+            // Média dos últimos 3 meses com base ativa (o atual entra, mesmo parcial).
+            const usados = meses.filter((m) => (inicioDoMes.get(m.month) ?? 0) > 0).slice(-3);
+            const taxas = usados.map((m) => Math.min(1, m.churned / (inicioDoMes.get(m.month) || 1)));
+            const cancelRealPct = taxas.length ? Math.round((taxas.reduce((s, t) => s + t, 0) / taxas.length) * 1000) / 10 : 0;
+            const novosReal = usados.length ? Math.round(usados.reduce((s, m) => s + m.newCustomers, 0) / usados.length) : 0;
+
+            const cancelPct = simCancelPct ?? cancelRealPct;
+            const novosMes = simNovosMes ?? novosReal;
+            const ticket = a.summary.arpuCents || revenueReport?.planPriceCents || 990;
+            const mesAtual = meses[meses.length - 1].month;
+            const somaMes = (m: string, n: number) => {
+              const [y, mm] = m.split('-').map(Number);
+              const d = new Date(Date.UTC(y, mm - 1 + n, 1));
+              return d.toISOString().slice(0, 7);
+            };
+
+            const serie: Array<{ month: string; label: string; ativos: number; valor: number; real: boolean; fimDoAno: boolean; cancelados: number; novos: number }> = [];
+            let ativos = a.summary.activeSubscribers;
+            serie.push({ month: mesAtual, label: lbl(mesAtual), ativos, valor: Math.round(a.summary.mrrCents / 100), real: true, fimDoAno: mesAtual.endsWith('-12'), cancelados: 0, novos: 0 });
+            for (let i = 1; i <= 12; i++) {
+              const m = somaMes(mesAtual, i);
+              const cancelados = Math.round(ativos * (cancelPct / 100));
+              ativos = Math.max(0, ativos - cancelados + novosMes);
+              serie.push({ month: m, label: lbl(m), ativos, valor: Math.round((ativos * ticket) / 100), real: false, fimDoAno: m.endsWith('-12'), cancelados, novos: novosMes });
+            }
+            const dez = serie.find((p) => p.fimDoAno) ?? serie[serie.length - 1];
+            const receita12m = serie.slice(1).reduce((s, p) => s + p.valor, 0);
+            const equilibrio = cancelPct > 0 ? Math.round(novosMes / (cancelPct / 100)) : null;
+            const simulando = simCancelPct != null || simNovosMes != null;
+
+            return (
+              <Card className="mt-6 p-6 glass">
+                <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Receita ativa com cancelamentos — próximos 12 meses</h3>
+                  <span className="text-[11px] text-muted-foreground">Dados reais de pagamento (Hub)</span>
+                </div>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Todo mês sai a média de quem não renova (em %) e entra a média de novos assinantes. Mostra para onde a receita vai de verdade, não só quanto entra.
+                </p>
+
+                <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">Assinantes ativos hoje</p>
+                    <p className="text-xl font-bold text-success">{a.summary.activeSubscribers.toLocaleString('pt-BR')}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">Com pagamento em dia no Hub. MRR real: {brl(a.summary.mrrCents)} (ticket médio {brl(ticket)}).</p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">Cancelamento médio por mês</p>
+                    <p className="text-xl font-bold text-destructive">{cancelPct.toLocaleString('pt-BR')}%</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+                      De quem estava ativo no início do mês, quantos % não renovaram. Média de {usados.map((m) => lbl(m.month)).join(', ')}: {cancelRealPct.toLocaleString('pt-BR')}%.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">Novos assinantes por mês</p>
+                    <p className="text-xl font-bold text-brand-pink">+{novosMes.toLocaleString('pt-BR')}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+                      Primeiro pagamento no mês. Média dos mesmos meses: {novosReal.toLocaleString('pt-BR')}.
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-secondary/30 p-3">
+                    <p className="text-xs text-muted-foreground">MRR em {lbl(dez.month)} (fim do ano)</p>
+                    <p className="text-xl font-bold text-brand-pink">{brl(dez.valor * 100)}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+                      {dez.ativos.toLocaleString('pt-BR')} assinantes. Receita somada dos próximos 12 meses: {brl(receita12m * 100)}.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Simulador: mudar % de cancelamento e novos/mês para ver o efeito */}
+                <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-dashed border-border p-3">
+                  <label className="text-xs text-muted-foreground">
+                    Simular cancelamento (%/mês)
+                    <input
+                      type="number" min={0} max={100} step={1}
+                      value={cancelPct}
+                      onChange={(e) => setSimCancelPct(e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))))}
+                      className="mt-1 block h-9 w-28 rounded-md border bg-background px-2 text-sm text-foreground"
+                    />
+                  </label>
+                  <label className="text-xs text-muted-foreground">
+                    Simular novos por mês
+                    <input
+                      type="number" min={0} step={10}
+                      value={novosMes}
+                      onChange={(e) => setSimNovosMes(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                      className="mt-1 block h-9 w-28 rounded-md border bg-background px-2 text-sm text-foreground"
+                    />
+                  </label>
+                  {simulando && (
+                    <button type="button" onClick={() => { setSimCancelPct(null); setSimNovosMes(null); }} className="h-9 rounded-md px-3 text-xs font-medium text-brand-pink hover:underline">
+                      Voltar para a média real
+                    </button>
+                  )}
+                  {equilibrio != null && (
+                    <p className="basis-full text-[11px] text-muted-foreground">
+                      Com esses números a base tende a se estabilizar em torno de <strong className="text-foreground">{equilibrio.toLocaleString('pt-BR')} assinantes</strong> ({brl(equilibrio * ticket)}/mês): é quando os cancelamentos do mês empatam com os novos.
+                    </p>
+                  )}
+                </div>
+
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={serie} margin={{ top: 18, right: 8, left: -10, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" interval={0} />
+                      <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${compacto(Number(v))}`} />
+                      <Tooltip
+                        formatter={(v: any, _n: any, item: any) => {
+                          const p = item?.payload;
+                          const det = p?.real ? `${p.ativos} assinantes` : `${p.ativos} assinantes (−${p.cancelados} +${p.novos})`;
+                          return [`${Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} · ${det}`, p?.real ? 'Atual (real)' : 'Projeção'];
+                        }}
+                        contentStyle={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }}
+                      />
+                      <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
+                        {serie.map((d) => (
+                          <Cell key={d.month} fill={d.real ? '#10b981' : d.fimDoAno ? '#7c3aed' : '#8b5cf699'} />
+                        ))}
+                        <LabelList dataKey="valor" position="top" formatter={(v: any) => compacto(Number(v))} style={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Mês atual (real, Hub)</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#8b5cf699]" /> Projeção com cancelamentos</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-600" /> Fim do ano</span>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Conta de cada mês: assinantes do mês anterior − {cancelPct.toLocaleString('pt-BR')}% que cancelam + {novosMes.toLocaleString('pt-BR')} novos, vezes o ticket médio ({brl(ticket)}). É estimativa, não garantia, e o mês atual ainda está em andamento.
                 </p>
               </Card>
             );
