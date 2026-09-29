@@ -16789,15 +16789,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       let growthRate = recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : 0;
       growthRate = Math.max(-0.5, Math.min(1, growthRate));
 
-      // 6. Projeção dos próximos 12 meses
-      const projection: Array<{ month: string; mrrCents: number }> = [];
-      let running = currentMrrCents;
+      // 6. Projeção mês a mês: do mês atual até 12 meses à frente.
+      // Antes era crescimento percentual composto (x2 todo mês, limitado a
+      // +100%), o que dava R$ 45 milhões em 12 meses — conta de juros sobre
+      // uma base ainda pequena. Agora é linear: soma, a cada mês, a média de
+      // assinantes líquidos ganhos por mês nos meses REAIS registrados
+      // (revenue_snapshots), não nos estimados.
+      const reais = [...snapByMonth.entries()]
+        .filter(([m]) => m <= currentMonth)
+        .sort(([a], [b]) => a.localeCompare(b));
+      let novosPorMes: number;
+      let baseDaMedia: 'real' | 'estimado';
+      if (reais.length >= 2) {
+        const [, primeiro] = reais[0];
+        const [, ultimo] = reais[reais.length - 1];
+        novosPorMes = (ultimo.payingUsers - primeiro.payingUsers) / (reais.length - 1);
+        baseDaMedia = 'real';
+      } else {
+        const ult = history.slice(-4);
+        novosPorMes = ult.length >= 2 ? (ult[ult.length - 1].payingUsers - ult[0].payingUsers) / (ult.length - 1) : 0;
+        baseDaMedia = 'estimado';
+      }
+      novosPorMes = Math.round(novosPorMes);
+
+      const projection: Array<{ month: string; mrrCents: number; payingUsers: number; real: boolean }> = [
+        { month: currentMonth, mrrCents: currentMrrCents, payingUsers: payingNow, real: true },
+      ];
       for (let i = 1; i <= 12; i++) {
-        running = Math.round(running * (1 + growthRate));
-        projection.push({ month: monthOffset(i), mrrCents: running });
+        const pagantes = Math.max(0, payingNow + novosPorMes * i);
+        projection.push({ month: monthOffset(i), mrrCents: pagantes * priceCents, payingUsers: pagantes, real: false });
       }
 
-      const projected12mCents = projection.length > 0 ? projection[projection.length - 1].mrrCents : currentMrrCents;
+      const projected12mCents = projection[projection.length - 1].mrrCents;
+      const fimDoAno = `${currentMonth.slice(0, 4)}-12`;
+      const projetadoFimDoAno = projection.find((p) => p.month === fimDoAno) ?? projection[0];
+      // Soma do que deve entrar do mês atual até dezembro (receita do ano restante).
+      const receitaAteFimDoAnoCents = projection
+        .filter((p) => p.month <= fimDoAno)
+        .reduce((s, p) => s + p.mrrCents, 0);
 
       res.json({
         currency: 'BRL',
@@ -16806,7 +16835,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         currentMrrCents,
         arrCents: currentMrrCents * 12,
         growthRate,
+        novosPorMes,
+        baseDaMedia,
         projected12mCents,
+        fimDoAno,
+        projetadoFimDoAnoCents: projetadoFimDoAno.mrrCents,
+        receitaAteFimDoAnoCents,
         history,
         projection,
         historyIsEstimated: history.some((h) => h.estimated),

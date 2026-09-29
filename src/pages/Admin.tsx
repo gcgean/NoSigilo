@@ -13,7 +13,7 @@ import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, Cell, LabelList, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { adminDenunciasIaService, adminService, adminPromoterService, profileService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
@@ -2503,16 +2503,23 @@ export default function Admin() {
           {/* Relatório de MRR — histórico + projeção 12 meses */}
           {revenueReport && (() => {
             const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-            const lbl = (m: string) => { const [y, mm] = m.split('-'); return `${mm}/${y.slice(2)}`; };
-            const hist = revenueReport.history.map((h) => ({ month: lbl(h.month), historico: Math.round(h.mrrCents / 100), projecao: null as number | null }));
-            if (hist.length > 0) hist[hist.length - 1].projecao = hist[hist.length - 1].historico;
-            const proj = revenueReport.projection.map((p) => ({ month: lbl(p.month), historico: null as number | null, projecao: Math.round(p.mrrCents / 100) }));
-            const data = [...hist, ...proj];
-            const growthPct = (revenueReport.growthRate * 100).toFixed(1);
+            const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+            const lbl = (m: string) => { const [y, mm] = m.split('-'); return `${MESES[Number(mm) - 1]}/${y.slice(2)}`; };
+            const compacto = (reais: number) => reais >= 1000 ? `${(reais / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k` : String(reais);
+            // Só mês a mês, do mês atual até 12 meses à frente (sem o histórico
+            // estimado, que achatava tudo e inflava o crescimento).
+            const data = revenueReport.projection.map((p) => ({
+              month: lbl(p.month),
+              valor: Math.round(p.mrrCents / 100),
+              pagantes: p.payingUsers,
+              real: p.real,
+              fimDoAno: p.month === revenueReport.fimDoAno,
+            }));
+            const novos = revenueReport.novosPorMes;
             return (
               <Card className="mt-6 p-6 glass">
                 <div className="mb-4 flex items-center justify-between gap-2">
-                  <h3 className="font-semibold flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Receita recorrente (MRR) — histórico e projeção</h3>
+                  <h3 className="font-semibold flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Receita recorrente (MRR) — projeção mês a mês</h3>
                 </div>
 
                 <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -2520,42 +2527,61 @@ export default function Admin() {
                     <p className="text-xs text-muted-foreground">MRR atual</p>
                     <p className="text-xl font-bold text-success">{brl(revenueReport.currentMrrCents)}</p>
                     <p className="text-[11px] text-muted-foreground">{revenueReport.payingUsers} assinantes</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">Receita recorrente mensal: o que entra por mês com as assinaturas ativas (assinantes × preço do plano).</p>
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
                     <p className="text-xs text-muted-foreground">ARR (anual)</p>
                     <p className="text-xl font-bold">{brl(revenueReport.arrCents)}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">Receita recorrente anual: MRR × 12. Quanto entraria em um ano se o número de assinantes ficasse igual ao de hoje.</p>
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
-                    <p className="text-xs text-muted-foreground">Crescimento mensal</p>
-                    <p className={cn('text-xl font-bold', revenueReport.growthRate >= 0 ? 'text-emerald-500' : 'text-destructive')}>
-                      {revenueReport.growthRate >= 0 ? '+' : ''}{growthPct}%
+                    <p className="text-xs text-muted-foreground">Novos assinantes por mês</p>
+                    <p className={cn('text-xl font-bold', novos >= 0 ? 'text-emerald-500' : 'text-destructive')}>
+                      {novos >= 0 ? '+' : ''}{novos.toLocaleString('pt-BR')}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+                      Média de assinantes ganhos por mês, já descontando quem saiu, nos meses {revenueReport.baseDaMedia === 'real' ? 'registrados' : 'estimados'}. É o que a projeção soma a cada mês.
                     </p>
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
-                    <p className="text-xs text-muted-foreground">Projeção em 12 meses</p>
-                    <p className="text-xl font-bold text-brand-pink">{brl(revenueReport.projected12mCents)}</p>
+                    <p className="text-xs text-muted-foreground">MRR em {lbl(revenueReport.fimDoAno)} (fim do ano)</p>
+                    <p className="text-xl font-bold text-brand-pink">{brl(revenueReport.projetadoFimDoAnoCents)}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
+                      Somando os meses, até dezembro devem entrar {brl(revenueReport.receitaAteFimDoAnoCents)}. Daqui a 12 meses: {brl(revenueReport.projected12mCents)}/mês.
+                    </p>
                   </div>
                 </div>
 
                 <div className="h-64 w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 0 }}>
+                    <BarChart data={data} margin={{ top: 18, right: 8, left: -10, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" interval="preserveStartEnd" />
-                      <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" interval={0} />
+                      <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v) => `R$${compacto(Number(v))}`} />
                       <Tooltip
-                        formatter={(v: any, name: string) => [Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }), name === 'historico' ? 'Histórico' : 'Projeção']}
+                        formatter={(v: any, _n: any, item: any) => [
+                          `${Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} · ${Number(item?.payload?.pagantes || 0).toLocaleString('pt-BR')} assinantes`,
+                          item?.payload?.real ? 'Atual (real)' : 'Projeção',
+                        ]}
                         contentStyle={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }}
                       />
-                      <Line type="monotone" dataKey="historico" stroke="#10b981" strokeWidth={2} dot={false} connectNulls name="historico" />
-                      <Line type="monotone" dataKey="projecao" stroke="#eb4778" strokeWidth={2} strokeDasharray="5 5" dot={false} connectNulls name="projecao" />
-                    </LineChart>
+                      <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
+                        {data.map((d) => (
+                          <Cell key={d.month} fill={d.real ? '#10b981' : d.fimDoAno ? '#db2777' : '#eb477899'} />
+                        ))}
+                        <LabelList dataKey="valor" position="top" formatter={(v: any) => compacto(Number(v))} style={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                      </Bar>
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
 
-                <p className="mt-3 text-[11px] text-muted-foreground">
-                  Linha verde = histórico · linha rosa tracejada = projeção (crescimento médio de {growthPct}%/mês).
-                  {revenueReport.historyIsEstimated && ' Como não há registro de pagamentos no banco, os meses anteriores são uma estimativa pela data de cadastro dos assinantes atuais; a partir de agora o MRR real é registrado mês a mês.'}
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Mês atual (real)</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#eb477899]" /> Projeção</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-pink-600" /> Fim do ano</span>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Projeção linear: cada mês soma {novos.toLocaleString('pt-BR')} assinantes ao anterior, no preço atual do plano ({brl(revenueReport.planPriceCents)}). É estimativa, não garantia, e o mês atual ainda está em andamento.
                 </p>
               </Card>
             );

@@ -1654,9 +1654,14 @@ export const adminService = {
     currentMrrCents: number;
     arrCents: number;
     growthRate: number;
+    novosPorMes: number;
+    baseDaMedia: 'real' | 'estimado';
     projected12mCents: number;
+    fimDoAno: string;
+    projetadoFimDoAnoCents: number;
+    receitaAteFimDoAnoCents: number;
     history: Array<{ month: string; mrrCents: number; payingUsers: number; estimated: boolean }>;
-    projection: Array<{ month: string; mrrCents: number }>;
+    projection: Array<{ month: string; mrrCents: number; payingUsers: number; real: boolean }>;
     historyIsEstimated: boolean;
   }> => {
     const response = await apiClient.get('/admin/finance/revenue-report');
