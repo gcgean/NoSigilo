@@ -2612,9 +2612,21 @@ async function reservarLembrete(db: DbHandle, userId: string, tipo: string, refe
     );
     return id;
   } catch {
-    return null; // já enviado para esta licença/campanha
+    // Já existe. Se o envio anterior falhou (cota/limite do Resend), tenta de
+    // novo com a mesma linha; se foi enviado, não repete.
+    const existente = (await queryOne(
+      db,
+      "SELECT id FROM lembretes_renovacao WHERE user_id = ? AND tipo = ? AND referencia = ? AND status = 'error' LIMIT 1",
+      [userId, tipo, referencia]
+    )) as any;
+    if (!existente) return null;
+    await run(db, "UPDATE lembretes_renovacao SET status = 'pendente', erro = NULL, enviado_em = ? WHERE id = ?", [nowIso(), String(existente.id)]);
+    return String(existente.id);
   }
 }
+
+// Resend: no máximo 10 envios por segundo.
+const pausaResend = () => new Promise((r) => setTimeout(r, 150));
 
 // Data (YYYY-MM-DD) no horário de Brasília.
 const dataBrt = (ms: number) => new Date(ms - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -2676,7 +2688,9 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
         erro = (e as Error).message.slice(0, 500);
       }
       let push = 0;
-      try {
+      // Numa nova tentativa (e-mail tinha falhado) o push já pode ter ido.
+      const jaTevePush = Number(((await queryOne(db, 'SELECT push_enviado FROM lembretes_renovacao WHERE id = ?', [lembreteId])) as any)?.push_enviado || 0) === 1;
+      if (!jaTevePush) try {
         push = await sendPushToUser({ db, env }, {
           userId,
           payload: {
@@ -2688,7 +2702,8 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
         });
         if (push > 0) pushes++;
       } catch { /* push é bônus */ }
-      await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ?, push_enviado = ? WHERE id = ?', [status, erro, push > 0 ? 1 : 0, lembreteId]);
+      await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ?, push_enviado = CASE WHEN ? = 1 THEN 1 ELSE push_enviado END WHERE id = ?', [status, erro, push > 0 ? 1 : 0, lembreteId]);
+      await pausaResend();
     }
   }
   await db.persist();
@@ -2758,8 +2773,7 @@ export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, 
       erros++;
     }
     await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ? WHERE id = ?', [status, erro, lembreteId]);
-    // Resend aceita ~10 envios/s; folga para não bater no limite.
-    await new Promise((r) => setTimeout(r, 150));
+    await pausaResend();
   }
   await db.persist();
   console.log(`[renovacao] campanha de volta etapa ${etapa}: ${enviados} enviado(s), ${erros} erro(s)`);
@@ -2775,7 +2789,9 @@ export function startRenewalReminderScheduler(db: DbHandle, env: Env) {
     const dia = agoraBrt.toISOString().slice(0, 10);
     if (agoraBrt.getUTCHours() === 10 && ultimoDia !== dia) {
       ultimoDia = dia;
-      void runLembretesRenovacao(db, env).catch((e) => console.error('[renovacao] falhou:', e));
+      // recuperar: pega também quem ficou sem o aviso de 3 dias (falha de envio
+      // ou cota do Resend); quem já recebeu não recebe de novo.
+      void runLembretesRenovacao(db, env, { recuperar: true }).catch((e) => console.error('[renovacao] falhou:', e));
     }
   };
   setInterval(check, 10 * 60 * 1000);
