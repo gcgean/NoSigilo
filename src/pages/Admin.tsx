@@ -397,7 +397,8 @@ export default function Admin() {
   const [revenueReport, setRevenueReport] = useState<Awaited<ReturnType<typeof adminService.getRevenueReport>> | null>(null);
   // Simulador da projeção com cancelamentos: null = usar a média real do Hub.
   const [simCancelPct, setSimCancelPct] = useState<number | null>(null);
-  const [simNovosMes, setSimNovosMes] = useState<number | null>(null);
+  const [simCadastrosMes, setSimCadastrosMes] = useState<number | null>(null);
+  const [simConversaoPct, setSimConversaoPct] = useState<number | null>(null);
   const [missingState, setMissingState] = useState<MissingStateUser[]>([]);
   const [missingStateMeta, setMissingStateMeta] = useState({ total: 0, withSuggestion: 0, ambiguous: 0 });
   const [missingStateLoading, setMissingStateLoading] = useState(false);
@@ -2610,16 +2611,27 @@ export default function Admin() {
               inicioDoMes.set(meses[i].month, inicio);
               fim = inicio;
             }
-            // Média dos últimos 3 meses com base ativa (o atual entra, mesmo parcial).
-            const usados = meses.filter((m) => (inicioDoMes.get(m.month) ?? 0) > 0).slice(-3);
-            const taxas = usados.map((m) => Math.min(1, m.churned / (inicioDoMes.get(m.month) || 1)));
-            const cancelRealPct = taxas.length ? Math.round((taxas.reduce((s, t) => s + t, 0) / taxas.length) * 1000) / 10 : 0;
-            const novosReal = usados.length ? Math.round(usados.reduce((s, m) => s + m.newCustomers, 0) / usados.length) : 0;
+            // Taxa de cancelamento só do mês atual (a partir de setembro/26, a
+            // pedido: os meses anteriores tinham base pequena e distorciam a média).
+            const mesAtual = meses[meses.length - 1].month;
+            const atual = meses[meses.length - 1];
+            const inicioAtual = inicioDoMes.get(mesAtual) ?? 0;
+            const cancelRealPct = inicioAtual > 0 ? Math.round(Math.min(1, atual.churned / inicioAtual) * 1000) / 10 : 0;
+
+            // Novos assinantes = cadastros na plataforma × % desses que assinam.
+            // Cadastros do mês atual projetados para o mês inteiro pelo ritmo diário.
+            const cadAtual = revenueReport?.cadastrosPorMes.find((c) => c.month === mesAtual)?.cadastros ?? 0;
+            const diaDoMes = revenueReport?.diaDoMes || 1;
+            const diasNoMes = revenueReport?.diasNoMes || 30;
+            const cadastrosReal = Math.round((cadAtual / diaDoMes) * diasNoMes);
+            // Conversão: novos pagantes do mês ÷ cadastros do mês (os dois até hoje).
+            const conversaoRealPct = cadAtual > 0 ? Math.round((atual.newCustomers / cadAtual) * 1000) / 10 : 0;
 
             const cancelPct = simCancelPct ?? cancelRealPct;
-            const novosMes = simNovosMes ?? novosReal;
+            const cadastrosMes = simCadastrosMes ?? cadastrosReal;
+            const conversaoPct = simConversaoPct ?? conversaoRealPct;
+            const novosMes = Math.round(cadastrosMes * (conversaoPct / 100));
             const ticket = a.summary.arpuCents || revenueReport?.planPriceCents || 990;
-            const mesAtual = meses[meses.length - 1].month;
             const somaMes = (m: string, n: number) => {
               const [y, mm] = m.split('-').map(Number);
               const d = new Date(Date.UTC(y, mm - 1 + n, 1));
@@ -2638,7 +2650,7 @@ export default function Admin() {
             const dez = serie.find((p) => p.fimDoAno) ?? serie[serie.length - 1];
             const receita12m = serie.slice(1).reduce((s, p) => s + p.valor, 0);
             const equilibrio = cancelPct > 0 ? Math.round(novosMes / (cancelPct / 100)) : null;
-            const simulando = simCancelPct != null || simNovosMes != null;
+            const simulando = simCancelPct != null || simCadastrosMes != null || simConversaoPct != null;
 
             return (
               <Card className="mt-6 p-6 glass">
@@ -2660,14 +2672,15 @@ export default function Admin() {
                     <p className="text-xs text-muted-foreground">Cancelamento médio por mês</p>
                     <p className="text-xl font-bold text-destructive">{cancelPct.toLocaleString('pt-BR')}%</p>
                     <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
-                      De quem estava ativo no início do mês, quantos % não renovaram. Média de {usados.map((m) => lbl(m.month)).join(', ')}: {cancelRealPct.toLocaleString('pt-BR')}%.
+                      De quem estava ativo no início do mês, quantos % não renovaram. Taxa de {lbl(mesAtual)}: {cancelRealPct.toLocaleString('pt-BR')}% ({atual.churned} de {inicioAtual}).
                     </p>
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
                     <p className="text-xs text-muted-foreground">Novos assinantes por mês</p>
                     <p className="text-xl font-bold text-brand-pink">+{novosMes.toLocaleString('pt-BR')}</p>
                     <p className="mt-1 text-[11px] leading-snug text-muted-foreground/80">
-                      Primeiro pagamento no mês. Média dos mesmos meses: {novosReal.toLocaleString('pt-BR')}.
+                      {cadastrosMes.toLocaleString('pt-BR')} cadastros/mês na plataforma × {conversaoPct.toLocaleString('pt-BR')}% que assinam.
+                      Em {lbl(mesAtual)}: {cadAtual.toLocaleString('pt-BR')} cadastros até o dia {diaDoMes} e {atual.newCustomers} novos pagantes.
                     </p>
                   </div>
                   <div className="rounded-xl border bg-secondary/30 p-3">
@@ -2691,16 +2704,25 @@ export default function Admin() {
                     />
                   </label>
                   <label className="text-xs text-muted-foreground">
-                    Simular novos por mês
+                    Cadastros por mês
                     <input
-                      type="number" min={0} step={10}
-                      value={novosMes}
-                      onChange={(e) => setSimNovosMes(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                      type="number" min={0} step={100}
+                      value={cadastrosMes}
+                      onChange={(e) => setSimCadastrosMes(e.target.value === '' ? null : Math.max(0, Number(e.target.value)))}
+                      className="mt-1 block h-9 w-28 rounded-md border bg-background px-2 text-sm text-foreground"
+                    />
+                  </label>
+                  <label className="text-xs text-muted-foreground">
+                    Conversão em assinante (%)
+                    <input
+                      type="number" min={0} max={100} step={0.5}
+                      value={conversaoPct}
+                      onChange={(e) => setSimConversaoPct(e.target.value === '' ? null : Math.min(100, Math.max(0, Number(e.target.value))))}
                       className="mt-1 block h-9 w-28 rounded-md border bg-background px-2 text-sm text-foreground"
                     />
                   </label>
                   {simulando && (
-                    <button type="button" onClick={() => { setSimCancelPct(null); setSimNovosMes(null); }} className="h-9 rounded-md px-3 text-xs font-medium text-brand-pink hover:underline">
+                    <button type="button" onClick={() => { setSimCancelPct(null); setSimCadastrosMes(null); setSimConversaoPct(null); }} className="h-9 rounded-md px-3 text-xs font-medium text-brand-pink hover:underline">
                       Voltar para a média real
                     </button>
                   )}
@@ -2741,7 +2763,7 @@ export default function Admin() {
                   <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-violet-600" /> Fim do ano</span>
                 </div>
                 <p className="mt-2 text-[11px] text-muted-foreground">
-                  Conta de cada mês: assinantes do mês anterior − {cancelPct.toLocaleString('pt-BR')}% que cancelam + {novosMes.toLocaleString('pt-BR')} novos, vezes o ticket médio ({brl(ticket)}). É estimativa, não garantia, e o mês atual ainda está em andamento.
+                  Conta de cada mês: assinantes do mês anterior − {cancelPct.toLocaleString('pt-BR')}% que cancelam + {novosMes.toLocaleString('pt-BR')} novos ({cadastrosMes.toLocaleString('pt-BR')} cadastros × {conversaoPct.toLocaleString('pt-BR')}%), vezes o ticket médio ({brl(ticket)}). Cadastros e conversão ficam no ritmo de {lbl(mesAtual)}; mude nos campos acima para simular crescimento. É estimativa, não garantia, e o mês atual ainda está em andamento.
                 </p>
               </Card>
             );

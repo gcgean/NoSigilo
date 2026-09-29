@@ -1656,6 +1656,9 @@ export const adminService = {
     growthRate: number;
     novosPorMes: number;
     baseDaMedia: 'real' | 'estimado';
+    cadastrosPorMes: Array<{ month: string; cadastros: number }>;
+    diaDoMes: number;
+    diasNoMes: number;
     projected12mCents: number;
     fimDoAno: string;
     projetadoFimDoAnoCents: number;

@@ -16828,10 +16828,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         .filter((p) => p.month <= fimDoAno)
         .reduce((s, p) => s + p.mrrCents, 0);
 
+      // Cadastros novos na plataforma por mês (sem perfis de vitrine): base da
+      // projeção por conversão — novos assinantes = cadastros × % que assina.
+      const cadRows = (await queryAll(
+        db,
+        `SELECT substr(created_at, 1, 7) AS mes, COUNT(*) AS c FROM users
+         WHERE created_at >= ? AND (is_showcase = 0 OR is_showcase IS NULL)
+         GROUP BY substr(created_at, 1, 7)`,
+        [`${monthOffset(-5)}-01`]
+      )) as any[];
+      const cadastrosPorMes = cadRows
+        .map((r) => ({ month: String(r.mes), cadastros: Number(r.c || 0) }))
+        .sort((x, y) => x.month.localeCompare(y.month));
+      const hojeUtc = new Date();
+      const diaDoMes = hojeUtc.getUTCDate();
+      const diasNoMes = new Date(Date.UTC(hojeUtc.getUTCFullYear(), hojeUtc.getUTCMonth() + 1, 0)).getUTCDate();
+
       res.json({
         currency: 'BRL',
         planPriceCents: priceCents,
         payingUsers: payingNow,
+        cadastrosPorMes,
+        diaDoMes,
+        diasNoMes,
         currentMrrCents,
         arrCents: currentMrrCents * 12,
         growthRate,
