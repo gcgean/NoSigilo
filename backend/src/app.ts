@@ -950,12 +950,48 @@ async function banUserEverywhere(db: DbHandle, userId: string, adminId: string |
   await run(db, 'UPDATE radar_broadcasts SET deactivated_at = ? WHERE user_id = ? AND deactivated_at IS NULL', [nowIso(), userId]);
 }
 
-async function syncHubAccessForUser(
+// Pagamento confirmado (1º ou renovação): bônus do cartão e resultado dos
+// lembretes de renovação. Chamado pela sincronização com o Hub — que é por
+// onde o pagamento chega de fato: o Hub não entrega webhook ao NoSigilo (o
+// produto não tem webhook_url; set/2026). Best-effort: nunca derruba o acesso.
+async function registrarPagamentoRenovacao(db: DbHandle, userId: string, io?: SocketIOServer) {
+  try {
+    const u = (await queryOne(db, 'SELECT hub_subscription_id FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    // Assinatura recorrente no Hub só existe para quem paga no cartão.
+    if (String(u?.hub_subscription_id || '').trim()) {
+      await awardTokens(db, userId, 'pagou_cartao', `cartao-${userId}`, io);
+    }
+    const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const lembretes = (await queryAll(
+      db,
+      "SELECT id, tipo, referencia FROM lembretes_renovacao WHERE user_id = ? AND status = 'sent' AND renovou_em IS NULL AND enviado_em >= ?",
+      [userId, desde]
+    )) as any[];
+    if (lembretes.length > 0) {
+      await run(
+        db,
+        `UPDATE lembretes_renovacao SET renovou_em = ? WHERE id IN (${lembretes.map(() => '?').join(',')})`,
+        [nowIso(), ...lembretes.map((l) => String(l.id))]
+      );
+      const volta = lembretes.find((l) => String(l.tipo).startsWith('volta'));
+      if (volta) await awardTokens(db, userId, 'volta_renovou', `volta-${String(volta.referencia)}-${userId}`, io);
+    }
+  } catch (err) {
+    console.error('[renovacao] bonus/registro falhou:', err);
+  }
+}
+
+export async function syncHubAccessForUser(
   db: DbHandle,
   userId: string,
   result: HubResolveAccessResult & { customerId: string; productId: string },
   ctx?: { io?: SocketIOServer; env?: Env }
 ) {
+  const antes = (await queryOne(db, 'SELECT hub_license_end_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const fimAntes = antes?.hub_license_end_at ? new Date(String(antes.hub_license_end_at)).getTime() : 0;
+  const fimDepois = result.licenseEndAt ? new Date(String(result.licenseEndAt)).getTime() : 0;
+  // Licença nova ou estendida = entrou um pagamento.
+  const pagouAgora = result.accessStatus === 'licensed' && fimDepois > fimAntes;
   await run(
     db,
     `UPDATE users
@@ -990,6 +1026,9 @@ async function syncHubAccessForUser(
   // aqui também, senão assinaturas confirmadas pelo sync ficam sem comissão.
   if (result.accessStatus === 'licensed') {
     await ensurePromoterCommission(db, userId, 990, 'access_synced', ctx);
+  }
+  if (pagouAgora) {
+    await registrarPagamentoRenovacao(db, userId, ctx?.io);
   }
 }
 
@@ -14846,7 +14885,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     };
 
     try {
-      const user = (await queryOne(db, 'SELECT id, name, email, is_premium, hub_subscription_id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
+      const user = (await queryOne(db, 'SELECT id, name, email, is_premium FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
       if (!user) {
         console.log(`[hub-billing/webhook] customerId=${customerId} not found — ignored`);
         return;
@@ -14919,32 +14958,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // Só depois de o pagamento estar confirmado; falha aqui nunca afeta o
         // acesso já liberado acima.
         if (eventType === 'payment.approved') {
-          try {
-            const io = req.app.get('io') as SocketIOServer | undefined;
-            const userId = String(user.id);
-            // Assinatura recorrente no Hub só existe para quem paga no cartão.
-            if (String(user.hub_subscription_id || '').trim()) {
-              await awardTokens(db, userId, 'pagou_cartao', `cartao-${userId}`, io);
-            }
-            const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
-            const lembretes = (await queryAll(
-              db,
-              "SELECT id, tipo, referencia FROM lembretes_renovacao WHERE user_id = ? AND status = 'sent' AND renovou_em IS NULL AND enviado_em >= ?",
-              [userId, desde]
-            )) as any[];
-            if (lembretes.length > 0) {
-              await run(
-                db,
-                `UPDATE lembretes_renovacao SET renovou_em = ? WHERE id IN (${lembretes.map(() => '?').join(',')})`,
-                [nowIso(), ...lembretes.map((l) => String(l.id))]
-              );
-              const volta = lembretes.find((l) => String(l.tipo).startsWith('volta'));
-              if (volta) await awardTokens(db, userId, 'volta_renovou', `volta-${String(volta.referencia)}-${userId}`, io);
-            }
-            await persist();
-          } catch (err) {
-            console.error('[renovacao] bonus/registro falhou:', err);
-          }
+          await registrarPagamentoRenovacao(db, String(user.id), req.app.get('io') as SocketIOServer | undefined);
+          await persist();
         }
 
         // ── Cancel commission on chargeback ─────────────────────────────────
