@@ -2429,17 +2429,30 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
 
   weekendBlastRunning = true;
   try {
+    // Só quem entrou nos últimos 60 dias. Antes ia para a base inteira (~11 mil)
+    // sexta E sábado: ~52 mil e-mails em set/2026, a cota do Resend acabou em
+    // 19/09 e junto pararam código de 2 fatores, senha e suporte.
+    const desde60d = new Date(Date.now() - 60 * 86_400_000).toISOString();
     const users = (await queryAll(
       db,
       `SELECT u.id, u.name, u.email FROM users u
        WHERE u.email IS NOT NULL AND u.email != '' AND u.email NOT LIKE '%@nosigilo.internal'
          AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND u.last_seen_at > ?
          AND ${db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)'}`,
-      []
+      [desde60d]
     )) as any[];
 
     let sent = 0; let errors = 0;
+    let cotaSeguidas = 0;
     for (const user of users) {
+      // Cota do Resend acabou: parar na hora, para não queimar o que sobrar
+      // dos e-mails importantes nem gravar milhares de falhas.
+      if (cotaSeguidas >= 5) {
+        console.warn(`[weekend-engagement] cota do Resend esgotada — envio interrompido (${sent} enviados)`);
+        void notifyAdminsTelegram({ db, env }, `⚠️ E-mail de fim de semana interrompido: a cota mensal do Resend acabou (${sent} enviados antes). E-mails de senha, 2FA e suporte também param até a cota renovar.`);
+        break;
+      }
       let status: 'sent' | 'skipped' | 'error' = 'error';
       let errorMsg: string | null = null;
       try {
@@ -2452,6 +2465,7 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
       } catch (e: any) {
         status = 'error'; errorMsg = String(e?.message ?? e); errors++;
       }
+      cotaSeguidas = errorMsg && errorMsg.includes('monthly_quota_exceeded') ? cotaSeguidas + 1 : 0;
       if (status !== 'skipped') {
         try {
           await run(db, `INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message, campaign) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -2471,15 +2485,16 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
 export function startWeekendEngagementScheduler(db: DbHandle, env: Env) {
   const check = () => {
     const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // horário de Brasília (UTC-3)
-    const day = now.getUTCDay();   // 5 = sexta, 6 = sábado
+    const day = now.getUTCDay();   // 5 = sexta
     const hour = now.getUTCHours();
-    if ((day === 5 || day === 6) && hour === 20) {
+    // Uma vez por semana (era sexta e sábado).
+    if (day === 5 && hour === 20) {
       void runWeekendEngagementBlast(db, env);
     }
   };
   setInterval(check, 5 * 60 * 1000);
   check(); // já checa no boot (caso o processo reinicie dentro da janela)
-  console.log('[weekend-engagement] agendador ativo (sex/sáb 20h BRT)');
+  console.log('[weekend-engagement] agendador ativo (sexta 20h BRT, quem entrou nos últimos 60 dias)');
 }
 
 // ─── Agendador: resumo diário pro admin no Telegram (todo dia às 8h, BRT) ──────
@@ -2552,6 +2567,9 @@ async function runAdminDailySummary(db: DbHandle, env: Env) {
 
 const RENOVAR_LINK_DIAS = 14;
 const CAMPANHA_VOLTA = 'volta-2026-09';
+// Aprovada para quem deixou vencer até 29/09/2026 (439 pessoas). Quem vencer
+// depois não entra nesta campanha.
+const CAMPANHA_VOLTA_CORTE = '2026-09-30T03:00:00.000Z';
 
 function origemFrontend(env: Env) {
   return String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
@@ -2718,7 +2736,7 @@ export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, 
   const optOut = db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)';
   const limite = Math.max(1, Math.min(1000, opcoes.limite ?? 500));
   const agora = nowIso();
-  const base = `u.hub_access_status = 'licensed' AND u.hub_license_end_at <= ?
+  const base = `u.hub_access_status = 'licensed' AND u.hub_license_end_at <= ? AND u.hub_license_end_at <= '${CAMPANHA_VOLTA_CORTE}'
     AND (u.is_premium = 0 OR u.is_premium IS NULL)
     AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)
     AND (u.is_banned = 0 OR u.is_banned IS NULL)
@@ -2730,14 +2748,14 @@ export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, 
     etapa === 1
       ? `SELECT u.id, u.name, u.email, u.hub_license_end_at FROM users u
          WHERE ${base}
-           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta1' AND l.referencia = ?)
+           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta1' AND l.referencia = ? AND l.status <> 'error')
          ORDER BY u.hub_license_end_at DESC LIMIT ?`
       // Etapa 2: só quem recebeu a 1ª há 3+ dias, não abriu e não voltou.
       : `SELECT u.id, u.name, u.email, u.hub_license_end_at FROM users u
          WHERE ${base}
            AND EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta1' AND l.referencia = ?
                        AND l.status = 'sent' AND l.aberto_em IS NULL AND l.enviado_em <= ?)
-           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta2' AND l.referencia = ?)
+           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta2' AND l.referencia = ? AND l.status <> 'error')
          ORDER BY u.hub_license_end_at DESC LIMIT ?`,
     etapa === 1
       ? [agora, agora, CAMPANHA_VOLTA, limite]
@@ -2751,7 +2769,12 @@ export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, 
   const tipo = etapa === 1 ? 'volta1' : 'volta2';
   let enviados = 0;
   let erros = 0;
+  let cotaSeguidas = 0;
   for (const u of alvos) {
+    if (cotaSeguidas >= 3) {
+      console.warn('[renovacao] campanha de volta pausada: cota do Resend esgotada; tenta de novo amanhã');
+      break;
+    }
     const userId = String(u.id);
     const lembreteId = await reservarLembrete(db, userId, tipo, CAMPANHA_VOLTA);
     if (!lembreteId) continue;
@@ -2772,6 +2795,7 @@ export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, 
       erro = (e as Error).message.slice(0, 500);
       erros++;
     }
+    cotaSeguidas = erro && erro.includes('monthly_quota_exceeded') ? cotaSeguidas + 1 : 0;
     await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ? WHERE id = ?', [status, erro, lembreteId]);
     await pausaResend();
   }
@@ -2791,7 +2815,16 @@ export function startRenewalReminderScheduler(db: DbHandle, env: Env) {
       ultimoDia = dia;
       // recuperar: pega também quem ficou sem o aviso de 3 dias (falha de envio
       // ou cota do Resend); quem já recebeu não recebe de novo.
-      void runLembretesRenovacao(db, env, { recuperar: true }).catch((e) => console.error('[renovacao] falhou:', e));
+      void (async () => {
+        await runLembretesRenovacao(db, env, { recuperar: true });
+        // Campanha de volta (aprovada em 29/09/2026): liga/desliga por
+        // system_settings.campanha_volta_ativa = '1'. Roda todo dia até todos
+        // receberem; se a cota do Resend estiver esgotada, para e tenta amanhã.
+        if ((await getSystemSetting(db, 'campanha_volta_ativa')) === '1') {
+          await enviarCampanhaVolta(db, env, 1, { dryRun: false });
+          await enviarCampanhaVolta(db, env, 2, { dryRun: false });
+        }
+      })().catch((e) => console.error('[renovacao] falhou:', e));
     }
   };
   setInterval(check, 10 * 60 * 1000);
