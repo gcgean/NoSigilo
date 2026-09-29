@@ -39,6 +39,9 @@ type CheckoutPayload = {
   dueDate?: string | null;
 };
 
+// Bônus do primeiro pagamento no cartão (TOKEN_RULES.pagou_cartao no servidor).
+const TOKENS_CARTAO = 50;
+
 function normalizePixQrCode(value?: string | null) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -616,10 +619,16 @@ export default function Subscriptions() {
                       type="button"
                       onClick={() => setBillingMethod(value)}
                       className={cn(
-                        'flex flex-col items-center gap-1.5 rounded-2xl border-2 py-3 text-sm font-semibold transition-all',
+                        'relative flex flex-col items-center gap-1.5 rounded-2xl border-2 py-3 text-sm font-semibold transition-all',
                         sel ? 'border-primary bg-primary/10 text-brand-pink' : 'border-border hover:border-primary/40 text-muted-foreground'
                       )}
                     >
+                      {/* Cartão renova sozinho; Pix depende de a pessoa lembrar todo mês. */}
+                      {value === 'CREDIT_CARD' && (
+                        <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white shadow">
+                          +{TOKENS_CARTAO} tokens
+                        </span>
+                      )}
                       <Icon className="w-5 h-5" />
                       {label}
                     </button>
@@ -631,6 +640,19 @@ export default function Subscriptions() {
                   <Repeat className="w-3.5 h-3.5" /> Cartão salvo com cobrança automática mensal — cancele quando quiser.
                 </p>
               )}
+              {billingMethod === 'CREDIT_CARD' ? (
+                <p className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-300">
+                  🎁 Pagando no cartão você ganha <strong>{TOKENS_CARTAO} tokens</strong> no primeiro pagamento — e nunca mais precisa lembrar de renovar.
+                </p>
+              ) : billingMethod === 'PIX' ? (
+                <button
+                  type="button"
+                  onClick={() => setBillingMethod('CREDIT_CARD')}
+                  className="w-full rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-left text-xs text-violet-300"
+                >
+                  💳 O Pix não renova sozinho: todo mês você precisa pagar de novo. No cartão renova automático e você ganha <strong>{TOKENS_CARTAO} tokens</strong>. <span className="underline">Trocar para cartão</span>
+                </button>
+              ) : null}
 
               {/* Plan selector */}
               {paidPlans.length > 1 && (

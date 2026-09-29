@@ -35,6 +35,7 @@ const PendingApproval = lazy(() => import("./pages/PendingApproval"));
 const AuthCallback = lazy(() => import("./pages/AuthCallback"));
 const Subscriptions = lazy(() => import("./pages/Subscriptions"));
 const Welcome = lazy(() => import("./pages/Welcome"));
+const Renovar = lazy(() => import("./pages/Renovar"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Guidelines = lazy(() => import("./pages/Guidelines"));
@@ -101,6 +102,8 @@ const App = () => (
                     <Route path="/descobrir" element={<CampaignLanding />} />
                     <Route path="/espiar" element={<Espiar />} />
                     <Route path="/login" element={<Login />} />
+                    {/* Botão "Renovar com Pix" dos e-mails: sem login, link assinado. */}
+                    <Route path="/renovar" element={<Renovar />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
                     <Route path="/register" element={<Register />} />
                     <Route path="/pending-approval" element={<PendingApproval />} />

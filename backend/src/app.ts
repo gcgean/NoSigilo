@@ -22,6 +22,7 @@ import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
+import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
 import {
   cancelHubSubscription,
   createHubCheckout,
@@ -513,6 +514,10 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   checkin: { points: 5,  dailyCap: 1 },
   // Pago uma vez só, na primeira abertura pelo app instalado.
   app_instalado: { points: 20, dailyCap: 1 },
+  // Primeiro pagamento no cartão (renova sozinho): uma vez só por conta.
+  pagou_cartao: { points: 50, dailyCap: 1 },
+  // Voltou pela campanha de volta e renovou em até 30 dias.
+  volta_renovou: { points: 50, dailyCap: 1 },
 };
 
 // Só perfis de mulheres e casais recebem tokens por postagem feita.
@@ -2540,6 +2545,244 @@ async function runAdminDailySummary(db: DbHandle, env: Env) {
 }
 
 // Verifica a cada 5 min; dispara uma vez quando entra na janela 8h (BRT).
+// ─── Renovação: lembretes antes de vencer e campanha de volta ────────────────
+// ~90% pagam por Pix, que não renova sozinho, e quem deixa vencer some: dos
+// 450 que venceram até set/2026, só 25 voltaram a abrir o app. O lembrete dentro
+// do app não alcança essa gente — o canal é e-mail (+ push para quem aceitou).
+
+const RENOVAR_LINK_DIAS = 14;
+const CAMPANHA_VOLTA = 'volta-2026-09';
+
+function origemFrontend(env: Env) {
+  return String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
+}
+
+// Link do botão "Renovar com Pix": assinado, só serve para gerar o pagamento
+// daquela conta (não abre sessão — quem pegar o e-mail não entra no perfil).
+function linkRenovar(env: Env, userId: string, lembreteId?: string) {
+  const t = jwt.sign({ sub: userId, purpose: 'renovar', l: lembreteId || null }, env.JWT_SECRET, { expiresIn: `${RENOVAR_LINK_DIAS}d` });
+  return `${origemFrontend(env)}/renovar?t=${encodeURIComponent(t)}`;
+}
+
+function pixelAbertura(env: Env, lembreteId: string) {
+  return `${origemFrontend(env)}/api/public/email-aberto/${encodeURIComponent(lembreteId)}.gif`;
+}
+
+let precoPlanoCache: { cents: number; em: number } | null = null;
+async function precoDoPlanoCents(env: Env) {
+  if (precoPlanoCache && Date.now() - precoPlanoCache.em < 60 * 60 * 1000) return precoPlanoCache.cents;
+  let cents = 990;
+  if (shouldUseHubBilling(env)) {
+    try {
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+      const plans = await Promise.race([listHubPlans(getHubConfig(env)), timeout]);
+      const ativo = plans.find((p) => p.isActive !== false && String(p.status) === 'active') ?? plans[0];
+      if (ativo?.amount) cents = Number(ativo.amount);
+    } catch { /* fica o padrão */ }
+  }
+  precoPlanoCache = { cents, em: Date.now() };
+  return cents;
+}
+
+const precoLabel = (cents: number) => (cents / 100).toFixed(2).replace('.', ',');
+
+async function novidadesDesde(db: DbHandle, userId: string, desdeIso: string) {
+  const [c, v, m] = await Promise.all([
+    queryOne(db, "SELECT COUNT(*) AS c FROM likes WHERE target_type = 'user' AND target_id = ? AND created_at > ?", [userId, desdeIso]),
+    queryOne(db, 'SELECT COUNT(DISTINCT visitor_user_id) AS c FROM profile_visits WHERE visited_user_id = ? AND created_at > ?', [userId, desdeIso]),
+    queryOne(
+      db,
+      `SELECT COUNT(*) AS c FROM messages m JOIN conversations c ON c.id = m.conversation_id
+       WHERE (c.user_a_id = ? OR c.user_b_id = ?) AND m.sender_id != ? AND m.is_read = 0`,
+      [userId, userId, userId]
+    ),
+  ]) as any[];
+  return { curtidas: Number(c?.c || 0), visitas: Number(v?.c || 0), mensagens: Number(m?.c || 0) };
+}
+
+// Reserva a linha antes de enviar: a chave única (user, tipo, referência)
+// impede envio duplicado mesmo com duas rodadas ao mesmo tempo.
+async function reservarLembrete(db: DbHandle, userId: string, tipo: string, referencia: string) {
+  const id = randomUUID();
+  try {
+    await run(
+      db,
+      "INSERT INTO lembretes_renovacao (id, user_id, tipo, referencia, enviado_em, status) VALUES (?, ?, ?, ?, ?, 'pendente')",
+      [id, userId, tipo, referencia, nowIso()]
+    );
+    return id;
+  } catch {
+    return null; // já enviado para esta licença/campanha
+  }
+}
+
+// Data (YYYY-MM-DD) no horário de Brasília.
+const dataBrt = (ms: number) => new Date(ms - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+// Início do dia (BRT) em ISO UTC, n dias a partir de hoje.
+function inicioDoDiaBrt(diasAFrente: number) {
+  const hoje = dataBrt(Date.now());
+  const [y, m, d] = hoje.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + diasAFrente, 3, 0, 0)).toISOString();
+}
+
+// recuperar=true: rodada única que avisa também quem vence entre agora e o
+// d3 normal (ex.: no dia em que o recurso entrou no ar, ninguém tinha recebido).
+export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { recuperar?: boolean } = {}) {
+  const frontend = origemFrontend(env);
+  const preco = await precoDoPlanoCents(env);
+  const opcoesEmail = { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME || 'NoSigilo', siteUrl: frontend };
+  const optOut = db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)';
+  let enviados = 0;
+  let pushes = 0;
+  // d3: vence daqui a 3 dias (dia inteiro, BRT). d0: vence hoje.
+  for (const [tipo, dias] of [['d3', 3], ['d0', 0]] as const) {
+    // d0 começa "agora": quem venceu mais cedo hoje já entra na campanha de volta.
+    const de = tipo === 'd0' || opcoes.recuperar ? nowIso() : inicioDoDiaBrt(dias);
+    const ate = inicioDoDiaBrt(dias + 1);
+    const alvos = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.email, u.hub_license_end_at, ${optOut} AS aceita_email
+       FROM users u
+       WHERE u.is_premium = 1
+         AND u.hub_license_end_at >= ? AND u.hub_license_end_at < ?
+         AND (u.hub_subscription_id IS NULL OR u.hub_subscription_id = '')
+         AND (u.is_banned = 0 OR u.is_banned IS NULL)
+         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND u.deleted_at IS NULL`,
+      [de, ate]
+    )) as any[];
+    for (const u of alvos) {
+      const userId = String(u.id);
+      const referencia = String(u.hub_license_end_at).slice(0, 10);
+      const lembreteId = await reservarLembrete(db, userId, tipo, referencia);
+      if (!lembreteId) continue;
+      const link = linkRenovar(env, userId, lembreteId);
+      const venceEmLabel = new Date(new Date(String(u.hub_license_end_at)).getTime() - 3 * 3600_000).toISOString().slice(5, 10).split('-').reverse().join('/');
+      let status = 'skipped';
+      let erro: string | null = null;
+      try {
+        if (u.email && u.aceita_email !== false && Number(u.aceita_email) !== 0) {
+          const novidades = await novidadesDesde(db, userId, new Date(Date.now() - 7 * 86_400_000).toISOString());
+          const r = await sendLembreteRenovacaoEmail(opcoesEmail, {
+            to: String(u.email), nome: String(u.name || ''), tipo, venceEmLabel, linkRenovar: link,
+            pixelUrl: pixelAbertura(env, lembreteId), precoLabel: precoLabel(preco),
+            tokensCartao: TOKEN_RULES.pagou_cartao.points, novidades,
+          });
+          status = r.skipped ? 'skipped' : 'sent';
+          if (!r.skipped) enviados++;
+        }
+      } catch (e) {
+        status = 'error';
+        erro = (e as Error).message.slice(0, 500);
+      }
+      let push = 0;
+      try {
+        push = await sendPushToUser({ db, env }, {
+          userId,
+          payload: {
+            title: tipo === 'd0' ? 'Seu Premium vence hoje ⏳' : `Seu Premium vence em 3 dias (${venceEmLabel})`,
+            body: 'Toque para renovar com Pix em 1 minuto.',
+            url: link.replace(frontend, ''),
+            tag: `renovar-${tipo}`,
+          },
+        });
+        if (push > 0) pushes++;
+      } catch { /* push é bônus */ }
+      await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ?, push_enviado = ? WHERE id = ?', [status, erro, push > 0 ? 1 : 0, lembreteId]);
+    }
+  }
+  await db.persist();
+  console.log(`[renovacao] lembretes: ${enviados} e-mail(s), ${pushes} push(es)`);
+  return { enviados, pushes };
+}
+
+export async function enviarCampanhaVolta(db: DbHandle, env: Env, etapa: 1 | 2, opcoes: { dryRun?: boolean; limite?: number } = {}) {
+  const frontend = origemFrontend(env);
+  const preco = await precoDoPlanoCents(env);
+  const opcoesEmail = { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: env.APP_NAME || 'NoSigilo', siteUrl: frontend };
+  const optOut = db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)';
+  const limite = Math.max(1, Math.min(1000, opcoes.limite ?? 500));
+  const agora = nowIso();
+  const base = `u.hub_access_status = 'licensed' AND u.hub_license_end_at <= ?
+    AND (u.is_premium = 0 OR u.is_premium IS NULL)
+    AND (u.trial_ends_at IS NULL OR u.trial_ends_at < ?)
+    AND (u.is_banned = 0 OR u.is_banned IS NULL)
+    AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+    AND u.deleted_at IS NULL
+    AND u.email IS NOT NULL AND u.email != '' AND ${optOut}`;
+  const alvos = (await queryAll(
+    db,
+    etapa === 1
+      ? `SELECT u.id, u.name, u.email, u.hub_license_end_at FROM users u
+         WHERE ${base}
+           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta1' AND l.referencia = ?)
+         ORDER BY u.hub_license_end_at DESC LIMIT ?`
+      // Etapa 2: só quem recebeu a 1ª há 3+ dias, não abriu e não voltou.
+      : `SELECT u.id, u.name, u.email, u.hub_license_end_at FROM users u
+         WHERE ${base}
+           AND EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta1' AND l.referencia = ?
+                       AND l.status = 'sent' AND l.aberto_em IS NULL AND l.enviado_em <= ?)
+           AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 'volta2' AND l.referencia = ?)
+         ORDER BY u.hub_license_end_at DESC LIMIT ?`,
+    etapa === 1
+      ? [agora, agora, CAMPANHA_VOLTA, limite]
+      : [agora, agora, CAMPANHA_VOLTA, new Date(Date.now() - 3 * 86_400_000).toISOString(), CAMPANHA_VOLTA, limite]
+  )) as any[];
+
+  if (opcoes.dryRun) {
+    return { dryRun: true, etapa, total: alvos.length, amostra: alvos.slice(0, 10).map((u) => ({ id: String(u.id), nome: String(u.name || '') })) };
+  }
+
+  const tipo = etapa === 1 ? 'volta1' : 'volta2';
+  let enviados = 0;
+  let erros = 0;
+  for (const u of alvos) {
+    const userId = String(u.id);
+    const lembreteId = await reservarLembrete(db, userId, tipo, CAMPANHA_VOLTA);
+    if (!lembreteId) continue;
+    let status = 'skipped';
+    let erro: string | null = null;
+    try {
+      const nov = await novidadesDesde(db, userId, String(u.hub_license_end_at));
+      const r = await sendVoltaRenovacaoEmail(opcoesEmail, {
+        to: String(u.email), nome: String(u.name || ''), etapa,
+        linkRenovar: linkRenovar(env, userId, lembreteId), pixelUrl: pixelAbertura(env, lembreteId),
+        precoLabel: precoLabel(preco), tokensVolta: TOKEN_RULES.volta_renovou.points, tokensCartao: TOKEN_RULES.pagou_cartao.points,
+        ...nov,
+      });
+      status = r.skipped ? 'skipped' : 'sent';
+      if (!r.skipped) enviados++;
+    } catch (e) {
+      status = 'error';
+      erro = (e as Error).message.slice(0, 500);
+      erros++;
+    }
+    await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ? WHERE id = ?', [status, erro, lembreteId]);
+    // Resend aceita ~10 envios/s; folga para não bater no limite.
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  await db.persist();
+  console.log(`[renovacao] campanha de volta etapa ${etapa}: ${enviados} enviado(s), ${erros} erro(s)`);
+  return { dryRun: false, etapa, total: alvos.length, enviados, erros };
+}
+
+// Todo dia às 10h (Brasília). A chave única da tabela garante que reinício do
+// servidor no meio da janela não reenvia nada.
+export function startRenewalReminderScheduler(db: DbHandle, env: Env) {
+  let ultimoDia = '';
+  const check = () => {
+    const agoraBrt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const dia = agoraBrt.toISOString().slice(0, 10);
+    if (agoraBrt.getUTCHours() === 10 && ultimoDia !== dia) {
+      ultimoDia = dia;
+      void runLembretesRenovacao(db, env).catch((e) => console.error('[renovacao] falhou:', e));
+    }
+  };
+  setInterval(check, 10 * 60 * 1000);
+  check();
+  console.log('[renovacao] agendador de lembretes ativo (todo dia 10h BRT)');
+}
+
 export function startAdminDailySummaryScheduler(db: DbHandle, env: Env) {
   const check = () => {
     const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // horário de Brasília (UTC-3)
@@ -14554,7 +14797,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     };
 
     try {
-      const user = (await queryOne(db, 'SELECT id, name, email, is_premium FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
+      const user = (await queryOne(db, 'SELECT id, name, email, is_premium, hub_subscription_id FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
       if (!user) {
         console.log(`[hub-billing/webhook] customerId=${customerId} not found — ignored`);
         return;
@@ -14620,6 +14863,38 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             if (created) await persist();
           } catch (err) {
             console.error('[promoter] commission error:', err);
+          }
+        }
+
+        // ── Renovação: bônus do cartão e resultado dos lembretes ─────────────
+        // Só depois de o pagamento estar confirmado; falha aqui nunca afeta o
+        // acesso já liberado acima.
+        if (eventType === 'payment.approved') {
+          try {
+            const io = req.app.get('io') as SocketIOServer | undefined;
+            const userId = String(user.id);
+            // Assinatura recorrente no Hub só existe para quem paga no cartão.
+            if (String(user.hub_subscription_id || '').trim()) {
+              await awardTokens(db, userId, 'pagou_cartao', `cartao-${userId}`, io);
+            }
+            const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
+            const lembretes = (await queryAll(
+              db,
+              "SELECT id, tipo, referencia FROM lembretes_renovacao WHERE user_id = ? AND status = 'sent' AND renovou_em IS NULL AND enviado_em >= ?",
+              [userId, desde]
+            )) as any[];
+            if (lembretes.length > 0) {
+              await run(
+                db,
+                `UPDATE lembretes_renovacao SET renovou_em = ? WHERE id IN (${lembretes.map(() => '?').join(',')})`,
+                [nowIso(), ...lembretes.map((l) => String(l.id))]
+              );
+              const volta = lembretes.find((l) => String(l.tipo).startsWith('volta'));
+              if (volta) await awardTokens(db, userId, 'volta_renovou', `volta-${String(volta.referencia)}-${userId}`, io);
+            }
+            await persist();
+          } catch (err) {
+            console.error('[renovacao] bonus/registro falhou:', err);
           }
         }
 
@@ -18417,6 +18692,142 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // ─── Win-back campaign: enviar para usuários que entraram 1x e não voltaram ──
+  // ─── Renovação por link do e-mail (público, sem login) ────────────────────
+  // Pixel de abertura dos e-mails de renovação (1x1 transparente).
+  const GIF_1X1 = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  app.get('/api/public/email-aberto/:id.gif', async (req, res) => {
+    try {
+      await run(db, 'UPDATE lembretes_renovacao SET aberto_em = ? WHERE id = ? AND aberto_em IS NULL', [nowIso(), String(req.params.id)]);
+      await persist();
+    } catch { /* nunca quebra a imagem */ }
+    res.setHeader('Content-Type', 'image/gif');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(GIF_1X1);
+  });
+
+  const lerTokenRenovar = (t: unknown): { userId: string; lembreteId: string | null } | null => {
+    try {
+      const d = jwt.verify(String(t || ''), env.JWT_SECRET) as any;
+      if (d?.purpose !== 'renovar' || !d?.sub) return null;
+      return { userId: String(d.sub), lembreteId: d.l ? String(d.l) : null };
+    } catch {
+      return null;
+    }
+  };
+
+  // Dados para a página /renovar: quem é, até quando vale, preço.
+  app.get('/api/public/renovar', async (req, res) => {
+    const tk = lerTokenRenovar(req.query.t);
+    if (!tk) { res.status(410).json({ error: 'link_invalido' }); return; }
+    const u = (await queryOne(db, 'SELECT name, is_premium, hub_license_end_at, hub_customer_id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1', [tk.userId])) as any;
+    if (!u) { res.status(404).json({ error: 'conta_nao_encontrada' }); return; }
+    const fim = u.hub_license_end_at ? String(u.hub_license_end_at) : null;
+    res.json({
+      nome: String(u.name || '').split(' ')[0],
+      licencaAte: fim,
+      ativo: Number(u.is_premium || 0) === 1 && !!fim && new Date(fim).getTime() > Date.now(),
+      precoCents: await precoDoPlanoCents(env),
+      podePix: !!u.hub_customer_id,
+      tokensCartao: TOKEN_RULES.pagou_cartao.points,
+    });
+  });
+
+  // Gera o Pix de renovação. Mesmas chamadas ao Hub do checkout normal, sem
+  // mexer nele; só para quem já é cliente no Hub (quem nunca pagou vai para a
+  // tela de assinatura, com login).
+  const tentativasRenovar = new Map<string, number[]>();
+  app.post('/api/public/renovar', async (req, res) => {
+    const tk = lerTokenRenovar(req.body?.t);
+    if (!tk) { res.status(410).json({ error: 'link_invalido' }); return; }
+    const agoraMs = Date.now();
+    const janela = (tentativasRenovar.get(tk.userId) || []).filter((x) => agoraMs - x < 60 * 60 * 1000);
+    if (janela.length >= 5) { res.status(429).json({ error: 'muitas_tentativas', message: 'Muitas tentativas. Tente de novo em alguns minutos.' }); return; }
+    tentativasRenovar.set(tk.userId, [...janela, agoraMs]);
+
+    if (!shouldUseHubBilling(env)) { res.status(503).json({ error: 'billing_unavailable' }); return; }
+    const user = (await queryOne(
+      db,
+      'SELECT id, name, billing_legal_name, billing_document, hub_customer_id FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      [tk.userId]
+    )) as any;
+    if (!user) { res.status(404).json({ error: 'conta_nao_encontrada' }); return; }
+    const customerId = String(user.hub_customer_id || '').trim();
+    if (!customerId) { res.status(409).json({ error: 'precisa_entrar' }); return; }
+    try {
+      const hubConfig = getHubConfig(env);
+      const plans = await listHubPlans(hubConfig);
+      const plano = plans.find((p) => p.isActive !== false && String(p.status) === 'active');
+      if (!plano) { res.status(404).json({ error: 'plan_not_found' }); return; }
+      const order = await createHubOrder(hubConfig, { customerId, planId: String(plano.id), contractedAmount: Number(plano.amount || 0) });
+      const orderId = String(order.id || order.orderId || '');
+      if (!orderId) throw new Error('Hub Billing nao retornou orderId');
+      const checkout = await createHubCheckout(hubConfig, {
+        orderId,
+        billingType: 'PIX',
+        payerName: String(user.billing_legal_name || user.name || '').trim(),
+        payerDocument: String(user.billing_document || '').trim() || null,
+        returnUrl: `${origemFrontend(env)}/bem-vindo`,
+      });
+      try {
+        await run(
+          db,
+          'INSERT INTO checkout_generations (id, user_id, plan_id, billing_type, order_id, created_at, page_path) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [randomUUID(), tk.userId, String(plano.id), 'PIX', orderId, nowIso(), '/renovar (e-mail)']
+        );
+        if (tk.lembreteId) {
+          await run(db, 'UPDATE lembretes_renovacao SET clicado_em = ? WHERE id = ? AND clicado_em IS NULL', [nowIso(), tk.lembreteId]);
+        }
+        await persist();
+      } catch { /* métrica não quebra o pagamento */ }
+      res.json({ ok: true, orderId, amount: Number(plano.amount || 0), checkout });
+    } catch (error) {
+      console.error('[renovar] falha ao gerar Pix:', error);
+      res.status(400).json({ error: 'hub_checkout_failed', message: error instanceof Error ? error.message : 'Falha ao gerar o Pix' });
+    }
+  });
+
+  // Prévia dos e-mails de renovação com os dados do próprio admin (não envia).
+  app.get('/api/admin/renovacao/previa', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const tipo = String(req.query.tipo || 'd3');
+    const u = (await queryOne(db, 'SELECT id, name, email FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const opcoes = { siteUrl: origemFrontend(env) };
+    const preco = precoLabel(await precoDoPlanoCents(env));
+    const link = linkRenovar(env, String(u.id));
+    const nov = await novidadesDesde(db, String(u.id), new Date(Date.now() - 7 * 86_400_000).toISOString());
+    const r = tipo === 'volta1' || tipo === 'volta2'
+      ? montarVoltaRenovacao(opcoes, { to: String(u.email), nome: String(u.name || ''), etapa: tipo === 'volta1' ? 1 : 2, linkRenovar: link, precoLabel: preco, tokensVolta: TOKEN_RULES.volta_renovou.points, tokensCartao: TOKEN_RULES.pagou_cartao.points, ...nov })
+      : montarLembreteRenovacao(opcoes, { to: String(u.email), nome: String(u.name || ''), tipo: tipo === 'd0' ? 'd0' : 'd3', venceEmLabel: '02/10', linkRenovar: link, precoLabel: preco, tokensCartao: TOKEN_RULES.pagou_cartao.points, novidades: nov });
+    res.json(r);
+  });
+
+  // Roda os lembretes na hora (a rotina diária é às 10h BRT).
+  app.post('/api/admin/renovacao/rodar-lembretes', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    res.json(await runLembretesRenovacao(db, env, { recuperar: req.body?.recuperar === true }));
+  });
+
+  // Campanha de volta (quem deixou vencer). dryRun=true só conta.
+  app.post('/api/admin/renovacao/campanha-volta', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const etapa = Number(req.body?.etapa) === 2 ? 2 : 1;
+    const r = await enviarCampanhaVolta(db, env, etapa, { dryRun: req.body?.dryRun !== false, limite: Number(req.body?.limite || 500) });
+    res.json(r);
+  });
+
+  // Resultado dos lembretes e da campanha: enviados, abertos, clicados, renovaram.
+  app.get('/api/admin/renovacao/resumo', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT tipo,
+              SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS enviados,
+              SUM(CASE WHEN push_enviado = 1 THEN 1 ELSE 0 END) AS pushes,
+              SUM(CASE WHEN aberto_em IS NOT NULL THEN 1 ELSE 0 END) AS abertos,
+              SUM(CASE WHEN clicado_em IS NOT NULL THEN 1 ELSE 0 END) AS clicados,
+              SUM(CASE WHEN renovou_em IS NOT NULL THEN 1 ELSE 0 END) AS renovaram,
+              SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS erros
+       FROM lembretes_renovacao GROUP BY tipo`
+    )) as any[];
+    res.json({ porTipo: rows.map((r) => ({ tipo: String(r.tipo), enviados: Number(r.enviados || 0), pushes: Number(r.pushes || 0), abertos: Number(r.abertos || 0), clicados: Number(r.clicados || 0), renovaram: Number(r.renovaram || 0), erros: Number(r.erros || 0) })) });
+  });
+
   app.post('/api/admin/winback/send-all', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
