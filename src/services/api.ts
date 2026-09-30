@@ -1242,7 +1242,7 @@ export const adminPromoterService = {
     const response = await apiClient.post('/admin/promoter-commissions/batch-approve', { period });
     return response.data;
   },
-  batchPay: async (data: { period?: string; promoterUserId?: string }): Promise<{ ok: boolean; paid: number; promotersPaid: number; receiptsSent: number; skippedBelowThreshold: number }> => {
+  batchPay: async (data: { period?: string; promoterUserId?: string }): Promise<{ ok: boolean; paid: number; promotersPaid: number; receiptsSent: number; chatAvisos?: number; skippedBelowThreshold: number }> => {
     const response = await apiClient.post('/admin/promoter-commissions/batch-pay', data);
     return response.data;
   },

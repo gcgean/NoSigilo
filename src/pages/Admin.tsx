@@ -5114,7 +5114,10 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
       } else {
         toast({
           title: `${r.paid} comissão(ões) marcada(s) como paga(s)`,
-          description: r.receiptsSent > 0 ? `🧾 ${r.receiptsSent} recibo(s) enviado(s) por e-mail.` : 'Nenhum recibo enviado (promotor sem e-mail).',
+          description: [
+            (r.chatAvisos ?? 0) > 0 ? `💬 Aviso do pagamento enviado no chat de suporte de ${r.chatAvisos} promotor(es).` : null,
+            r.receiptsSent > 0 ? `🧾 ${r.receiptsSent} recibo(s) enviado(s) por e-mail.` : 'Recibo por e-mail não enviado.',
+          ].filter(Boolean).join(' '),
         });
       }
       void loadAll();

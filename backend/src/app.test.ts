@@ -4,7 +4,7 @@ import path from 'node:path';
 import { unlinkSync, existsSync, rmSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
-import { initDb, queryOne, run } from './db.js';
+import { initDb, queryAll, queryOne, run } from './db.js';
 import { createApp } from './app.js';
 import type { DbHandle } from './db.js';
 
@@ -3065,5 +3065,44 @@ describe('nosigilo backend', () => {
     // Visitante não apaga; a dona apaga.
     await request(ctx.app).delete(`/api/mural/${id}`).set(C).expect(404);
     await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
+  });
+
+  // Pagar comissões avisa o promotor no chat de suporte: valor, chave Pix e de
+  // quais comissões é o pagamento (o e-mail sozinho falhava com a cota do Resend).
+  it('pagar comissoes avisa o promotor no chat de suporte com valor e itens', async () => {
+    const promotor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Promotor Pagamento', email: 'promotor-pagto@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const admin = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Admin Pagamento', email: 'admin-pagto@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const assinante = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Carla Assinante', email: 'carla-pagto@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    await request(ctx.app).post('/api/promoter/activate').set({ Authorization: `Bearer ${promotor.token}` })
+      .send({ fullName: 'Promotor Pagamento', pixKey: 'chave-pix-1234', acceptTerms: true }).expect(200);
+
+    const agora = new Date().toISOString();
+    const comissoes: Array<[string, number, string, string]> = [['pc-p1', 600, 'payment.approved', '2026-08'], ['pc-p2', 600, 'backfill_renovacao', '2026-09']];
+    for (const [id, valor, evento, periodo] of comissoes) {
+      await run(ctx.db,
+        "INSERT INTO promoter_commissions (id, promoter_user_id, subscriber_user_id, subscription_amount, commission_amount, status, period, event_type, created_at) VALUES (?, ?, ?, 990, ?, 'approved', ?, ?, ?)",
+        [id, String(promotor.user.id), String(assinante.user.id), valor, periodo, evento, agora]);
+    }
+
+    const r = await request(ctx.app).post('/api/admin/promoter-commissions/batch-pay')
+      .set({ Authorization: `Bearer ${admin.token}` }).send({ promoterUserId: String(promotor.user.id) }).expect(200);
+    expect(r.body.paid).toBe(2);
+    expect(r.body.chatAvisos).toBe(1);
+
+    const msgs = (await queryAll(ctx.db, "SELECT sender_type, message FROM promoter_support_messages WHERE promoter_user_id = ?", [String(promotor.user.id)])) as any[];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].sender_type).toBe('admin');
+    expect(msgs[0].message).toContain('12,00');
+    expect(msgs[0].message).toContain('1234');
+    expect(msgs[0].message).toContain('Carla');
+    expect(msgs[0].message).toContain('renovação');
+    expect(msgs[0].message).toContain('2 comissões');
   });
 });

@@ -4882,12 +4882,14 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       // 3. Busca TODAS as comissões aprovadas dos elegíveis (qualquer período —
       //    paga o saldo acumulado inteiro, não só a fatia do filtro original).
       const elgPlaceholders = eligibleIds.map(() => '?').join(',');
-      const selectQ = `SELECT pc.id, pc.commission_amount, pc.promoter_user_id, pc.period,
+      const selectQ = `SELECT pc.id, pc.commission_amount, pc.promoter_user_id, pc.period, pc.event_type, pc.created_at,
           p.full_name AS promoter_name, p.pix_key AS promoter_pix,
-          COALESCE(p.contact_email, u.email) AS notify_email
+          COALESCE(p.contact_email, u.email) AS notify_email,
+          s.name AS subscriber_name
         FROM promoter_commissions pc
         JOIN promoters p ON p.user_id = pc.promoter_user_id
         JOIN users u ON u.id = pc.promoter_user_id
+        LEFT JOIN users s ON s.id = pc.subscriber_user_id
         WHERE pc.status = 'approved' AND pc.promoter_user_id IN (${elgPlaceholders})`;
       const toPay = (await queryAll(db, selectQ, eligibleIds)) as any[];
 
@@ -4939,7 +4941,45 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         await new Promise((r) => setTimeout(r, 120));
       }
 
-      res.json({ ok: true, paid: toPay.length, promotersPaid: groups.size, receiptsSent, skippedBelowThreshold });
+      // 6. Aviso no chat de suporte de cada promotor pago: valor, chave Pix e de
+      //    quais comissões é o pagamento. Chega mesmo quando o e-mail falha (cota
+      //    do Resend) e fica no histórico da conversa.
+      let chatAvisos = 0;
+      const fmtBRL = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      for (const [promoterUserId, g] of groups) {
+        try {
+          const itens = toPay
+            .filter((r) => String(r.promoter_user_id) === promoterUserId)
+            .sort((a, b) => String(a.period || '').localeCompare(String(b.period || '')) || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+          const linhas = itens.slice(0, 30).map((r) => {
+            const quem = String(r.subscriber_name || 'Assinante').trim().split(/\s+/)[0] || 'Assinante';
+            const origem = /renov|backfill_renovacao/i.test(String(r.event_type || '')) ? 'renovação' : 'assinatura';
+            return `• ${formatPeriodRangeLabel([String(r.period || '')])} — ${quem} — ${fmtBRL(Number(r.commission_amount || 0))} (${origem})`;
+          });
+          if (itens.length > 30) linhas.push(`• e mais ${itens.length - 30} comissão(ões)`);
+          const pix = g.pix ? `para a chave Pix terminada em ${g.pix.slice(-4)}` : 'na sua chave Pix cadastrada';
+          const texto = [
+            '💸 Pagamento de comissão enviado!',
+            '',
+            `Valor: ${fmtBRL(g.totalCents)} via Pix ${pix}, em ${paidAtStr}.`,
+            `Referente a ${g.count} ${g.count === 1 ? 'comissão' : 'comissões'} (${formatPeriodRangeLabel(Array.from(g.periods).sort())}):`,
+            ...linhas,
+            '',
+            'Obrigado por divulgar o NoSigilo! Qualquer dúvida sobre este pagamento, é só responder aqui. 💜',
+          ].join('\n');
+          await run(
+            db,
+            'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+            [randomUUID(), promoterUserId, 'admin', req.auth!.userId, texto, nowIso()]
+          );
+          chatAvisos++;
+        } catch (e: any) {
+          console.error('[batch-pay chat]', promoterUserId, e?.message);
+        }
+      }
+      if (chatAvisos > 0) await persist();
+
+      res.json({ ok: true, paid: toPay.length, promotersPaid: groups.size, receiptsSent, chatAvisos, skippedBelowThreshold });
     } catch (err) {
       console.error('[promoter-commissions/batch-pay]', err);
       res.status(500).json({ error: 'internal' });
