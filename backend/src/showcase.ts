@@ -13,6 +13,15 @@ import type { DbHandle } from './db.js';
  */
 const STORY_AUTOMATICO_ATIVO = false;
 
+/**
+ * "Resurgir" post antigo da vitrine no topo do feed (bump de created_at) — na
+ * prática, uma postagem nova várias vezes por dia.
+ *
+ * Desligado em 30/09/2026: as vitrines só interagem (curtem, visitam, reagem a
+ * stories); quem posta são os usuários de verdade. Voltar para true religa.
+ */
+const POST_AUTOMATICO_ATIVO = false;
+
 export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: number; storiesCreated: number; postsBumped: number }> {
   const now = new Date();
   const nowStr = now.toISOString();
@@ -69,7 +78,9 @@ export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: num
       }
     }
     // 2) Resurge o post mais antigo do perfil (bump da data) — revezando a cada rodada.
-    const post = (await db.queryOne('SELECT id FROM posts WHERE user_id = ? ORDER BY created_at ASC LIMIT 1', [uid])) as any;
+    const post = POST_AUTOMATICO_ATIVO
+      ? ((await db.queryOne('SELECT id FROM posts WHERE user_id = ? ORDER BY created_at ASC LIMIT 1', [uid])) as any)
+      : null;
     if (post) {
       await db.run('UPDATE posts SET created_at = ? WHERE id = ?', [nowStr, String(post.id)]);
       postsBumped++;
