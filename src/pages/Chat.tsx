@@ -96,7 +96,14 @@ function formatLastSeen(lastSeenAt: string | null | undefined, isOnline?: boolea
   const days = Math.floor(hours / 24);
   if (days === 1) return 'Visto ontem';
   if (days < 7) return `Visto há ${days} dias`;
-  return '';
+  // Mais antigo: data e hora exatas (na vitrine não aparece "sumido"; aqui sim,
+  // para quem já abriu a conversa saber quando a pessoa entrou pela última vez).
+  const d = new Date(lastSeenAt);
+  if (Number.isNaN(d.getTime())) return '';
+  const mesmoAno = d.getFullYear() === new Date().getFullYear();
+  const dia = d.toLocaleDateString('pt-BR', mesmoAno ? { day: '2-digit', month: '2-digit' } : { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return `Último acesso: ${dia} às ${hora}`;
 }
 
 // Hora compacta da última mensagem para a lista de conversas (estilo WhatsApp).

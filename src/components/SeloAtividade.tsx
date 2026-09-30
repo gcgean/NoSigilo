@@ -40,6 +40,10 @@ export default function SeloAtividade({
   className?: string;
 }) {
   const { rotulo, tom } = faixaDeAtividade(lastSeenAt, isOnline);
+  // "Sumido há X meses" no card espantava antes do clique; decisão de produto
+  // (30/09/2026): some da vitrine. A data exata do último acesso aparece só
+  // dentro do chat, quando a pessoa já decidiu conversar.
+  if (tom === 'sumido') return null;
   return (
     <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold', CORES[tom], className)}>
       {tom === 'online' && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
