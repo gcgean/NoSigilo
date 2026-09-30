@@ -31,6 +31,7 @@ import {
   createHubSubscription,
   getHubAccessStatus,
   getHubSubscriptionAnalytics,
+  getHubPaymentMethods,
   getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
@@ -16298,6 +16299,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } catch (error) {
       console.error('[admin/finance/subscription-analytics]', (error as Error).message);
       res.status(502).json({ error: 'analytics_unavailable', message: (error as Error).message });
+    }
+  });
+
+  // Formas de pagamento (Pix, cartão, boleto): quantidade, valor e % — dados do
+  // Hub e, para o cartão recorrente, da própria Stripe.
+  app.get('/api/admin/finance/payment-methods', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    if (!shouldUseHubBilling(env)) { res.status(503).json({ error: 'hub_billing_disabled' }); return; }
+    const since = typeof req.query.since === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.since) ? req.query.since : null;
+    try {
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('HubBilling timeout')), 30000));
+      res.json(await Promise.race([getHubPaymentMethods(getHubConfig(env), since), timeout]));
+    } catch (error) {
+      console.error('[admin/finance/payment-methods]', (error as Error).message);
+      res.status(502).json({ error: 'payment_methods_unavailable', message: (error as Error).message });
     }
   });
 

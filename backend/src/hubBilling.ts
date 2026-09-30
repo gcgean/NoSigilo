@@ -252,6 +252,14 @@ export async function getHubSubscriptionAnalytics(config: HubConfig) {
   );
 }
 
+// Pagamentos confirmados por forma de pagamento (Pix, cartão, boleto).
+export async function getHubPaymentMethods(config: HubConfig, since?: string | null) {
+  return requestJson<unknown>(
+    buildUrl(config, '/admin/payment-methods', { productId: config.productId, ...(since ? { since } : {}) }),
+    { method: 'GET', headers: await adminHeaders(config) }
+  );
+}
+
 export type HubDailySummary = {
   date: string; // 'YYYY-MM-DD', dia coberto pelo resumo
   newSubscribers: number; // clientes cujo PRIMEIRO pagamento foi nesse dia

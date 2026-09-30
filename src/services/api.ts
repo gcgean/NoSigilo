@@ -1502,6 +1502,16 @@ export type SubscriptionAnalytics = {
   projection: Array<{ month: string; projectedRevenueCents: number }>;
 };
 
+export type MetodoPagamento = 'pix' | 'credit_card' | 'boleto';
+export type FormasDePagamento = {
+  desde: string | null;
+  geradoEm: string;
+  metodos: Array<{ metodo: MetodoPagamento; pagamentos: number; valorCents: number; clientes: number; renovacoes: number; primeiroPagamentoEm: string | null }>;
+  mensal: Array<{ month: string } & Record<MetodoPagamento, { pagamentos: number; valorCents: number }>>;
+  naoPagas: Array<{ metodo: MetodoPagamento; status: 'failed' | 'pending'; qtd: number }>;
+  cartaoErro: string | null;
+};
+
 export const adminService = {
   // Analista IA: a pergunta vira tarefa no servidor; a tela consulta o resultado.
   perguntarAnalista: async (data: {
@@ -1600,6 +1610,11 @@ export const adminService = {
 
   getSubscriptionAnalytics: async (): Promise<SubscriptionAnalytics> => {
     const response = await apiClient.get('/admin/finance/subscription-analytics');
+    return response.data;
+  },
+
+  getFormasDePagamento: async (since?: string | null): Promise<FormasDePagamento> => {
+    const response = await apiClient.get('/admin/finance/payment-methods', { params: since ? { since } : {}, timeout: 40000 });
     return response.data;
   },
 

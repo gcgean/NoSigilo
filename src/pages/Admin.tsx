@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Switch } from '@/components/ui/switch';
 import { ResponsiveContainer, BarChart, Bar, Cell, LabelList, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import FormasDePagamento from '@/components/admin/FormasDePagamento';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { adminDenunciasIaService, adminService, adminPromoterService, profileService, type SupportMessage, type SubscriptionAnalytics, type MissingStateUser, type PixAbandoner, type ConversionFunnel } from '@/services/api';
@@ -2504,7 +2505,10 @@ export default function Admin() {
             </div>
           </Card>
 
-          {/* Relatório de MRR — histórico + projeção 12 meses */}
+          {/* Pix x cartão x boleto: quantidade, valor e % */}
+          <FormasDePagamento />
+
+          {/* Relatório de MRR — projeção mês a mês */}
           {revenueReport && (() => {
             const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
             const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
