@@ -38,7 +38,7 @@ export const FERRAMENTAS = [
     function: {
       name: 'minhas_comissoes',
       description:
-        'Para promotores: saldo de comissões por situação (em análise, aprovada, paga), se a chave Pix está cadastrada e as últimas comissões com mês, valor, situação e data de pagamento. Use para dúvidas de comissão e Pix do promotor.',
+        'Para promotores: quantos se cadastraram pelo link e quantos já pagaram, saldo de comissões por situação (em análise, aprovada, paga), se a chave Pix está cadastrada e as últimas comissões. Use para qualquer dúvida de promotor sobre ganhos, "indiquei e não ganhei", comissão e Pix.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
@@ -47,7 +47,7 @@ export const FERRAMENTAS = [
     function: {
       name: 'meus_convites',
       description:
-        'Quantas pessoas se cadastraram pelo convite de quem está no chat e em que situação estão (validado, aguardando, expirado ou recusado). Use para dúvidas sobre recompensas de convite.',
+        'Programa de CONVITES (dias grátis de Premium, não comissão): quantas pessoas se cadastraram pelo convite e em que situação de validação estão (validado, aguardando, expirado ou recusado). Para promotor perguntando de dinheiro/comissão, use minhas_comissoes.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
     },
   },
@@ -119,11 +119,32 @@ async function minhasComissoes(db: DbHandle, userId: string) {
     [userId]
   )) as any[];
 
+  // Quem entrou pelo link e quantos chegaram a pagar: é isso que gera comissão.
+  // Sem esses números a IA respondia com a regra de validação de convites
+  // (7 dias, dias grátis), que é outro programa — e o promotor achava enrolação.
+  const funil = (await queryOne(
+    db,
+    `SELECT COUNT(DISTINCT u.id) AS cadastros,
+            COUNT(DISTINCT CASE WHEN u.hub_license_end_at IS NOT NULL AND u.hub_license_end_at <> '' THEN u.id END) AS assinaram,
+            COUNT(DISTINCT CASE WHEN u.is_premium = 1 THEN u.id END) AS assinantes_ativos,
+            COUNT(DISTINCT CASE WHEN EXISTS (SELECT 1 FROM checkout_generations c WHERE c.user_id = u.id)
+                                 AND (u.hub_license_end_at IS NULL OR u.hub_license_end_at = '') THEN u.id END) AS tentaram_pagar_e_nao_pagaram
+       FROM users u
+      WHERE u.invited_by_user_id = ?
+         OR u.id IN (SELECT e.invitee_user_id FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id WHERE l.inviter_user_id = ?)`,
+    [userId, userId]
+  )) as any;
+
   const situacao: Record<string, string> = { pending: 'em análise', approved: 'aprovada', paid: 'paga' };
   const aprovado = Number(saldo?.aprovado || 0);
   const pix = String(p.pix_key || '').trim();
   return {
     promotor: true,
+    regra: 'Comissão de promotor = 20% de cada pagamento de quem se cadastrou pelo link. Só existe quando o convidado ASSINA e PAGA. Cadastro sem pagamento não gera comissão. (A validação de convites em 7 dias é de outro programa, o de dias grátis, e não vale para comissão.)',
+    cadastros_pelo_link: Number(funil?.cadastros || 0),
+    convidados_que_ja_pagaram: Number(funil?.assinaram || 0),
+    convidados_assinantes_agora: Number(funil?.assinantes_ativos || 0),
+    convidados_que_geraram_pagamento_e_nao_pagaram: Number(funil?.tentaram_pagar_e_nao_pagaram || 0),
     situacao_do_promotor: p.status,
     chave_pix_cadastrada: !!pix,
     // Só o fim da chave, para a pessoa conferir se é a dela sem expor o valor todo no chat.
