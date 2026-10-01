@@ -10838,8 +10838,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // privada entre duas pessoas e não precisa carregar o apelido gravado.
     const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const marca = mediaSource === 'chat' ? undefined : textoDaMarca(autor?.name);
-    const storedFile = mime.startsWith('video/')
-      ? await compressUploadedVideo(req.file, marca)
+    // Vídeo: a compressão (com marca d'água) de um vídeo longo passa de 60s, e o
+    // nginx/Cloudflare cortavam com 504 — a pessoa via "Erro ao publicar" e
+    // perdia o post (30/09/2026). Agora espera até 40s; se não terminou, segue
+    // com o arquivo original e troca pelo comprimido quando ficar pronto.
+    type ArquivoGuardado = { filename: string; mimetype: string; size: number };
+    let videoEmSegundoPlano: Promise<ArquivoGuardado> | null = null;
+    let videoPronto: ArquivoGuardado | null = null;
+    if (mime.startsWith('video/')) {
+      const trabalho = compressUploadedVideo(req.file, marca);
+      videoPronto = await Promise.race([
+        trabalho,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 40_000)),
+      ]);
+      if (!videoPronto) videoEmSegundoPlano = trabalho;
+    }
+    const storedFile: ArquivoGuardado = mime.startsWith('video/')
+      ? (videoPronto ?? { filename: req.file.filename, mimetype: req.file.mimetype, size: Number(req.file.size || 0) })
       : mime.startsWith('image/') && mime !== 'image/gif'
       ? await compressUploadedImage(req.file, marca)
       : {
@@ -10886,6 +10901,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, imagePhash, nowIso()]
     );
     await persist();
+    if (videoEmSegundoPlano) {
+      // Quando a compressão terminar, aponta a mídia para o arquivo final (os
+      // posts guardam só o id da mídia; a URL sai de media.filename na leitura).
+      void videoEmSegundoPlano
+        .then(async (final) => {
+          if (final.filename === storedFile.filename && final.size === storedFile.size) return; // compressão falhou: fica o original
+          await run(db, 'UPDATE media SET filename = ?, mime_type = ?, size = ? WHERE id = ?', [final.filename, final.mimetype, final.size, id]);
+          await persist();
+          console.log(`[upload] vídeo ${id} comprimido em segundo plano (${final.size} bytes)`);
+        })
+        .catch((err) => console.error('[upload] compressão em segundo plano falhou:', id, err));
+    }
     if (mediaSource === 'profile' && mime.startsWith('image/')) {
       // Só mulheres e casais ganham tokens por foto.
       await awardContentTokensIfEligible(db, req.auth!.userId, 'photo', id, req.app.get('io'));
