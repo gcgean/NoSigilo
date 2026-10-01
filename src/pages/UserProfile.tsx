@@ -1362,11 +1362,13 @@ export default function UserProfile() {
                 href={String((profile as any).bioLink)}
                 target="_blank"
                 rel="noopener noreferrer nofollow"
-                className="mb-4 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-brand-pink transition-colors hover:bg-primary/10"
+                className="mb-4 inline-flex max-w-full items-start gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-semibold text-brand-pink transition-colors hover:bg-primary/10"
               >
-                <Link2 className="h-4 w-4 shrink-0" />
-                <span className="truncate">{String((profile as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                <Link2 className="mt-0.5 h-4 w-4 shrink-0" />
+                {/* Link longo (instagram.com/...?igsh=...) quebra para a linha de
+                    baixo: sem isso alargava a página e cortava o perfil no celular. */}
+                <span className="min-w-0 break-all text-left">{String((profile as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-70" />
               </a>
             ) : null}
 
@@ -1375,7 +1377,7 @@ export default function UserProfile() {
                 <p className="mb-1 text-[12px] font-bold uppercase tracking-[0.06em] text-brand-pink">
                   {isSelf ? 'Sua descrição do perfil' : 'Leia nossa descrição antes de chamar no chat'}
                 </p>
-                <p className="text-[15px] leading-relaxed text-brand-pink">{profile.bio}</p>
+                <p className="text-[15px] leading-relaxed text-brand-pink [overflow-wrap:anywhere]">{profile.bio}</p>
               </div>
             ) : null}
 

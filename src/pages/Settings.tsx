@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { NavLink, useLocation, useSearchParams } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -55,6 +55,7 @@ export default function Settings() {
   const { user, updateUser, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const location = useLocation();
   const [isLoading, setIsLoading] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -306,6 +307,8 @@ export default function Settings() {
 
       updateUser({ ...profilePayload, ...privacyPayload } as any);
       toast({ title: '✅ Perfil salvo!', description: 'Suas informações foram atualizadas com sucesso.' });
+      // Salvou: sai da edição e mostra o perfil como os outros vão ver.
+      navigate('/profile');
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||

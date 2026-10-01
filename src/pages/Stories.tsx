@@ -690,7 +690,18 @@ function StoryViewer({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="truncate text-sm font-semibold text-white">{story.author.name}</p>
+            <button
+              type="button"
+              onClick={() => { onClose(); navigate(story.author.id === myUserId ? '/profile' : `/users/${story.author.id}`); }}
+              className="flex min-w-0 items-baseline gap-1 text-left hover:underline"
+            >
+              <span className="truncate text-sm font-semibold text-white">{story.author.name}</span>
+              {story.author.age != null && (
+                <span className="shrink-0 text-[11px] font-medium text-white/70">
+                  {story.author.age}{story.author.partnerAge != null && ` & ${story.author.partnerAge}`}
+                </span>
+              )}
+            </button>
             {/* Chegou até aqui = o viewer está nos favoritos do autor. */}
             {story.audience === 'favorites' && <SeloFavoritos />}
           </div>
@@ -786,12 +797,21 @@ function StoryViewer({
         {story.author.id !== myUserId && (
           <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-16">
             {/* Linha 1: Nome + idade */}
+            {/* Nome clicável (abre o perfil) e idade menor ao lado. */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-lg font-bold text-white leading-tight">
-                {story.author.name}
-                {story.author.age != null && `, ${story.author.age}`}
-                {story.author.partnerAge != null && ` & ${story.author.partnerAge}`}
-              </span>
+              <button
+                type="button"
+                onClick={() => { onClose(); navigate(`/users/${story.author.id}`); }}
+                className="flex items-baseline gap-1.5 text-left text-white hover:underline active:opacity-80"
+              >
+                <span className="text-lg font-bold leading-tight">{story.author.name}</span>
+                {story.author.age != null && (
+                  <span className="text-sm font-medium text-white/75">
+                    {story.author.age}
+                    {story.author.partnerAge != null && ` & ${story.author.partnerAge}`}
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Linha 2: gênero sempre; cidade só quando é perto.
