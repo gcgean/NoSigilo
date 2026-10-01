@@ -1524,7 +1524,33 @@ function replaceFileExtension(filename: string, nextExtension: string) {
   return `${filename.slice(0, -ext.length)}${nextExtension}`;
 }
 
+// Fila da compressão de vídeo. Em 30/09/2026 alguém enviou 11 vídeos de uma
+// vez: 11 ffmpeg em paralelo levaram a carga da máquina (8 núcleos) a 96 e o
+// site inteiro travou. No máximo 2 por vez; o resto espera a vez. O envio
+// continua instantâneo (a compressão já roda em segundo plano).
+const VIDEOS_EM_PARALELO = 2;
+let videosComprimindo = 0;
+const filaDeVideo: Array<() => void> = [];
+async function esperarVezDoVideo() {
+  if (videosComprimindo < VIDEOS_EM_PARALELO) { videosComprimindo++; return; }
+  await new Promise<void>((resolve) => filaDeVideo.push(resolve));
+  videosComprimindo++;
+}
+function liberarVezDoVideo() {
+  videosComprimindo = Math.max(0, videosComprimindo - 1);
+  filaDeVideo.shift()?.();
+}
+
 async function compressUploadedVideo(file: Express.Multer.File, marca?: string) {
+  await esperarVezDoVideo();
+  try {
+    return await comprimirVideo(file, marca);
+  } finally {
+    liberarVezDoVideo();
+  }
+}
+
+async function comprimirVideo(file: Express.Multer.File, marca?: string) {
   const currentPath = file.path;
   const tempOutputPath = `${currentPath}.compressed.mp4`;
   const nextFilename = replaceFileExtension(file.filename, '.mp4');
@@ -1538,6 +1564,8 @@ async function compressUploadedVideo(file: Express.Multer.File, marca?: string) 
     '-vf', marca ? `scale='min(1280,iw)':-2,${filtroMarcaDagua(marca)}` : "scale='min(1280,iw)':-2",
     '-c:v', 'libx264',
     '-preset', 'faster',
+    // No máximo 2 núcleos por vídeo: sobra CPU para o site.
+    '-threads', '2',
     '-crf', '24',
     '-maxrate', '2500k',
     '-bufsize', '5000k',
@@ -1551,7 +1579,8 @@ async function compressUploadedVideo(file: Express.Multer.File, marca?: string) 
   ];
 
   const compressionResult = await new Promise<'ok' | 'skip'>((resolve) => {
-    const ffmpeg = spawn('ffmpeg', args, { stdio: 'ignore' });
+    // Prioridade mínima: o site (node) sempre passa na frente da compressão.
+    const ffmpeg = spawn('nice', ['-n', '19', 'ffmpeg', ...args], { stdio: 'ignore' });
 
     ffmpeg.on('error', () => resolve('skip'));
     ffmpeg.on('close', (code) => resolve(code === 0 ? 'ok' : 'skip'));
@@ -10974,6 +11003,55 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     res.json({ id, url: `/uploads/${storedFile.filename}`, processando: !!videoEmSegundoPlano });
   });
+
+  // Reinício do servidor no meio de uma compressão mata o ffmpeg e deixaria o
+  // vídeo "processando" para sempre (post nunca iria ao ar). Na subida, retoma
+  // os pendentes — o arquivo original só é apagado quando a compressão termina.
+  async function retomarVideosPendentes() {
+    try {
+      const pendentes = (await queryAll(
+        db,
+        `SELECT m.id, m.user_id, m.filename, m.mime_type, m.size, m.source, u.name AS autor
+           FROM media m LEFT JOIN users u ON u.id = m.user_id
+          WHERE m.processando = 1 ORDER BY m.created_at`
+      )) as any[];
+      if (pendentes.length === 0) return;
+      console.log(`[upload] retomando ${pendentes.length} vídeo(s) que ficaram no meio da compressão`);
+      for (const m of pendentes) {
+        const caminho = resolveMediaFilePath(String(m.filename), false);
+        const mediaId = String(m.id);
+        const autorId = String(m.user_id);
+        if (!caminho || !existsSync(caminho)) {
+          await run(db, 'UPDATE media SET processando = 0 WHERE id = ?', [mediaId]);
+          await persist();
+          await liberarPostsDaMidia(mediaId, autorId);
+          continue;
+        }
+        const arquivo = {
+          path: caminho,
+          filename: String(m.filename),
+          mimetype: String(m.mime_type || 'video/mp4'),
+          size: Number(m.size || 0),
+        } as Express.Multer.File;
+        const marca = String(m.source) === 'chat' ? undefined : textoDaMarca(m.autor);
+        void compressUploadedVideo(arquivo, marca)
+          .then(async (final) => {
+            await run(db, 'UPDATE media SET filename = ?, mime_type = ?, size = ?, processando = 0 WHERE id = ?', [final.filename, final.mimetype, final.size, mediaId]);
+            await persist();
+            await liberarPostsDaMidia(mediaId, autorId);
+          })
+          .catch(async (err) => {
+            console.error('[upload] retomada falhou:', mediaId, err);
+            await run(db, 'UPDATE media SET processando = 0 WHERE id = ?', [mediaId]);
+            await persist();
+            await liberarPostsDaMidia(mediaId, autorId);
+          });
+      }
+    } catch (err) {
+      console.error('[upload] retomar vídeos pendentes falhou:', err);
+    }
+  }
+  if (process.env.NODE_ENV !== 'test') setTimeout(() => void retomarVideosPendentes(), 15_000);
 
   // Vídeo terminou de processar: publica os posts que só esperavam por ele
   // (data = agora, para entrar no topo do feed) e avisa o autor.
