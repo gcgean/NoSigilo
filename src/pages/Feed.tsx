@@ -2135,14 +2135,18 @@ export default function Feed() {
             <div className="relative">
               <Textarea
                 ref={composerRef}
-                placeholder="Compartilhe aqui prazer com fotos, vídeos e textos picantes! Use @ para marcar alguém."
+                // Fechada (1 linha no celular) o texto longo ficava cortado com
+                // barra de rolagem; o curto cabe, e o completo aparece ao tocar.
+                placeholder={composerEmUso
+                  ? 'Compartilhe aqui prazer com fotos, vídeos e textos picantes! Use @ para marcar alguém.'
+                  : 'Compartilhe algo picante… 🔥'}
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 onPaste={handlePasteOnComposer}
                 onFocus={() => setComposerAtivo(true)}
                 className={cn(
                   'resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
-                  composerEmUso ? 'min-h-[92px]' : 'min-h-[48px]'
+                  composerEmUso ? 'min-h-[92px]' : 'min-h-[48px] overflow-hidden whitespace-nowrap text-ellipsis'
                 )}
                 rows={composerEmUso ? 2 : 1}
               />
