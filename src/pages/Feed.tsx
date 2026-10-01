@@ -2130,7 +2130,7 @@ export default function Feed() {
           </div>
         </Card>
       ) : (
-      <Card className="mb-4 glass p-3 sm:mb-6 sm:p-4">
+      <Card className="mb-4 glass border-2 border-primary/40 p-3 shadow-[0_0_18px_rgba(236,72,153,0.18)] sm:mb-6 sm:p-4">
         <div className="flex min-w-0 gap-3 sm:gap-4">
           <div className="relative shrink-0">
             <Avatar className="h-10 w-10">
@@ -2149,7 +2149,7 @@ export default function Feed() {
           </div>
           <div className="min-w-0 flex-1">
             {/* `relative` ancora a lista de sugestões de @menção logo abaixo. */}
-            <div className="relative">
+            <div className="relative flex items-center gap-2">
               <Textarea
                 ref={composerRef}
                 // Fechada (1 linha no celular) o texto longo ficava cortado com
@@ -2162,11 +2162,35 @@ export default function Feed() {
                 onPaste={handlePasteOnComposer}
                 onFocus={() => setComposerAtivo(true)}
                 className={cn(
-                  'resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
+                  'min-w-0 flex-1 resize-none rounded-xl border-2 border-primary/15 bg-background px-4 py-3 text-base leading-6 focus-visible:ring-2 focus-visible:ring-primary/40 sm:min-h-[88px] sm:rounded-md sm:border-input',
                   composerEmUso ? 'min-h-[92px]' : 'min-h-[48px] overflow-hidden whitespace-nowrap text-ellipsis'
                 )}
                 rows={composerEmUso ? 2 : 1}
               />
+              {/* Caixa fechada no celular: atalhos de Foto e Vídeo à vista (os
+                  botões completos aparecem quando a caixa abre). */}
+              {!composerEmUso && (
+                <div className="flex shrink-0 gap-1.5 sm:hidden">
+                  <button
+                    type="button"
+                    aria-label="Publicar foto"
+                    onClick={() => { setComposerAtivo(true); openPicker('image/*'); }}
+                    className="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-primary/10 text-brand-pink ring-1 ring-primary/30"
+                  >
+                    <Image className="h-5 w-5" />
+                    <span className="text-[10px] font-semibold leading-tight">Foto</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Publicar vídeo"
+                    onClick={() => { setComposerAtivo(true); openPicker('video/*'); }}
+                    className="flex h-12 w-12 flex-col items-center justify-center rounded-xl bg-gradient-primary text-white shadow-[0_2px_10px_rgba(236,72,153,0.35)]"
+                  >
+                    <Video className="h-5 w-5" />
+                    <span className="text-[10px] font-semibold leading-tight">Vídeo</span>
+                  </button>
+                </div>
+              )}
               <MentionAutocomplete
                 textareaRef={composerRef}
                 value={postContent}
