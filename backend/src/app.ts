@@ -5940,6 +5940,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const feedFrom = `FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE 1=1
+         AND COALESCE(p.processando, 0) = 0
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND NOT EXISTS (
@@ -7962,6 +7963,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ${aggregateJoins}
        WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         AND COALESCE(p.processando, 0) = 0
          AND p.media_ids_json IS NOT NULL
          AND p.media_ids_json != '[]'
          AND p.media_ids_json != 'null'
@@ -8076,15 +8078,40 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const id = randomUUID();
-    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+    // Vídeo ainda processando em segundo plano: o post nasce escondido dos
+    // outros e é publicado (com aviso ao autor) quando o vídeo terminar.
+    const midiasProcessando = mediaIds.length > 0
+      ? Number(((await queryOne(
+          db,
+          `SELECT COUNT(*) AS c FROM media WHERE processando = 1 AND user_id = ? AND id IN (${mediaIds.map(() => '?').join(',')})`,
+          [req.auth!.userId, ...mediaIds]
+        )) as any)?.c || 0)
+      : 0;
+    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, processando, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       content,
       mediaIds.length > 0 ? JSON.stringify(mediaIds) : null,
       isReelsOnly,
+      midiasProcessando > 0 ? 1 : 0,
       nowIso(),
     ]);
     await persist();
+    let postProcessando = midiasProcessando > 0;
+    if (postProcessando) {
+      // O vídeo pode ter terminado entre a contagem e o INSERT: confere de novo
+      // para o post não ficar preso escondido.
+      const ainda = (await queryOne(
+        db,
+        `SELECT COUNT(*) AS c FROM media WHERE processando = 1 AND id IN (${mediaIds.map(() => '?').join(',')})`,
+        mediaIds
+      )) as any;
+      if (Number(ainda?.c || 0) === 0) {
+        await run(db, 'UPDATE posts SET processando = 0 WHERE id = ?', [id]);
+        await persist();
+        postProcessando = false;
+      }
+    }
     // Só perfis de mulheres e casais ganham tokens por postagem.
     await awardContentTokensIfEligible(db, req.auth!.userId, 'post', id, req.app.get('io'));
 
@@ -8102,7 +8129,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
     );
 
-    res.json({ id });
+    res.json({ id, processando: postProcessando });
   });
 
   // PATCH /api/posts/:postId — editar o texto da própria publicação.
@@ -10459,9 +10486,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const rows = await queryAll(
       db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, COALESCE(p.processando, 0) AS processando
        FROM posts p
        WHERE p.user_id = ?
+         ${ownerId === req.auth!.userId ? '' : 'AND COALESCE(p.processando, 0) = 0'}
        ORDER BY p.created_at DESC
        LIMIT ? OFFSET ?`,
       [ownerId, limit + 1, offset]
@@ -10546,6 +10574,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           id: r.id,
           content: r.content,
           createdAt: r.created_at,
+          processando: Number(r.processando || 0) === 1,
           media,
           likesCount: likesByPost.get(pid) ?? 0,
           commentsCount: commentsByPost.get(pid) ?? 0,
@@ -10847,10 +10876,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     let videoPronto: ArquivoGuardado | null = null;
     if (mime.startsWith('video/')) {
       const trabalho = compressUploadedVideo(req.file, marca);
-      videoPronto = await Promise.race([
-        trabalho,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 40_000)),
-      ]);
+      // Vídeo de publicação: não espera nada — o arquivo já chegou, a pessoa
+      // publica e segue usando o app; o post só aparece para os outros quando
+      // a compressão terminar, e o autor é avisado. Chat/perfil: espera até
+      // 40s (lá a mídia é usada na hora).
+      videoPronto = mediaSource === 'post'
+        ? null
+        : await Promise.race([
+            trabalho,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 40_000)),
+          ]);
       if (!videoPronto) videoEmSegundoPlano = trabalho;
     }
     const storedFile: ArquivoGuardado = mime.startsWith('video/')
@@ -10897,21 +10932,36 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const id = randomUUID();
     await run(
       db,
-      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, phash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)',
-      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, imagePhash, nowIso()]
+      'INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, phash, processando, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)',
+      [id, req.auth!.userId, storedFile.filename, req.file.originalname, storedFile.mimetype, storedFile.size, isPrivate ? 1 : 0, mediaSource, imagePhash, videoEmSegundoPlano ? 1 : 0, nowIso()]
     );
     await persist();
     if (videoEmSegundoPlano) {
       // Quando a compressão terminar, aponta a mídia para o arquivo final (os
-      // posts guardam só o id da mídia; a URL sai de media.filename na leitura).
+      // posts guardam só o id da mídia; a URL sai de media.filename na leitura)
+      // e libera o post que estava esperando por ela.
+      const io = req.app.get('io') as SocketIOServer | undefined;
+      const autorId = req.auth!.userId;
       void videoEmSegundoPlano
         .then(async (final) => {
-          if (final.filename === storedFile.filename && final.size === storedFile.size) return; // compressão falhou: fica o original
-          await run(db, 'UPDATE media SET filename = ?, mime_type = ?, size = ? WHERE id = ?', [final.filename, final.mimetype, final.size, id]);
+          const mudou = !(final.filename === storedFile.filename && final.size === storedFile.size);
+          if (mudou) {
+            await run(db, 'UPDATE media SET filename = ?, mime_type = ?, size = ?, processando = 0 WHERE id = ?', [final.filename, final.mimetype, final.size, id]);
+          } else {
+            await run(db, 'UPDATE media SET processando = 0 WHERE id = ?', [id]); // compressão falhou: fica o original
+          }
           await persist();
-          console.log(`[upload] vídeo ${id} comprimido em segundo plano (${final.size} bytes)`);
+          console.log(`[upload] vídeo ${id} processado em segundo plano (${final.size} bytes)`);
+          await liberarPostsDaMidia(id, autorId, io);
         })
-        .catch((err) => console.error('[upload] compressão em segundo plano falhou:', id, err));
+        .catch(async (err) => {
+          console.error('[upload] compressão em segundo plano falhou:', id, err);
+          try {
+            await run(db, 'UPDATE media SET processando = 0 WHERE id = ?', [id]);
+            await persist();
+            await liberarPostsDaMidia(id, autorId, io);
+          } catch { /* noop */ }
+        });
     }
     if (mediaSource === 'profile' && mime.startsWith('image/')) {
       // Só mulheres e casais ganham tokens por foto.
@@ -10922,8 +10972,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.json({ id, url: `/private-uploads/${id}?token=${encodeURIComponent(token)}` });
       return;
     }
-    res.json({ id, url: `/uploads/${storedFile.filename}` });
+    res.json({ id, url: `/uploads/${storedFile.filename}`, processando: !!videoEmSegundoPlano });
   });
+
+  // Vídeo terminou de processar: publica os posts que só esperavam por ele
+  // (data = agora, para entrar no topo do feed) e avisa o autor.
+  async function liberarPostsDaMidia(mediaId: string, autorId: string, io?: SocketIOServer) {
+    const posts = (await queryAll(
+      db,
+      'SELECT id, media_ids_json FROM posts WHERE processando = 1 AND user_id = ? AND media_ids_json LIKE ?',
+      [autorId, `%${mediaId}%`]
+    )) as any[];
+    for (const post of posts) {
+      const ids = (safeJsonParse(post.media_ids_json) as string[] | null) ?? [];
+      if (ids.length > 0) {
+        const pendentes = (await queryOne(
+          db,
+          `SELECT COUNT(*) AS c FROM media WHERE processando = 1 AND id IN (${ids.map(() => '?').join(',')})`,
+          ids
+        )) as any;
+        if (Number(pendentes?.c || 0) > 0) continue; // ainda tem outro vídeo processando
+      }
+      await run(db, 'UPDATE posts SET processando = 0, created_at = ? WHERE id = ?', [nowIso(), String(post.id)]);
+      await persist();
+      const url = `/feed?postId=${encodeURIComponent(String(post.id))}`;
+      await createNotification({ db, io }, {
+        userId: autorId,
+        type: 'post.video_ready',
+        title: 'Seu vídeo está pronto 🎬',
+        description: 'Terminamos de processar e a sua publicação já está no ar no feed.',
+        dataJson: { postId: String(post.id), url },
+      });
+      io?.to(`user:${autorId}`).emit('post.video_ready', { postId: String(post.id) });
+      void sendPushToUser({ db, env }, {
+        userId: autorId,
+        payload: { title: 'Seu vídeo está pronto 🎬', body: 'Sua publicação já está no ar no feed.', url, tag: `video-ready:${String(post.id)}` },
+      }).catch(() => {});
+    }
+  }
 
   app.patch('/api/media/:mediaId/main', requireAuth(env, db), async (req, res) => {
     const mediaId = req.params.mediaId;
@@ -14230,7 +14316,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const post = (await queryOne(
       db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.user_id,
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.user_id, COALESCE(p.processando, 0) AS processando,
               u.name AS author_name,
               (SELECT m.filename FROM media m WHERE m.user_id = u.id AND m.is_main = 1 AND m.is_private = 0 LIMIT 1) AS author_avatar
        FROM posts p
@@ -14248,6 +14334,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [String(req.params.postId || ''), viewerId, viewerId, viewerId]
     )) as any;
     if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+    // Vídeo ainda processando: só o autor enxerga o post.
+    if (Number(post.processando || 0) === 1 && String(post.user_id) !== viewerId) { res.status(404).json({ error: 'not_found' }); return; }
 
     const pid = String(post.id);
     const idsDaMidia = ((Array.isArray(safeJsonParse(post.media_ids_json)) ? safeJsonParse(post.media_ids_json) : []) as any[])

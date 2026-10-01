@@ -3067,6 +3067,39 @@ describe('nosigilo backend', () => {
     await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
   });
 
+  // Vídeo processando em segundo plano: o post só aparece para os outros
+  // quando o vídeo terminar; o autor vê o dele (no perfil) desde já.
+  it('post com video ainda processando fica escondido dos outros e visivel para o autor', async () => {
+    const autora = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autora Video', email: 'autora-video@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const outro = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Outro Video', email: 'outro-video@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const A = { Authorization: `Bearer ${autora.token}` };
+    const O = { Authorization: `Bearer ${outro.token}` };
+    await run(ctx.db,
+      "INSERT INTO media (id, user_id, filename, original_name, mime_type, size, is_private, is_main, source, processando, created_at) VALUES ('mid-proc', ?, 'v.mp4', 'v.mp4', 'video/mp4', 10, 0, 0, 'post', 1, ?)",
+      [String(autora.user.id), new Date().toISOString()]);
+
+    const criado = await request(ctx.app).post('/api/posts').set(A).send({ content: 'meu video', mediaIds: ['mid-proc'] }).expect(200);
+    expect(criado.body.processando).toBe(true);
+    const postId = criado.body.id;
+
+    await request(ctx.app).get(`/api/posts/${postId}`).set(O).expect(404);
+    await request(ctx.app).get(`/api/posts/${postId}`).set(A).expect(200);
+    const doPerfilOutro = await request(ctx.app).get(`/api/users/${autora.user.id}/posts`).set(O).expect(200);
+    expect(doPerfilOutro.body.posts.map((p: any) => p.id)).not.toContain(postId);
+    const doPerfilDona = await request(ctx.app).get(`/api/users/${autora.user.id}/posts`).set(A).expect(200);
+    const meu = doPerfilDona.body.posts.find((p: any) => p.id === postId);
+    expect(meu?.processando).toBe(true);
+
+    // Terminou de processar: aparece para todos.
+    await run(ctx.db, 'UPDATE media SET processando = 0 WHERE id = ?', ['mid-proc']);
+    await run(ctx.db, 'UPDATE posts SET processando = 0 WHERE id = ?', [postId]);
+    await request(ctx.app).get(`/api/posts/${postId}`).set(O).expect(200);
+  });
+
   // Pagar comissões avisa o promotor no chat de suporte: valor, chave Pix e de
   // quais comissões é o pagamento (o e-mail sozinho falhava com a cota do Resend).
   it('pagar comissoes avisa o promotor no chat de suporte com valor e itens', async () => {

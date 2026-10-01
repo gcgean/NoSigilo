@@ -1271,7 +1271,14 @@ export default function Feed() {
       if (firstImageId && !completedFirstPostStep) {
         setStoryPromptMediaId(firstImageId);
       }
-      if (completedFirstPostStep) {
+      if (created?.processando) {
+        // Vídeo processando no servidor: o post entra no feed sozinho quando
+        // terminar, e a pessoa recebe notificação. Não precisa esperar aqui.
+        toast({
+          title: 'Recebemos seu vídeo! 🎬',
+          description: 'Estamos preparando o vídeo. Ele entra no feed sozinho e você recebe um aviso quando estiver no ar — pode continuar usando o app.',
+        });
+      } else if (completedFirstPostStep) {
         toast({ title: 'Primeira publicação concluída', description: 'Agora seu perfil está completo para começar as conexões.' });
       } else if (wasReelsOnly) {
         toast({
