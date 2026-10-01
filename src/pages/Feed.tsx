@@ -167,6 +167,8 @@ const WEEKLY_THEME = {
 
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
 const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+// Máximo de fotos/vídeos numa publicação (o servidor aceita até 10 mediaIds).
+const MAX_ANEXOS_POST = 10;
 function formatWhen(iso: string) {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return '';
@@ -1185,7 +1187,22 @@ export default function Feed() {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    const list = acceptedFiles.map((f) => ({
+    // Até 10 arquivos por publicação (limite do servidor).
+    const vagas = Math.max(0, MAX_ANEXOS_POST - attachments.length);
+    if (acceptedFiles.length > vagas) {
+      toast({
+        title: `Até ${MAX_ANEXOS_POST} arquivos por publicação`,
+        description: vagas > 0
+          ? `Adicionamos ${vagas} de ${acceptedFiles.length}. Publique e envie o resto em outro post.`
+          : 'Esta publicação já está cheia. Publique e envie o resto em outro post.',
+        variant: 'destructive',
+      });
+    }
+    if (vagas === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    const list = acceptedFiles.slice(0, vagas).map((f) => ({
       id: `${f.name}-${f.size}-${f.lastModified}-${Math.random().toString(16).slice(2)}`,
       file: f,
       url: URL.createObjectURL(f),
@@ -2322,6 +2339,7 @@ export default function Feed() {
           ref={fileInputRef}
           type="file"
           accept={fileAccept}
+          multiple
           className="hidden"
           onChange={(e) => handleFilesSelected(e.target.files)}
         />
