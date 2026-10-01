@@ -12,16 +12,13 @@ import { Link } from 'react-router-dom';
  * isso o aviso aparece só quando alguém está de fato escrevendo: é o momento
  * em que ele importa, e assim não ocupa a dobra do feed o tempo todo.
  */
+// Só o que é crime (30/09/2026): as regras de convivência (venda de conteúdo,
+// publicidade, contatos etc.) seguem nas Diretrizes, mas saíram deste aviso.
 const PROIBIDO = [
   'Menores de idade (nem mesmo em contexto "não sexual").',
   'Crimes sexuais (zoofilia, pedofilia, estupro e afins).',
   'Conteúdo de terceiros sem consentimento.',
-  'Venda de conteúdo (Privacy, OnlyFans e outros).',
-  'Drogas, remédios ou armas.',
-  'Publicidade de qualquer espécie.',
-  'Prostituição ou sexo mediante pagamento.',
-  'Oferta ou pedido de dinheiro ou "presentes".',
-  'Números de telefone e outros contatos.',
+  'Drogas ou armas.',
 ];
 
 export default function PostRulesNotice({ className }: { className?: string }) {
