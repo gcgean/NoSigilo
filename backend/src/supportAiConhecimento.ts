@@ -76,6 +76,15 @@ Conta
 - Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga nome, e-mail, foto e bio, não tem volta e cancela a assinatura.
 - Verificação em duas etapas (opcional): em Configurações › Segurança. Ligada, entrar com senha num aparelho novo pede também um código de 6 números enviado ao e-mail (vale 10 minutos; "Reenviar código" na própria tela). Marcando "Confiar neste aparelho", o código não é pedido de novo nele. Os aparelhos de confiança aparecem na mesma tela e podem ser esquecidos. Quem entra pelo Google não usa esse código. Código não chegou: conferir spam e tocar em "Reenviar código".
 - Esqueceu a senha: na tela de login, "Esqueceu a senha?", recebe um código por e-mail que vale 15 minutos.
+- Trocar o e-mail da conta: Configurações › Segurança › "Trocar e-mail". Digita o e-mail novo e a senha atual, recebe um código de 6 números NO E-MAIL NOVO e confirma. Quem entra pelo Google não tem senha: precisa falar com a equipe.
+
+Proteção do conteúdo e publicações
+- Fotos e vídeos publicados levam marca d'água discreta com o @ do perfil e a data; o player não oferece botão de baixar.
+- Publicar vários arquivos: até 10 fotos/vídeos por publicação, escolhendo vários de uma vez.
+- Vídeo: depois de enviar, ele é preparado em segundo plano; a pessoa pode continuar usando o app e recebe aviso quando o post estiver no ar.
+- Apagar: a publicação inteira pode ser excluída (menu do post). Não dá para tirar só uma foto de dentro de uma publicação já feita.
+- Feed: filtros por distância (Minha região, 10 km, 25 km...). Filtrar o feed por tipo de perfil ainda não existe.
+- Mensagens: em Configurações › Privacidade dá para escolher quem pode mandar mensagem (todos, só curtidas mútuas, só amigos ou ninguém).
 
 Programa de promotores (menu Ganhe dinheiro)
 - O promotor divulga o link de convite e ganha 20% de cada pagamento dos assinantes que entraram pelo link, no primeiro pagamento e em cada renovação mensal. Só existe comissão quando o assinante paga de fato.

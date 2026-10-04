@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { queryAll, queryOne, run } from './db.js';
-import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, SENDER_ID_IA, suporteEstaDigitando, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
+import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, responderSugestaoComIa, SENDER_ID_IA, suporteEstaDigitando, textoDaSugestaoNoChat, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
@@ -18717,8 +18717,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const id = randomUUID();
     const now = nowIso();
     await run(db, 'INSERT INTO suggestions (id, user_id, category, content, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, req.auth!.userId, parsed.data.category, parsed.data.content, 'new', now, now]);
+    // A sugestão também entra no chat de suporte da pessoa: a conversa (e a
+    // resposta) fica num lugar só, junto com o resto do atendimento.
+    await run(
+      db,
+      'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), req.auth!.userId, 'promoter', req.auth!.userId, textoDaSugestaoNoChat(parsed.data.category, parsed.data.content), now]
+    );
     await persist();
     res.json({ id });
+
+    // A IA responde a sugestão (painel + chat) em segundo plano.
+    void responderSugestaoComIa(depsSuporteIa(req), { id, userId: req.auth!.userId, categoria: parsed.data.category, conteudo: parsed.data.content })
+      .catch((err) => console.error('[sugestoes] IA falhou:', err));
   });
 
   app.get('/api/suggestions/mine', requireAuth(env, db), async (req, res) => {
@@ -18739,7 +18750,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const id = String(req.params.id || '');
+    const antes = (await queryOne(db, 'SELECT user_id, admin_reply FROM suggestions WHERE id = ? LIMIT 1', [id])) as any;
     await run(db, 'UPDATE suggestions SET admin_reply = ?, status = COALESCE(?, status), updated_at = ? WHERE id = ?', [parsed.data.reply, parsed.data.status ?? null, nowIso(), id]);
+    // Resposta nova da equipe também vai para o chat de suporte da pessoa.
+    const texto = parsed.data.reply.trim();
+    if (antes?.user_id && texto && texto !== String(antes.admin_reply || '').trim()) {
+      await run(
+        db,
+        'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), String(antes.user_id), 'admin', req.auth!.userId, `Sobre a sua sugestão: ${texto}`, nowIso()]
+      );
+    }
     await persist();
     res.json({ ok: true });
   });

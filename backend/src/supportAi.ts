@@ -321,3 +321,85 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   }
 }
 
+
+// ─── Sugestões ───────────────────────────────────────────────────────────────
+// Toda sugestão nova é respondida pela IA (pedido de 04/10/2026): ela confere no
+// manual se aquilo já existe, responde a pessoa no chat de suporte e marca o
+// status no painel. Quando não tem certeza, deixa como "lida" e avisa a equipe —
+// nunca promete funcionalidade nem prazo.
+
+const ROTULO_CATEGORIA: Record<string, string> = {
+  bug: 'Problema',
+  feature: 'Nova função',
+  improvement: 'Melhoria',
+  general: 'Geral',
+};
+
+export function textoDaSugestaoNoChat(categoria: string, conteudo: string) {
+  return `💡 Sugestão (${ROTULO_CATEGORIA[categoria] ?? 'Geral'}):\n${conteudo}`;
+}
+
+const PROMPT_SUGESTAO = `Você responde, em nome do NoSigilo, a uma SUGESTÃO que um usuário mandou pelo app. Use o MANUAL DO NOSIGILO abaixo para saber o que já existe.
+
+Devolva SOMENTE um JSON, sem texto em volta, no formato:
+{"status": "done" | "planned" | "read" | "rejected", "resposta": "texto para o usuário", "precisaEquipe": true | false}
+
+Como decidir o status:
+- "done": o que a pessoa pede JÁ EXISTE no manual. Na resposta, agradeça e explique em 1 ou 2 frases como usar (onde fica).
+- "planned": é uma ideia boa e plausível que ainda não existe (não está no manual). Agradeça, diga que a sugestão foi registrada para a equipe avaliar. NÃO prometa que será feito nem dê prazo.
+- "read": é relato de problema/erro de uso, pedido pessoal sobre a conta, ou você não tem certeza. Agradeça e diga que a equipe vai verificar e responder pelo chat. Marque "precisaEquipe": true.
+- "rejected": não é sugestão (teste, texto sem sentido, apresentação pessoal, propaganda) ou é algo contra as regras. Resposta curta e educada.
+
+Regras da resposta: português do Brasil, tom cordial e direto, de 1 a 3 frases, sem listas, sem inventar funções, valores ou prazos. Não use o nome da pessoa.
+
+${MANUAL_DO_SISTEMA}`;
+
+export async function responderSugestaoComIa(
+  deps: Dependencias,
+  sugestao: { id: string; userId: string; categoria: string; conteudo: string }
+): Promise<{ status: string; resposta: string; precisaEquipe: boolean } | null> {
+  if (!deps.apiKey) return null;
+  if ((await deps.getSetting(CHAVE_ATIVA)) !== '1') return null;
+
+  const resposta = await fetch(DEEPSEEK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.apiKey}` },
+    signal: AbortSignal.timeout(LIMITE_DA_CHAMADA_MS),
+    body: JSON.stringify({
+      model: MODELO,
+      messages: [
+        { role: 'system', content: PROMPT_SUGESTAO },
+        { role: 'user', content: `Categoria: ${ROTULO_CATEGORIA[sugestao.categoria] ?? sugestao.categoria}\nSugestão: ${sugestao.conteudo}` },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+      max_tokens: 600,
+      stream: false,
+    }),
+  });
+  if (!resposta.ok) throw new Error(`DeepSeek respondeu HTTP ${resposta.status}: ${(await resposta.text()).slice(0, 300)}`);
+  const corpo = (await resposta.json()) as { choices?: Array<{ message?: { content?: string | null } }> };
+  let dados: any = null;
+  try { dados = JSON.parse(String(corpo.choices?.[0]?.message?.content || '{}')); } catch { dados = null; }
+  const status = ['done', 'planned', 'read', 'rejected'].includes(String(dados?.status)) ? String(dados.status) : 'read';
+  let texto = String(dados?.resposta || '').trim();
+  if (!texto) return null;
+  if (texto.length > 1000) texto = `${texto.slice(0, 990)}…`;
+  const precisaEquipe = !!dados?.precisaEquipe || status === 'read';
+
+  await run(deps.db, 'UPDATE suggestions SET admin_reply = ?, status = ?, updated_at = ? WHERE id = ?', [texto, status, new Date().toISOString(), sugestao.id]);
+  await run(
+    deps.db,
+    'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [randomUUID(), sugestao.userId, 'admin', SENDER_ID_IA, `Sobre a sua sugestão: ${texto}`, new Date().toISOString()]
+  );
+  await deps.persist();
+  deps.aoResponder?.(sugestao.userId);
+
+  if (precisaEquipe) {
+    await deps.notificarEquipe(
+      `💡 <b>Sugestão precisa da equipe</b>\n${ROTULO_CATEGORIA[sugestao.categoria] ?? ''}: ${sugestao.conteudo.slice(0, 300)}\n\nA IA respondeu e deixou como "lida". Veja em Admin › Sugestões.`
+    ).catch(() => {});
+  }
+  return { status, resposta: texto, precisaEquipe };
+}
