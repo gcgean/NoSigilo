@@ -1492,23 +1492,49 @@ async function sendTelegramToUser(
   }
 }
 
-// Envia uma mensagem para TODOS os admins que já conectaram o Telegram próprio
+// Tipos de aviso do Telegram para a equipe. Cada admin escolhe quais recebe
+// (Admin › Telegram); quem nunca configurou recebe todos, como antes.
+export const AVISOS_TELEGRAM = [
+  { id: 'pagamentos', rotulo: 'Assinaturas e renovações', descricao: 'Nova assinatura paga e renovação, com o valor.' },
+  { id: 'tokens', rotulo: 'Compras de tokens', descricao: 'Cada pacote de tokens comprado.' },
+  { id: 'resumo', rotulo: 'Resumo diário', descricao: 'Cadastros e faturamento do dia anterior, de manhã.' },
+  { id: 'suporte', rotulo: 'Suporte', descricao: 'Pessoa pedindo atendente, mensagens fora da IA e falhas da IA.' },
+  { id: 'sugestoes', rotulo: 'Sugestões', descricao: 'Sugestão que a IA marcou como "precisa da equipe".' },
+  { id: 'moderacao', rotulo: 'Moderação', descricao: 'Denúncia grave e conto segurado para revisão.' },
+  { id: 'notas', rotulo: 'Notas baixas', descricao: 'Avaliação de 0 a 6 no app.' },
+  { id: 'servidor', rotulo: 'Servidor e e-mail', descricao: 'CPU, memória ou disco no limite, hora de upgrade, cota do e-mail acabou.' },
+] as const;
+export type AvisoTelegram = (typeof AVISOS_TELEGRAM)[number]['id'];
+
+/** { [adminId]: tipos que recebe }. Admin fora do mapa recebe todos. */
+async function lerAvisosTelegram(db: DbHandle): Promise<Record<string, string[]>> {
+  const salvo = safeJsonParse(await getSystemSetting(db, 'telegram_avisos_admin'));
+  return salvo && typeof salvo === 'object' && !Array.isArray(salvo) ? (salvo as Record<string, string[]>) : {};
+}
+
+// Envia uma mensagem para os admins que já conectaram o Telegram próprio
 // (Configurações → Notificações → Conectar Telegram, mesmo fluxo de qualquer
-// usuário). Best-effort: nunca lança, um admin sem Telegram conectado é ignorado.
+// usuário) e que querem este tipo de aviso. Best-effort: nunca lança.
 async function notifyAdminsTelegram(
   options: { db: DbHandle; env: Env },
-  text: string
+  text: string,
+  tipo: AvisoTelegram
 ) {
   if (!options.env.TELEGRAM_BOT_TOKEN) {
     console.error('[notifyAdminsTelegram] TELEGRAM_BOT_TOKEN não configurado no servidor');
     return;
   }
   try {
-    const admins = (await queryAll(
+    const todos = (await queryAll(
       options.db,
-      "SELECT telegram_chat_id FROM users WHERE is_admin = 1 AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''",
+      "SELECT id, telegram_chat_id FROM users WHERE is_admin = 1 AND telegram_chat_id IS NOT NULL AND telegram_chat_id != ''",
       []
     )) as any[];
+    const escolhas = await lerAvisosTelegram(options.db);
+    const admins = todos.filter((a) => {
+      const lista = escolhas[String(a.id)];
+      return !Array.isArray(lista) || lista.includes(tipo);
+    });
     for (const admin of admins) {
       try {
         const response = await fetch(`https://api.telegram.org/bot${options.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -2587,7 +2613,7 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
       // dos e-mails importantes nem gravar milhares de falhas.
       if (cotaSeguidas >= 5) {
         console.warn(`[weekend-engagement] cota do Resend esgotada — envio interrompido (${sent} enviados)`);
-        void notifyAdminsTelegram({ db, env }, `⚠️ E-mail de fim de semana interrompido: a cota mensal do Resend acabou (${sent} enviados antes). E-mails de senha, 2FA e suporte também param até a cota renovar.`);
+        void notifyAdminsTelegram({ db, env }, `⚠️ E-mail de fim de semana interrompido: a cota mensal do Resend acabou (${sent} enviados antes). E-mails de senha, 2FA e suporte também param até a cota renovar.`, 'servidor');
         break;
       }
       let status: 'sent' | 'skipped' | 'error' = 'error';
@@ -2687,7 +2713,7 @@ async function runAdminDailySummary(db: DbHandle, env: Env) {
       `🆕 Novos cadastros: <b>${newSignups}</b>\n` +
       hubLines;
 
-    void notifyAdminsTelegram({ db, env }, text);
+    void notifyAdminsTelegram({ db, env }, text, 'resumo');
     await setSystemSetting(db, dedupKey, yesterdayStr);
   } catch (err) {
     console.error('[admin-daily-summary] error:', err);
@@ -4619,7 +4645,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     getSetting: (key) => getSystemSetting(db, key),
     setSetting: (key, value) => setSystemSetting(db, key, value),
     persist,
-    notificarEquipe: (texto) => notifyAdminsTelegram({ db, env }, texto),
+    notificarEquipe: (texto, tipo) => notifyAdminsTelegram({ db, env }, texto, tipo ?? 'suporte'),
     // Mesma conferência do botão "Já paguei — verificar" (/api/subscriptions/status).
     verificarPagamento: async (alvo) => {
       if (!shouldUseHubBilling(env)) return;
@@ -4663,7 +4689,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       const sender = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
       const preview = parsed.data.message.length > 300 ? `${parsed.data.message.slice(0, 300)}…` : parsed.data.message;
       void notifyAdminsTelegram({ db, env },
-        `💬 <b>Nova mensagem de suporte</b>\n\n<b>${String(sender?.name || 'Usuário')}</b>\n${String(sender?.email || '')}\n\n${preview}`
+        `💬 <b>Nova mensagem de suporte</b>\n\n<b>${String(sender?.name || 'Usuário')}</b>\n${String(sender?.email || '')}\n\n${preview}`,
+        'suporte'
       );
     } catch (err) {
       console.error('[promoter/support] telegram notify error:', err);
@@ -8496,7 +8523,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (motivos.length) {
       const autor = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
       void notifyAdminsTelegram({ db, env },
-        `🚫 <b>Conto segurado para revisão</b> (${motivos.join(', ')})\n\n<b>${String(autor?.name || 'Usuário')}</b> ${String(autor?.email || '')}\n\n${titulo.slice(0, 200)}\n\nRevise em Admin › Contos.`
+        `🚫 <b>Conto segurado para revisão</b> (${motivos.join(', ')})\n\n<b>${String(autor?.name || 'Usuário')}</b> ${String(autor?.email || '')}\n\n${titulo.slice(0, 200)}\n\nRevise em Admin › Contos.`,
+        'moderacao'
       );
     }
     if (parsed.data.mediaIds && parsed.data.mediaIds.length > 0) {
@@ -9096,7 +9124,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       description: 'Pagamento confirmado. Use para destacar pedidos de contato, destacar seu perfil ou presentear alguém.',
       dataJson: { url: '/tokens' },
     });
-    void notifyAdminsTelegram({ db, env }, `🪙 Compra de tokens: +${n} (${(Number(compra.valor_cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`).catch(() => {});
+    void notifyAdminsTelegram({ db, env }, `🪙 Compra de tokens: +${n} (${(Number(compra.valor_cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`, 'tokens').catch(() => {});
     return true;
   }
 
@@ -15512,7 +15540,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           const kind = wasAlreadyPremium ? '🔄 Renovação' : '🎉 Nova assinatura';
           void notifyAdminsTelegram({ db, env },
             `${kind}\n\n<b>${String(user.name || 'Usuário')}</b>\n${String(user.email || '')}` +
-            (amountStr ? `\n💰 ${amountStr}` : '')
+            (amountStr ? `\n💰 ${amountStr}` : ''),
+            'pagamentos'
           );
         }
 
@@ -16766,7 +16795,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             : '\nSe não for build nem conversão de vídeo, vale olhar.';
         void notifyAdminsTelegram(
           { db, env },
-          `⚠️ ${rotulos[chave]} em ${valor.toFixed(1)}% no servidor (limite ${LIMITES[chave]}%), sustentado por 10 minutos.${extra}${chave === 'cpu' ? causaProvavel : ''}`
+          `⚠️ ${rotulos[chave]} em ${valor.toFixed(1)}% no servidor (limite ${LIMITES[chave]}%), sustentado por 10 minutos.${extra}${chave === 'cpu' ? causaProvavel : ''}`,
+          'servidor'
         ).catch(() => undefined);
         console.warn(`[recursos] ${rotulos[chave]} em ${valor.toFixed(1)}% — aviso enviado`);
       }
@@ -16852,7 +16882,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       await setSystemSetting(db, 'recursos_aviso_upgrade_em', String(Date.now()));
       await notifyAdminsTelegram(
         { db, env },
-        `📈 Servidor: hora de avaliar UPGRADE\n\nNos últimos 7 dias:\n${d.motivos.join('\n')}\n\nIsso é uso de verdade do site (picos de compressão de vídeo foram descontados). Veja em Admin › Recursos do servidor.`
+        `📈 Servidor: hora de avaliar UPGRADE\n\nNos últimos 7 dias:\n${d.motivos.join('\n')}\n\nIsso é uso de verdade do site (picos de compressão de vídeo foram descontados). Veja em Admin › Recursos do servidor.`,
+        'servidor'
       );
       console.warn('[recursos] diagnóstico: upgrade recomendado —', d.motivos.join(' | '));
     } catch (erro) {
@@ -16880,6 +16911,58 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         Object.entries(ultimoAviso).map(([k, v]) => [k, new Date(v).toISOString()])
       ),
     });
+  });
+
+  // ─── Avisos do Telegram: quem da equipe recebe o quê ───────────────────────
+  // Contatos = admins. Só recebe quem conectou o Telegram (Configurações ›
+  // Notificações). Admin sem escolha salva recebe todos os tipos.
+  app.get('/api/admin/telegram-avisos', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const admins = (await queryAll(
+      db,
+      "SELECT id, name, email, telegram_chat_id FROM users WHERE is_admin = 1 ORDER BY name",
+      []
+    )) as any[];
+    const escolhas = await lerAvisosTelegram(db);
+    res.json({
+      botConfigurado: !!env.TELEGRAM_BOT_TOKEN,
+      tipos: AVISOS_TELEGRAM,
+      contatos: admins.map((a) => {
+        const lista = escolhas[String(a.id)];
+        return {
+          id: String(a.id),
+          nome: String(a.name || ''),
+          email: String(a.email || ''),
+          telegramConectado: !!String(a.telegram_chat_id || '').trim(),
+          avisos: Array.isArray(lista) ? lista : AVISOS_TELEGRAM.map((t) => t.id),
+          personalizado: Array.isArray(lista),
+        };
+      }),
+    });
+  });
+
+  app.put('/api/admin/telegram-avisos', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const ids = AVISOS_TELEGRAM.map((t) => t.id) as [string, ...string[]];
+    const parsed = z.object({ userId: z.string().min(1), avisos: z.array(z.enum(ids)).max(ids.length) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const admin = await queryOne(db, 'SELECT 1 AS x FROM users WHERE id = ? AND is_admin = 1', [parsed.data.userId]);
+    if (!admin) { res.status(404).json({ error: 'not_found', message: 'Esse contato não é admin.' }); return; }
+    const escolhas = await lerAvisosTelegram(db);
+    escolhas[parsed.data.userId] = [...new Set(parsed.data.avisos)];
+    await setSystemSetting(db, 'telegram_avisos_admin', JSON.stringify(escolhas));
+    await persist();
+    res.json({ ok: true, avisos: escolhas[parsed.data.userId] });
+  });
+
+  app.post('/api/admin/telegram-avisos/teste', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const userId = String(req.body?.userId || '');
+    const admin = (await queryOne(db, 'SELECT name FROM users WHERE id = ? AND is_admin = 1', [userId])) as any;
+    if (!admin) { res.status(404).json({ error: 'not_found' }); return; }
+    const ok = await sendTelegramToUser({ db, env }, {
+      userId,
+      text: `✅ Teste dos avisos do NoSigilo para <b>${String(admin.name || 'você')}</b>. Se chegou, este contato está funcionando.`,
+    });
+    if (!ok) { res.status(400).json({ error: 'falhou', message: 'Não chegou: o Telegram deste contato não está conectado ou o bot foi bloqueado.' }); return; }
+    res.json({ ok: true });
   });
 
   app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), async (_req, res) => {
@@ -17165,7 +17248,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         void notifyAdminsTelegram(
           { db, env },
           `⚠️ Nota ${parsed.data.nota}/10 de ${quem?.name || 'usuário'}${Number(quem?.is_premium || 0) === 1 ? ' (assinante)' : ''}` +
-          (parsed.data.sugestao ? `\n"${String(parsed.data.sugestao).slice(0, 300)}"` : '')
+          (parsed.data.sugestao ? `\n"${String(parsed.data.sugestao).slice(0, 300)}"` : ''),
+          'notas'
         ).catch(() => undefined);
       }
       res.json({ ok: true });
@@ -18919,7 +19003,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         graves++;
         void notifyAdminsTelegram(
           { db, env },
-          `🚨 Denúncia grave (${analise.acao}): ${String(d.reason || '')}\n${analise.justificativa}\nAlvo: ${d.target_name || alvoId}`
+          `🚨 Denúncia grave (${analise.acao}): ${String(d.reason || '')}\n${analise.justificativa}\nAlvo: ${d.target_name || alvoId}`,
+          'moderacao'
         ).catch(() => undefined);
       }
     }

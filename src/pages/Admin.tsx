@@ -4,7 +4,7 @@ import {
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle, Sparkles,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star, ImagePlus
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star, ImagePlus, Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ import AdminContos from '@/components/AdminContos';
 import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
 import AdminPedidos from '@/components/AdminPedidos';
+import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -1521,6 +1522,10 @@ export default function Admin() {
           <TabsTrigger value="contos" className="gap-2">
             <FileText className="w-4 h-4" />
             Contos
+          </TabsTrigger>
+          <TabsTrigger value="telegram" className="gap-2">
+            <Bell className="w-4 h-4" />
+            Telegram
           </TabsTrigger>
         </TabsList>
 
@@ -3714,6 +3719,10 @@ export default function Admin() {
 
         <TabsContent value="reengagement">
           <AdminReengagementTab />
+        </TabsContent>
+
+        <TabsContent value="telegram">
+          <AdminTelegramAvisos />
         </TabsContent>
 
         <TabsContent value="suporte">

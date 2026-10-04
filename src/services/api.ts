@@ -1233,6 +1233,31 @@ export const adminPedidosService = {
   },
 };
 
+export type TipoAvisoTelegram = { id: string; rotulo: string; descricao: string };
+export type ContatoAvisoTelegram = {
+  id: string;
+  nome: string;
+  email: string;
+  telegramConectado: boolean;
+  avisos: string[];
+  personalizado: boolean;
+};
+
+export const adminTelegramService = {
+  listar: async (): Promise<{ botConfigurado: boolean; tipos: TipoAvisoTelegram[]; contatos: ContatoAvisoTelegram[] }> => {
+    const response = await apiClient.get('/admin/telegram-avisos');
+    return response.data;
+  },
+  salvar: async (userId: string, avisos: string[]) => {
+    const response = await apiClient.put('/admin/telegram-avisos', { userId, avisos });
+    return response.data as { ok: boolean; avisos: string[] };
+  },
+  testar: async (userId: string) => {
+    const response = await apiClient.post('/admin/telegram-avisos/teste', { userId });
+    return response.data as { ok: boolean };
+  },
+};
+
 export const adminExclusoesService = {
   relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
     const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });

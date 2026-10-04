@@ -3305,4 +3305,31 @@ describe('nosigilo backend', () => {
     expect(met.destaque.vendidos).toBeGreaterThanOrEqual(1);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(homem2.user.id)]);
   });
+
+  it('avisos do Telegram: admin escolhe por contato; padrão é receber todos; só admin mexe', async () => {
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Avisos', email: 'admin-avisos@example.com', password: 'senha123', gender: 'Mulher' });
+    const comum = await registerInvitedUser(ctx, sponsorToken, { name: 'Comum Avisos', email: 'comum-avisos@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${adm.token}` };
+
+    const antes = (await request(ctx.app).get('/api/admin/telegram-avisos').set(auth).expect(200)).body;
+    const eu = antes.contatos.find((c: any) => c.id === adm.user.id);
+    expect(eu.personalizado).toBe(false);
+    expect(eu.avisos.length).toBe(antes.tipos.length);
+    expect(antes.contatos.some((c: any) => c.id === comum.user.id)).toBe(false);
+
+    await request(ctx.app).put('/api/admin/telegram-avisos').set(auth).send({ userId: adm.user.id, avisos: ['pagamentos', 'servidor'] }).expect(200);
+    const depois = (await request(ctx.app).get('/api/admin/telegram-avisos').set(auth).expect(200)).body;
+    const eu2 = depois.contatos.find((c: any) => c.id === adm.user.id);
+    expect(eu2.avisos).toEqual(['pagamentos', 'servidor']);
+    expect(eu2.personalizado).toBe(true);
+
+    // Tipo inexistente e contato que não é admin são recusados.
+    await request(ctx.app).put('/api/admin/telegram-avisos').set(auth).send({ userId: adm.user.id, avisos: ['qualquer'] }).expect(400);
+    await request(ctx.app).put('/api/admin/telegram-avisos').set(auth).send({ userId: comum.user.id, avisos: [] }).expect(404);
+    // Quem não é admin não acessa.
+    await request(ctx.app).get('/api/admin/telegram-avisos').set('Authorization', `Bearer ${comum.token}`).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
 });

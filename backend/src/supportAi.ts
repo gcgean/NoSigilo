@@ -40,7 +40,7 @@ export type Dependencias = {
   getSetting: (key: string) => Promise<string | null>;
   setSetting: (key: string, value: string) => Promise<void>;
   persist: () => Promise<void>;
-  notificarEquipe: (texto: string) => Promise<void>;
+  notificarEquipe: (texto: string, tipo?: 'suporte' | 'sugestoes') => Promise<void>;
   aoResponder?: (userId: string) => void;
   verificarPagamento?: VerificarPagamento;
 };
@@ -398,7 +398,8 @@ export async function responderSugestaoComIa(
 
   if (precisaEquipe) {
     await deps.notificarEquipe(
-      `💡 <b>Sugestão precisa da equipe</b>\n${ROTULO_CATEGORIA[sugestao.categoria] ?? ''}: ${sugestao.conteudo.slice(0, 300)}\n\nA IA respondeu e deixou como "lida". Veja em Admin › Sugestões.`
+      `💡 <b>Sugestão precisa da equipe</b>\n${ROTULO_CATEGORIA[sugestao.categoria] ?? ''}: ${sugestao.conteudo.slice(0, 300)}\n\nA IA respondeu e deixou como "lida". Veja em Admin › Sugestões.`,
+      'sugestoes'
     ).catch(() => {});
   }
   return { status, resposta: texto, precisaEquipe };
