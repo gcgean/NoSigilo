@@ -1526,199 +1526,6 @@ export default function Profile() {
         </div>
       ) : null}
 
-      {unreadNotifications.length > 0 || profileVisits.length > 0 ? (
-        <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <h2 className="text-lg font-semibold">Notificações</h2>
-            <NavLink to="/notifications" className="text-sm text-brand-pink hover:underline">
-              Ver todas
-            </NavLink>
-          </div>
-          {profileVisits.length > 0 ? (
-            <div className="mb-4 space-y-3">
-              <div className="rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 via-rose-500/6 to-orange-400/8 p-4 sm:p-5">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-pink">Últimos visitantes</div>
-                    <div className="text-sm text-muted-foreground">As 3 pessoas mais recentes que passaram pelo seu perfil.</div>
-                  </div>
-                  <Badge className="w-fit bg-primary/12 text-brand-pink border border-primary/20">
-                    {profileVisits.length} visitante{profileVisits.length > 1 ? 's' : ''}
-                  </Badge>
-                </div>
-
-                <div className="space-y-3">
-                  {profileVisits.slice(0, 3).map((visit, index) => (
-                    <div
-                      key={visit.id}
-                      className="rounded-2xl border border-white/60 bg-background/90 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
-                    >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="relative shrink-0">
-                            <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
-                              <AvatarImage src={visit.visitor?.avatar ? resolveServerUrl(visit.visitor.avatar) : undefined} />
-                              <AvatarFallback>{String(visit.visitor?.name || 'U')[0].toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gradient-primary px-1 text-[10px] font-bold text-white shadow-glow">
-                              {index + 1}
-                            </span>
-                          </div>
-
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="truncate font-semibold">{visit.visitor?.name || 'Alguém'}</p>
-                              <Badge variant="secondary" className="bg-secondary/80 text-[10px]">
-                                {visitTimeAgo(visit.createdAt)}
-                              </Badge>
-                              {Number(visit.visitsCount || 1) > 1 ? (
-                                <Badge variant="secondary" className="bg-primary/10 text-brand-pink text-[10px]">
-                                  {Number(visit.visitsCount)} visitas
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Visitou seu perfil recentemente. Toque para ver o perfil e continuar a conversa.
-                            </p>
-                          </div>
-                        </div>
-
-                        <Button
-                          size="sm"
-                          className="self-stretch sm:self-auto bg-gradient-primary hover:opacity-90"
-                          onClick={() => navigate(getUserProfileHref(visit.visitor.id, user?.id, '/profile'))}
-                        >
-                          Ver visitante
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <Button size="sm" variant="ghost" onClick={() => navigate('/profile/visitors')}>
-                    Ver histórico completo
-                  </Button>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <span className="text-xs text-muted-foreground">Atualizado com os visitantes mais recentes.</span>
-              </div>
-            </div>
-          ) : null}
-          <div className="space-y-3">
-            {visibleUnreadNotifications.map((n) => {
-                const isPrivateReq = n.type === 'private_photos.request';
-                return (
-                  <div key={n.id} className="rounded-xl border p-4 bg-secondary/10">
-                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-medium">{n.title}</div>
-                        {n.description ? <div className="text-sm text-muted-foreground">{n.description}</div> : null}
-                      </div>
-                      <Button size="sm" variant="ghost" className="self-stretch sm:self-auto" onClick={() => void markNotificationAsRead(n.id)}>
-                        Marcar lida
-                      </Button>
-                    </div>
-                    {isPrivateReq ? (
-                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
-                        <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyNotifId === n.id} onClick={() => void handleApprovePrivatePhotos(n)}>
-                          Permitir
-                        </Button>
-                        <Button size="sm" variant="outline" disabled={busyNotifId === n.id} onClick={() => void handleDenyPrivatePhotos(n)}>
-                          Negar
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-          </div>
-          {(unreadNotificationsRemaining > 0 || notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE) ? (
-            <div className="mt-3 flex items-center gap-2">
-              {unreadNotificationsRemaining > 0 ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setNotificationsVisibleCount((prev) => prev + PROFILE_NOTIFICATIONS_PAGE_SIZE)}
-                >
-                  Ver mais ({unreadNotificationsRemaining})
-                </Button>
-              ) : null}
-              {notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setNotificationsVisibleCount(PROFILE_NOTIFICATIONS_PAGE_SIZE)}
-                >
-                  Mostrar menos
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {testimonials.some((t) => String(t.status) === 'pending') ? (
-        <div id="testimonials" className="glass rounded-2xl p-4 sm:p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Depoimentos pendentes</h2>
-          <div className="space-y-3">
-            {testimonials
-              .filter((t) => String(t.status) === 'pending')
-              .slice(0, 10)
-              .map((t) => (
-                <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
-                  <button
-                    type="button"
-                    className="font-medium mb-1 hover:underline"
-                    onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
-                  >
-                    {t.author.name}
-                  </button>
-                  {formatProfileIdentityLine(t.author) ? (
-                    <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}</div>
-                  ) : null}
-                  <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
-                    <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
-                      Aceitar
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, false)}>
-                      Recusar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="glass rounded-2xl p-4 sm:p-6 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <h2 className="text-lg font-semibold">Informações Pessoais</h2>
-          {profileData.status ? (
-            <Badge variant="secondary" className="max-w-full sm:max-w-[60%] truncate">
-              {profileData.status}
-            </Badge>
-          ) : null}
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-              {/* Gênero e Idade já aparecem no topo do perfil — omitidos aqui para não duplicar */}
-              <InfoRow label="Estado civil" value={user?.maritalStatus} />
-          <InfoRow label="Orientação Sexual" value={user?.sexualOrientation} />
-          <InfoRow label="Profissão" value={user?.profession} />
-          <InfoRow label="Signo" value={user?.zodiacSign} />
-          <InfoRow label="Etnia" value={user?.ethnicity} />
-          <InfoRow label="Cabelos" value={user?.hair} />
-          <InfoRow label="Olhos" value={user?.eyes} />
-          <InfoRow label="Altura" value={user?.height} />
-          <InfoRow label="Corpo" value={user?.bodyType} />
-          <InfoRow label="Fuma" value={user?.smokes} />
-          <InfoRow label="Bebe" value={user?.drinks} />
-        </div>
-      </div>
-
       {/* Photos Section */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4 flex h-auto w-full flex-wrap gap-1 p-1">
@@ -1758,7 +1565,223 @@ export default function Profile() {
             <Star className="w-4 h-4" />
             Recomendações{approvedTestimonials.length > 0 ? ` (${approvedTestimonials.length})` : ''}
           </TabsTrigger>
+          {/* Visitas/avisos e informações pessoais viraram abas: antes eram
+              seções acima da galeria e empurravam as fotos para baixo. */}
+          <TabsTrigger value="avisos" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Eye className="w-4 h-4" />
+            Avisos
+            {unreadNotifications.length + profileVisits.length > 0 && (
+              <span className="rounded-full bg-primary px-1.5 text-[10px] font-bold leading-4 text-white">
+                {Math.min(99, unreadNotifications.length + profileVisits.length)}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="sobre" className="flex-1 gap-1.5 text-xs sm:text-sm">
+            <Users className="w-4 h-4" />
+            Sobre
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="avisos">
+        {unreadNotifications.length > 0 || profileVisits.length > 0 ? (
+          <div className="glass rounded-2xl p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <h2 className="text-lg font-semibold">Notificações</h2>
+              <NavLink to="/notifications" className="text-sm text-brand-pink hover:underline">
+                Ver todas
+              </NavLink>
+            </div>
+            {profileVisits.length > 0 ? (
+              <div className="mb-4 space-y-3">
+                <div className="rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 via-rose-500/6 to-orange-400/8 p-4 sm:p-5">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+                    <div>
+                      <div className="text-sm font-semibold uppercase tracking-[0.16em] text-brand-pink">Últimos visitantes</div>
+                      <div className="text-sm text-muted-foreground">As 3 pessoas mais recentes que passaram pelo seu perfil.</div>
+                    </div>
+                    <Badge className="w-fit bg-primary/12 text-brand-pink border border-primary/20">
+                      {profileVisits.length} visitante{profileVisits.length > 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3">
+                    {profileVisits.slice(0, 3).map((visit, index) => (
+                      <div
+                        key={visit.id}
+                        className="rounded-2xl border border-white/60 bg-background/90 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]"
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="relative shrink-0">
+                              <Avatar className="h-14 w-14 border-2 border-background shadow-sm">
+                                <AvatarImage src={visit.visitor?.avatar ? resolveServerUrl(visit.visitor.avatar) : undefined} />
+                                <AvatarFallback>{String(visit.visitor?.name || 'U')[0].toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <span className="absolute -right-1 -top-1 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-gradient-primary px-1 text-[10px] font-bold text-white shadow-glow">
+                                {index + 1}
+                              </span>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate font-semibold">{visit.visitor?.name || 'Alguém'}</p>
+                                <Badge variant="secondary" className="bg-secondary/80 text-[10px]">
+                                  {visitTimeAgo(visit.createdAt)}
+                                </Badge>
+                                {Number(visit.visitsCount || 1) > 1 ? (
+                                  <Badge variant="secondary" className="bg-primary/10 text-brand-pink text-[10px]">
+                                    {Number(visit.visitsCount)} visitas
+                                  </Badge>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Visitou seu perfil recentemente. Toque para ver o perfil e continuar a conversa.
+                              </p>
+                            </div>
+                          </div>
+
+                          <Button
+                            size="sm"
+                            className="self-stretch sm:self-auto bg-gradient-primary hover:opacity-90"
+                            onClick={() => navigate(getUserProfileHref(visit.visitor.id, user?.id, '/profile'))}
+                          >
+                            Ver visitante
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <Button size="sm" variant="ghost" onClick={() => navigate('/profile/visitors')}>
+                      Ver histórico completo
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <span className="text-xs text-muted-foreground">Atualizado com os visitantes mais recentes.</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="space-y-3">
+              {visibleUnreadNotifications.map((n) => {
+                  const isPrivateReq = n.type === 'private_photos.request';
+                  return (
+                    <div key={n.id} className="rounded-xl border p-4 bg-secondary/10">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium">{n.title}</div>
+                          {n.description ? <div className="text-sm text-muted-foreground">{n.description}</div> : null}
+                        </div>
+                        <Button size="sm" variant="ghost" className="self-stretch sm:self-auto" onClick={() => void markNotificationAsRead(n.id)}>
+                          Marcar lida
+                        </Button>
+                      </div>
+                      {isPrivateReq ? (
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
+                          <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyNotifId === n.id} onClick={() => void handleApprovePrivatePhotos(n)}>
+                            Permitir
+                          </Button>
+                          <Button size="sm" variant="outline" disabled={busyNotifId === n.id} onClick={() => void handleDenyPrivatePhotos(n)}>
+                            Negar
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+            </div>
+            {(unreadNotificationsRemaining > 0 || notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE) ? (
+              <div className="mt-3 flex items-center gap-2">
+                {unreadNotificationsRemaining > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setNotificationsVisibleCount((prev) => prev + PROFILE_NOTIFICATIONS_PAGE_SIZE)}
+                  >
+                    Ver mais ({unreadNotificationsRemaining})
+                  </Button>
+                ) : null}
+                {notificationsVisibleCount > PROFILE_NOTIFICATIONS_PAGE_SIZE ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setNotificationsVisibleCount(PROFILE_NOTIFICATIONS_PAGE_SIZE)}
+                  >
+                    Mostrar menos
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {testimonials.some((t) => String(t.status) === 'pending') ? (
+          <div id="testimonials" className="glass rounded-2xl p-4 sm:p-6 mb-6">
+            <h2 className="text-lg font-semibold mb-4">Depoimentos pendentes</h2>
+            <div className="space-y-3">
+              {testimonials
+                .filter((t) => String(t.status) === 'pending')
+                .slice(0, 10)
+                .map((t) => (
+                  <div key={t.id} className="rounded-xl border p-4 bg-secondary/10">
+                    <button
+                      type="button"
+                      className="font-medium mb-1 hover:underline"
+                      onClick={() => navigate(getUserProfileHref(t.author.id, user?.id, '/profile'))}
+                    >
+                      {t.author.name}
+                    </button>
+                    {formatProfileIdentityLine(t.author) ? (
+                      <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}</div>
+                    ) : null}
+                    <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
+                      <Button size="sm" className="bg-gradient-primary hover:opacity-90" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, true)}>
+                        Aceitar
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busyTestimonialId === t.id} onClick={() => void respondTestimonial(t, false)}>
+                        Recusar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : (
+          <div className="glass rounded-2xl p-6 text-center text-sm text-muted-foreground">
+            Nenhuma visita ou aviso novo por enquanto.
+          </div>
+        )}
+        </TabsContent>
+
+        <TabsContent value="sobre">
+        <div className="glass rounded-2xl p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 className="text-lg font-semibold">Informações Pessoais</h2>
+            {profileData.status ? (
+              <Badge variant="secondary" className="max-w-full sm:max-w-[60%] truncate">
+                {profileData.status}
+              </Badge>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+                {/* Gênero e Idade já aparecem no topo do perfil — omitidos aqui para não duplicar */}
+                <InfoRow label="Estado civil" value={user?.maritalStatus} />
+            <InfoRow label="Orientação Sexual" value={user?.sexualOrientation} />
+            <InfoRow label="Profissão" value={user?.profession} />
+            <InfoRow label="Signo" value={user?.zodiacSign} />
+            <InfoRow label="Etnia" value={user?.ethnicity} />
+            <InfoRow label="Cabelos" value={user?.hair} />
+            <InfoRow label="Olhos" value={user?.eyes} />
+            <InfoRow label="Altura" value={user?.height} />
+            <InfoRow label="Corpo" value={user?.bodyType} />
+            <InfoRow label="Fuma" value={user?.smokes} />
+            <InfoRow label="Bebe" value={user?.drinks} />
+          </div>
+        </div>
+        </TabsContent>
 
         <TabsContent value="posts">
           {isLoadingPosts ? (
