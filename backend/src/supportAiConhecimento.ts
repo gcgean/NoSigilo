@@ -85,6 +85,7 @@ Proteção do conteúdo e publicações
 - Apagar: a publicação inteira pode ser excluída (menu do post). Não dá para tirar só uma foto de dentro de uma publicação já feita.
 - Feed: filtros por distância (Minha região, 10 km, 25 km...). Filtrar o feed por tipo de perfil ainda não existe.
 - Mensagens: em Configurações › Privacidade dá para escolher quem pode mandar mensagem (todos, só curtidas mútuas, só amigos ou ninguém).
+- Pedidos de contato: mensagem de quem a pessoa ainda não conhece cai na aba "Pedidos de contato" do Chat, e não em Conversas, até ela aceitar (ou responder). Vem ligado para mulheres e casais; qualquer um liga/desliga em Configurações › Privacidade e escolhe quais tipos de perfil vão direto. Quem foi curtido ou é amigo vai sempre direto. Excluir um pedido não avisa quem mandou. Quem mandou pode destacar o pedido por 20 tokens (vai para o topo da lista de pedidos). Enquanto o pedido não é aceito, quem mandou não vê se a pessoa está online.
 
 Programa de promotores (menu Ganhe dinheiro)
 - O promotor divulga o link de convite e ganha 20% de cada pagamento dos assinantes que entraram pelo link, no primeiro pagamento e em cada renovação mensal. Só existe comissão quando o assinante paga de fato.

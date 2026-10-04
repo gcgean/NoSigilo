@@ -3067,6 +3067,44 @@ describe('nosigilo backend', () => {
     await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
   });
 
+  // Pedidos de contato: mulher/casal recebe mensagem de desconhecido como pedido.
+  it('pedido de contato: mensagem de desconhecido vira pedido, aceitar vira conversa', async () => {
+    const ela = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Ela Pedido', email: 'ela-pedido@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const ele = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Ele Pedido', email: 'ele-pedido@example.com', password: 'senha123', gender: 'Homem',
+    });
+    // Homem não tem período grátis: dá acesso para poder mandar mensagem.
+    await run(ctx.db, 'UPDATE users SET is_premium = 1, hub_license_end_at = ? WHERE id = ?', [new Date(Date.now() + 30 * 86_400_000).toISOString(), String(ele.user.id)]);
+    const A = { Authorization: `Bearer ${ela.token}` };
+    const B = { Authorization: `Bearer ${ele.token}` };
+
+    const conv = await request(ctx.app).post('/api/conversations').set(B).send({ userId: String(ela.user.id) }).expect(200);
+    expect(conv.body.pedido).toBe(true);
+    await request(ctx.app).post(`/api/conversations/${conv.body.id}/messages`).set(B).send({ content: 'Oi, tudo bem?' }).expect(200);
+
+    const listaDela = await request(ctx.app).get('/api/conversations').set(A).expect(200);
+    const c1 = listaDela.body.find((c: any) => c.id === conv.body.id);
+    expect(c1.pedido).toBe(true);
+    const contagem = await request(ctx.app).get('/api/conversations/unread-count').set(A).expect(200);
+    expect(contagem.body.conversationsCount).toBe(0);
+    expect(contagem.body.pedidosCount).toBe(1);
+
+    const listaDele = await request(ctx.app).get('/api/conversations').set(B).expect(200);
+    const c2 = listaDele.body.find((c: any) => c.id === conv.body.id);
+    expect(c2.pedidoEnviado).toBe(true);
+    expect(c2.user.lastSeenAt).toBeNull();
+
+    // Destacar sem tokens: recusado.
+    await request(ctx.app).post(`/api/conversations/${conv.body.id}/pedido/destacar`).set(B).send({}).expect(400);
+    // Só quem recebeu aceita.
+    await request(ctx.app).post(`/api/conversations/${conv.body.id}/pedido/aceitar`).set(B).send({}).expect(404);
+    await request(ctx.app).post(`/api/conversations/${conv.body.id}/pedido/aceitar`).set(A).send({}).expect(200);
+    const depois = await request(ctx.app).get('/api/conversations').set(A).expect(200);
+    expect(depois.body.find((c: any) => c.id === conv.body.id).pedido).toBe(false);
+  });
+
   // Trocar e-mail: senha atual + código enviado ao e-mail novo.
   it('troca de e-mail pede senha, recusa e-mail em uso e troca com o codigo', async () => {
     const dono = await registerInvitedUser(ctx, sponsorToken, {

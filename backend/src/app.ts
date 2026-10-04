@@ -139,6 +139,8 @@ export type PublicUser = {
   meetingTagline?: string | null;
   availabilityStatus?: string | null;
   blockOutsidePrefs?: boolean;
+  pedidosContato?: boolean;
+  pedidosDireto?: string[];
   partnerName?: string | null;
   partnerSexualOrientation?: string | null;
   partnerEthnicity?: string | null;
@@ -1934,6 +1936,58 @@ async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: str
   return true;
 }
 
+// ─── Pedidos de contato ──────────────────────────────────────────────────────
+// Mensagem de quem a pessoa não conhece cai em "Pedidos" (não em Conversas) até
+// ela aceitar ou responder. Ligado por padrão para mulheres e casais (que
+// recebem ~6-8 abordagens novas por mês e respondem só ~13%); quem é de um tipo
+// de perfil liberado, tem curtida mútua, é amigo ou já foi curtido vai direto.
+const CATEGORIAS_PEDIDO = ['mulher', 'casal', 'homem', 'outros'] as const;
+type CategoriaPedido = (typeof CATEGORIAS_PEDIDO)[number];
+const DESTAQUE_PEDIDO_TOKENS = 20;
+
+function categoriaDoPerfil(gender: unknown): CategoriaPedido {
+  const g = String(gender || '').trim().toLowerCase();
+  if (g.startsWith('casal')) return 'casal';
+  if (g === 'mulher' || g.startsWith('mulher ')) return 'mulher';
+  if (g === 'homem' || g.startsWith('homem ')) return 'homem';
+  return 'outros';
+}
+
+function configDePedidos(row: any): { ativo: boolean; direto: CategoriaPedido[] } {
+  const cat = categoriaDoPerfil(row?.gender);
+  const padraoLigado = cat === 'mulher' || cat === 'casal';
+  const modo = String(row?.pedidos_contato || '');
+  const ativo = modo === 'on' ? true : modo === 'off' ? false : padraoLigado;
+  const salvo = safeJsonParse(row?.pedidos_direto_json);
+  const direto = Array.isArray(salvo)
+    ? (salvo as string[]).filter((c): c is CategoriaPedido => (CATEGORIAS_PEDIDO as readonly string[]).includes(c))
+    : (['mulher', 'casal'] as CategoriaPedido[]);
+  return { ativo, direto };
+}
+
+async function deveVirarPedido(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
+  const destino = (await queryOne(db, 'SELECT gender, pedidos_contato, pedidos_direto_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
+  if (!destino) return false;
+  const cfg = configDePedidos(destino);
+  if (!cfg.ativo) return false;
+  const remetente = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
+  if (cfg.direto.includes(categoriaDoPerfil(remetente?.gender))) return false;
+  // Quem a pessoa já curtiu (inclui curtida mútua) ou é amigo vai direto.
+  const curtiu = await queryOne(
+    db,
+    "SELECT 1 AS x FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id = ? LIMIT 1",
+    [toUserId, fromUserId]
+  );
+  if (curtiu) return false;
+  const amigo = await queryOne(
+    db,
+    `SELECT 1 AS x FROM friend_requests WHERE status = 'accepted'
+       AND ((from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)) LIMIT 1`,
+    [fromUserId, toUserId, toUserId, fromUserId]
+  );
+  return !amigo;
+}
+
 function extensionForMime(mime: string, originalName: string) {
   const ext = path.extname(originalName || '').toLowerCase();
   if (ext) return ext;
@@ -2134,6 +2188,8 @@ function rowToPublicUser(
     trialEndsAt: row.trial_ends_at ?? null,
     allowMessages: row.allow_messages ?? null,
     blockOutsidePrefs: !!row.block_outside_prefs,
+    pedidosContato: configDePedidos(row).ativo,
+    pedidosDireto: configDePedidos(row).direto,
     createdAt: row.created_at ?? null,
     lastSeenAt: row.last_seen_at ?? null,
     isOnline: isOnline ?? false,
@@ -9165,6 +9221,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         availabilityStatus: z.enum(['now', 'week', 'month', 'online_only', 'not_looking']).optional().nullable(),
         meetingTagline: z.string().max(100).optional().nullable(),
         allowMessages: z.enum(['everyone', 'matches', 'friends', 'nobody']).optional().nullable(),
+        pedidosContato: z.boolean().optional().nullable(),
+        pedidosDireto: z.array(z.enum(CATEGORIAS_PEDIDO)).max(4).optional().nullable(),
         blockOutsidePrefs: z.boolean().optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
         notificationEmail: z.boolean().optional().nullable(),
@@ -9300,6 +9358,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       }
       setParts.push('bio_link = ?');
       values.push(normalized);
+    }
+    if ('pedidosContato' in data) {
+      setParts.push('pedidos_contato = ?');
+      values.push(data.pedidosContato == null ? null : data.pedidosContato ? 'on' : 'off');
+    }
+    if ('pedidosDireto' in data) {
+      setParts.push('pedidos_direto_json = ?');
+      values.push(data.pedidosDireto ? JSON.stringify(data.pedidosDireto) : null);
     }
     if ('lookingFor' in data) {
       setParts.push('looking_for_json = ?');
@@ -12686,8 +12752,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       WHERE (c.user_a_id = ? OR c.user_b_id = ?)
       AND m.sender_id != ?
       AND m.is_read = 0
+      AND NOT (COALESCE(c.pedido_para, '') = ? AND c.pedido_aceito_em IS NULL)
     `,
-      [req.auth!.userId, req.auth!.userId, req.auth!.userId]
+      [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
+    );
+    // Pedidos de contato novos (ainda não aceitos nem excluídos).
+    const pedidosNovos = await queryOne(
+      db,
+      `SELECT COUNT(DISTINCT c.id) AS c FROM conversations c
+        JOIN messages m ON m.conversation_id = c.id AND m.sender_id != ? AND m.is_read = 0
+       WHERE c.pedido_para = ? AND c.pedido_aceito_em IS NULL AND c.pedido_recusado_em IS NULL`,
+      [req.auth!.userId, req.auth!.userId]
     );
     const totalConversations = await queryOne(
       db,
@@ -12697,12 +12772,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       WHERE (c.user_a_id = ? OR c.user_b_id = ?)
       AND m.sender_id != ?
       AND m.is_read = 0
+      AND NOT (COALESCE(c.pedido_para, '') = ? AND c.pedido_aceito_em IS NULL)
     `,
-      [req.auth!.userId, req.auth!.userId, req.auth!.userId]
+      [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
     res.json({ 
       messagesCount: Number(totalMessages?.c || 0),
-      conversationsCount: Number(totalConversations?.c || 0)
+      conversationsCount: Number(totalConversations?.c || 0),
+      pedidosCount: Number(pedidosNovos?.c || 0),
     });
   });
 
@@ -12717,6 +12794,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `
       SELECT * FROM (
         SELECT c.id, c.user_a_id, c.user_b_id, c.created_at, c.is_highlighted, c.highlight_note, c.highlight_color,
+          c.pedido_para, c.pedido_aceito_em, c.pedido_recusado_em, c.pedido_destaque_em,
           ua.name as user_a_name, ua.avatar as user_a_avatar, ua.gender as user_a_gender, ua.city as user_a_city, ua.state as user_a_state, ua.lat as user_a_lat, ua.lon as user_a_lon, ua.last_seen_at as user_a_last_seen_at,
           ub.name as user_b_name, ub.avatar as user_b_avatar, ub.gender as user_b_gender, ub.city as user_b_city, ub.state as user_b_state, ub.lat as user_b_lat, ub.lon as user_b_lon, ub.last_seen_at as user_b_last_seen_at,
           (
@@ -12753,10 +12831,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           AND (ub.is_banned = 0 OR ub.is_banned IS NULL)
           AND (ua.is_deactivated = 0 OR ua.is_deactivated IS NULL)
           AND (ub.is_deactivated = 0 OR ub.is_deactivated IS NULL)
+          -- Pedido excluído some só para quem recebeu (quem mandou nunca vê "recusado").
+          AND NOT (COALESCE(c.pedido_para, '') = ? AND c.pedido_recusado_em IS NOT NULL)
       ) conversations_with_meta
       ORDER BY is_highlighted DESC, COALESCE(last_message_at, created_at) DESC
     `,
-      [req.auth!.userId, req.auth!.userId, req.auth!.userId]
+      [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
     // Miniatura da mídia da última mensagem (batch, uma consulta só).
     const lmMediaIds = Array.from(new Set((rows as any[]).map((r) => r.last_message_media).filter(Boolean).map(String)));
@@ -12809,6 +12889,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 isOnline: presence?.isOnline ? presence.isOnline(String(r.user_a_id)) : false,
                 lastSeenAt: r.user_a_last_seen_at ?? null,
               };
+        const pendente = !!r.pedido_para && !r.pedido_aceito_em;
+        const pedidoRecebido = pendente && String(r.pedido_para) === req.auth!.userId;
+        const pedidoEnviado = pendente && String(r.pedido_para) === String(other.id);
+        // Quem mandou o pedido não vê se a pessoa está online até ser aceito.
+        if (pedidoEnviado) { other.isOnline = false; other.lastSeenAt = null; }
         const lmSender = r.last_message_sender ? String(r.last_message_sender) : null;
         const lmMine = !!lmSender && lmSender === req.auth!.userId;
         // Ver mensagem RECEBIDA é premium: mascara o conteúdo p/ não-premium.
@@ -12833,7 +12918,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           unreadCount: Number(r.unread_count || 0),
           isHighlighted: Number(r.is_highlighted || 0) === 1,
           highlightNote: typeof r.highlight_note === 'string' ? r.highlight_note : null,
-          highlightColor: typeof r.highlight_color === 'string' ? r.highlight_color : null
+          highlightColor: typeof r.highlight_color === 'string' ? r.highlight_color : null,
+          pedido: pedidoRecebido,
+          pedidoEnviado,
+          pedidoDestaque: pendente && !!r.pedido_destaque_em,
         };
       })
     );
@@ -12875,7 +12963,68 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     await persist();
     const criada = (await queryOne(db, 'SELECT id FROM conversations WHERE user_a_id = ? AND user_b_id = ?', [pair[0], pair[1]])) as any;
-    res.json({ id: criada?.id });
+    // Conversa nova com quem não conhece e não é de um tipo liberado: vira pedido.
+    let pedido = false;
+    if (criada?.id && (await deveVirarPedido(db, req.auth!.userId, parsed.data.userId))) {
+      await run(db, 'UPDATE conversations SET pedido_para = ? WHERE id = ? AND pedido_para IS NULL', [parsed.data.userId, String(criada.id)]);
+      await persist();
+      pedido = true;
+    }
+    res.json({ id: criada?.id, pedido });
+  });
+
+  // ─── Pedidos de contato: aceitar, excluir, destacar ─────────────────────────
+  const pedidoDaConversa = async (conversationId: string) =>
+    (await queryOne(db, 'SELECT id, user_a_id, user_b_id, pedido_para, pedido_aceito_em, pedido_recusado_em, pedido_destaque_em FROM conversations WHERE id = ?', [conversationId])) as any;
+
+  // Aceitar: vira conversa normal (quem pediu passa a ver o online).
+  app.post('/api/conversations/:conversationId/pedido/aceitar', requireAuth(env, db), async (req, res) => {
+    const c = await pedidoDaConversa(req.params.conversationId);
+    if (!c || String(c.pedido_para || '') !== req.auth!.userId) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'UPDATE conversations SET pedido_aceito_em = COALESCE(pedido_aceito_em, ?), pedido_recusado_em = NULL WHERE id = ?', [nowIso(), String(c.id)]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Excluir: some só para quem recebeu; quem mandou nunca vê "recusado".
+  app.post('/api/conversations/:conversationId/pedido/excluir', requireAuth(env, db), async (req, res) => {
+    const c = await pedidoDaConversa(req.params.conversationId);
+    if (!c || String(c.pedido_para || '') !== req.auth!.userId || c.pedido_aceito_em) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'UPDATE conversations SET pedido_recusado_em = ? WHERE id = ?', [nowIso(), String(c.id)]);
+    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [String(c.id), req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  // Destacar: quem mandou paga tokens e o pedido vai para o topo da lista de pedidos.
+  app.post('/api/conversations/:conversationId/pedido/destacar', requireAuth(env, db), async (req, res) => {
+    const c = await pedidoDaConversa(req.params.conversationId);
+    const eu = req.auth!.userId;
+    const souParte = c && (String(c.user_a_id) === eu || String(c.user_b_id) === eu);
+    if (!c || !souParte || !c.pedido_para || String(c.pedido_para) === eu || c.pedido_aceito_em) {
+      res.status(400).json({ error: 'nao_e_pedido', message: 'Esta conversa não é um pedido aguardando resposta.' });
+      return;
+    }
+    if (c.pedido_destaque_em) { res.json({ ok: true, jaDestacado: true }); return; }
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const gasto = await spendTokens(db, eu, DESTAQUE_PEDIDO_TOKENS, 'pedido_destaque', `pedido-${String(c.id)}`, io);
+    if (!gasto.ok) {
+      res.status(400).json({ error: 'saldo_insuficiente', message: `Você precisa de ${DESTAQUE_PEDIDO_TOKENS} tokens para destacar o pedido.`, balance: gasto.balance });
+      return;
+    }
+    await run(db, 'UPDATE conversations SET pedido_destaque_em = ? WHERE id = ?', [nowIso(), String(c.id)]);
+    await persist();
+    const remetente = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [eu])) as any;
+    void sendPushToUser({ db, env }, {
+      userId: String(c.pedido_para),
+      payload: {
+        title: `⭐ Pedido em destaque: ${String(remetente?.name || 'alguém')}`,
+        body: 'Quer muito falar com você. Toque para ver o pedido.',
+        url: `/chat?conversationId=${encodeURIComponent(String(c.id))}`,
+        tag: `pedido:${String(c.id)}`,
+      },
+    }).catch(() => {});
+    res.json({ ok: true, balance: gasto.balance, custo: DESTAQUE_PEDIDO_TOKENS });
   });
 
   app.delete('/api/conversations/:conversationId', requireAuth(env, db), async (req, res) => {
@@ -13215,7 +13364,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const conversationId = req.params.conversationId;
-    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [conversationId])) as any;
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id, pedido_para, pedido_aceito_em FROM conversations WHERE id = ?', [conversationId])) as any;
     if (!conv || (conv.user_a_id !== req.auth!.userId && conv.user_b_id !== req.auth!.userId)) {
       res.status(404).json({ error: 'not_found' });
       return;
@@ -13300,12 +13449,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       : String(mediaMimeType || '').startsWith('video/')
         ? 'Enviou um vídeo para você.'
         : 'Enviou uma foto para você.';
+    // Pedido de contato: quem recebeu respondeu = aceitou.
+    const pedidoPendente = !!conv.pedido_para && !conv.pedido_aceito_em;
+    if (pedidoPendente && String(conv.pedido_para) === req.auth!.userId) {
+      await run(db, 'UPDATE conversations SET pedido_aceito_em = ? WHERE id = ?', [nowIso(), conversationId]);
+      await persist();
+    }
+    const ehPedidoParaOutro = pedidoPendente && String(conv.pedido_para) === otherId;
     await sendPushToUser(
       { db, env },
       {
         userId: otherId,
         payload: {
-          title: senderName,
+          title: ehPedidoParaOutro ? `Novo pedido de contato: ${senderName}` : senderName,
           body: previewText || 'Nova mensagem no chat.',
           url: `/chat?conversationId=${encodeURIComponent(conversationId)}`,
           tag: `chat:${conversationId}`,

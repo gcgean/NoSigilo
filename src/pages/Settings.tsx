@@ -175,6 +175,9 @@ export default function Settings() {
     showDistance: true,
     allowMessages: (user?.allowMessages || 'everyone') as any,
     blockOutsidePrefs: !!((user as any)?.blockOutsidePrefs),
+    // Pedidos de contato (padrão do servidor: ligado para mulheres e casais).
+    pedidosContato: (user as any)?.pedidosContato ?? false,
+    pedidosDireto: ((user as any)?.pedidosDireto ?? ['mulher', 'casal']) as string[],
   });
 
   const [notifications, setNotifications] = useState({
@@ -297,6 +300,8 @@ export default function Settings() {
       const privacyPayload = {
         allowMessages: privacy.allowMessages,
         blockOutsidePrefs: privacy.blockOutsidePrefs,
+        pedidosContato: privacy.pedidosContato,
+        pedidosDireto: privacy.pedidosDireto,
       };
 
       await profileService.updateProfile(profilePayload);
@@ -1452,6 +1457,50 @@ export default function Settings() {
                 checked={privacy.blockOutsidePrefs}
                 onCheckedChange={(v) => setPrivacy({ ...privacy, blockOutsidePrefs: v })}
               />
+            </div>
+
+            {/* Pedidos de contato: quem não é dos tipos marcados cai em "Pedidos". */}
+            <div className="space-y-3 pt-2 border-t border-border/50">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-medium">Pedidos de contato</p>
+                  <p className="text-sm text-muted-foreground">
+                    Mensagem de quem você ainda não conhece cai em "Pedidos de contato", e não nas suas conversas, até você aceitar. Quem você curtiu ou é seu amigo vai sempre direto.
+                  </p>
+                </div>
+                <Switch
+                  checked={privacy.pedidosContato}
+                  onCheckedChange={(v) => setPrivacy({ ...privacy, pedidosContato: v })}
+                />
+              </div>
+              {privacy.pedidosContato && (
+                <div>
+                  <p className="mb-2 text-sm font-medium">Vão direto para as conversas:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {([['mulher', 'Mulheres'], ['casal', 'Casais'], ['homem', 'Homens'], ['outros', 'Outros perfis']] as const).map(([k, rotulo]) => {
+                      const marcado = privacy.pedidosDireto.includes(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-pressed={marcado}
+                          onClick={() => setPrivacy({
+                            ...privacy,
+                            pedidosDireto: marcado ? privacy.pedidosDireto.filter((x) => x !== k) : [...privacy.pedidosDireto, k],
+                          })}
+                          className={cn(
+                            'min-h-[36px] rounded-full border px-3.5 text-sm font-medium transition-colors',
+                            marcado ? 'border-primary bg-primary/10 text-brand-pink' : 'border-border text-muted-foreground'
+                          )}
+                        >
+                          {marcado ? '✓ ' : ''}{rotulo}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">Os outros tipos de perfil chegam como pedido.</p>
+                </div>
+              )}
             </div>
           </div>
 

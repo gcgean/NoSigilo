@@ -82,7 +82,14 @@ type Conversation = {
   isHighlighted?: boolean;
   highlightNote?: string | null;
   highlightColor?: 'rose' | 'amber' | 'violet' | 'sky' | null;
+  /** Pedido de contato recebido (ainda não aceito). */
+  pedido?: boolean;
+  /** Pedido de contato que EU mandei e ainda não foi aceito. */
+  pedidoEnviado?: boolean;
+  pedidoDestaque?: boolean;
 };
+
+const CUSTO_DESTAQUE_PEDIDO = 20;
 
 function formatLastSeen(lastSeenAt: string | null | undefined, isOnline?: boolean): string {
   if (isOnline) return 'Online agora';
@@ -230,6 +237,9 @@ export default function Chat() {
   const stopTypingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [search, setSearch] = useState('');
   const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
+  // Conversas x Pedidos de contato (mensagens de quem você ainda não aceitou).
+  const [caixa, setCaixa] = useState<'conversas' | 'pedidos'>('conversas');
+  const [acaoPedido, setAcaoPedido] = useState(false);
   const [messageSearch, setMessageSearch] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -611,7 +621,7 @@ export default function Chat() {
   }, [message]);
 
   const unreadConversationsCount = useMemo(() => {
-    return conversations.filter(c => (c.unreadCount || 0) > 0).length;
+    return conversations.filter(c => !c.pedido && (c.unreadCount || 0) > 0).length;
   }, [conversations]);
 
   const isConversationNew = useCallback((conversation: Conversation) => {
@@ -634,7 +644,8 @@ export default function Chat() {
 
   const filteredConversations = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return conversations.filter((c) => {
+    const lista = conversations.filter((c) => {
+      if (caixa === 'pedidos' ? !c.pedido : c.pedido) return false;
       if (conversationTab === 'unread' && (c.unreadCount || 0) <= 0) return false;
       if (conversationTab === 'new' && !(isConversationNew(c) && (c.unreadCount || 0) > 0)) return false;
       if (showOnlyHighlighted && !c.isHighlighted) return false;
@@ -644,7 +655,12 @@ export default function Chat() {
         (c.highlightNote || '').toLowerCase().includes(q)
       );
     });
-  }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew]);
+    // Pedidos em destaque (pagos com tokens) vêm primeiro.
+    return caixa === 'pedidos'
+      ? [...lista].sort((a, b) => Number(!!b.pedidoDestaque) - Number(!!a.pedidoDestaque))
+      : lista;
+  }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew, caixa]);
+  const pedidosCount = useMemo(() => conversations.filter((c) => c.pedido).length, [conversations]);
 
   // Renderiza a lista em blocos: só o trecho visível vai para o DOM e o restante
   // entra conforme o usuário rola. Filtros, busca e contadores continuam
@@ -1264,6 +1280,32 @@ export default function Chat() {
               </Badge>
             )}
           </div>
+          {/* Conversas x Pedidos de contato */}
+          <div className="mb-3 grid grid-cols-2 rounded-xl bg-muted p-1 text-sm" role="tablist">
+            {(['conversas', 'pedidos'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                role="tab"
+                aria-selected={caixa === k}
+                onClick={() => setCaixa(k)}
+                className={cn(
+                  'flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors',
+                  caixa === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                )}
+              >
+                {k === 'conversas' ? 'Conversas' : 'Pedidos de contato'}
+                {k === 'pedidos' && pedidosCount > 0 && (
+                  <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{pedidosCount}</span>
+                )}
+              </button>
+            ))}
+          </div>
+          {caixa === 'pedidos' && (
+            <p className="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+              Aqui ficam mensagens de perfis que você ainda não conhece. Abra, e aceite o pedido para virar conversa — ou exclua. Quem mandou não fica sabendo se você excluiu.
+            </p>
+          )}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -2075,6 +2117,89 @@ export default function Chat() {
                 </span>
               </button>
             )}
+            {/* Pedido de contato recebido: aceitar ou excluir (responder também aceita). */}
+            {activeConversation?.pedido && (
+              <div className="mb-2 rounded-xl border border-primary/30 bg-primary/5 p-3 text-center">
+                <p className="text-sm font-semibold">Aceita o contato de {activeConversation.user.name}?</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Se aceitar, vocês conversam normalmente e {activeConversation.user.name} passa a ver quando você está online.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    className="h-11 text-destructive"
+                    disabled={acaoPedido}
+                    onClick={async () => {
+                      setAcaoPedido(true);
+                      try {
+                        await chatService.excluirPedido(activeConversation.id);
+                        setConversations((prev) => prev.filter((c) => c.id !== activeConversation.id));
+                        setSelectedChat(null);
+                        toast({ title: 'Pedido excluído' });
+                      } catch {
+                        toast({ title: 'Não foi possível excluir agora', variant: 'destructive' });
+                      } finally {
+                        setAcaoPedido(false);
+                      }
+                    }}
+                  >
+                    Excluir
+                  </Button>
+                  <Button
+                    className="h-11 bg-gradient-primary"
+                    disabled={acaoPedido}
+                    onClick={async () => {
+                      setAcaoPedido(true);
+                      try {
+                        await chatService.aceitarPedido(activeConversation.id);
+                        setConversations((prev) => prev.map((c) => (c.id === activeConversation.id ? { ...c, pedido: false } : c)));
+                        setCaixa('conversas');
+                        toast({ title: 'Pedido aceito ✅', description: 'Agora é uma conversa normal.' });
+                      } catch {
+                        toast({ title: 'Não foi possível aceitar agora', variant: 'destructive' });
+                      } finally {
+                        setAcaoPedido(false);
+                      }
+                    }}
+                  >
+                    Aceitar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Pedido que EU mandei: aguardando; pode destacar com tokens. */}
+            {activeConversation?.pedidoEnviado && (
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2">
+                <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+                  {activeConversation.pedidoDestaque
+                    ? '⭐ Seu pedido está em destaque no topo dos pedidos.'
+                    : `Sua mensagem chegou como pedido de contato. ${activeConversation.user.name} decide se aceita.`}
+                </p>
+                {!activeConversation.pedidoDestaque && (
+                  <Button
+                    size="sm"
+                    className="h-9 shrink-0 bg-amber-500 text-white hover:bg-amber-600"
+                    disabled={acaoPedido}
+                    onClick={async () => {
+                      setAcaoPedido(true);
+                      try {
+                        await chatService.destacarPedido(activeConversation.id);
+                        setConversations((prev) => prev.map((c) => (c.id === activeConversation.id ? { ...c, pedidoDestaque: true } : c)));
+                        toast({ title: '⭐ Pedido destacado!', description: `Ele aparece no topo dos pedidos de ${activeConversation.user.name}.` });
+                      } catch (e: any) {
+                        toast({ title: 'Não foi possível destacar', description: e?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+                      } finally {
+                        setAcaoPedido(false);
+                      }
+                    }}
+                  >
+                    ⭐ Destacar ({CUSTO_DESTAQUE_PEDIDO} tokens)
+                  </Button>
+                )}
+              </div>
+            )}
+
             {/* Reply preview — mensagem sendo respondida */}
             {replyingTo && (
               <div className="mb-1.5 flex items-center gap-2 rounded-xl border-l-2 border-primary bg-secondary/50 px-3 py-2">

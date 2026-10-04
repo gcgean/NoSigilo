@@ -564,6 +564,19 @@ export const radarService = {
 
 // Chat Service
 export const chatService = {
+  // Pedidos de contato.
+  aceitarPedido: async (conversationId: string) => {
+    const response = await apiClient.post(`/conversations/${encodeURIComponent(conversationId)}/pedido/aceitar`, {});
+    return response.data as { ok: true };
+  },
+  excluirPedido: async (conversationId: string) => {
+    const response = await apiClient.post(`/conversations/${encodeURIComponent(conversationId)}/pedido/excluir`, {});
+    return response.data as { ok: true };
+  },
+  destacarPedido: async (conversationId: string) => {
+    const response = await apiClient.post(`/conversations/${encodeURIComponent(conversationId)}/pedido/destacar`, {});
+    return response.data as { ok: true; balance?: number; custo?: number; jaDestacado?: boolean };
+  },
   getConversations: async () => {
     if (USE_MOCKS) {
       return [];
