@@ -183,6 +183,101 @@ export default function AdminExclusoes() {
             ))}
           </div>
 
+          {/* ── Exclusões por motivo ── */}
+          <Card className="p-5 glass">
+            <div className="flex items-start justify-between gap-4 mb-1">
+              <div>
+                <h3 className="font-semibold">Exclusões por motivo 💔</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Por que as pessoas excluíram a conta nos últimos {dados.dias} dias. Em vermelho, motivos que dependem do site (região vazia, pouca interação, perfis falsos, problemas técnicos); a % é sobre o total de exclusões do período.
+                </p>
+              </div>
+            </div>
+            {(dados.cardsPorMotivo ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground mt-4">Nenhuma exclusão no período.</p>
+            ) : (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {(dados.cardsPorMotivo ?? []).map((m, i) => {
+                  // Motivos que o produto pode resolver (não são "achei alguém" ou pausa).
+                  const doSite = ['no_one_in_region', 'few_active_users', 'fake_profiles', 'technical_issues', 'bad_experience'].includes(m.motivo);
+                  const bgClass = doSite ? 'bg-red-500/10 border-red-400/30' : 'bg-secondary/40 border-border';
+                  const textClass = doSite ? 'text-red-600' : 'text-muted-foreground';
+                  const rotulo = deletionReasonLabel(m.motivo);
+                  return (
+                    <div key={m.motivo} className={`rounded-xl border p-3 ${bgClass}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
+                          <p className="font-medium text-sm leading-snug">{rotulo}</p>
+                        </div>
+                        <div className={`text-right shrink-0 ${textClass}`}>
+                          <p className="text-lg font-bold leading-none">{m.exclusoes}</p>
+                          <p className="text-[10px] mt-1 text-muted-foreground">{m.pctDoTotal.toLocaleString('pt-BR')}% das exclusões</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+                        {m.premium > 0 && <p>{m.premium} eram assinantes</p>}
+                        {m.estadosTop.length > 0 && (
+                          <p className="truncate">Mais em: {m.estadosTop.map((e) => `${e.uf} (${e.qtd})`).join(' · ')}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* ── Exclusões por estado ── */}
+          <Card className="p-5 glass">
+            <div className="flex items-start justify-between gap-4 mb-1">
+              <div>
+                <h3 className="font-semibold">Exclusões por estado 🗑️</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Contas excluídas pelos próprios usuários nos últimos {dados.dias} dias, por UF. A % mostra quanto isso representa da base do estado; "a cada 100 novos" compara com os cadastros do mesmo período.
+                </p>
+              </div>
+            </div>
+            {(dados.cardsPorEstado ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground mt-4">Nenhuma exclusão com estado informado no período.</p>
+            ) : (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {(dados.cardsPorEstado ?? []).slice(0, 15).map((st, i) => {
+                  // Alerta quando sai muita gente em relação a quem entra.
+                  const critico = (st.saidasPor100Novos ?? 0) >= 25 || st.pctDoEstado >= 5;
+                  const atencao = !critico && ((st.saidasPor100Novos ?? 0) >= 10 || st.pctDoEstado >= 2);
+                  const bgClass = critico ? 'bg-red-500/10 border-red-400/30' : atencao ? 'bg-amber-500/10 border-amber-400/30' : 'bg-secondary/40 border-border';
+                  const textClass = critico ? 'text-red-600' : atencao ? 'text-amber-600' : 'text-muted-foreground';
+                  return (
+                    <div key={st.label} className={`rounded-xl border p-3 ${bgClass}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground mb-0.5">#{i + 1}</p>
+                          <p className="font-medium text-sm truncate">{st.label}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            <span className="font-medium">{st.exclusoes}</span> saíram &nbsp;·&nbsp; {st.novos} novos &nbsp;·&nbsp; {st.total} no total
+                          </p>
+                        </div>
+                        <div className={`text-right shrink-0 ${textClass}`}>
+                          <p className="text-lg font-bold leading-none">{critico ? '🚨' : '↓'} {st.exclusoes}</p>
+                          <p className="text-[10px] mt-1 text-muted-foreground">excluíram · {st.pctDoEstado.toLocaleString('pt-BR')}% do estado</p>
+                        </div>
+                      </div>
+                      <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+                        {st.saidasPor100Novos != null && (
+                          <p><span className={`font-semibold ${textClass}`}>{st.saidasPor100Novos}</span> saídas a cada 100 novos{st.premium > 0 ? ` · ${st.premium} eram assinantes` : ''}</p>
+                        )}
+                        <p className="truncate" title={deletionReasonLabel(st.motivoTop)}>
+                          Motivo nº 1: <span className="font-medium text-foreground/80">{deletionReasonLabel(st.motivoTop)}</span> ({st.motivoTopQtd})
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
           <Card className="p-4 space-y-3">
             <h4 className="font-semibold">Últimas saídas</h4>
             <div className="space-y-2">

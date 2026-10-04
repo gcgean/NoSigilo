@@ -1064,6 +1064,14 @@ export type RelatorioExclusoes = {
   motivo: string | null;
   total: number;
   eramPremium: number;
+  cardsPorEstado?: Array<{
+    label: string; exclusoes: number; premium: number; novos: number; total: number;
+    pctDoEstado: number; saidasPor100Novos: number | null; motivoTop: string; motivoTopQtd: number;
+  }>;
+  cardsPorMotivo?: Array<{
+    motivo: string; exclusoes: number; premium: number; pctDoTotal: number;
+    estadosTop: Array<{ uf: string; qtd: number }>;
+  }>;
   mediaDeVidaEmDias: number | null;
   porMotivo: Array<{ motivo: string; total: number; pct: number }>;
   porDia: Array<{ dia: string; total: number }>;

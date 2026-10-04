@@ -17025,11 +17025,85 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const vidas = recentes.map((r) => diasDeVida(r.cadastrado_em, r.created_at)).filter((v): v is number => v !== null);
       const mediaDeVida = vidas.length ? Math.round(vidas.reduce((a, b) => a + b, 0) / vidas.length) : null;
 
+      // Cards "por estado" e "por motivo" (mesmo estilo de "Estados em
+      // crescimento"). Base do estado = usuários ativos de lá + novos no período.
+      const exclusoesUfMotivo = (await queryAll(
+        db,
+        `SELECT UPPER(TRIM(COALESCE(state, ''))) AS uf,
+                COALESCE(NULLIF(reason_code, ''), 'not_informed') AS motivo,
+                COUNT(*) AS qtd,
+                SUM(CASE WHEN was_premium = 1 THEN 1 ELSE 0 END) AS premium
+           FROM account_deletions
+          WHERE created_at >= ?
+          GROUP BY 1, 2`,
+        [desde]
+      )) as any[];
+      const baseUf = (await queryAll(
+        db,
+        `SELECT UPPER(TRIM(state)) AS uf, COUNT(*) AS total,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS novos
+           FROM users
+          WHERE deleted_at IS NULL AND COALESCE(is_showcase, 0) = 0
+            AND state IS NOT NULL AND TRIM(state) <> ''
+          GROUP BY 1`,
+        [desde]
+      )) as any[];
+      const basePorUf = new Map(baseUf.map((r) => [String(r.uf), { total: n(r.total), novos: n(r.novos) }]));
+
+      const ufAgg = new Map<string, { qtd: number; premium: number; motivos: Map<string, number> }>();
+      const motivoAgg = new Map<string, { qtd: number; premium: number; ufs: Map<string, number> }>();
+      for (const r of exclusoesUfMotivo) {
+        const uf = String(r.uf || '');
+        const m = String(r.motivo);
+        const qtd = n(r.qtd);
+        const prem = n(r.premium);
+        const em = motivoAgg.get(m) || { qtd: 0, premium: 0, ufs: new Map<string, number>() };
+        em.qtd += qtd; em.premium += prem;
+        if (uf) em.ufs.set(uf, (em.ufs.get(uf) || 0) + qtd);
+        motivoAgg.set(m, em);
+        if (!uf) continue;
+        const eu = ufAgg.get(uf) || { qtd: 0, premium: 0, motivos: new Map<string, number>() };
+        eu.qtd += qtd; eu.premium += prem;
+        eu.motivos.set(m, (eu.motivos.get(m) || 0) + qtd);
+        ufAgg.set(uf, eu);
+      }
+      const totalExclusoes = Array.from(motivoAgg.values()).reduce((s, e) => s + e.qtd, 0);
+      const cardsPorEstado = Array.from(ufAgg.entries())
+        .map(([uf, e]) => {
+          const base = basePorUf.get(uf) || { total: 0, novos: 0 };
+          const [motivoTop, motivoTopQtd] = [...e.motivos.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['not_informed', 0];
+          const base100 = base.total + e.qtd;
+          return {
+            label: uf,
+            exclusoes: e.qtd,
+            premium: e.premium,
+            novos: base.novos,
+            total: base.total,
+            pctDoEstado: base100 > 0 ? Number(((e.qtd / base100) * 100).toFixed(1)) : 0,
+            saidasPor100Novos: base.novos > 0 ? Math.round((e.qtd / base.novos) * 100) : null,
+            motivoTop,
+            motivoTopQtd,
+          };
+        })
+        .sort((a, b) => b.exclusoes - a.exclusoes)
+        .slice(0, 30);
+      const cardsPorMotivo = Array.from(motivoAgg.entries())
+        .map(([motivo, e]) => ({
+          motivo,
+          exclusoes: e.qtd,
+          premium: e.premium,
+          pctDoTotal: totalExclusoes > 0 ? Number(((e.qtd / totalExclusoes) * 100).toFixed(1)) : 0,
+          estadosTop: [...e.ufs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([uf, qtd]) => ({ uf, qtd })),
+        }))
+        .sort((a, b) => b.exclusoes - a.exclusoes);
+
       res.json({
         dias,
         motivo: motivo || null,
         total: totalGeral,
         eramPremium: n(eramPremium?.c),
+        cardsPorEstado,
+        cardsPorMotivo,
         mediaDeVidaEmDias: mediaDeVida,
         porMotivo: porMotivo.map((l) => ({
           motivo: String(l.motivo),
@@ -17802,28 +17876,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const growthPeriodDays = cityUsersPeriodDays || 30;
       const growthFromIso = cityUsersFromIso || thirtyDaysAgoIso;
 
-      // Exclusões de conta por UF no mesmo período do card de crescimento:
-      // quantas, quantas eram assinantes e o motivo mais comum.
-      const exclusoesUfRows = (await queryAll(
-        db,
-        `SELECT UPPER(TRIM(state)) AS uf, reason_code, COUNT(*) AS qtd,
-                SUM(CASE WHEN was_premium = 1 THEN 1 ELSE 0 END) AS premium
-           FROM account_deletions
-          WHERE created_at >= ? AND state IS NOT NULL AND TRIM(state) <> ''
-          GROUP BY UPPER(TRIM(state)), reason_code`,
-        [growthFromIso]
-      )) as any[];
-      // Por motivo: todas as exclusões do período, com ou sem estado.
-      const exclusoesMotivoRows = (await queryAll(
-        db,
-        `SELECT UPPER(TRIM(COALESCE(state, ''))) AS uf, reason_code, COUNT(*) AS qtd,
-                SUM(CASE WHEN was_premium = 1 THEN 1 ELSE 0 END) AS premium
-           FROM account_deletions
-          WHERE created_at >= ?
-          GROUP BY UPPER(TRIM(COALESCE(state, ''))), reason_code`,
-        [growthFromIso]
-      )) as any[];
-
       const presence = req.app.get('presence') as undefined | { countOnline?: () => number };
 
       // created_at é texto ISO em UTC. Para "hora/dia local" (horário de Brasília,
@@ -18232,73 +18284,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           };
         }),
         growthPeriodDays,
-        deletionsByReason: (() => {
-          // Mesma consulta das exclusões por UF, agrupada por motivo. Inclui
-          // exclusões sem estado informado (contam no total do motivo).
-          const agg = new Map<string, { qtd: number; premium: number; ufs: Map<string, number> }>();
-          for (const r of exclusoesMotivoRows) {
-            const motivo = String(r.reason_code || '') || 'nao_informado';
-            const e = agg.get(motivo) || { qtd: 0, premium: 0, ufs: new Map<string, number>() };
-            e.qtd += Number(r.qtd || 0);
-            e.premium += Number(r.premium || 0);
-            const uf = String(r.uf || '').trim();
-            if (uf) e.ufs.set(uf, (e.ufs.get(uf) || 0) + Number(r.qtd || 0));
-            agg.set(motivo, e);
-          }
-          const total = Array.from(agg.values()).reduce((s, e) => s + e.qtd, 0);
-          return Array.from(agg.entries())
-            .map(([motivo, e]) => ({
-              motivo,
-              exclusoes: e.qtd,
-              premium: e.premium,
-              pctDoTotal: total > 0 ? Number(((e.qtd / total) * 100).toFixed(1)) : 0,
-              estadosTop: [...e.ufs.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([uf, qtd]) => ({ uf, qtd })),
-            }))
-            .sort((a, b) => b.exclusoes - a.exclusoes);
-        })(),
-        deletionsByState: (() => {
-          // Total e novos do estado vêm da mesma fonte do card de crescimento.
-          const porUf = new Map<string, { novos: number; total: number }>();
-          for (const row of (cityGrowthRows as any[])) {
-            const uf = String(row.uf || '').trim().toUpperCase();
-            if (!uf) continue;
-            const e = porUf.get(uf) || { novos: 0, total: 0 };
-            e.novos += Number(row.novos || 0);
-            e.total += Number(row.total || 0);
-            porUf.set(uf, e);
-          }
-          const agg = new Map<string, { qtd: number; premium: number; motivos: Map<string, number> }>();
-          for (const r of exclusoesUfRows) {
-            const uf = String(r.uf || '');
-            const e = agg.get(uf) || { qtd: 0, premium: 0, motivos: new Map<string, number>() };
-            e.qtd += Number(r.qtd || 0);
-            e.premium += Number(r.premium || 0);
-            const motivo = String(r.reason_code || 'other');
-            e.motivos.set(motivo, (e.motivos.get(motivo) || 0) + Number(r.qtd || 0));
-            agg.set(uf, e);
-          }
-          return Array.from(agg.entries())
-            .map(([uf, e]) => {
-              const base = porUf.get(uf) || { novos: 0, total: 0 };
-              const [motivoTop, motivoQtd] = [...e.motivos.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['other', 0];
-              // % sobre a base do estado (quem ainda está + quem saiu no período).
-              const base100 = base.total + e.qtd;
-              return {
-                label: uf,
-                exclusoes: e.qtd,
-                premium: e.premium,
-                novos: base.novos,
-                total: base.total,
-                pctDoEstado: base100 > 0 ? Number(((e.qtd / base100) * 100).toFixed(1)) : 0,
-                // Para cada 100 cadastros novos, quantos saíram.
-                saidasPor100Novos: base.novos > 0 ? Math.round((e.qtd / base.novos) * 100) : null,
-                motivoTop,
-                motivoTopQtd: motivoQtd,
-              };
-            })
-            .sort((a, b) => b.exclusoes - a.exclusoes)
-            .slice(0, 30);
-        })(),
         growingStates: (() => {
           // Mesma fonte de dados do card de cidades (cityGrowthRows), só que
           // agregada por UF em vez de por cidade — não precisa de outra
