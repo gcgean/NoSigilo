@@ -1213,6 +1213,26 @@ export const adminRitmoService = {
   },
 };
 
+export type ResumoPedidos = {
+  total: number; aceitos: number; excluidos: number; aguardando: number; ignorados: number;
+  taxaAceite: number | null; medianaHorasAteAceitar: number | null;
+};
+export type RelatorioPedidos = {
+  dias: number;
+  geral: ResumoPedidos;
+  comDestaque: ResumoPedidos;
+  semDestaque: ResumoPedidos;
+  destaque: { vendidos: number; tokensGastos: number; custoPorDestaque: number };
+  porTipo: Array<ResumoPedidos & { tipo: string }>;
+};
+
+export const adminPedidosService = {
+  relatorio: async (dias: number): Promise<RelatorioPedidos> => {
+    const response = await apiClient.get('/admin/analytics/pedidos', { params: { dias } });
+    return response.data;
+  },
+};
+
 export const adminExclusoesService = {
   relatorio: async (dias: number, motivo?: string): Promise<RelatorioExclusoes> => {
     const response = await apiClient.get('/admin/analytics/exclusoes', { params: { dias, motivo } });

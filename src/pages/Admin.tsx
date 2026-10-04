@@ -28,6 +28,7 @@ import AdminRankingPromotores from '@/components/AdminRankingPromotores';
 import AdminContos from '@/components/AdminContos';
 import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
+import AdminPedidos from '@/components/AdminPedidos';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -1523,6 +1524,7 @@ export default function Admin() {
             <h3 className="font-semibold mb-6">Dashboard de Métricas</h3>
             <AdminMetrics />
           </div>
+          <AdminPedidos />
         </TabsContent>
 
         <TabsContent value="photos">

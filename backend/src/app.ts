@@ -17152,6 +17152,72 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // Quem está saindo: motivos, evolução por semana e o perfil de quem sai.
+  // Pedidos de contato: funil (aceitos, excluídos, aguardando, ignorados), tempo
+  // até aceitar e se o destaque pago com tokens faz diferença na resposta.
+  app.get('/api/admin/analytics/pedidos', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const pedido = Number(req.query.dias || 30);
+    const dias = [7, 14, 30, 90].includes(pedido) ? pedido : 30;
+    const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+    const seteDiasAtras = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const linhas = (await queryAll(
+      db,
+      `SELECT c.created_at, c.pedido_aceito_em, c.pedido_recusado_em, c.pedido_destaque_em, u.gender AS genero_destino
+         FROM conversations c
+         JOIN users u ON u.id = c.pedido_para
+        WHERE c.pedido_para IS NOT NULL AND c.created_at >= ?
+          -- Só conta pedido que de fato recebeu mensagem.
+          AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)`,
+      [desde]
+    )) as any[];
+
+    type Grupo = { total: number; aceitos: number; excluidos: number; aguardando: number; ignorados: number; horasAteAceitar: number[] };
+    const novo = (): Grupo => ({ total: 0, aceitos: 0, excluidos: 0, aguardando: 0, ignorados: 0, horasAteAceitar: [] });
+    const geral = novo();
+    const comDestaque = novo();
+    const semDestaque = novo();
+    const porTipo = new Map<string, Grupo>();
+    const somar = (g: Grupo, l: any) => {
+      g.total += 1;
+      if (l.pedido_aceito_em) {
+        g.aceitos += 1;
+        const h = (new Date(String(l.pedido_aceito_em)).getTime() - new Date(String(l.created_at)).getTime()) / 3_600_000;
+        if (Number.isFinite(h) && h >= 0) g.horasAteAceitar.push(h);
+      } else if (l.pedido_recusado_em) g.excluidos += 1;
+      else if (String(l.created_at) < seteDiasAtras) g.ignorados += 1;
+      else g.aguardando += 1;
+    };
+    for (const l of linhas) {
+      somar(geral, l);
+      somar(l.pedido_destaque_em ? comDestaque : semDestaque, l);
+      const tipo = categoriaDoPerfil(l.genero_destino);
+      if (!porTipo.has(tipo)) porTipo.set(tipo, novo());
+      somar(porTipo.get(tipo)!, l);
+    }
+    const resumo = (g: Grupo) => {
+      const ordenadas = [...g.horasAteAceitar].sort((a, b) => a - b);
+      const decididos = g.aceitos + g.excluidos + g.ignorados;
+      return {
+        total: g.total,
+        aceitos: g.aceitos,
+        excluidos: g.excluidos,
+        aguardando: g.aguardando,
+        ignorados: g.ignorados,
+        // Sobre os já decididos (aceitos + excluídos + ignorados há 7+ dias).
+        taxaAceite: decididos > 0 ? Math.round((g.aceitos / decididos) * 1000) / 10 : null,
+        medianaHorasAteAceitar: ordenadas.length ? Math.round(ordenadas[Math.floor(ordenadas.length / 2)] * 10) / 10 : null,
+      };
+    };
+    const destaques = comDestaque.total;
+    res.json({
+      dias,
+      geral: resumo(geral),
+      comDestaque: resumo(comDestaque),
+      semDestaque: resumo(semDestaque),
+      destaque: { vendidos: destaques, tokensGastos: destaques * DESTAQUE_PEDIDO_TOKENS, custoPorDestaque: DESTAQUE_PEDIDO_TOKENS },
+      porTipo: [...porTipo.entries()].map(([tipo, g]) => ({ tipo, ...resumo(g) })).sort((a, b) => b.total - a.total),
+    });
+  });
+
   app.get('/api/admin/analytics/exclusoes', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const pedido = Number(req.query.dias || 30);
