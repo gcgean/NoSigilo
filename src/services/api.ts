@@ -45,6 +45,15 @@ export const appService = {
 
 // Auth Service
 export const authService = {
+  // Trocar o e-mail da conta: senha atual + código enviado ao e-mail novo.
+  trocarEmail: async (novoEmail: string, senha: string) => {
+    const response = await apiClient.post('/auth/email/trocar', { novoEmail, senha });
+    return response.data as { challengeId: string; emailMasked: string | null; previewCode?: string };
+  },
+  confirmarTrocaDeEmail: async (challengeId: string, code: string) => {
+    const response = await apiClient.post('/auth/email/confirmar', { challengeId, code });
+    return response.data as { ok: true; email: string };
+  },
   login: async (email: string, password: string, deviceToken?: string) => {
     if (USE_MOCKS) {
       return { token: 'mock-token', user: { id: '1', email, name: 'Mock User' } };

@@ -6,6 +6,7 @@ import {
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import TrocarEmail from '@/components/TrocarEmail';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -1694,6 +1695,8 @@ export default function Settings() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-6">
+          {user?.email && <TrocarEmail emailAtual={String(user.email)} />}
+
           {user?.email && (
             <div
               id="duas-etapas"

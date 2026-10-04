@@ -3067,6 +3067,30 @@ describe('nosigilo backend', () => {
     await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
   });
 
+  // Trocar e-mail: senha atual + código enviado ao e-mail novo.
+  it('troca de e-mail pede senha, recusa e-mail em uso e troca com o codigo', async () => {
+    const dono = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Troca Email', email: 'troca-email@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Outro Email', email: 'ocupado@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const D = { Authorization: `Bearer ${dono.token}` };
+
+    await request(ctx.app).post('/api/auth/email/trocar').set(D).send({ novoEmail: 'novo@example.com', senha: 'errada' }).expect(400);
+    await request(ctx.app).post('/api/auth/email/trocar').set(D).send({ novoEmail: 'ocupado@example.com', senha: 'senha123' }).expect(409);
+
+    const pedido = await request(ctx.app).post('/api/auth/email/trocar').set(D).send({ novoEmail: 'Novo@Example.com', senha: 'senha123' }).expect(200);
+    expect(pedido.body.challengeId).toBeTruthy();
+    expect(pedido.body.previewCode).toMatch(/^\d{6}$/);
+
+    await request(ctx.app).post('/api/auth/email/confirmar').set(D).send({ challengeId: pedido.body.challengeId, code: '000000' === pedido.body.previewCode ? '111111' : '000000' }).expect(400);
+    const ok = await request(ctx.app).post('/api/auth/email/confirmar').set(D).send({ challengeId: pedido.body.challengeId, code: pedido.body.previewCode }).expect(200);
+    expect(ok.body.email).toBe('novo@example.com');
+    const linha = (await queryOne(ctx.db, 'SELECT email FROM users WHERE id = ?', [String(dono.user.id)])) as any;
+    expect(linha.email).toBe('novo@example.com');
+  });
+
   // Vídeo processando em segundo plano: o post só aparece para os outros
   // quando o vídeo terminar; o autor vê o dele (no perfil) desde já.
   it('post com video ainda processando fica escondido dos outros e visivel para o autor', async () => {

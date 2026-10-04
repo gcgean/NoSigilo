@@ -1343,15 +1343,17 @@ async function enviarPorResend(options: SendPasswordResetCodeOptions, to: string
 /** Código de 6 dígitos: entrar num aparelho novo ou ligar a verificação. */
 export async function sendTwoFactorCodeEmail(
   options: SendPasswordResetCodeOptions,
-  payload: { to: string; code: string; userName?: string | null; motivo: 'login' | 'ativar' }
+  payload: { to: string; code: string; userName?: string | null; motivo: 'login' | 'ativar' | 'trocar_email' }
 ) {
   const appName = options.appName || 'NoSigilo';
   const safeCode = escapeHtml(payload.code);
   const safeName = payload.userName ? escapeHtml(payload.userName) : 'você';
-  const frase = payload.motivo === 'ativar'
+  const frase = payload.motivo === 'trocar_email'
+    ? 'Você pediu para usar este endereço na sua conta. Use este código para confirmar a troca de e-mail:'
+    : payload.motivo === 'ativar'
     ? 'Use este código para confirmar seu e-mail e ligar a verificação em duas etapas:'
     : 'Alguém entrou com a sua senha num aparelho novo. Se foi você, use este código para concluir:';
-  const aviso = payload.motivo === 'ativar'
+  const aviso = payload.motivo === 'ativar' || payload.motivo === 'trocar_email'
     ? 'Se você não pediu isso, pode ignorar este e-mail.'
     : '<strong>Se não foi você, troque sua senha agora</strong> — a verificação impediu o acesso, mas a sua senha é conhecida por outra pessoa.';
   const html = `
@@ -1367,7 +1369,9 @@ export async function sendTwoFactorCodeEmail(
         <p style="font-size:14px; line-height:1.6; margin:0; color:#6b4b57;">${aviso}</p>
       </div>
     </div>`.trim();
-  const assunto = payload.motivo === 'ativar'
+  const assunto = payload.motivo === 'trocar_email'
+    ? `${appName}: código para confirmar seu novo e-mail`
+    : payload.motivo === 'ativar'
     ? `${appName}: código para ligar a verificação em duas etapas`
     : `${appName}: código para entrar num aparelho novo`;
   return enviarPorResend(options, payload.to, assunto, html);

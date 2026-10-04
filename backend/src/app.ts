@@ -3717,7 +3717,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     return true;
   }
 
-  async function criarDesafioDoisFatores(usuario: any, purpose: 'login' | 'ativar'):
+  async function criarDesafioDoisFatores(usuario: any, purpose: 'login' | 'ativar' | 'trocar_email'):
     Promise<{ id: string; previewCode?: string } | { erro: true }> {
     if (process.env.NODE_ENV === 'production' && (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL)) return { erro: true };
     const code = generateVerificationCode();
@@ -3744,7 +3744,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   }
 
   /** Confere o código. Erro conta tentativa; na quinta, o código morre. */
-  async function conferirDesafio(challengeId: string, purpose: 'login' | 'ativar', code: string, userId?: string):
+  async function conferirDesafio(challengeId: string, purpose: 'login' | 'ativar' | 'trocar_email', code: string, userId?: string):
     Promise<{ ok: true; userId: string } | { ok: false; motivo: 'invalido' | 'expirado' | 'esgotado' }> {
     const desafio = (await queryOne(db, 'SELECT * FROM two_factor_codes WHERE id = ? AND purpose = ? LIMIT 1', [challengeId, purpose])) as any;
     if (!desafio || desafio.consumed_at || (userId && String(desafio.user_id) !== userId)) return { ok: false, motivo: 'expirado' };
@@ -3877,6 +3877,53 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const deviceToken = await confiarNoAparelho(req.auth!.userId, String(req.headers['user-agent'] || ''));
     await persist();
     res.json({ ok: true, deviceToken });
+  });
+
+  // ─── Trocar o e-mail da conta ─────────────────────────────────────────────
+  // Pedido dos usuários (sugestão de 29/09/2026: "cadastrei nosso e-mail
+  // errado"). Pede a senha atual e confirma com um código enviado ao e-mail
+  // NOVO — prova que a pessoa digitou certo e que o endereço é dela.
+  app.post('/api/auth/email/trocar', requireAuth(env, db), authRateLimiter, async (req, res) => {
+    const parsed = z.object({ novoEmail: z.string().trim().email().max(200), senha: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Digite um e-mail válido e a sua senha.' }); return; }
+    const novoEmail = parsed.data.novoEmail.toLowerCase();
+    const u = (await queryOne(db, 'SELECT id, email, name, password_hash FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    if (!u?.password_hash) {
+      res.status(400).json({ error: 'no_password', message: 'Sua conta entra pelo Google. Para trocar o e-mail, fale com o suporte.' });
+      return;
+    }
+    // 400 (não 401): 401 faz o app deslogar a pessoa.
+    if (!(await bcrypt.compare(parsed.data.senha, String(u.password_hash)))) {
+      res.status(400).json({ error: 'wrong_password', message: 'Senha incorreta.' });
+      return;
+    }
+    if (novoEmail === String(u.email || '').toLowerCase()) {
+      res.status(400).json({ error: 'same_email', message: 'Esse já é o e-mail da sua conta.' });
+      return;
+    }
+    const emUso = await queryOne(db, 'SELECT 1 AS x FROM users WHERE LOWER(email) = ? AND id <> ? LIMIT 1', [novoEmail, req.auth!.userId]);
+    if (emUso) { res.status(409).json({ error: 'email_in_use', message: 'Esse e-mail já está em uso em outra conta.' }); return; }
+
+    const desafio = await criarDesafioDoisFatores({ ...u, email: novoEmail }, 'trocar_email');
+    if ('erro' in desafio) { res.status(500).json({ error: 'email_send_failed', message: 'Não foi possível enviar o código agora. Tente de novo em instantes.' }); return; }
+    await setSystemSetting(db, `troca_email:${desafio.id}`, novoEmail);
+    res.json({ challengeId: desafio.id, emailMasked: mascararEmail(novoEmail), ...(desafio.previewCode ? { previewCode: desafio.previewCode } : {}) });
+  });
+
+  app.post('/api/auth/email/confirmar', requireAuth(env, db), authRateLimiter, async (req, res) => {
+    const parsed = z.object({ challengeId: z.string().min(1).max(64), code: z.string().trim().regex(/^\d{6}$/) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Digite os 6 números do código.' }); return; }
+    const r = await conferirDesafio(parsed.data.challengeId, 'trocar_email', parsed.data.code, req.auth!.userId);
+    if (!r.ok) { res.status(400).json({ error: `code_${r.motivo}`, message: mensagemDoMotivo[r.motivo] }); return; }
+    const chave = `troca_email:${parsed.data.challengeId}`;
+    const novoEmail = String((await getSystemSetting(db, chave)) || '').toLowerCase();
+    if (!novoEmail) { res.status(400).json({ error: 'code_expirado', message: mensagemDoMotivo.expirado }); return; }
+    const emUso = await queryOne(db, 'SELECT 1 AS x FROM users WHERE LOWER(email) = ? AND id <> ? LIMIT 1', [novoEmail, req.auth!.userId]);
+    if (emUso) { res.status(409).json({ error: 'email_in_use', message: 'Esse e-mail já está em uso em outra conta.' }); return; }
+    await run(db, 'UPDATE users SET email = ? WHERE id = ?', [novoEmail, req.auth!.userId]);
+    await setSystemSetting(db, chave, '');
+    await persist();
+    res.json({ ok: true, email: novoEmail });
   });
 
   // Desligar pede a senha: quem pegou um aparelho logado não desliga sozinho.
