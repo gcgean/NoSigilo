@@ -1256,6 +1256,14 @@ export const adminTelegramService = {
     const response = await apiClient.post('/admin/telegram-avisos/teste', { userId });
     return response.data as { ok: boolean };
   },
+  gerarLink: async (userId: string) => {
+    const response = await apiClient.post('/admin/telegram-avisos/link', { userId });
+    return response.data as { url: string };
+  },
+  desconectar: async (userId: string) => {
+    const response = await apiClient.post('/admin/telegram-avisos/desconectar', { userId });
+    return response.data as { ok: boolean };
+  },
 };
 
 export const adminExclusoesService = {

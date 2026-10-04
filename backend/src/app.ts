@@ -16953,6 +16953,28 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true, avisos: escolhas[parsed.data.userId] });
   });
 
+  // Link de conexão do Telegram para um admin (o próprio ou um colega, que
+  // recebe o link e toca em Iniciar no bot). Mesmo fluxo de Configurações.
+  app.post('/api/admin/telegram-avisos/link', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const userId = String(req.body?.userId || '');
+    const admin = await queryOne(db, 'SELECT 1 AS x FROM users WHERE id = ? AND is_admin = 1', [userId]);
+    if (!admin) { res.status(404).json({ error: 'not_found' }); return; }
+    const token = randomUUID().replace(/-/g, '');
+    await run(db, 'UPDATE users SET telegram_link_token = ? WHERE id = ?', [token, userId]);
+    await persist();
+    const botUsername = String(env.TELEGRAM_BOT_USERNAME || 'NosigiloNetBot');
+    res.json({ url: `https://t.me/${botUsername}?start=${token}` });
+  });
+
+  app.post('/api/admin/telegram-avisos/desconectar', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const userId = String(req.body?.userId || '');
+    const admin = await queryOne(db, 'SELECT 1 AS x FROM users WHERE id = ? AND is_admin = 1', [userId]);
+    if (!admin) { res.status(404).json({ error: 'not_found' }); return; }
+    await run(db, 'UPDATE users SET telegram_chat_id = NULL, telegram_link_token = NULL WHERE id = ?', [userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
   app.post('/api/admin/telegram-avisos/teste', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const userId = String(req.body?.userId || '');
     const admin = (await queryOne(db, 'SELECT name FROM users WHERE id = ? AND is_admin = 1', [userId])) as any;
