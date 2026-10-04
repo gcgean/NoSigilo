@@ -3067,6 +3067,42 @@ describe('nosigilo backend', () => {
     await request(ctx.app).delete(`/api/mural/${id}`).set(D).expect(200);
   });
 
+  // Compra de tokens: o aviso de pagamento do produto Tokens credita uma vez só,
+  // e token comprado não vira dia de Premium.
+  it('compra de tokens: credita uma vez e nao vira dia de premium', async () => {
+    const comprador = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Comprador Tokens', email: 'comprador-tokens@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const uid = String(comprador.user.id);
+    await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('tokens_produto_id', 'prod-tokens-teste', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", [new Date().toISOString()]);
+    await run(ctx.db, 'UPDATE users SET hub_customer_id = ? WHERE id = ?', ['cus-tokens-teste', uid]);
+    await run(
+      ctx.db,
+      "INSERT INTO compras_tokens (id, user_id, pacote, tokens, valor_cents, metodo, order_id, status, criado_em) VALUES ('compra-1', ?, 'p150', 150, 990, 'PIX', 'ord-tokens-1', 'pendente', ?)",
+      [uid, new Date().toISOString()]
+    );
+    const antes = (await queryOne(ctx.db, 'SELECT COALESCE(token_points,0) AS p, COALESCE(token_free_days,0) AS d FROM users WHERE id = ?', [uid])) as any;
+
+    const avisar = async () => {
+      const corpo = { customerId: 'cus-tokens-teste', productId: 'prod-tokens-teste', payload: { originType: 'order', originId: 'ord-tokens-1', amount: 990 } };
+      const bruto = JSON.stringify(corpo);
+      const assinatura = createHmac('sha256', HUB_WEBHOOK_SECRET_TESTE).update(Buffer.from(bruto)).digest('hex');
+      await request(ctx.app).post('/api/webhooks/hub-billing')
+        .set('x-hub-event', 'payment.approved').set('x-hub-signature', `sha256=${assinatura}`)
+        .set('Content-Type', 'application/json').send(corpo).expect(200);
+      await new Promise((r) => setTimeout(r, 150)); // o webhook processa depois de responder
+    };
+    await avisar();
+    await avisar(); // repetido: não credita de novo
+
+    const depois = (await queryOne(ctx.db, 'SELECT COALESCE(token_points,0) AS p, COALESCE(tokens_comprados,0) AS c, COALESCE(token_free_days,0) AS d FROM users WHERE id = ?', [uid])) as any;
+    expect(Number(depois.p) - Number(antes.p)).toBe(150);
+    expect(Number(depois.c)).toBe(150);
+    expect(Number(depois.d)).toBe(Number(antes.d)); // 150 comprados não viraram dia
+    const compra = (await queryOne(ctx.db, "SELECT status FROM compras_tokens WHERE id = 'compra-1'")) as any;
+    expect(compra.status).toBe('paga');
+  });
+
   // Pedidos de contato: mulher/casal recebe mensagem de desconhecido como pedido.
   it('pedido de contato: mensagem de desconhecido vira pedido, aceitar vira conversa', async () => {
     const ela = await registerInvitedUser(ctx, sponsorToken, {

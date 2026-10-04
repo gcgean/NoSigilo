@@ -588,9 +588,10 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
       [rule.points, rule.points, userId]
     );
 
-    // Conversão automática: cada 100 pontos vira 1 dia grátis
+    // Conversão automática: cada 100 pontos vira 1 dia grátis. Só a parte
+    // GANHA converte — tokens comprados (tokens_comprados) nunca viram dias.
     let freeDaysGranted = 0;
-    const balRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
+    const balRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) - COALESCE(tokens_comprados,0) AS p FROM users WHERE id = ?', [userId])) as any;
     let balance = Number(balRow?.p || 0);
     while (balance >= POINTS_PER_FREE_DAY) {
       freeDaysGranted += 1;
@@ -659,7 +660,14 @@ async function spendTokens(
   )) as any;
   if (paid) return { ok: true, charged: false, balance: balance0 };
   if (balance0 < cost) return { ok: false, charged: false, balance: balance0 };
-  await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ? WHERE id = ?', [cost, userId]);
+  // Gasta primeiro a parte comprada (que não vira dia de Premium).
+  await run(
+    db,
+    `UPDATE users SET token_points = COALESCE(token_points,0) - ?,
+       tokens_comprados = CASE WHEN COALESCE(tokens_comprados,0) > ? THEN tokens_comprados - ? ELSE 0 END
+     WHERE id = ?`,
+    [cost, cost, cost, userId]
+  );
   await run(
     db,
     'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -707,7 +715,7 @@ async function settleRankingMonth(db: DbHandle, env: Env, io: SocketIOServer | u
       db,
       `SELECT u.id, u.name, COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) AS total
        FROM users u
-       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.created_at < ? AND t.action_type != 'gift_received'
+       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.created_at < ? AND t.action_type NOT IN ('gift_received', 'compra_tokens')
        WHERE (u.is_admin = 0 OR u.is_admin IS NULL) AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND ${cat.cond}
        GROUP BY u.id, u.name, u.created_at
@@ -8974,7 +8982,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const row = (await queryOne(
       db,
-      'SELECT COALESCE(token_points,0) AS points, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days, boost_until FROM users WHERE id = ?',
+      'SELECT COALESCE(token_points,0) AS points, COALESCE(tokens_comprados,0) AS comprados, COALESCE(token_points_total,0) AS total, COALESCE(token_free_days,0) AS free_days, boost_until FROM users WHERE id = ?',
       [userId]
     )) as any;
     const history = (await queryAll(
@@ -8990,7 +8998,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       total: Number(row?.total || 0),
       freeDays: Number(row?.free_days || 0),
       pointsPerDay: POINTS_PER_FREE_DAY,
-      nextDayProgress: points % POINTS_PER_FREE_DAY,
+      // Só a parte ganha conta para o próximo dia grátis; comprados não viram dia.
+      nextDayProgress: Math.max(0, points - Number(row?.comprados || 0)) % POINTS_PER_FREE_DAY,
+      comprados: Number(row?.comprados || 0),
       boostUntil: boostActive ? boostUntilRaw : null,
       boostCost: BOOST_COST,
       boostHours: BOOST_HOURS,
@@ -9017,7 +9027,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `SELECT u.id, u.name, u.avatar, u.gender,
               COALESCE(SUM(CASE WHEN t.points > 0 THEN t.points ELSE 0 END), 0) AS total
        FROM users u
-       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.action_type != 'gift_received'
+       JOIN token_transactions t ON t.user_id = u.id AND t.created_at >= ? AND t.action_type NOT IN ('gift_received', 'compra_tokens')
        WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
          AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND ${genderCond}
@@ -9046,6 +9056,119 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Transfere tokens do remetente para o destinatário (com mensagem opcional).
   // O destinatário recebe notificação in-app + push; tokens recebidos contam no
   // saldo/total e podem virar dia grátis, mas são EXCLUÍDOS do ranking (anti-farm).
+  // ─── Compra de tokens ──────────────────────────────────────────────────────
+  // Produto próprio no Hub ("Tokens"), separado do NOSIGILO: pedido avulso pago
+  // emite licença do PRODUTO, e no NOSIGILO isso daria Premium a quem só comprou
+  // tokens. Tokens comprados não viram dias (users.tokens_comprados); servem para
+  // destaques e presentes. Produto e pacotes ficam em system_settings.
+  type PacoteTokens = { id: string; planId: string; tokens: number; valorCents: number; rotulo: string; maisVendido?: boolean };
+  const configTokens = async () => {
+    const produtoId = String((await getSystemSetting(db, 'tokens_produto_id')) || '');
+    const lista = safeJsonParse(await getSystemSetting(db, 'tokens_pacotes'));
+    const pacotes = (Array.isArray(lista) ? lista : []) as PacoteTokens[];
+    return { produtoId, pacotes };
+  };
+
+  async function creditarCompraDeTokens(orderId: string, io?: SocketIOServer) {
+    const compra = (await queryOne(db, "SELECT * FROM compras_tokens WHERE order_id = ? LIMIT 1", [orderId])) as any;
+    if (!compra || compra.status === 'paga') return false;
+    // Trava a compra antes de creditar: o mesmo aviso chegando duas vezes não
+    // credita em dobro.
+    await run(db, "UPDATE compras_tokens SET status = 'paga', pago_em = ? WHERE id = ? AND status <> 'paga'", [nowIso(), String(compra.id)]);
+    const conferida = (await queryOne(db, 'SELECT status, pago_em FROM compras_tokens WHERE id = ?', [String(compra.id)])) as any;
+    if (conferida?.status !== 'paga') return false;
+    const jaCreditou = await queryOne(db, "SELECT 1 AS x FROM token_transactions WHERE action_type = 'compra_tokens' AND ref_id = ? LIMIT 1", [String(compra.id)]);
+    if (jaCreditou) return false;
+    const n = Number(compra.tokens || 0);
+    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) + ?, tokens_comprados = COALESCE(tokens_comprados,0) + ? WHERE id = ?', [n, n, String(compra.user_id)]);
+    await run(
+      db,
+      'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), String(compra.user_id), 'compra_tokens', n, String(compra.id), nowIso()]
+    );
+    await persist();
+    const saldo = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [String(compra.user_id)])) as any;
+    io?.to(`user:${String(compra.user_id)}`).emit('tokens.updated', { points: Number(saldo?.p || 0) });
+    await createNotification({ db, io }, {
+      userId: String(compra.user_id),
+      type: 'tokens.compra',
+      title: `+${n} tokens na sua conta 🪙`,
+      description: 'Pagamento confirmado. Use para destacar pedidos de contato, destacar seu perfil ou presentear alguém.',
+      dataJson: { url: '/tokens' },
+    });
+    void notifyAdminsTelegram({ db, env }, `🪙 Compra de tokens: +${n} (${(Number(compra.valor_cents) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`).catch(() => {});
+    return true;
+  }
+
+  app.get('/api/tokens/pacotes', requireAuth(env, db), async (_req, res) => {
+    const { produtoId, pacotes } = await configTokens();
+    res.json({
+      disponivel: !!produtoId && pacotes.length > 0 && shouldUseHubBilling(env),
+      pacotes: pacotes.map((p) => ({ id: p.id, tokens: p.tokens, valorCents: p.valorCents, rotulo: p.rotulo, maisVendido: !!p.maisVendido })),
+    });
+  });
+
+  app.post('/api/tokens/comprar', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ pacote: z.string().min(1).max(40), metodo: z.enum(['PIX', 'CREDIT_CARD']) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const { produtoId, pacotes } = await configTokens();
+    const pacote = pacotes.find((p) => p.id === parsed.data.pacote);
+    if (!produtoId || !pacote || !shouldUseHubBilling(env)) { res.status(400).json({ error: 'indisponivel', message: 'Compra de tokens indisponível no momento.' }); return; }
+    const user = (await queryOne(
+      db,
+      'SELECT id, email, name, billing_document, billing_legal_name, billing_person_type, hub_customer_id, city, state FROM users WHERE id = ? LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    if (!user) { res.status(404).json({ error: 'not_found' }); return; }
+    try {
+      const cfgBase = getHubConfig(env);
+      let customerId = String(user.hub_customer_id || '').trim();
+      if (!customerId) {
+        const up = await upsertHubCustomer(cfgBase, {
+          email: String(user.email),
+          legalName: String(user.billing_legal_name || user.name || '').trim(),
+          document: String(user.billing_document || '').trim() || null,
+          personType: user.billing_person_type || 'PF',
+          addressCity: user.city ?? null,
+          addressState: user.state ?? null,
+        } as any);
+        customerId = String(up.customerId || '').trim();
+        if (customerId) await run(db, 'UPDATE users SET hub_customer_id = ? WHERE id = ? AND (hub_customer_id IS NULL OR hub_customer_id = \'\')', [customerId, user.id]);
+      }
+      if (!customerId) throw new Error('Hub Billing nao retornou customerId');
+      // Pedido no PRODUTO DE TOKENS (não no NOSIGILO).
+      const cfgTokens = { ...cfgBase, productId: produtoId };
+      const order = await createHubOrder(cfgTokens, { customerId, planId: pacote.planId, contractedAmount: pacote.valorCents });
+      const orderId = String(order.id || order.orderId || '');
+      if (!orderId) throw new Error('Hub Billing nao retornou orderId');
+      const compraId = randomUUID();
+      await run(
+        db,
+        "INSERT INTO compras_tokens (id, user_id, pacote, tokens, valor_cents, metodo, order_id, status, criado_em) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente', ?)",
+        [compraId, user.id, pacote.id, pacote.tokens, pacote.valorCents, parsed.data.metodo, orderId, nowIso()]
+      );
+      await persist();
+      const frontend = String(env.FRONTEND_ORIGIN || 'https://nosigilo.net').replace(/\/$/, '');
+      const checkout = await createHubCheckout(cfgTokens, {
+        orderId,
+        billingType: parsed.data.metodo,
+        payerName: String(user.billing_legal_name || user.name || '').trim(),
+        payerDocument: String(user.billing_document || '').trim() || null,
+        returnUrl: `${frontend}/tokens?compra=${compraId}`,
+      });
+      res.json({ compraId, tokens: pacote.tokens, valorCents: pacote.valorCents, checkout });
+    } catch (error) {
+      console.error('[tokens/comprar] falhou:', error);
+      res.status(400).json({ error: 'checkout_failed', message: error instanceof Error ? error.message : 'Falha ao gerar o pagamento' });
+    }
+  });
+
+  app.get('/api/tokens/compras/:id', requireAuth(env, db), async (req, res) => {
+    const c = (await queryOne(db, 'SELECT id, tokens, valor_cents, status, pago_em FROM compras_tokens WHERE id = ? AND user_id = ?', [req.params.id, req.auth!.userId])) as any;
+    if (!c) { res.status(404).json({ error: 'not_found' }); return; }
+    res.json({ id: c.id, tokens: Number(c.tokens), valorCents: Number(c.valor_cents), status: String(c.status), pagoEm: c.pago_em ?? null });
+  });
+
   app.post('/api/tokens/gift', requireAuth(env, db), async (req, res) => {
     const fromId = req.auth!.userId;
     const io = req.app.get('io') as SocketIOServer | undefined;
@@ -9074,15 +9197,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return res.status(403).json({ message: 'Não é possível presentear este perfil.' });
     }
 
-    const senderRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p, name FROM users WHERE id = ?', [fromId])) as any;
+    const senderRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p, COALESCE(tokens_comprados,0) AS comprados, name FROM users WHERE id = ?', [fromId])) as any;
     const balance = Number(senderRow?.p || 0);
+    // Parte do presente que sai de tokens comprados: chega ao destinatário também
+    // como comprada (não vira dia de Premium para ele).
+    const parteComprada = Math.min(amount, Number(senderRow?.comprados || 0));
     if (balance < amount) return res.status(400).json({ message: 'Saldo de tokens insuficiente.' });
 
     const giftId = randomUUID();
     const now = nowIso();
 
-    // Debita o remetente
-    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ? WHERE id = ?', [amount, fromId]);
+    // Debita o remetente (primeiro a parte comprada)
+    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ?, tokens_comprados = COALESCE(tokens_comprados,0) - ? WHERE id = ?', [amount, parteComprada, fromId]);
     await run(
       db,
       'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -9092,8 +9218,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Credita o destinatário (saldo + total; excluído do ranking)
     await run(
       db,
-      'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ? WHERE id = ?',
-      [amount, amount, toUserId]
+      'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ?, tokens_comprados = COALESCE(tokens_comprados,0) + ? WHERE id = ?',
+      [amount, amount, parteComprada, toUserId]
     );
     await run(
       db,
@@ -9103,7 +9229,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     // Conversão automática do destinatário: cada 100 pontos vira 1 dia grátis
     let freeDaysGranted = 0;
-    const rBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [toUserId])) as any;
+    const rBalRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) - COALESCE(tokens_comprados,0) AS p FROM users WHERE id = ?', [toUserId])) as any;
     let rBalance = Number(rBalRow?.p || 0);
     while (rBalance >= POINTS_PER_FREE_DAY) {
       freeDaysGranted += 1;
@@ -15326,6 +15452,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     };
 
     try {
+      // Produto do evento: TOKENS credita a compra; outro produto é ignorado.
+      const produtoDoEvento = String(payload?.productId || '');
+      const { produtoId: produtoTokens } = await configTokens();
+      if (produtoDoEvento && produtoTokens && produtoDoEvento === produtoTokens) {
+        if (eventType === 'payment.approved' && String(payload?.payload?.originType || '') === 'order' && payload?.payload?.originId) {
+          await creditarCompraDeTokens(String(payload.payload.originId), req.app.get('io') as SocketIOServer | undefined);
+        }
+        console.log(`[hub-billing/webhook] tokens event=${eventType} customerId=${customerId}`);
+        return;
+      }
+      if (produtoDoEvento && produtoDoEvento !== String(env.HUB_BILLING_PRODUCT_ID || '')) {
+        console.log(`[hub-billing/webhook] produto ${produtoDoEvento} não é do NoSigilo — ignorado`);
+        return;
+      }
+
       const user = (await queryOne(db, 'SELECT id, name, email, is_premium FROM users WHERE hub_customer_id = ? LIMIT 1', [customerId])) as any;
       if (!user) {
         console.log(`[hub-billing/webhook] customerId=${customerId} not found — ignored`);
@@ -15343,22 +15484,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               : null;
 
       if (nextStatus) {
-        await run(
-          db,
-          `UPDATE users
-           SET is_premium = ?,
-               hub_access_status = ?,
-               hub_access_reason = ?,
-               hub_license_end_at = COALESCE(?, hub_license_end_at)
-           WHERE id = ?`,
-          [
-            nextStatus === 'licensed' ? 1 : 0,
-            nextStatus,
-            eventType || null,
-            payload?.payload?.licenseEndAt ?? null,
-            String(user.id),
-          ]
-        );
+        // Fonte da verdade é o status de acesso no Hub, não o tipo do evento:
+        // cancelar a assinatura no cartão MANTÉM o acesso até o fim do período
+        // pago, e bloquear direto em subscription.canceled tirava o que a
+        // pessoa pagou. Se o Hub não responder, só aplica o que é seguro (pago).
+        try {
+          const status = await getHubAccessStatus(getHubConfig(env), customerId);
+          await syncHubAccessForUser(db, String(user.id), status as any, { io: req.app.get('io') as SocketIOServer | undefined, env });
+        } catch (erroSync) {
+          console.warn('[hub-billing/webhook] sync com o Hub falhou:', (erroSync as Error).message);
+          if (nextStatus === 'licensed') {
+            await run(
+              db,
+              `UPDATE users SET is_premium = 1, hub_access_status = 'licensed', hub_access_reason = ?,
+                 hub_license_end_at = COALESCE(?, hub_license_end_at) WHERE id = ?`,
+              [eventType || null, payload?.payload?.licenseEndAt ?? null, String(user.id)]
+            );
+          }
+        }
         await persist();
 
         // ── Notifica admins no Telegram: assinatura ativada/paga ──────────────

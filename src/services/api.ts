@@ -2120,7 +2120,21 @@ export interface TokenRankingEntry {
   isMe: boolean;
 }
 
+export type PacoteTokens = { id: string; tokens: number; valorCents: number; rotulo: string; maisVendido: boolean };
+
 export const tokenService = {
+  pacotes: async (): Promise<{ disponivel: boolean; pacotes: PacoteTokens[] }> => {
+    const res = await apiClient.get('/tokens/pacotes');
+    return res.data;
+  },
+  comprar: async (pacote: string, metodo: 'PIX' | 'CREDIT_CARD') => {
+    const res = await apiClient.post('/tokens/comprar', { pacote, metodo });
+    return res.data as { compraId: string; tokens: number; valorCents: number; checkout: { pixCode?: string | null; pixPayload?: string | null; pixQrCode?: string | null; checkoutUrl?: string | null } };
+  },
+  statusCompra: async (id: string) => {
+    const res = await apiClient.get(`/tokens/compras/${encodeURIComponent(id)}`);
+    return res.data as { id: string; tokens: number; valorCents: number; status: 'pendente' | 'paga'; pagoEm: string | null };
+  },
   me: async (): Promise<TokenSummary> => {
     const res = await apiClient.get('/tokens/me');
     return res.data as TokenSummary;

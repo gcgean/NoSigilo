@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
+import ComprarTokens from '@/components/ComprarTokens';
 import { Coins, TrendingUp, Gift, Trophy, Zap, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -128,6 +129,9 @@ export default function Tokens() {
           </div>
         </div>
       </Card>
+
+      {/* Comprar tokens (destaques e presentes; não viram dias grátis) */}
+      <ComprarTokens aoCreditar={() => tokenService.me().then(setSummary).catch(() => {})} />
 
       {/* Destaque do perfil (gasta tokens) */}
       <Card className="p-4">

@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { ToastAction } from '@/components/ui/toast';
 import { authService, chatService, profileService, matchService, usersService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
@@ -2188,7 +2189,15 @@ export default function Chat() {
                         setConversations((prev) => prev.map((c) => (c.id === activeConversation.id ? { ...c, pedidoDestaque: true } : c)));
                         toast({ title: '⭐ Pedido destacado!', description: `Ele aparece no topo dos pedidos de ${activeConversation.user.name}.` });
                       } catch (e: any) {
-                        toast({ title: 'Não foi possível destacar', description: e?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+                        const semSaldo = e?.response?.data?.error === 'saldo_insuficiente';
+                        toast({
+                          title: semSaldo ? 'Faltam tokens para destacar' : 'Não foi possível destacar',
+                          description: e?.response?.data?.message || 'Tente de novo.',
+                          variant: semSaldo ? undefined : 'destructive',
+                          action: semSaldo ? (
+                            <ToastAction altText="Comprar tokens" onClick={() => navigate('/tokens?comprar=1')}>Comprar tokens</ToastAction>
+                          ) : undefined,
+                        });
                       } finally {
                         setAcaoPedido(false);
                       }
