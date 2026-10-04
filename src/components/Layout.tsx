@@ -165,13 +165,20 @@ export default function Layout() {
       return false;
     }
   });
+  // Contagem da assinatura: o X fecha até o dia seguinte (era chata repetindo).
+  const [contagemFechadaHoje, setContagemFechadaHoje] = useState(() => {
+    try { return localStorage.getItem('nosigilo:contagem-fechada') === new Date().toDateString(); } catch { return false; }
+  });
   const isMobile = useIsMobile();
-  const isMobileChatRoute = isMobile && location.pathname === '/chat';
+  // Chat em grupo no celular: tela cheia como a conversa (a barra de baixo
+  // cobria o campo de mensagem e a página rolava).
+  const isMobileGroupChatRoute = isMobile && location.pathname.startsWith('/chat/group/');
+  const isMobileChatRoute = isMobile && (location.pathname === '/chat' || isMobileGroupChatRoute);
   const isMobileReelsRoute = isMobile && location.pathname === '/reels';
   const [isChatConvOpen, setIsChatConvOpen] = useState(false);
   const [isReelsMaximized, setIsReelsMaximized] = useState(false);
   const isMobileReelsMaximized = isMobileReelsRoute && isReelsMaximized;
-  const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileReelsMaximized;
+  const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileGroupChatRoute || isMobileReelsMaximized;
 
   // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
   useEffect(() => {
@@ -1099,7 +1106,7 @@ export default function Layout() {
               priority={10}
               // Só na reta final (7 dias ou menos): antes disso o aviso vira
               // paisagem e deixa de funcionar quando realmente importa.
-              eligible={!isMobileChatRoute && (accessCountdown?.tone === 'premium' || accessCountdown?.tone === 'danger') && !!accessCountdown?.naSemanaFinal && !bannerDismissed}
+              eligible={!isMobileChatRoute && !contagemFechadaHoje && !location.pathname.startsWith('/reels') && !location.pathname.startsWith('/chat') && (accessCountdown?.tone === 'premium' || accessCountdown?.tone === 'danger') && !!accessCountdown?.naSemanaFinal && !bannerDismissed}
             >
               <div className="mb-4">
                 {/* Era 11px em --gold (3,63:1 sobre o próprio fundo) — a
@@ -1128,6 +1135,17 @@ export default function Layout() {
                   >
                     Renovar agora
                   </NavLink>
+                  <button
+                    type="button"
+                    aria-label="Fechar aviso"
+                    onClick={() => {
+                      setContagemFechadaHoje(true);
+                      try { localStorage.setItem('nosigilo:contagem-fechada', new Date().toDateString()); } catch { /* sem storage: fecha só agora */ }
+                    }}
+                    className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', accessCountdown?.ultimasHoras ? 'text-destructive hover:bg-destructive/10' : 'text-gold-text hover:bg-gold/20')}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             </BannerSlot>

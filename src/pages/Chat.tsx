@@ -662,6 +662,10 @@ export default function Chat() {
       : lista;
   }, [search, conversations, showOnlyHighlighted, conversationTab, isConversationNew, caixa]);
   const pedidosCount = useMemo(() => conversations.filter((c) => c.pedido).length, [conversations]);
+  // Abriu um pedido pelo push/link: mostra a aba de pedidos, onde ele está.
+  useEffect(() => {
+    if (activeConversation?.pedido) setCaixa('pedidos');
+  }, [activeConversation?.id, activeConversation?.pedido]);
 
   // Renderiza a lista em blocos: só o trecho visível vai para o DOM e o restante
   // entra conforme o usuário rola. Filtros, busca e contadores continuam
@@ -1122,6 +1126,12 @@ export default function Chat() {
         ));
         setIsViewOnceEnabled(false);
         registerActivity('message');
+        // Responder um pedido de contato = aceitar (o backend já marcou).
+        if (activeConversation?.pedido) {
+          const aceita = selectedChat;
+          setConversations((prev) => prev.map((c) => (c.id === aceita ? { ...c, pedido: false } : c)));
+          setCaixa('conversas');
+        }
       }
     } catch {
       setMessages(prev => prev.filter(m => m.clientId !== clientId));

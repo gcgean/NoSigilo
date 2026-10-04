@@ -13490,7 +13490,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const conversationId = req.params.conversationId;
-    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id, pedido_para, pedido_aceito_em FROM conversations WHERE id = ?', [conversationId])) as any;
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id, pedido_para, pedido_aceito_em, pedido_recusado_em FROM conversations WHERE id = ?', [conversationId])) as any;
     if (!conv || (conv.user_a_id !== req.auth!.userId && conv.user_b_id !== req.auth!.userId)) {
       res.status(404).json({ error: 'not_found' });
       return;
@@ -13582,7 +13582,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       await persist();
     }
     const ehPedidoParaOutro = pedidoPendente && String(conv.pedido_para) === otherId;
-    await sendPushToUser(
+    // Pedido que a pessoa excluiu: não insiste com push a cada nova mensagem.
+    if (!(ehPedidoParaOutro && conv.pedido_recusado_em)) await sendPushToUser(
       { db, env },
       {
         userId: otherId,

@@ -137,7 +137,7 @@ export default function GroupChat() {
   if (!group) return null;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-4rem)] max-w-2xl min-w-0 flex-col md:h-[calc(100dvh-6rem)]">
+    <div className="mx-auto flex h-[calc(100dvh-var(--app-header-h,3.5rem))] max-w-2xl min-w-0 flex-col px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 md:h-[calc(100dvh-6rem)] md:px-0 md:pb-0 md:pt-0">
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 
       {/* Header */}
@@ -160,7 +160,7 @@ export default function GroupChat() {
       </div>
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto py-3">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain py-3">
         {messages.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">
             Nenhuma mensagem ainda. Diga oi para o grupo! 👋

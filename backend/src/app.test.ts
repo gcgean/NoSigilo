@@ -3236,4 +3236,73 @@ describe('nosigilo backend', () => {
     expect(msgs[0].message).toContain('renovação');
     expect(msgs[0].message).toContain('2 comissões');
   });
+
+  it('pedidos de contato: homem para mulher vira pedido; responder aceita; excluir esconde só de quem recebeu', async () => {
+    const reg = (name: string, email: string, gender: string) =>
+      registerInvitedUser(ctx, sponsorToken, { name, email, password: 'senha123', gender });
+    const homem = await reg('Pedro Pedido', 'pedido-homem@example.com', 'Homem');
+    const homem2 = await reg('Paulo Pedido', 'pedido-homem2@example.com', 'Homem');
+    const mulher = await reg('Maria Pedido', 'pedido-mulher@example.com', 'Mulher');
+    await grantPremium(ctx, String(homem.user.id));
+    await grantPremium(ctx, String(homem2.user.id));
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    const abrir = async (token: string) => {
+      const r = await request(ctx.app).post('/api/conversations').set(auth(token)).send({ userId: mulher.user.id }).expect(200);
+      expect(r.body.pedido).toBe(true);
+      await request(ctx.app).post(`/api/conversations/${r.body.id}/messages`).set(auth(token)).send({ content: 'Oi!' }).expect(200);
+      return String(r.body.id);
+    };
+    const c1 = await abrir(homem.token);
+    const c2 = await abrir(homem2.token);
+
+    // Para ela: os dois aparecem como pedido e não contam como não lidas.
+    let lista = (await request(ctx.app).get('/api/conversations').set(auth(mulher.token)).expect(200)).body as any[];
+    expect(lista.find((c) => c.id === c1)?.pedido).toBe(true);
+    expect(lista.find((c) => c.id === c2)?.pedido).toBe(true);
+    const unread = (await request(ctx.app).get('/api/conversations/unread-count').set(auth(mulher.token)).expect(200)).body;
+    expect(unread.pedidosCount).toBe(2);
+
+    // Para ele: pedido enviado.
+    const doHomem = (await request(ctx.app).get('/api/conversations').set(auth(homem.token)).expect(200)).body as any[];
+    expect(doHomem.find((c) => c.id === c1)?.pedidoEnviado).toBe(true);
+
+    // Destacar sem tokens: 400 saldo_insuficiente (nunca 401, que deslogaria).
+    const semSaldo = await request(ctx.app).post(`/api/conversations/${c1}/pedido/destacar`).set(auth(homem.token)).expect(400);
+    expect(semSaldo.body.error).toBe('saldo_insuficiente');
+    // Quem recebeu não pode destacar; quem mandou não pode aceitar.
+    await request(ctx.app).post(`/api/conversations/${c1}/pedido/destacar`).set(auth(mulher.token)).expect(400);
+    await request(ctx.app).post(`/api/conversations/${c1}/pedido/aceitar`).set(auth(homem.token)).expect(404);
+
+    // Com tokens: destaca, debita 20 e gasta a parte comprada primeiro.
+    await run(ctx.db, 'UPDATE users SET token_points = 30, tokens_comprados = 25 WHERE id = ?', [String(homem.user.id)]);
+    await request(ctx.app).post(`/api/conversations/${c1}/pedido/destacar`).set(auth(homem.token)).expect(200);
+    const saldo = (await ctx.db.queryOne('SELECT token_points, tokens_comprados FROM users WHERE id = ?', [String(homem.user.id)])) as any;
+    expect(Number(saldo.token_points)).toBe(10);
+    expect(Number(saldo.tokens_comprados)).toBe(5);
+    const deNovo = await request(ctx.app).post(`/api/conversations/${c1}/pedido/destacar`).set(auth(homem.token)).expect(200);
+    expect(deNovo.body.jaDestacado).toBe(true);
+
+    // Ela responde o 1º (= aceita) e exclui o 2º.
+    await request(ctx.app).post(`/api/conversations/${c1}/messages`).set(auth(mulher.token)).send({ content: 'Oi, Pedro' }).expect(200);
+    await request(ctx.app).post(`/api/conversations/${c2}/pedido/excluir`).set(auth(mulher.token)).expect(200);
+
+    lista = (await request(ctx.app).get('/api/conversations').set(auth(mulher.token)).expect(200)).body as any[];
+    expect(lista.find((c) => c.id === c1)?.pedido).toBe(false);
+    expect(lista.some((c) => c.id === c2)).toBe(false);
+    // Quem mandou o excluído continua vendo a conversa (não fica sabendo).
+    const doHomem2 = (await request(ctx.app).get('/api/conversations').set(auth(homem2.token)).expect(200)).body as any[];
+    expect(doHomem2.some((c) => c.id === c2)).toBe(true);
+    const unread2 = (await request(ctx.app).get('/api/conversations/unread-count').set(auth(mulher.token)).expect(200)).body;
+    expect(unread2.pedidosCount).toBe(0);
+
+    // Métricas do admin.
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(homem2.user.id)]);
+    const met = (await request(ctx.app).get('/api/admin/analytics/pedidos?dias=30').set(auth(homem2.token)).expect(200)).body;
+    expect(met.geral.total).toBeGreaterThanOrEqual(2);
+    expect(met.geral.aceitos).toBeGreaterThanOrEqual(1);
+    expect(met.geral.excluidos).toBeGreaterThanOrEqual(1);
+    expect(met.destaque.vendidos).toBeGreaterThanOrEqual(1);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(homem2.user.id)]);
+  });
 });
