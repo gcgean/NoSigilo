@@ -104,6 +104,8 @@ type AdminResourcesStatus = {
   cpu: {
     count: number;
     usagePercent: number;
+    agoraPercent?: number;
+    mediaDe15Min?: boolean;
     loadAvg1m: number;
     loadAvg5m: number;
     loadAvg15m: number;
@@ -1215,6 +1217,8 @@ export default function Admin() {
         cpu: {
           count: Number((data as any).cpu?.count || 0),
           usagePercent: Number((data as any).cpu?.usagePercent || 0),
+          agoraPercent: Number((data as any).cpu?.agoraPercent ?? NaN),
+          mediaDe15Min: !!(data as any).cpu?.mediaDe15Min,
           loadAvg1m: Number((data as any).cpu?.loadAvg1m || 0),
           loadAvg5m: Number((data as any).cpu?.loadAvg5m || 0),
           loadAvg15m: Number((data as any).cpu?.loadAvg15m || 0),
@@ -1377,7 +1381,8 @@ export default function Admin() {
                 <div className={`h-full rounded-full ${cpuHealth.bar}`} style={{ width: `${cpuUsagePercent}%` }} />
               </div>
               <p className="mt-2 text-xs text-muted-foreground">
-                Uso real medido agora nos {resourcesStatus.cpu.count} núcleo(s) da máquina (todos os sistemas dela, não só o NoSigilo).
+                {resourcesStatus.cpu.mediaDe15Min ? 'Média dos últimos 15 min' : 'Uso medido agora'} nos {resourcesStatus.cpu.count} núcleo(s) da máquina (todos os sistemas dela, não só o NoSigilo).
+                {resourcesStatus.cpu.mediaDe15Min && Number.isFinite(resourcesStatus.cpu.agoraPercent) ? ` Neste instante: ${Math.round(resourcesStatus.cpu.agoraPercent ?? 0)}% (inclui a carga de abrir este painel).` : ''}
               </p>
             </div>
 

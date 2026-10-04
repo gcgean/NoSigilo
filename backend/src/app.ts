@@ -16883,7 +16883,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), async (_req, res) => {
-    const cpuReal = await medirCpuReal();
+    const cpuAgora = await medirCpuReal();
+    // O número principal é a média do vigia (de 5 em 5 min) nos últimos 15 min:
+    // medir só agora pega a carga que o PRÓPRIO painel admin causa ao abrir
+    // (vários relatórios de uma vez) e mostrava "93% Muito alto" com a máquina
+    // a 30%. Sem amostra recente, cai na medição instantânea.
+    const desde15 = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const media = (await queryOne(db, 'SELECT AVG(cpu) AS m, COUNT(*) AS n FROM recursos_amostras WHERE medido_em >= ?', [desde15]).catch(() => null)) as any;
+    const temMedia = Number(media?.n || 0) > 0;
+    const cpuReal = temMedia ? Number(media.m) : cpuAgora;
     try {
       const processMemory = process.memoryUsage();
       const systemTotal = totalmem();
@@ -16918,6 +16926,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           loadAvg5m: Number(Number(currentLoad[1] || 0).toFixed(2)),
           loadAvg15m: Number(Number(currentLoad[2] || 0).toFixed(2)),
           usagePercent: cpuUsagePercent,
+          agoraPercent: Math.round(cpuAgora * 100) / 100,
+          mediaDe15Min: temMedia,
         },
         memory: {
           rssMb: toMb(rss),
