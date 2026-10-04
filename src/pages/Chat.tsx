@@ -9,7 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { chatService, profileService, matchService, usersService } from '@/services/api';
+import { authService, chatService, profileService, matchService, usersService } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -204,7 +204,7 @@ function formatDistanceLabel(distanceKm?: number | null) {
 }
 
 export default function Chat() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
   const { emit, on, off, isConnected } = useSocket();
@@ -1026,9 +1026,29 @@ export default function Chat() {
   }, [selectedChat, premiumAccess, emit]);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
-    if (!premiumAccess) {
-      redirectToPlans();
-      return;
+    if (!premiumAccess || !user?.avatar || !user?.birthDate) {
+      // Os dados da conta no aparelho podem estar velhos (logo após o
+      // cadastro, sem a foto ou o período grátis): antes de bloquear, busca a
+      // conta no servidor. Em 04/10/2026 um casal ficou 1h sem conseguir
+      // enviar até fechar e abrir o app, e excluiu a conta.
+      try {
+        const fresco = await authService.getMe();
+        if (fresco) {
+          updateUser(fresco as any);
+          if (!hasPremiumAccess({ ...(user as any), ...(fresco as any) })) {
+            redirectToPlans();
+            return;
+          }
+        } else if (!premiumAccess) {
+          redirectToPlans();
+          return;
+        }
+      } catch {
+        if (!premiumAccess) {
+          redirectToPlans();
+          return;
+        }
+      }
     }
     // Envio corta o "digitando…" na hora (não espera o timeout de 3s).
     if (stopTypingTimer.current) { clearTimeout(stopTypingTimer.current); stopTypingTimer.current = null; }

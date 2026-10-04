@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'node:path';
-import { mkdirSync, existsSync, createReadStream, statSync, statfsSync, renameSync, unlinkSync } from 'node:fs';
+import { mkdirSync, existsSync, createReadStream, readFileSync, statSync, statfsSync, renameSync, unlinkSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { cpus, freemem, loadavg, totalmem } from 'node:os';
@@ -1539,6 +1539,10 @@ async function esperarVezDoVideo() {
 function liberarVezDoVideo() {
   videosComprimindo = Math.max(0, videosComprimindo - 1);
   filaDeVideo.shift()?.();
+}
+/** Para o vigia de recursos dizer se o aperto é compressão de vídeo. */
+function estadoDaFilaDeVideo() {
+  return { comprimindo: videosComprimindo, esperando: filaDeVideo.length };
 }
 
 async function compressUploadedVideo(file: Express.Multer.File, marca?: string) {
@@ -16346,10 +16350,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   const seguidas = { cpu: 0, memoria: 0, disco: 0 };
   const ultimoAviso: Record<string, number> = {};
 
+  // Memória REAL em uso: o Linux usa a memória livre como cache de disco e
+  // freemem() conta esse cache como "usado" — o número ficava inflado. Lê
+  // MemAvailable (/proc/meminfo), que é o quanto ainda dá para usar de fato.
+  const memoriaEmUsoPct = () => {
+    try {
+      const info = readFileSync('/proc/meminfo', 'utf8');
+      const total = Number(/MemTotal:\s+(\d+)/.exec(info)?.[1] || 0);
+      const disponivel = Number(/MemAvailable:\s+(\d+)/.exec(info)?.[1] || 0);
+      if (total > 0 && disponivel > 0) return ((total - disponivel) / total) * 100;
+    } catch { /* fora do Linux: cai no cálculo simples */ }
+    const totalMem = totalmem();
+    return totalMem > 0 ? ((totalMem - freemem()) / totalMem) * 100 : 0;
+  };
+
   const medirRecursos = async () => {
     const cpu = await medirCpuReal();
-    const totalMem = totalmem();
-    const memoria = totalMem > 0 ? ((totalMem - freemem()) / totalMem) * 100 : 0;
+    const memoria = memoriaEmUsoPct();
     let disco = 0;
     try {
       const d = statfsSync(backendRootDir) as any;
@@ -16364,9 +16381,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   const vigiarRecursos = async () => {
     try {
       const agora = await medirRecursos();
+      const fila = estadoDaFilaDeVideo();
+      const carga = loadavg()[0] / Math.max(1, cpus().length);
+      // Histórico (base do diagnóstico diário de upgrade).
+      try {
+        await run(
+          db,
+          'INSERT INTO recursos_amostras (id, medido_em, cpu, memoria, disco, carga, videos_fila) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [randomUUID(), nowIso(), agora.cpu, agora.memoria, agora.disco, carga, fila.comprimindo + fila.esperando]
+        );
+        await persist();
+      } catch { /* histórico é opcional */ }
       const rotulos: Record<string, string> = {
         cpu: 'CPU', memoria: 'Memória', disco: 'Disco',
       };
+      // O que está pesando agora — para separar "falta de servidor" de uma
+      // tarefa pontual (ex.: muitos vídeos sendo comprimidos de uma vez).
+      const causaProvavel = fila.comprimindo + fila.esperando > 0
+        ? `\n🎬 Agora: ${fila.comprimindo} vídeo(s) sendo comprimidos e ${fila.esperando} na fila — provável causa: compressão de vídeo (passa sozinho quando a fila esvaziar), não falta de servidor.`
+        : '\nNenhum vídeo sendo comprimido agora: se continuar, é o uso normal do site pesando — sinal de que o servidor está ficando pequeno.';
       for (const chave of ['cpu', 'memoria', 'disco'] as const) {
         const valor = agora[chave];
         if (valor >= LIMITES[chave]) {
@@ -16386,7 +16419,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             : '\nSe não for build nem conversão de vídeo, vale olhar.';
         void notifyAdminsTelegram(
           { db, env },
-          `⚠️ ${rotulos[chave]} em ${valor.toFixed(1)}% no servidor (limite ${LIMITES[chave]}%), sustentado por 10 minutos.${extra}`
+          `⚠️ ${rotulos[chave]} em ${valor.toFixed(1)}% no servidor (limite ${LIMITES[chave]}%), sustentado por 10 minutos.${extra}${chave === 'cpu' ? causaProvavel : ''}`
         ).catch(() => undefined);
         console.warn(`[recursos] ${rotulos[chave]} em ${valor.toFixed(1)}% — aviso enviado`);
       }
@@ -16397,6 +16430,94 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   setInterval(() => { void vigiarRecursos(); }, 5 * 60 * 1000);
   setTimeout(() => { void vigiarRecursos(); }, 90 * 1000);
+
+  // ─── Diagnóstico diário: está na hora de fazer upgrade? ────────────────────
+  // O alerta acima pega aperto de 10 minutos. Este olha os últimos 7 dias e só
+  // avisa quando é FALTA DE SERVIDOR de verdade: CPU alta por muito tempo sem
+  // ser compressão de vídeo, memória real alta com frequência, ou disco que
+  // enche em menos de 30 dias no ritmo atual. No máximo 1 aviso a cada 3 dias.
+  const diagnosticarUpgrade = async (forcar = false) => {
+    const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const amostras = (await queryAll(
+      db,
+      'SELECT medido_em, cpu, memoria, disco, videos_fila FROM recursos_amostras WHERE medido_em >= ? ORDER BY medido_em',
+      [desde]
+    )) as any[];
+    if (amostras.length < 288 && !forcar) return null; // menos de 1 dia de dados
+    const p95 = (vals: number[]) => {
+      if (!vals.length) return 0;
+      const ord = [...vals].sort((a, b) => a - b);
+      return ord[Math.min(ord.length - 1, Math.floor(ord.length * 0.95))];
+    };
+    const semVideo = amostras.filter((a) => Number(a.videos_fila || 0) === 0);
+    const cpuAlta = semVideo.filter((a) => Number(a.cpu) >= 75).length;
+    const pctCpuAlta = semVideo.length ? (cpuAlta / semVideo.length) * 100 : 0;
+    const memAlta = amostras.filter((a) => Number(a.memoria) >= 85).length;
+    const pctMemAlta = amostras.length ? (memAlta / amostras.length) * 100 : 0;
+
+    // Disco: média do primeiro e do último dia da janela → crescimento por dia.
+    const umDia = 86_400_000;
+    const inicioJanela = amostras.length ? new Date(String(amostras[0].medido_em)).getTime() : Date.now();
+    const primeiroDia = amostras.filter((a) => new Date(String(a.medido_em)).getTime() < inicioJanela + umDia);
+    const ultimoDia = amostras.filter((a) => new Date(String(a.medido_em)).getTime() > Date.now() - umDia);
+    const media = (l: any[]) => (l.length ? l.reduce((s, a) => s + Number(a.disco), 0) / l.length : 0);
+    const dias = Math.max(1, (Date.now() - inicioJanela) / umDia - 1);
+    const discoAgora = media(ultimoDia) || Number(amostras[amostras.length - 1]?.disco || 0);
+    const crescimentoDia = (discoAgora - media(primeiroDia)) / dias;
+    const diasAteEncher = crescimentoDia > 0.01 ? (90 - discoAgora) / crescimentoDia : Infinity;
+
+    const motivos: string[] = [];
+    if (pctCpuAlta >= 15) motivos.push(`🔥 CPU acima de 75% em ${pctCpuAlta.toFixed(0)}% do tempo (fora compressão de vídeo); pico típico ${p95(semVideo.map((a) => Number(a.cpu))).toFixed(0)}%.`);
+    if (pctMemAlta >= 10) motivos.push(`🧠 Memória real acima de 85% em ${pctMemAlta.toFixed(0)}% do tempo; pico típico ${p95(amostras.map((a) => Number(a.memoria))).toFixed(0)}%.`);
+    if (discoAgora >= 85) motivos.push(`💾 Disco em ${discoAgora.toFixed(0)}% — perto de lotar.`);
+    else if (diasAteEncher < 30) motivos.push(`💾 Disco em ${discoAgora.toFixed(0)}% e crescendo ${crescimentoDia.toFixed(2)} pontos/dia: chega a 90% em ~${Math.max(0, Math.round(diasAteEncher))} dias.`);
+
+    return {
+      amostras: amostras.length,
+      precisaUpgrade: motivos.length > 0,
+      motivos,
+      resumo: {
+        cpuP95: p95(semVideo.map((a) => Number(a.cpu))),
+        pctCpuAlta,
+        memoriaP95: p95(amostras.map((a) => Number(a.memoria))),
+        pctMemAlta,
+        discoAgora,
+        crescimentoDiscoDia: crescimentoDia,
+        diasAteDiscoEncher: Number.isFinite(diasAteEncher) ? Math.round(diasAteEncher) : null,
+      },
+    };
+  };
+
+  let diaDoDiagnostico = '';
+  const rodarDiagnosticoDiario = async () => {
+    try {
+      const agoraBrt = new Date(Date.now() - 3 * 3600_000);
+      const dia = agoraBrt.toISOString().slice(0, 10);
+      if (agoraBrt.getUTCHours() !== 9 || diaDoDiagnostico === dia) return;
+      diaDoDiagnostico = dia;
+      // Limpa o histórico com mais de 30 dias.
+      await run(db, 'DELETE FROM recursos_amostras WHERE medido_em < ?', [new Date(Date.now() - 30 * 86_400_000).toISOString()]);
+      await persist();
+      const d = await diagnosticarUpgrade();
+      if (!d?.precisaUpgrade) return;
+      const ultimo = Number((await getSystemSetting(db, 'recursos_aviso_upgrade_em')) || 0);
+      if (Date.now() - ultimo < 3 * 86_400_000) return;
+      await setSystemSetting(db, 'recursos_aviso_upgrade_em', String(Date.now()));
+      await notifyAdminsTelegram(
+        { db, env },
+        `📈 Servidor: hora de avaliar UPGRADE\n\nNos últimos 7 dias:\n${d.motivos.join('\n')}\n\nIsso é uso de verdade do site (picos de compressão de vídeo foram descontados). Veja em Admin › Recursos do servidor.`
+      );
+      console.warn('[recursos] diagnóstico: upgrade recomendado —', d.motivos.join(' | '));
+    } catch (erro) {
+      console.error('[recursos] diagnóstico diário falhou', erro);
+    }
+  };
+  setInterval(() => { void rodarDiagnosticoDiario(); }, 10 * 60 * 1000);
+
+  // Diagnóstico na hora (admin / Analista IA).
+  app.get('/api/admin/resources-upgrade', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json((await diagnosticarUpgrade(true)) ?? { amostras: 0, precisaUpgrade: false, motivos: [] });
+  });
 
   // Leitura pontual, para o Analista de IA e para qualquer conferência rápida.
   app.get('/api/admin/resources-alerts', requireAuth(env, db), requireAdmin(), async (_req, res) => {
