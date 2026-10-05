@@ -3345,4 +3345,33 @@ describe('nosigilo backend', () => {
     const minhas = lista.filter((m) => m.senderType === 'promoter');
     expect(minhas.map((m) => m.imageUrl)).toEqual(['/uploads/abc-123.webp', '/uploads/def.webp', null]);
   });
+
+  it('cadastros por período: conta só quem entrou entre as datas (horário de Brasília) e une a cidade', async () => {
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Periodo', email: 'admin-periodo@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const criar = async (n: number, cidade: string, uf: string, criadoEm: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Periodo ${n}`, email: `periodo-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await run(ctx.db, 'UPDATE users SET city = ?, state = ?, created_at = ? WHERE id = ?', [cidade, uf, criadoEm, String(r.user.id)]);
+    };
+    // 01/03 00:30 em Brasília = 01/03 03:30Z (dentro); 28/02 23:30 Brasília = 01/03 02:30Z (fora).
+    await criar(1, 'Cidade Periodo', 'ZZ', '2025-03-01T03:30:00.000Z');
+    await criar(2, 'cidade periodo', 'ZZ', '2025-03-05T12:00:00.000Z');
+    await criar(3, 'Cidade Periodo', 'ZZ', '2025-03-01T02:30:00.000Z');
+    // 10/03 23:59 Brasília = 11/03 02:59Z (dentro); 11/03 00:10 Brasília = 11/03 03:10Z (fora).
+    await criar(4, 'Outra Periodo', 'YY', '2025-03-11T02:59:00.000Z');
+    await criar(5, 'Outra Periodo', 'YY', '2025-03-11T03:10:00.000Z');
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${adm.token}` };
+
+    const r = (await request(ctx.app).get('/api/admin/analytics/cidades-periodo?de=2025-03-01&ate=2025-03-10').set(auth).expect(200)).body;
+    const cidade = r.cidades.find((c: any) => c.label === 'Cidade Periodo, ZZ');
+    expect(cidade).toMatchObject({ novos: 2, total: 3 });
+    expect(r.cidades.find((c: any) => c.label === 'Outra Periodo, YY')).toMatchObject({ novos: 1, total: 1 });
+    expect(r.estados.find((e: any) => e.label === 'ZZ')).toMatchObject({ novos: 2 });
+
+    await request(ctx.app).get('/api/admin/analytics/cidades-periodo?de=2025-03-10&ate=2025-03-01').set(auth).expect(400);
+    await request(ctx.app).get('/api/admin/analytics/cidades-periodo?de=ontem&ate=2025-03-01').set(auth).expect(400);
+    await request(ctx.app).get('/api/admin/analytics/cidades-periodo?de=2025-03-01&ate=2025-03-10').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
 });

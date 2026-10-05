@@ -1243,6 +1243,24 @@ export type ContatoAvisoTelegram = {
   personalizado: boolean;
 };
 
+export type CrescimentoLocal = { label: string; novos: number; total: number; growth: number };
+export type CidadesPorPeriodo = {
+  de: string;
+  ate: string;
+  novosNoPeriodo: number;
+  semCidade: number;
+  totalCidades: number;
+  cidades: CrescimentoLocal[];
+  estados: CrescimentoLocal[];
+};
+
+export const adminCidadesPeriodoService = {
+  buscar: async (de: string, ate: string): Promise<CidadesPorPeriodo> => {
+    const response = await apiClient.get('/admin/analytics/cidades-periodo', { params: { de, ate } });
+    return response.data;
+  },
+};
+
 export const adminTelegramService = {
   listar: async (): Promise<{ botConfigurado: boolean; tipos: TipoAvisoTelegram[]; contatos: ContatoAvisoTelegram[] }> => {
     const response = await apiClient.get('/admin/telegram-avisos');

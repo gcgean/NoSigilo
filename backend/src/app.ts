@@ -18341,6 +18341,70 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   const visitasEmCurso = new Map<string, Promise<unknown>>();
   const VALIDADE_VISITAS_MS = 5 * 60 * 1000;
 
+  // Cadastros por cidade/estado num período escolhido no admin (ex.: dia 01 ao
+  // 10). Datas em horário de Brasília. "total" = usuários da cidade até o fim do
+  // período, para a % fazer sentido também em períodos antigos.
+  app.get('/api/admin/analytics/cidades-periodo', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const dataValida = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00-03:00`)) ? v : null);
+    const de = dataValida(req.query.de);
+    const ate = dataValida(req.query.ate);
+    if (!de || !ate) { res.status(400).json({ error: 'datas_invalidas', message: 'Informe a data inicial e a final.' }); return; }
+    if (de > ate) { res.status(400).json({ error: 'datas_invalidas', message: 'A data inicial é depois da final.' }); return; }
+    const inicio = new Date(`${de}T00:00:00-03:00`).toISOString();
+    const fim = new Date(`${ate}T23:59:59.999-03:00`).toISOString();
+    if (Date.parse(fim) - Date.parse(inicio) > 400 * 86_400_000) { res.status(400).json({ error: 'periodo_longo', message: 'Escolha um período de até 1 ano.' }); return; }
+
+    const linhas = (await queryAll(
+      db,
+      `SELECT TRIM(COALESCE(u.city, '')) AS city,
+              UPPER(TRIM(COALESCE(u.state, ''))) AS uf,
+              SUM(CASE WHEN u.created_at >= ? THEN 1 ELSE 0 END) AS novos,
+              COUNT(*) AS total
+         FROM users u
+        WHERE (u.is_admin = 0 OR u.is_admin IS NULL)
+          AND u.created_at <= ?
+        GROUP BY TRIM(COALESCE(u.city, '')), UPPER(TRIM(COALESCE(u.state, '')))`,
+      [inicio, fim]
+    )) as any[];
+
+    let novosNoPeriodo = 0;
+    let semCidade = 0;
+    const porCidade = new Map<string, { city: string; ufCounts: Map<string, number>; novos: number; total: number }>();
+    const porUf = new Map<string, { novos: number; total: number }>();
+    for (const r of linhas) {
+      const novos = Number(r.novos || 0);
+      const total = Number(r.total || 0);
+      novosNoPeriodo += novos;
+      const cidade = String(r.city || '').trim();
+      const uf = String(r.uf || '').trim();
+      if (uf.length === 2) {
+        const e = porUf.get(uf) || { novos: 0, total: 0 };
+        e.novos += novos; e.total += total; porUf.set(uf, e);
+      }
+      if (cidade.length < 3) { semCidade += novos; continue; }
+      const chave = cidade.toLowerCase();
+      let e = porCidade.get(chave);
+      if (!e) { e = { city: cidade, ufCounts: new Map(), novos: 0, total: 0 }; porCidade.set(chave, e); }
+      e.novos += novos; e.total += total;
+      if (uf) e.ufCounts.set(uf, (e.ufCounts.get(uf) || 0) + total);
+    }
+    const taxa = (novos: number, total: number) => (total > 0 ? Math.round((novos / total) * 100) : 0);
+    const cidades = [...porCidade.values()]
+      .filter((e) => e.novos > 0)
+      .map((e) => {
+        let topUf = ''; let max = 0;
+        for (const [uf, c] of e.ufCounts) if (c > max) { max = c; topUf = uf; }
+        return { label: topUf ? `${e.city}, ${topUf}` : e.city, novos: e.novos, total: e.total, growth: taxa(e.novos, e.total) };
+      })
+      .sort((x, y) => y.novos - x.novos || y.growth - x.growth);
+    const estados = [...porUf.entries()]
+      .filter(([, e]) => e.novos > 0)
+      .map(([uf, e]) => ({ label: uf, novos: e.novos, total: e.total, growth: taxa(e.novos, e.total) }))
+      .sort((x, y) => y.novos - x.novos || y.growth - x.growth);
+
+    res.json({ de, ate, novosNoPeriodo, semCidade, totalCidades: cidades.length, cidades: cidades.slice(0, 60), estados });
+  });
+
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const chave = `${String(req.query.limit || '')}|${String(req.query.cityUsersPeriodDays || '')}|${String(req.query.accessPeriodDays || '')}`;
     const guardado = cacheVisitas.get(chave);

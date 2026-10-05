@@ -30,6 +30,7 @@ import AdminVisitantes from '@/components/AdminVisitantes';
 import AdminExclusoes from '@/components/AdminExclusoes';
 import AdminPedidos from '@/components/AdminPedidos';
 import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
+import AdminCidadesPorPeriodo from '@/components/AdminCidadesPorPeriodo';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -3315,6 +3316,9 @@ export default function Admin() {
                 </div>
               )}
             </Card>
+
+            {/* ── Cadastros por período (datas digitadas) ── */}
+            <AdminCidadesPorPeriodo />
 
             {/* ── Estados em crescimento ── */}
             <Card className="p-5 glass">
