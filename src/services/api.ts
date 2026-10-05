@@ -1249,6 +1249,7 @@ export type CidadesPorPeriodo = {
   ate: string;
   novosNoPeriodo: number;
   semCidade: number;
+  semEstado: number;
   totalCidades: number;
   cidades: CrescimentoLocal[];
   estados: CrescimentoLocal[];

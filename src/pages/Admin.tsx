@@ -3317,8 +3317,8 @@ export default function Admin() {
               )}
             </Card>
 
-            {/* ── Cadastros por período (datas digitadas) ── */}
-            <AdminCidadesPorPeriodo />
+            {/* ── Cidades por período (datas digitadas) ── */}
+            <AdminCidadesPorPeriodo tipo="cidades" />
 
             {/* ── Estados em crescimento ── */}
             <Card className="p-5 glass">
@@ -3363,6 +3363,9 @@ export default function Admin() {
                 </div>
               )}
             </Card>
+
+            {/* ── Estados por período (datas digitadas) ── */}
+            <AdminCidadesPorPeriodo tipo="estados" />
 
             {/* ── Desempenho das páginas de cidade e estado ── */}
             <Card className="p-5 glass">

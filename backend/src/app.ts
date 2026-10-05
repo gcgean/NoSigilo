@@ -18369,6 +18369,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     let novosNoPeriodo = 0;
     let semCidade = 0;
+    let semEstado = 0;
     const porCidade = new Map<string, { city: string; ufCounts: Map<string, number>; novos: number; total: number }>();
     const porUf = new Map<string, { novos: number; total: number }>();
     for (const r of linhas) {
@@ -18380,7 +18381,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (uf.length === 2) {
         const e = porUf.get(uf) || { novos: 0, total: 0 };
         e.novos += novos; e.total += total; porUf.set(uf, e);
-      }
+      } else semEstado += novos;
       if (cidade.length < 3) { semCidade += novos; continue; }
       const chave = cidade.toLowerCase();
       let e = porCidade.get(chave);
@@ -18402,7 +18403,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       .map(([uf, e]) => ({ label: uf, novos: e.novos, total: e.total, growth: taxa(e.novos, e.total) }))
       .sort((x, y) => y.novos - x.novos || y.growth - x.growth);
 
-    res.json({ de, ate, novosNoPeriodo, semCidade, totalCidades: cidades.length, cidades: cidades.slice(0, 60), estados });
+    res.json({ de, ate, novosNoPeriodo, semCidade, semEstado, totalCidades: cidades.length, cidades: cidades.slice(0, 60), estados });
   });
 
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {

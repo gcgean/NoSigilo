@@ -33,13 +33,14 @@ function CartaoLocal({ item, posicao, unidade }: { item: CrescimentoLocal; posic
 
 /**
  * Cadastros por cidade/estado num período digitado (ex.: dia 01 ao 10).
- * Separado do "Cidades em crescimento" (últimos 30 dias), que não muda.
+ * Separado do "Cidades/Estados em crescimento" (últimos 30 dias), que não mudam.
+ * Uma seção por visão: tipo="cidades" ou tipo="estados".
  */
-export default function AdminCidadesPorPeriodo() {
+export default function AdminCidadesPorPeriodo({ tipo = 'cidades' }: { tipo?: 'cidades' | 'estados' }) {
   const hoje = diaLocal(new Date());
   const [de, setDe] = useState(`${hoje.slice(0, 8)}01`);
   const [ate, setAte] = useState(hoje);
-  const [visao, setVisao] = useState<'cidades' | 'estados'>('cidades');
+  const visao = tipo;
   const [mostrarTodas, setMostrarTodas] = useState(false);
   const [dados, setDados] = useState<CidadesPorPeriodo | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -82,9 +83,11 @@ export default function AdminCidadesPorPeriodo() {
 
   return (
     <Card className="glass p-5">
-      <h3 className="flex items-center gap-2 font-semibold"><CalendarRange className="h-4 w-4 text-primary" /> Cadastros por período</h3>
+      <h3 className="flex items-center gap-2 font-semibold">
+        <CalendarRange className="h-4 w-4 text-primary" /> {visao === 'cidades' ? 'Cidades' : 'Estados'} por período
+      </h3>
       <p className="mt-0.5 text-xs text-muted-foreground">
-        Escolha as datas (horário de Brasília) e veja quais cidades e estados mais tiveram cadastros novos nesse intervalo.
+        Escolha as datas (horário de Brasília) e veja quais {visao === 'cidades' ? 'cidades' : 'estados'} mais tiveram cadastros novos nesse intervalo.
       </p>
 
       <div className="mt-4 flex flex-wrap items-end gap-2">
@@ -115,21 +118,11 @@ export default function AdminCidadesPorPeriodo() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm">
               De <strong>{formatarDia(dados.de)}</strong> a <strong>{formatarDia(dados.ate)}</strong>:{' '}
-              <strong>{dados.novosNoPeriodo.toLocaleString('pt-BR')}</strong> cadastros em <strong>{dados.totalCidades}</strong> cidades
-              {dados.semCidade > 0 && <span className="text-muted-foreground"> ({dados.semCidade} sem cidade informada)</span>}
+              <strong>{dados.novosNoPeriodo.toLocaleString('pt-BR')}</strong> cadastros em <strong>{visao === 'cidades' ? dados.totalCidades : dados.estados.length}</strong> {visao === 'cidades' ? 'cidades' : 'estados'}
+              {(visao === 'cidades' ? dados.semCidade : dados.semEstado) > 0 && (
+                <span className="text-muted-foreground"> ({visao === 'cidades' ? dados.semCidade : dados.semEstado} sem {visao === 'cidades' ? 'cidade' : 'estado'} informado)</span>
+              )}
             </p>
-            <div className="flex rounded-lg bg-muted p-0.5 text-xs">
-              {(['cidades', 'estados'] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => { setVisao(k); setMostrarTodas(false); }}
-                  className={cn('min-h-[30px] rounded-md px-3 font-semibold', visao === k ? 'bg-background shadow-sm' : 'text-muted-foreground')}
-                >
-                  {k === 'cidades' ? 'Cidades' : 'Estados'}
-                </button>
-              ))}
-            </div>
           </div>
 
           {lista.length === 0 ? (
