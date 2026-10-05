@@ -197,7 +197,7 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
 
   const mensagens = (await queryAll(
     db,
-    `SELECT sender_type, sender_id, message, created_at
+    `SELECT sender_type, sender_id, message, image_url, created_at
        FROM promoter_support_messages
       WHERE promoter_user_id = ?
       ORDER BY created_at DESC
@@ -223,7 +223,14 @@ async function responder(deps: Dependencias, userId: string): Promise<void> {
   type Mensagem = { role: 'system' | 'user' | 'assistant'; content: string };
   const historico: Mensagem[] = mensagens.map((m) => ({
     role: String(m.sender_type) === 'promoter' ? 'user' : 'assistant',
-    content: String(m.message),
+    // A IA não enxerga imagem: avisa que veio um print, para ela pedir a
+    // descrição ou passar para a equipe em vez de responder às cegas.
+    content: [
+      String(m.message || '').trim(),
+      m.image_url && String(m.sender_type) === 'promoter'
+        ? '[A pessoa enviou um print/imagem. Você NÃO consegue ver imagens: diga que recebeu e peça para descrever o que aparece; se precisar ver, chame a equipe.]'
+        : '',
+    ].filter(Boolean).join('\n') || '(mensagem vazia)',
   }));
   // Começa sempre pelo usuário; mensagens antigas da equipe no topo saem.
   while (historico.length > 0 && historico[0].role !== 'user') historico.shift();

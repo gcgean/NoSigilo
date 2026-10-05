@@ -397,6 +397,26 @@ export default function Settings() {
     }
   };
 
+  // Excluir foto direto daqui (Perfil › Mídia). Antes só dava pela aba Fotos
+  // do perfil, e quem procurava aqui não achava a opção (suporte, 05/10/2026).
+  const [fotoParaExcluir, setFotoParaExcluir] = useState<{ id: string; isMain: boolean } | null>(null);
+  const [excluindoFoto, setExcluindoFoto] = useState(false);
+  const excluirFoto = async () => {
+    if (!fotoParaExcluir) return;
+    setExcluindoFoto(true);
+    try {
+      await profileService.deleteMedia(fotoParaExcluir.id);
+      if (fotoParaExcluir.isMain) updateUser({ avatar: undefined });
+      await loadPhotos();
+      toast({ title: 'Foto removida' });
+      setFotoParaExcluir(null);
+    } catch {
+      toast({ title: 'Não foi possível remover', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setExcluindoFoto(false);
+    }
+  };
+
   const handleDeleteVideo = async (mediaId: string) => {
     setDeletingVideoId(mediaId);
     try {
@@ -844,6 +864,29 @@ export default function Settings() {
           {/* ══════════════ MÍDIA ══════════════ */}
           {profileSubTab === 'midia' && (
             <div className="glass rounded-xl p-4 sm:p-6 space-y-6">
+              <AlertDialog open={fotoParaExcluir !== null} onOpenChange={(aberto) => { if (!aberto && !excluindoFoto) setFotoParaExcluir(null); }}>
+                <AlertDialogContent className="max-w-[92vw] sm:max-w-md">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir esta foto?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {fotoParaExcluir?.isMain
+                        ? 'É a sua foto principal: o perfil fica sem foto até você escolher outra. Não dá para desfazer.'
+                        : 'Ela sai do seu perfil e das postagens. Não dá para desfazer.'}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={excluindoFoto}>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      disabled={excluindoFoto}
+                      onClick={(e) => { e.preventDefault(); void excluirFoto(); }}
+                    >
+                      {excluindoFoto ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Excluir'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+
               {/* Fotos públicas */}
               <div>
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Fotos públicas</h3>
@@ -861,6 +904,16 @@ export default function Settings() {
                         {p.isMain && (
                           <span className="absolute left-1.5 top-1.5 rounded-full bg-primary px-2 py-0.5 text-[9px] font-bold text-primary-foreground">Principal</span>
                         )}
+                        <button
+                          type="button"
+                          aria-label="Excluir foto"
+                          onClick={() => setFotoParaExcluir({ id: p.id, isMain: p.isMain })}
+                          className="absolute right-0 top-0 p-1"
+                        >
+                          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20">
+                            <Trash2 className="h-4 w-4" />
+                          </span>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -877,6 +930,16 @@ export default function Settings() {
                   {photos.filter((p) => p.isPrivate).slice(0, 5).map((p) => (
                     <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden">
                       <img src={resolveMediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        aria-label="Excluir foto"
+                        onClick={() => setFotoParaExcluir({ id: p.id, isMain: p.isMain })}
+                        className="absolute right-0 top-0 p-1"
+                      >
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white ring-1 ring-white/20">
+                          <Trash2 className="h-4 w-4" />
+                        </span>
+                      </button>
                     </div>
                   ))}
                   <button

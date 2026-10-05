@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Send, Loader2, LifeBuoy } from 'lucide-react';
-import { supportService, type SupportMessage } from '@/services/api';
+import { X, Send, Loader2, LifeBuoy, ImagePlus } from 'lucide-react';
+import { profileService, supportService, type SupportMessage } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -28,6 +28,8 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
   const [comEquipe, setComEquipe] = useState(false);
   const [pedindoAtendente, setPedindoAtendente] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const arquivoRef = useRef<HTMLInputElement>(null);
+  const [enviandoPrint, setEnviandoPrint] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -118,6 +120,29 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
     }
   };
 
+  // Print/foto para o suporte: sobe como mídia de chat (não aparece na galeria)
+  // e vai como mensagem, com o texto digitado junto se houver.
+  const enviarPrint = async (arquivo: File) => {
+    if (!arquivo.type.startsWith('image/')) {
+      toast({ title: 'Envie uma imagem', description: 'Pode ser print da tela ou foto.', variant: 'destructive' });
+      return;
+    }
+    setEnviandoPrint(true);
+    try {
+      const enviado = await profileService.uploadMedia(arquivo, { source: 'chat' });
+      const url = String(enviado?.url || '');
+      const caminho = url.startsWith('/uploads/') ? url : url.replace(/^https?:\/\/[^/]+/, '');
+      await supportService.sendMessage(input.trim(), caminho);
+      setInput('');
+      await load();
+      aguardarResposta();
+    } catch {
+      toast({ title: 'Não foi possível enviar o print', description: 'Tente novamente em instantes.', variant: 'destructive' });
+    } finally {
+      setEnviandoPrint(false);
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -171,7 +196,7 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
                   )}
                   {m.imageUrl && (
                     <a href={resolveServerUrl(m.imageUrl)} target="_blank" rel="noreferrer" className="mb-1 block">
-                      <img src={resolveServerUrl(m.imageUrl)} alt="Imagem do suporte" className="max-h-72 rounded-lg" />
+                      <img src={resolveServerUrl(m.imageUrl)} alt={fromSupport ? 'Imagem do suporte' : 'Print enviado'} className="max-h-72 rounded-lg" />
                     </a>
                   )}
                   {m.message && <p className="whitespace-pre-wrap break-words">{m.message}</p>}
@@ -217,12 +242,37 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
 
         {/* Input */}
         <div className="flex shrink-0 items-end gap-2 bg-background p-3 pt-0">
+          <input
+            ref={arquivoRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const arquivo = e.target.files?.[0];
+              if (arquivo) void enviarPrint(arquivo);
+              e.target.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => arquivoRef.current?.click()}
+            disabled={enviandoPrint || isSending}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-muted-foreground hover:text-foreground disabled:opacity-50"
+            aria-label="Enviar print ou foto"
+            title="Enviar print ou foto"
+          >
+            {enviandoPrint ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
+          </button>
           <textarea
             className="max-h-28 min-h-[40px] flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-            placeholder="Escreva sua mensagem..."
+            placeholder="Escreva sua mensagem ou envie um print..."
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              const arquivo = Array.from(e.clipboardData?.files || []).find((f) => f.type.startsWith('image/'));
+              if (arquivo) { e.preventDefault(); void enviarPrint(arquivo); }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); }
             }}

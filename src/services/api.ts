@@ -1381,8 +1381,8 @@ export const promoterSupportService = {
     const response = await apiClient.get('/promoter/support');
     return response.data;
   },
-  sendMessage: async (message: string) => {
-    const response = await apiClient.post('/promoter/support', { message });
+  sendMessage: async (message: string, imageUrl?: string) => {
+    const response = await apiClient.post('/promoter/support', { message, ...(imageUrl ? { imageUrl } : {}) });
     return response.data;
   },
   getUnreadCount: async (): Promise<{ count: number }> => {

@@ -3332,4 +3332,17 @@ describe('nosigilo backend', () => {
     await request(ctx.app).get('/api/admin/telegram-avisos').set('Authorization', `Bearer ${comum.token}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
+
+  it('suporte aceita print do usuário (com ou sem texto) e recusa mensagem vazia ou link externo', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Print Suporte', email: 'print-suporte@example.com', password: 'senha123', gender: 'Mulher' });
+    const auth = { Authorization: `Bearer ${u.token}` };
+    await request(ctx.app).post('/api/promoter/support').set(auth).send({ message: '', imageUrl: '/uploads/abc-123.webp' }).expect(200);
+    await request(ctx.app).post('/api/promoter/support').set(auth).send({ message: 'Olha a tela', imageUrl: '/uploads/def.webp' }).expect(200);
+    await request(ctx.app).post('/api/promoter/support').set(auth).send({ message: 'só texto' }).expect(200);
+    await request(ctx.app).post('/api/promoter/support').set(auth).send({ message: '   ' }).expect(400);
+    await request(ctx.app).post('/api/promoter/support').set(auth).send({ message: 'x', imageUrl: 'https://malicioso.com/a.png' }).expect(400);
+    const lista = (await request(ctx.app).get('/api/promoter/support').set(auth).expect(200)).body.messages as any[];
+    const minhas = lista.filter((m) => m.senderType === 'promoter');
+    expect(minhas.map((m) => m.imageUrl)).toEqual(['/uploads/abc-123.webp', '/uploads/def.webp', null]);
+  });
 });

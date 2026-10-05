@@ -4666,12 +4666,18 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   // Enviar mensagem para o suporte (qualquer usuário autenticado, ver acima).
   app.post('/api/promoter/support', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
-    const schema = z.object({ message: z.string().min(1).max(2000) });
+    // Texto, print (enviado antes por /api/media/upload com source=chat, para não
+    // cair na galeria) ou os dois. Antes só texto: quem queria mostrar o
+    // problema não conseguia mandar o print (suporte, 05/10/2026).
+    const schema = z.object({
+      message: z.string().max(2000).optional().default(''),
+      imageUrl: z.string().regex(/^\/uploads\/[A-Za-z0-9._-]+$/).optional(),
+    }).refine((d) => d.message.trim() || d.imageUrl, { message: 'empty' });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const now = nowIso();
     const id = randomUUID();
-    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?, ?)', [id, userId, 'promoter', userId, parsed.data.message, now]);
+    await run(db, 'INSERT INTO promoter_support_messages (id, promoter_user_id, sender_type, sender_id, message, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, userId, 'promoter', userId, parsed.data.message.trim(), parsed.data.imageUrl ?? null, now]);
     await persist();
     res.json({ ok: true, id });
 
@@ -4687,7 +4693,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     try {
       if ((await iaAtendendo(depsIa)) && !(await conversaComEquipe(depsIa, userId))) return;
       const sender = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-      const preview = parsed.data.message.length > 300 ? `${parsed.data.message.slice(0, 300)}…` : parsed.data.message;
+      const textoMsg = parsed.data.message.trim();
+      const preview = (textoMsg.length > 300 ? `${textoMsg.slice(0, 300)}…` : textoMsg) + (parsed.data.imageUrl ? `${textoMsg ? '\n' : ''}📷 Enviou um print — veja no Admin › Suporte.` : '');
       void notifyAdminsTelegram({ db, env },
         `💬 <b>Nova mensagem de suporte</b>\n\n<b>${String(sender?.name || 'Usuário')}</b>\n${String(sender?.email || '')}\n\n${preview}`,
         'suporte'
