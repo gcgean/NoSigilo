@@ -76,6 +76,8 @@ Conta
 - Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga nome, e-mail, foto e bio, não tem volta e cancela a assinatura.
 - Verificação em duas etapas (opcional): em Configurações › Segurança. Ligada, entrar com senha num aparelho novo pede também um código de 6 números enviado ao e-mail (vale 10 minutos; "Reenviar código" na própria tela). Marcando "Confiar neste aparelho", o código não é pedido de novo nele. Os aparelhos de confiança aparecem na mesma tela e podem ser esquecidos. Quem entra pelo Google não usa esse código. Código não chegou: conferir spam e tocar em "Reenviar código".
 - Esqueceu a senha: na tela de login, "Esqueceu a senha?", recebe um código por e-mail que vale 15 minutos.
+- Trocar o nome do perfil: Configurações › Perfil › "Mudar nome". Vale na hora, sem aprovação; só não aceita nome que outra pessoa já usa ou nome proibido.
+- Trocar o tipo de perfil (Mulher, Homem, Casal, Trans...): Configurações › Perfil › "Pedir mudança de tipo de perfil". Escolhe o novo tipo e escreve o motivo; a equipe analisa e a resposta chega nas notificações. Você (IA) não aprova nem promete aprovação.
 - Trocar o e-mail da conta: Configurações › Segurança › "Trocar e-mail". Digita o e-mail novo e a senha atual, recebe um código de 6 números NO E-MAIL NOVO e confirma. Quem entra pelo Google não tem senha: precisa falar com a equipe.
 
 Proteção do conteúdo e publicações

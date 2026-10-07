@@ -9667,7 +9667,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // Deactivate profile
-  // Solicitação de mudança de nome (vai para aprovação do admin).
+  // Mudança de nome: vale na hora (desde 07/10/2026 não passa mais por
+  // aprovação do admin). Continua barrando nome em uso e nome proibido, e fica
+  // registrada em name_change_requests como histórico (reviewed_by = 'auto').
   app.post('/api/profile/name-change-request', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const parsed = z.object({ name: z.string().min(1).max(60), reason: z.string().max(300).optional() }).safeParse(req.body);
@@ -9680,15 +9682,66 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const inUse = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1', [requested]);
     if (inUse) { res.status(409).json({ error: 'name_in_use' }); return; }
     if (await isNameBlacklisted(db, requested)) { res.status(409).json({ error: 'name_blacklisted' }); return; }
-    const pending = await queryOne(db, "SELECT id FROM name_change_requests WHERE user_id = ? AND status = 'pending' LIMIT 1", [userId]);
-    if (pending) { res.status(409).json({ error: 'already_pending', message: 'Você já tem uma solicitação em análise.' }); return; }
+    const agora = nowIso();
+    await run(db, 'UPDATE users SET name = ? WHERE id = ?', [requested, userId]);
+    // Pedido antigo ainda na fila do admin perde o sentido: a pessoa já trocou.
+    await run(db, "UPDATE name_change_requests SET status = 'rejected', reviewed_at = ?, reviewed_by = 'auto' WHERE user_id = ? AND status = 'pending'", [agora, userId]);
     await run(
       db,
-      'INSERT INTO name_change_requests (id, user_id, current_name, requested_name, status, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [randomUUID(), userId, me?.name ? String(me.name) : null, requested, 'pending', parsed.data.reason?.trim() || null, nowIso()]
+      "INSERT INTO name_change_requests (id, user_id, current_name, requested_name, status, reason, created_at, reviewed_at, reviewed_by) VALUES (?, ?, ?, ?, 'approved', ?, ?, ?, 'auto')",
+      [randomUUID(), userId, me?.name ? String(me.name) : null, requested, parsed.data.reason?.trim() || null, agora, agora]
     );
     await persist();
+    res.json({ ok: true, name: requested });
+  });
+
+  // Troca do tipo de perfil (gênero): só por pedido com justificativa, que o
+  // admin aprova ou recusa. O tipo muda preço/teste grátis e quem vê o perfil,
+  // por isso não é livre como o nome.
+  const TIPOS_DE_PERFIL = ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
+  app.post('/api/profile/gender-change-request', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const parsed = z.object({
+      gender: z.enum(TIPOS_DE_PERFIL),
+      reason: z.string().trim().min(10, 'Conte em poucas palavras por que quer mudar (mín. 10 letras).').max(500),
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'invalid_input', message: parsed.error.issues[0]?.message || 'Dados inválidos.' });
+      return;
+    }
+    const me = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    if (String(me?.gender || '') === parsed.data.gender) { res.status(400).json({ error: 'same_gender', message: 'Esse já é o seu tipo de perfil.' }); return; }
+    const pendente = await queryOne(db, "SELECT id FROM gender_change_requests WHERE user_id = ? AND status = 'pending' LIMIT 1", [userId]);
+    if (pendente) { res.status(409).json({ error: 'already_pending', message: 'Você já tem um pedido em análise.' }); return; }
+    await run(
+      db,
+      "INSERT INTO gender_change_requests (id, user_id, current_gender, requested_gender, reason, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)",
+      [randomUUID(), userId, me?.gender ? String(me.gender) : null, parsed.data.gender, parsed.data.reason, nowIso()]
+    );
+    await persist();
+    const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
+    void notifyAdminsTelegram({ db, env },
+      `⚧ <b>Pedido de troca de tipo de perfil</b>\n\n<b>${String(quem?.name || 'Usuário')}</b> ${String(quem?.email || '')}\n${String(me?.gender || '—')} → ${parsed.data.gender}\n\n"${parsed.data.reason.slice(0, 300)}"\n\nAnalise em Admin › Usuários.`,
+      'moderacao'
+    ).catch(() => {});
     res.json({ ok: true });
+  });
+
+  app.get('/api/profile/gender-change-request', requireAuth(env, db), async (req, res) => {
+    const row = (await queryOne(
+      db,
+      'SELECT requested_gender, status, created_at, reviewed_at, review_note FROM gender_change_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+      [req.auth!.userId]
+    )) as any;
+    res.json({
+      request: row ? {
+        requestedGender: String(row.requested_gender),
+        status: String(row.status),
+        createdAt: String(row.created_at),
+        reviewedAt: row.reviewed_at ? String(row.reviewed_at) : null,
+        reviewNote: row.review_note ? String(row.review_note) : null,
+      } : null,
+    });
   });
 
   // Status da solicitação de nome do usuário (pendente/aprovada/rejeitada mais recente).
@@ -16526,7 +16579,66 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
-  // ── Solicitações de mudança de nome (aprovação do admin) ────────────────────
+  // ── Pedidos de troca do tipo de perfil (aprovação do admin) ────────────────
+  app.get('/api/admin/gender-change-requests', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT r.id, r.user_id, r.current_gender, r.requested_gender, r.reason, r.created_at,
+              u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.is_premium AS user_premium, u.created_at AS user_created_at
+         FROM gender_change_requests r
+         JOIN users u ON u.id = r.user_id
+        WHERE r.status = 'pending'
+        ORDER BY r.created_at ASC`
+    )) as any[];
+    res.json({
+      requests: rows.map((r) => ({
+        id: String(r.id),
+        userId: String(r.user_id),
+        name: String(r.user_name || ''),
+        email: r.user_email ? String(r.user_email) : null,
+        avatar: r.user_avatar ? String(r.user_avatar) : null,
+        premium: Number(r.user_premium || 0) === 1,
+        userCreatedAt: r.user_created_at ? String(r.user_created_at) : null,
+        currentGender: r.current_gender ? String(r.current_gender) : null,
+        requestedGender: String(r.requested_gender),
+        reason: String(r.reason || ''),
+        createdAt: String(r.created_at),
+      })),
+    });
+  });
+
+  app.post('/api/admin/gender-change-requests/:id/:acao', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const acao = String(req.params.acao);
+    if (acao !== 'approve' && acao !== 'reject') { res.status(404).json({ error: 'not_found' }); return; }
+    const pedido = (await queryOne(db, 'SELECT id, user_id, requested_gender, status FROM gender_change_requests WHERE id = ? LIMIT 1', [req.params.id])) as any;
+    if (!pedido || String(pedido.status) !== 'pending') { res.status(404).json({ error: 'not_found', message: 'Esse pedido já foi analisado.' }); return; }
+    const nota = String(req.body?.note || '').trim().slice(0, 300) || null;
+    const agora = nowIso();
+    const novo = String(pedido.requested_gender);
+    if (acao === 'approve') {
+      await run(db, 'UPDATE users SET gender = ? WHERE id = ?', [novo, String(pedido.user_id)]);
+    }
+    await run(
+      db,
+      'UPDATE gender_change_requests SET status = ?, reviewed_at = ?, reviewed_by = ?, review_note = ? WHERE id = ?',
+      [acao === 'approve' ? 'approved' : 'rejected', agora, req.auth!.userId, nota, String(pedido.id)]
+    );
+    await persist();
+    try {
+      await createNotification({ db, io: req.app.get('io') }, {
+        userId: String(pedido.user_id),
+        type: acao === 'approve' ? 'gender_change.approved' : 'gender_change.rejected',
+        title: acao === 'approve' ? '✅ Tipo de perfil alterado' : 'Troca de tipo de perfil não aprovada',
+        description: acao === 'approve'
+          ? `Seu perfil agora aparece como "${novo}".`
+          : `Seu pedido para mudar para "${novo}" foi recusado.${nota ? ` Motivo: ${nota}` : ''}`,
+        dataJson: { url: '/settings' },
+      });
+    } catch { /* não impede a decisão */ }
+    res.json({ ok: true });
+  });
+
+  // ── Solicitações de mudança de nome (histórico; desde 07/10/2026 a troca é na hora) ──
   app.get('/api/admin/name-change-requests', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     try {
       const rows = (await queryAll(

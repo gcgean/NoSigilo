@@ -1243,7 +1243,42 @@ export type ContatoAvisoTelegram = {
   personalizado: boolean;
 };
 
-export type CrescimentoLocal = { label: string; novos: number; total: number; growth: number };
+export const TIPOS_DE_PERFIL = ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
+
+export type PedidoTrocaGenero = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string | null;
+  avatar: string | null;
+  premium: boolean;
+  userCreatedAt: string | null;
+  currentGender: string | null;
+  requestedGender: string;
+  reason: string;
+  createdAt: string;
+};
+
+export const trocaGeneroService = {
+  pedir: async (gender: string, reason: string) => {
+    const response = await apiClient.post('/profile/gender-change-request', { gender, reason });
+    return response.data as { ok: boolean };
+  },
+  situacao: async (): Promise<{ request: { requestedGender: string; status: string; createdAt: string; reviewedAt: string | null; reviewNote: string | null } | null }> => {
+    const response = await apiClient.get('/profile/gender-change-request');
+    return response.data;
+  },
+  listarPendentes: async (): Promise<{ requests: PedidoTrocaGenero[] }> => {
+    const response = await apiClient.get('/admin/gender-change-requests');
+    return response.data;
+  },
+  decidir: async (id: string, acao: 'approve' | 'reject', note?: string) => {
+    const response = await apiClient.post(`/admin/gender-change-requests/${id}/${acao}`, { note });
+    return response.data as { ok: boolean };
+  },
+};
+
+export type CrescimentoLocal ={ label: string; novos: number; total: number; growth: number };
 export type CidadesPorPeriodo = {
   de: string;
   ate: string;

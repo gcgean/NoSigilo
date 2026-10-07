@@ -31,6 +31,7 @@ import AdminExclusoes from '@/components/AdminExclusoes';
 import AdminPedidos from '@/components/AdminPedidos';
 import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
 import AdminCidadesPorPeriodo from '@/components/AdminCidadesPorPeriodo';
+import AdminPedidosGenero from '@/components/AdminPedidosGenero';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -1591,7 +1592,10 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="users">
-          {/* ── Solicitações de mudança de nome ── */}
+          {/* ── Pedidos de troca do tipo de perfil (aprovação) ── */}
+          <AdminPedidosGenero />
+
+          {/* ── Pedidos antigos de nome (antes da troca na hora) ── */}
           {nameRequests.length > 0 && (
             <div className="glass rounded-xl p-6 mb-4">
               <h3 className="mb-1 font-semibold">Solicitações de mudança de nome ({nameRequests.length})</h3>

@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useToast } from '@/hooks/use-toast';
 import { Checkbox } from '@/components/ui/checkbox';
-import { authService, feedService, profileService, promoterService, suggestionsService, usersService } from '@/services/api';
+import { authService, feedService, profileService, promoterService, suggestionsService, trocaGeneroService, usersService } from '@/services/api';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -76,35 +76,54 @@ export default function Settings() {
 
   const [profilePerson, setProfilePerson] = useState<1 | 2>(1);
 
-  // ── Solicitação de mudança de nome (aprovação do admin) ──────────────────
+  // ── Mudança de nome: vale na hora (sem aprovação desde 07/10/2026) ───────
   const [nameReqOpen, setNameReqOpen] = useState(false);
   const [nameReqValue, setNameReqValue] = useState('');
   const [nameReqBusy, setNameReqBusy] = useState(false);
-  const [nameReqPending, setNameReqPending] = useState<string | null>(null);
-  useEffect(() => {
-    profileService.getNameChangeStatus()
-      .then((d) => { if (d.request?.status === 'pending') setNameReqPending(d.request.requestedName); })
-      .catch(() => {});
-  }, []);
   const handleRequestNameChange = async () => {
     const name = nameReqValue.trim();
     if (!name) return;
     setNameReqBusy(true);
     try {
       await profileService.requestNameChange(name);
-      setNameReqPending(name);
+      updateUser({ name });
+      setProfile((atual) => ({ ...atual, name }));
       setNameReqOpen(false);
       setNameReqValue('');
-      toast({ title: 'Solicitação enviada', description: 'Seu novo nome será aplicado após a aprovação do suporte.' });
+      toast({ title: 'Nome alterado ✅', description: `Seu perfil agora aparece como "${name}".` });
     } catch (e: any) {
       const err = e?.response?.data?.error;
       toast({
-        title: err === 'name_in_use' ? 'Nome já em uso' : err === 'already_pending' ? 'Já existe uma solicitação' : err === 'name_blacklisted' ? 'Nome indisponível' : 'Erro ao solicitar',
-        description: err === 'already_pending' ? 'Você já tem uma solicitação em análise.' : 'Escolha outro nome e tente novamente.',
+        title: err === 'name_in_use' ? 'Nome já em uso' : err === 'name_blacklisted' ? 'Nome indisponível' : err === 'same_name' ? 'Esse já é o seu nome' : 'Não foi possível trocar o nome',
+        description: 'Escolha outro nome e tente novamente.',
         variant: 'destructive',
       });
     } finally {
       setNameReqBusy(false);
+    }
+  };
+
+  // ── Troca do tipo de perfil: pedido com justificativa, o admin aprova ─────
+  const [generoAberto, setGeneroAberto] = useState(false);
+  const [generoPedido, setGeneroPedido] = useState('');
+  const [generoMotivo, setGeneroMotivo] = useState('');
+  const [generoEnviando, setGeneroEnviando] = useState(false);
+  const [generoSituacao, setGeneroSituacao] = useState<{ requestedGender: string; status: string; reviewNote: string | null } | null>(null);
+  useEffect(() => {
+    trocaGeneroService.situacao().then((d) => setGeneroSituacao(d.request)).catch(() => {});
+  }, []);
+  const pedirTrocaDeGenero = async () => {
+    setGeneroEnviando(true);
+    try {
+      await trocaGeneroService.pedir(generoPedido, generoMotivo.trim());
+      setGeneroSituacao({ requestedGender: generoPedido, status: 'pending', reviewNote: null });
+      setGeneroAberto(false);
+      setGeneroMotivo('');
+      toast({ title: 'Pedido enviado', description: 'A equipe vai analisar e você recebe a resposta nas notificações.' });
+    } catch (e: any) {
+      toast({ title: 'Não foi possível enviar', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setGeneroEnviando(false);
     }
   };
 
@@ -698,13 +717,9 @@ export default function Settings() {
                         className="pl-9 cursor-not-allowed opacity-80"
                       />
                     </div>
-                    {nameReqPending ? (
-                      <p className="text-xs text-amber-600">
-                        Solicitação em análise: <strong>"{nameReqPending}"</strong> — aguardando aprovação do suporte.
-                      </p>
-                    ) : nameReqOpen ? (
+                    {nameReqOpen ? (
                       <div className="space-y-2 rounded-lg border bg-secondary/30 p-3">
-                        <p className="text-xs text-muted-foreground">Digite o novo nome desejado. Ele passará por aprovação do suporte.</p>
+                        <p className="text-xs text-muted-foreground">Digite o novo nome. Ele vale na hora.</p>
                         <Input
                           value={nameReqValue}
                           onChange={(e) => setNameReqValue(e.target.value)}
@@ -714,7 +729,7 @@ export default function Settings() {
                         />
                         <div className="flex gap-2">
                           <Button size="sm" disabled={nameReqBusy || !nameReqValue.trim()} onClick={() => void handleRequestNameChange()}>
-                            {nameReqBusy ? 'Enviando...' : 'Enviar solicitação'}
+                            {nameReqBusy ? 'Salvando...' : 'Trocar nome'}
                           </Button>
                           <Button size="sm" variant="ghost" onClick={() => { setNameReqOpen(false); setNameReqValue(''); }}>Cancelar</Button>
                         </div>
@@ -725,7 +740,7 @@ export default function Settings() {
                         className="text-xs font-medium text-brand-pink hover:underline"
                         onClick={() => setNameReqOpen(true)}
                       >
-                        Solicitar mudança de nome
+                        Mudar nome
                       </button>
                     )}
                     <p className="text-[11px] text-muted-foreground/70">O nome só pode ser alterado com aprovação do suporte.</p>
@@ -762,9 +777,52 @@ export default function Settings() {
                       </SelectContent>
                     </Select>
                     {!!user?.gender && (
-                      <p className="text-[11px] text-muted-foreground">
-                        O tipo de perfil é definido no cadastro e não pode ser alterado depois.
-                      </p>
+                      generoSituacao?.status === 'pending' ? (
+                        <p className="text-xs text-amber-600">
+                          Pedido em análise: mudar para <strong>"{generoSituacao.requestedGender}"</strong>. Você recebe a resposta nas notificações.
+                        </p>
+                      ) : generoAberto ? (
+                        <div className="space-y-2 rounded-lg border bg-secondary/30 p-3">
+                          <p className="text-xs text-muted-foreground">
+                            A troca do tipo de perfil passa pela análise da equipe. Escolha o novo tipo e conte por que quer mudar.
+                          </p>
+                          <Select value={generoPedido} onValueChange={setGeneroPedido}>
+                            <SelectTrigger><SelectValue placeholder="Novo tipo de perfil" /></SelectTrigger>
+                            <SelectContent>
+                              {audienceOptions.filter((o) => o.value !== user?.gender).map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Textarea
+                            value={generoMotivo}
+                            onChange={(e) => setGeneroMotivo(e.target.value)}
+                            placeholder="Por que você quer mudar? (ex.: me cadastrei errado, agora somos um casal...)"
+                            maxLength={500}
+                            rows={3}
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" disabled={generoEnviando || !generoPedido || generoMotivo.trim().length < 10} onClick={() => void pedirTrocaDeGenero()}>
+                              {generoEnviando ? 'Enviando...' : 'Enviar para análise'}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => { setGeneroAberto(false); setGeneroMotivo(''); setGeneroPedido(''); }}>Cancelar</Button>
+                          </div>
+                          {generoMotivo.trim().length > 0 && generoMotivo.trim().length < 10 && (
+                            <p className="text-[11px] text-muted-foreground">Escreva pelo menos 10 letras.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {generoSituacao?.status === 'rejected' && (
+                            <p className="text-xs text-muted-foreground">
+                              Seu último pedido (para "{generoSituacao.requestedGender}") foi recusado{generoSituacao.reviewNote ? `: ${generoSituacao.reviewNote}` : '.'}
+                            </p>
+                          )}
+                          <button type="button" className="text-xs font-medium text-brand-pink hover:underline" onClick={() => setGeneroAberto(true)}>
+                            Pedir mudança de tipo de perfil
+                          </button>
+                        </div>
+                      )
                     )}
                   </div>
 

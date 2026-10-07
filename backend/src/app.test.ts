@@ -3374,4 +3374,49 @@ describe('nosigilo backend', () => {
     await request(ctx.app).get('/api/admin/analytics/cidades-periodo?de=2025-03-01&ate=2025-03-10').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
+
+  it('nome troca na hora; tipo de perfil só por pedido com motivo que o admin aprova ou recusa', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Nome Antigo', email: 'troca-nome@example.com', password: 'senha123', gender: 'Homem' });
+    const auth = { Authorization: `Bearer ${u.token}` };
+
+    // Nome: vale na hora, sem fila.
+    const r = await request(ctx.app).post('/api/profile/name-change-request').set(auth).send({ name: 'Nome Novo Agora' }).expect(200);
+    expect(r.body.name).toBe('Nome Novo Agora');
+    const me = (await ctx.db.queryOne('SELECT name FROM users WHERE id = ?', [String(u.user.id)])) as any;
+    expect(me.name).toBe('Nome Novo Agora');
+    await request(ctx.app).post('/api/profile/name-change-request').set(auth).send({ name: 'Sponsor Principal' }).expect(409);
+
+    // Gênero: o PUT do perfil continua sem mudar.
+    await request(ctx.app).put('/api/profile').set(auth).send({ gender: 'Mulher' });
+    expect(((await ctx.db.queryOne('SELECT gender FROM users WHERE id = ?', [String(u.user.id)])) as any).gender).toBe('Homem');
+
+    // Pedido exige motivo e tipo válido.
+    await request(ctx.app).post('/api/profile/gender-change-request').set(auth).send({ gender: 'Mulher', reason: 'curto' }).expect(400);
+    await request(ctx.app).post('/api/profile/gender-change-request').set(auth).send({ gender: 'Alien', reason: 'motivo bem explicado aqui' }).expect(400);
+    await request(ctx.app).post('/api/profile/gender-change-request').set(auth).send({ gender: 'Casal (Ele/Ela)', reason: 'Agora estou com minha namorada' }).expect(200);
+    await request(ctx.app).post('/api/profile/gender-change-request').set(auth).send({ gender: 'Mulher', reason: 'outro pedido qualquer' }).expect(409);
+    const sit = (await request(ctx.app).get('/api/profile/gender-change-request').set(auth).expect(200)).body;
+    expect(sit.request).toMatchObject({ requestedGender: 'Casal (Ele/Ela)', status: 'pending' });
+
+    // Admin vê, recusa com motivo; depois a pessoa pede de novo e o admin aprova.
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Genero', email: 'admin-genero@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const admAuth = { Authorization: `Bearer ${adm.token}` };
+    let lista = (await request(ctx.app).get('/api/admin/gender-change-requests').set(admAuth).expect(200)).body.requests as any[];
+    const pedido = lista.find((p) => p.userId === u.user.id);
+    expect(pedido).toMatchObject({ currentGender: 'Homem', requestedGender: 'Casal (Ele/Ela)', reason: 'Agora estou com minha namorada' });
+    await request(ctx.app).post(`/api/admin/gender-change-requests/${pedido.id}/reject`).set(admAuth).send({ note: 'Mande uma foto do casal' }).expect(200);
+    expect(((await ctx.db.queryOne('SELECT gender FROM users WHERE id = ?', [String(u.user.id)])) as any).gender).toBe('Homem');
+    expect((await request(ctx.app).get('/api/profile/gender-change-request').set(auth)).body.request).toMatchObject({ status: 'rejected', reviewNote: 'Mande uma foto do casal' });
+
+    await request(ctx.app).post('/api/profile/gender-change-request').set(auth).send({ gender: 'Casal (Ele/Ela)', reason: 'Já mandei a foto do casal' }).expect(200);
+    lista = (await request(ctx.app).get('/api/admin/gender-change-requests').set(admAuth).expect(200)).body.requests as any[];
+    const segundo = lista.find((p) => p.userId === u.user.id);
+    await request(ctx.app).post(`/api/admin/gender-change-requests/${segundo.id}/approve`).set(admAuth).expect(200);
+    expect(((await ctx.db.queryOne('SELECT gender FROM users WHERE id = ?', [String(u.user.id)])) as any).gender).toBe('Casal (Ele/Ela)');
+    // Decidido não decide de novo; usuário comum não acessa o admin.
+    await request(ctx.app).post(`/api/admin/gender-change-requests/${segundo.id}/reject`).set(admAuth).expect(404);
+    await request(ctx.app).get('/api/admin/gender-change-requests').set(auth).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
 });
