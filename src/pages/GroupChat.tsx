@@ -10,6 +10,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -21,6 +22,57 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { UserAvatar } from '@/components/UserAvatar';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { cn } from '@/lib/utils';
+
+// iPhone: tela cheia fixa presa à área visível. position:fixed no iOS é
+// relativo ao layout viewport; quando o teclado abre o Safari rola a página e o
+// grupo "subia" (cabeçalho sumia, campo ia parar no meio). Mesmo esquema da
+// conversa em Chat.tsx: top/bottom 0 + paddingBottom = altura do teclado.
+// zIndex 45: acima do cabeçalho do app (z-40) e ABAIXO dos modais/menus do
+// Radix (z-50) — com 60, como no Chat, Participantes e o menu ⋮ abririam atrás.
+function useTelaCheiaNoCelular(ativo: boolean): React.CSSProperties | undefined {
+  const [estilo, setEstilo] = useState<React.CSSProperties>();
+  useEffect(() => {
+    if (!ativo) { setEstilo(undefined); return; }
+    const atualizar = () => {
+      const vv = window.visualViewport;
+      const altura = vv ? vv.height : window.innerHeight;
+      const teclado = Math.max(0, window.innerHeight - Math.round(altura));
+      setEstilo({
+        position: 'fixed',
+        top: 0,
+        bottom: 0,
+        left: vv ? Math.round(vv.offsetLeft) : 0,
+        width: vv ? Math.round(vv.width) : '100%',
+        maxWidth: '100vw',
+        height: 'auto',
+        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.5rem)',
+        paddingBottom: teclado > 0 ? teclado : 'max(0.5rem, env(safe-area-inset-bottom, 0px))',
+        boxSizing: 'border-box',
+        zIndex: 45,
+        overflowX: 'hidden',
+      });
+    };
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', atualizar);
+    vv?.addEventListener('scroll', atualizar);
+    window.addEventListener('resize', atualizar);
+    atualizar();
+    // Trava a rolagem da página por baixo (senão o iOS a rola junto com o teclado).
+    const html = document.documentElement;
+    const body = document.body;
+    const antes = [html.style.overflow, body.style.overflow];
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    return () => {
+      vv?.removeEventListener('resize', atualizar);
+      vv?.removeEventListener('scroll', atualizar);
+      window.removeEventListener('resize', atualizar);
+      html.style.overflow = antes[0];
+      body.style.overflow = antes[1];
+    };
+  }, [ativo]);
+  return estilo;
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -73,6 +125,8 @@ export default function GroupChat() {
   const { toast } = useToast();
   const { emit, on, off } = useSocket();
   const premiumAccess = hasPremiumAccess(user);
+  const isMobile = useIsMobile();
+  const estiloCelular = useTelaCheiaNoCelular(isMobile);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -268,7 +322,10 @@ export default function GroupChat() {
   if (!group || !groupId) return null;
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-var(--app-header-h,3.5rem))] max-w-2xl min-w-0 flex-col px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 md:h-[calc(100dvh-6rem)] md:px-0 md:pb-0 md:pt-0">
+    <div
+      style={estiloCelular}
+      className="mx-auto flex h-[calc(100dvh-var(--app-header-h,3.5rem))] max-w-2xl min-w-0 flex-col bg-background px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 [touch-action:manipulation] md:h-[calc(100dvh-6rem)] md:bg-transparent md:px-0 md:pb-0 md:pt-0"
+    >
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 
       {/* Header */}
@@ -377,7 +434,7 @@ export default function GroupChat() {
                   <button
                     type="button"
                     aria-label="Opções da mensagem"
-                    className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-60 hover:bg-secondary hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
+                    className="mb-1 flex h-10 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-60 hover:bg-secondary hover:opacity-100 sm:h-8 sm:opacity-0 sm:group-hover/msg:opacity-100"
                   >
                     <MoreVertical className="h-4 w-4" />
                   </button>
@@ -472,6 +529,8 @@ export default function GroupChat() {
                 type="button"
                 variant="ghost"
                 size="icon"
+                className="h-11 w-11 shrink-0 md:h-10 md:w-10"
+                aria-label="Enviar foto ou vídeo"
                 disabled={uploading}
                 onClick={() => (premiumAccess ? fileInputRef.current?.click() : setPaywallOpen(true))}
               >
@@ -489,9 +548,10 @@ export default function GroupChat() {
                   if (e.key === 'Escape') setRespondendo(null);
                 }}
                 rows={1}
-                className="max-h-28 flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+                enterKeyHint="send"
+                className="max-h-28 min-h-[44px] flex-1 resize-none rounded-xl border bg-background px-3 py-2.5 text-[16px] leading-5 outline-none focus:ring-1 focus:ring-primary md:min-h-0 md:py-2 md:text-sm"
               />
-              <Button type="button" size="icon" disabled={!message.trim() || sending} onClick={() => void handleSend()}>
+              <Button type="button" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" disabled={!message.trim() || sending} onClick={() => void handleSend()}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
@@ -501,7 +561,7 @@ export default function GroupChat() {
 
       {/* Members modal */}
       <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
-        <DialogContent className="max-w-sm">
+        <DialogContent className="max-h-[85dvh] max-w-sm overflow-hidden">
           <DialogHeader>
             <DialogTitle>Participantes ({group.members.length})</DialogTitle>
           </DialogHeader>
