@@ -16029,8 +16029,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     )) as any[];
     const payload = safeJsonParse(group.payload_json) ?? {};
     const eu = members.find((m) => String(m.id) === userId);
+    const minhasNotif = (await queryOne(db, 'SELECT notificacoes_silenciadas FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
     res.json({
       myRole: eu ? String(eu.role) : 'member',
+      notificacoesSilenciadas: Number(minhasNotif?.notificacoes_silenciadas || 0) === 1,
       pinned: await mensagemFixada(groupId),
       groupId: String(group.id),
       eventId: String(group.event_id),
@@ -16059,7 +16061,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = (await queryAll(
       db,
       `SELECT * FROM (
-         SELECT gm.id, gm.sender_id, gm.content, gm.media_id, gm.created_at, gm.reply_to_id,
+         SELECT gm.id, gm.sender_id, gm.content, gm.media_id, gm.created_at, gm.reply_to_id, gm.is_view_once,
+                (SELECT COUNT(*) FROM event_group_message_views v WHERE v.message_id = gm.id) AS views_count,
+                (SELECT 1 FROM event_group_message_views v2 WHERE v2.message_id = gm.id AND v2.user_id = ?) AS visto_por_mim,
                 u.name AS sender_name, u.avatar AS sender_avatar, mb.role AS sender_role,
                 med.filename AS media_filename, med.mime_type AS media_mime_type,
                 rm.content AS reply_content, rm.media_id AS reply_media_id, ru.name AS reply_sender_name
@@ -16073,7 +16077,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           ORDER BY gm.created_at DESC
           LIMIT 300
        ) ultimas ORDER BY created_at ASC`,
-      [groupId]
+      [userId, groupId]
     )) as any[];
     res.json(
       rows.map((r) => ({
@@ -16082,9 +16086,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         senderName: String(r.sender_name || ''),
         senderAvatar: r.sender_avatar ?? null,
         content: r.content != null ? String(r.content) : null,
-        mediaUrl: r.media_filename ? `/uploads/${r.media_filename}` : null,
+        // Visualização única: a mídia só sai por POST .../view (uma vez por membro).
+        mediaUrl: Number(r.is_view_once || 0) === 1 ? null : (r.media_filename ? `/uploads/${r.media_filename}` : null),
         mediaMimeType: r.media_mime_type ? String(r.media_mime_type) : null,
         createdAt: String(r.created_at),
+        isViewOnce: Number(r.is_view_once || 0) === 1,
+        viewedByMe: !!r.visto_por_mim,
+        viewsCount: String(r.sender_id) === userId ? Number(r.views_count || 0) : undefined,
         senderRole: r.sender_role ? String(r.sender_role) : null,
         replyTo: r.reply_to_id && r.reply_sender_name != null
           ? { id: String(r.reply_to_id), senderName: String(r.reply_sender_name || ''), content: r.reply_content != null ? String(r.reply_content).slice(0, 140) : null, hasMedia: !!r.reply_media_id }
@@ -16103,7 +16111,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const membro = await requireGroupMember(groupId, userId);
     if (!membro.isMember) { res.status(403).json({ error: 'not_member' }); return; }
     if (membro.muted) { res.status(403).json({ error: 'muted', message: 'Um moderador silenciou você neste grupo.' }); return; }
-    const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional(), replyToId: z.string().max(64).optional() });
+    const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional(), replyToId: z.string().max(64).optional(), isViewOnce: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const content = parsed.data.content?.trim() || null;
@@ -16118,10 +16126,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         )) as any)
       : null;
 
+    // Visualização única só vale para imagem própria.
+    let visualizacaoUnica = false;
+    if (parsed.data.isViewOnce && mediaId) {
+      const midia = (await queryOne(db, 'SELECT user_id, mime_type FROM media WHERE id = ?', [mediaId])) as any;
+      visualizacaoUnica = !!midia && String(midia.user_id) === userId && String(midia.mime_type || '').startsWith('image/');
+    }
+
     const id = randomUUID();
     const createdAt = nowIso();
-    await run(db, 'INSERT INTO event_group_messages (id, group_id, sender_id, content, media_id, created_at, reply_to_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
-      id, groupId, userId, content, mediaId, createdAt, respondida ? String(respondida.id) : null,
+    await run(db, 'INSERT INTO event_group_messages (id, group_id, sender_id, content, media_id, created_at, reply_to_id, is_view_once) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+      id, groupId, userId, content, mediaId, createdAt, respondida ? String(respondida.id) : null, visualizacaoUnica ? 1 : 0,
     ]);
     await persist();
 
@@ -16138,7 +16153,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       id, groupId, senderId: userId,
       senderName: sender?.name ? String(sender.name) : '',
       senderAvatar: sender?.avatar ?? null,
-      content, mediaUrl, mediaMimeType, createdAt,
+      content, mediaUrl: visualizacaoUnica ? null : mediaUrl, mediaMimeType, createdAt,
+      isViewOnce: visualizacaoUnica,
+      viewedByMe: false,
       senderRole: membro.role,
       replyTo: respondida
         ? { id: String(respondida.id), senderName: String(respondida.sender_name || ''), content: respondida.content != null ? String(respondida.content).slice(0, 140) : null, hasMedia: !!respondida.media_id }
@@ -16149,12 +16166,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Notifica os demais membros (best-effort, não bloqueia a resposta).
     (async () => {
       try {
-        const members = (await queryAll(db, 'SELECT user_id FROM event_group_members WHERE group_id = ? AND user_id != ?', [groupId, userId])) as any[];
+        const members = (await queryAll(db, 'SELECT user_id FROM event_group_members WHERE group_id = ? AND user_id != ? AND COALESCE(notificacoes_silenciadas, 0) = 0', [groupId, userId])) as any[];
         const senderName = sender?.name ? String(sender.name) : 'Alguém';
         for (const m of members) {
           await sendPushToUser({ db, env }, {
             userId: String(m.user_id),
-            payload: { title: `${senderName} (grupo)`, body: content || 'Enviou uma mídia', url: `/chat/group/${groupId}`, tag: `group.message:${groupId}` },
+            payload: { title: `${senderName} (grupo)`, body: content || (visualizacaoUnica ? '⚡ Enviou uma foto de visualização única' : 'Enviou uma mídia'), url: `/chat/group/${groupId}`, tag: `group.message:${groupId}` },
           });
         }
       } catch { /* best-effort */ }
@@ -16221,6 +16238,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     io?.to(`group:${groupId}`).emit('group.message.deleted', { groupId, messageId: String(msg.id) });
     res.json({ ok: true });
+  });
+
+  // Foto de visualização única: entrega a mídia UMA vez para cada membro.
+  app.post('/api/groups/:groupId/messages/:messageId/view', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const membro = await requireGroupMember(groupId, userId);
+    if (!membro.isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS))) { res.status(403).json({ error: 'premium_required' }); return; }
+    const msg = (await queryOne(
+      db,
+      `SELECT gm.id, gm.sender_id, gm.is_view_once, med.filename, med.mime_type
+         FROM event_group_messages gm LEFT JOIN media med ON med.id = gm.media_id
+        WHERE gm.id = ? AND gm.group_id = ?`,
+      [req.params.messageId, groupId]
+    )) as any;
+    if (!msg || Number(msg.is_view_once || 0) !== 1 || !msg.filename) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(msg.sender_id) === userId) { res.status(400).json({ error: 'cannot_view_own_message', message: 'Foto de visualização única: nem quem enviou abre de novo.' }); return; }
+    const jaViu = await queryOne(db, 'SELECT 1 AS x FROM event_group_message_views WHERE message_id = ? AND user_id = ?', [String(msg.id), userId]);
+    if (jaViu) { res.status(410).json({ error: 'already_viewed', message: 'Você já abriu esta foto.' }); return; }
+    await run(db, 'INSERT INTO event_group_message_views (message_id, user_id, viewed_at) VALUES (?, ?, ?)', [String(msg.id), userId, nowIso()]);
+    await persist();
+    const total = (await queryOne(db, 'SELECT COUNT(*) AS c FROM event_group_message_views WHERE message_id = ?', [String(msg.id)])) as any;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.message.viewed', { groupId, messageId: String(msg.id), viewsCount: Number(total?.c || 0) });
+    res.json({ mediaUrl: `/uploads/${String(msg.filename)}`, mediaMimeType: msg.mime_type ? String(msg.mime_type) : null });
+  });
+
+  // Silenciar as notificações deste grupo (só para mim).
+  app.post('/api/groups/:groupId/notificacoes', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const membro = await requireGroupMember(groupId, userId);
+    if (!membro.isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    const silenciar = !!req.body?.silenciar;
+    await run(db, 'UPDATE event_group_members SET notificacoes_silenciadas = ? WHERE group_id = ? AND user_id = ?', [silenciar ? 1 : 0, groupId, userId]);
+    await persist();
+    res.json({ ok: true, silenciadas: silenciar });
   });
 
   // Fixar (ou desafixar com messageId null) uma mensagem no topo do grupo.

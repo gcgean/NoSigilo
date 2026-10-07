@@ -3478,4 +3478,47 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(bia.token)).expect(200);
     await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(bia.token)).expect(403);
   });
+
+  it('grupo: foto de visualização única abre uma vez por membro; silenciar notificações é por pessoa', async () => {
+    const reg = async (n: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `VU ${n}`, email: `grupo-vu-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dono = await reg('dono');
+    const ana = await reg('ana');
+    const bia = await reg('bia');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const ev = await request(ctx.app).post('/api/events').set(auth(dono.token)).send({ title: 'Evento VU', location: 'Fortaleza' }).expect(200);
+    const g = await request(ctx.app).post(`/api/events/${ev.body.id}/attend`).set(auth(ana.token)).expect(200);
+    const groupId = String(g.body.groupId);
+    await request(ctx.app).post(`/api/events/${ev.body.id}/attend`).set(auth(bia.token)).expect(200);
+
+    // Foto da Ana (mídia de chat dela).
+    const mediaId = `media-vu-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'image/webp', 0, 0, 'chat', ?)", [mediaId, String(ana.user.id), `${mediaId}.webp`, new Date().toISOString()]);
+    await ctx.db.persist();
+    const enviada = (await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(ana.token)).send({ mediaId, isViewOnce: true }).expect(200)).body;
+
+    // Na lista, ninguém recebe o endereço da foto.
+    const lista = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(bia.token)).expect(200)).body as any[];
+    expect(lista.find((m) => m.id === enviada.id)).toMatchObject({ isViewOnce: true, viewedByMe: false, mediaUrl: null });
+
+    // Bia abre uma vez; na segunda, 410. Quem enviou não abre.
+    const vista = (await request(ctx.app).post(`/api/groups/${groupId}/messages/${enviada.id}/view`).set(auth(bia.token)).expect(200)).body;
+    expect(vista.mediaUrl).toBe(`/uploads/${mediaId}.webp`);
+    await request(ctx.app).post(`/api/groups/${groupId}/messages/${enviada.id}/view`).set(auth(bia.token)).expect(410);
+    await request(ctx.app).post(`/api/groups/${groupId}/messages/${enviada.id}/view`).set(auth(ana.token)).expect(400);
+    // O dono ainda pode abrir a dele.
+    await request(ctx.app).post(`/api/groups/${groupId}/messages/${enviada.id}/view`).set(auth(dono.token)).expect(200);
+    const daAna = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(ana.token)).expect(200)).body as any[];
+    expect(daAna.find((m) => m.id === enviada.id).viewsCount).toBe(2);
+    const daBia = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(bia.token)).expect(200)).body as any[];
+    expect(daBia.find((m) => m.id === enviada.id).viewedByMe).toBe(true);
+
+    // Silenciar notificações: só para quem pediu.
+    await request(ctx.app).post(`/api/groups/${groupId}/notificacoes`).set(auth(bia.token)).send({ silenciar: true }).expect(200);
+    expect((await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(bia.token)).expect(200)).body.notificacoesSilenciadas).toBe(true);
+    expect((await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(ana.token)).expect(200)).body.notificacoesSilenciadas).toBe(false);
+  });
 });

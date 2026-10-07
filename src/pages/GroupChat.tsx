@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Ban, ChevronRight, Copy, Crown, Image as ImageIcon, LogOut, MoreVertical, Pin, PinOff, Reply, Send,
-  Shield, ShieldOff, Trash2, UserMinus, Users, Volume2, VolumeX, X,
+  ArrowLeft, Ban, Bell, BellOff, ChevronRight, Copy, Crown, Eye, EyeOff, Image as ImageIcon, Loader2, LogOut, MoreVertical, Pin, PinOff,
+  Reply, Send, Shield, ShieldOff, Trash2, UserMinus, Users, Volume2, VolumeX, X, Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -141,6 +141,14 @@ export default function GroupChat() {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [respondendo, setRespondendo] = useState<GroupMessage | null>(null);
   const [destaque, setDestaque] = useState<string | null>(null);
+  // Mídia escolhida, esperando o "Enviar" (com a opção de visualização única).
+  const [anexo, setAnexo] = useState<{ file: File; preview: string; imagem: boolean } | null>(null);
+  const [visualizacaoUnica, setVisualizacaoUnica] = useState(false);
+  // Foto única aberta em tela cheia (some ao fechar).
+  const [fotoUnica, setFotoUnica] = useState<string | null>(null);
+  const [abrindoFoto, setAbrindoFoto] = useState<string | null>(null);
+  const [silenciandoNotif, setSilenciandoNotif] = useState(false);
+  useEffect(() => () => { if (anexo) URL.revokeObjectURL(anexo.preview); }, [anexo]);
 
   useEffect(() => {
     if (!groupId) return;
@@ -203,13 +211,19 @@ export default function GroupChat() {
       }
       setGroup((g) => (g ? { ...g, members: g.members.filter((m) => m.id !== d.userId) } : g));
     };
+    const vista = (d: { groupId: string; messageId: string; viewsCount: number }) => {
+      if (d.groupId !== groupId) return;
+      setMessages((prev) => prev.map((m) => (m.id === d.messageId && m.senderId === user?.id ? { ...m, viewsCount: d.viewsCount } : m)));
+    };
     on('group.message.new', nova);
+    on('group.message.viewed', vista);
     on('group.message.deleted', apagada);
     on('group.pinned', fixada);
     on('group.member.updated', membroMudou);
     on('group.member.removed', removido);
     return () => {
       off('group.message.new', nova);
+      off('group.message.viewed', vista);
       off('group.message.deleted', apagada);
       off('group.pinned', fixada);
       off('group.member.updated', membroMudou);
@@ -252,20 +266,60 @@ export default function GroupChat() {
     }
   }, [groupId, message, sending, premiumAccess, toast, respondendo]);
 
-  const handleAttach = useCallback(async (file: File) => {
-    if (!groupId) return;
+  const escolherAnexo = (file: File) => {
     if (!premiumAccess) { setPaywallOpen(true); return; }
+    setAnexo({ file, preview: URL.createObjectURL(file), imagem: file.type.startsWith('image/') });
+    setVisualizacaoUnica(false);
+  };
+
+  const enviarAnexo = useCallback(async () => {
+    if (!groupId || !anexo) return;
     setUploading(true);
     try {
-      const { id } = await profileService.uploadMedia(file, { source: 'chat' });
-      await groupsService.sendMessage(groupId, undefined, id, respondendo?.id);
+      const { id } = await profileService.uploadMedia(anexo.file, { source: 'chat' });
+      const legenda = message.trim();
+      await groupsService.sendMessage(groupId, legenda || undefined, id, respondendo?.id, anexo.imagem && visualizacaoUnica);
       setRespondendo(null);
+      setMessage('');
+      setAnexo(null);
+      setVisualizacaoUnica(false);
     } catch (e: any) {
       toast({ title: 'Erro ao enviar mídia', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setUploading(false);
     }
-  }, [groupId, premiumAccess, toast, respondendo]);
+  }, [groupId, anexo, message, respondendo, visualizacaoUnica, toast]);
+
+  const abrirFotoUnica = async (m: GroupMessage) => {
+    if (!groupId) return;
+    if (!premiumAccess) { setPaywallOpen(true); return; }
+    setAbrindoFoto(m.id);
+    try {
+      const { mediaUrl } = await groupsService.verFotoUnica(groupId, m.id);
+      setFotoUnica(resolveServerUrl(mediaUrl));
+    } catch (e: any) {
+      toast({ title: 'Não foi possível abrir', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      // Aberta (ou já vista antes): não abre de novo.
+      setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, viewedByMe: true } : x)));
+      setAbrindoFoto(null);
+    }
+  };
+
+  const alternarNotificacoes = async () => {
+    if (!groupId || !group) return;
+    const silenciar = !group.notificacoesSilenciadas;
+    setSilenciandoNotif(true);
+    try {
+      await groupsService.silenciarNotificacoes(groupId, silenciar);
+      setGroup((g) => (g ? { ...g, notificacoesSilenciadas: silenciar } : g));
+      toast({ title: silenciar ? 'Grupo silenciado 🔕' : 'Notificações do grupo ligadas 🔔', description: silenciar ? 'Você não recebe mais avisos das mensagens deste grupo.' : undefined });
+    } catch {
+      toast({ title: 'Não foi possível mudar agora', variant: 'destructive' });
+    } finally {
+      setSilenciandoNotif(false);
+    }
+  };
 
   const handleLeave = useCallback(async () => {
     if (!groupId) return;
@@ -346,6 +400,16 @@ export default function GroupChat() {
             </p>
           </div>
         </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          disabled={silenciandoNotif}
+          onClick={() => void alternarNotificacoes()}
+          aria-label={group.notificacoesSilenciadas ? 'Ligar notificações do grupo' : 'Silenciar notificações do grupo'}
+          title={group.notificacoesSilenciadas ? 'Grupo silenciado — toque para ligar' : 'Silenciar notificações do grupo'}
+        >
+          {group.notificacoesSilenciadas ? <BellOff className="h-5 w-5 text-muted-foreground" /> : <Bell className="h-5 w-5" />}
+        </Button>
         <Button variant="ghost" size="icon" onClick={() => setMembersOpen(true)} aria-label="Ver membros">
           <Users className="h-5 w-5" />
         </Button>
@@ -401,7 +465,14 @@ export default function GroupChat() {
               >
                 {!isMine && (
                   <p className="mb-0.5 flex flex-wrap items-center gap-1 text-[11px] font-semibold text-brand-pink">
-                    {m.senderName} <SeloPapel role={papel} />
+                    <button
+                      type="button"
+                      className="font-semibold hover:underline"
+                      onClick={() => navigate(getUserProfileHref(m.senderId, user?.id, `/chat/group/${groupId}`))}
+                    >
+                      {m.senderName}
+                    </button>
+                    <SeloPapel role={papel} />
                   </p>
                 )}
                 {m.replyTo && (
@@ -417,7 +488,29 @@ export default function GroupChat() {
                     <span className="line-clamp-2 opacity-80">{resumo(m.replyTo)}</span>
                   </button>
                 )}
-                {m.mediaUrl && (
+                {m.isViewOnce ? (
+                  isMine ? (
+                    <div className="mb-1 flex items-center gap-2 rounded-lg border border-white/20 bg-black/10 px-3 py-2.5 text-xs">
+                      <Zap className="h-4 w-4 shrink-0 text-yellow-400" />
+                      <span>Foto de visualização única · {m.viewsCount ? `aberta por ${m.viewsCount}` : 'ninguém abriu ainda'}</span>
+                    </div>
+                  ) : m.viewedByMe ? (
+                    <div className="mb-1 flex items-center gap-2 rounded-lg border px-3 py-2.5 text-xs italic text-muted-foreground opacity-70">
+                      <EyeOff className="h-4 w-4 shrink-0" /> Foto aberta
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={abrindoFoto === m.id}
+                      onClick={() => void abrirFotoUnica(m)}
+                      className="mb-1 flex w-full flex-col items-center gap-1.5 rounded-lg border border-white/20 bg-black/20 px-6 py-5 text-xs font-medium"
+                    >
+                      {abrindoFoto === m.id ? <Loader2 className="h-6 w-6 animate-spin" /> : <Zap className="h-6 w-6 text-yellow-400" />}
+                      Foto de visualização única
+                      <span className="flex items-center gap-1 rounded-md bg-secondary px-2.5 py-1 text-foreground"><Eye className="h-3.5 w-3.5" /> Ver uma vez</span>
+                    </button>
+                  )
+                ) : m.mediaUrl && (
                   m.mediaMimeType?.startsWith('video/') ? (
                     <video src={resolveServerUrl(m.mediaUrl)} controls className="mb-1 max-h-64 w-full rounded-lg" />
                   ) : (
@@ -505,6 +598,41 @@ export default function GroupChat() {
           </p>
         ) : (
           <>
+            {anexo && (
+              <div className="mb-2 flex items-center gap-3 rounded-xl border bg-secondary/40 p-2">
+                {anexo.imagem ? (
+                  <img src={anexo.preview} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                ) : (
+                  <video src={anexo.preview} className="h-16 w-16 shrink-0 rounded-lg object-cover" muted />
+                )}
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  {anexo.imagem ? (
+                    <button
+                      type="button"
+                      onClick={() => setVisualizacaoUnica((v) => !v)}
+                      className={cn(
+                        'flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 text-xs font-semibold',
+                        visualizacaoUnica ? 'border-yellow-400 bg-yellow-400/15 text-foreground' : 'text-muted-foreground'
+                      )}
+                    >
+                      <Zap className={cn('h-4 w-4', visualizacaoUnica && 'fill-yellow-400 text-yellow-400')} />
+                      {visualizacaoUnica ? 'Visualização única ligada' : 'Visualização única'}
+                    </button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Vídeo pronto para enviar</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground">
+                    {visualizacaoUnica ? 'Cada pessoa do grupo abre uma vez só.' : 'Escreva uma legenda no campo, se quiser.'}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-1">
+                  <Button size="sm" className="h-9" disabled={uploading} onClick={() => void enviarAnexo()}>
+                    {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar'}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8" disabled={uploading} onClick={() => setAnexo(null)}>Cancelar</Button>
+                </div>
+              </div>
+            )}
             {respondendo && (
               <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-primary bg-secondary/50 px-2 py-1.5">
                 <Reply className="h-4 w-4 shrink-0 text-primary" />
@@ -523,7 +651,7 @@ export default function GroupChat() {
                 type="file"
                 accept="image/*,video/*"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleAttach(f); e.target.value = ''; }}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) escolherAnexo(f); e.target.value = ''; }}
               />
               <Button
                 type="button"
@@ -544,20 +672,40 @@ export default function GroupChat() {
                 onMouseDown={!premiumAccess ? (e) => { e.preventDefault(); setPaywallOpen(true); } : undefined}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void (anexo ? enviarAnexo() : handleSend()); }
                   if (e.key === 'Escape') setRespondendo(null);
                 }}
                 rows={1}
                 enterKeyHint="send"
                 className="max-h-28 min-h-[44px] flex-1 resize-none rounded-xl border bg-background px-3 py-2.5 text-[16px] leading-5 outline-none focus:ring-1 focus:ring-primary md:min-h-0 md:py-2 md:text-sm"
               />
-              <Button type="button" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" disabled={!message.trim() || sending} onClick={() => void handleSend()}>
+              <Button type="button" size="icon" className="h-11 w-11 shrink-0 md:h-10 md:w-10" disabled={anexo ? uploading : !message.trim() || sending} onClick={() => void (anexo ? enviarAnexo() : handleSend())}>
                 <Send className="h-4 w-4" />
               </Button>
             </div>
           </>
         )}
       </div>
+
+      {fotoUnica && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black" onContextMenu={(e) => e.preventDefault()}>
+          <div className="flex items-center justify-between p-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] text-white">
+            <span className="flex items-center gap-1.5 text-sm"><Zap className="h-4 w-4 text-yellow-400" /> Visualização única — ao fechar, some</span>
+            <Button variant="ghost" size="icon" className="text-white" aria-label="Fechar" onClick={() => setFotoUnica(null)}>
+              <X className="h-6 w-6" />
+            </Button>
+          </div>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-2">
+            <img
+              src={fotoUnica}
+              alt="Foto de visualização única"
+              className="max-h-full max-w-full select-none object-contain"
+              draggable={false}
+              style={{ WebkitTouchCallout: 'none' } as React.CSSProperties}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Members modal */}
       <Dialog open={membersOpen} onOpenChange={setMembersOpen}>
@@ -581,13 +729,17 @@ export default function GroupChat() {
                   <button type="button" onClick={() => navigate(getUserProfileHref(m.id, user?.id, `/chat/group/${groupId}`))}>
                     <UserAvatar user={{ name: m.name, avatar: m.avatar }} className="h-9 w-9" />
                   </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{m.name}{m.id === user?.id ? ' (você)' : ''}</p>
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => navigate(getUserProfileHref(m.id, user?.id, `/chat/group/${groupId}`))}
+                  >
+                    <p className="truncate text-sm font-medium hover:underline">{m.name}{m.id === user?.id ? ' (você)' : ''}</p>
                     <div className="flex flex-wrap items-center gap-1">
                       <SeloPapel role={role} />
                       {m.muted && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600"><VolumeX className="h-2.5 w-2.5" /> Silenciado</span>}
                     </div>
-                  </div>
+                  </button>
                   {gerenciavel && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

@@ -2308,6 +2308,7 @@ export interface GroupDetail {
   members: GroupMember[];
   myRole?: GroupRole | string;
   pinned?: GroupMessageRef | null;
+  notificacoesSilenciadas?: boolean;
 }
 export interface GroupMessage {
   id: string;
@@ -2320,6 +2321,10 @@ export interface GroupMessage {
   createdAt: string;
   senderRole?: string | null;
   replyTo?: GroupMessageRef | null;
+  isViewOnce?: boolean;
+  viewedByMe?: boolean;
+  /** Só vem para quem enviou: quantos membros já abriram a foto única. */
+  viewsCount?: number;
 }
 export const groupsService = {
   getGroups: async (): Promise<GroupSummary[]> => {
@@ -2334,9 +2339,16 @@ export const groupsService = {
     const res = await apiClient.get(`/groups/${groupId}/messages`);
     return res.data;
   },
-  sendMessage: async (groupId: string, content?: string, mediaId?: string, replyToId?: string): Promise<{ id: string; createdAt: string }> => {
-    const res = await apiClient.post(`/groups/${groupId}/messages`, { content, mediaId, ...(replyToId ? { replyToId } : {}) });
+  sendMessage: async (groupId: string, content?: string, mediaId?: string, replyToId?: string, isViewOnce?: boolean): Promise<{ id: string; createdAt: string }> => {
+    const res = await apiClient.post(`/groups/${groupId}/messages`, { content, mediaId, ...(replyToId ? { replyToId } : {}), ...(isViewOnce ? { isViewOnce: true } : {}) });
     return res.data;
+  },
+  verFotoUnica: async (groupId: string, messageId: string): Promise<{ mediaUrl: string; mediaMimeType: string | null }> => {
+    const res = await apiClient.post(`/groups/${groupId}/messages/${messageId}/view`);
+    return res.data;
+  },
+  silenciarNotificacoes: async (groupId: string, silenciar: boolean): Promise<void> => {
+    await apiClient.post(`/groups/${groupId}/notificacoes`, { silenciar });
   },
   deleteMessage: async (groupId: string, messageId: string): Promise<void> => {
     await apiClient.delete(`/groups/${groupId}/messages/${messageId}`);
