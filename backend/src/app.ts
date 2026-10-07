@@ -15896,7 +15896,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const groupId = await getOrCreateEventGroup(eventId, String(event.user_id), payload);
     const alreadyMember = (await queryOne(db, 'SELECT id FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
-    if (!alreadyMember?.id) {
+    // Banido pela moderação: confirma presença, mas não volta para o grupo.
+    const banido = (await queryOne(db, 'SELECT 1 AS x FROM event_group_bans WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
+    if (!alreadyMember?.id && !banido) {
       await run(db, 'INSERT INTO event_group_members (id, group_id, user_id, role, joined_at) VALUES (?, ?, ?, ?, ?)', [
         randomUUID(), groupId, userId, 'member', nowIso(),
       ]);
@@ -15982,10 +15984,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
   });
 
-  async function requireGroupMember(groupId: string, userId: string): Promise<{ isMember: boolean; isOrganizer: boolean }> {
-    const row = (await queryOne(db, 'SELECT role FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
-    if (!row) return { isMember: false, isOrganizer: false };
-    return { isMember: true, isOrganizer: String(row.role) === 'organizer' };
+  // Papéis no grupo (como no Telegram): 'organizer' = dono, quem criou o
+  // evento; 'moderator' = promovido pelo dono; 'member'. Dono e moderadores
+  // moderam (apagar, fixar, silenciar, remover/banir); só o dono promove.
+  async function requireGroupMember(groupId: string, userId: string): Promise<{ isMember: boolean; isOrganizer: boolean; isModerator: boolean; muted: boolean; role: string | null }> {
+    const row = (await queryOne(db, 'SELECT role, muted FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
+    if (!row) return { isMember: false, isOrganizer: false, isModerator: false, muted: false, role: null };
+    const role = String(row.role);
+    return { isMember: true, isOrganizer: role === 'organizer', isModerator: role === 'organizer' || role === 'moderator', muted: Number(row.muted || 0) === 1, role };
+  }
+  // Moderador pode agir sobre membro comum; só o dono age sobre moderador; ninguém sobre o dono.
+  const podeModerarAlvo = (quem: { isOrganizer: boolean; isModerator: boolean }, alvoRole: string | null) =>
+    alvoRole !== 'organizer' && (quem.isOrganizer || (quem.isModerator && alvoRole !== 'moderator'));
+
+  async function mensagemFixada(groupId: string) {
+    const row = (await queryOne(
+      db,
+      `SELECT gm.id, gm.content, gm.media_id, u.name AS sender_name
+         FROM event_groups eg JOIN event_group_messages gm ON gm.id = eg.pinned_message_id
+         JOIN users u ON u.id = gm.sender_id
+        WHERE eg.id = ?`,
+      [groupId]
+    )) as any;
+    return row ? { id: String(row.id), senderName: String(row.sender_name || ''), content: row.content != null ? String(row.content) : null, hasMedia: !!row.media_id } : null;
   }
 
   app.get('/api/groups/:groupId', requireAuth(env, db), async (req, res) => {
@@ -16001,11 +16022,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!group) { res.status(404).json({ error: 'not_found' }); return; }
     const members = (await queryAll(
       db,
-      `SELECT u.id, u.name, u.avatar, m.role FROM event_group_members m JOIN users u ON u.id = m.user_id WHERE m.group_id = ? ORDER BY m.role = 'organizer' DESC, m.joined_at ASC`,
+      `SELECT u.id, u.name, u.avatar, m.role, m.muted FROM event_group_members m JOIN users u ON u.id = m.user_id
+        WHERE m.group_id = ?
+        ORDER BY CASE m.role WHEN 'organizer' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END, m.joined_at ASC`,
       [groupId]
     )) as any[];
     const payload = safeJsonParse(group.payload_json) ?? {};
+    const eu = members.find((m) => String(m.id) === userId);
     res.json({
+      myRole: eu ? String(eu.role) : 'member',
+      pinned: await mensagemFixada(groupId),
       groupId: String(group.id),
       eventId: String(group.event_id),
       title: String((payload as any)?.title || 'Evento'),
@@ -16013,7 +16039,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       date: (payload as any)?.date || null,
       location: (payload as any)?.location || null,
       expiresAt: group.expires_at,
-      members: members.map((m) => ({ id: String(m.id), name: String(m.name || ''), avatar: m.avatar ?? null, isOrganizer: String(m.role) === 'organizer' })),
+      members: members.map((m) => ({
+        id: String(m.id),
+        name: String(m.name || ''),
+        avatar: m.avatar ?? null,
+        role: String(m.role),
+        isOrganizer: String(m.role) === 'organizer',
+        isModerator: String(m.role) === 'organizer' || String(m.role) === 'moderator',
+        muted: Number(m.muted || 0) === 1,
+      })),
     });
   });
 
@@ -16024,14 +16058,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (!isMember) { res.status(403).json({ error: 'not_member' }); return; }
     const rows = (await queryAll(
       db,
-      `SELECT gm.id, gm.sender_id, gm.content, gm.media_id, gm.created_at, u.name AS sender_name, u.avatar AS sender_avatar,
-              med.filename AS media_filename, med.mime_type AS media_mime_type
-         FROM event_group_messages gm
-         JOIN users u ON u.id = gm.sender_id
-         LEFT JOIN media med ON med.id = gm.media_id
-        WHERE gm.group_id = ?
-        ORDER BY gm.created_at ASC
-        LIMIT 300`,
+      `SELECT * FROM (
+         SELECT gm.id, gm.sender_id, gm.content, gm.media_id, gm.created_at, gm.reply_to_id,
+                u.name AS sender_name, u.avatar AS sender_avatar, mb.role AS sender_role,
+                med.filename AS media_filename, med.mime_type AS media_mime_type,
+                rm.content AS reply_content, rm.media_id AS reply_media_id, ru.name AS reply_sender_name
+           FROM event_group_messages gm
+           JOIN users u ON u.id = gm.sender_id
+           LEFT JOIN event_group_members mb ON mb.group_id = gm.group_id AND mb.user_id = gm.sender_id
+           LEFT JOIN media med ON med.id = gm.media_id
+           LEFT JOIN event_group_messages rm ON rm.id = gm.reply_to_id
+           LEFT JOIN users ru ON ru.id = rm.sender_id
+          WHERE gm.group_id = ?
+          ORDER BY gm.created_at DESC
+          LIMIT 300
+       ) ultimas ORDER BY created_at ASC`,
       [groupId]
     )) as any[];
     res.json(
@@ -16044,6 +16085,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         mediaUrl: r.media_filename ? `/uploads/${r.media_filename}` : null,
         mediaMimeType: r.media_mime_type ? String(r.media_mime_type) : null,
         createdAt: String(r.created_at),
+        senderRole: r.sender_role ? String(r.sender_role) : null,
+        replyTo: r.reply_to_id && r.reply_sender_name != null
+          ? { id: String(r.reply_to_id), senderName: String(r.reply_sender_name || ''), content: r.reply_content != null ? String(r.reply_content).slice(0, 140) : null, hasMedia: !!r.reply_media_id }
+          : null,
       }))
     );
   });
@@ -16055,19 +16100,28 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
-    const { isMember } = await requireGroupMember(groupId, userId);
-    if (!isMember) { res.status(403).json({ error: 'not_member' }); return; }
-    const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional() });
+    const membro = await requireGroupMember(groupId, userId);
+    if (!membro.isMember) { res.status(403).json({ error: 'not_member' }); return; }
+    if (membro.muted) { res.status(403).json({ error: 'muted', message: 'Um moderador silenciou você neste grupo.' }); return; }
+    const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional(), replyToId: z.string().max(64).optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const content = parsed.data.content?.trim() || null;
     const mediaId = parsed.data.mediaId || null;
     if (!content && !mediaId) { res.status(400).json({ error: 'empty_message' }); return; }
+    // Resposta só vale para mensagem deste grupo.
+    const respondida = parsed.data.replyToId
+      ? ((await queryOne(
+          db,
+          `SELECT gm.id, gm.content, gm.media_id, u.name AS sender_name FROM event_group_messages gm JOIN users u ON u.id = gm.sender_id WHERE gm.id = ? AND gm.group_id = ?`,
+          [parsed.data.replyToId, groupId]
+        )) as any)
+      : null;
 
     const id = randomUUID();
     const createdAt = nowIso();
-    await run(db, 'INSERT INTO event_group_messages (id, group_id, sender_id, content, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
-      id, groupId, userId, content, mediaId, createdAt,
+    await run(db, 'INSERT INTO event_group_messages (id, group_id, sender_id, content, media_id, created_at, reply_to_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+      id, groupId, userId, content, mediaId, createdAt, respondida ? String(respondida.id) : null,
     ]);
     await persist();
 
@@ -16085,6 +16139,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       senderName: sender?.name ? String(sender.name) : '',
       senderAvatar: sender?.avatar ?? null,
       content, mediaUrl, mediaMimeType, createdAt,
+      senderRole: membro.role,
+      replyTo: respondida
+        ? { id: String(respondida.id), senderName: String(respondida.sender_name || ''), content: respondida.content != null ? String(respondida.content).slice(0, 140) : null, hasMedia: !!respondida.media_id }
+        : null,
     };
     io?.to(`group:${groupId}`).emit('group.message.new', payloadOut);
 
@@ -16121,9 +16179,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const requesterId = req.auth!.userId;
     const groupId = String(req.params.groupId || '');
     const targetUserId = String(req.params.userId || '');
-    const { isOrganizer } = await requireGroupMember(groupId, requesterId);
-    if (!isOrganizer) { res.status(403).json({ error: 'forbidden' }); return; }
+    const quem = await requireGroupMember(groupId, requesterId);
+    const alvo = await requireGroupMember(groupId, targetUserId);
+    if (!quem.isModerator || !podeModerarAlvo(quem, alvo.role)) { res.status(403).json({ error: 'forbidden', message: 'Você não pode remover esta pessoa.' }); return; }
     await run(db, 'DELETE FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, targetUserId]);
+    // ?ban=1: não volta nem confirmando presença no evento de novo.
+    if (String(req.query.ban || '') === '1') {
+      await run(
+        db,
+        'INSERT INTO event_group_bans (id, group_id, user_id, banned_by, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (group_id, user_id) DO NOTHING',
+        [randomUUID(), groupId, targetUserId, requesterId, nowIso()]
+      );
+    }
     const group = (await queryOne(db, 'SELECT event_id FROM event_groups WHERE id = ?', [groupId])) as any;
     if (group?.event_id) {
       await run(db, 'DELETE FROM event_attendees WHERE event_id = ? AND user_id = ?', [String(group.event_id), targetUserId]);
@@ -16132,6 +16199,79 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     io?.to(`group:${groupId}`).emit('group.member.removed', { groupId, userId: targetUserId });
     res.json({ ok: true });
+  });
+
+  // Apagar mensagem: a própria, ou qualquer uma se for dono/moderador.
+  app.delete('/api/groups/:groupId/messages/:messageId', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const groupId = String(req.params.groupId || '');
+    const msg = (await queryOne(db, 'SELECT id, sender_id FROM event_group_messages WHERE id = ? AND group_id = ?', [req.params.messageId, groupId])) as any;
+    if (!msg) { res.status(404).json({ error: 'not_found' }); return; }
+    const quem = await requireGroupMember(groupId, userId);
+    const autor = String(msg.sender_id) === userId;
+    if (!autor) {
+      const alvo = await requireGroupMember(groupId, String(msg.sender_id));
+      // Mensagem de quem já saiu (sem papel) também pode ser apagada pela moderação.
+      if (!quem.isModerator || (alvo.isMember && !podeModerarAlvo(quem, alvo.role))) { res.status(403).json({ error: 'forbidden' }); return; }
+    }
+    await run(db, 'UPDATE event_groups SET pinned_message_id = NULL WHERE id = ? AND pinned_message_id = ?', [groupId, String(msg.id)]);
+    await run(db, 'UPDATE event_group_messages SET reply_to_id = NULL WHERE reply_to_id = ?', [String(msg.id)]);
+    await run(db, 'DELETE FROM event_group_messages WHERE id = ?', [String(msg.id)]);
+    await persist();
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.message.deleted', { groupId, messageId: String(msg.id) });
+    res.json({ ok: true });
+  });
+
+  // Fixar (ou desafixar com messageId null) uma mensagem no topo do grupo.
+  app.post('/api/groups/:groupId/pin', requireAuth(env, db), async (req, res) => {
+    const groupId = String(req.params.groupId || '');
+    const quem = await requireGroupMember(groupId, req.auth!.userId);
+    if (!quem.isModerator) { res.status(403).json({ error: 'forbidden' }); return; }
+    const messageId = req.body?.messageId ? String(req.body.messageId) : null;
+    if (messageId) {
+      const msg = await queryOne(db, 'SELECT 1 AS x FROM event_group_messages WHERE id = ? AND group_id = ?', [messageId, groupId]);
+      if (!msg) { res.status(404).json({ error: 'not_found' }); return; }
+    }
+    await run(db, 'UPDATE event_groups SET pinned_message_id = ? WHERE id = ?', [messageId, groupId]);
+    await persist();
+    const pinned = await mensagemFixada(groupId);
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.pinned', { groupId, pinned });
+    res.json({ ok: true, pinned });
+  });
+
+  // Silenciar / devolver a voz a um membro.
+  app.post('/api/groups/:groupId/members/:userId/mute', requireAuth(env, db), async (req, res) => {
+    const groupId = String(req.params.groupId || '');
+    const targetUserId = String(req.params.userId || '');
+    const quem = await requireGroupMember(groupId, req.auth!.userId);
+    const alvo = await requireGroupMember(groupId, targetUserId);
+    if (!alvo.isMember) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!quem.isModerator || !podeModerarAlvo(quem, alvo.role)) { res.status(403).json({ error: 'forbidden', message: 'Você não pode silenciar esta pessoa.' }); return; }
+    const muted = !!req.body?.muted;
+    await run(db, 'UPDATE event_group_members SET muted = ? WHERE group_id = ? AND user_id = ?', [muted ? 1 : 0, groupId, targetUserId]);
+    await persist();
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.member.updated', { groupId, userId: targetUserId, muted });
+    res.json({ ok: true, muted });
+  });
+
+  // Promover a moderador / voltar a membro: só o dono do grupo.
+  app.post('/api/groups/:groupId/members/:userId/role', requireAuth(env, db), async (req, res) => {
+    const groupId = String(req.params.groupId || '');
+    const targetUserId = String(req.params.userId || '');
+    const role = req.body?.role === 'moderator' ? 'moderator' : req.body?.role === 'member' ? 'member' : null;
+    if (!role) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const quem = await requireGroupMember(groupId, req.auth!.userId);
+    const alvo = await requireGroupMember(groupId, targetUserId);
+    if (!quem.isOrganizer) { res.status(403).json({ error: 'forbidden', message: 'Só quem criou o evento escolhe os moderadores.' }); return; }
+    if (!alvo.isMember || alvo.isOrganizer) { res.status(400).json({ error: 'invalid_target' }); return; }
+    await run(db, 'UPDATE event_group_members SET role = ?, muted = 0 WHERE group_id = ? AND user_id = ?', [role, groupId, targetUserId]);
+    await persist();
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    io?.to(`group:${groupId}`).emit('group.member.updated', { groupId, userId: targetUserId, role, muted: false });
+    res.json({ ok: true, role });
   });
 
   // Admin: apaga o grupo inteiro (moderação — denúncia de conteúdo no grupo).

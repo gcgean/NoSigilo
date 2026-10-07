@@ -1,14 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ChevronRight, Crown, Image as ImageIcon, Lock, LogOut, Send, Users, X } from 'lucide-react';
+import {
+  ArrowLeft, Ban, ChevronRight, Copy, Crown, Image as ImageIcon, LogOut, MoreVertical, Pin, PinOff, Reply, Send,
+  Shield, ShieldOff, Trash2, UserMinus, Users, Volume2, VolumeX, X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { hasPremiumAccess } from '@/utils/premium';
-import { groupsService, profileService, type GroupDetail, type GroupMessage } from '@/services/api';
+import {
+  groupsService, profileService, type GroupDetail, type GroupMember, type GroupMessage, type GroupMessageRef,
+} from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { UserAvatar } from '@/components/UserAvatar';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { cn } from '@/lib/utils';
@@ -17,6 +26,44 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Links clicáveis no texto (como no Telegram). Abre em outra aba, sem passar
+// a página do grupo como referência.
+const URL_RE = /((?:https?:\/\/|www\.)[^\s<]+[^\s<.,;:!?)\]'"])/gi;
+function TextoComLinks({ texto, mine }: { texto: string; mine: boolean }) {
+  const partes = texto.split(URL_RE);
+  return (
+    <p className="whitespace-pre-wrap break-words text-sm">
+      {partes.map((parte, i) =>
+        i % 2 === 1 ? (
+          <a
+            key={i}
+            href={parte.toLowerCase().startsWith('www.') ? `https://${parte}` : parte}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className={cn('break-all underline underline-offset-2', mine ? 'text-primary-foreground' : 'text-sky-500')}
+          >
+            {parte}
+          </a>
+        ) : (
+          <Fragment key={i}>{parte}</Fragment>
+        )
+      )}
+    </p>
+  );
+}
+
+const resumo = (ref: GroupMessageRef) => ref.content?.trim() || (ref.hasMedia ? '📷 Mídia' : 'Mensagem');
+
+function SeloPapel({ role }: { role?: string | null }) {
+  if (role === 'organizer') {
+    return <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold text-gold-text"><Crown className="h-2.5 w-2.5" /> Dono</span>;
+  }
+  if (role === 'moderator') {
+    return <span className="inline-flex items-center gap-0.5 rounded-full bg-sky-500/15 px-1.5 text-[10px] font-semibold text-sky-600"><Shield className="h-2.5 w-2.5" /> Moderador</span>;
+  }
+  return null;
 }
 
 export default function GroupChat() {
@@ -28,6 +75,7 @@ export default function GroupChat() {
   const premiumAccess = hasPremiumAccess(user);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const [group, setGroup] = useState<GroupDetail | null>(null);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
@@ -37,6 +85,8 @@ export default function GroupChat() {
   const [uploading, setUploading] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [respondendo, setRespondendo] = useState<GroupMessage | null>(null);
+  const [destaque, setDestaque] = useState<string | null>(null);
 
   useEffect(() => {
     if (!groupId) return;
@@ -57,20 +107,76 @@ export default function GroupChat() {
     return () => { cancelled = true; };
   }, [groupId, navigate, toast]);
 
+  // Tempo real: mensagens novas/apagadas, fixada e mudanças de membros.
   useEffect(() => {
     if (!groupId) return;
     emit('join.group', groupId);
-    const handler = (msg: GroupMessage & { groupId: string }) => {
+    const nova = (msg: GroupMessage & { groupId: string }) => {
       if (msg.groupId !== groupId) return;
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
     };
-    on('group.message.new', handler);
-    return () => { off('group.message.new', handler); };
-  }, [groupId, emit, on, off]);
+    const apagada = (d: { groupId: string; messageId: string }) => {
+      if (d.groupId !== groupId) return;
+      setMessages((prev) => prev
+        .filter((m) => m.id !== d.messageId)
+        .map((m) => (m.replyTo?.id === d.messageId ? { ...m, replyTo: null } : m)));
+      setGroup((g) => (g && g.pinned?.id === d.messageId ? { ...g, pinned: null } : g));
+    };
+    const fixada = (d: { groupId: string; pinned: GroupMessageRef | null }) => {
+      if (d.groupId !== groupId) return;
+      setGroup((g) => (g ? { ...g, pinned: d.pinned } : g));
+    };
+    const membroMudou = (d: { groupId: string; userId: string; role?: string; muted?: boolean }) => {
+      if (d.groupId !== groupId) return;
+      setGroup((g) => {
+        if (!g) return g;
+        const members = g.members.map((m) => (m.id === d.userId
+          ? {
+            ...m,
+            ...(d.role ? { role: d.role, isModerator: d.role === 'moderator' || d.role === 'organizer' } : {}),
+            ...(typeof d.muted === 'boolean' ? { muted: d.muted } : {}),
+          }
+          : m));
+        return { ...g, members, myRole: d.userId === user?.id && d.role ? d.role : g.myRole };
+      });
+    };
+    const removido = (d: { groupId: string; userId: string }) => {
+      if (d.groupId !== groupId) return;
+      if (d.userId === user?.id) {
+        toast({ title: 'Você foi removido deste grupo' });
+        navigate('/chat/groups');
+        return;
+      }
+      setGroup((g) => (g ? { ...g, members: g.members.filter((m) => m.id !== d.userId) } : g));
+    };
+    on('group.message.new', nova);
+    on('group.message.deleted', apagada);
+    on('group.pinned', fixada);
+    on('group.member.updated', membroMudou);
+    on('group.member.removed', removido);
+    return () => {
+      off('group.message.new', nova);
+      off('group.message.deleted', apagada);
+      off('group.pinned', fixada);
+      off('group.member.updated', membroMudou);
+      off('group.member.removed', removido);
+    };
+  }, [groupId, emit, on, off, user?.id, navigate, toast]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
+
+  const eu = group?.members.find((m) => m.id === user?.id);
+  const meuPapel = group?.myRole ?? (eu?.isOrganizer ? 'organizer' : 'member');
+  const souDono = meuPapel === 'organizer';
+  const souModerador = souDono || meuPapel === 'moderator';
+  const estouSilenciado = !!eu?.muted;
+  const dono = group?.members.find((m) => m.isOrganizer || m.role === 'organizer');
+  const moderadores = group?.members.filter((m) => m.role === 'moderator') ?? [];
+  const papelDe = (id: string) => group?.members.find((m) => m.id === id)?.role ?? null;
+  // Moderador age sobre membro comum; só o dono age sobre moderador; ninguém sobre o dono.
+  const podeModerar = (alvoRole?: string | null) => alvoRole !== 'organizer' && (souDono || (souModerador && alvoRole !== 'moderator'));
 
   const handleSend = useCallback(async () => {
     if (!groupId) return;
@@ -79,15 +185,18 @@ export default function GroupChat() {
     if (!content || sending) return;
     setSending(true);
     setMessage('');
+    const resposta = respondendo;
+    setRespondendo(null);
     try {
-      await groupsService.sendMessage(groupId, content);
-    } catch {
-      toast({ title: 'Erro ao enviar', description: 'Tente novamente.', variant: 'destructive' });
+      await groupsService.sendMessage(groupId, content, undefined, resposta?.id);
+    } catch (e: any) {
+      toast({ title: 'Erro ao enviar', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
       setMessage(content);
+      setRespondendo(resposta);
     } finally {
       setSending(false);
     }
-  }, [groupId, message, sending, premiumAccess, toast]);
+  }, [groupId, message, sending, premiumAccess, toast, respondendo]);
 
   const handleAttach = useCallback(async (file: File) => {
     if (!groupId) return;
@@ -95,13 +204,14 @@ export default function GroupChat() {
     setUploading(true);
     try {
       const { id } = await profileService.uploadMedia(file, { source: 'chat' });
-      await groupsService.sendMessage(groupId, undefined, id);
-    } catch {
-      toast({ title: 'Erro ao enviar mídia', description: 'Tente novamente.', variant: 'destructive' });
+      await groupsService.sendMessage(groupId, undefined, id, respondendo?.id);
+      setRespondendo(null);
+    } catch (e: any) {
+      toast({ title: 'Erro ao enviar mídia', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setUploading(false);
     }
-  }, [groupId, premiumAccess, toast]);
+  }, [groupId, premiumAccess, toast, respondendo]);
 
   const handleLeave = useCallback(async () => {
     if (!groupId) return;
@@ -114,18 +224,39 @@ export default function GroupChat() {
     }
   }, [groupId, navigate, toast]);
 
-  const handleRemoveMember = useCallback(async (memberId: string) => {
-    if (!groupId) return;
+  const acao = async (fn: () => Promise<unknown>, ok: string) => {
     try {
-      await groupsService.removeMember(groupId, memberId);
-      setGroup((prev) => prev ? { ...prev, members: prev.members.filter((m) => m.id !== memberId) } : prev);
-      toast({ title: 'Membro removido do grupo' });
-    } catch {
-      toast({ title: 'Não foi possível remover', variant: 'destructive' });
+      await fn();
+      toast({ title: ok });
+    } catch (e: any) {
+      toast({ title: 'Não foi possível', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
     }
-  }, [groupId, toast]);
+  };
 
-  const isOrganizer = group?.members.find((m) => m.id === user?.id)?.isOrganizer ?? false;
+  const removerMembro = (m: GroupMember, banir: boolean) => {
+    if (!groupId) return;
+    const texto = banir
+      ? `Banir ${m.name}? Sai do grupo e não volta nem confirmando presença de novo.`
+      : `Remover ${m.name} do grupo?`;
+    if (!window.confirm(texto)) return;
+    void acao(async () => {
+      await groupsService.removeMember(groupId, m.id, banir);
+      setGroup((g) => (g ? { ...g, members: g.members.filter((x) => x.id !== m.id) } : g));
+    }, banir ? `${m.name} foi banido do grupo` : `${m.name} foi removido do grupo`);
+  };
+
+  const irParaMensagem = (id: string) => {
+    const el = document.getElementById(`gm-${id}`);
+    if (!el) { toast({ title: 'Essa mensagem é antiga e não está carregada' }); return; }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setDestaque(id);
+    window.setTimeout(() => setDestaque(null), 1600);
+  };
+
+  const responder = (m: GroupMessage) => {
+    setRespondendo(m);
+    inputRef.current?.focus();
+  };
 
   if (isLoading) {
     return (
@@ -134,7 +265,7 @@ export default function GroupChat() {
       </div>
     );
   }
-  if (!group) return null;
+  if (!group || !groupId) return null;
 
   return (
     <div className="mx-auto flex h-[calc(100dvh-var(--app-header-h,3.5rem))] max-w-2xl min-w-0 flex-col px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-3 md:h-[calc(100dvh-6rem)] md:px-0 md:pb-0 md:pt-0">
@@ -151,13 +282,39 @@ export default function GroupChat() {
           </div>
           <div className="min-w-0">
             <p className="truncate font-semibold leading-tight">{group.title}</p>
-            <p className="truncate text-xs text-muted-foreground">{group.members.length} participante{group.members.length === 1 ? '' : 's'}</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {group.members.length} participante{group.members.length === 1 ? '' : 's'}
+              {dono && <> · <Crown className="mb-0.5 inline h-3 w-3 text-gold-text" /> Moderador: <span className="font-medium text-foreground">{dono.name}</span></>}
+              {moderadores.length > 0 && ` +${moderadores.length}`}
+            </p>
           </div>
         </button>
         <Button variant="ghost" size="icon" onClick={() => setMembersOpen(true)} aria-label="Ver membros">
           <Users className="h-5 w-5" />
         </Button>
       </div>
+
+      {/* Mensagem fixada */}
+      {group.pinned && (
+        <div className="flex items-center gap-2 border-b bg-secondary/40 px-2 py-1.5">
+          <Pin className="h-4 w-4 shrink-0 text-primary" />
+          <button type="button" className="min-w-0 flex-1 text-left" onClick={() => irParaMensagem(group.pinned!.id)}>
+            <p className="text-[11px] font-semibold text-primary">Mensagem fixada · {group.pinned.senderName}</p>
+            <p className="truncate text-xs text-muted-foreground">{resumo(group.pinned)}</p>
+          </button>
+          {souModerador && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              aria-label="Desafixar"
+              onClick={() => void acao(() => groupsService.pin(groupId, null), 'Mensagem desafixada')}
+            >
+              <PinOff className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain py-3">
@@ -168,11 +325,41 @@ export default function GroupChat() {
         )}
         {messages.map((m) => {
           const isMine = m.senderId === user?.id;
+          const papel = m.senderRole ?? papelDe(m.senderId);
+          const podeApagar = isMine || (souModerador && podeModerar(papelDe(m.senderId)));
           return (
-            <div key={m.id} className={cn('flex items-end gap-2', isMine && 'flex-row-reverse')}>
-              {!isMine && <UserAvatar user={{ name: m.senderName, avatar: m.senderAvatar }} className="h-7 w-7 shrink-0" />}
-              <div className={cn('max-w-[75%] rounded-2xl px-3 py-2', isMine ? 'bg-primary text-primary-foreground' : 'bg-secondary')}>
-                {!isMine && <p className="mb-0.5 text-[11px] font-semibold text-brand-pink">{m.senderName}</p>}
+            <div key={m.id} id={`gm-${m.id}`} className={cn('group/msg flex items-end gap-2', isMine && 'flex-row-reverse')}>
+              {!isMine && (
+                <button type="button" onClick={() => navigate(getUserProfileHref(m.senderId, user?.id, `/chat/group/${groupId}`))} aria-label={`Ver perfil de ${m.senderName}`}>
+                  <UserAvatar user={{ name: m.senderName, avatar: m.senderAvatar }} className="h-7 w-7 shrink-0" />
+                </button>
+              )}
+              <div
+                className={cn(
+                  'max-w-[75%] rounded-2xl px-3 py-2 transition-shadow',
+                  isMine ? 'bg-primary text-primary-foreground' : 'bg-secondary',
+                  destaque === m.id && 'ring-2 ring-amber-400'
+                )}
+                onDoubleClick={() => responder(m)}
+              >
+                {!isMine && (
+                  <p className="mb-0.5 flex flex-wrap items-center gap-1 text-[11px] font-semibold text-brand-pink">
+                    {m.senderName} <SeloPapel role={papel} />
+                  </p>
+                )}
+                {m.replyTo && (
+                  <button
+                    type="button"
+                    onClick={() => irParaMensagem(m.replyTo!.id)}
+                    className={cn(
+                      'mb-1 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs',
+                      isMine ? 'border-primary-foreground/60 bg-primary-foreground/10' : 'border-primary bg-background/60'
+                    )}
+                  >
+                    <span className="block font-semibold">{m.replyTo.senderName}</span>
+                    <span className="line-clamp-2 opacity-80">{resumo(m.replyTo)}</span>
+                  </button>
+                )}
                 {m.mediaUrl && (
                   m.mediaMimeType?.startsWith('video/') ? (
                     <video src={resolveServerUrl(m.mediaUrl)} controls className="mb-1 max-h-64 w-full rounded-lg" />
@@ -180,11 +367,57 @@ export default function GroupChat() {
                     <img src={resolveServerUrl(m.mediaUrl)} alt="" className="mb-1 max-h-64 w-full rounded-lg object-cover" />
                   )
                 )}
-                {m.content && <p className="whitespace-pre-wrap break-words text-sm">{m.content}</p>}
+                {m.content && <TextoComLinks texto={m.content} mine={isMine} />}
                 <p className={cn('mt-0.5 text-[10px]', isMine ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
                   {formatTime(m.createdAt)}
                 </p>
               </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Opções da mensagem"
+                    className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground opacity-60 hover:bg-secondary hover:opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align={isMine ? 'end' : 'start'}>
+                  {premiumAccess && !estouSilenciado && (
+                    <DropdownMenuItem onClick={() => responder(m)}><Reply className="mr-2 h-4 w-4" /> Responder</DropdownMenuItem>
+                  )}
+                  {m.content && (
+                    <DropdownMenuItem onClick={() => { void navigator.clipboard?.writeText(m.content || '').then(() => toast({ title: 'Texto copiado' })).catch(() => {}); }}>
+                      <Copy className="mr-2 h-4 w-4" /> Copiar texto
+                    </DropdownMenuItem>
+                  )}
+                  {souModerador && (
+                    group.pinned?.id === m.id ? (
+                      <DropdownMenuItem onClick={() => void acao(() => groupsService.pin(groupId, null), 'Mensagem desafixada')}>
+                        <PinOff className="mr-2 h-4 w-4" /> Desafixar
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem onClick={() => void acao(() => groupsService.pin(groupId, m.id), 'Mensagem fixada no topo')}>
+                        <Pin className="mr-2 h-4 w-4" /> Fixar no topo
+                      </DropdownMenuItem>
+                    )
+                  )}
+                  {podeApagar && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => {
+                          if (!window.confirm(isMine ? 'Apagar sua mensagem para todos?' : `Apagar a mensagem de ${m.senderName} para todos?`)) return;
+                          void acao(() => groupsService.deleteMessage(groupId, m.id), 'Mensagem apagada');
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Apagar
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           );
         })}
@@ -209,37 +442,61 @@ export default function GroupChat() {
             </span>
           </button>
         )}
-        <div className="flex items-end gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,video/*"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleAttach(f); e.target.value = ''; }}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            disabled={uploading}
-            onClick={() => (premiumAccess ? fileInputRef.current?.click() : setPaywallOpen(true))}
-          >
-            <ImageIcon className="h-5 w-5" />
-          </Button>
-          <textarea
-            placeholder="Mensagem para o grupo..."
-            value={message}
-            readOnly={!premiumAccess}
-            onMouseDown={!premiumAccess ? (e) => { e.preventDefault(); setPaywallOpen(true); } : undefined}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
-            rows={1}
-            className="max-h-28 flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
-          />
-          <Button type="button" size="icon" disabled={!message.trim() || sending} onClick={() => void handleSend()}>
-            <Send className="h-4 w-4" />
-          </Button>
-        </div>
+        {premiumAccess && estouSilenciado ? (
+          <p className="mb-1 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-muted-foreground">
+            <VolumeX className="h-4 w-4 shrink-0 text-amber-600" /> Um moderador silenciou você neste grupo. Você continua lendo as mensagens.
+          </p>
+        ) : (
+          <>
+            {respondendo && (
+              <div className="mb-2 flex items-center gap-2 rounded-lg border-l-2 border-primary bg-secondary/50 px-2 py-1.5">
+                <Reply className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold text-primary">Respondendo {respondendo.senderName}</p>
+                  <p className="truncate text-xs text-muted-foreground">{respondendo.content || (respondendo.mediaUrl ? '📷 Mídia' : '')}</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Cancelar resposta" onClick={() => setRespondendo(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleAttach(f); e.target.value = ''; }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={uploading}
+                onClick={() => (premiumAccess ? fileInputRef.current?.click() : setPaywallOpen(true))}
+              >
+                <ImageIcon className="h-5 w-5" />
+              </Button>
+              <textarea
+                ref={inputRef}
+                placeholder="Mensagem para o grupo (links são permitidos)..."
+                value={message}
+                readOnly={!premiumAccess}
+                onMouseDown={!premiumAccess ? (e) => { e.preventDefault(); setPaywallOpen(true); } : undefined}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSend(); }
+                  if (e.key === 'Escape') setRespondendo(null);
+                }}
+                rows={1}
+                className="max-h-28 flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+              />
+              <Button type="button" size="icon" disabled={!message.trim() || sending} onClick={() => void handleSend()}>
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Members modal */}
@@ -248,27 +505,76 @@ export default function GroupChat() {
           <DialogHeader>
             <DialogTitle>Participantes ({group.members.length})</DialogTitle>
           </DialogHeader>
+          {souModerador && (
+            <p className="-mt-2 text-xs text-muted-foreground">
+              {souDono
+                ? 'Você é o dono do grupo: pode escolher moderadores, silenciar, remover e banir.'
+                : 'Você é moderador: pode silenciar, remover e banir membros e apagar ou fixar mensagens.'}
+            </p>
+          )}
           <div className="max-h-[50vh] space-y-1 overflow-y-auto">
-            {group.members.map((m) => (
-              <div key={m.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
-                <UserAvatar user={{ name: m.name, avatar: m.avatar }} className="h-9 w-9" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{m.name}</p>
-                  {m.isOrganizer && (
-                    <span className="flex items-center gap-1 text-[11px] text-gold-text"><Crown className="h-3 w-3" /> Organizador(a)</span>
+            {group.members.map((m) => {
+              const role = m.role ?? (m.isOrganizer ? 'organizer' : 'member');
+              const gerenciavel = m.id !== user?.id && podeModerar(role);
+              return (
+                <div key={m.id} className="flex items-center gap-2.5 rounded-lg px-1 py-1.5">
+                  <button type="button" onClick={() => navigate(getUserProfileHref(m.id, user?.id, `/chat/group/${groupId}`))}>
+                    <UserAvatar user={{ name: m.name, avatar: m.avatar }} className="h-9 w-9" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{m.name}{m.id === user?.id ? ' (você)' : ''}</p>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <SeloPapel role={role} />
+                      {m.muted && <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-600"><VolumeX className="h-2.5 w-2.5" /> Silenciado</span>}
+                    </div>
+                  </div>
+                  {gerenciavel && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Moderar ${m.name}`}>
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {souDono && (
+                          role === 'moderator' ? (
+                            <DropdownMenuItem onClick={() => void acao(() => groupsService.setRole(groupId, m.id, 'member'), `${m.name} não é mais moderador`)}>
+                              <ShieldOff className="mr-2 h-4 w-4" /> Tirar de moderador
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => void acao(() => groupsService.setRole(groupId, m.id, 'moderator'), `${m.name} agora é moderador`)}>
+                              <Shield className="mr-2 h-4 w-4" /> Tornar moderador
+                            </DropdownMenuItem>
+                          )
+                        )}
+                        {m.muted ? (
+                          <DropdownMenuItem onClick={() => void acao(() => groupsService.mute(groupId, m.id, false), `${m.name} pode falar de novo`)}>
+                            <Volume2 className="mr-2 h-4 w-4" /> Devolver a voz
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onClick={() => void acao(() => groupsService.mute(groupId, m.id, true), `${m.name} foi silenciado`)}>
+                            <VolumeX className="mr-2 h-4 w-4" /> Silenciar
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removerMembro(m, false)}>
+                          <UserMinus className="mr-2 h-4 w-4" /> Remover do grupo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removerMembro(m, true)}>
+                          <Ban className="mr-2 h-4 w-4" /> Banir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
-                {isOrganizer && !m.isOrganizer && m.id !== user?.id && (
-                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => void handleRemoveMember(m.id)}>
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
-          <Button variant="outline" className="mt-2 gap-2 text-destructive" onClick={() => void handleLeave()}>
-            <LogOut className="h-4 w-4" /> Sair do grupo
-          </Button>
+          {!souDono && (
+            <Button variant="outline" className="mt-2 gap-2 text-destructive" onClick={() => void handleLeave()}>
+              <LogOut className="h-4 w-4" /> Sair do grupo
+            </Button>
+          )}
         </DialogContent>
       </Dialog>
     </div>

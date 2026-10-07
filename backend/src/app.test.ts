@@ -3419,4 +3419,63 @@ describe('nosigilo backend', () => {
     await request(ctx.app).get('/api/admin/gender-change-requests').set(auth).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
+
+  it('grupo do evento: dono modera (fixa, apaga, silencia, promove, bane); membros respondem entre si', async () => {
+    const reg = async (n: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Grupo ${n}`, email: `grupo-mod-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dono = await reg('dono');
+    const ana = await reg('ana');
+    const bia = await reg('bia');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    const ev = await request(ctx.app).post('/api/events').set(auth(dono.token)).send({ title: 'Evento Moderado', location: 'Fortaleza' }).expect(200);
+    const eventId = String(ev.body.id);
+    const g = await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(ana.token)).expect(200);
+    const groupId = String(g.body.groupId);
+    await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(bia.token)).expect(200);
+
+    // Dono = quem criou o evento.
+    const det = (await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(ana.token)).expect(200)).body;
+    expect(det.members.find((m: any) => m.id === dono.user.id)).toMatchObject({ role: 'organizer', isModerator: true });
+    expect(det.myRole).toBe('member');
+
+    // Link e resposta entre membros.
+    const m1 = (await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(ana.token)).send({ content: 'Entrem: https://exemplo.com/grupo' }).expect(200)).body;
+    await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(bia.token)).send({ content: 'Valeu, Ana!', replyToId: m1.id }).expect(200);
+    let msgs = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(dono.token)).expect(200)).body as any[];
+    expect(msgs.find((m) => m.content === 'Entrem: https://exemplo.com/grupo')).toBeTruthy();
+    expect(msgs.find((m) => m.content === 'Valeu, Ana!').replyTo).toMatchObject({ id: m1.id, senderName: 'Grupo ana' });
+
+    // Membro comum não modera.
+    await request(ctx.app).post(`/api/groups/${groupId}/pin`).set(auth(bia.token)).send({ messageId: m1.id }).expect(403);
+    await request(ctx.app).delete(`/api/groups/${groupId}/messages/${m1.id}`).set(auth(bia.token)).expect(403);
+    await request(ctx.app).post(`/api/groups/${groupId}/members/${ana.user.id}/mute`).set(auth(bia.token)).send({ muted: true }).expect(403);
+
+    // Dono fixa e promove a Ana; Ana (moderadora) silencia a Bia.
+    const pin = (await request(ctx.app).post(`/api/groups/${groupId}/pin`).set(auth(dono.token)).send({ messageId: m1.id }).expect(200)).body;
+    expect(pin.pinned).toMatchObject({ id: m1.id });
+    await request(ctx.app).post(`/api/groups/${groupId}/members/${ana.user.id}/role`).set(auth(dono.token)).send({ role: 'moderator' }).expect(200);
+    await request(ctx.app).post(`/api/groups/${groupId}/members/${ana.user.id}/role`).set(auth(bia.token)).send({ role: 'member' }).expect(403);
+    await request(ctx.app).post(`/api/groups/${groupId}/members/${bia.user.id}/mute`).set(auth(ana.token)).send({ muted: true }).expect(200);
+    const silenciada = await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(bia.token)).send({ content: 'oi?' }).expect(403);
+    expect(silenciada.body.error).toBe('muted');
+    // Moderadora não mexe no dono.
+    await request(ctx.app).post(`/api/groups/${groupId}/members/${dono.user.id}/mute`).set(auth(ana.token)).send({ muted: true }).expect(403);
+    await request(ctx.app).delete(`/api/groups/${groupId}/members/${dono.user.id}`).set(auth(ana.token)).expect(403);
+
+    // Apagar a fixada desfixa e tira a citação da resposta.
+    await request(ctx.app).delete(`/api/groups/${groupId}/messages/${m1.id}`).set(auth(dono.token)).expect(200);
+    const det2 = (await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(dono.token)).expect(200)).body;
+    expect(det2.pinned).toBeNull();
+    msgs = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(dono.token)).expect(200)).body as any[];
+    expect(msgs.find((m) => m.content === 'Valeu, Ana!').replyTo).toBeNull();
+
+    // Banir: sai e não volta confirmando presença de novo.
+    await request(ctx.app).delete(`/api/groups/${groupId}/members/${bia.user.id}?ban=1`).set(auth(ana.token)).expect(200);
+    await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(bia.token)).expect(200);
+    await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(bia.token)).expect(403);
+  });
 });

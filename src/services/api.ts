@@ -2281,11 +2281,21 @@ export interface GroupSummary {
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
 }
+export type GroupRole = 'organizer' | 'moderator' | 'member';
 export interface GroupMember {
   id: string;
   name: string;
   avatar: string | null;
+  role?: GroupRole | string;
   isOrganizer: boolean;
+  isModerator?: boolean;
+  muted?: boolean;
+}
+export interface GroupMessageRef {
+  id: string;
+  senderName: string;
+  content: string | null;
+  hasMedia: boolean;
 }
 export interface GroupDetail {
   groupId: string;
@@ -2296,6 +2306,8 @@ export interface GroupDetail {
   location: string | null;
   expiresAt: string;
   members: GroupMember[];
+  myRole?: GroupRole | string;
+  pinned?: GroupMessageRef | null;
 }
 export interface GroupMessage {
   id: string;
@@ -2306,6 +2318,8 @@ export interface GroupMessage {
   mediaUrl: string | null;
   mediaMimeType: string | null;
   createdAt: string;
+  senderRole?: string | null;
+  replyTo?: GroupMessageRef | null;
 }
 export const groupsService = {
   getGroups: async (): Promise<GroupSummary[]> => {
@@ -2320,14 +2334,27 @@ export const groupsService = {
     const res = await apiClient.get(`/groups/${groupId}/messages`);
     return res.data;
   },
-  sendMessage: async (groupId: string, content?: string, mediaId?: string): Promise<{ id: string; createdAt: string }> => {
-    const res = await apiClient.post(`/groups/${groupId}/messages`, { content, mediaId });
+  sendMessage: async (groupId: string, content?: string, mediaId?: string, replyToId?: string): Promise<{ id: string; createdAt: string }> => {
+    const res = await apiClient.post(`/groups/${groupId}/messages`, { content, mediaId, ...(replyToId ? { replyToId } : {}) });
     return res.data;
+  },
+  deleteMessage: async (groupId: string, messageId: string): Promise<void> => {
+    await apiClient.delete(`/groups/${groupId}/messages/${messageId}`);
+  },
+  pin: async (groupId: string, messageId: string | null): Promise<{ pinned: GroupMessageRef | null }> => {
+    const res = await apiClient.post(`/groups/${groupId}/pin`, { messageId });
+    return res.data;
+  },
+  mute: async (groupId: string, userId: string, muted: boolean): Promise<void> => {
+    await apiClient.post(`/groups/${groupId}/members/${userId}/mute`, { muted });
+  },
+  setRole: async (groupId: string, userId: string, role: 'moderator' | 'member'): Promise<void> => {
+    await apiClient.post(`/groups/${groupId}/members/${userId}/role`, { role });
   },
   leave: async (groupId: string): Promise<void> => {
     await apiClient.post(`/groups/${groupId}/leave`);
   },
-  removeMember: async (groupId: string, userId: string): Promise<void> => {
-    await apiClient.delete(`/groups/${groupId}/members/${userId}`);
+  removeMember: async (groupId: string, userId: string, ban = false): Promise<void> => {
+    await apiClient.delete(`/groups/${groupId}/members/${userId}`, { params: ban ? { ban: 1 } : undefined });
   },
 };
