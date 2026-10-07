@@ -67,7 +67,7 @@ export default function NearbyActivityStrip() {
           <button
             key={`e-${e.id}`}
             type="button"
-            onClick={() => navigate('/events')}
+            onClick={() => navigate(`/events?evento=${encodeURIComponent(e.id)}`)}
             className="flex w-44 shrink-0 flex-col gap-1.5 overflow-hidden rounded-xl border border-amber-400/25 bg-amber-400/5 p-3 text-left transition-colors hover:bg-amber-400/10"
           >
             <div className="flex items-center gap-1.5">

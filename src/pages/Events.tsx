@@ -44,7 +44,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { eventsService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
@@ -154,6 +155,24 @@ export default function Events() {
   const premiumAccess = hasPremiumAccess(user);
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
+  // Veio de um evento do feed (?evento=id): rola até ele e destaca.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const eventoAlvo = searchParams.get('evento');
+  const [eventoDestacado, setEventoDestacado] = useState<string | null>(null);
+  useEffect(() => {
+    if (!eventoAlvo || events.length === 0) return;
+    const el = document.getElementById(`evento-${eventoAlvo}`);
+    if (el) {
+      window.setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+      setEventoDestacado(eventoAlvo);
+      window.setTimeout(() => setEventoDestacado(null), 3500);
+    } else {
+      toast({ title: 'Esse evento não está mais disponível', description: 'Veja os outros eventos abaixo.' });
+    }
+    const resto = new URLSearchParams(searchParams);
+    resto.delete('evento');
+    setSearchParams(resto, { replace: true });
+  }, [eventoAlvo, events.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [step, setStep] = useState(1);
   const [citySearchInput, setCitySearchInput] = useState('');
@@ -884,7 +903,11 @@ export default function Events() {
       {/* Events Grid */}
       <div className="grid gap-6 md:grid-cols-2">
         {events.map((event) => (
-          <Card key={event.id} className="overflow-hidden glass group">
+          <Card
+            key={event.id}
+            id={`evento-${event.id}`}
+            className={cn('overflow-hidden glass group scroll-mt-24 transition-shadow duration-500', eventoDestacado === event.id && 'ring-2 ring-amber-400 shadow-[0_0_24px_rgba(251,191,36,0.35)]')}
+          >
             {/* Event Image */}
             <div className="relative aspect-video">
               <img 
