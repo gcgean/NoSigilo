@@ -3625,4 +3625,38 @@ describe('nosigilo backend', () => {
     expect(depois).toMatchObject({ unreadCount: 1, silenciado: true });
     expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(0);
   });
+
+  it('vitrine: só uma curtida, na primeira publicação; sem match e sem curtir story', async () => {
+    const { runShowcaseFeedLikes, runShowcaseProfileLikes, runShowcaseStoryEngagement } = await import('./showcase.js');
+    const vit = await registerInvitedUser(ctx, sponsorToken, { name: 'Vitrine Teste', email: 'vitrine-teste@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_showcase = 1 WHERE id = ?', [String(vit.user.id)]);
+    const autor = await registerInvitedUser(ctx, sponsorToken, { name: 'Autor Vitrine', email: 'autor-vitrine@example.com', password: 'senha123', gender: 'Homem' });
+    const aid = String(autor.user.id);
+    const agora = Date.now();
+    const p1 = `p1-vit-${agora}`;
+    const p2 = `p2-vit-${agora}`;
+    await run(ctx.db, "INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, 'primeiro', '[]', ?)", [p1, aid, new Date(agora - 60_000).toISOString()]);
+    await run(ctx.db, "INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, 'segundo', '[]', ?)", [p2, aid, new Date(agora).toISOString()]);
+    await ctx.db.persist();
+
+    const curtidasDaVitrine = async (postId: string) => Number(((await ctx.db.queryOne(
+      "SELECT COUNT(*) AS c FROM likes l JOIN users u ON u.id = l.user_id WHERE l.target_type = 'post' AND l.target_id = ? AND COALESCE(u.is_showcase, 0) = 1",
+      [postId]
+    )) as any)?.c || 0);
+
+    await runShowcaseFeedLikes(ctx.db);
+    await runShowcaseFeedLikes(ctx.db);
+    expect(await curtidasDaVitrine(p1)).toBe(1);
+    expect(await curtidasDaVitrine(p2)).toBe(0);
+
+    // Match desligado.
+    expect((await runShowcaseProfileLikes(ctx.db)).liked).toBe(0);
+    // Story: só visualiza.
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'x.webp', 'image/webp', 0, 0, 'post', ?)", [`m-vit-${agora}`, aid, new Date().toISOString()]);
+    await run(ctx.db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [`s-vit-${agora}`, aid, `m-vit-${agora}`, new Date().toISOString(), new Date(agora + 86_400_000).toISOString()]);
+    const st = await runShowcaseStoryEngagement(ctx.db);
+    expect(st.likes).toBe(0);
+    expect(st.views).toBeGreaterThanOrEqual(1);
+    await run(ctx.db, 'UPDATE users SET is_showcase = 0 WHERE id = ?', [String(vit.user.id)]);
+  });
 });

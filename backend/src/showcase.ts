@@ -22,6 +22,16 @@ const STORY_AUTOMATICO_ATIVO = false;
  */
 const POST_AUTOMATICO_ATIVO = false;
 
+/**
+ * Vitrine só VISUALIZA (desde 10/10/2026): vê stories e visita perfis, e no
+ * máximo curte a PRIMEIRA publicação de cada pessoa — uma curtida, de uma
+ * vitrine, uma vez. Antes 30 vitrines davam ~6 mil curtidas por dia (até 50%
+ * delas em cada post), davam "match" e reagiam a stories — passava a sensação
+ * de que o site é cheio de perfil falso (reclamação no suporte).
+ */
+const MATCH_DA_VITRINE_ATIVO = false;
+const CURTIDA_EM_STORY_ATIVA = false;
+
 export async function runShowcaseRotation(db: DbHandle): Promise<{ profiles: number; storiesCreated: number; postsBumped: number }> {
   const now = new Date();
   const nowStr = now.toISOString();
@@ -380,6 +390,7 @@ export async function runShowcaseProfileLikes(
   db: DbHandle,
   opts: { windowDays?: number; maxPerRun?: number } = {}
 ): Promise<{ liked: number }> {
+  if (!MATCH_DA_VITRINE_ATIVO) return { liked: 0 };
   const windowDays = opts.windowDays ?? 30;
   const maxPerRun = opts.maxPerRun ?? 400;
   const nowStr = new Date().toISOString();
@@ -430,26 +441,23 @@ export async function runShowcaseProfileLikes(
   return { liked };
 }
 
-// Curtidas de engajamento: a cada ~5 min, os perfis de vitrine curtem TODOS os
-// posts elegíveis das últimas 24h de autores COMPATÍVEIS (casal→casal,
-// homem→mulher, mulher/casal→homem). Dedup POR VITRINE (cada vitrine curte um
-// post uma vez só) + TETO por post (CAP) pra não virar enxurrada. Cada post
-// ganha até CAP curtidas de vitrines diferentes ao longo das rodadas. Gera a
-// notificação real "Curtiram sua publicação" no autor.
+// Curtida da vitrine no feed: SÓ na PRIMEIRA publicação de cada pessoa, UMA
+// curtida (de uma vitrine compatível) e só se nenhuma vitrine curtiu nada dela
+// antes. Publicação das últimas 24h (não volta a curtir post antigo).
 export async function runShowcaseFeedLikes(
   db: DbHandle,
-  opts: { windowHours?: number; maxPerRun?: number; capRatio?: number } = {}
+  opts: { windowHours?: number; maxPerRun?: number } = {}
 ): Promise<{ liked: number }> {
   const windowHours = opts.windowHours ?? 24;
-  const maxPerRun = opts.maxPerRun ?? 400; // limite de segurança total por rodada
-  const capRatio = opts.capRatio ?? 0.5;   // teto por post = 50% das vitrines COMPATÍVEIS
+  const maxPerRun = opts.maxPerRun ?? 100;
   const nowStr = new Date().toISOString();
   const sinceStr = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
 
   const showcase = await allShowcaseProfiles(db);
   if (showcase.length === 0) return { liked: 0 };
 
-  // Posts recentes de autores NÃO-vitrine (o teto é dinâmico, calculado por post).
+  // Primeira publicação do autor, feita nas últimas 24h, e autor sem nenhuma
+  // curtida de vitrine em post nenhum.
   const posts = (await db.queryAll(
     `SELECT p.id, p.user_id, u.gender AS author_gender, u.looking_for_json AS author_looking
        FROM posts p JOIN users u ON u.id = p.user_id
@@ -457,67 +465,43 @@ export async function runShowcaseFeedLikes(
         AND COALESCE(u.is_showcase, 0) = 0
         AND (u.is_banned = 0 OR u.is_banned IS NULL)
         AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM posts p2 WHERE p2.user_id = p.user_id AND p2.created_at < p.created_at)
+        AND NOT EXISTS (
+          SELECT 1 FROM likes l
+            JOIN users lu ON lu.id = l.user_id
+            JOIN posts lp ON lp.id = l.target_id
+           WHERE l.target_type = 'post' AND lp.user_id = p.user_id AND COALESCE(lu.is_showcase, 0) = 1)
       ORDER BY p.created_at DESC
-      LIMIT 400`,
-    [sinceStr]
+      LIMIT ?`,
+    [sinceStr, maxPerRun]
   )) as any[];
   if (!Array.isArray(posts) || posts.length === 0) return { liked: 0 };
-
-  // Embaralha para espalhar as curtidas (não pega sempre os mesmos posts).
-  for (let i = posts.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [posts[i], posts[j]] = [posts[j], posts[i]];
-  }
 
   let liked = 0;
   const actedIds = new Set<string>();
   for (const post of posts) {
-    if (liked >= maxPerRun) break;
-    const authorToken = genderToken(post.author_gender);
-    const senders = compatibleSenders(authorToken, post.author_looking, showcase);
+    const senders = compatibleSenders(genderToken(post.author_gender), post.author_looking, showcase)
+      .filter((sc) => String(sc.id) !== String(post.user_id));
     if (senders.length === 0) continue;
-
-    // Teto do post = até 50% das vitrines compatíveis (mín. 1).
-    const target = Math.max(1, Math.round(senders.length * capRatio));
-
-    // Quem já curtiu ESTE post (dedup por vitrine).
-    const already = (await db.queryAll(
-      `SELECT user_id FROM likes WHERE target_type = 'post' AND target_id = ?`,
-      [String(post.id)]
-    )) as any[];
-    const alreadySet = new Set(already.map((r) => String(r.user_id)));
-    const likedCompatible = senders.filter((sc) => alreadySet.has(String(sc.id))).length;
-    const notLiked = senders.filter((sc) => !alreadySet.has(String(sc.id)) && String(sc.id) !== String(post.user_id));
-    let toAdd = Math.min(target - likedCompatible, notLiked.length);
-    if (toAdd <= 0) continue;
-
-    // Embaralha as vitrines candidatas e completa o post até o teto.
-    for (let i = notLiked.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [notLiked[i], notLiked[j]] = [notLiked[j], notLiked[i]];
-    }
-    for (const sc of notLiked) {
-      if (toAdd <= 0 || liked >= maxPerRun) break;
-      const scId = String(sc.id);
-      await db.run(
-        'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
-        [randomUUID(), scId, 'post', String(post.id), nowStr]
-      );
-      const actorName = sc?.name ? String(sc.name) : 'Alguém';
-      await db.run(
-        `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
-         VALUES (?, ?, 'post.liked', ?, ?, ?, 0, ?)`,
-        [randomUUID(), String(post.user_id), 'Curtiram sua publicação', `${actorName} curtiu sua publicação.`, JSON.stringify({ postId: String(post.id), actorId: scId, actorName }), nowStr]
-      );
-      actedIds.add(scId);
-      toAdd--;
-      liked++;
-    }
+    const sc = senders[Math.floor(Math.random() * senders.length)];
+    const scId = String(sc.id);
+    const actorName = sc?.name ? String(sc.name) : 'Alguém';
+    await db.run(
+      'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
+      [randomUUID(), scId, 'post', String(post.id), nowStr]
+    );
+    await db.run(
+      `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at)
+       VALUES (?, ?, 'post.liked', ?, ?, ?, 0, ?)`,
+      [randomUUID(), String(post.user_id), 'Curtiram sua publicação', `${actorName} curtiu sua publicação.`, JSON.stringify({ postId: String(post.id), actorId: scId, actorName }), nowStr]
+    );
+    actedIds.add(scId);
+    liked++;
   }
 
   await bumpSeen(db, actedIds, nowStr);
-  if (liked > 0 || actedIds.size > 0) await db.persist();
-  console.log(`[showcase] Likes de engajamento: +${liked} curtidas de vitrine (teto ${Math.round(capRatio * 100)}% das compatíveis por post)`);
+  if (liked > 0) await db.persist();
+  console.log(`[showcase] Curtida na 1ª publicação: +${liked}`);
   return { liked };
 }
 
@@ -574,8 +558,9 @@ export async function runShowcaseStoryEngagement(
       }
     }
 
-    // 2) LIKES: 50% das vitrines COMPATÍVEIS reagem ao story.
-    if (likes < maxLikes) {
+    // 2) LIKES: 50% das vitrines COMPATÍVEIS reagem ao story (desligado:
+    //    vitrine só visualiza — CURTIDA_EM_STORY_ATIVA).
+    if (CURTIDA_EM_STORY_ATIVA && likes < maxLikes) {
       const authorToken = genderToken(story.author_gender);
       const senders = compatibleSenders(authorToken, story.author_looking, showcase);
       if (senders.length > 0) {
