@@ -2303,6 +2303,8 @@ export interface GroupSummary {
   date: string | null;
   location: string | null;
   isOrganizer: boolean;
+  /** O evento já aconteceu: grupo só para leitura até ser apagado. */
+  encerrado?: boolean;
   memberCount: number;
   expiresAt: string;
   lastMessageAt: string | null;
@@ -2336,6 +2338,9 @@ export interface GroupDetail {
   myRole?: GroupRole | string;
   pinned?: GroupMessageRef | null;
   notificacoesSilenciadas?: boolean;
+  /** O evento já aconteceu: grupo só para leitura até apagaEm. */
+  encerrado?: boolean;
+  apagaEm?: string | null;
 }
 export interface GroupMessage {
   id: string;

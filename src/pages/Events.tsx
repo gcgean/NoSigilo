@@ -81,6 +81,8 @@ interface Event {
   notificationsSent?: number;
   createdBy?: string;
   groupId?: string | null;
+  /** A data já passou (horário de Brasília): fica na aba Encerrados. */
+  encerrado?: boolean;
 }
 
 const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600';
@@ -102,6 +104,7 @@ const normalizeEvent = (raw: any): Event => {
     notificationsSent: raw?.notificationsSent ? Number(raw.notificationsSent) : undefined,
     createdBy: raw?.createdBy ? String(raw.createdBy) : undefined,
     groupId: raw?.groupId ? String(raw.groupId) : null,
+    encerrado: !!raw?.encerrado,
   };
 };
 
@@ -160,8 +163,11 @@ export default function Events() {
   const [searchParams, setSearchParams] = useSearchParams();
   const eventoAlvo = searchParams.get('evento');
   const [eventoDestacado, setEventoDestacado] = useState<string | null>(null);
+  const [aba, setAba] = useState<'proximos' | 'encerrados'>('proximos');
   useEffect(() => {
     if (!eventoAlvo || events.length === 0) return;
+    const alvo = events.find((e) => e.id === eventoAlvo);
+    if (alvo?.encerrado && aba !== 'encerrados') { setAba('encerrados'); return; }
     const el = document.getElementById(`evento-${eventoAlvo}`);
     if (el) {
       window.setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
@@ -173,7 +179,7 @@ export default function Events() {
     const resto = new URLSearchParams(searchParams);
     resto.delete('evento');
     setSearchParams(resto, { replace: true });
-  }, [eventoAlvo, events.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [eventoAlvo, events.length, aba]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [step, setStep] = useState(1);
   const [citySearchInput, setCitySearchInput] = useState('');
@@ -384,6 +390,14 @@ export default function Events() {
       return { ...prev, targetCities: [...prev.targetCities, cityState] };
     });
   };
+
+  const proximos = events
+    .filter((e) => !e.encerrado)
+    .sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+  const encerrados = events
+    .filter((e) => e.encerrado)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const listaDaAba = aba === 'proximos' ? proximos : encerrados;
 
   const formatDate = (dateStr: string) => {
     const date = dataDoEvento(dateStr);
@@ -901,9 +915,32 @@ export default function Events() {
         </Dialog>
       </div>
 
+      {/* Próximos x Encerrados */}
+      {events.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 rounded-xl bg-muted p-1 text-sm sm:inline-grid sm:w-auto" role="tablist">
+          {([['proximos', 'Próximos', proximos.length], ['encerrados', 'Encerrados', encerrados.length]] as const).map(([k, rotulo, qtd]) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={aba === k}
+              onClick={() => setAba(k)}
+              className={cn('min-h-[36px] rounded-lg px-4 font-semibold transition-colors', aba === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground')}
+            >
+              {rotulo} <span className="text-xs font-normal opacity-70">({qtd})</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {events.length > 0 && listaDaAba.length === 0 && (
+        <p className="mb-6 rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+          {aba === 'proximos' ? 'Nenhum evento marcado por enquanto. Que tal criar um?' : 'Nenhum evento encerrado ainda.'}
+        </p>
+      )}
+
       {/* Events Grid */}
       <div className="grid gap-6 md:grid-cols-2">
-        {events.map((event) => (
+        {listaDaAba.map((event) => (
           <Card
             key={event.id}
             id={`evento-${event.id}`}
@@ -914,9 +951,12 @@ export default function Events() {
               <img 
                 src={event.image} 
                 alt={event.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                className={cn('w-full h-full object-cover group-hover:scale-105 transition-transform duration-300', event.encerrado && 'grayscale opacity-70')}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+              {event.encerrado && (
+                <Badge variant="secondary" className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-background/90">Encerrado</Badge>
+              )}
               
               {/* Type Icon */}
               <div className="absolute top-4 left-4 w-10 h-10 rounded-full bg-background/90 backdrop-blur-sm flex items-center justify-center text-xl">
@@ -966,23 +1006,29 @@ export default function Events() {
                 </div>
               </div>
 
-              <Button
-                onClick={() => void handleToggleAttendance(event.id)}
-                className={event.isGoing
-                  ? "w-full"
-                  : "w-full bg-gradient-primary hover:opacity-90"
-                }
-                variant={event.isGoing ? "outline" : "default"}
-              >
-                {event.isGoing ? 'Cancelar Presença' : 'Confirmar Presença'}
-              </Button>
+              {event.encerrado ? (
+                <p className="rounded-lg bg-muted px-3 py-2 text-center text-sm text-muted-foreground">
+                  Este evento já aconteceu{event.isGoing ? ' — você confirmou presença' : ''}.
+                </p>
+              ) : (
+                <Button
+                  onClick={() => void handleToggleAttendance(event.id)}
+                  className={event.isGoing
+                    ? "w-full"
+                    : "w-full bg-gradient-primary hover:opacity-90"
+                  }
+                  variant={event.isGoing ? "outline" : "default"}
+                >
+                  {event.isGoing ? 'Cancelar Presença' : 'Confirmar Presença'}
+                </Button>
+              )}
               {event.isGoing && event.groupId && (
                 <Button
                   variant="secondary"
                   className="mt-2 w-full gap-2"
                   onClick={() => navigate(`/chat/group/${event.groupId}`)}
                 >
-                  <MessageCircle className="h-4 w-4" /> Ir para o chat do grupo
+                  <MessageCircle className="h-4 w-4" /> {event.encerrado ? 'Ver a conversa do grupo (só leitura)' : 'Ir para o chat do grupo'}
                 </Button>
               )}
             </div>

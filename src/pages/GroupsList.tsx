@@ -69,6 +69,7 @@ export default function GroupsList() {
               <div className="flex items-center gap-1.5">
                 <p className="truncate font-medium">{g.title}</p>
                 {g.isOrganizer && <Crown className="h-3.5 w-3.5 shrink-0 text-gold" />}
+                {g.encerrado && <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">Encerrado</span>}
               </div>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 {g.date && (

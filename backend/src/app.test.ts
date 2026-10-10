@@ -3521,4 +3521,47 @@ describe('nosigilo backend', () => {
     expect((await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(bia.token)).expect(200)).body.notificacoesSilenciadas).toBe(true);
     expect((await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(ana.token)).expect(200)).body.notificacoesSilenciadas).toBe(false);
   });
+
+  it('evento encerrado: vai para Encerrados, não aceita presença e o grupo vira só leitura', async () => {
+    const reg = async (n: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Encerrado ${n}`, email: `ev-encerrado-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dono = await reg('dono');
+    const ana = await reg('ana');
+    const bia = await reg('bia');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    const ev = await request(ctx.app).post('/api/events').set(auth(dono.token)).send({ title: 'Evento Que Passa', location: 'Fortaleza', date: '2099-12-31', time: '20:00' }).expect(200);
+    const eventId = String(ev.body.id);
+    const g = await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(ana.token)).expect(200);
+    const groupId = String(g.body.groupId);
+    await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(ana.token)).send({ content: 'antes do evento' }).expect(200);
+
+    // A data passa.
+    const row = (await ctx.db.queryOne('SELECT payload_json FROM events WHERE id = ?', [eventId])) as any;
+    const payload = JSON.parse(String(row.payload_json));
+    payload.date = '2020-01-10';
+    await run(ctx.db, 'UPDATE events SET payload_json = ? WHERE id = ?', [JSON.stringify(payload), eventId]);
+    await ctx.db.persist();
+
+    const todos = (await request(ctx.app).get('/api/events').set(auth(ana.token)).expect(200)).body as any[];
+    expect(todos.find((e) => e.id === eventId)?.encerrado).toBe(true);
+    const proximos = (await request(ctx.app).get('/api/events?upcoming=true').set(auth(ana.token)).expect(200)).body as any[];
+    expect(proximos.some((e) => e.id === eventId)).toBe(false);
+
+    const recusa = await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(bia.token)).expect(400);
+    expect(recusa.body.error).toBe('evento_encerrado');
+
+    const grupo = (await request(ctx.app).get(`/api/groups/${groupId}`).set(auth(ana.token)).expect(200)).body;
+    expect(grupo.encerrado).toBe(true);
+    const bloqueio = await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(ana.token)).send({ content: 'depois' }).expect(403);
+    expect(bloqueio.body.error).toBe('grupo_encerrado');
+    // As mensagens antigas continuam legíveis.
+    const msgs = (await request(ctx.app).get(`/api/groups/${groupId}/messages`).set(auth(ana.token)).expect(200)).body as any[];
+    expect(msgs.some((m) => m.content === 'antes do evento')).toBe(true);
+    const lista = (await request(ctx.app).get('/api/groups').set(auth(ana.token)).expect(200)).body as any[];
+    expect(lista.find((x) => x.groupId === groupId)?.encerrado).toBe(true);
+  });
 });

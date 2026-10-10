@@ -15817,8 +15817,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ id, event: { id, ...payload, createdAt, createdBy: userRow.name ?? null }, notificationsSent });
   });
 
+  // Evento encerrado = a data (AAAA-MM-DD) já passou no horário de Brasília.
+  const hojeEmBrasilia = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+  const eventoEncerrado = (payload: any) => {
+    const data = String(payload?.date || '');
+    return /^\d{4}-\d{2}-\d{2}$/.test(data) && data < hojeEmBrasilia();
+  };
+
   app.get('/api/events', requireAuth(env, db), async (req, res) => {
     const myEvents = String(req.query.myEvents || '') === 'true';
+    const soProximos = String(req.query.upcoming || '') === 'true';
     const viewerId = req.auth!.userId;
     const rows = await queryAll(
       db,
@@ -15835,17 +15843,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [viewerId, myEvents ? 1 : 0, viewerId]
     );
-    res.json(
-      rows.map((r: any) => ({
+    const lista = rows.map((r: any) => {
+      const payload = safeJsonParse(r.payload_json) ?? {};
+      return {
         id: r.id,
-        ...(safeJsonParse(r.payload_json) ?? {}),
+        ...payload,
         createdAt: r.created_at,
         createdBy: r.user_name,
         attendees: Number(r.attendees_count || 0),
         isGoing: Number(r.is_going) === 1 || r.is_going === true,
         groupId: r.group_id ? String(r.group_id) : null,
-      }))
-    );
+        encerrado: eventoEncerrado(payload),
+      };
+    });
+    res.json(soProximos ? lista.filter((e) => !e.encerrado) : lista);
   });
 
   // ── Grupo-por-evento ────────────────────────────────────────────────────────
@@ -15857,7 +15868,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   function computeEventGroupExpiry(payload: any): string {
     const dateStr = String(payload?.date || '');
     const timeStr = String(payload?.time || '00:00');
-    const parsed = dateStr ? new Date(`${dateStr}T${timeStr.length === 5 ? timeStr : '00:00'}`) : null;
+    const parsed = dateStr ? new Date(`${dateStr}T${/^\d{2}:\d{2}$/.test(timeStr) ? timeStr : '00:00'}:00-03:00`) : null;
     const baseMs = parsed && !Number.isNaN(parsed.getTime()) ? parsed.getTime() : Date.now() + EVENT_GROUP_FALLBACK_DAYS * 86400000;
     return new Date(baseMs + EVENT_GROUP_EXPIRE_BUFFER_DAYS * 86400000).toISOString();
   }
@@ -15887,6 +15898,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const event = (await queryOne(db, 'SELECT id, user_id, payload_json FROM events WHERE id = ? LIMIT 1', [eventId])) as any;
     if (!event) { res.status(404).json({ error: 'not_found' }); return; }
     const payload = safeJsonParse(event.payload_json) ?? {};
+    if (eventoEncerrado(payload)) { res.status(400).json({ error: 'evento_encerrado', message: 'Este evento já aconteceu.' }); return; }
 
     const already = (await queryOne(db, 'SELECT id FROM event_attendees WHERE event_id = ? AND user_id = ?', [eventId, userId])) as any;
     if (!already?.id) {
@@ -15976,6 +15988,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           date: (payload as any)?.date || null,
           location: (payload as any)?.location || null,
           isOrganizer: String(r.organizer_id) === userId,
+          encerrado: eventoEncerrado(payload),
           memberCount: Number(r.member_count || 0),
           expiresAt: r.expires_at,
           lastMessageAt: r.last_message_at || null,
@@ -16033,6 +16046,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const minhasNotif = (await queryOne(db, 'SELECT notificacoes_silenciadas FROM event_group_members WHERE group_id = ? AND user_id = ?', [groupId, userId])) as any;
     res.json({
       myRole: eu ? String(eu.role) : 'member',
+      encerrado: eventoEncerrado(payload),
+      apagaEm: group.expires_at ? String(group.expires_at) : null,
       notificacoesSilenciadas: Number(minhasNotif?.notificacoes_silenciadas || 0) === 1,
       pinned: await mensagemFixada(groupId),
       groupId: String(group.id),
@@ -16112,6 +16127,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const membro = await requireGroupMember(groupId, userId);
     if (!membro.isMember) { res.status(403).json({ error: 'not_member' }); return; }
     if (membro.muted) { res.status(403).json({ error: 'muted', message: 'Um moderador silenciou você neste grupo.' }); return; }
+    const doEvento = (await queryOne(db, 'SELECT e.payload_json FROM event_groups eg JOIN events e ON e.id = eg.event_id WHERE eg.id = ?', [groupId])) as any;
+    if (eventoEncerrado(safeJsonParse(doEvento?.payload_json) ?? {})) {
+      res.status(403).json({ error: 'grupo_encerrado', message: 'O evento já aconteceu: o grupo agora é só para leitura.' });
+      return;
+    }
     const schema = z.object({ content: z.string().max(2000).optional(), mediaId: z.string().optional(), replyToId: z.string().max(64).optional(), isViewOnce: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
@@ -21011,6 +21031,31 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Run sweep on startup (catches any stragglers from downtime), then hourly
   void sweepExpiredInvites();
   setInterval(() => void sweepExpiredInvites(), 60 * 60 * 1000);
+
+  // Grupos de evento vencidos (3 dias depois do evento): apaga o grupo e tudo
+  // dele. Antes o expires_at era gravado mas nada o usava — grupos ficavam
+  // para sempre.
+  const apagarGruposVencidos = async () => {
+    try {
+      const vencidos = (await queryAll(db, 'SELECT id FROM event_groups WHERE expires_at < ?', [nowIso()])) as any[];
+      for (const g of vencidos) {
+        const id = String(g.id);
+        await run(db, 'DELETE FROM event_group_message_views WHERE message_id IN (SELECT id FROM event_group_messages WHERE group_id = ?)', [id]);
+        await run(db, 'DELETE FROM event_group_bans WHERE group_id = ?', [id]);
+        await run(db, 'DELETE FROM event_group_messages WHERE group_id = ?', [id]);
+        await run(db, 'DELETE FROM event_group_members WHERE group_id = ?', [id]);
+        await run(db, 'DELETE FROM event_groups WHERE id = ?', [id]);
+      }
+      if (vencidos.length > 0) {
+        await persist();
+        console.log(`[grupos] ${vencidos.length} grupo(s) de evento vencido(s) apagado(s)`);
+      }
+    } catch (err) {
+      console.error('[grupos] limpeza de vencidos falhou:', err);
+    }
+  };
+  void apagarGruposVencidos();
+  setInterval(() => void apagarGruposVencidos(), 60 * 60 * 1000);
 
   return app;
 }

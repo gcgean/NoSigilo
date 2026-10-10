@@ -592,7 +592,12 @@ export default function GroupChat() {
             </span>
           </button>
         )}
-        {premiumAccess && estouSilenciado ? (
+        {group.encerrado ? (
+          <p className="mb-1 rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+            🏁 O evento já aconteceu: o grupo agora é só para leitura
+            {group.apagaEm ? ` e será apagado em ${new Date(group.apagaEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}.
+          </p>
+        ) : premiumAccess && estouSilenciado ? (
           <p className="mb-1 flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-muted-foreground">
             <VolumeX className="h-4 w-4 shrink-0 text-amber-600" /> Um moderador silenciou você neste grupo. Você continua lendo as mensagens.
           </p>
