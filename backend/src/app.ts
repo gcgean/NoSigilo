@@ -14813,6 +14813,40 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // notificação parecia não funcionar.
   //
   // Mesmo formato de /api/users/:userId/posts, mais o autor.
+  // Quem curtiu a publicação (com a reação). Só o dono (e admin) vê a lista:
+  // num site adulto, saber quem curtiu o post de outra pessoa expõe gente.
+  app.get('/api/posts/:postId/likes', requireAuth(env, db), async (req, res) => {
+    const post = (await queryOne(db, 'SELECT user_id FROM posts WHERE id = ?', [req.params.postId])) as any;
+    if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(post.user_id) !== req.auth!.userId && !req.auth!.isAdmin) {
+      res.status(403).json({ error: 'forbidden', message: 'Só quem publicou vê quem curtiu.' });
+      return;
+    }
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, u.avatar, u.gender, l.reaction, l.created_at
+         FROM likes l
+         JOIN users u ON u.id = l.user_id
+        WHERE l.target_type = 'post' AND l.target_id = ?
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND u.deleted_at IS NULL
+        ORDER BY l.created_at DESC
+        LIMIT 500`,
+      [req.params.postId]
+    )) as any[];
+    res.json({
+      likes: rows.map((r) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar ?? null,
+        gender: r.gender ? String(r.gender) : null,
+        reaction: r.reaction ? String(r.reaction) : 'heart',
+        createdAt: String(r.created_at),
+      })),
+    });
+  });
+
   app.get('/api/posts/:postId', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const post = (await queryOne(

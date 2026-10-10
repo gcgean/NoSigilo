@@ -3564,4 +3564,26 @@ describe('nosigilo backend', () => {
     const lista = (await request(ctx.app).get('/api/groups').set(auth(ana.token)).expect(200)).body as any[];
     expect(lista.find((x) => x.groupId === groupId)?.encerrado).toBe(true);
   });
+
+  it('quem curtiu a publicação: só o dono vê a lista, com a reação de cada um', async () => {
+    const reg = async (n: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Curte ${n}`, email: `quem-curtiu-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dona = await reg('dona');
+    const ana = await reg('ana');
+    const bia = await reg('bia');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const postId = `post-curtidas-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, 'Meu post', '[]', ?)", [postId, String(dona.user.id), new Date().toISOString()]);
+    await ctx.db.persist();
+    await request(ctx.app).post('/api/likes').set(auth(ana.token)).send({ targetType: 'post', targetId: postId, reaction: 'fire' }).expect(200);
+    await request(ctx.app).post('/api/likes').set(auth(bia.token)).send({ targetType: 'post', targetId: postId }).expect(200);
+
+    const r = (await request(ctx.app).get(`/api/posts/${postId}/likes`).set(auth(dona.token)).expect(200)).body;
+    expect(r.likes.map((l: any) => l.name).sort()).toEqual(['Curte ana', 'Curte bia']);
+    expect(r.likes.find((l: any) => l.name === 'Curte ana').reaction).toBe('fire');
+    await request(ctx.app).get(`/api/posts/${postId}/likes`).set(auth(ana.token)).expect(403);
+  });
 });

@@ -228,6 +228,11 @@ export const discoveryService = {
 
 export const feedService = {
   // Uma publicação sozinha (destino das notificações de post).
+  /** Quem curtiu (só o dono da publicação recebe). */
+  getPostLikes: async (postId: string): Promise<{ likes: Array<{ id: string; name: string; avatar: string | null; gender: string | null; reaction: string; createdAt: string }> }> => {
+    const response = await apiClient.get(`/posts/${encodeURIComponent(postId)}/likes`);
+    return response.data;
+  },
   getPost: async (postId: string) => {
     const response = await apiClient.get(`/posts/${encodeURIComponent(postId)}`);
     return response.data as {

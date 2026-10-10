@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Link } from 'react-router-dom';
 import PostContent from '@/components/PostContent';
+import { REACTION_EMOJI } from '@/lib/reactions';
 
 /**
  * Postagem na aba "Postagens" do perfil, com as mesmas ações do feed:
@@ -57,6 +58,8 @@ type ProfilePostCardProps = {
   podeGerenciar?: boolean;
   /** Chamado depois de excluir, para quem usa o cartão tirar ele da lista. */
   onRemovido?: (postId: string) => void;
+  /** Já busca quem curtiu ao montar (página da publicação). Na lista do perfil, só ao tocar. */
+  carregarQuemCurtiu?: boolean;
 };
 
 export default function ProfilePostCard({
@@ -68,6 +71,7 @@ export default function ProfilePostCard({
   abrirComentarios = false,
   podeGerenciar = false,
   onRemovido,
+  carregarQuemCurtiu = false,
 }: ProfilePostCardProps) {
   const { toast } = useToast();
   const [curtido, setCurtido] = useState(!!post.likedByMe);
@@ -86,6 +90,25 @@ export default function ProfilePostCard({
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
   const temMidia = (post.media || []).length > 0;
+  // Quem curtiu: só para o dono (o backend recusa para os outros).
+  type QuemCurtiu = { id: string; name: string; avatar: string | null; reaction: string };
+  const [quemCurtiu, setQuemCurtiu] = useState<QuemCurtiu[] | null>(null);
+  const [listaCurtidasAberta, setListaCurtidasAberta] = useState(false);
+  const [buscandoCurtidas, setBuscandoCurtidas] = useState(false);
+  const buscarQuemCurtiu = async () => {
+    setBuscandoCurtidas(true);
+    try {
+      setQuemCurtiu((await feedService.getPostLikes(post.id)).likes);
+    } catch {
+      setQuemCurtiu(null);
+    } finally {
+      setBuscandoCurtidas(false);
+    }
+  };
+  useEffect(() => {
+    if (!podeGerenciar || !carregarQuemCurtiu || curtidas === 0) return;
+    void buscarQuemCurtiu();
+  }, [podeGerenciar, carregarQuemCurtiu, post.id, curtidas]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const salvarTexto = async () => {
     const novo = rascunhoTexto.trim();
@@ -296,6 +319,59 @@ export default function ProfilePostCard({
           <span className="font-medium">{Number(post.viewsCount ?? 0)}</span>
         </span>
       </div>
+
+      {podeGerenciar && curtidas > 0 && !quemCurtiu && (
+        <button
+          type="button"
+          disabled={buscandoCurtidas}
+          onClick={() => { setListaCurtidasAberta(true); void buscarQuemCurtiu(); }}
+          className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary"
+        >
+          {buscandoCurtidas && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Ver quem curtiu ({curtidas})
+        </button>
+      )}
+      {podeGerenciar && quemCurtiu && quemCurtiu.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setListaCurtidasAberta((v) => !v)}
+          className="mt-2 flex w-full items-center gap-2 text-left text-sm"
+        >
+          <span className="flex -space-x-2">
+            {quemCurtiu.slice(0, 3).map((q) => (
+              q.avatar ? (
+                <img key={q.id} src={resolveServerUrl(q.avatar)} alt="" className="h-6 w-6 rounded-full border-2 border-background object-cover" />
+              ) : (
+                <span key={q.id} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-secondary text-[10px] font-bold">{q.name[0]?.toUpperCase()}</span>
+              )
+            ))}
+          </span>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">
+            Curtido por <strong className="text-foreground">{quemCurtiu[0].name}</strong>
+            {quemCurtiu.length > 1 && <> e <strong className="text-foreground">{quemCurtiu.length === 2 ? quemCurtiu[1].name : `mais ${quemCurtiu.length - 1}`}</strong></>}
+          </span>
+          <span className="shrink-0 text-xs font-semibold text-primary">{listaCurtidasAberta ? 'Fechar' : 'Ver todos'}</span>
+        </button>
+      )}
+      {podeGerenciar && listaCurtidasAberta && quemCurtiu && (
+        <div className="mt-2 max-h-80 space-y-1 overflow-y-auto rounded-xl border p-2">
+          {quemCurtiu.map((q) => (
+            <Link key={q.id} to={getUserProfileHref(q.id, viewerId)} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-secondary/60">
+              {q.avatar ? (
+                <img src={resolveServerUrl(q.avatar)} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold">{q.name[0]?.toUpperCase()}</span>
+              )}
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{q.name}</span>
+              <span className="text-lg" aria-label="Reação">{REACTION_EMOJI[q.reaction] ?? '❤️'}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      {!abertos && totalComentarios > 0 && (
+        <button type="button" onClick={() => void alternarComentarios()} className="mt-2 text-sm text-muted-foreground hover:text-foreground">
+          Ver {totalComentarios === 1 ? 'o comentário' : `os ${totalComentarios} comentários`}
+        </button>
+      )}
 
       {abertos ? (
         <div className="mt-3 space-y-3 border-t pt-3">

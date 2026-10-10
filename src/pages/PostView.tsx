@@ -113,6 +113,7 @@ export default function PostView() {
             dataLabel={dataLonga(post.createdAt)}
             abrirComentarios={searchParams.get('comments') === '1'}
             podeGerenciar={post.author.id === user?.id}
+            carregarQuemCurtiu
             onRemovido={() => navigate('/profile', { replace: true })}
           />
         </>
