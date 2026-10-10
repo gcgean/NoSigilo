@@ -252,7 +252,7 @@ export default function Layout() {
         supportService.getUnreadCount().catch(() => ({ count: 0 })),
       ]);
       setUnreadCount(notifs.count || 0);
-      setUnreadMessagesCount(chatUnread.messagesCount || 0);
+      setUnreadMessagesCount((chatUnread.messagesCount || 0) + (chatUnread.gruposCount || 0));
       setUnreadConversationsCount(chatUnread.conversationsCount || 0);
       setSupportUnreadCount(supportUnread.count || 0);
       setHasUnreadMatch(!!notifs.hasUnreadMatch);

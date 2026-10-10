@@ -235,6 +235,15 @@ export default function GroupChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages.length]);
 
+  // Lido: ao abrir e quando chega mensagem com o grupo aberto (aba Grupos do chat).
+  const marcandoLido = useRef<number | null>(null);
+  useEffect(() => {
+    if (!groupId || isLoading) return;
+    if (marcandoLido.current) window.clearTimeout(marcandoLido.current);
+    marcandoLido.current = window.setTimeout(() => { void groupsService.marcarLido(groupId).catch(() => {}); }, 800);
+    return () => { if (marcandoLido.current) window.clearTimeout(marcandoLido.current); };
+  }, [groupId, isLoading, messages.length]);
+
   const eu = group?.members.find((m) => m.id === user?.id);
   const meuPapel = group?.myRole ?? (eu?.isOrganizer ? 'organizer' : 'member');
   const souDono = meuPapel === 'organizer';

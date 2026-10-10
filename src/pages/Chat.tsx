@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
-import { ArrowLeft, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Video, WifiOff, X, Zap } from 'lucide-react';
+import { ArrowLeft, BellOff, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Users, Video, WifiOff, X, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/UserAvatar';
@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
-import { authService, chatService, profileService, matchService, usersService } from '@/services/api';
+import { authService, chatService, groupsService, profileService, matchService, usersService, type GroupSummary } from '@/services/api';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -239,7 +239,15 @@ export default function Chat() {
   const [search, setSearch] = useState('');
   const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
   // Conversas x Pedidos de contato (mensagens de quem você ainda não aceitou).
-  const [caixa, setCaixa] = useState<'conversas' | 'pedidos'>('conversas');
+  const [caixa, setCaixa] = useState<'conversas' | 'pedidos' | 'grupos'>('conversas');
+  // Grupos dos eventos em que confirmei presença, com as mensagens novas.
+  const [grupos, setGrupos] = useState<GroupSummary[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    groupsService.getGroups().then((g) => { if (vivo) setGrupos(Array.isArray(g) ? g : []); }).catch(() => { if (vivo) setGrupos([]); });
+    return () => { vivo = false; };
+  }, [caixa]);
+  const gruposComNovas = (grupos ?? []).filter((g) => (g.unreadCount ?? 0) > 0 && !g.silenciado).length;
   const [acaoPedido, setAcaoPedido] = useState(false);
   const [messageSearch, setMessageSearch] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1292,8 +1300,8 @@ export default function Chat() {
             )}
           </div>
           {/* Conversas x Pedidos de contato */}
-          <div className="mb-3 grid grid-cols-2 rounded-xl bg-muted p-1 text-sm" role="tablist">
-            {(['conversas', 'pedidos'] as const).map((k) => (
+          <div className="mb-3 grid grid-cols-3 rounded-xl bg-muted p-1 text-sm" role="tablist">
+            {(['conversas', 'pedidos', 'grupos'] as const).map((k) => (
               <button
                 key={k}
                 type="button"
@@ -1305,9 +1313,12 @@ export default function Chat() {
                   caixa === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
                 )}
               >
-                {k === 'conversas' ? 'Conversas' : 'Pedidos de contato'}
+                {k === 'conversas' ? 'Conversas' : k === 'pedidos' ? 'Pedidos' : 'Grupos'}
                 {k === 'pedidos' && pedidosCount > 0 && (
                   <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{pedidosCount}</span>
+                )}
+                {k === 'grupos' && gruposComNovas > 0 && (
+                  <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{gruposComNovas}</span>
                 )}
               </button>
             ))}
@@ -1317,6 +1328,7 @@ export default function Chat() {
               Aqui ficam mensagens de perfis que você ainda não conhece. Abra, e aceite o pedido para virar conversa — ou exclua. Quem mandou não fica sabendo se você excluiu.
             </p>
           )}
+          {caixa !== 'grupos' && (<>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -1379,8 +1391,60 @@ export default function Chat() {
               </span>
             </Button>
           </div>
+          </>)}
         </div>
 
+        {caixa === 'grupos' ? (
+          <div className="flex-1 overflow-y-auto overscroll-y-contain p-2" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+            {grupos === null ? (
+              <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>
+            ) : grupos.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Você ainda não está em nenhum grupo. Confirme presença em um evento para entrar no chat do grupo.
+              </p>
+            ) : (
+              grupos.map((g) => {
+                const novas = g.unreadCount ?? 0;
+                return (
+                  <Link
+                    key={g.groupId}
+                    to={`/chat/group/${g.groupId}`}
+                    className="flex items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-secondary/50"
+                  >
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-secondary">
+                      {g.image ? <img src={resolveServerUrl(g.image)} alt="" className="h-full w-full object-cover" /> : <Users className="m-3 h-6 w-6 text-muted-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className={cn('truncate', novas > 0 ? 'font-bold' : 'font-medium')}>{g.title}</p>
+                        {g.silenciado && <BellOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Silenciado" />}
+                        {g.encerrado && <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-semibold text-muted-foreground">Encerrado</span>}
+                      </div>
+                      <p className={cn('truncate text-sm', novas > 0 ? 'text-foreground' : 'text-muted-foreground')}>
+                        {g.lastMessagePreview != null
+                          ? `${g.lastSenderName ? `${g.lastSenderName}: ` : ''}${g.lastMessagePreview || '📷 Mídia'}`
+                          : `${g.memberCount} participantes · nenhuma mensagem ainda`}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      {g.lastMessageAt && (
+                        <span className={cn('text-[11px]', novas > 0 && !g.silenciado ? 'font-semibold text-primary' : 'text-muted-foreground')}>
+                          {new Date(g.lastMessageAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                      {novas > 0 && (
+                        <span className={cn('min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-bold leading-5', g.silenciado ? 'bg-muted text-muted-foreground' : 'bg-primary text-white')}>
+                          {novas > 99 ? '99+' : novas}
+                        </span>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })
+            )}
+          </div>
+        ) : (
+        <>
         {/* Native div – Radix ScrollArea has known issues with dynamic height on iOS/Android */}
         <div
           ref={conversationsScrollRef}
@@ -1504,6 +1568,8 @@ export default function Chat() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
 
       {/* Chat Area */}

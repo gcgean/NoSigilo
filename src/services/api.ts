@@ -2314,6 +2314,10 @@ export interface GroupSummary {
   expiresAt: string;
   lastMessageAt: string | null;
   lastMessagePreview: string | null;
+  lastSenderName?: string | null;
+  /** Mensagens de outras pessoas desde a última vez que abri o grupo. */
+  unreadCount?: number;
+  silenciado?: boolean;
 }
 export type GroupRole = 'organizer' | 'moderator' | 'member';
 export interface GroupMember {
@@ -2383,6 +2387,9 @@ export const groupsService = {
   verFotoUnica: async (groupId: string, messageId: string): Promise<{ mediaUrl: string; mediaMimeType: string | null }> => {
     const res = await apiClient.post(`/groups/${groupId}/messages/${messageId}/view`);
     return res.data;
+  },
+  marcarLido: async (groupId: string): Promise<void> => {
+    await apiClient.post(`/groups/${groupId}/read`);
   },
   silenciarNotificacoes: async (groupId: string, silenciar: boolean): Promise<void> => {
     await apiClient.post(`/groups/${groupId}/notificacoes`, { silenciar });

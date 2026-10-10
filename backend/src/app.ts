@@ -12991,10 +12991,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
     );
+    const gruposNovos = (await queryOne(
+      db,
+      `SELECT COUNT(DISTINCT m.group_id) AS c
+         FROM event_group_members m
+         JOIN event_group_messages gm ON gm.group_id = m.group_id
+        WHERE m.user_id = ? AND gm.sender_id != ?
+          AND COALESCE(m.notificacoes_silenciadas, 0) = 0
+          AND gm.created_at > COALESCE(m.last_read_at, m.joined_at)`,
+      [req.auth!.userId, req.auth!.userId]
+    )) as any;
     res.json({ 
       messagesCount: Number(totalMessages?.c || 0),
       conversationsCount: Number(totalConversations?.c || 0),
       pedidosCount: Number(pedidosNovos?.c || 0),
+      gruposCount: Number(gruposNovos?.c || 0),
     });
   });
 
@@ -15995,7 +16006,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `SELECT eg.id AS group_id, eg.event_id, eg.expires_at, e.payload_json, e.user_id AS organizer_id,
               (SELECT COUNT(*) FROM event_group_members m2 WHERE m2.group_id = eg.id) AS member_count,
               (SELECT gm2.created_at FROM event_group_messages gm2 WHERE gm2.group_id = eg.id ORDER BY gm2.created_at DESC LIMIT 1) AS last_message_at,
-              (SELECT gm3.content FROM event_group_messages gm3 WHERE gm3.group_id = eg.id ORDER BY gm3.created_at DESC LIMIT 1) AS last_message_content
+              (SELECT gm3.content FROM event_group_messages gm3 WHERE gm3.group_id = eg.id ORDER BY gm3.created_at DESC LIMIT 1) AS last_message_content,
+              (SELECT u3.name FROM event_group_messages gm5 JOIN users u3 ON u3.id = gm5.sender_id WHERE gm5.group_id = eg.id ORDER BY gm5.created_at DESC LIMIT 1) AS last_sender_name,
+              (SELECT COUNT(*) FROM event_group_messages gm6
+                WHERE gm6.group_id = eg.id AND gm6.sender_id != m.user_id
+                  AND gm6.created_at > COALESCE(m.last_read_at, m.joined_at)) AS nao_lidas,
+              COALESCE(m.notificacoes_silenciadas, 0) AS silenciado
          FROM event_group_members m
          JOIN event_groups eg ON eg.id = m.group_id
          JOIN events e ON e.id = eg.event_id
@@ -16027,6 +16043,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           expiresAt: r.expires_at,
           lastMessageAt: r.last_message_at || null,
           lastMessagePreview: r.last_message_content != null ? String(r.last_message_content) : null,
+          lastSenderName: r.last_sender_name ? String(r.last_sender_name) : null,
+          unreadCount: Number(r.nao_lidas || 0),
+          silenciado: Number(r.silenciado || 0) === 1,
         };
       })
     );
@@ -16319,6 +16338,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     io?.to(`group:${groupId}`).emit('group.message.viewed', { groupId, messageId: String(msg.id), viewsCount: Number(total?.c || 0) });
     res.json({ mediaUrl: `/uploads/${String(msg.filename)}`, mediaMimeType: msg.mime_type ? String(msg.mime_type) : null });
+  });
+
+  app.post('/api/groups/:groupId/read', requireAuth(env, db), async (req, res) => {
+    const groupId = String(req.params.groupId || '');
+    await run(db, 'UPDATE event_group_members SET last_read_at = ? WHERE group_id = ? AND user_id = ?', [nowIso(), groupId, req.auth!.userId]);
+    await persist();
+    res.json({ ok: true });
   });
 
   // Silenciar as notificações deste grupo (só para mim).

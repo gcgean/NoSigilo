@@ -3586,4 +3586,43 @@ describe('nosigilo backend', () => {
     expect(r.likes.find((l: any) => l.name === 'Curte ana').reaction).toBe('fire');
     await request(ctx.app).get(`/api/posts/${postId}/likes`).set(auth(ana.token)).expect(403);
   });
+
+  it('aba Grupos do chat: conta mensagens novas por grupo, zera ao abrir e respeita grupo silenciado', async () => {
+    const reg = async (n: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Lidas ${n}`, email: `grupo-lidas-${n}@example.com`, password: 'senha123', gender: 'Mulher' });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dono = await reg('dono');
+    const ana = await reg('ana');
+    const bia = await reg('bia');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const ev = await request(ctx.app).post('/api/events').set(auth(dono.token)).send({ title: 'Evento Lidas', location: 'Fortaleza', date: '2099-12-31' }).expect(200);
+    const g = await request(ctx.app).post(`/api/events/${ev.body.id}/attend`).set(auth(ana.token)).expect(200);
+    const groupId = String(g.body.groupId);
+    await request(ctx.app).post(`/api/events/${ev.body.id}/attend`).set(auth(bia.token)).expect(200);
+
+    await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(bia.token)).send({ content: 'oi 1' }).expect(200);
+    await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(bia.token)).send({ content: 'oi 2' }).expect(200);
+
+    const daAna = (await request(ctx.app).get('/api/groups').set(auth(ana.token)).expect(200)).body as any[];
+    expect(daAna.find((x) => x.groupId === groupId)).toMatchObject({ unreadCount: 2, lastSenderName: 'Lidas bia', lastMessagePreview: 'oi 2' });
+    expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(1);
+    // Quem mandou não conta as próprias.
+    expect(((await request(ctx.app).get('/api/groups').set(auth(bia.token)).expect(200)).body as any[]).find((x) => x.groupId === groupId).unreadCount).toBe(0);
+
+    // Abriu = leu.
+    await new Promise((r) => setTimeout(r, 5));
+    await request(ctx.app).post(`/api/groups/${groupId}/read`).set(auth(ana.token)).expect(200);
+    expect(((await request(ctx.app).get('/api/groups').set(auth(ana.token)).expect(200)).body as any[]).find((x) => x.groupId === groupId).unreadCount).toBe(0);
+    expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(0);
+
+    // Silenciado: a mensagem nova aparece no grupo, mas não entra no total do Chat.
+    await request(ctx.app).post(`/api/groups/${groupId}/notificacoes`).set(auth(ana.token)).send({ silenciar: true }).expect(200);
+    await new Promise((r) => setTimeout(r, 5));
+    await request(ctx.app).post(`/api/groups/${groupId}/messages`).set(auth(bia.token)).send({ content: 'oi 3' }).expect(200);
+    const depois = ((await request(ctx.app).get('/api/groups').set(auth(ana.token)).expect(200)).body as any[]).find((x) => x.groupId === groupId);
+    expect(depois).toMatchObject({ unreadCount: 1, silenciado: true });
+    expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(0);
+  });
 });
