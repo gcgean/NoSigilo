@@ -46,6 +46,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasPremiumAccess } from '@/utils/premium';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { dataDoEvento } from '@/utils/dataDoEvento';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { eventsService, profileService } from '@/services/api';
 import { CitySearch } from '@/components/CitySearch';
@@ -385,7 +386,7 @@ export default function Events() {
   };
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = dataDoEvento(dateStr);
     return date.toLocaleDateString('pt-BR', { 
       weekday: 'short', 
       day: 'numeric', 
@@ -925,7 +926,7 @@ export default function Events() {
               {/* Date Badge */}
               <div className="absolute top-4 right-4 bg-background/90 backdrop-blur-sm rounded-lg px-3 py-2 text-center">
                 <p className="text-xs text-muted-foreground">{formatDate(event.date).split(',')[0]}</p>
-                <p className="text-xl font-bold">{new Date(event.date).getDate()}</p>
+                <p className="text-xl font-bold">{dataDoEvento(event.date).getDate()}</p>
               </div>
 
               {/* Premium Badge */}

@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Users, MapPin, Calendar, MessageCircle, Crown } from 'lucide-react';
 import { groupsService, type GroupSummary } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
+import { dataDoEvento } from '@/utils/dataDoEvento';
 import MobileState from '@/components/MobileState';
 
 function formatEventDate(dateStr: string | null): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = dataDoEvento(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar, MapPin, Users, X, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { dataDoEvento } from '@/utils/dataDoEvento';
 import { eventsService } from '@/services/api';
 
 type EventSummary = {
@@ -23,7 +24,7 @@ const EVENT_TYPE_ICON: Record<string, string> = {
 const DISMISSED_KEY = 'nosigilo:event-promo-dismissed';
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
+  const d = dataDoEvento(dateStr);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
 }
@@ -45,8 +46,8 @@ export default function EventPromoCard({ userId }: { userId: string }) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const upcoming = data
-          .filter((e) => e?.date && new Date(e.date) >= today)
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          .filter((e) => e?.date && dataDoEvento(e.date) >= today)
+          .sort((a, b) => dataDoEvento(a.date).getTime() - dataDoEvento(b.date).getTime());
         if (upcoming[0]) setEvent(upcoming[0] as EventSummary);
       })
       .catch(() => {/* noop */});

@@ -16397,7 +16397,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [myId, sinceIso]
     )) as any[];
 
-    const today = new Date().toISOString().slice(0, 10);
+    // "Hoje" em Brasília: em UTC, depois das 21h o evento do dia sumia antes da hora.
+    const today = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
     const myAudience = mapUserGenderToRadarAudience(me.gender ?? null);
     const events: any[] = [];
     for (const er of eventRows) {
