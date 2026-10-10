@@ -260,6 +260,15 @@ export async function getHubPaymentMethods(config: HubConfig, since?: string | n
   );
 }
 
+// Pagamentos confirmados, um por linha (id do cliente no Hub e/ou e-mail).
+export type HubLedgerItem = { metodo: string; customerId: string | null; email: string | null; valorCents: number; pagoEm: string };
+export async function getHubPaymentsLedger(config: HubConfig) {
+  return requestJson<{ itens: HubLedgerItem[]; cartaoErro: string | null; geradoEm: string }>(
+    buildUrl(config, '/admin/payments-ledger', { productId: config.productId }),
+    { method: 'GET', headers: await adminHeaders(config) }
+  );
+}
+
 export type HubDailySummary = {
   date: string; // 'YYYY-MM-DD', dia coberto pelo resumo
   newSubscribers: number; // clientes cujo PRIMEIRO pagamento foi nesse dia

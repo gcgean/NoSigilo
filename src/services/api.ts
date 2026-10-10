@@ -1243,6 +1243,33 @@ export type ContatoAvisoTelegram = {
   personalizado: boolean;
 };
 
+export type FinancaEstado = {
+  uf: string;
+  usuarios: number;
+  assinantes: number;
+  receitaCents: number;
+  pagamentos: number;
+  ganhaCents: number;
+  ganhaNovosCents: number;
+  ganhaRenovCents: number;
+  ganhaPagamentos: number;
+  perdidaCents: number;
+  perdidos: number;
+};
+export type FinancasPorEstado = {
+  dias: number;
+  geradoEm: string;
+  cartaoErro: string | null;
+  totais: { assinantes: number; receitaCents: number; ganhaCents: number; perdidaCents: number; perdidos: number; semUsuarioCents: number; semUsuarioPagamentos: number };
+  estados: FinancaEstado[];
+};
+export const financasEstadoService = {
+  buscar: async (dias: number): Promise<FinancasPorEstado> => {
+    const res = await apiClient.get('/admin/finance/estados', { params: { dias }, timeout: 45000 });
+    return res.data;
+  },
+};
+
 export const TIPOS_DE_PERFIL = ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
 
 export type PedidoTrocaGenero = {

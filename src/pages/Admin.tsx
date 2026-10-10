@@ -32,6 +32,7 @@ import AdminPedidos from '@/components/AdminPedidos';
 import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
 import AdminCidadesPorPeriodo from '@/components/AdminCidadesPorPeriodo';
 import AdminPedidosGenero from '@/components/AdminPedidosGenero';
+import AdminFinancasPorEstado from '@/components/AdminFinancasPorEstado';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -2524,6 +2525,9 @@ export default function Admin() {
 
           {/* Pix x cartão x boleto: quantidade, valor e % */}
           <FormasDePagamento />
+
+          {/* ── Finanças por estado ── */}
+          <AdminFinancasPorEstado />
 
           {/* Relatório de MRR — projeção mês a mês */}
           {revenueReport && (() => {

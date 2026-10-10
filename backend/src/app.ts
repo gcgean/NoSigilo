@@ -32,6 +32,7 @@ import {
   getHubAccessStatus,
   getHubSubscriptionAnalytics,
   getHubPaymentMethods,
+  getHubPaymentsLedger,
   getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
@@ -17444,6 +17445,112 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       console.error('[admin/finance/payment-methods]', (error as Error).message);
       res.status(502).json({ error: 'payment_methods_unavailable', message: (error as Error).message });
     }
+  });
+
+  // Finanças por estado (UF do perfil): assinantes ativos, receita total,
+  // receita ganha no período (primeiro pagamento x renovação) e receita perdida
+  // no período (assinatura venceu e não renovou, pelo valor do último
+  // pagamento). Pagamentos vêm do Hub (Pix/boleto pelo id do cliente; cartão da
+  // Stripe só tem e-mail) e são ligados ao usuário pelo id do Hub ou e-mail.
+  app.get('/api/admin/finance/estados', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    if (!shouldUseHubBilling(env)) { res.status(400).json({ error: 'hub_billing_disabled', message: 'Cobrança pelo Hub desligada.' }); return; }
+    const dias = [30, 90, 365].includes(Number(req.query.dias)) ? Number(req.query.dias) : 30;
+    let ledger: Awaited<ReturnType<typeof getHubPaymentsLedger>>;
+    try {
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+      ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), timeout]);
+    } catch (error) {
+      console.error('[admin/finance/estados]', (error as Error).message);
+      res.status(400).json({ error: 'hub_indisponivel', message: (error as Error).message });
+      return;
+    }
+
+    const usuarios = (await queryAll(
+      db,
+      `SELECT id, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub,
+              UPPER(TRIM(COALESCE(state, ''))) AS uf, hub_access_status, hub_license_end_at
+         FROM users WHERE (is_admin = 0 OR is_admin IS NULL)`
+    )) as any[];
+    const porHub = new Map<string, any>();
+    const porEmail = new Map<string, any>();
+    for (const u of usuarios) {
+      if (u.hub) porHub.set(String(u.hub), u);
+      if (u.email) porEmail.set(String(u.email), u);
+    }
+    const ufDe = (u: any) => (String(u?.uf || '').length === 2 ? String(u.uf) : '??');
+
+    type Linha = { uf: string; usuarios: number; assinantes: number; receitaCents: number; pagamentos: number; ganhaCents: number; ganhaNovosCents: number; ganhaRenovCents: number; ganhaPagamentos: number; perdidaCents: number; perdidos: number };
+    const linhas = new Map<string, Linha>();
+    const linha = (uf: string) => {
+      let l = linhas.get(uf);
+      if (!l) { l = { uf, usuarios: 0, assinantes: 0, receitaCents: 0, pagamentos: 0, ganhaCents: 0, ganhaNovosCents: 0, ganhaRenovCents: 0, ganhaPagamentos: 0, perdidaCents: 0, perdidos: 0 }; linhas.set(uf, l); }
+      return l;
+    };
+    const agora = Date.now();
+    const desde = agora - dias * 86_400_000;
+
+    // Assinantes ativos hoje: mesma regra do acesso Premium pelo Hub.
+    for (const u of usuarios) {
+      const l = linha(ufDe(u));
+      l.usuarios += 1;
+      const fim = u.hub_license_end_at ? Date.parse(String(u.hub_license_end_at)) : NaN;
+      if (String(u.hub_access_status || '') === 'licensed' && (!Number.isFinite(fim) || fim > agora)) l.assinantes += 1;
+    }
+
+    // Receita: cada pagamento no estado de quem pagou. Primeiro pagamento do
+    // cliente = "novo"; os seguintes = renovação.
+    const jaPagou = new Set<string>();
+    const ultimoValor = new Map<string, number>(); // id do usuário -> valor do último pagamento
+    let semUsuarioCents = 0;
+    let semUsuarioPagamentos = 0;
+    for (const p of ledger.itens) {
+      const u = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(p.email)) || null;
+      const quando = Date.parse(p.pagoEm);
+      if (!u) { semUsuarioCents += p.valorCents; semUsuarioPagamentos += 1; continue; }
+      const l = linha(ufDe(u));
+      l.receitaCents += p.valorCents;
+      l.pagamentos += 1;
+      const chave = String(u.id);
+      const novo = !jaPagou.has(chave);
+      jaPagou.add(chave);
+      ultimoValor.set(chave, p.valorCents);
+      if (quando >= desde) {
+        l.ganhaCents += p.valorCents;
+        l.ganhaPagamentos += 1;
+        if (novo) l.ganhaNovosCents += p.valorCents; else l.ganhaRenovCents += p.valorCents;
+      }
+    }
+
+    // Perdida: quem já pagou, teve a assinatura vencendo no período e hoje não
+    // está ativo. Vale o último pagamento (o quanto deixou de entrar).
+    for (const u of usuarios) {
+      const fim = u.hub_license_end_at ? Date.parse(String(u.hub_license_end_at)) : NaN;
+      if (!Number.isFinite(fim) || fim < desde || fim > agora) continue;
+      if (String(u.hub_access_status || '') === 'licensed' && fim > agora) continue;
+      const valor = ultimoValor.get(String(u.id));
+      if (!valor) continue;
+      const l = linha(ufDe(u));
+      l.perdidaCents += valor;
+      l.perdidos += 1;
+    }
+
+    const todas = [...linhas.values()];
+    const soma = (f: (l: Linha) => number) => todas.reduce((s, l) => s + f(l), 0);
+    res.json({
+      dias,
+      geradoEm: new Date().toISOString(),
+      cartaoErro: ledger.cartaoErro,
+      totais: {
+        assinantes: soma((l) => l.assinantes),
+        receitaCents: soma((l) => l.receitaCents) + semUsuarioCents,
+        ganhaCents: soma((l) => l.ganhaCents),
+        perdidaCents: soma((l) => l.perdidaCents),
+        perdidos: soma((l) => l.perdidos),
+        semUsuarioCents,
+        semUsuarioPagamentos,
+      },
+      estados: todas,
+    });
   });
 
   // Abandono de PIX: dos usuários que geraram um checkout, quantos NÃO viraram
