@@ -745,11 +745,17 @@ export default function Feed() {
     void reload();
   }, []);
 
-  // Contos recarregam a cada troca de filtro.
+  // Contos: a lista (~150 KB) só carrega quando a aba "Contos eróticos" é
+  // aberta — antes vinha em toda abertura do feed, mesmo sem ninguém olhar.
+  // As categorias (pequenas) carregam já, porque o "escrever conto" usa.
   useEffect(() => {
+    experienceService.categorias().then((c) => { if (c) setContagemContos(c); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (feedFilter !== 'experiences') return;
     void reloadExperiences();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroCategoria, ordemContos, leituraContos, buscaContos]);
+  }, [feedFilter, filtroCategoria, ordemContos, leituraContos, buscaContos]);
 
   // Admin classifica o conto direto no feed.
   const classificarConto = async (experience: FeedExperience, categoria: string) => {

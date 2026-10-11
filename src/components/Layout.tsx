@@ -33,7 +33,7 @@ import TokenBadge from '@/components/TokenBadge';
 import { authService, notificationsService, chatService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
-import { resolveServerUrl } from '@/utils/serverUrl';
+import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { ToastAction } from '@/components/ui/toast';
 import { getNotificationHref } from '@/utils/notificationNavigation';
 import BrandLogo from '@/components/BrandLogo';
@@ -763,7 +763,7 @@ export default function Layout() {
               >
                 <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary sm:h-9 sm:w-9">
                   {user?.avatar ? (
-                    <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
+                    <img src={urlMiniatura(resolveServerUrl(user.avatar), 120)} alt={user.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                       <User className="h-4.5 w-4.5 sm:h-5 sm:w-5" />
@@ -797,7 +797,7 @@ export default function Layout() {
                   >
                     <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-secondary">
                       {user?.avatar ? (
-                        <img src={resolveServerUrl(user.avatar)} alt={user.name} className="w-full h-full object-cover" />
+                        <img src={urlMiniatura(resolveServerUrl(user.avatar), 120)} alt={user.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                           <User className="h-4.5 w-4.5" />

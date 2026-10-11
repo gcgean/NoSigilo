@@ -244,7 +244,7 @@ export function PostMediaCarousel({
             controls
             muted
             playsInline
-            preload="auto"
+            preload="metadata"
             onLoadedMetadata={(e) =>
               onAspectLoaded?.(m.id, e.currentTarget.videoWidth, e.currentTarget.videoHeight)
             }
