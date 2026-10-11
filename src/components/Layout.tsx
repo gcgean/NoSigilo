@@ -102,6 +102,8 @@ function parseValidDate(value?: string | null) {
 function formatRemainingTime(targetMs: number, nowMs: number) {
   const diff = targetMs - nowMs;
   if (diff <= 0) return 'expirado';
+  // Acesso sem prazo (mulheres e embaixador oficial: até 2099).
+  if (diff > 3650 * 24 * 60 * 60 * 1000) return 'acesso liberado';
 
   const hours = Math.ceil(diff / (1000 * 60 * 60));
   if (hours <= 24) return `${hours}h restantes`;

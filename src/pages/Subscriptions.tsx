@@ -356,6 +356,21 @@ export default function Subscriptions() {
   // mas licença expirada) deixa de ser "ativo" → mostra "Regularize", não "Você já é Premium".
   const isPremiumActive = !!user?.isPremium && hasPremiumAccess(user);
 
+  // Mulher: tudo liberado, sem assinatura (desde 11/10/2026).
+  if (String(user?.gender || '') === 'Mulher') {
+    return (
+      <div className="mx-auto w-full max-w-md space-y-4 pb-10 pt-6 text-center">
+        <Badge className="bg-gradient-primary gap-1"><Crown className="h-3 w-3" /> Premium liberado</Badge>
+        <h1 className="text-2xl font-bold">Para você, é grátis 💖</h1>
+        <p className="text-muted-foreground">
+          No NoSigilo, perfis de mulher têm todo o acesso Premium liberado, sem assinatura e sem prazo:
+          mensagens, radar, vídeos, eventos e grupos.
+        </p>
+        <Button className="w-full bg-gradient-primary" onClick={() => window.location.assign('/feed')}>Ir para o feed</Button>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto w-full space-y-6 pb-10">
 

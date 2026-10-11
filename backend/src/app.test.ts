@@ -3659,4 +3659,34 @@ describe('nosigilo backend', () => {
     expect(st.views).toBeGreaterThanOrEqual(1);
     await run(ctx.db, 'UPDATE users SET is_showcase = 0 WHERE id = ?', [String(vit.user.id)]);
   });
+
+  it('mulher tem acesso sem prazo; casal sem assinatura lê o que recebe e responde, mas não puxa conversa', async () => {
+    const mulher = await registerInvitedUser(ctx, sponsorToken, { name: 'Mulher Gratis', email: 'mulher-gratis@example.com', password: 'senha123', gender: 'Mulher' });
+    const trialMulher = (await ctx.db.queryOne('SELECT trial_ends_at FROM users WHERE id = ?', [String(mulher.user.id)])) as any;
+    expect(String(trialMulher.trial_ends_at)).toContain('2099');
+
+    const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Homem Pagante', email: 'homem-pagante@example.com', password: 'senha123', gender: 'Homem' });
+    await grantPremium(ctx, String(homem.user.id));
+    const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Sem Plano', email: 'casal-sem-plano@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const outro = await registerInvitedUser(ctx, sponsorToken, { name: 'Outro Perfil', email: 'outro-perfil-casal@example.com', password: 'senha123', gender: 'Mulher' });
+    // Teste grátis do casal acabou e ele não assina.
+    await run(ctx.db, "UPDATE users SET is_premium = 0, trial_ends_at = '2020-01-01T00:00:00.000Z' WHERE id = ?", [String(casal.user.id)]);
+    await ctx.db.persist();
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    // Homem puxa conversa com o casal.
+    const conv = (await request(ctx.app).post('/api/conversations').set(auth(homem.token)).send({ userId: casal.user.id }).expect(200)).body;
+    await request(ctx.app).post(`/api/conversations/${conv.id}/messages`).set(auth(homem.token)).send({ content: 'Oi casal' }).expect(200);
+
+    // Casal lê (sem cadeado) e responde.
+    const msgs = (await request(ctx.app).get(`/api/conversations/${conv.id}/messages`).set(auth(casal.token)).expect(200)).body;
+    const lista = Array.isArray(msgs) ? msgs : (msgs.messages ?? []);
+    const recebida = lista.find((m: any) => m.senderId === homem.user.id);
+    expect(recebida.content).toBe('Oi casal');
+    expect(recebida.isLocked).toBe(false);
+    await request(ctx.app).post(`/api/conversations/${conv.id}/messages`).set(auth(casal.token)).send({ content: 'Oi! Tudo bem?' }).expect(200);
+
+    // Mas não puxa conversa nova.
+    await request(ctx.app).post('/api/conversations').set(auth(casal.token)).send({ userId: outro.user.id }).expect(403);
+  });
 });

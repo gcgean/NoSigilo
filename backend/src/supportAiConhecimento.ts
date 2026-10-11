@@ -20,7 +20,7 @@ Público e regras da comunidade
 - A moderação pode remover conteúdo, restringir recursos, suspender ou encerrar contas.
 
 Tipos de perfil e período grátis ao se cadastrar (trialEndForGender)
-- Mulher: 30 dias de Premium grátis. Casal: 15 dias. Outros perfis (trans, CD etc.): 7 dias.
+- Mulher: Premium grátis para sempre, sem assinatura. Casal: 15 dias grátis; depois disso, sem assinar, o casal continua lendo e respondendo as mensagens que recebe — o que é pago é puxar conversa nova, ver quem visitou, filtros e destaque. Outros perfis (trans, CD etc.): 7 dias.
 - Homem: não tem período grátis; vê uma amostra do app e precisa assinar para usar os recursos Premium.
 
 Premium

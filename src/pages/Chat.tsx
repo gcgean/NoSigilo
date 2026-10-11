@@ -318,6 +318,9 @@ export default function Chat() {
   // de abas do iOS, onde as 12 rotas apareciam com o mesmo nome.
   useDocumentTitle(activeConversation?.user?.name ? `Conversa com ${activeConversation.user.name}` : 'Conversas');
   const premiumAccess = hasPremiumAccess(user);
+  // Casal sem assinatura lê o que recebe e responde quem puxou conversa
+  // (o servidor confere de novo). Iniciar conversa continua sendo pago.
+  const ehCasal = String((user as any)?.gender || '').trim().toLowerCase().startsWith('casal');
   const { requireFields } = useProfileGate();
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -837,7 +840,7 @@ export default function Chat() {
         // Atualiza o preview (última mensagem + hora) em tempo real. Conteúdo
         // recebido fica travado para não-premium (igual à lista do servidor).
         const isMine = msg.senderId === user?.id;
-        const locked = !isMine && !premiumAccess;
+        const locked = !isMine && !premiumAccess && !ehCasal;
         const lastMessage = {
           senderId: msg.senderId,
           content: locked ? null : (msg.content ?? null),
@@ -1040,8 +1043,11 @@ export default function Chat() {
 
   // Emite "digitando…" no máx. 1x a cada 2.5s (throttle) e agenda o "parou"
   // automaticamente 3s depois da última tecla — sem precisar de blur explícito.
+  const recebeuNestaConversa = messages.some((m) => m.senderId !== user?.id && !String(m.id).startsWith('temp-'));
+  const podeConversar = premiumAccess || (ehCasal && recebeuNestaConversa);
+
   const notifyTyping = useCallback(() => {
-    if (!selectedChat || !premiumAccess) return;
+    if (!selectedChat || !podeConversar) return;
     const now = Date.now();
     if (now - typingEmitAtRef.current > 2500) {
       typingEmitAtRef.current = now;
@@ -1052,10 +1058,10 @@ export default function Chat() {
       emit('typing', { conversationId: selectedChat, typing: false });
       typingEmitAtRef.current = 0;
     }, 3000);
-  }, [selectedChat, premiumAccess, emit]);
+  }, [selectedChat, podeConversar, emit]);
 
   const handleSendMessage = async (content?: string, mediaId?: string, localUrl?: string) => {
-    if (!premiumAccess || !user?.avatar || !user?.birthDate) {
+    if (!podeConversar || !user?.avatar || !user?.birthDate) {
       // Os dados da conta no aparelho podem estar velhos (logo após o
       // cadastro, sem a foto ou o período grátis): antes de bloquear, busca a
       // conta no servidor. Em 04/10/2026 um casal ficou 1h sem conseguir
@@ -1064,16 +1070,16 @@ export default function Chat() {
         const fresco = await authService.getMe();
         if (fresco) {
           updateUser(fresco as any);
-          if (!hasPremiumAccess({ ...(user as any), ...(fresco as any) })) {
+          if (!hasPremiumAccess({ ...(user as any), ...(fresco as any) }) && !podeConversar) {
             redirectToPlans();
             return;
           }
-        } else if (!premiumAccess) {
+        } else if (!podeConversar) {
           redirectToPlans();
           return;
         }
       } catch {
-        if (!premiumAccess) {
+        if (!podeConversar) {
           redirectToPlans();
           return;
         }
@@ -1148,7 +1154,7 @@ export default function Chat() {
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!premiumAccess) {
+    if (!podeConversar) {
       redirectToPlans();
       return;
     }
@@ -1931,7 +1937,7 @@ export default function Chat() {
                             <span className="mt-1 block text-xs font-medium text-emerald-600">✅ {LINHA_GRATIS}</span>
                           </span>
                         </button>
-                      ) : (!premiumAccess && !isMine && !isMutualMatchMessage) ? (
+                      ) : (!premiumAccess && !ehCasal && !isMine && !isMutualMatchMessage) ? (
                         /* Premium gate — blur incoming messages for non-subscribers */
                         <button
                           type="button"
@@ -2174,7 +2180,7 @@ export default function Chat() {
             {/* Vai direto para a area de assinatura, em vez de abrir o modal de
                 convite antes. A opcao gratuita nao se perde: o card "Convide 3
                 amigos" fica na propria pagina de planos. */}
-            {!premiumAccess && (
+            {!podeConversar && (
               <button
                 type="button"
                 onClick={() => navigate('/subscriptions')}
@@ -2344,7 +2350,7 @@ export default function Chat() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => premiumAccess ? fileInputRef.current?.click() : redirectToPlans()}
+                    onClick={() => podeConversar ? fileInputRef.current?.click() : redirectToPlans()}
                     disabled={isUploading}
                     className="h-11 w-9 rounded-xl md:h-9 md:w-9"
                     aria-label="Enviar imagem"
@@ -2358,7 +2364,7 @@ export default function Chat() {
 
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" disabled={!premiumAccess} className="h-11 w-9 rounded-xl md:h-9 md:w-9" aria-label="Inserir emoji">
+                      <Button variant="ghost" size="icon" disabled={!podeConversar} className="h-11 w-9 rounded-xl md:h-9 md:w-9" aria-label="Inserir emoji">
                         <Smile className="w-5 h-5" />
                       </Button>
                     </PopoverTrigger>
@@ -2404,7 +2410,7 @@ export default function Chat() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => premiumAccess ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
+                          onClick={() => podeConversar ? setIsViewOnceEnabled(!isViewOnceEnabled) : redirectToPlans()}
                           className={cn(
                             "h-11 w-9 rounded-xl transition-all duration-200 md:h-9 md:w-9",
                             isViewOnceEnabled
@@ -2412,7 +2418,7 @@ export default function Chat() {
                               : "text-muted-foreground hover:text-foreground"
                           )}
                           aria-label="Visualização única"
-                          disabled={!premiumAccess}
+                          disabled={!podeConversar}
                         >
                           <Zap className={cn("w-5 h-5 transition-all", isViewOnceEnabled && "fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.8)]")} />
                         </Button>
@@ -2455,10 +2461,10 @@ export default function Chat() {
                 // desativado. Com disabled, o onClick abaixo nunca rodava — o
                 // nao-assinante tocava na caixa (o gesto mais natural ao abrir
                 // uma conversa) e nada acontecia, nem teclado, nem aviso.
-                readOnly={!premiumAccess}
-                aria-label={premiumAccess ? undefined : 'Assine para enviar mensagens'}
+                readOnly={!podeConversar}
+                aria-label={podeConversar ? undefined : 'Assine para enviar mensagens'}
                 onClick={() => {
-                  if (!premiumAccess) redirectToPlans();
+                  if (!podeConversar) redirectToPlans();
                 }}
               />
               <Button
@@ -2471,7 +2477,7 @@ export default function Chat() {
                 onClick={() => handleSendMessage(message)}
                 // Para nao-assinante fica ativo: handleSendMessage ja manda para
                 // os planos logo na entrada. Desativado, esse caminho nunca rodava.
-                disabled={premiumAccess ? (!message.trim() || isUploading) : false}
+                disabled={podeConversar ? (!message.trim() || isUploading) : false}
                 aria-label="Enviar mensagem"
               >
                 <Send className="h-5 w-5" />

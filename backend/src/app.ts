@@ -530,17 +530,37 @@ function genderEarnsPostTokens(gender: unknown): boolean {
   return g === 'mulher' || g.startsWith('casal') || g === 'couple';
 }
 
+// Mulher tem acesso grátis para sempre (desde 11/10/2026): o "teste" vai até
+// 2099, como o do embaixador oficial. Todas as checagens de acesso (servidor e
+// app) já liberam por trial_ends_at, sem exceção espalhada pelo código.
+export const ACESSO_SEM_PRAZO_ATE = '2099-12-31T23:59:59.000Z';
+const ehMulher = (gender: unknown) => {
+  const g = String(gender || '').trim().toLowerCase();
+  return g === 'mulher' || g.startsWith('mulher ');
+};
+
+// Casal sem assinatura LÊ o que recebe e RESPONDE quem puxou conversa (desde
+// 11/10/2026): pago continua sendo quem procura (iniciar conversa, ver quem
+// visitou, filtros, destaque). Antes o casal via "mensagem trancada" e ia embora.
+const ehCasal = (gender: unknown) => String(gender || '').trim().toLowerCase().startsWith('casal');
+async function casalPodeResponder(db: DbHandle, userId: string, conversationId: string): Promise<boolean> {
+  const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  if (!ehCasal(u?.gender)) return false;
+  const recebida = await queryOne(db, 'SELECT 1 AS x FROM messages WHERE conversation_id = ? AND sender_id != ? LIMIT 1', [conversationId, userId]);
+  return !!recebida;
+}
+
 // Data-fim do trial grátis por tipo de perfil:
 //  Homem: SEM trial (bloqueado já no cadastro — precisa pagar; vê só a amostra
-//  grátis do app) · Casal: 15 dias · Mulher: 30 dias (env.TRIAL_DAYS) · Outros
+//  grátis do app) · Casal: 15 dias · Mulher: sem prazo (grátis) · Outros
 //  (trans, CD, travesti, etc.): 7 dias.
-function trialEndForGender(createdAtIso: string, gender: unknown, womanDays: number): string {
+function trialEndForGender(createdAtIso: string, gender: unknown, _womanDays: number): string {
   const g = String(gender || '').trim().toLowerCase();
   if (g === 'homem' || g.startsWith('homem ')) {
     return new Date(createdAtIso).toISOString(); // sem trial: expira no próprio cadastro
   }
   if (g.startsWith('casal')) return addDaysIso(createdAtIso, 15);
-  if (g === 'mulher' || g.startsWith('mulher ')) return addDaysIso(createdAtIso, womanDays);
+  if (ehMulher(g)) return ACESSO_SEM_PRAZO_ATE;
   return addDaysIso(createdAtIso, 7); // demais perfis
 }
 const POINTS_PER_FREE_DAY = 100;
@@ -2840,6 +2860,8 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
        WHERE u.is_premium = 1
          AND u.hub_license_end_at >= ? AND u.hub_license_end_at < ?
          AND (u.hub_subscription_id IS NULL OR u.hub_subscription_id = '')
+         -- Acesso sem prazo (mulher, embaixador): não há o que renovar.
+         AND (u.trial_ends_at IS NULL OR u.trial_ends_at < '2090-01-01')
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND u.deleted_at IS NULL`,
@@ -13010,11 +13032,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/conversations', requireAuth(env, db), async (req, res) => {
-    const viewer = (await queryOne(db, 'SELECT lat, lon, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
+    const viewer = (await queryOne(db, 'SELECT lat, lon, email, gender, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ? LIMIT 1', [req.auth!.userId])) as any;
     const viewerLat = viewer?.lat != null ? Number(viewer.lat) : null;
     const viewerLon = viewer?.lon != null ? Number(viewer.lon) : null;
     const convSubsEnabled = await getSubscriptionsEnabled(db);
-    const viewerHasPremiumConv = hasPremiumAccess(viewer, convSubsEnabled, env.BILLING_TEST_EMAILS);
+    const viewerHasPremiumConv = hasPremiumAccess(viewer, convSubsEnabled, env.BILLING_TEST_EMAILS) || ehCasal(viewer?.gender);
     const rows = await queryAll(
       db,
       `
@@ -13324,8 +13346,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
-    const viewer = (await queryOne(db, 'SELECT email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
-    const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled, env.BILLING_TEST_EMAILS);
+    const viewer = (await queryOne(db, 'SELECT email, gender, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled, env.BILLING_TEST_EMAILS) || ehCasal(viewer?.gender);
 
     // Mark messages as read
     await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [conversationId, req.auth!.userId]);
@@ -13419,7 +13441,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId)) && !(await casalPodeResponder(db, req.auth!.userId, String(msg.conversation_id)))) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -13467,7 +13489,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(403).json({ error: 'forbidden' });
       return;
     }
-    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS))) {
+    if (!(await userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS)) && !(await casalPodeResponder(db, userId, String(conv.id)))) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -13572,7 +13594,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.post('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId))) {
+    if (!(await userHasPremiumAccess(db, req.auth!.userId)) && !(await casalPodeResponder(db, req.auth!.userId, String(req.params.conversationId)))) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -16894,6 +16916,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const novo = String(pedido.requested_gender);
     if (acao === 'approve') {
       await run(db, 'UPDATE users SET gender = ? WHERE id = ?', [novo, String(pedido.user_id)]);
+      const antes = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
+      if (ehMulher(novo)) {
+        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, String(pedido.user_id)]);
+      } else if (String(antes?.trial_ends_at || '') === ACESSO_SEM_PRAZO_ATE) {
+        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [agora, String(pedido.user_id)]);
+      }
     }
     await run(
       db,
