@@ -920,7 +920,7 @@ export default function Settings() {
             </div>
           )}
 
-          {String((user as any)?.gender || '') === 'Mulher' && profileSubTab !== 'midia' && (
+          {profileSubTab !== 'midia' && (
             <div className="mb-4"><VerificacaoPerfil onMudou={() => { authService.getMe().then((f) => { if (f) updateUser(f as any); }).catch(() => {}); }} /></div>
           )}
 

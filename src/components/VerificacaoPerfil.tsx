@@ -58,12 +58,17 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
   if (!sit) return <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   if (!sit.podeVerificar) return null;
 
+  const mulher = !!sit.acessoVitalicio;
+  const casal = String(sit.genero || '').toLowerCase().startsWith('casal');
+
   if (sit.verificada) {
     return (
       <div className="rounded-2xl border border-sky-400/40 bg-sky-500/10 p-4 text-center">
         <BadgeCheck className="mx-auto mb-1 h-8 w-8 fill-sky-500 text-white" />
         <p className="font-semibold">Perfil verificado</p>
-        <p className="text-sm text-muted-foreground">Você tem o selo de verificada e acesso grátis para sempre. 💖</p>
+        <p className="text-sm text-muted-foreground">
+          {mulher ? 'Você tem o selo de verificada e acesso grátis para sempre. 💖' : 'Seu perfil tem o selo de verificado: todo mundo vê que ele é real.'}
+        </p>
       </div>
     );
   }
@@ -81,10 +86,22 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
   return (
     <div className="space-y-3 rounded-2xl border border-pink-400/40 bg-gradient-to-br from-pink-500/15 via-background to-fuchsia-500/10 p-4">
       <div>
-        <p className="flex items-center gap-2 font-bold"><BadgeCheck className="h-5 w-5 fill-sky-500 text-white" /> Verifique seu perfil e ganhe acesso grátis para sempre</p>
+        <p className="flex items-center gap-2 font-bold">
+          <BadgeCheck className="h-5 w-5 fill-sky-500 text-white" />
+          {mulher ? 'Verifique seu perfil e ganhe acesso grátis para sempre' : 'Verifique seu perfil e ganhe o selo de verificado'}
+        </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Mulher verificada usa o NoSigilo de graça, sem prazo, e ganha o selo de <strong className="text-foreground">Verificada</strong> no perfil.
-          {sit.acessoAte && !sit.acessoAte.startsWith('2099') && <> Seu acesso grátis atual vai até <strong className="text-foreground">{dataCurta(sit.acessoAte)}</strong>.</>}
+          {mulher ? (
+            <>
+              Mulher verificada usa o NoSigilo de graça, sem prazo, e ganha o selo de <strong className="text-foreground">Verificada</strong> no perfil.
+              {sit.acessoAte && !sit.acessoAte.startsWith('2099') && <> Seu acesso grátis atual vai até <strong className="text-foreground">{dataCurta(sit.acessoAte)}</strong>.</>}
+            </>
+          ) : (
+            <>
+              O selo <strong className="text-foreground">{casal ? 'Verificados' : 'Verificado'}</strong> aparece em destaque no seu perfil e mostra para todo mundo que
+              {casal ? ' vocês são reais' : ' você é real'}. Perfil verificado recebe mais respostas.
+            </>
+          )}
         </p>
         {sit.pedido?.status === 'recusada' && (
           <p className="mt-2 rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
@@ -105,8 +122,8 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Escreva o código à mão num papel.</li>
-            <li>Tire uma selfie segurando o papel, com o rosto aparecendo.</li>
-            <li>Envie aqui. Só a equipe vê essa foto — ela não aparece no seu perfil.</li>
+            <li>{casal ? 'Tirem uma selfie segurando o papel, de preferência os dois aparecendo.' : 'Tire uma selfie segurando o papel, com o rosto aparecendo.'}</li>
+            <li>Envie aqui. Só a equipe vê essa foto: ela não aparece no perfil.</li>
           </ol>
           <input
             ref={arquivo}

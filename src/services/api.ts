@@ -1277,6 +1277,9 @@ export const financasEstadoService = {
 
 export type SituacaoVerificacao = {
   podeVerificar: boolean;
+  /** Só mulher: verificar dá acesso grátis para sempre. Os outros ganham só o selo. */
+  acessoVitalicio?: boolean;
+  genero?: string | null;
   verificada: boolean;
   acessoAte: string | null;
   pedido: { codigo: string; status: 'aguardando_foto' | 'em_analise' | 'aprovada' | 'recusada' | string; motivo: string | null; enviadoEm: string | null } | null;

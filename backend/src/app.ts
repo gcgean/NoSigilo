@@ -9777,10 +9777,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // envia; o admin compara com as fotos do perfil e aprova (selo + acesso
   // vitalício) ou recusa com motivo (pode tentar de novo).
   const situacaoVerificacao = async (userId: string) => {
-    const u = (await queryOne(db, 'SELECT gender, is_verified, trial_ends_at FROM users WHERE id = ?', [userId])) as any;
+    const u = (await queryOne(db, 'SELECT gender, is_verified, trial_ends_at, is_showcase FROM users WHERE id = ?', [userId])) as any;
     const v = (await queryOne(db, 'SELECT id, codigo, status, motivo, enviado_em FROM verificacoes_perfil WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId])) as any;
     return {
-      podeVerificar: ehMulher(u?.gender),
+      // Todos podem ganhar o selo; só para mulher a verificação dá acesso vitalício.
+      podeVerificar: !!u && Number(u?.is_showcase || 0) !== 1,
+      acessoVitalicio: ehMulher(u?.gender),
+      genero: u?.gender ? String(u.gender) : null,
       verificada: Number(u?.is_verified || 0) === 1,
       acessoAte: u?.trial_ends_at ? String(u.trial_ends_at) : null,
       pedido: v ? { codigo: String(v.codigo), status: String(v.status), motivo: v.motivo ? String(v.motivo) : null, enviadoEm: v.enviado_em ? String(v.enviado_em) : null } : null,
@@ -9795,7 +9798,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/verificacao/codigo', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const sit = await situacaoVerificacao(userId);
-    if (!sit.podeVerificar) { res.status(400).json({ error: 'nao_disponivel', message: 'A verificação com acesso grátis é para perfis de mulher.' }); return; }
+    if (!sit.podeVerificar) { res.status(400).json({ error: 'nao_disponivel', message: 'Verificação indisponível para este perfil.' }); return; }
     if (sit.verificada) { res.status(400).json({ error: 'ja_verificada', message: 'Seu perfil já está verificado.' }); return; }
     if (sit.pedido?.status === 'em_analise') { res.status(409).json({ error: 'em_analise', message: 'Sua verificação já está em análise.' }); return; }
     if (sit.pedido?.status === 'aguardando_foto') { res.json({ codigo: sit.pedido.codigo }); return; }
@@ -9820,7 +9823,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await persist();
     const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
     void notifyAdminsTelegram({ db, env },
-      `✔️ <b>Pedido de verificação</b>\n\n<b>${String(quem?.name || 'Usuária')}</b> ${String(quem?.email || '')}\n\nAnalise em Admin › Usuários.`,
+      `✔️ <b>Pedido de verificação</b>\n\n<b>${String(quem?.name || 'Perfil')}</b> ${String(quem?.email || '')}\n\nAnalise em Admin › Usuários.`,
       'moderacao'
     ).catch(() => {});
     res.json({ ok: true });
@@ -9868,6 +9871,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const agora = nowIso();
     const motivo = String(req.body?.motivo || '').trim().slice(0, 300) || null;
     const userId = String(v.user_id);
+    const u2 = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
     if (acao === 'aprovar') {
       await run(db, "UPDATE verificacoes_perfil SET status = 'aprovada', reviewed_at = ?, reviewed_by = ? WHERE id = ?", [agora, req.auth!.userId, String(v.id)]);
       const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
@@ -9883,7 +9887,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         type: acao === 'aprovar' ? 'verificacao.aprovada' : 'verificacao.recusada',
         title: acao === 'aprovar' ? '✔️ Perfil verificado!' : 'Verificação não aprovada',
         description: acao === 'aprovar'
-          ? 'Seu perfil ganhou o selo de verificada e acesso grátis para sempre ao NoSigilo. 💖'
+          ? (ehMulher(u2?.gender)
+            ? 'Seu perfil ganhou o selo de verificada e acesso grátis para sempre ao NoSigilo. 💖'
+            : 'Seu perfil ganhou o selo de verificado: agora todo mundo vê que ele é real. ✔️')
           : `Não conseguimos confirmar pela foto.${motivo ? ` Motivo: ${motivo}` : ''} Você pode tentar de novo em Configurações.`,
         dataJson: { url: '/settings' },
       });

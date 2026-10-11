@@ -25,7 +25,7 @@ import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
 import EditarCapaDialog from '@/components/EditarCapaDialog';
 import MuralDoPerfil from '@/components/MuralDoPerfil';
 import QuemCurtiuMinhasFotos from '@/components/QuemCurtiuMinhasFotos';
-import { twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
+import { authService, twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -36,6 +36,7 @@ import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialo
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import SeloVerificado from '@/components/SeloVerificado';
+import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -408,6 +409,7 @@ export default function Profile() {
   const { toast } = useToast();
   const { socket } = useSocket();
   const [activeTab, setActiveTab] = useState('posts');
+  const [verificacaoAberta, setVerificacaoAberta] = useState(false);
   // Minhas publicações em lista — o mesmo que o perfil de terceiros mostra na
   // aba "Postagens". Como clicar no próprio nome leva para cá (e não para
   // /users/:id), sem isto não havia onde ver as próprias postagens.
@@ -1182,7 +1184,20 @@ export default function Profile() {
           <div className="flex-1 min-w-0 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
               <h1 className="text-xl sm:text-2xl font-bold break-words">{profileData.name}</h1>
-              {profileData.verified && <SeloVerificado genero={(user as any)?.gender} />}
+              {profileData.verified ? (
+                <SeloVerificado genero={(user as any)?.gender} />
+              ) : (
+                <Dialog open={verificacaoAberta} onOpenChange={setVerificacaoAberta}>
+                  <DialogTrigger asChild>
+                    <button type="button" className="inline-flex items-center gap-1 rounded-full border border-sky-400/50 px-2.5 py-0.5 text-xs font-semibold text-sky-600 hover:bg-sky-500/10">
+                      ✔ Verificar perfil
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
+                    <VerificacaoPerfil onMudou={() => { authService.getMe().then((f) => { if (f) updateUser(f as any); }).catch(() => {}); }} />
+                  </DialogContent>
+                </Dialog>
+              )}
               {profileData.premium && (
                 <Badge className="bg-gold/15 text-gold-text border border-gold/30">
                   Premium

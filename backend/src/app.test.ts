@@ -3700,8 +3700,18 @@ describe('nosigilo backend', () => {
     await ctx.db.persist();
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
 
-    // Só mulher pede.
-    await request(ctx.app).post('/api/verificacao/codigo').set(auth(homem.token)).expect(400);
+    // Homem também pode verificar, mas ganha só o selo (acesso não muda).
+    await request(ctx.app).post('/api/verificacao/codigo').set(auth(homem.token)).expect(200);
+    const selfieHomem = `selfie-homem-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'image/webp', 0, 0, 'chat', ?)", [selfieHomem, String(homem.user.id), `${selfieHomem}.webp`, new Date().toISOString()]);
+    await ctx.db.persist();
+    await request(ctx.app).post('/api/verificacao/enviar').set(auth(homem.token)).send({ mediaId: selfieHomem }).expect(200);
+    const trialHomemAntes = ((await ctx.db.queryOne('SELECT trial_ends_at FROM users WHERE id = ?', [String(homem.user.id)])) as any).trial_ends_at;
+    const pedHomem = ((await request(ctx.app).get('/api/admin/verificacoes').set(auth(adm.token)).expect(200)).body.pedidos as any[]).find((p) => p.userId === homem.user.id);
+    await request(ctx.app).post(`/api/admin/verificacoes/${pedHomem.id}/aprovar`).set(auth(adm.token)).expect(200);
+    const homemDepois = (await ctx.db.queryOne('SELECT is_verified, trial_ends_at FROM users WHERE id = ?', [String(homem.user.id)])) as any;
+    expect(Number(homemDepois.is_verified)).toBe(1);
+    expect(homemDepois.trial_ends_at).toBe(trialHomemAntes);
 
     const selfie = async (n: string) => {
       const id = `selfie-${n}-${Date.now()}`;
