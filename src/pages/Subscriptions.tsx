@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { hasPremiumAccess } from '@/utils/premium';
 import { cn } from '@/lib/utils';
+import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 
 type Plan = {
   id: string;
@@ -363,9 +364,10 @@ export default function Subscriptions() {
         <Badge className="bg-gradient-primary gap-1"><Crown className="h-3 w-3" /> Premium liberado</Badge>
         <h1 className="text-2xl font-bold">Para você, é grátis 💖</h1>
         <p className="text-muted-foreground">
-          No NoSigilo, perfis de mulher têm todo o acesso Premium liberado, sem assinatura e sem prazo:
+          No NoSigilo, mulher verificada tem todo o acesso Premium liberado, sem assinatura e sem prazo:
           mensagens, radar, vídeos, eventos e grupos.
         </p>
+        <div className="text-left"><VerificacaoPerfil /></div>
         <Button className="w-full bg-gradient-primary" onClick={() => window.location.assign('/feed')}>Ir para o feed</Button>
       </div>
     );

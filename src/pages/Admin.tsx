@@ -36,6 +36,7 @@ import AdminFinancasPorEstado from '@/components/AdminFinancasPorEstado';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
+import AdminVerificacoes from '@/components/AdminVerificacoes';
 
 type AdminPhoto = {
   id: string;
@@ -1593,6 +1594,9 @@ export default function Admin() {
         </TabsContent>
 
         <TabsContent value="users">
+          {/* ── Pedidos de verificação (selfie com código) ── */}
+          <AdminVerificacoes />
+
           {/* ── Pedidos de troca do tipo de perfil (aprovação) ── */}
           <AdminPedidosGenero />
 

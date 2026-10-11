@@ -35,6 +35,7 @@ import ProfilePostCard, { type PostDoPerfil } from '@/components/ProfilePostCard
 import FollowListDialog, { type TipoDeLista } from '@/components/FollowListDialog';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import SeloVerificado from '@/components/SeloVerificado';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -565,7 +566,7 @@ export default function Profile() {
       status: user?.status || '',
       bio: user?.bio || '',
       stats,
-      verified: user?.isVerified ?? true,
+      verified: !!user?.isVerified,
       premium: user?.isPremium ?? false,
     };
   }, [user, stats]);
@@ -1181,11 +1182,7 @@ export default function Profile() {
           <div className="flex-1 min-w-0 text-center sm:text-left">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
               <h1 className="text-xl sm:text-2xl font-bold break-words">{profileData.name}</h1>
-              {profileData.verified && (
-                <Badge className="bg-success text-white gap-1">
-                  <Sparkles className="w-3 h-3" /> Verificado
-                </Badge>
-              )}
+              {profileData.verified && <SeloVerificado genero={(user as any)?.gender} />}
               {profileData.premium && (
                 <Badge className="bg-gold/15 text-gold-text border border-gold/30">
                   Premium

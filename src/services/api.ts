@@ -1275,7 +1275,34 @@ export const financasEstadoService = {
   },
 };
 
-export const TIPOS_DE_PERFIL = ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
+export type SituacaoVerificacao = {
+  podeVerificar: boolean;
+  verificada: boolean;
+  acessoAte: string | null;
+  pedido: { codigo: string; status: 'aguardando_foto' | 'em_analise' | 'aprovada' | 'recusada' | string; motivo: string | null; enviadoEm: string | null } | null;
+};
+export type PedidoVerificacao = {
+  id: string;
+  userId: string;
+  nome: string;
+  email: string | null;
+  genero: string | null;
+  contaDesde: string | null;
+  codigo: string;
+  enviadoEm: string | null;
+  selfie: string | null;
+  fotosDoPerfil: string[];
+};
+export const verificacaoService = {
+  situacao: async (): Promise<SituacaoVerificacao> => (await apiClient.get('/verificacao')).data,
+  gerarCodigo: async (): Promise<{ codigo: string }> => (await apiClient.post('/verificacao/codigo')).data,
+  enviar: async (mediaId: string) => (await apiClient.post('/verificacao/enviar', { mediaId })).data as { ok: boolean },
+  listarPendentes: async (): Promise<{ pedidos: PedidoVerificacao[] }> => (await apiClient.get('/admin/verificacoes')).data,
+  decidir: async (id: string, acao: 'aprovar' | 'recusar', motivo?: string) =>
+    (await apiClient.post(`/admin/verificacoes/${id}/${acao}`, { motivo })).data as { ok: boolean },
+};
+
+export const TIPOS_DE_PERFIL =['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'] as const;
 
 export type PedidoTrocaGenero = {
   id: string;

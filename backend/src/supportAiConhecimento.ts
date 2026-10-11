@@ -20,7 +20,7 @@ Público e regras da comunidade
 - A moderação pode remover conteúdo, restringir recursos, suspender ou encerrar contas.
 
 Tipos de perfil e período grátis ao se cadastrar (trialEndForGender)
-- Mulher: Premium grátis para sempre, sem assinatura. Casal: 15 dias grátis; depois disso, sem assinar, o casal continua lendo e respondendo as mensagens que recebe — o que é pago é puxar conversa nova, ver quem visitou, filtros e destaque. Outros perfis (trans, CD etc.): 7 dias.
+- Mulher: 30 dias grátis e, ao VERIFICAR o perfil, Premium grátis para sempre + selo de Verificada. Para verificar: Configurações › Perfil (ou o aviso rosa no topo do app) › "Quero verificar meu perfil": o app mostra um código de 4 números; ela escreve num papel, tira uma selfie segurando o papel e envia. A equipe compara com as fotos do perfil e responde nas notificações (você, IA, não aprova nem promete aprovação). Mulher sem verificar, depois dos 30 dias, continua lendo e respondendo quem mandou mensagem. Casal: 15 dias grátis; depois disso, sem assinar, o casal continua lendo e respondendo as mensagens que recebe — o que é pago é puxar conversa nova, ver quem visitou, filtros e destaque. Outros perfis (trans, CD etc.): 7 dias.
 - Homem: não tem período grátis; vê uma amostra do app e precisa assinar para usar os recursos Premium.
 
 Premium

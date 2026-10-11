@@ -530,9 +530,10 @@ function genderEarnsPostTokens(gender: unknown): boolean {
   return g === 'mulher' || g.startsWith('casal') || g === 'couple';
 }
 
-// Mulher tem acesso grátis para sempre (desde 11/10/2026): o "teste" vai até
-// 2099, como o do embaixador oficial. Todas as checagens de acesso (servidor e
-// app) já liberam por trial_ends_at, sem exceção espalhada pelo código.
+// Mulher VERIFICADA (selfie com código aprovada pelo admin) tem acesso grátis
+// vitalício: o "teste" vai até 2099, como o do embaixador oficial — as checagens
+// de acesso já liberam por trial_ends_at. Sem verificar: 30 dias grátis e,
+// depois, lê e responde como o casal.
 export const ACESSO_SEM_PRAZO_ATE = '2099-12-31T23:59:59.000Z';
 const ehMulher = (gender: unknown) => {
   const g = String(gender || '').trim().toLowerCase();
@@ -542,7 +543,11 @@ const ehMulher = (gender: unknown) => {
 // Casal sem assinatura LÊ o que recebe e RESPONDE quem puxou conversa (desde
 // 11/10/2026): pago continua sendo quem procura (iniciar conversa, ver quem
 // visitou, filtros, destaque). Antes o casal via "mensagem trancada" e ia embora.
-const ehCasal = (gender: unknown) => String(gender || '').trim().toLowerCase().startsWith('casal');
+// Mulher sem verificar (depois dos 30 dias) segue a mesma regra.
+const ehCasal = (gender: unknown) => {
+  const g = String(gender || '').trim().toLowerCase();
+  return g.startsWith('casal') || g === 'mulher' || g.startsWith('mulher ');
+};
 async function casalPodeResponder(db: DbHandle, userId: string, conversationId: string): Promise<boolean> {
   const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
   if (!ehCasal(u?.gender)) return false;
@@ -552,15 +557,15 @@ async function casalPodeResponder(db: DbHandle, userId: string, conversationId: 
 
 // Data-fim do trial grátis por tipo de perfil:
 //  Homem: SEM trial (bloqueado já no cadastro — precisa pagar; vê só a amostra
-//  grátis do app) · Casal: 15 dias · Mulher: sem prazo (grátis) · Outros
-//  (trans, CD, travesti, etc.): 7 dias.
-function trialEndForGender(createdAtIso: string, gender: unknown, _womanDays: number): string {
+//  grátis do app) · Casal: 15 dias · Mulher: 30 dias (vitalício ao verificar)
+//  · Outros (trans, CD, travesti, etc.): 7 dias.
+function trialEndForGender(createdAtIso: string, gender: unknown, womanDays: number): string {
   const g = String(gender || '').trim().toLowerCase();
   if (g === 'homem' || g.startsWith('homem ')) {
     return new Date(createdAtIso).toISOString(); // sem trial: expira no próprio cadastro
   }
   if (g.startsWith('casal')) return addDaysIso(createdAtIso, 15);
-  if (ehMulher(g)) return ACESSO_SEM_PRAZO_ATE;
+  if (ehMulher(g)) return addDaysIso(createdAtIso, womanDays || 30);
   return addDaysIso(createdAtIso, 7); // demais perfis
 }
 const POINTS_PER_FREE_DAY = 100;
@@ -9767,6 +9772,125 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // ── Verificação de perfil (mulher) ─────────────────────────────────────────
+  // A pessoa pede um código, tira uma selfie segurando o código escrito à mão e
+  // envia; o admin compara com as fotos do perfil e aprova (selo + acesso
+  // vitalício) ou recusa com motivo (pode tentar de novo).
+  const situacaoVerificacao = async (userId: string) => {
+    const u = (await queryOne(db, 'SELECT gender, is_verified, trial_ends_at FROM users WHERE id = ?', [userId])) as any;
+    const v = (await queryOne(db, 'SELECT id, codigo, status, motivo, enviado_em FROM verificacoes_perfil WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId])) as any;
+    return {
+      podeVerificar: ehMulher(u?.gender),
+      verificada: Number(u?.is_verified || 0) === 1,
+      acessoAte: u?.trial_ends_at ? String(u.trial_ends_at) : null,
+      pedido: v ? { codigo: String(v.codigo), status: String(v.status), motivo: v.motivo ? String(v.motivo) : null, enviadoEm: v.enviado_em ? String(v.enviado_em) : null } : null,
+    };
+  };
+
+  app.get('/api/verificacao', requireAuth(env, db), async (req, res) => {
+    res.json(await situacaoVerificacao(req.auth!.userId));
+  });
+
+  // Gera (ou reaproveita) o código que vai na selfie.
+  app.post('/api/verificacao/codigo', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const sit = await situacaoVerificacao(userId);
+    if (!sit.podeVerificar) { res.status(400).json({ error: 'nao_disponivel', message: 'A verificação com acesso grátis é para perfis de mulher.' }); return; }
+    if (sit.verificada) { res.status(400).json({ error: 'ja_verificada', message: 'Seu perfil já está verificado.' }); return; }
+    if (sit.pedido?.status === 'em_analise') { res.status(409).json({ error: 'em_analise', message: 'Sua verificação já está em análise.' }); return; }
+    if (sit.pedido?.status === 'aguardando_foto') { res.json({ codigo: sit.pedido.codigo }); return; }
+    const codigo = String(1000 + Math.floor(Math.random() * 9000));
+    await run(db, "INSERT INTO verificacoes_perfil (id, user_id, codigo, status, created_at) VALUES (?, ?, ?, 'aguardando_foto', ?)", [randomUUID(), userId, codigo, nowIso()]);
+    await persist();
+    res.json({ codigo });
+  });
+
+  // Envia a selfie (mídia já subida por /api/media/upload com source=chat).
+  app.post('/api/verificacao/enviar', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const mediaId = String(req.body?.mediaId || '');
+    const v = (await queryOne(db, "SELECT id FROM verificacoes_perfil WHERE user_id = ? AND status = 'aguardando_foto' ORDER BY created_at DESC LIMIT 1", [userId])) as any;
+    if (!v) { res.status(400).json({ error: 'sem_codigo', message: 'Gere o código antes de enviar a foto.' }); return; }
+    const midia = (await queryOne(db, 'SELECT user_id, mime_type FROM media WHERE id = ?', [mediaId])) as any;
+    if (!midia || String(midia.user_id) !== userId || !String(midia.mime_type || '').startsWith('image/')) {
+      res.status(400).json({ error: 'foto_invalida', message: 'Envie uma foto sua.' });
+      return;
+    }
+    await run(db, "UPDATE verificacoes_perfil SET media_id = ?, status = 'em_analise', enviado_em = ? WHERE id = ?", [mediaId, nowIso(), String(v.id)]);
+    await persist();
+    const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
+    void notifyAdminsTelegram({ db, env },
+      `✔️ <b>Pedido de verificação</b>\n\n<b>${String(quem?.name || 'Usuária')}</b> ${String(quem?.email || '')}\n\nAnalise em Admin › Usuários.`,
+      'moderacao'
+    ).catch(() => {});
+    res.json({ ok: true });
+  });
+
+  app.get('/api/admin/verificacoes', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT v.id, v.user_id, v.codigo, v.enviado_em, m.filename AS selfie,
+              u.name, u.email, u.gender, u.created_at AS conta_desde, u.avatar
+         FROM verificacoes_perfil v
+         JOIN users u ON u.id = v.user_id
+         LEFT JOIN media m ON m.id = v.media_id
+        WHERE v.status = 'em_analise'
+        ORDER BY v.enviado_em ASC`
+    )) as any[];
+    const lista = [];
+    for (const r of rows) {
+      const fotos = (await queryAll(
+        db,
+        `SELECT filename FROM media WHERE user_id = ? AND is_private = 0 AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 6`,
+        [String(r.user_id)]
+      )) as any[];
+      lista.push({
+        id: String(r.id),
+        userId: String(r.user_id),
+        nome: String(r.name || ''),
+        email: r.email ? String(r.email) : null,
+        genero: r.gender ? String(r.gender) : null,
+        contaDesde: r.conta_desde ? String(r.conta_desde) : null,
+        codigo: String(r.codigo),
+        enviadoEm: r.enviado_em ? String(r.enviado_em) : null,
+        selfie: r.selfie ? `/uploads/${String(r.selfie)}` : null,
+        fotosDoPerfil: fotos.map((f) => `/uploads/${String(f.filename)}`),
+      });
+    }
+    res.json({ pedidos: lista });
+  });
+
+  app.post('/api/admin/verificacoes/:id/:acao', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const acao = String(req.params.acao);
+    if (acao !== 'aprovar' && acao !== 'recusar') { res.status(404).json({ error: 'not_found' }); return; }
+    const v = (await queryOne(db, "SELECT id, user_id FROM verificacoes_perfil WHERE id = ? AND status = 'em_analise'", [req.params.id])) as any;
+    if (!v) { res.status(404).json({ error: 'not_found', message: 'Esse pedido já foi analisado.' }); return; }
+    const agora = nowIso();
+    const motivo = String(req.body?.motivo || '').trim().slice(0, 300) || null;
+    const userId = String(v.user_id);
+    if (acao === 'aprovar') {
+      await run(db, "UPDATE verificacoes_perfil SET status = 'aprovada', reviewed_at = ?, reviewed_by = ? WHERE id = ?", [agora, req.auth!.userId, String(v.id)]);
+      const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
+      await run(db, 'UPDATE users SET is_verified = 1 WHERE id = ?', [userId]);
+      if (ehMulher(u?.gender)) await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, userId]);
+    } else {
+      await run(db, "UPDATE verificacoes_perfil SET status = 'recusada', motivo = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?", [motivo, agora, req.auth!.userId, String(v.id)]);
+    }
+    await persist();
+    try {
+      await createNotification({ db, io: req.app.get('io') }, {
+        userId,
+        type: acao === 'aprovar' ? 'verificacao.aprovada' : 'verificacao.recusada',
+        title: acao === 'aprovar' ? '✔️ Perfil verificado!' : 'Verificação não aprovada',
+        description: acao === 'aprovar'
+          ? 'Seu perfil ganhou o selo de verificada e acesso grátis para sempre ao NoSigilo. 💖'
+          : `Não conseguimos confirmar pela foto.${motivo ? ` Motivo: ${motivo}` : ''} Você pode tentar de novo em Configurações.`,
+        dataJson: { url: '/settings' },
+      });
+    } catch { /* não impede a decisão */ }
+    res.json({ ok: true });
+  });
+
   // Status da solicitação de nome do usuário (pendente/aprovada/rejeitada mais recente).
   app.get('/api/profile/name-change-request', requireAuth(env, db), async (req, res) => {
     const row = (await queryOne(
@@ -16917,8 +17041,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (acao === 'approve') {
       await run(db, 'UPDATE users SET gender = ? WHERE id = ?', [novo, String(pedido.user_id)]);
       const antes = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
+      const verificada = (await queryOne(db, 'SELECT is_verified FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
       if (ehMulher(novo)) {
-        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, String(pedido.user_id)]);
+        const fim = Number(verificada?.is_verified || 0) === 1 ? ACESSO_SEM_PRAZO_ATE : addDaysIso(agora, 30);
+        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [fim, String(pedido.user_id)]);
       } else if (String(antes?.trial_ends_at || '') === ACESSO_SEM_PRAZO_ATE) {
         await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [agora, String(pedido.user_id)]);
       }

@@ -3660,10 +3660,12 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET is_showcase = 0 WHERE id = ?', [String(vit.user.id)]);
   });
 
-  it('mulher tem acesso sem prazo; casal sem assinatura lê o que recebe e responde, mas não puxa conversa', async () => {
+  it('mulher entra com 30 dias; casal sem assinatura lê o que recebe e responde, mas não puxa conversa', async () => {
     const mulher = await registerInvitedUser(ctx, sponsorToken, { name: 'Mulher Gratis', email: 'mulher-gratis@example.com', password: 'senha123', gender: 'Mulher' });
+    // Mulher entra com 30 dias; vitalício só depois de verificada.
     const trialMulher = (await ctx.db.queryOne('SELECT trial_ends_at FROM users WHERE id = ?', [String(mulher.user.id)])) as any;
-    expect(String(trialMulher.trial_ends_at)).toContain('2099');
+    expect(String(trialMulher.trial_ends_at)).not.toContain('2099');
+    expect(Date.parse(String(trialMulher.trial_ends_at))).toBeGreaterThan(Date.now() + 25 * 86_400_000);
 
     const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Homem Pagante', email: 'homem-pagante@example.com', password: 'senha123', gender: 'Homem' });
     await grantPremium(ctx, String(homem.user.id));
@@ -3688,5 +3690,50 @@ describe('nosigilo backend', () => {
 
     // Mas não puxa conversa nova.
     await request(ctx.app).post('/api/conversations').set(auth(casal.token)).send({ userId: outro.user.id }).expect(403);
+  });
+
+  it('verificação de mulher: código, selfie, admin aprova = selo + acesso vitalício; recusa deixa tentar de novo', async () => {
+    const ana = await registerInvitedUser(ctx, sponsorToken, { name: 'Ana Verifica', email: 'ana-verifica@example.com', password: 'senha123', gender: 'Mulher' });
+    const homem = await registerInvitedUser(ctx, sponsorToken, { name: 'Homem Verifica', email: 'homem-verifica@example.com', password: 'senha123', gender: 'Homem' });
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Verifica', email: 'admin-verifica@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    await ctx.db.persist();
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    // Só mulher pede.
+    await request(ctx.app).post('/api/verificacao/codigo').set(auth(homem.token)).expect(400);
+
+    const selfie = async (n: string) => {
+      const id = `selfie-${n}-${Date.now()}`;
+      await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'image/webp', 0, 0, 'chat', ?)", [id, String(ana.user.id), `${id}.webp`, new Date().toISOString()]);
+      await ctx.db.persist();
+      return id;
+    };
+
+    // 1ª tentativa: recusada.
+    const c1 = (await request(ctx.app).post('/api/verificacao/codigo').set(auth(ana.token)).expect(200)).body.codigo;
+    expect(String(c1)).toMatch(/^\d{4}$/);
+    await request(ctx.app).post('/api/verificacao/enviar').set(auth(ana.token)).send({ mediaId: await selfie('1') }).expect(200);
+    expect((await request(ctx.app).get('/api/verificacao').set(auth(ana.token)).expect(200)).body.pedido.status).toBe('em_analise');
+    let pend = (await request(ctx.app).get('/api/admin/verificacoes').set(auth(adm.token)).expect(200)).body.pedidos as any[];
+    const p1 = pend.find((p) => p.userId === ana.user.id);
+    expect(p1).toMatchObject({ codigo: c1 });
+    await request(ctx.app).post(`/api/admin/verificacoes/${p1.id}/recusar`).set(auth(adm.token)).send({ motivo: 'O código não aparece' }).expect(200);
+    const depoisRecusa = (await request(ctx.app).get('/api/verificacao').set(auth(ana.token)).expect(200)).body;
+    expect(depoisRecusa.pedido).toMatchObject({ status: 'recusada', motivo: 'O código não aparece' });
+    expect(depoisRecusa.verificada).toBe(false);
+
+    // 2ª tentativa: aprovada.
+    await request(ctx.app).post('/api/verificacao/codigo').set(auth(ana.token)).expect(200);
+    await request(ctx.app).post('/api/verificacao/enviar').set(auth(ana.token)).send({ mediaId: await selfie('2') }).expect(200);
+    pend = (await request(ctx.app).get('/api/admin/verificacoes').set(auth(adm.token)).expect(200)).body.pedidos as any[];
+    const p2 = pend.find((p) => p.userId === ana.user.id);
+    await request(ctx.app).post(`/api/admin/verificacoes/${p2.id}/aprovar`).set(auth(adm.token)).expect(200);
+    const u = (await ctx.db.queryOne('SELECT is_verified, trial_ends_at FROM users WHERE id = ?', [String(ana.user.id)])) as any;
+    expect(Number(u.is_verified)).toBe(1);
+    expect(String(u.trial_ends_at)).toContain('2099');
+    // Usuária comum não acessa a fila do admin.
+    await request(ctx.app).get('/api/admin/verificacoes').set(auth(ana.token)).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
 });

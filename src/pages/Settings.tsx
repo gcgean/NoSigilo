@@ -43,6 +43,7 @@ import {
   getPushActivationState,
 } from '@/utils/pushNotifications';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean };
 
@@ -917,6 +918,10 @@ export default function Settings() {
               </div>
 
             </div>
+          )}
+
+          {String((user as any)?.gender || '') === 'Mulher' && profileSubTab !== 'midia' && (
+            <div className="mb-4"><VerificacaoPerfil onMudou={() => { authService.getMe().then((f) => { if (f) updateUser(f as any); }).catch(() => {}); }} /></div>
           )}
 
           {/* ══════════════ MÍDIA ══════════════ */}

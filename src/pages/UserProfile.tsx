@@ -46,6 +46,7 @@ import {
   COMMENT_QUICK_EMOJIS,
   COMMENT_SAVE_BUTTON_CLASS,
 } from '@/components/comments/commentStyles';
+import SeloVerificado from '@/components/SeloVerificado';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -1246,11 +1247,7 @@ export default function UserProfile() {
           <div className="min-w-0 flex-1 text-center sm:text-left">
             <div className="mb-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <h1 className="max-w-full break-words text-2xl font-bold leading-tight sm:text-3xl">{profile?.name}</h1>
-              {profile?.isVerified && (
-                <Badge className="bg-success text-white gap-1">
-                  <Sparkles className="w-3 h-3" /> Verificado
-                </Badge>
-              )}
+              {profile?.isVerified && <SeloVerificado genero={(profile as any)?.gender} />}
               {profile?.isPremium && <Badge className="bg-gold/15 text-gold-text border border-gold/30">Premium</Badge>}
               {(profile as any)?.boosted && (
                 <Badge className="gap-1 border border-amber-400/40 bg-amber-400/15 text-amber-500">

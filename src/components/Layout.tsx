@@ -30,7 +30,7 @@ import {
 import FirstAccessTutorial from '@/components/FirstAccessTutorial';
 import { startFirstAccessTutorial } from '@/components/firstAccessTutorialEvents';
 import TokenBadge from '@/components/TokenBadge';
-import { notificationsService, chatService, supportService } from '@/services/api';
+import { authService, notificationsService, chatService, supportService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -55,6 +55,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { syncPushSubscription } from '@/utils/pushNotifications';
 import PwaInstallTutorial from '@/components/PwaInstallTutorial';
+import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -135,7 +136,7 @@ function formatDetailedRemainingTime(targetMs: number, nowMs: number) {
 }
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -171,6 +172,15 @@ export default function Layout() {
   const [contagemFechadaHoje, setContagemFechadaHoje] = useState(() => {
     try { return localStorage.getItem('nosigilo:contagem-fechada') === new Date().toDateString(); } catch { return false; }
   });
+  // Mulher sem verificação: convite em destaque (o X fecha até o dia seguinte).
+  const [verificacaoAberta, setVerificacaoAberta] = useState(false);
+  const [verificacaoFechadaHoje, setVerificacaoFechadaHoje] = useState(() => {
+    try { return localStorage.getItem('nosigilo:verificacao-fechada') === new Date().toDateString(); } catch { return false; }
+  });
+  const avisoVerificacaoVisivel = String((user as any)?.gender || '') === 'Mulher' && !(user as any)?.isVerified && !verificacaoFechadaHoje;
+  const refreshUserFromServer = async () => {
+    try { const fresco = await authService.getMe(); if (fresco) updateUser(fresco as any); } catch { /* segue */ }
+  };
   const isMobile = useIsMobile();
   // Chat em grupo no celular: tela cheia como a conversa (a barra de baixo
   // cobria o campo de mensagem e a página rolava).
@@ -1103,6 +1113,48 @@ export default function Layout() {
                 </div>
               </div>
             </BannerSlot>
+            {/* Mulher sem verificação: convite em destaque (vence a fila). */}
+            <BannerSlot
+              id="verificacao-mulher"
+              priority={5}
+              eligible={!isMobileChatRoute && !location.pathname.startsWith('/chat') && !location.pathname.startsWith('/reels') && avisoVerificacaoVisivel}
+            >
+              <div className="mb-4">
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-pink-600 via-fuchsia-600 to-sky-600 p-4 text-white shadow-[0_8px_28px_rgba(219,39,119,0.35)]">
+                  <button
+                    type="button"
+                    aria-label="Fechar aviso"
+                    onClick={() => {
+                      setVerificacaoFechadaHoje(true);
+                      try { localStorage.setItem('nosigilo:verificacao-fechada', new Date().toDateString()); } catch { /* fecha só agora */ }
+                    }}
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-white/80 hover:bg-white/25"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                  <p className="pr-8 text-base font-bold">💖 Para mulheres, o NoSigilo é grátis para sempre</p>
+                  <p className="mt-0.5 pr-6 text-sm text-white/90">
+                    Verifique seu perfil com uma selfie e ganhe acesso vitalício e o selo de <strong>Verificada</strong> no seu perfil.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setVerificacaoAberta(true)}
+                    className="mt-3 rounded-full bg-white px-4 py-2 text-sm font-bold text-pink-600 shadow hover:bg-white/90"
+                  >
+                    Verificar meu perfil
+                  </button>
+                </div>
+              </div>
+            </BannerSlot>
+            <Dialog open={verificacaoAberta} onOpenChange={setVerificacaoAberta}>
+              <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Verificar meu perfil</DialogTitle>
+                  <DialogDescription>Acesso grátis para sempre e selo de Verificada.</DialogDescription>
+                </DialogHeader>
+                <VerificacaoPerfil onMudou={() => void refreshUserFromServer()} />
+              </DialogContent>
+            </Dialog>
             <BannerSlot
               id="subscription-countdown"
               priority={10}
