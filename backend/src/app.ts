@@ -6143,10 +6143,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // não esbarra no limite de tamanho da query string. Sem isso a janela de
     // candidatos ficava presa nos N posts mais recentes e a pessoa revia sempre
     // os mesmos, mesmo com milhares de posts que ela nunca abriu.
+    // "processando IS NULL OR = 0" e não COALESCE(processando, 0) = 0: com o
+    // COALESCE o Postgres estimava 103 posts em vez de 20 mil, buscava o autor de
+    // cada post um a um e o feed levava ~310 ms no banco (85 ms assim).
     const feedFrom = `FROM posts p
        JOIN users u ON u.id = p.user_id
        WHERE 1=1
-         AND COALESCE(p.processando, 0) = 0
+         AND (p.processando IS NULL OR p.processando = 0)
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
          AND NOT EXISTS (
@@ -8169,7 +8172,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ${aggregateJoins}
        WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-         AND COALESCE(p.processando, 0) = 0
+         AND (p.processando IS NULL OR p.processando = 0)
          AND p.media_ids_json IS NOT NULL
          AND p.media_ids_json != '[]'
          AND p.media_ids_json != 'null'
@@ -11002,7 +11005,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       `SELECT p.id, p.content, p.created_at, p.media_ids_json, COALESCE(p.processando, 0) AS processando
        FROM posts p
        WHERE p.user_id = ?
-         ${ownerId === req.auth!.userId ? '' : 'AND COALESCE(p.processando, 0) = 0'}
+         ${ownerId === req.auth!.userId ? '' : 'AND (p.processando IS NULL OR p.processando = 0)'}
        ORDER BY p.created_at DESC
        LIMIT ? OFFSET ?`,
       [ownerId, limit + 1, offset]
@@ -11893,10 +11896,38 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const audiencePriority = buildAudiencePriorityOrder('u.gender', effectiveGenders);
     params.push(...audiencePriority.params);
 
+    // Dois passos: primeiro escolhe os 100 perfis na ordem certa (barato); só
+    // depois calcula as contagens (fotos, vídeos, curtidas, conversas) para
+    // esses 100. Antes as contagens rodavam para TODOS os candidatos antes do
+    // LIMIT e a consulta levava ~0,6 s em média (até 3,6 s).
     const rows = await queryAll(
       db,
       `
       SELECT u.*,
+        ${proximityBandExpr} AS match_proximity_band,
+        ${activityTierExpr} AS match_activity_tier
+      FROM users u
+      WHERE ${whereClause}
+      ORDER BY
+        ${hasRealDistanceSql}
+        ${distanceBandSql}
+        ${activityTierExpr} ASC,
+        ${boostPrioritySql}
+        ${distanceOrderSql}
+        ${cityPrioritySql}
+        ${statePrioritySql}
+        CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
+        ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
+        u.created_at DESC
+      LIMIT 100
+    `,
+      params
+    );
+    const escolhidos = (rows as any[]).map((r) => String(r.id));
+    if (escolhidos.length > 0) {
+      const extras = (await queryAll(
+        db,
+        `SELECT u.id,
         (
           SELECT m.filename
           FROM media m
@@ -11924,26 +11955,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           FROM conversations c
           WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
             AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id LIMIT 1)
-        ) as conversations_count,
-        ${proximityBandExpr} AS match_proximity_band,
-        ${activityTierExpr} AS match_activity_tier
-      FROM users u
-      WHERE ${whereClause}
-      ORDER BY
-        ${hasRealDistanceSql}
-        ${distanceBandSql}
-        ${activityTierExpr} ASC,
-        ${boostPrioritySql}
-        ${distanceOrderSql}
-        ${cityPrioritySql}
-        ${statePrioritySql}
-        CASE WHEN u.is_premium = 1 OR (u.trial_ends_at IS NOT NULL AND u.trial_ends_at > ?) THEN 0 ELSE 1 END,
-        ${audiencePriority.orderParts.length > 0 ? `${audiencePriority.orderParts.join(', ')},` : `${baseAudienceRankingSql('u.gender')},`}
-        u.created_at DESC
-      LIMIT 100
-    `,
-      params
-    );
+        ) as conversations_count
+           FROM users u WHERE u.id IN (${escolhidos.map(() => '?').join(', ')})`,
+        escolhidos
+      )) as any[];
+      const porId = new Map(extras.map((e) => [String(e.id), e]));
+      for (const r of rows as any[]) Object.assign(r, porId.get(String(r.id)) ?? {});
+    }
     const presence = req.app.get('presence') as undefined | { isOnline: (userId: string) => boolean };
     const estaOnline = (id: string) => (presence?.isOnline ? presence.isOnline(id) : false);
 
