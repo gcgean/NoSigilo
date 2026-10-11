@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { feedService } from '@/services/api';
-import { resolveServerUrl } from '@/utils/serverUrl';
+import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
 
 interface SocialPulse {
@@ -61,7 +61,7 @@ function BlurredAvatarStack({ count, avatars, premium }: {
           >
             {premium && user ? (
               <img
-                src={user.avatar ? resolveServerUrl(user.avatar) : '/placeholder.svg'}
+                src={user.avatar ? urlMiniatura(resolveServerUrl(user.avatar), 120) : '/placeholder.svg'}
                 alt={user.name}
                 className="h-full w-full object-cover"
               />
