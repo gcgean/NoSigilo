@@ -532,6 +532,39 @@ export default function Feed() {
       return visiblePosts.map((post) => ({ type: 'post' as const, id: `post-${post.id}`, post }));
     }
 
+    // "Minha região": mantém a ordem do servidor (cidade → estado → resto) e
+    // avisa onde a região acaba. O reagrupamento abaixo (6 primeiros / novidades /
+    // em alta) embaralhava a região com posts de outros estados.
+    const meuEstado = String((user as any)?.state || '').trim().toUpperCase();
+    if (cityOnly && nearbyRadius === null && meuEstado) {
+      const itens: Array<
+        | { type: 'post'; id: string; post: FeedPost }
+        | { type: 'section'; id: string; title: string; description: string }
+      > = [];
+      let avisou = false;
+      visiblePosts.forEach((post, i) => {
+        const estadoDoPost = String((post.author as any)?.state || '').trim().toUpperCase();
+        if (!avisou && estadoDoPost && estadoDoPost !== meuEstado) {
+          avisou = true;
+          itens.push(i === 0
+            ? {
+              type: 'section',
+              id: 'feed-section-fim-regiao',
+              title: '📍 Sem novidades da sua região agora',
+              description: 'Você já viu as publicações recentes de quem está perto. Abaixo, posts de outras cidades e estados.',
+            }
+            : {
+              type: 'section',
+              id: 'feed-section-fim-regiao',
+              title: '✅ Você já viu as novidades da sua região',
+              description: 'Abaixo, posts de outras cidades e estados.',
+            });
+        }
+        itens.push({ type: 'post', id: `post-${post.id}`, post });
+      });
+      return itens;
+    }
+
     const primary: FeedPost[] = [];
     const exploration: FeedPost[] = [];
     const remaining: FeedPost[] = [];
@@ -582,7 +615,7 @@ export default function Feed() {
     }
 
     return items;
-  }, [feedFilter, feedSessionBaseline, visiblePosts]);
+  }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state]);
 
   // Visualizações: um único IntersectionObserver observa todos os cards de post
   // e dispara 1 view sempre que o post fica >=50% visível — sem dedup, cada
