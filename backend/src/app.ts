@@ -3257,18 +3257,25 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // Gera (uma vez) a versão reduzida da foto e devolve o caminho dela. Pedidos
   // simultâneos da mesma miniatura esperam a mesma geração.
+  // No máximo 3 miniaturas sendo geradas ao mesmo tempo (ffmpeg pesa na CPU).
+  // Com o limite cheio, entrega a original desta vez; a próxima tentativa gera.
+  // Sem isso, a primeira abertura do feed depois de liberar 720px poderia
+  // disparar dezenas de ffmpeg juntos, como aconteceu com os vídeos em 30/09.
+  let miniaturasRodando = 0;
   const gerarMiniatura = (origem: string, filename: string, largura: number): Promise<string | null> => {
     const destino = path.join(pastaMiniaturas, `${largura}`, `${filename.replace(/\.[^.]+$/, '')}.webp`);
     if (existsSync(destino)) return Promise.resolve(destino);
     const chave = destino;
     const andando = miniaturasEmAndamento.get(chave);
     if (andando) return andando;
+    if (miniaturasRodando >= 3) return Promise.resolve(null);
+    miniaturasRodando++;
     const trabalho = (async () => {
       try {
         mkdirSync(path.dirname(destino), { recursive: true });
         const temporario = `${destino}.${process.pid}.tmp.webp`;
         await new Promise<void>((resolve, reject) => {
-          const proc = spawn('ffmpeg', [
+          const proc = spawn('nice', ['-n', '10', 'ffmpeg',
             '-y', '-i', origem,
             // Nunca amplia: foto menor que a largura pedida fica do tamanho dela.
             '-vf', `scale='min(${largura},iw)':-2`,
@@ -3286,6 +3293,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         return null;
       } finally {
         miniaturasEmAndamento.delete(chave);
+        miniaturasRodando--;
       }
     })();
     miniaturasEmAndamento.set(chave, trabalho);
@@ -3317,7 +3325,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // Só larguras fixas, para não virar um jeito de encher o disco com
     // variações. Gerada uma vez e guardada; se falhar, entrega a original.
     const larguraPedida = Number(req.query.w || 0);
-    const LARGURAS = [120, 240, 360, 480];
+    // 720: foto de post no feed (≈375px de tela × 2 de densidade no celular).
+    const LARGURAS = [120, 240, 360, 480, 720];
     const ehImagem = String(media.mime_type || '').startsWith('image/');
     if (ehImagem && LARGURAS.includes(larguraPedida)) {
       const miniatura = await gerarMiniatura(filePath, filename, larguraPedida);
@@ -19012,7 +19021,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // muda nenhuma decisao, e o botao de recarregar continua existindo.
   const cacheVisitas = new Map<string, { emMs: number; dados: unknown }>();
   const visitasEmCurso = new Map<string, Promise<unknown>>();
-  const VALIDADE_VISITAS_MS = 5 * 60 * 1000;
+  // 15 min: o cálculo varre ~2 milhões de visitas; cada abertura nova ocupava
+  // o banco por quase 1 minuto e deixava o site lento para todo mundo.
+  const VALIDADE_VISITAS_MS = 15 * 60 * 1000;
 
   // Cadastros por cidade/estado num período escolhido no admin (ex.: dia 01 ao
   // 10). Datas em horário de Brasília. "total" = usuários da cidade até o fim do
@@ -19154,11 +19165,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       // created_at é texto ISO em UTC. Para "hora/dia local" (horário de Brasília,
       // UTC-3) nos gráficos de pico e de únicos por dia, convertemos por dialeto.
+      // Brasília é UTC-3 fixo (sem horário de verão desde 2019): hora e dia saem
+      // do próprio texto ISO. O cast ::timestamptz AT TIME ZONE linha a linha
+      // levava ~6,7 s no gráfico de pico (30 dias de visitas); assim ~2 s, com
+      // o mesmo resultado (conferido em produção em 11/10/2026).
       const localHourExpr = db.mode === 'pg'
-        ? `EXTRACT(HOUR FROM (sv.created_at)::timestamptz AT TIME ZONE 'America/Sao_Paulo')::int`
+        ? `((SUBSTR(sv.created_at, 12, 2)::int + 21) % 24)`
         : `CAST(strftime('%H', datetime(sv.created_at, '-3 hours')) AS INTEGER)`;
       const localDayExpr = db.mode === 'pg'
-        ? `to_char((sv.created_at)::timestamptz AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD')`
+        ? `(CASE WHEN SUBSTR(sv.created_at, 12, 2) < '03' THEN to_char(SUBSTR(sv.created_at, 1, 10)::date - 1, 'YYYY-MM-DD') ELSE SUBSTR(sv.created_at, 1, 10) END)`
         : `strftime('%Y-%m-%d', datetime(sv.created_at, '-3 hours'))`;
       // Identificador de usuário único: prioriza user_id, depois ip_hash, senão a visita.
       const uniqueUserExpr = `COUNT(DISTINCT COALESCE(NULLIF(sv.user_id, ''), NULLIF(sv.ip_hash, ''), sv.id))`;

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { urlMiniatura } from '@/utils/serverUrl';
 import VideoWithPreview from './VideoWithPreview';
 
 export interface PostMediaItem {
@@ -260,7 +261,7 @@ export function PostMediaCarousel({
       <div className="relative w-full overflow-hidden" style={aspectStyle ? aspectStyle(m.id) : {}}>
         {fitted && (
           <img
-            src={resolveUrl(m.url)}
+            src={urlMiniatura(resolveUrl(m.url), 120)}
             alt=""
             aria-hidden
             draggable={false}
@@ -270,7 +271,7 @@ export function PostMediaCarousel({
           />
         )}
         <img
-          src={resolveUrl(m.url)}
+          src={urlMiniatura(resolveUrl(m.url), 720)}
           alt=""
           draggable={false}
           loading="lazy"

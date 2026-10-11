@@ -72,7 +72,7 @@ export const SERVER_ORIGIN = deriveServerOrigin();
  * Larguras aceitas pelo servidor: 120, 240, 360, 480. Outros endereços
  * (foto privada, blob, externos) voltam como estão.
  */
-export function urlMiniatura(url: string | null | undefined, largura: 120 | 240 | 360 | 480): string {
+export function urlMiniatura(url: string | null | undefined, largura: 120 | 240 | 360 | 480 | 720): string {
   const u = String(url || '');
   if (!u || !/\/uploads\/[^/?#]+$/.test(u)) return u;
   return `${u}?w=${largura}`;
