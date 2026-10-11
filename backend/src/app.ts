@@ -21,6 +21,7 @@ import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
 import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
+import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
 import {
@@ -3096,6 +3097,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   );
   app.post('/api/webhooks/hub-billing', express.raw({ type: 'application/json', limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
+  // Tempo de resposta de cada pedido à API (resumo a cada 5 min no admin).
+  app.use(medirTempoDeResposta());
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -17584,6 +17587,104 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
     if (!ok) { res.status(400).json({ error: 'falhou', message: 'Não chegou: o Telegram deste contato não está conectado ou o bot foi bloqueado.' }); return; }
     res.json({ ok: true });
+  });
+
+  // ─── Desempenho do servidor (admin) ─────────────────────────────────────────
+  // Gráficos de CPU/memória/disco (amostra do vigia a cada 5 min) e do tempo de
+  // resposta da API (resumo a cada 5 min). Em 7 dias agrupa por hora.
+  iniciarGravacaoDeDesempenho(db, persist);
+
+  app.get('/api/admin/desempenho', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const horas = Number(req.query.horas) === 168 ? 168 : 24;
+    const desde = new Date(Date.now() - horas * 3_600_000).toISOString();
+    const recursos = (await queryAll(db, 'SELECT medido_em, cpu, memoria, disco FROM recursos_amostras WHERE medido_em >= ? ORDER BY medido_em', [desde])) as any[];
+    const respostas = (await queryAll(db, 'SELECT inicio, pedidos, media_ms, p95_ms, max_ms, erros, lentas_json FROM desempenho_respostas WHERE inicio >= ? ORDER BY inicio', [desde])) as any[];
+
+    // 24 h: cada ponto de 5 min. 7 dias: média da hora (e o pior valor da hora).
+    const chaveHora = (iso: string) => `${String(iso).slice(0, 13)}:00:00.000Z`;
+    const agruparPorHora = horas === 168;
+
+    const pontosRecursos = agruparPorHora
+      ? Object.values(recursos.reduce((acc: Record<string, any>, r) => {
+          const k = chaveHora(r.medido_em);
+          const a = acc[k] ?? (acc[k] = { em: k, n: 0, cpu: 0, memoria: 0, disco: 0, cpuMax: 0 });
+          a.n++; a.cpu += Number(r.cpu); a.memoria += Number(r.memoria); a.disco += Number(r.disco);
+          a.cpuMax = Math.max(a.cpuMax, Number(r.cpu));
+          return acc;
+        }, {})).map((a: any) => ({ em: a.em, cpu: +(a.cpu / a.n).toFixed(1), memoria: +(a.memoria / a.n).toFixed(1), disco: +(a.disco / a.n).toFixed(1), cpuMax: +a.cpuMax.toFixed(1) }))
+      : recursos.map((r) => ({ em: String(r.medido_em), cpu: +Number(r.cpu).toFixed(1), memoria: +Number(r.memoria).toFixed(1), disco: +Number(r.disco).toFixed(1), cpuMax: +Number(r.cpu).toFixed(1) }));
+
+    const pontosRespostas = agruparPorHora
+      ? Object.values(respostas.reduce((acc: Record<string, any>, r) => {
+          const k = chaveHora(r.inicio);
+          const a = acc[k] ?? (acc[k] = { em: k, pedidos: 0, somaMedia: 0, p95: 0, max: 0, erros: 0 });
+          const n = Number(r.pedidos);
+          a.pedidos += n; a.somaMedia += Number(r.media_ms) * n;
+          a.p95 = Math.max(a.p95, Number(r.p95_ms)); a.max = Math.max(a.max, Number(r.max_ms)); a.erros += Number(r.erros);
+          return acc;
+        }, {})).map((a: any) => ({ em: a.em, pedidos: a.pedidos, mediaMs: a.pedidos ? Math.round(a.somaMedia / a.pedidos) : 0, p95Ms: a.p95, maxMs: a.max, erros: a.erros }))
+      : respostas.map((r) => ({ em: String(r.inicio), pedidos: Number(r.pedidos), mediaMs: Number(r.media_ms), p95Ms: Number(r.p95_ms), maxMs: Number(r.max_ms), erros: Number(r.erros) }));
+
+    // Rotas mais lentas do período (soma das 5 piores de cada intervalo).
+    const porRota = new Map<string, { pedidos: number; soma: number; max: number }>();
+    for (const r of respostas) {
+      for (const l of (safeJsonParse(r.lentas_json) as any[]) ?? []) {
+        const a = porRota.get(l.rota) ?? { pedidos: 0, soma: 0, max: 0 };
+        a.pedidos += Number(l.pedidos); a.soma += Number(l.mediaMs) * Number(l.pedidos); a.max = Math.max(a.max, Number(l.maxMs));
+        porRota.set(l.rota, a);
+      }
+    }
+    const rotasLentas = [...porRota.entries()]
+      .map(([rota, a]) => ({ rota, pedidos: a.pedidos, mediaMs: Math.round(a.soma / Math.max(1, a.pedidos)), maxMs: a.max, totalSeg: Math.round(a.soma / 1000) }))
+      .sort((x, y) => y.totalSeg - x.totalSeg)
+      .slice(0, 10);
+
+    res.json({ horas, limites: { cpu: 85, memoria: 90, disco: 85 }, recursos: pontosRecursos, respostas: pontosRespostas, rotasLentas });
+  });
+
+  // Consultas mais pesadas do banco (pg_stat_statements), as que mais somaram
+  // tempo desde o último "zerar".
+  app.get('/api/admin/desempenho/consultas', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    if (db.mode !== 'pg') { res.json({ disponivel: false, consultas: [], desde: null }); return; }
+    try {
+      const linhas = (await queryAll(
+        db,
+        `SELECT calls, mean_exec_time, max_exec_time, total_exec_time, rows, query
+           FROM pg_stat_statements
+          WHERE query NOT ILIKE '%pg_stat_statements%'
+          ORDER BY total_exec_time DESC
+          LIMIT 15`
+      )) as any[];
+      let desde: string | null = null;
+      try {
+        const info = (await queryOne(db, 'SELECT stats_reset FROM pg_stat_statements_info')) as any;
+        desde = info?.stats_reset ? new Date(info.stats_reset).toISOString() : null;
+      } catch { /* versão sem pg_stat_statements_info */ }
+      res.json({
+        disponivel: true,
+        desde,
+        consultas: linhas.map((l) => ({
+          chamadas: Number(l.calls),
+          mediaMs: Math.round(Number(l.mean_exec_time) * 10) / 10,
+          maxMs: Math.round(Number(l.max_exec_time)),
+          totalSeg: Math.round(Number(l.total_exec_time) / 100) / 10,
+          linhas: Number(l.rows),
+          sql: String(l.query || '').replace(/\s+/g, ' ').slice(0, 400),
+        })),
+      });
+    } catch (erro) {
+      res.json({ disponivel: false, consultas: [], desde: null, motivo: (erro as Error).message });
+    }
+  });
+
+  app.post('/api/admin/desempenho/consultas/zerar', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    if (db.mode !== 'pg') { res.status(400).json({ error: 'nao_disponivel' }); return; }
+    try {
+      await queryOne(db, 'SELECT pg_stat_statements_reset()');
+      res.json({ ok: true });
+    } catch (erro) {
+      res.status(400).json({ error: 'falhou', message: (erro as Error).message });
+    }
   });
 
   app.get('/api/admin/resources-status', requireAuth(env, db), requireAdmin(), async (_req, res) => {

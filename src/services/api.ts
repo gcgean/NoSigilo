@@ -1281,6 +1281,25 @@ export const financasEstadoService = {
   },
 };
 
+export type DesempenhoServidor = {
+  horas: number;
+  limites: { cpu: number; memoria: number; disco: number };
+  recursos: Array<{ em: string; cpu: number; memoria: number; disco: number; cpuMax: number }>;
+  respostas: Array<{ em: string; pedidos: number; mediaMs: number; p95Ms: number; maxMs: number; erros: number }>;
+  rotasLentas: Array<{ rota: string; pedidos: number; mediaMs: number; maxMs: number; totalSeg: number }>;
+};
+export type ConsultasPesadas = {
+  disponivel: boolean;
+  desde: string | null;
+  motivo?: string;
+  consultas: Array<{ chamadas: number; mediaMs: number; maxMs: number; totalSeg: number; linhas: number; sql: string }>;
+};
+export const desempenhoService = {
+  buscar: async (horas: 24 | 168): Promise<DesempenhoServidor> => (await apiClient.get('/admin/desempenho', { params: { horas } })).data,
+  consultas: async (): Promise<ConsultasPesadas> => (await apiClient.get('/admin/desempenho/consultas')).data,
+  zerarConsultas: async () => (await apiClient.post('/admin/desempenho/consultas/zerar')).data as { ok: boolean },
+};
+
 export type SituacaoVerificacao = {
   podeVerificar: boolean;
   /** Só mulher: verificar dá acesso grátis para sempre. Os outros ganham só o selo. */

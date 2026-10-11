@@ -3776,4 +3776,28 @@ describe('nosigilo backend', () => {
     expect(todas.body.length).toBe(305);
     expect(todas.headers['x-mais-conversas']).toBeUndefined();
   });
+
+  it('desempenho do servidor: só admin; recursos e respostas por período; consultas indisponíveis fora do Postgres', async () => {
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Desempenho', email: 'admin-desempenho@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const agora = new Date().toISOString();
+    await run(ctx.db, "INSERT INTO recursos_amostras (id, medido_em, cpu, memoria, disco, carga, videos_fila) VALUES ('ra-teste-1', ?, 42.5, 20.1, 39.8, 0.3, 0)", [agora]);
+    await run(ctx.db, "INSERT INTO desempenho_respostas (id, inicio, pedidos, media_ms, p95_ms, max_ms, erros, lentas_json) VALUES ('dr-teste-1', ?, 120, 85, 310, 900, 1, ?)",
+      [agora, JSON.stringify([{ rota: 'GET /api/feed', pedidos: 40, mediaMs: 200, maxMs: 900 }])]);
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${adm.token}` };
+
+    const d24 = (await request(ctx.app).get('/api/admin/desempenho?horas=24').set(auth).expect(200)).body;
+    expect(d24.recursos.some((r: any) => r.cpu === 42.5)).toBe(true);
+    expect(d24.respostas.some((r: any) => r.p95Ms === 310)).toBe(true);
+    expect(d24.rotasLentas[0]).toMatchObject({ rota: 'GET /api/feed', pedidos: 40, mediaMs: 200 });
+    const d7 = (await request(ctx.app).get('/api/admin/desempenho?horas=168').set(auth).expect(200)).body;
+    expect(d7.horas).toBe(168);
+    expect(d7.respostas.length).toBeGreaterThanOrEqual(1);
+
+    const c = (await request(ctx.app).get('/api/admin/desempenho/consultas').set(auth).expect(200)).body;
+    expect(c.disponivel).toBe(false);
+    await request(ctx.app).get('/api/admin/desempenho').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
 });

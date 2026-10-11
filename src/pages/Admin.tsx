@@ -33,6 +33,7 @@ import AdminTelegramAvisos from '@/components/AdminTelegramAvisos';
 import AdminCidadesPorPeriodo from '@/components/AdminCidadesPorPeriodo';
 import AdminPedidosGenero from '@/components/AdminPedidosGenero';
 import AdminFinancasPorEstado from '@/components/AdminFinancasPorEstado';
+import AdminDesempenho from '@/components/AdminDesempenho';
 import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
@@ -1447,6 +1448,8 @@ export default function Admin() {
             </div>
           </div>
         ) : null}
+        {/* Gráficos de desempenho: só depois de "Ver uso do servidor". */}
+        {resourcesStatus ? <AdminDesempenho /> : null}
       </Card>
 
       <AnalistaIa abaAtiva={abaAtiva} />
