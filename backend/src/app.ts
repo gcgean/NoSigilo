@@ -3091,6 +3091,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       },
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       allowedHeaders: ['Content-Type', 'Authorization'],
+      exposedHeaders: ['X-Mais-Conversas'],
     })
   );
   app.post('/api/webhooks/hub-billing', express.raw({ type: 'application/json', limit: '1mb' }));
@@ -13194,7 +13195,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerLon = viewer?.lon != null ? Number(viewer.lon) : null;
     const convSubsEnabled = await getSubscriptionsEnabled(db);
     const viewerHasPremiumConv = hasPremiumAccess(viewer, convSubsEnabled, env.BILLING_TEST_EMAILS) || ehCasal(viewer?.gender);
-    const rows = await queryAll(
+    const rowsTodas = await queryAll(
       db,
       `
       SELECT * FROM (
@@ -13242,7 +13243,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ORDER BY is_highlighted DESC, COALESCE(last_message_at, created_at) DESC
     `,
       [req.auth!.userId, req.auth!.userId, req.auth!.userId, req.auth!.userId]
-    );
+    ) as any[];
+    // Quem tem centenas de conversas baixava todas a cada abertura do Chat
+    // (866 conversas = 609 KB). Agora vêm as 300 mais recentes + toda antiga que
+    // ainda pede atenção (não lida, destacada, pedido pendente). ?todas=1 traz
+    // tudo (botão "conversas mais antigas" e busca). O formato continua lista;
+    // o aviso de que há mais vai no cabeçalho, para não quebrar app antigo.
+    const RECENTES = 300;
+    const todasConversas = rowsTodas as any[];
+    const rows = String(req.query.todas || '') === '1'
+      ? todasConversas
+      : todasConversas.filter((r, i) =>
+        i < RECENTES
+        || Number(r.unread_count || 0) > 0
+        || !!r.is_highlighted
+        || (!!r.pedido_para && !r.pedido_aceito_em));
+    if (rows.length < todasConversas.length) res.setHeader('X-Mais-Conversas', String(todasConversas.length - rows.length));
     // Miniatura da mídia da última mensagem (batch, uma consulta só).
     const lmMediaIds = Array.from(new Set((rows as any[]).map((r) => r.last_message_media).filter(Boolean).map(String)));
     const lmMediaMap = new Map<string, { url: string; mime: string | null }>();

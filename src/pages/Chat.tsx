@@ -719,12 +719,17 @@ export default function Chat() {
   const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
     String(profile?.gender || '').trim();
 
+  // Quem tem centenas de conversas recebe as 300 mais recentes; as antigas
+  // vêm no botão do fim da lista ou ao buscar (e continuam depois).
+  const [conversasAntigas, setConversasAntigas] = useState(0);
+  const todasConversasRef = useRef(false);
   const loadConversations = useCallback(async () => {
     if (USE_MOCKS) return;
     setIsLoadingConversations(true);
     try {
-      const data = await chatService.getConversations();
-      setConversations(Array.isArray(data) ? data : []);
+      const { lista, maisAntigas } = await chatService.listarConversas(todasConversasRef.current);
+      setConversations(lista);
+      setConversasAntigas(maisAntigas);
     } catch {
       toast({ title: 'Erro ao carregar conversas', description: 'Tente novamente.', variant: 'destructive' });
       setConversations([]);
@@ -737,6 +742,13 @@ export default function Chat() {
     if (USE_MOCKS) return;
     void loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    if (search.trim() && conversasAntigas > 0 && !todasConversasRef.current) {
+      todasConversasRef.current = true;
+      void loadConversations();
+    }
+  }, [search, conversasAntigas, loadConversations]);
 
   useEffect(() => {
     const stateConversationId = (location.state as any)?.conversationId ? String((location.state as any).conversationId) : '';
@@ -1571,6 +1583,13 @@ export default function Chat() {
           {!isLoadingConversations && !USE_MOCKS && hasMoreConversations && (
             <div ref={conversationsSentinelRef} className="flex items-center justify-center py-4">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted border-t-primary" />
+            </div>
+          )}
+          {!isLoadingConversations && !hasMoreConversations && conversasAntigas > 0 && (
+            <div className="flex justify-center py-4">
+              <Button variant="outline" size="sm" onClick={() => { todasConversasRef.current = true; void loadConversations(); }}>
+                Carregar {conversasAntigas} {conversasAntigas === 1 ? 'conversa mais antiga' : 'conversas mais antigas'}
+              </Button>
             </div>
           )}
         </div>

@@ -589,6 +589,12 @@ export const chatService = {
     const response = await apiClient.get('/conversations');
     return response.data;
   },
+  /** Lista do Chat: as 300 mais recentes (+ as que pedem atenção) ou, com todas=true, tudo. */
+  listarConversas: async (todas = false): Promise<{ lista: any[]; maisAntigas: number }> => {
+    const response = await apiClient.get('/conversations', { params: todas ? { todas: 1 } : undefined });
+    const maisAntigas = Number(response.headers?.['x-mais-conversas'] || 0);
+    return { lista: Array.isArray(response.data) ? response.data : [], maisAntigas: Number.isFinite(maisAntigas) ? maisAntigas : 0 };
+  },
 
   getUnreadCount: async () => {
     const response = await apiClient.get('/conversations/unread-count');

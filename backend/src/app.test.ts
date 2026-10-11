@@ -3746,4 +3746,34 @@ describe('nosigilo backend', () => {
     await request(ctx.app).get('/api/admin/verificacoes').set(auth(ana.token)).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
+
+  it('lista de conversas: 300 mais recentes + antigas não lidas; todas=1 traz tudo e o cabeçalho avisa', async () => {
+    const dona = await registerInvitedUser(ctx, sponsorToken, { name: 'Muitas Conversas', email: 'muitas-conversas@example.com', password: 'senha123', gender: 'Mulher' });
+    const did = String(dona.user.id);
+    const base = Date.parse('2026-01-01T00:00:00.000Z');
+    let naoLidaAntiga = '';
+    for (let i = 0; i < 305; i++) {
+      const uid = `conv300-u-${i}`;
+      await run(ctx.db, "INSERT INTO users (id, email, password_hash, name, created_at, invite_status) VALUES (?, ?, 'x', ?, ?, 'approved')", [uid, `conv300-${i}@example.com`, `Pessoa ${i}`, new Date(base).toISOString()]);
+      const cid = `conv300-c-${i}`;
+      const [a, b] = [did, uid].sort();
+      const quando = new Date(base + i * 60_000).toISOString();
+      await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [cid, a, b, quando]);
+      // A mais antiga tem mensagem NÃO lida: precisa aparecer mesmo fora das 300.
+      await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, is_read, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [`conv300-m-${i}`, cid, uid, 'oi', i === 0 ? 0 : 1, quando]);
+      if (i === 0) naoLidaAntiga = cid;
+    }
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${dona.token}` };
+
+    const r = await request(ctx.app).get('/api/conversations').set(auth).expect(200);
+    expect(r.body.length).toBe(301);
+    expect(r.body.some((c: any) => c.id === naoLidaAntiga)).toBe(true);
+    expect(r.headers['x-mais-conversas']).toBe('4');
+
+    const todas = await request(ctx.app).get('/api/conversations?todas=1').set(auth).expect(200);
+    expect(todas.body.length).toBe(305);
+    expect(todas.headers['x-mais-conversas']).toBeUndefined();
+  });
 });
