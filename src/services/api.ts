@@ -1,5 +1,5 @@
 import apiClient from '@/utils/apiClient';
-import { compressImageFile } from '@/utils/mediaCompression';
+import { compressImageFile, ehFotoHeic } from '@/utils/mediaCompression';
 import { marcarEngajamento } from '@/utils/modoDeUso';
 import axios from 'axios';
 
@@ -406,7 +406,7 @@ export const profileService = {
     onProgress?: (percent: number) => void
   ) => {
     let uploadFile = file;
-    if (file.type.startsWith('image/')) {
+    if (file.type.startsWith('image/') || ehFotoHeic(file)) {
       uploadFile = await compressImageFile(file, { maxDimension: 1600, quality: 0.82 });
     }
     const formData = new FormData();

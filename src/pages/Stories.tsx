@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
@@ -1425,8 +1426,18 @@ export default function Stories() {
     );
   };
 
-  const handleUpload = async (file: File) => {
-    if (!file) return;
+  const handleUpload = async (escolhido: File) => {
+    if (!escolhido) return;
+    let file = escolhido;
+    // HEIC (iPhone e alguns Android) não aparece na prévia do Chrome: converte antes de abrir o editor.
+    if (ehFotoHeic(file)) {
+      try {
+        file = await heicParaJpeg(file);
+      } catch {
+        toast({ title: 'Não foi possível abrir a foto', description: FOTO_NAO_ABRE, variant: 'destructive' });
+        return;
+      }
+    }
     // Validação de vídeo máx 30s via duration
     if (file.type.startsWith('video/')) {
       const duration = await new Promise<number>((resolve) => {
@@ -1559,7 +1570,8 @@ export default function Stories() {
     } else if (msg.includes('max_stories') || msg.includes('10 stories')) {
       toast({ title: 'Limite atingido', description: 'Você já tem 10 stories ativos. Apague um antes de postar.', variant: 'destructive' });
     } else {
-      toast({ title: 'Erro ao publicar story', variant: 'destructive' });
+      const aviso = err instanceof Error && err.message === FOTO_NAO_ABRE ? FOTO_NAO_ABRE : undefined;
+      toast({ title: 'Erro ao publicar story', description: aviso, variant: 'destructive' });
     }
   };
 

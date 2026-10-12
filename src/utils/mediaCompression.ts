@@ -73,7 +73,47 @@ async function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: nu
   });
 }
 
+// Mensagem mostrada quando a foto não abre de jeito nenhum neste aparelho.
+export const FOTO_NAO_ABRE =
+  'Não conseguimos abrir essa foto neste celular. Tente outra foto, ou tire um print dela e envie o print.';
+
+const TIPOS_ACEITOS_PELO_SERVIDOR = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Alguns Android (Samsung, Xiaomi) e o iPhone salvam fotos em HEIC/HEIF, que o Chrome não abre.
+// Às vezes o seletor de arquivos nem informa o tipo, então olhamos também a extensão.
+export function ehFotoHeic(file: File) {
+  return /^image\/hei[cf](-sequence)?$/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+}
+
+// Converte HEIC/HEIF em JPEG no próprio aparelho. A biblioteca só é baixada quando aparece uma foto assim.
+export async function heicParaJpeg(file: File): Promise<File> {
+  const { default: heic2any } = await import('heic2any');
+  const convertido = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+  const blob = Array.isArray(convertido) ? convertido[0] : convertido;
+  const nome = file.name.replace(/\.(heic|heif)$/i, '') + '.jpg';
+  return new File([blob], nome, { type: 'image/jpeg', lastModified: Date.now() });
+}
+
+// Prepara a foto para envio: converte HEIC e comprime. Se o navegador não conseguir abrir a foto
+// para comprimir, manda a original (o servidor comprime) em vez de travar o envio.
 export async function compressImageFile(file: File, options?: CompressOptions): Promise<File> {
+  let foto = file;
+  if (ehFotoHeic(foto)) {
+    try {
+      foto = await heicParaJpeg(foto);
+    } catch {
+      throw new Error(FOTO_NAO_ABRE);
+    }
+  }
+  try {
+    return await comprimir(foto, options);
+  } catch {
+    if (TIPOS_ACEITOS_PELO_SERVIDOR.includes(foto.type)) return foto;
+    throw new Error(FOTO_NAO_ABRE);
+  }
+}
+
+async function comprimir(file: File, options?: CompressOptions): Promise<File> {
   const maxDimension = clampNumber(options?.maxDimension ?? 1280, 320, 4096);
   const quality = clampNumber(options?.quality ?? 0.8, 0.35, 0.95);
   const maxBytes = clampNumber(options?.maxBytes ?? 900 * 1024, 120 * 1024, 10 * 1024 * 1024);

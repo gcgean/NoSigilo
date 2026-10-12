@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { Plus, Eye, Crown, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -109,8 +110,9 @@ export default function StoriesBar() {
       await storiesService.create(String(media.id));
       toast({ title: '✨ Story publicado!', description: 'Expira em 24 horas.' });
       await load();
-    } catch {
-      toast({ title: 'Erro ao publicar story', variant: 'destructive' });
+    } catch (err) {
+      const aviso = err instanceof Error && err.message === FOTO_NAO_ABRE ? FOTO_NAO_ABRE : undefined;
+      toast({ title: 'Erro ao publicar story', description: aviso, variant: 'destructive' });
     } finally {
       setUploading(false);
     }
