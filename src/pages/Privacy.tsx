@@ -13,10 +13,18 @@ const CONTATO_PRIVACIDADE = 'pelo chat de Suporte do app (botão de ajuda, em qu
 // Corpo do documento isolado da página — ver TermsBody.
 export function PrivacyBody() {
   return (
-    <div className="prose prose-invert max-w-none glass rounded-2xl p-6 sm:p-8">
+    <div
+      className={
+        // O plugin de tipografia (prose) não está instalado: títulos e listas
+        // ficavam como texto corrido. Estilo do documento definido aqui.
+        'glass max-w-none rounded-2xl p-4 text-sm leading-relaxed text-muted-foreground sm:p-8 sm:text-base ' +
+        '[&_h2]:mb-2 [&_h2]:mt-7 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-foreground sm:[&_h2]:text-lg ' +
+        '[&>p]:my-2 [&>ul]:my-2 [&>ul]:list-disc [&>ul]:space-y-1.5 [&>ul]:pl-5 [&_strong]:text-foreground'
+      }
+    >
       <p className="text-muted-foreground">Última atualização: 12 de outubro de 2026</p>
 
-      <div className="not-prose rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed">
+      <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed">
         <p className="mb-2 font-semibold text-foreground">Resumo rápido</p>
         <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
           <li><strong className="text-foreground">Não vendemos seus dados</strong> e não usamos rastreadores de publicidade.</li>
