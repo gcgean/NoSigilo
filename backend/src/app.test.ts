@@ -3968,4 +3968,49 @@ describe('nosigilo backend', () => {
     // Quem já confirmou pode confirmar de novo sem erro.
     await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(casal1.token)).expect(200);
   });
+
+  it('dicas no Chat: conta oficial dá boas-vindas, fica fora da busca e PARAR encerra', async () => {
+    const novo = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Novato', email: 'casal-novato@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Dicas', email: 'admin-dicas@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const novoId = String(novo.user.id);
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    // Cadastro entra na fila; adianta a primeira dica e roda.
+    expect(await ctx.db.queryOne('SELECT etapa FROM dicas_chat WHERE user_id = ?', [novoId])).toMatchObject({ etapa: 0 });
+    await run(ctx.db, "UPDATE dicas_chat SET proxima_em = '2000-01-01T00:00:00.000Z' WHERE user_id = ?", [novoId]);
+    await ctx.db.persist();
+    const rodou = await request(ctx.app).post('/api/admin/dicas-chat/rodar').set(auth(adm.token)).send({}).expect(200);
+    expect(rodou.body.enviadas).toBeGreaterThanOrEqual(1);
+
+    const oficial = (await ctx.db.queryOne('SELECT id, name FROM users WHERE conta_oficial = 1', [])) as any;
+    expect(oficial.name).toBe('NoSigilo');
+    const conv = (await ctx.db.queryOne('SELECT id FROM conversations WHERE (user_a_id = ? AND user_b_id = ?) OR (user_a_id = ? AND user_b_id = ?)', [oficial.id, novoId, novoId, oficial.id])) as any;
+    const msgs = (await ctx.db.queryAll('SELECT sender_id, content FROM messages WHERE conversation_id = ? ORDER BY created_at', [String(conv.id)])) as any[];
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content).toContain('Oi, Casal!');
+    expect(msgs[0].content).toContain('Que bom ter vocês aqui');
+    expect(msgs[0].content).toContain('PARAR');
+    const fila = (await ctx.db.queryOne('SELECT etapa, proxima_em FROM dicas_chat WHERE user_id = ?', [novoId])) as any;
+    expect(fila.etapa).toBe(1);
+    expect(fila.proxima_em > new Date().toISOString()).toBe(true);
+
+    // A conta oficial não aparece na busca.
+    const busca = await request(ctx.app).get('/api/users').query({ q: 'NoSigilo' }).set(auth(novo.token)).expect(200);
+    const lista = (Array.isArray(busca.body) ? busca.body : busca.body.users ?? busca.body.items ?? []) as any[];
+    expect(lista.some((u) => String(u.id) === String(oficial.id))).toBe(false);
+
+    // Responder PARAR (sem assinatura) encerra as dicas e recebe confirmação.
+    await request(ctx.app).post(`/api/conversations/${conv.id}/messages`).set(auth(novo.token)).send({ content: 'Parar' }).expect(200);
+    for (let i = 0; i < 20; i++) {
+      const fim = (await ctx.db.queryOne('SELECT concluido_em FROM dicas_chat WHERE user_id = ?', [novoId])) as any;
+      if (fim.concluido_em) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(((await ctx.db.queryOne('SELECT concluido_em FROM dicas_chat WHERE user_id = ?', [novoId])) as any).concluido_em).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 100));
+    const ultima = (await ctx.db.queryOne('SELECT sender_id, content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1', [String(conv.id)])) as any;
+    expect(String(ultima.sender_id)).toBe(String(oficial.id));
+    expect(ultima.content).toContain('não mando mais dicas');
+  });
 });

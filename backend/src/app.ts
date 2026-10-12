@@ -1,4 +1,5 @@
 import cors from 'cors';
+import { textoDaDica, ESPERA_EM_DIAS, TOTAL_DE_DICAS, pediuParaParar, RESPOSTA_PARAR, RESPOSTA_AUTOMATICA } from './dicasChat.js';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -3363,6 +3364,181 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await persist();
   };
 
+  // ── Conta oficial do NoSigilo e dicas no Chat ─────────────────────────────
+  // A conta é um usuário comum marcado com conta_oficial = 1 (e is_admin, para
+  // ficar fora da busca e do match). Ninguém entra nela: senha aleatória e
+  // e-mail que não existe. É criada na primeira dica enviada.
+  let contaOficialId: string | null = null;
+  const carregarContaOficial = async () => {
+    const existente = (await queryOne(db, 'SELECT id FROM users WHERE conta_oficial = 1 LIMIT 1', [])) as any;
+    if (existente?.id) contaOficialId = String(existente.id);
+    return contaOficialId;
+  };
+  const garantirContaOficial = async (): Promise<string> => {
+    if (contaOficialId || (await carregarContaOficial())) return contaOficialId!;
+    const id = randomUUID();
+    await run(
+      db,
+      `INSERT INTO users (id, email, password_hash, name, avatar, bio, is_verified, is_premium, is_admin, created_at, invite_status, conta_oficial)
+       VALUES (?, ?, ?, ?, ?, ?, 1, 1, 1, ?, 'approved', 1)`,
+      [
+        id, 'conta-oficial@nosigilo.invalid', bcrypt.hashSync(randomUUID(), 10), 'NoSigilo', '/icon-512.png',
+        'Conta oficial da equipe do NoSigilo. Por aqui chegam dicas e novidades da comunidade 🔥', nowIso(),
+      ]
+    );
+    await persist();
+    contaOficialId = id;
+    return id;
+  };
+
+  const enviarMensagemOficial = async (userId: string, texto: string) => {
+    const oficial = await garantirContaOficial();
+    const conversationId = await ensureConversationBetweenUsers(db, oficial, userId);
+    const id = randomUUID();
+    const createdAt = nowIso();
+    await run(db, 'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      id, conversationId, oficial, texto, 1, createdAt,
+    ]);
+    await persist();
+    const io = app.get('io') as SocketIOServer | undefined;
+    io?.to(`user:${userId}`).emit('message.new', {
+      id, conversationId, senderId: oficial, content: texto, mediaId: null, mediaUrl: null, mediaMimeType: null,
+      clientId: null, isViewOnce: false, isDelivered: true, createdAt,
+    });
+    void sendPushToUser({ db, env }, {
+      userId,
+      payload: {
+        title: 'NoSigilo',
+        body: texto.replace(/\s+/g, ' ').slice(0, 120),
+        url: `/chat?conversationId=${encodeURIComponent(conversationId)}`,
+        tag: `chat:${conversationId}`,
+        data: { conversationId, senderId: oficial },
+      },
+    }).catch(() => {});
+  };
+
+  // Dicas saem entre 10h e 21h (Brasília): fora disso, empurra para as 10h.
+  const noHorarioDeDica = (ms: number) => {
+    const brt = new Date(ms - 3 * 3_600_000);
+    const hora = brt.getUTCHours();
+    if (hora >= 10 && hora < 21) return new Date(ms).toISOString();
+    const alvo = new Date(Date.UTC(brt.getUTCFullYear(), brt.getUTCMonth(), brt.getUTCDate() + (hora >= 21 ? 1 : 0), 10 + 3, Math.floor(Math.random() * 60)));
+    return alvo.toISOString();
+  };
+  const agendarDicas = async (userId: string, opcoes: { veterano: boolean; emMs: number }) => {
+    await run(
+      db,
+      'INSERT INTO dicas_chat (user_id, etapa, proxima_em, veterano, criado_em) VALUES (?, 0, ?, ?, ?) ON CONFLICT (user_id) DO NOTHING',
+      [userId, new Date(Date.now() + opcoes.emMs).toISOString(), opcoes.veterano ? 1 : 0, nowIso()]
+    );
+  };
+
+  let rodandoDicas = false;
+  const rodarDicasChat = async (limite = 150) => {
+    if (rodandoDicas) return 0;
+    rodandoDicas = true;
+    let enviadas = 0;
+    try {
+      const fila = (await queryAll(
+        db,
+        `SELECT d.user_id, d.etapa, d.veterano, u.name, u.gender, u.avatar, u.bio, u.is_verified,
+                u.deleted_at, u.is_banned, u.is_deactivated
+           FROM dicas_chat d JOIN users u ON u.id = d.user_id
+          WHERE d.concluido_em IS NULL AND d.proxima_em <= ?
+          ORDER BY d.proxima_em ASC LIMIT ?`,
+        [nowIso(), limite]
+      )) as any[];
+      for (const r of fila) {
+        const userId = String(r.user_id);
+        const etapa = Number(r.etapa || 0);
+        const concluir = () => run(db, 'UPDATE dicas_chat SET concluido_em = ? WHERE user_id = ?', [nowIso(), userId]);
+        try {
+          const bloqueou = contaOficialId
+            ? await queryOne(db, 'SELECT 1 AS x FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?', [userId, contaOficialId])
+            : null;
+          if (r.deleted_at || Number(r.is_banned) === 1 || Number(r.is_deactivated) === 1 || bloqueou || etapa >= TOTAL_DE_DICAS) {
+            await concluir();
+            continue;
+          }
+          const gender = String(r.gender || '');
+          const texto = textoDaDica(etapa, {
+            nome: String(r.name || ''),
+            casal: gender.startsWith('Casal'),
+            mulher: gender === 'Mulher',
+            veterano: Number(r.veterano) === 1,
+            temFoto: !!String(r.avatar || '').trim(),
+            temBio: !!String(r.bio || '').trim(),
+            verificado: Number(r.is_verified) === 1,
+          });
+          if (texto) {
+            await enviarMensagemOficial(userId, texto);
+            enviadas++;
+          }
+          const proxima = etapa + 1 < TOTAL_DE_DICAS
+            ? noHorarioDeDica(Date.now() + ESPERA_EM_DIAS[etapa + 1] * 86_400_000)
+            : null;
+          await run(db, 'UPDATE dicas_chat SET etapa = ?, proxima_em = ?, concluido_em = ? WHERE user_id = ?', [
+            etapa + 1, proxima, proxima ? null : nowIso(), userId,
+          ]);
+        } catch (err) {
+          console.error('[dicasChat]', userId, err);
+        }
+      }
+      await persist();
+      if (enviadas > 0) console.log(`[dicasChat] ${enviadas} dica(s) enviada(s)`);
+    } finally {
+      rodandoDicas = false;
+    }
+    return enviadas;
+  };
+
+  // Uma vez só: quem já usa o site (ativo nos últimos 30 dias) entra na fila,
+  // com a primeira mensagem espalhada por 3 dias para não chegar tudo junto.
+  const incluirAtivosNasDicas = async () => {
+    const feito = (await queryOne(db, "SELECT value FROM system_settings WHERE key = 'dicas_chat_ativos'", [])) as any;
+    if (feito?.value) return;
+    const desde = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const ativos = (await queryAll(
+      db,
+      `SELECT u.id FROM users u
+        WHERE u.last_seen_at >= ? AND u.deleted_at IS NULL
+          AND (u.is_banned = 0 OR u.is_banned IS NULL) AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND (u.is_showcase = 0 OR u.is_showcase IS NULL) AND (u.is_admin = 0 OR u.is_admin IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM dicas_chat d WHERE d.user_id = u.id)`,
+      [desde]
+    )) as any[];
+    for (const a of ativos) {
+      const emMs = Math.floor(Math.random() * 3 * 86_400_000);
+      await run(
+        db,
+        'INSERT INTO dicas_chat (user_id, etapa, proxima_em, veterano, criado_em) VALUES (?, 0, ?, 1, ?) ON CONFLICT (user_id) DO NOTHING',
+        [String(a.id), noHorarioDeDica(Date.now() + emMs), nowIso()]
+      );
+    }
+    await run(
+      db,
+      "INSERT INTO system_settings (key, value, updated_at) VALUES ('dicas_chat_ativos', ?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+      [String(ativos.length), nowIso()]
+    );
+    await persist();
+    console.log(`[dicasChat] ${ativos.length} usuário(s) ativo(s) entraram na fila de dicas`);
+  };
+
+  // Quando a pessoa escreve para a conta oficial: PARAR encerra as dicas; o
+  // resto recebe uma resposta automática (no máximo uma a cada 12h).
+  const ultimaRespostaOficial = new Map<string, number>();
+  const responderNaContaOficial = async (userId: string, texto: string) => {
+    if (pediuParaParar(texto)) {
+      await run(db, 'UPDATE dicas_chat SET concluido_em = ? WHERE user_id = ? AND concluido_em IS NULL', [nowIso(), userId]);
+      await enviarMensagemOficial(userId, RESPOSTA_PARAR);
+      return;
+    }
+    const antes = ultimaRespostaOficial.get(userId) ?? 0;
+    if (Date.now() - antes < 12 * 3_600_000) return;
+    ultimaRespostaOficial.set(userId, Date.now());
+    await enviarMensagemOficial(userId, RESPOSTA_AUTOMATICA);
+  };
+
   // Contas excluídas que ainda têm dados (as anteriores a esta rotina, ou alguma
   // em que a limpeza falhou no meio): processa poucas por vez para não pesar no banco.
   const limparContasExcluidasPendentes = async () => {
@@ -3936,6 +4112,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
     // O cadastro por e-mail só envia com a caixinha marcada; app antigo não manda a versão.
     await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, parsed.data.termosVersao || 'anterior', id]);
+    await agendarDicas(id, { veterano: false, emMs: 2 * 60 * 1000 });
     if (invite) {
       // Compute validation deadline (REFERRAL_VALIDATION_DAYS days from signup)
       const validationDeadline = addDaysIso(createdAt, REFERRAL_VALIDATION_DAYS);
@@ -5950,6 +6127,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         if (stateClaims.termos) {
           await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, String(stateClaims.termos), id]);
         }
+        await agendarDicas(id, { veterano: false, emMs: 2 * 60 * 1000 });
         await persist();
         userRow = (await queryOne(db, 'SELECT * FROM users WHERE id = ? LIMIT 1', [id])) as any;
         // Isca imediata da vitrine (homem) — mesmo comportamento do cadastro por e-mail.
@@ -14213,7 +14391,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.post('/api/conversations/:conversationId/messages', requireAuth(env, db), async (req, res) => {
-    if (!(await userHasPremiumAccess(db, req.auth!.userId)) && !(await casalPodeResponder(db, req.auth!.userId, String(req.params.conversationId)))) {
+    const comContaOficial = contaOficialId
+      ? !!(await queryOne(db, 'SELECT 1 AS x FROM conversations WHERE id = ? AND (user_a_id = ? OR user_b_id = ?)', [String(req.params.conversationId), contaOficialId, contaOficialId]))
+      : false;
+    if (!comContaOficial && !(await userHasPremiumAccess(db, req.auth!.userId)) && !(await casalPodeResponder(db, req.auth!.userId, String(req.params.conversationId)))) {
       res.status(403).json({ error: 'premium_required' });
       return;
     }
@@ -14340,7 +14521,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // Referral action tracking: bit1 = sent_message
     void markInviteeAction(db, io, req.auth!.userId, 0b010, env).catch(() => {});
 
+    if (comContaOficial) {
+      void responderNaContaOficial(req.auth!.userId, String(parsed.data.content || '')).catch((e) => console.error('[dicasChat] resposta', e));
+    }
     res.json({ id });
+  });
+
+  // Admin: roda a fila de dicas agora (para testar e acompanhar).
+  app.post('/api/admin/dicas-chat/rodar', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const enviadas = await rodarDicasChat(Number(_req.body?.limite) || 150);
+    res.json({ enviadas });
   });
 
   app.post('/api/likes', requireAuth(env, db), async (req, res) => {
@@ -17994,7 +18184,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/admin/telegram-avisos', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     const admins = (await queryAll(
       db,
-      "SELECT id, name, email, telegram_chat_id FROM users WHERE is_admin = 1 ORDER BY name",
+      "SELECT id, name, email, telegram_chat_id FROM users WHERE is_admin = 1 AND (conta_oficial = 0 OR conta_oficial IS NULL) ORDER BY name",
       []
     )) as any[];
     const escolhas = await lerAvisosTelegram(db);
@@ -21900,6 +22090,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   void apagarGruposVencidos();
   setInterval(() => void apagarGruposVencidos(), 60 * 60 * 1000);
   void carregarCentrosDeCidade(db);
+  // Dicas da conta oficial no Chat.
+  void carregarContaOficial().catch(() => {});
+  setTimeout(() => void incluirAtivosNasDicas().catch((e) => console.error('[dicasChat] ativos', e)), 3 * 60 * 1000);
+  setInterval(() => void rodarDicasChat().catch((e) => console.error('[dicasChat]', e)), 10 * 60 * 1000);
   // LGPD: termina de apagar os dados de contas excluídas (25 por vez, a cada 10 min).
   setTimeout(() => void limparContasExcluidasPendentes(), 2 * 60 * 1000);
   setInterval(() => void limparContasExcluidasPendentes(), 10 * 60 * 1000);
