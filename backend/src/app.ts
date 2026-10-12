@@ -6282,6 +6282,34 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
   });
 
+// Quem pode participar de um evento: o criador marca grupos de perfil. Vazio = todos.
+const GRUPOS_DE_EVENTO = ['casal', 'mulher', 'homem', 'trans', 'cd'] as const;
+type GrupoDeEvento = (typeof GRUPOS_DE_EVENTO)[number];
+function grupoDoPerfil(gender: unknown): GrupoDeEvento | null {
+  const g = String(gender || '').trim().toLowerCase();
+  if (!g) return null;
+  if (g.startsWith('casal')) return 'casal';
+  if (g === 'mulher') return 'mulher';
+  if (g === 'homem') return 'homem';
+  if (g.startsWith('crossdresser')) return 'cd';
+  if (g.startsWith('trans') || g.startsWith('travesti')) return 'trans';
+  return null;
+}
+function perfisPermitidosDoEvento(payload: any): GrupoDeEvento[] {
+  const lista = Array.isArray(payload?.perfisPermitidos) ? payload.perfisPermitidos : [];
+  return GRUPOS_DE_EVENTO.filter((g) => lista.includes(g));
+}
+function eventoAceitaPerfil(payload: any, gender: unknown) {
+  const permitidos = perfisPermitidosDoEvento(payload);
+  if (permitidos.length === 0) return true;
+  const grupo = grupoDoPerfil(gender);
+  return !!grupo && permitidos.includes(grupo);
+}
+function limiteDoEvento(payload: any): number | null {
+  const n = Math.floor(Number(payload?.maxAttendees));
+  return Number.isFinite(n) && n >= 1 ? Math.min(n, 10_000) : null;
+}
+
 // Faixas usadas no "Minha região" para ordenar posts de outros estados por proximidade.
 const FAIXAS_DE_DISTANCIA_KM = [150, 300, 600, 1000, 1600];
 function faixaDeDistancia(km: number) {
@@ -16328,7 +16356,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const createdAt = nowIso();
-    const payload = req.body ?? {};
+    const payload = { ...(req.body ?? {}) };
+    payload.maxAttendees = limiteDoEvento(payload) ?? 50;
+    payload.perfisPermitidos = perfisPermitidosDoEvento(payload);
 
     // Protege contra clique duplo / retry de rede criando o mesmo evento duas
     // vezes: se este usuário já criou um evento idêntico (título/data/hora/local)
@@ -16405,7 +16435,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         params.push(...ns.targetCities.map((c: string) => `%${c.split(',')[0].trim()}%`));
       }
 
-      const potentialUsers = (await queryAll(db, `SELECT id, lat, lon FROM users WHERE ${where} LIMIT 500`, params)) as any[];
+      // Só avisa quem pode participar (perfis aceitos pelo evento).
+      const potentialUsers = ((await queryAll(db, `SELECT id, lat, lon, gender FROM users WHERE ${where} LIMIT 500`, params)) as any[])
+        .filter((u) => eventoAceitaPerfil(payload, u.gender));
       
       for (const targetUser of potentialUsers) {
         // Distance check if radius is set
@@ -16491,7 +16523,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
       `
-      SELECT e.id, e.payload_json, e.created_at, u.name as user_name,
+      SELECT e.id, e.user_id, e.payload_json, e.created_at, u.name as user_name,
         (SELECT COUNT(*) FROM event_attendees ea WHERE ea.event_id = e.id) as attendees_count,
         EXISTS (SELECT 1 FROM event_attendees ea2 WHERE ea2.event_id = e.id AND ea2.user_id = ?) as is_going,
         (SELECT eg.id FROM event_groups eg WHERE eg.event_id = e.id) as group_id
@@ -16503,18 +16535,27 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     `,
       [viewerId, myEvents ? 1 : 0, viewerId]
     );
-    const lista = rows.map((r: any) => {
+    const eu = (await queryOne(db, 'SELECT gender, is_admin FROM users WHERE id = ?', [viewerId])) as any;
+    const souAdmin = Number(eu?.is_admin) === 1;
+    const lista = rows.flatMap((r: any) => {
       const payload = safeJsonParse(r.payload_json) ?? {};
-      return {
+      const isGoing = Number(r.is_going) === 1 || r.is_going === true;
+      const souCriador = String(r.user_id) === viewerId;
+      if (!souCriador && !souAdmin && !isGoing && !eventoAceitaPerfil(payload, eu?.gender)) return [];
+      const attendees = Number(r.attendees_count || 0);
+      const limite = limiteDoEvento(payload);
+      return [{
         id: r.id,
         ...payload,
+        perfisPermitidos: perfisPermitidosDoEvento(payload),
         createdAt: r.created_at,
         createdBy: r.user_name,
-        attendees: Number(r.attendees_count || 0),
-        isGoing: Number(r.is_going) === 1 || r.is_going === true,
+        attendees,
+        isGoing,
+        lotado: limite !== null && attendees >= limite,
         groupId: r.group_id ? String(r.group_id) : null,
         encerrado: eventoEncerrado(payload),
-      };
+      }];
     });
     res.json(soProximos ? lista.filter((e) => !e.encerrado) : lista);
   });
@@ -16561,6 +16602,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (eventoEncerrado(payload)) { res.status(400).json({ error: 'evento_encerrado', message: 'Este evento já aconteceu.' }); return; }
 
     const already = (await queryOne(db, 'SELECT id FROM event_attendees WHERE event_id = ? AND user_id = ?', [eventId, userId])) as any;
+    if (!already?.id && String(event.user_id) !== userId) {
+      const eu = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
+      if (!eventoAceitaPerfil(payload, eu?.gender)) {
+        res.status(403).json({ error: 'perfil_nao_permitido', message: 'Este evento é só para outros tipos de perfil.' });
+        return;
+      }
+      const limite = limiteDoEvento(payload);
+      if (limite !== null) {
+        const ocupados = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM event_attendees WHERE event_id = ?', [eventId])) as any)?.c || 0);
+        if (ocupados >= limite) {
+          res.status(400).json({ error: 'evento_lotado', message: 'O evento já atingiu o limite de participantes.' });
+          return;
+        }
+      }
+    }
     if (!already?.id) {
       await run(db, 'INSERT INTO event_attendees (id, event_id, user_id, created_at) VALUES (?, ?, ?, ?)', [
         randomUUID(), eventId, userId, nowIso(),

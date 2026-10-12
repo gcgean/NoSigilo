@@ -83,7 +83,22 @@ interface Event {
   groupId?: string | null;
   /** A data já passou (horário de Brasília): fica na aba Encerrados. */
   encerrado?: boolean;
+  /** Grupos de perfil aceitos (vazio = todos). */
+  perfisPermitidos?: string[];
+  /** Atingiu o limite de participantes. */
+  lotado?: boolean;
 }
+
+// Quem pode participar (o servidor esconde o evento de quem não está na lista).
+const GRUPOS_DE_PERFIL = [
+  { value: 'casal', label: 'Casais', icon: '👫' },
+  { value: 'mulher', label: 'Mulheres', icon: '👩' },
+  { value: 'homem', label: 'Homens', icon: '👨' },
+  { value: 'trans', label: 'Trans e travestis', icon: '🏳️‍⚧️' },
+  { value: 'cd', label: 'Crossdressers', icon: '💄' },
+];
+const nomesDosPerfis = (lista?: string[]) =>
+  (lista ?? []).map((v) => GRUPOS_DE_PERFIL.find((g) => g.value === v)?.label).filter(Boolean).join(', ');
 
 const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600';
 const normalizeEvent = (raw: any): Event => {
@@ -103,6 +118,8 @@ const normalizeEvent = (raw: any): Event => {
     isPrivate: !!raw?.isPrivate,
     notificationsSent: raw?.notificationsSent ? Number(raw.notificationsSent) : undefined,
     createdBy: raw?.createdBy ? String(raw.createdBy) : undefined,
+    perfisPermitidos: Array.isArray(raw?.perfisPermitidos) ? raw.perfisPermitidos.map(String) : [],
+    lotado: !!raw?.lotado,
     groupId: raw?.groupId ? String(raw.groupId) : null,
     encerrado: !!raw?.encerrado,
   };
@@ -212,9 +229,10 @@ export default function Events() {
     time: '',
     location: '',
     eventType: '',
-    maxAttendees: 50,
+    maxAttendees: 50 as number | '',
     isPrivate: false,
     image: '',
+    perfisPermitidos: [] as string[],
   });
   
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,10 +284,13 @@ export default function Events() {
         toast({ title: 'Presença confirmada!', description: 'Você entrou no chat do grupo desse evento.' });
       }
     } catch (err: any) {
-      if (err?.response?.status === 403) { setPaywallOpen(true); return; }
+      const codigo = err?.response?.data?.error;
+      if (err?.response?.status === 403 && codigo === 'premium_required') { setPaywallOpen(true); return; }
       toast({
         title: target.isGoing ? 'Não foi possível desconfirmar' : 'Não foi possível confirmar presença',
-        description: 'Tente novamente.',
+        description: codigo === 'evento_lotado' || codigo === 'perfil_nao_permitido'
+          ? String(err.response.data.message)
+          : 'Tente novamente.',
         variant: 'destructive',
       });
     }
@@ -302,7 +323,8 @@ export default function Events() {
         time: newEvent.time,
         location: newEvent.location,
         eventType: newEvent.eventType,
-        maxAttendees: newEvent.maxAttendees,
+        maxAttendees: Number(newEvent.maxAttendees) || 50,
+        perfisPermitidos: newEvent.perfisPermitidos,
         isPrivate: newEvent.isPrivate,
         image: newEvent.image || undefined,
         notificationSettings: {
@@ -354,6 +376,7 @@ export default function Events() {
       maxAttendees: 50,
       isPrivate: false,
       image: '',
+      perfisPermitidos: [],
     });
     setNotificationSettings({
       enabled: true,
@@ -438,7 +461,7 @@ export default function Events() {
               Criar Evento
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6">
+          <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto p-4 sm:p-6 max-sm:left-0 max-sm:top-0 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0 max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))]">
             <DialogHeader>
               <DialogTitle>
                 {step === 1 && 'Criar Novo Evento'}
@@ -488,7 +511,9 @@ export default function Events() {
                   <Input
                     value={newEvent.title}
                     onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                    placeholder="Nome do evento"
+                    placeholder="Ex.: Festa dos casais no sábado"
+                    className="h-12 text-base sm:h-10 sm:text-sm"
+                    enterKeyHint="next"
                   />
                 </div>
 
@@ -499,16 +524,19 @@ export default function Events() {
                     onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
                     placeholder="Descreva o evento e o que as pessoas podem esperar..."
                     rows={3}
+                    className="text-base sm:text-sm"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-2">
                     <Label>Data *</Label>
                     <Input
                       type="date"
                       value={newEvent.date}
+                      min={new Date().toISOString().slice(0, 10)}
                       onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                      className="h-12 text-base sm:h-10 sm:text-sm"
                     />
                   </div>
                   <div className="space-y-2">
@@ -517,6 +545,7 @@ export default function Events() {
                       type="time"
                       value={newEvent.time}
                       onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                      className="h-12 text-base sm:h-10 sm:text-sm"
                     />
                   </div>
                 </div>
@@ -530,37 +559,107 @@ export default function Events() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Máximo de participantes</Label>
+                <div className="space-y-2">
+                  <Label>Quem pode participar?</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Só esses perfis veem o evento e conseguem confirmar presença. Sem nada marcado, fica aberto para todos.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewEvent({ ...newEvent, perfisPermitidos: [] })}
+                      className={`min-h-[44px] rounded-full border px-4 text-sm transition-all ${
+                        newEvent.perfisPermitidos.length === 0 ? 'border-primary bg-primary/15 font-medium text-foreground' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      🌍 Todos
+                    </button>
+                    {GRUPOS_DE_PERFIL.map((g) => {
+                      const marcado = newEvent.perfisPermitidos.includes(g.value);
+                      return (
+                        <button
+                          key={g.value}
+                          type="button"
+                          aria-pressed={marcado}
+                          onClick={() => setNewEvent({
+                            ...newEvent,
+                            perfisPermitidos: marcado
+                              ? newEvent.perfisPermitidos.filter((v) => v !== g.value)
+                              : [...newEvent.perfisPermitidos, g.value],
+                          })}
+                          className={`min-h-[44px] rounded-full border px-4 text-sm transition-all ${
+                            marcado ? 'border-primary bg-primary/15 font-medium text-foreground' : 'border-border text-muted-foreground'
+                          }`}
+                        >
+                          {marcado ? '✓ ' : ''}{g.icon} {g.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Limite de participantes</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 w-12 shrink-0 text-xl"
+                      aria-label="Diminuir"
+                      onClick={() => setNewEvent({ ...newEvent, maxAttendees: Math.max(2, (Number(newEvent.maxAttendees) || 50) - 1) })}
+                    >
+                      −
+                    </Button>
                     <Input
                       type="number"
+                      inputMode="numeric"
                       value={newEvent.maxAttendees}
-                      onChange={(e) => setNewEvent({ ...newEvent, maxAttendees: parseInt(e.target.value) || 50 })}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setNewEvent({ ...newEvent, maxAttendees: v === '' ? '' : Math.min(10000, Math.max(0, parseInt(v, 10) || 0)) });
+                      }}
+                      onBlur={() => {
+                        if (!newEvent.maxAttendees || Number(newEvent.maxAttendees) < 2) setNewEvent({ ...newEvent, maxAttendees: 2 });
+                      }}
                       min={2}
-                      max={1000}
+                      max={10000}
+                      className="h-12 text-center text-base"
                     />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-12 w-12 shrink-0 text-xl"
+                      aria-label="Aumentar"
+                      onClick={() => setNewEvent({ ...newEvent, maxAttendees: Math.min(10000, (Number(newEvent.maxAttendees) || 50) + 1) })}
+                    >
+                      +
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label>Visibilidade</Label>
-                    <div className="flex items-center gap-2 h-10">
-                      <Switch 
-                        checked={newEvent.isPrivate}
-                        onCheckedChange={(checked) => setNewEvent({ ...newEvent, isPrivate: checked })}
-                      />
-                      <span className="text-sm">
-                        {newEvent.isPrivate ? (
-                          <span className="flex items-center gap-1">
-                            <Lock className="w-4 h-4" /> Privado
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1">
-                            <Globe className="w-4 h-4" /> Público
-                          </span>
-                        )}
-                      </span>
-                    </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[4, 10, 20, 50, 100].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setNewEvent({ ...newEvent, maxAttendees: n })}
+                        className={`min-h-[36px] rounded-full border px-3 text-xs ${
+                          Number(newEvent.maxAttendees) === n ? 'border-primary bg-primary/15 text-foreground' : 'border-border text-muted-foreground'
+                        }`}
+                      >
+                        {n} pessoas
+                      </button>
+                    ))}
                   </div>
+                  <p className="text-xs text-muted-foreground">Quando lotar, ninguém mais consegue confirmar presença.</p>
+                </div>
+
+                <div className="flex min-h-[48px] items-center justify-between gap-3 rounded-lg border border-border px-3">
+                  <span className="flex items-center gap-2 text-sm">
+                    {newEvent.isPrivate ? <><Lock className="w-4 h-4" /> Privado</> : <><Globe className="w-4 h-4" /> Público</>}
+                  </span>
+                  <Switch
+                    checked={newEvent.isPrivate}
+                    onCheckedChange={(checked) => setNewEvent({ ...newEvent, isPrivate: checked })}
+                  />
                 </div>
 
                 <div className="space-y-2">
@@ -620,10 +719,12 @@ export default function Events() {
                   />
                 </div>
 
-                <Button onClick={handleNextStep} className="w-full">
-                  Próximo: Configurar Notificações
-                  <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
+                <div className="sticky bottom-0 -mx-4 bg-background/95 px-4 pb-1 pt-2 backdrop-blur sm:static sm:mx-0 sm:bg-transparent sm:p-0">
+                  <Button onClick={handleNextStep} className="h-12 w-full sm:h-10">
+                    Próximo: Configurar Notificações
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -833,7 +934,11 @@ export default function Events() {
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Users className="w-4 h-4" />
-                      <span>Máx. {newEvent.maxAttendees} pessoas</span>
+                      <span>Até {Number(newEvent.maxAttendees) || 50} pessoas</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <span>👥</span>
+                      <span>{newEvent.perfisPermitidos.length ? `Só para: ${nomesDosPerfis(newEvent.perfisPermitidos)}` : 'Aberto para todos os perfis'}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {newEvent.isPrivate ? (
@@ -1002,8 +1107,14 @@ export default function Events() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Users className="w-4 h-4" />
-                  <span>{event.attendees}/{event.maxAttendees} confirmados</span>
+                  <span>{event.attendees}/{event.maxAttendees} confirmados{event.lotado ? ' · lotado' : ''}</span>
                 </div>
+                {event.perfisPermitidos && event.perfisPermitidos.length > 0 ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="w-4 text-center">👥</span>
+                    <span>Só para: {nomesDosPerfis(event.perfisPermitidos)}</span>
+                  </div>
+                ) : null}
               </div>
 
               {event.encerrado ? (
@@ -1013,13 +1124,14 @@ export default function Events() {
               ) : (
                 <Button
                   onClick={() => void handleToggleAttendance(event.id)}
+                  disabled={!event.isGoing && event.lotado}
                   className={event.isGoing
                     ? "w-full"
                     : "w-full bg-gradient-primary hover:opacity-90"
                   }
                   variant={event.isGoing ? "outline" : "default"}
                 >
-                  {event.isGoing ? 'Cancelar Presença' : 'Confirmar Presença'}
+                  {event.isGoing ? 'Cancelar Presença' : event.lotado ? 'Evento lotado' : 'Confirmar Presença'}
                 </Button>
               )}
               {event.isGoing && event.groupId && (

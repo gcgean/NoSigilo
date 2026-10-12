@@ -3931,4 +3931,41 @@ describe('nosigilo backend', () => {
     expect(Number(u.lon)).toBe(-38.53);
     expect(u.location_source).toBe('gps');
   });
+
+  it('evento: só os perfis escolhidos veem e confirmam; limite de participantes vale', async () => {
+    const reg = async (n: string, gender: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Ev ${n}`, email: `ev-perfil-${n}@example.com`, password: 'senha123', gender });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const dono = await reg('dono', 'Homem');
+    const casal1 = await reg('casal1', 'Casal (Ele/Ela)');
+    const casal2 = await reg('casal2', 'Casal (Ela/Ela)');
+    const mulher = await reg('mulher', 'Mulher');
+    const homem = await reg('homem', 'Homem');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    const ev = await request(ctx.app).post('/api/events').set(auth(dono.token))
+      .send({ title: 'Só casais e mulheres', location: 'Fortaleza', maxAttendees: 2, perfisPermitidos: ['casal', 'mulher', 'inventado'] }).expect(200);
+    const eventId = String(ev.body.id);
+    const ids = async (t: string) => ((await request(ctx.app).get('/api/events').set(auth(t)).expect(200)).body as any[]).map((e) => String(e.id));
+
+    // Homem não vê e não consegue confirmar; casal e mulher veem; o criador vê.
+    expect(await ids(homem.token)).not.toContain(eventId);
+    expect(await ids(casal1.token)).toContain(eventId);
+    expect(await ids(mulher.token)).toContain(eventId);
+    expect(await ids(dono.token)).toContain(eventId);
+    const negado = await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(homem.token)).expect(403);
+    expect(negado.body.error).toBe('perfil_nao_permitido');
+
+    // Limite 2: o terceiro não entra, e a lista avisa que lotou.
+    await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(casal1.token)).expect(200);
+    await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(casal2.token)).expect(200);
+    const lotado = await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(mulher.token)).expect(400);
+    expect(lotado.body.error).toBe('evento_lotado');
+    const doEvento = ((await request(ctx.app).get('/api/events').set(auth(mulher.token)).expect(200)).body as any[]).find((e) => String(e.id) === eventId);
+    expect(doEvento).toMatchObject({ lotado: true, perfisPermitidos: ['casal', 'mulher'], maxAttendees: 2 });
+    // Quem já confirmou pode confirmar de novo sem erro.
+    await request(ctx.app).post(`/api/events/${eventId}/attend`).set(auth(casal1.token)).expect(200);
+  });
 });
