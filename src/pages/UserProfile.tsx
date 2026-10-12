@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink, MessageSquareQuote } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -779,11 +780,10 @@ export default function UserProfile() {
     return profile.lookingFor.filter((x: unknown) => typeof x === 'string' && x.trim()).join(' • ');
   }, [profile?.lookingFor]);
   const cityLine = useMemo(() => [profile?.city, profile?.state].filter(Boolean).join(', ') || '—', [profile?.city, profile?.state]);
-  const distanceLabel = useMemo(() => {
-    const distance = Number(profile?.distanceKm);
-    if (!Number.isFinite(distance) || distance < 0) return '';
-    return `${distance.toLocaleString('pt-BR', { minimumFractionDigits: distance % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km de você`;
-  }, [profile?.distanceKm]);
+  const distanceLabel = useMemo(
+    () => textoDistancia(profile?.distanceKm, { cidade: profile?.city, deVoce: true }) ?? '',
+    [profile?.distanceKm, profile?.city]
+  );
   const avatarUrl = useMemo(() => resolveMediaUrl(profile?.avatar || ''), [profile?.avatar]);
 
   const isNewProfile = useMemo(() => {

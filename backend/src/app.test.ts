@@ -542,8 +542,9 @@ describe('nosigilo backend', () => {
     expect(gpsViewer.city).toBe('Caucaia');
     expect(gpsViewer.state).toBe('CE');
     expect(gpsViewer.location_source).toBe('gps');
-    expect(Number(gpsViewer.lat)).toBeCloseTo(-3.7361, 4);
-    expect(Number(gpsViewer.lon)).toBeCloseTo(-38.6531, 4);
+    // GPS guardado arredondado (~1 km, LGPD).
+    expect(Number(gpsViewer.lat)).toBe(-3.74);
+    expect(Number(gpsViewer.lon)).toBe(-38.65);
   });
 
   it('onboarding suggestions returns matching users', async () => {
@@ -3920,5 +3921,14 @@ describe('nosigilo backend', () => {
     // App antigo não manda a versão, mas só envia com a caixinha marcada.
     const b = (await ctx.db.queryOne('SELECT termos_versao FROM users WHERE id = ?', [String(antigo.user.id)])) as any;
     expect(b.termos_versao).toBe('anterior');
+  });
+
+  it('LGPD: GPS é guardado arredondado (~1 km), não o ponto exato', async () => {
+    const ivo = await registerInvitedUser(ctx, sponsorToken, { name: 'Ivo Gps', email: 'ivo-gps@example.com', password: 'senha123', gender: 'Homem' });
+    await request(ctx.app).put('/api/location').set({ Authorization: `Bearer ${ivo.token}` }).send({ lat: -3.7318627, lng: -38.5266704 }).expect(200);
+    const u = (await ctx.db.queryOne('SELECT lat, lon, location_source FROM users WHERE id = ?', [String(ivo.user.id)])) as any;
+    expect(Number(u.lat)).toBe(-3.73);
+    expect(Number(u.lon)).toBe(-38.53);
+    expect(u.location_source).toBe('gps');
   });
 });

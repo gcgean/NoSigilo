@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { useNavigate } from 'react-router-dom';
 import { radarService, type ActiveNowProfile } from '@/services/api';
 import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
@@ -56,7 +57,7 @@ export default function ActiveNowBar({ maxDistanceKm, cityOnly }: { maxDistanceK
             type="button"
             onClick={() => navigate(`/users/${p.id}`)}
             className="flex w-16 shrink-0 flex-col items-center gap-1"
-            title={`${p.name}${p.distanceKm != null ? ` · ${p.distanceKm < 1 ? '< 1' : p.distanceKm} km` : ''}`}
+            title={`${p.name}${p.distanceKm != null ? ` · ${textoDistancia(p.distanceKm)}` : ''}`}
           >
             <div className="relative">
               <div className={cn(
@@ -79,7 +80,7 @@ export default function ActiveNowBar({ maxDistanceKm, cityOnly }: { maxDistanceK
             </div>
             <span className="w-full truncate text-center text-[11px] font-medium leading-tight text-foreground">{p.name}</span>
             <span className="w-full truncate text-center text-[9px] leading-none text-muted-foreground">
-              {p.distanceKm != null ? `${p.distanceKm < 1 ? '< 1' : p.distanceKm} km` : REASON_LABEL[p.reason]}
+              {p.distanceKm != null ? textoDistancia(p.distanceKm) : REASON_LABEL[p.reason]}
             </span>
           </button>
         ))}

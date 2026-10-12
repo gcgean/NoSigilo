@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import {
   MapPin,
   Send,
@@ -816,7 +817,7 @@ export default function Radar() {
                         <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                           <span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" /> ativo ha {formatElapsed(item.createdAt)}</span>
                           <span>{formatRemaining(item.expiresAt)}</span>
-                          {typeof item.distanceKm === 'number' ? <span>{item.distanceKm} km de você</span> : null}
+                          {typeof item.distanceKm === 'number' ? <span>{textoDistancia(item.distanceKm, { cidade: item.city, deVoce: true })}</span> : null}
                         </div>
                       </div>
                     </div>

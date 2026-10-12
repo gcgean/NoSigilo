@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { useNavigate } from 'react-router-dom';
 import { Radio, Calendar, MapPin } from 'lucide-react';
 import { nearbyActivityService, type NearbyRadar, type NearbyEvent } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 
 function formatDistance(d: number | null): string | null {
-  if (d === null || !Number.isFinite(d) || d < 0) return null;
-  if (d < 1) return '< 1 km';
-  return `${d.toLocaleString('pt-BR', { maximumFractionDigits: d < 10 ? 1 : 0 })} km`;
+  return textoDistancia(d);
 }
 
 function formatEventDate(date: string): string {

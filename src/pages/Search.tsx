@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, ChevronDown, Check, Loader2 } from 'lucide-react';
 import ActiveNowBar from '@/components/ActiveNowBar';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,11 +51,8 @@ export const INTENTION_OPTIONS: Array<{ value: string; emoji: string; label: str
 const PAGE_SIZE = 24;
 
 function formatDistanceKm(distanceKm: unknown) {
-  if (typeof distanceKm !== 'number' || !Number.isFinite(distanceKm) || distanceKm < 0) return null;
-  return `${distanceKm.toLocaleString('pt-BR', {
-    minimumFractionDigits: distanceKm < 10 && !Number.isInteger(distanceKm) ? 1 : 0,
-    maximumFractionDigits: distanceKm < 10 ? 1 : 0,
-  })} km`;
+  // 0 = mesma cidade sem distância real: o selo do canto some e a linha de baixo diz a cidade.
+  return typeof distanceKm === 'number' && distanceKm > 0 ? textoDistancia(distanceKm) : null;
 }
 
 export default function SearchPage() {
@@ -609,8 +607,8 @@ export default function SearchPage() {
           <h3 className="truncate text-[0.95rem] font-semibold leading-tight text-white sm:text-base">
             {profile.name}{idades ? `, ${idades}` : ''}
           </h3>
-          {distanceLabel ? (
-            <div className="truncate text-xs text-white/80">{distanceLabel} de você</div>
+          {textoDistancia(profile.distanceKm, { cidade: profile.city, deVoce: true }) ? (
+            <div className="truncate text-xs text-white/80">{textoDistancia(profile.distanceKm, { cidade: profile.city, deVoce: true })}</div>
           ) : null}
           {formatProfileIdentityLine(profile) ? (
             <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(profile)}</div>

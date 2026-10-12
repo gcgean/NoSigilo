@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { Heart, X, Star, MapPin, Sparkles, Filter, MoreHorizontal, Image, Video, User, MessageCircle, Bell, BellOff, CheckCircle2, ChevronRight, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -674,9 +675,7 @@ export default function Match() {
                       <span className="truncate">{cityLine || '—'}</span>
                       {currentProfile.distanceKm != null && (
                         <span className="shrink-0 rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
-                          {currentProfile.distanceKm < 1
-                            ? '< 1 km'
-                            : `${currentProfile.distanceKm.toLocaleString('pt-BR', { maximumFractionDigits: currentProfile.distanceKm < 10 ? 1 : 0 })} km`}
+                          {textoDistancia(currentProfile.distanceKm, { cidade: currentProfile.city })}
                         </span>
                       )}
                     </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -2647,7 +2648,7 @@ export default function Feed() {
                           <span className="truncate text-sm font-semibold text-foreground">{item.sender.name}</span>
                           {typeof item.distanceKm === 'number' ? (
                             <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[11px] font-medium text-rose-600">
-                              {item.distanceKm} km
+                              {textoDistancia(item.distanceKm, { cidade: item.city })}
                             </Badge>
                           ) : null}
                         </div>
@@ -3377,7 +3378,7 @@ export default function Feed() {
                       const name = item.post.author.name?.split(' ')[0] || 'esse perfil';
                       const d = item.post.distanceKm;
                       if (nearbyRadius !== null && d !== null && d !== undefined) {
-                        return `📍 ${d} km — toque para chamar ${name} para um encontro`;
+                        return `📍 ${textoDistancia(d, { cidade: item.post.author.city })} — toque para chamar ${name} para um encontro`;
                       }
                       if (badge) return `${badge.emoji} Ver o perfil de ${name}`;
                       return `Ver o perfil de ${name}`;
@@ -3589,7 +3590,7 @@ export default function Feed() {
                           <span className="truncate text-xs font-semibold text-foreground">{item.sender.name}</span>
                           {typeof item.distanceKm === 'number' ? (
                             <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[11px] font-medium text-rose-600 px-1.5 py-0">
-                              {item.distanceKm} km
+                              {textoDistancia(item.distanceKm, { cidade: item.city })}
                             </Badge>
                           ) : null}
                         </div>

@@ -1316,7 +1316,7 @@ function normalizeRadarText(value: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+function haversineReal(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371;
   const dLat = toRad(b.lat - a.lat);
@@ -1327,9 +1327,72 @@ function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: num
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+// Perfil sem GPS fica marcado no centro da cidade do cadastro. Entre ele e alguém
+// da mesma cidade a distância calculada não é real (todos de Fortaleza davam
+// "0 km", ou "6 km" de quem tem GPS). Nesses casos a distância vira 0, e o app
+// mostra "Em Fortaleza" em vez de um número inventado.
+const centrosDeCidade: Array<{ lat: number; lon: number; chave: string }> = [];
+const chavesDeCentro = new Set<string>();
+const centroProximoCache = new Map<string, string | null>();
+const chaveDoPonto = (p: { lat: number; lon: number }) => `${Number(p.lat).toFixed(5)},${Number(p.lon).toFixed(5)}`;
+
+async function carregarCentrosDeCidade(db: DbHandle) {
+  try {
+    const rows = (await queryAll(db, 'SELECT lat, lon FROM cities WHERE lat IS NOT NULL AND lon IS NOT NULL', [])) as any[];
+    centrosDeCidade.length = 0;
+    chavesDeCentro.clear();
+    centroProximoCache.clear();
+    for (const r of rows) {
+      const ponto = { lat: Number(r.lat), lon: Number(r.lon) };
+      const chave = chaveDoPonto(ponto);
+      centrosDeCidade.push({ ...ponto, chave });
+      chavesDeCentro.add(chave);
+    }
+  } catch (err) {
+    console.error('[carregarCentrosDeCidade]', err);
+  }
+}
+
+// Centro de cidade mais perto de um ponto de GPS (guardado em cache por ponto).
+function centroMaisProximo(p: { lat: number; lon: number }): string | null {
+  const chave = chaveDoPonto(p);
+  if (chavesDeCentro.has(chave)) return chave;
+  if (centroProximoCache.has(chave)) return centroProximoCache.get(chave) ?? null;
+  let melhor: string | null = null;
+  let menor = Number.POSITIVE_INFINITY;
+  for (const c of centrosDeCidade) {
+    if (Math.abs(c.lat - p.lat) > 1 || Math.abs(c.lon - p.lon) > 1) continue;
+    const d = haversineReal(p, c);
+    if (d < menor) {
+      menor = d;
+      melhor = c.chave;
+    }
+  }
+  if (centroProximoCache.size > 50_000) centroProximoCache.clear();
+  centroProximoCache.set(chave, melhor);
+  return melhor;
+}
+
+function haversineKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }) {
+  const d = haversineReal(a, b);
+  if (d > 0 && d < 80 && chavesDeCentro.size > 0) {
+    const aCentro = chavesDeCentro.has(chaveDoPonto(a));
+    const bCentro = chavesDeCentro.has(chaveDoPonto(b));
+    if ((aCentro || bCentro) && centroMaisProximo(a) === centroMaisProximo(b)) return 0;
+  }
+  return d;
+}
+
 function roundDistanceKm(distanceKm: number) {
   if (!Number.isFinite(distanceKm) || distanceKm < 0) return null;
-  return Math.round(distanceKm * 10) / 10;
+  if (distanceKm === 0) return 0;
+  return Math.max(1, Math.round(distanceKm));
+}
+
+// LGPD (minimização): GPS guardado com 2 casas (~1 km). Basta para distância e
+// raio, e não revela o endereço de ninguém se o banco vazar.
+function arredondarCoordenada(valor: number) {
+  return Math.round(valor * 100) / 100;
 }
 
 function radarZoneLabelFromCoordinates(
@@ -15511,16 +15574,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const nearest = await nearestCity(db, parsed.data.lat, parsed.data.lng);
+    const latGuardada = arredondarCoordenada(parsed.data.lat);
+    const lonGuardada = arredondarCoordenada(parsed.data.lng);
     if (nearest) {
       await run(
         db,
         "UPDATE users SET lat = ?, lon = ?, location_source = 'gps', city = ?, state = ? WHERE id = ?",
-        [parsed.data.lat, parsed.data.lng, nearest.name, nearest.state, req.auth!.userId]
+        [latGuardada, lonGuardada, nearest.name, nearest.state, req.auth!.userId]
       );
     } else {
       await run(db, "UPDATE users SET lat = ?, lon = ?, location_source = 'gps' WHERE id = ?", [
-        parsed.data.lat,
-        parsed.data.lng,
+        latGuardada,
+        lonGuardada,
         req.auth!.userId,
       ]);
     }
@@ -21778,6 +21843,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   };
   void apagarGruposVencidos();
   setInterval(() => void apagarGruposVencidos(), 60 * 60 * 1000);
+  void carregarCentrosDeCidade(db);
   // LGPD: termina de apagar os dados de contas excluídas (25 por vez, a cada 10 min).
   setTimeout(() => void limparContasExcluidasPendentes(), 2 * 60 * 1000);
   setInterval(() => void limparContasExcluidasPendentes(), 10 * 60 * 1000);

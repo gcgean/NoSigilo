@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
+import { textoDistancia } from '@/utils/distancia';
 import { ArrowLeft, BellOff, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Users, Video, WifiOff, X, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -205,10 +206,8 @@ function isMutualMatchSystemMessage(message: Message) {
   return !message.mediaId && String(message.content || '').trim() === 'Vocês se curtiram mutuamente. Agora podem conversar por aqui.';
 }
 
-function formatDistanceLabel(distanceKm?: number | null) {
-  const value = Number(distanceKm);
-  if (!Number.isFinite(value) || value < 0) return '';
-  return `${value.toLocaleString('pt-BR', { minimumFractionDigits: value % 1 === 0 ? 0 : 1, maximumFractionDigits: 1 })} km de você`;
+function formatDistanceLabel(distanceKm?: number | null, cidade?: string | null) {
+  return textoDistancia(distanceKm, { cidade, deVoce: true }) ?? '';
 }
 
 export default function Chat() {
@@ -1654,9 +1653,9 @@ export default function Chat() {
                   )}>
                     {formatLastSeen(activeConversation?.user.lastSeenAt, activeConversation?.user.isOnline)}
                   </span>
-                ) : formatDistanceLabel(activeConversation?.user.distanceKm) ? (
+                ) : formatDistanceLabel(activeConversation?.user.distanceKm, (activeConversation?.user as any)?.city) ? (
                   <span className="block truncate text-[11px] leading-4 font-medium text-brand-pink">
-                    {formatDistanceLabel(activeConversation?.user.distanceKm)}
+                    {formatDistanceLabel(activeConversation?.user.distanceKm, (activeConversation?.user as any)?.city)}
                   </span>
                 ) : null}
                 {activeConversation?.isHighlighted && activeConversation.highlightNote ? (
