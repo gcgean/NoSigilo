@@ -6062,6 +6062,19 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     }
   });
 
+// Faixas usadas no "Minha região" para ordenar posts de outros estados por proximidade.
+const FAIXAS_DE_DISTANCIA_KM = [150, 300, 600, 1000, 1600];
+function faixaDeDistancia(km: number) {
+  if (!Number.isFinite(km)) return FAIXAS_DE_DISTANCIA_KM.length + 1;
+  const i = FAIXAS_DE_DISTANCIA_KM.findIndex((limite) => km <= limite);
+  return i === -1 ? FAIXAS_DE_DISTANCIA_KM.length : i;
+}
+function faixaDeIdade(createdAt: string) {
+  const horas = (Date.now() - new Date(createdAt).getTime()) / 3_600_000;
+  if (!Number.isFinite(horas)) return 3;
+  return horas <= 48 ? 0 : horas <= 24 * 7 ? 1 : horas <= 24 * 30 ? 2 : 3;
+}
+
 app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
@@ -6254,6 +6267,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             WHEN p.created_at >= '${isoHaDias(7)}' THEN 1
             WHEN p.created_at >= '${isoHaDias(30)}' THEN 2
             ELSE 3 END ASC,`;
+    // Fora do estado de quem vê: primeiro as cidades mais próximas, depois os
+    // estados vizinhos, e assim por diante. Só a idade do post decidia aqui, então
+    // um post de São Paulo de ontem passava na frente de um de Recife de 3 dias
+    // para quem é de Maceió. Faixas (não distância pura) para que, dentro de uma
+    // mesma vizinhança, o post novo continue vindo antes do antigo.
+    // Comparação em graus ao quadrado (sem sqrt, que o SQLite não tem); 1° ≈ 111 km.
+    const cosViewerLat = viewerLat !== null ? Math.cos((viewerLat * Math.PI) / 180) : 1;
+    const distanciaGrau2 = viewerLat !== null && viewerLon !== null
+      ? `(((u.lat - ${viewerLat}) * (u.lat - ${viewerLat})) + (((u.lon - ${viewerLon}) * ${cosViewerLat}) * ((u.lon - ${viewerLon}) * ${cosViewerLat})))`
+      : '';
+    const faixaForaDoEstadoOrder = cityOnly && viewerStateRaw && distanciaGrau2
+      ? `CASE
+            WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0
+            WHEN u.lat IS NULL OR u.lon IS NULL THEN ${FAIXAS_DE_DISTANCIA_KM.length + 1}
+            ${FAIXAS_DE_DISTANCIA_KM.map((km, i) => `WHEN ${distanciaGrau2} <= ${((km / 111) ** 2).toFixed(4)} THEN ${i}`).join(' ')}
+            ELSE ${FAIXAS_DE_DISTANCIA_KM.length} END ASC,`
+      : '';
     const feedOrder = cityOnly
       ? `ORDER BY
           CASE WHEN u.city IS NOT NULL
@@ -6263,6 +6293,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           ${viewerStateRaw
             ? `CASE WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0 ELSE 1 END ASC,`
             : ''}
+          ${faixaForaDoEstadoOrder}
           ${freshnessOrder}
           ${regionalDistanceOrder}
           p.created_at DESC,
@@ -6672,6 +6703,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           const bDistance = distanceKmByPostId.get(bId);
           const safeADistance = typeof aDistance === 'number' ? aDistance : Number.POSITIVE_INFINITY;
           const safeBDistance = typeof bDistance === 'number' ? bDistance : Number.POSITIVE_INFINITY;
+          // Outros estados: mesma regra do SQL — faixa de distância, depois idade do post.
+          if (aRegionRank === 2) {
+            const faixaA = faixaDeDistancia(safeADistance);
+            const faixaB = faixaDeDistancia(safeBDistance);
+            if (faixaA !== faixaB) return faixaA - faixaB;
+            const idadeA = faixaDeIdade(String(a.created_at || ''));
+            const idadeB = faixaDeIdade(String(b.created_at || ''));
+            if (idadeA !== idadeB) return idadeA - idadeB;
+          }
           if (safeADistance !== safeBDistance) return safeADistance - safeBDistance;
           const createdDiff = new Date(String(b.created_at || '')).getTime() - new Date(String(a.created_at || '')).getTime();
           return createdDiff || aId.localeCompare(bId);
