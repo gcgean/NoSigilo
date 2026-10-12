@@ -1,4 +1,6 @@
+import type React from 'react';
 import { leOrigem } from '@/utils/origemCadastro';
+import { VERSAO_POLITICA } from '@/pages/Privacy';
 
 interface GoogleSignInButtonProps {
   label?: string;
@@ -7,6 +9,8 @@ interface GoogleSignInButtonProps {
   city?: string;
   state?: string;
   className?: string;
+  // Texto de aceite (cadastro). Com ele, o clique também registra a versão aceita.
+  aceite?: React.ReactNode;
 }
 
 export default function GoogleSignInButton({
@@ -16,6 +20,7 @@ export default function GoogleSignInButton({
   city,
   state,
   className = '',
+  aceite,
 }: GoogleSignInButtonProps) {
   const handleClick = () => {
     const params = new URLSearchParams();
@@ -29,11 +34,12 @@ export default function GoogleSignInButton({
     // pelo caminho mais rapido da tela contava como "cadastro direto".
     const origem = leOrigem();
     if (origem) params.set('origem', origem);
+    if (aceite) params.set('termos', VERSAO_POLITICA);
     const query = params.toString();
     window.location.href = `/api/auth/google${query ? `?${query}` : ''}`;
   };
 
-  return (
+  const botao = (
     <button
       type="button"
       onClick={handleClick}
@@ -60,5 +66,12 @@ export default function GoogleSignInButton({
       </svg>
       {label}
     </button>
+  );
+  if (!aceite) return botao;
+  return (
+    <div className="space-y-2">
+      {botao}
+      {aceite}
+    </div>
   );
 }

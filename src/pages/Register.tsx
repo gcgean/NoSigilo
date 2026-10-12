@@ -10,6 +10,7 @@ import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { leOrigem, limpaOrigem } from '@/utils/origemCadastro';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
+import { VERSAO_POLITICA } from '@/pages/Privacy';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
 import { onboardingService, authService, appService, marcarPassoCadastro } from '@/services/api';
@@ -547,6 +548,8 @@ export default function Register() {
       city: formData.city || undefined,
       state: formData.state || undefined,
       lookingFor: lookingForDoEspiar(respostasEspiar.interesse, formData.gender),
+      // Registro do aceite (LGPD: quem trata os dados precisa provar o consentimento).
+      termosVersao: VERSAO_POLITICA,
     };
 
     const attemptRegister = async (attempt: number): Promise<Awaited<ReturnType<typeof register>>> => {
@@ -716,6 +719,7 @@ export default function Register() {
                       name={formData.name}
                       city={formData.city}
                       state={formData.state}
+                      aceite={<AceiteGoogle abrir={setLegalDoc} />}
                     />
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
@@ -866,6 +870,7 @@ export default function Register() {
                   name={formData.name}
                   city={formData.city}
                   state={formData.state}
+                  aceite={<AceiteGoogle abrir={setLegalDoc} />}
                 />
 
                 <div className="flex items-center gap-3">
@@ -1080,7 +1085,7 @@ export default function Register() {
                     >
                       Diretrizes da Comunidade
                     </button>
-                    .
+                    . <strong className="font-medium text-foreground">Autorizo o uso das informações do meu perfil, como preferências e orientação, para encontrar pessoas compatíveis.</strong>
                   </span>
                 </label>
 
@@ -1211,5 +1216,22 @@ export default function Register() {
 
       <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />
     </div>
+  );
+}
+
+// Quem cria a conta pelo Google pula a caixinha do último passo: o aceite vem
+// aqui, junto do botão, com o mesmo texto (e o destaque dos dados sensíveis).
+function AceiteGoogle({ abrir }: { abrir: (doc: LegalDoc) => void }) {
+  const link = (doc: LegalDoc, texto: string) => (
+    <button type="button" className="text-primary hover:underline" onClick={() => abrir(doc)}>
+      {texto}
+    </button>
+  );
+  return (
+    <p className="text-center text-xs leading-relaxed text-muted-foreground">
+      Ao continuar com o Google, você confirma que tem 18 anos ou mais, aceita os {link('terms', 'Termos de Uso')} e a{' '}
+      {link('privacy', 'Política de Privacidade')}{' '}
+      <span className="font-medium text-foreground">e autoriza o uso das informações do seu perfil, como preferências e orientação, para encontrar pessoas compatíveis.</span>
+    </p>
   );
 }

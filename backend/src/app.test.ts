@@ -3910,4 +3910,15 @@ describe('nosigilo backend', () => {
     const v = (await ctx.db.queryOne('SELECT status, media_id FROM verificacoes_perfil WHERE user_id = ?', [String(eva.user.id)])) as any;
     expect(v).toMatchObject({ status: 'aprovada', media_id: null });
   });
+
+  it('LGPD: cadastro grava quando e qual versão da política foi aceita', async () => {
+    const nova = await registerInvitedUser(ctx, sponsorToken, { name: 'Gabi Aceita', email: 'gabi-aceita@example.com', password: 'senha123', gender: 'Mulher', termosVersao: '2026-10-12' } as any);
+    const antigo = await registerInvitedUser(ctx, sponsorToken, { name: 'Hugo Antigo', email: 'hugo-antigo@example.com', password: 'senha123', gender: 'Homem' });
+    const a = (await ctx.db.queryOne('SELECT termos_aceitos_em, termos_versao FROM users WHERE id = ?', [String(nova.user.id)])) as any;
+    expect(a.termos_versao).toBe('2026-10-12');
+    expect(a.termos_aceitos_em).toBeTruthy();
+    // App antigo não manda a versão, mas só envia com a caixinha marcada.
+    const b = (await ctx.db.queryOne('SELECT termos_versao FROM users WHERE id = ?', [String(antigo.user.id)])) as any;
+    expect(b.termos_versao).toBe('anterior');
+  });
 });

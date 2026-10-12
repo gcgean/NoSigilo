@@ -3733,6 +3733,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       name: z.string().min(1),
       inviteToken: z.string().optional(),
       signupSource: z.string().max(120).optional(),
+      // Versão da Política aceita na caixinha do cadastro (LGPD: prova do consentimento).
+      termosVersao: z.string().max(20).optional(),
       birthDate: z.string().optional(),
       gender: z.string().optional(),
       city: z.string().optional(),
@@ -3869,6 +3871,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         sanitizeSignupSource(parsed.data.signupSource),
       ]
     );
+    // O cadastro por e-mail só envia com a caixinha marcada; app antigo não manda a versão.
+    await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, parsed.data.termosVersao || 'anterior', id]);
     if (invite) {
       // Compute validation deadline (REFERRAL_VALIDATION_DAYS days from signup)
       const validationDeadline = addDaysIso(createdAt, REFERRAL_VALIDATION_DAYS);
@@ -5721,6 +5725,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // o unico canal que sobrevive ao desvio pelo Google: a conta e criada no
     // callback, antes de o navegador voltar para o app.
     if (typeof req.query.origem === 'string' && req.query.origem) statePayload.origem = req.query.origem;
+    // Aceite dos termos mostrado junto do botão do Google no cadastro.
+    if (typeof req.query.termos === 'string' && req.query.termos) statePayload.termos = req.query.termos.slice(0, 20);
     const state = jwt.sign(statePayload, env.JWT_SECRET, { expiresIn: '10m' });
     const params = new URLSearchParams({
       client_id: clientId,
@@ -5878,6 +5884,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
             registrationIpHash, googleId, signupSource,
           ]
         );
+        if (stateClaims.termos) {
+          await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, String(stateClaims.termos), id]);
+        }
         await persist();
         userRow = (await queryOne(db, 'SELECT * FROM users WHERE id = ? LIMIT 1', [id])) as any;
         // Isca imediata da vitrine (homem) — mesmo comportamento do cadastro por e-mail.
