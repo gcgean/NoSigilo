@@ -7664,11 +7664,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const maxDistanceKm = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
     const cityOnly = req.query.cityOnly === 'true' || req.query.cityOnly === '1';
 
-    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, city FROM users WHERE id = ?', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, city, state FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
     const myLat = me?.lat != null ? Number(me.lat) : null;
     const myLon = me?.lon != null ? Number(me.lon) : null;
     const myCity = normalizeRadarText(me?.city || '');
+    const myState = String(me?.state || '').trim().toUpperCase();
 
     const rows = (await queryAll(
       db,
@@ -7687,7 +7688,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        WHERE u.id != ? AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
        GROUP BY u.id
        ORDER BY last_act DESC
-       LIMIT 80`,
+       LIMIT 400`,
       [twoHoursAgo, twoHoursAgo, twoHoursAgo, userId]
     )) as any[];
 
@@ -7718,12 +7719,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         lastActiveAt: r.last_act ? String(r.last_act) : null,
         reason: Number(r.posted) ? 'posted' : Number(r.radar) ? 'radar' : 'online',
       });
-      if (out.length >= 24) break;
     }
 
-    // Online primeiro, depois mais recentes
-    out.sort((a, b) => Number(b.isOnline) - Number(a.isOnline));
-    res.json({ profiles: out });
+    // Mesma regra do feed "Minha região": sua cidade, depois seu estado, depois
+    // os estados mais próximos (faixas de distância). Antes valiam só os 80 mais
+    // recentes do país e a fila mostrava gente a 2.000 km. Dentro de cada grupo,
+    // online primeiro e depois o mais recente (a consulta já vem por recência).
+    const grupoDaRegiao = (p: any) => {
+      const mesmoEstado = !!myState && String(p.state || '').trim().toUpperCase() === myState;
+      if (mesmoEstado && myCity && normalizeRadarText(p.city || '') === myCity) return 0;
+      if (mesmoEstado) return 1;
+      return 2 + faixaDeDistancia(typeof p.distanceKm === 'number' ? p.distanceKm : Number.POSITIVE_INFINITY);
+    };
+    const ordenados = out
+      .map((p, i) => ({ p, i, g: grupoDaRegiao(p) }))
+      .sort((a, b) => a.g - b.g || Number(b.p.isOnline) - Number(a.p.isOnline) || a.i - b.i)
+      .slice(0, 24)
+      .map((x) => x.p);
+    res.json({ profiles: ordenados });
   });
 
   // GET /api/feed/top-day — posts com mais curtidas RECEBIDAS nas últimas 24h

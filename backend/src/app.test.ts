@@ -4013,4 +4013,25 @@ describe('nosigilo backend', () => {
     expect(String(ultima.sender_id)).toBe(String(oficial.id));
     expect(ultima.content).toContain('não mando mais dicas');
   });
+
+  it('ativos agora: sua cidade, depois seu estado, depois o resto (mesmo se o de longe for mais recente)', async () => {
+    const reg = async (n: string, city: string, state: string) =>
+      registerInvitedUser(ctx, sponsorToken, { name: `Ativo ${n}`, email: `ativo-reg-${n}@example.com`, password: 'senha123', gender: 'Casal (Ele/Ela)', city, state });
+    const eu = await reg('eu', 'Fortaleza', 'CE');
+    const longe = await reg('longe', 'São Paulo', 'SP');
+    const estado = await reg('estado', 'Sobral', 'CE');
+    const cidade = await reg('cidade', 'Fortaleza', 'CE');
+    const agora = Date.now();
+    // O de São Paulo é o mais recente de todos.
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [new Date(agora - 60_000).toISOString(), String(longe.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [new Date(agora - 30 * 60_000).toISOString(), String(estado.user.id)]);
+    await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', [new Date(agora - 50 * 60_000).toISOString(), String(cidade.user.id)]);
+    await ctx.db.persist();
+    const r = await request(ctx.app).get('/api/feed/active-now').set({ Authorization: `Bearer ${eu.token}` }).expect(200);
+    const ids = (r.body.profiles as any[]).map((p) => String(p.id));
+    const pos = (id: unknown) => ids.indexOf(String(id));
+    expect(pos(cidade.user.id)).toBeGreaterThanOrEqual(0);
+    expect(pos(cidade.user.id)).toBeLessThan(pos(estado.user.id));
+    expect(pos(estado.user.id)).toBeLessThan(pos(longe.user.id));
+  });
 });
