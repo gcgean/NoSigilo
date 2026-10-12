@@ -73,7 +73,7 @@ Segurança
 Conta
 - Configurações: dados do perfil, senha, notificações (inclusive ligar avisos pelo Telegram).
 - Desativar perfil (Configurações, fim da página): deixa o perfil oculto, guarda fotos e conversas; para voltar, basta entrar de novo. A assinatura no cartão continua; quem não quer mais ser cobrado precisa cancelar na tela de assinatura.
-- Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga nome, e-mail, foto e bio, não tem volta e cancela a assinatura.
+- Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga de vez o perfil, fotos e vídeos, posts, stories, mensagens enviadas, comentários, curtidas e localização (ficam só registros de pagamento exigidos por lei), não tem volta e cancela a assinatura. Antes, a pessoa pode baixar uma cópia em Configurações > Segurança > "Baixar meus dados".
 - Verificação em duas etapas (opcional): em Configurações › Segurança. Ligada, entrar com senha num aparelho novo pede também um código de 6 números enviado ao e-mail (vale 10 minutos; "Reenviar código" na própria tela). Marcando "Confiar neste aparelho", o código não é pedido de novo nele. Os aparelhos de confiança aparecem na mesma tela e podem ser esquecidos. Quem entra pelo Google não usa esse código. Código não chegou: conferir spam e tocar em "Reenviar código".
 - Esqueceu a senha: na tela de login, "Esqueceu a senha?", recebe um código por e-mail que vale 15 minutos.
 - Trocar o nome do perfil: Configurações › Perfil › "Mudar nome". Vale na hora, sem aprovação; só não aceita nome que outra pessoa já usa ou nome proibido.

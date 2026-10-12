@@ -41,7 +41,8 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
     if (!foto) return;
     setOcupado(true);
     try {
-      const { id } = await profileService.uploadMedia(foto.file, { source: 'chat' });
+      // Privada: só o admin vê, e ela é apagada depois da análise.
+      const { id } = await profileService.uploadMedia(foto.file, { source: 'chat', isPrivate: true });
       await verificacaoService.enviar(id);
       toast({ title: 'Foto enviada ✅', description: 'A equipe vai analisar e você recebe a resposta nas notificações.' });
       setFoto(null);

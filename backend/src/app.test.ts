@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import path from 'node:path';
-import { unlinkSync, existsSync, rmSync } from 'node:fs';
+import { unlinkSync, existsSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
@@ -3814,5 +3814,100 @@ describe('nosigilo backend', () => {
     expect(ok.body.pixKey).toBe('nova@pix.com');
     const row = (await ctx.db.queryOne('SELECT pix_key FROM promoters WHERE user_id = ?', [String(p.user.id)])) as any;
     expect(row.pix_key).toBe('nova@pix.com');
+  });
+
+  it('LGPD: excluir conta apaga fotos (arquivo e registro), posts, mensagens e localização; pagamentos ficam', async () => {
+    const bia = await registerInvitedUser(ctx, sponsorToken, { name: 'Bia Sai', email: 'bia-sai@example.com', password: 'senha123', gender: 'Mulher' });
+    const leo = await registerInvitedUser(ctx, sponsorToken, { name: 'Leo Fica', email: 'leo-fica@example.com', password: 'senha123', gender: 'Homem' });
+    const biaId = String(bia.user.id);
+    const leoId = String(leo.user.id);
+    const agora = new Date().toISOString();
+
+    const foto = `lgpd-foto-${Date.now()}`;
+    const arquivo = path.join(process.cwd(), 'storage', 'public', `${foto}.webp`);
+    mkdirSync(path.dirname(arquivo), { recursive: true });
+    writeFileSync(arquivo, 'x');
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, created_at) VALUES (?, ?, ?, 'image/webp', 0, 1, ?)", [foto, biaId, `${foto}.webp`, agora]);
+    await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)', [`post-${foto}`, biaId, 'meu post', JSON.stringify([foto]), agora]);
+    await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)', [`post-leo-${foto}`, leoId, 'post do leo', '[]', agora]);
+    await run(ctx.db, "INSERT INTO comments (id, user_id, target_type, target_id, content, created_at) VALUES (?, ?, 'post', ?, 'oi leo', ?)", [`com-${foto}`, biaId, `post-leo-${foto}`, agora]);
+    await run(ctx.db, "INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, 'post', ?, ?)", [`like-${foto}`, biaId, `post-leo-${foto}`, agora]);
+    const cid = `conv-${foto}`;
+    await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [cid, biaId, leoId, agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [`msg-bia-${foto}`, cid, biaId, 'mensagem da bia', agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [`msg-leo-${foto}`, cid, leoId, 'mensagem do leo', agora]);
+    await run(ctx.db, "UPDATE users SET lat = -3.7, lon = -38.5, city = 'Fortaleza', state = 'CE', bio = 'minha bio' WHERE id = ?", [biaId]);
+    await run(ctx.db, "INSERT INTO compras_tokens (id, user_id, pacote, tokens, valor_cents, metodo, order_id, status, criado_em) VALUES (?, ?, 'p150', 150, 990, 'PIX', ?, 'pago', ?)", [`compra-${foto}`, biaId, `ord-${foto}`, agora]);
+    await ctx.db.persist();
+    await request(ctx.app).get(`/uploads/${foto}.webp`).expect(200);
+
+    await request(ctx.app).post('/api/profile/delete-account').set({ Authorization: `Bearer ${bia.token}` }).send({}).expect(200);
+
+    const conta = async (sql: string, params: any[]) => Number(((await ctx.db.queryOne(sql, params)) as any).c);
+    expect(await conta('SELECT COUNT(*) AS c FROM media WHERE user_id = ?', [biaId])).toBe(0);
+    expect(existsSync(arquivo)).toBe(false);
+    await request(ctx.app).get(`/uploads/${foto}.webp`).expect(404);
+    expect(await conta('SELECT COUNT(*) AS c FROM posts WHERE user_id = ?', [biaId])).toBe(0);
+    expect(await conta('SELECT COUNT(*) AS c FROM comments WHERE user_id = ?', [biaId])).toBe(0);
+    expect(await conta('SELECT COUNT(*) AS c FROM likes WHERE user_id = ?', [biaId])).toBe(0);
+    expect(await conta('SELECT COUNT(*) AS c FROM messages WHERE sender_id = ?', [biaId])).toBe(0);
+    // O que é do outro continua: a mensagem e o post do Leo.
+    expect(await conta('SELECT COUNT(*) AS c FROM messages WHERE sender_id = ?', [leoId])).toBe(1);
+    expect(await conta('SELECT COUNT(*) AS c FROM posts WHERE user_id = ?', [leoId])).toBe(1);
+    // Pagamento fica (obrigação legal).
+    expect(await conta('SELECT COUNT(*) AS c FROM compras_tokens WHERE user_id = ?', [biaId])).toBe(1);
+    const u = (await ctx.db.queryOne('SELECT name, email, lat, lon, city, state, bio, avatar, dados_apagados_em FROM users WHERE id = ?', [biaId])) as any;
+    expect(u).toMatchObject({ name: 'Usuário excluído', lat: null, lon: null, city: null, state: null, bio: null, avatar: null });
+    expect(String(u.email)).toMatch(/^deleted_/);
+    expect(u.dados_apagados_em).toBeTruthy();
+  });
+
+  it('LGPD: baixar meus dados traz perfil, posts e mensagens enviadas, sem senha; 1 vez por minuto', async () => {
+    const caio = await registerInvitedUser(ctx, sponsorToken, { name: 'Caio Exporta', email: 'caio-exporta@example.com', password: 'senha123', gender: 'Homem' });
+    const duda = await registerInvitedUser(ctx, sponsorToken, { name: 'Duda Recebe', email: 'duda-recebe@example.com', password: 'senha123', gender: 'Mulher' });
+    const caioId = String(caio.user.id);
+    const agora = new Date().toISOString();
+    await run(ctx.db, 'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)', [`post-exp-${caioId}`, caioId, 'post exportado', '[]', agora]);
+    const cid = `conv-exp-${caioId}`;
+    await run(ctx.db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [cid, caioId, String(duda.user.id), agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [`msg-exp-1-${caioId}`, cid, caioId, 'oi duda', agora]);
+    await run(ctx.db, 'INSERT INTO messages (id, conversation_id, sender_id, content, created_at) VALUES (?, ?, ?, ?, ?)', [`msg-exp-2-${caioId}`, cid, String(duda.user.id), 'oi caio', agora]);
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${caio.token}` };
+
+    const r = await request(ctx.app).get('/api/profile/meus-dados').set(auth).expect(200);
+    expect(String(r.headers['content-disposition'])).toMatch(/attachment; filename="nosigilo-meus-dados-/);
+    expect(r.body.perfil.email).toBe('caio-exporta@example.com');
+    expect(r.body.perfil.password_hash).toBeUndefined();
+    expect(r.body.posts.map((p: any) => p.content)).toEqual(['post exportado']);
+    // Só as mensagens que ele enviou (as recebidas são dados da outra pessoa).
+    expect(r.body.mensagensEnviadas).toHaveLength(1);
+    expect(r.body.mensagensEnviadas[0]).toMatchObject({ content: 'oi duda', para: 'Duda Recebe' });
+
+    await request(ctx.app).get('/api/profile/meus-dados').set(auth).expect(429);
+  });
+
+  it('LGPD: selfie de verificação vira privada e é apagada depois da análise', async () => {
+    const eva = await registerInvitedUser(ctx, sponsorToken, { name: 'Eva Selfie', email: 'eva-selfie@example.com', password: 'senha123', gender: 'Mulher' });
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Selfie', email: 'admin-selfie@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    const selfie = `selfie-lgpd-${Date.now()}`;
+    // Simula o app antigo, que mandava a selfie como pública.
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'image/webp', 0, 0, 'chat', ?)", [selfie, String(eva.user.id), `${selfie}.webp`, new Date().toISOString()]);
+    await ctx.db.persist();
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+
+    await request(ctx.app).post('/api/verificacao/codigo').set(auth(eva.token)).expect(200);
+    await request(ctx.app).post('/api/verificacao/enviar').set(auth(eva.token)).send({ mediaId: selfie }).expect(200);
+    expect(Number(((await ctx.db.queryOne('SELECT is_private FROM media WHERE id = ?', [selfie])) as any).is_private)).toBe(1);
+    await request(ctx.app).get(`/uploads/${selfie}.webp`).expect(404);
+
+    const pedido = ((await request(ctx.app).get('/api/admin/verificacoes').set(auth(adm.token)).expect(200)).body.pedidos as any[]).find((p) => p.userId === eva.user.id);
+    expect(String(pedido.selfie)).toMatch(/^\/private-uploads\/.+\?token=/);
+
+    await request(ctx.app).post(`/api/admin/verificacoes/${pedido.id}/aprovar`).set(auth(adm.token)).expect(200);
+    expect(await ctx.db.queryOne('SELECT id FROM media WHERE id = ?', [selfie])).toBeFalsy();
+    const v = (await ctx.db.queryOne('SELECT status, media_id FROM verificacoes_perfil WHERE user_id = ?', [String(eva.user.id)])) as any;
+    expect(v).toMatchObject({ status: 'aprovada', media_id: null });
   });
 });

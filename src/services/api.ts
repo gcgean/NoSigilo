@@ -451,6 +451,21 @@ export const profileService = {
     return response.data;
   },
 
+  // LGPD: baixa um JSON com todos os dados da conta.
+  baixarMeusDados: async () => {
+    const response = await apiClient.get('/profile/meus-dados', { responseType: 'blob', timeout: 2 * 60 * 1000 });
+    const disposicao = String(response.headers?.['content-disposition'] || '');
+    const nome = /filename="([^"]+)"/.exec(disposicao)?.[1] || 'nosigilo-meus-dados.json';
+    const url = URL.createObjectURL(response.data as Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  },
+
   deleteAccount: async (data?: { reasonCode?: string; reasonText?: string }) => {
     const response = await apiClient.post('/profile/delete-account', data ?? {});
     return response.data;

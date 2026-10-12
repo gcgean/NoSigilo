@@ -3175,8 +3175,156 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         unlinkSync(filePath);
       } catch {}
     }
+    // Cópias reduzidas (/uploads/x?w=360) ficam em storage/thumbs/<largura>/.
+    for (const largura of [120, 240, 360, 480, 720]) {
+      try {
+        unlinkSync(path.join(storageRootDir, 'thumbs', `${largura}`, `${filename.replace(/\.[^.]+$/, '')}.webp`));
+      } catch {}
+    }
 
     return media;
+  };
+
+  // LGPD (art. 16 e 18, VI): quem exclui a conta tem os dados pessoais apagados de
+  // verdade — fotos e vídeos (arquivo, miniaturas e registro), posts, stories,
+  // mensagens, comentários, curtidas, visitas, localização e perfil. Antes, a
+  // exclusão só trocava nome e e-mail e as fotos continuavam abrindo pelo link.
+  //
+  // Fica guardado só o que a lei manda ou permite manter (art. 16, I): pagamentos,
+  // tokens comprados, comissões de promotor, denúncias e o registro da exclusão.
+  // A linha em users continua (anonimizada) porque essas tabelas apontam para ela.
+  const apagarDadosDaConta = async (userId: string) => {
+    const midias = (await queryAll(db, 'SELECT id FROM media WHERE user_id = ?', [userId])) as any[];
+    for (const m of midias) {
+      await deleteStoredMedia(String(m.id));
+    }
+
+    const apagar = async (sql: string, params: any[]) => {
+      try {
+        await run(db, sql, params);
+      } catch (err) {
+        console.error('[apagarDadosDaConta]', sql.slice(0, 60), err);
+      }
+    };
+    const u = [userId];
+    const uu = [userId, userId];
+
+    // Conteúdo dos posts e stories da pessoa e o que outros fizeram neles.
+    const posts = 'SELECT id FROM posts WHERE user_id = ?';
+    await apagar(`DELETE FROM comments WHERE target_type = 'post' AND target_id IN (${posts})`, u);
+    await apagar(`DELETE FROM likes WHERE target_type = 'post' AND target_id IN (${posts})`, u);
+    await apagar(`DELETE FROM post_views WHERE post_id IN (${posts})`, u);
+    await apagar('DELETE FROM posts WHERE user_id = ?', u);
+    const stories = 'SELECT id FROM stories WHERE user_id = ?';
+    await apagar(`DELETE FROM story_likes WHERE story_id IN (${stories})`, u);
+    await apagar(`DELETE FROM story_views WHERE story_id IN (${stories})`, u);
+    await apagar(`DELETE FROM story_comments WHERE story_id IN (${stories})`, u);
+    await apagar('DELETE FROM stories WHERE user_id = ?', u);
+    const contos = 'SELECT id FROM experiences WHERE user_id = ?';
+    await apagar(`DELETE FROM comments WHERE target_type = 'experience' AND target_id IN (${contos})`, u);
+    await apagar(`DELETE FROM likes WHERE target_type = 'experience' AND target_id IN (${contos})`, u);
+    await apagar(`DELETE FROM experience_reads WHERE experience_id IN (${contos})`, u);
+    await apagar(`DELETE FROM experience_media WHERE experience_id IN (${contos})`, u);
+    await apagar('DELETE FROM experiences WHERE user_id = ?', u);
+    const radares = 'SELECT id FROM radar_broadcasts WHERE user_id = ?';
+    await apagar(`DELETE FROM radar_broadcast_views WHERE broadcast_id IN (${radares})`, u);
+    await apagar('DELETE FROM radar_broadcasts WHERE user_id = ?', u);
+
+    // O que a pessoa escreveu ou fez no perfil dos outros.
+    await apagar('DELETE FROM messages WHERE sender_id = ?', u);
+    await apagar('DELETE FROM event_group_messages WHERE sender_id = ?', u);
+    await apagar('DELETE FROM comments WHERE user_id = ?', u);
+    await apagar('DELETE FROM likes WHERE user_id = ?', u);
+    await apagar("DELETE FROM likes WHERE target_type = 'user' AND target_id = ?", u);
+    await apagar('DELETE FROM profile_mural WHERE author_id = ? OR owner_id = ?', uu);
+    await apagar('DELETE FROM testimonial_media WHERE testimonial_id IN (SELECT id FROM testimonials WHERE author_user_id = ? OR profile_user_id = ?)', uu);
+    await apagar('DELETE FROM testimonials WHERE author_user_id = ? OR profile_user_id = ?', uu);
+    await apagar('DELETE FROM story_comments WHERE commenter_id = ?', u);
+    await apagar('DELETE FROM story_likes WHERE liker_id = ?', u);
+    await apagar('DELETE FROM story_views WHERE viewer_id = ?', u);
+    await apagar('DELETE FROM story_favorites WHERE owner_id = ? OR favorite_id = ?', uu);
+    await apagar('DELETE FROM story_pins WHERE user_id = ? OR pinned_user_id = ?', uu);
+    await apagar('DELETE FROM experience_reads WHERE user_id = ?', u);
+    await apagar('DELETE FROM radar_broadcast_views WHERE viewer_user_id = ?', u);
+    await apagar('DELETE FROM post_views WHERE viewer_id = ?', u);
+    await apagar('DELETE FROM profile_visits WHERE visitor_user_id = ? OR visited_user_id = ?', uu);
+    await apagar('DELETE FROM friend_requests WHERE from_user_id = ? OR to_user_id = ?', uu);
+    await apagar('DELETE FROM match_passes WHERE user_id = ? OR passed_user_id = ?', uu);
+    await apagar('DELETE FROM private_photo_access_requests WHERE owner_user_id = ? OR requester_user_id = ?', uu);
+    await apagar('DELETE FROM blocks WHERE blocker_user_id = ? OR blocked_user_id = ?', uu);
+    await apagar('DELETE FROM event_attendees WHERE user_id = ?', u);
+    await apagar('DELETE FROM event_group_members WHERE user_id = ?', u);
+    await apagar('DELETE FROM event_group_message_views WHERE user_id = ?', u);
+
+    // Cadastro, pedidos e canais de contato.
+    await apagar('DELETE FROM notifications WHERE user_id = ?', u);
+    await apagar('DELETE FROM push_subscriptions WHERE user_id = ?', u);
+    await apagar('DELETE FROM trusted_devices WHERE user_id = ?', u);
+    await apagar('DELETE FROM two_factor_codes WHERE user_id = ?', u);
+    await apagar('DELETE FROM password_reset_codes WHERE user_id = ?', u);
+    await apagar('DELETE FROM user_search_preferences WHERE user_id = ?', u);
+    await apagar('DELETE FROM user_badges WHERE user_id = ?', u);
+    await apagar('DELETE FROM name_change_requests WHERE user_id = ?', u);
+    await apagar('DELETE FROM gender_change_requests WHERE user_id = ?', u);
+    await apagar('DELETE FROM verificacoes_perfil WHERE user_id = ?', u);
+    await apagar('DELETE FROM lembretes_renovacao WHERE user_id = ?', u);
+    await apagar('DELETE FROM reengagement_emails WHERE user_id = ?', u);
+    await apagar('DELETE FROM suggestions WHERE user_id = ?', u);
+    await apagar('DELETE FROM app_ratings WHERE user_id = ?', u);
+    await apagar('DELETE FROM promoter_support_messages WHERE promoter_user_id = ?', u);
+    await apagar('DELETE FROM system_settings WHERE key = ?', [`support_handoff:${userId}`]);
+    await apagar('UPDATE site_visits SET user_id = NULL WHERE user_id = ?', u);
+    await apagar('UPDATE site_events SET user_id = NULL WHERE user_id = ?', u);
+
+    // Perfil: tudo que descreve a pessoa. Gênero fica (sem ele o resto do sistema
+    // não sabe tratar a linha), e cidade/UF ficam só no registro agregado da saída.
+    await apagar(
+      `UPDATE users SET
+         avatar = NULL, bio = NULL, status = NULL, city = NULL, state = NULL, birth_date = NULL,
+         marital_status = NULL, sexual_orientation = NULL, ethnicity = NULL, hair = NULL, eyes = NULL,
+         height = NULL, body_type = NULL, smokes = NULL, drinks = NULL, profession = NULL,
+         zodiac_sign = NULL, looking_for_json = NULL, lat = NULL, lon = NULL, location_source = NULL,
+         billing_document = NULL, billing_phone = NULL, billing_address_zip = NULL,
+         billing_address_street = NULL, billing_address_number = NULL, billing_address_district = NULL,
+         billing_address_complement = NULL, billing_address_city = NULL, billing_address_state = NULL,
+         billing_legal_name = NULL, partner_birth_date = NULL, partner_name = NULL,
+         partner_sexual_orientation = NULL, partner_ethnicity = NULL, partner_hair = NULL,
+         partner_eyes = NULL, partner_height = NULL, partner_body_type = NULL,
+         registration_ip_hash = NULL, telegram_chat_id = NULL, telegram_link_token = NULL,
+         intentions_json = NULL, fetiches_json = NULL, meeting_tagline = NULL, bio_link = NULL,
+         google_id = NULL, capa_media_ids = NULL, pedidos_direto_json = NULL,
+         dados_apagados_em = ?
+       WHERE id = ?`,
+      [nowIso(), userId]
+    );
+    await persist();
+  };
+
+  // Contas excluídas que ainda têm dados (as anteriores a esta rotina, ou alguma
+  // em que a limpeza falhou no meio): processa poucas por vez para não pesar no banco.
+  const limparContasExcluidasPendentes = async () => {
+    const selfiesAnalisadas = (await queryAll(
+      db,
+      "SELECT id, media_id FROM verificacoes_perfil WHERE status IN ('aprovada', 'recusada') AND media_id IS NOT NULL LIMIT 50",
+      []
+    )) as any[];
+    for (const v of selfiesAnalisadas) {
+      await deleteStoredMedia(String(v.media_id));
+      await run(db, 'UPDATE verificacoes_perfil SET media_id = NULL WHERE id = ?', [String(v.id)]);
+    }
+    const pendentes = (await queryAll(
+      db,
+      'SELECT id FROM users WHERE deleted_at IS NOT NULL AND dados_apagados_em IS NULL ORDER BY deleted_at ASC LIMIT 25',
+      []
+    )) as any[];
+    for (const p of pendentes) {
+      try {
+        await apagarDadosDaConta(String(p.id));
+      } catch (err) {
+        console.error('[limparContasExcluidasPendentes]', p.id, err);
+      }
+    }
+    if (pendentes.length > 0) console.log(`[lgpd] dados apagados de ${pendentes.length} conta(s) excluída(s)`);
   };
 
   // Resolve o caminho físico de uma mídia (público/privado, com fallbacks legados).
@@ -9909,11 +10057,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const mediaId = String(req.body?.mediaId || '');
     const v = (await queryOne(db, "SELECT id FROM verificacoes_perfil WHERE user_id = ? AND status = 'aguardando_foto' ORDER BY created_at DESC LIMIT 1", [userId])) as any;
     if (!v) { res.status(400).json({ error: 'sem_codigo', message: 'Gere o código antes de enviar a foto.' }); return; }
-    const midia = (await queryOne(db, 'SELECT user_id, mime_type FROM media WHERE id = ?', [mediaId])) as any;
+    const midia = (await queryOne(db, 'SELECT user_id, mime_type, filename FROM media WHERE id = ?', [mediaId])) as any;
     if (!midia || String(midia.user_id) !== userId || !String(midia.mime_type || '').startsWith('image/')) {
       res.status(400).json({ error: 'foto_invalida', message: 'Envie uma foto sua.' });
       return;
     }
+    // LGPD: a selfie de verificação é privada (só o admin vê, por link que expira)
+    // e é apagada assim que o pedido é analisado. "chat" a mantém fora das galerias.
+    await run(db, "UPDATE media SET is_private = 1, source = 'chat' WHERE id = ?", [mediaId]);
+    ensureMediaFileInExpectedDir(String(midia.filename || ''), true);
     await run(db, "UPDATE verificacoes_perfil SET media_id = ?, status = 'em_analise', enviado_em = ? WHERE id = ?", [mediaId, nowIso(), String(v.id)]);
     await persist();
     const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
@@ -9927,7 +10079,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/admin/verificacoes', requireAuth(env, db), requireAdmin(), async (_req, res) => {
     const rows = (await queryAll(
       db,
-      `SELECT v.id, v.user_id, v.codigo, v.enviado_em, m.filename AS selfie,
+      `SELECT v.id, v.user_id, v.codigo, v.enviado_em, m.id AS selfie_id, m.filename AS selfie, m.is_private AS selfie_privada,
               u.name, u.email, u.gender, u.created_at AS conta_desde, u.avatar
          FROM verificacoes_perfil v
          JOIN users u ON u.id = v.user_id
@@ -9951,7 +10103,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         contaDesde: r.conta_desde ? String(r.conta_desde) : null,
         codigo: String(r.codigo),
         enviadoEm: r.enviado_em ? String(r.enviado_em) : null,
-        selfie: r.selfie ? `/uploads/${String(r.selfie)}` : null,
+        selfie: !r.selfie
+          ? null
+          : Number(r.selfie_privada) === 1
+            ? `/private-uploads/${String(r.selfie_id)}?token=${encodeURIComponent(jwt.sign({ mediaId: String(r.selfie_id) }, env.JWT_SECRET, { expiresIn: '2h' }))}`
+            : `/uploads/${String(r.selfie)}`,
         fotosDoPerfil: fotos.map((f) => `/uploads/${String(f.filename)}`),
       });
     }
@@ -9961,7 +10117,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/admin/verificacoes/:id/:acao', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const acao = String(req.params.acao);
     if (acao !== 'aprovar' && acao !== 'recusar') { res.status(404).json({ error: 'not_found' }); return; }
-    const v = (await queryOne(db, "SELECT id, user_id FROM verificacoes_perfil WHERE id = ? AND status = 'em_analise'", [req.params.id])) as any;
+    const v = (await queryOne(db, "SELECT id, user_id, media_id FROM verificacoes_perfil WHERE id = ? AND status = 'em_analise'", [req.params.id])) as any;
     if (!v) { res.status(404).json({ error: 'not_found', message: 'Esse pedido já foi analisado.' }); return; }
     const agora = nowIso();
     const motivo = String(req.body?.motivo || '').trim().slice(0, 300) || null;
@@ -9974,6 +10130,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       if (ehMulher(u?.gender)) await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, userId]);
     } else {
       await run(db, "UPDATE verificacoes_perfil SET status = 'recusada', motivo = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?", [motivo, agora, req.auth!.userId, String(v.id)]);
+    }
+    // LGPD: a selfie só servia para esta análise — sai do disco e do banco.
+    if (v.media_id) {
+      await deleteStoredMedia(String(v.media_id));
+      await run(db, 'UPDATE verificacoes_perfil SET media_id = NULL WHERE id = ?', [String(v.id)]);
     }
     await persist();
     try {
@@ -10031,6 +10192,103 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // mensagens/comentários/curtidas com OUTRAS pessoas — remover essas linhas
   // quebraria o histórico de conversa de quem ainda está na plataforma; a
   // conta em si some de toda busca/feed/chat (já filtram por is_deactivated).
+  // LGPD (art. 18, II e V): "Baixar meus dados". Um arquivo JSON com tudo que a
+  // pessoa cadastrou e produziu: perfil, fotos (com link), posts, stories, contos,
+  // comentários, curtidas, mensagens que ENVIOU (as recebidas são dados de outra
+  // pessoa), compras e comissões. Senha, tokens internos e hashes ficam de fora.
+  const ultimaExportacao = new Map<string, number>();
+  app.get('/api/profile/meus-dados', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const antes = ultimaExportacao.get(userId) ?? 0;
+    if (Date.now() - antes < 60_000) {
+      res.status(429).json({ error: 'aguarde', message: 'Aguarde um minuto para baixar de novo.' });
+      return;
+    }
+    ultimaExportacao.set(userId, Date.now());
+    try {
+      const base = String(env.FRONTEND_ORIGIN || '').split(',')[0].trim().replace(/\/$/, '');
+      const u = (await queryOne(db, 'SELECT * FROM users WHERE id = ?', [userId])) as any;
+      if (!u) { res.status(404).json({ error: 'not_found' }); return; }
+      const OCULTOS = new Set([
+        'password_hash', 'google_id', 'telegram_link_token', 'registration_ip_hash', 'hub_customer_id',
+        'hub_product_id', 'hub_license_id', 'hub_subscription_id', 'hub_banner', 'is_showcase',
+        'deactivated_by', 'banned_by', 'dados_apagados_em',
+      ]);
+      const perfil: Record<string, any> = {};
+      for (const [k, v] of Object.entries(u)) {
+        if (OCULTOS.has(k) || v === null || v === '') continue;
+        perfil[k] = typeof v === 'string' && /_json$/.test(k) ? (safeJsonParse(v) ?? v) : v;
+      }
+      const listar = (sql: string, params: any[]) => queryAll(db, sql, params) as Promise<any[]>;
+      const midias = await listar('SELECT id, filename, original_name, mime_type, size, is_private, is_main, source, created_at FROM media WHERE user_id = ? ORDER BY created_at', [userId]);
+      const [posts, stories, contos, comentarios, curtidas, enviadas, compras, tokens, denuncias, promotor, comissoes, verificacoes] = await Promise.all([
+        listar('SELECT id, content, media_ids_json, created_at FROM posts WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT id, media_id, text, created_at, expires_at, audience FROM stories WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT id, title, description, categoria, status, created_at FROM experiences WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT id, target_type, target_id, content, created_at FROM comments WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT target_type, target_id, reaction, created_at FROM likes WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar(
+          `SELECT m.conversation_id, m.content, m.media_id, m.created_at,
+                  CASE WHEN c.user_a_id = ? THEN ub.name ELSE ua.name END AS para
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             LEFT JOIN users ua ON ua.id = c.user_a_id
+             LEFT JOIN users ub ON ub.id = c.user_b_id
+            WHERE m.sender_id = ? ORDER BY m.created_at`,
+          [userId, userId]
+        ),
+        listar('SELECT pacote, tokens, valor_cents, metodo, status, criado_em, pago_em FROM compras_tokens WHERE user_id = ? ORDER BY criado_em', [userId]),
+        listar('SELECT action_type, points, created_at FROM token_transactions WHERE user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT target_type, target_name, reason, details, status, created_at FROM reports WHERE reporter_user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT full_name, pix_key, whatsapp, contact_email, status, activated_at, created_at FROM promoters WHERE user_id = ?', [userId]),
+        listar('SELECT subscription_amount, commission_amount, status, period, paid_at, created_at FROM promoter_commissions WHERE promoter_user_id = ? ORDER BY created_at', [userId]),
+        listar('SELECT status, enviado_em, reviewed_at FROM verificacoes_perfil WHERE user_id = ? ORDER BY created_at', [userId]),
+      ]);
+      const linkDaMidia = (m: any) => (Number(m.is_private) === 1
+        ? `${base}/private-uploads/${m.id}?token=${encodeURIComponent(jwt.sign({ mediaId: String(m.id) }, env.JWT_SECRET, { expiresIn: '24h' }))}`
+        : `${base}/uploads/${m.filename}`);
+      const arquivo = {
+        sobre: {
+          plataforma: 'NoSigilo',
+          geradoEm: nowIso(),
+          observacao: 'Cópia dos seus dados pessoais (LGPD, art. 18). Os links das fotos privadas valem por 24 horas.',
+        },
+        perfil,
+        fotosEVideos: midias.map((m) => ({
+          id: String(m.id),
+          nomeOriginal: m.original_name ?? null,
+          tipo: m.mime_type,
+          tamanhoBytes: m.size,
+          privada: Number(m.is_private) === 1,
+          fotoPrincipal: Number(m.is_main) === 1,
+          origem: m.source ?? null,
+          enviadaEm: m.created_at,
+          link: linkDaMidia(m),
+        })),
+        posts: posts.map((p) => ({ ...p, media_ids_json: undefined, midias: safeJsonParse(p.media_ids_json) ?? [] })),
+        stories,
+        contos,
+        comentarios,
+        curtidas,
+        mensagensEnviadas: enviadas,
+        compras,
+        tokens,
+        denunciasFeitas: denuncias,
+        promotor: promotor[0] ?? null,
+        comissoes,
+        verificacoes,
+      };
+      const nomeArquivo = `nosigilo-meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+      res.setHeader('Content-Disposition', `attachment; filename="${nomeArquivo}"`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(arquivo);
+    } catch (err) {
+      console.error('[profile/meus-dados]', err);
+      ultimaExportacao.delete(userId);
+      res.status(500).json({ error: 'internal' });
+    }
+  });
+
   app.post('/api/profile/delete-account', requireAuth(env, db), async (req, res) => {
     try {
       const userId = req.auth!.userId;
@@ -10118,8 +10376,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       } catch (e) {
         console.error('[profile/delete-account] falha ao registrar motivo:', e);
       }
-
       await persist();
+      // Apaga fotos, posts, mensagens etc. Se falhar no meio, a rotina de
+      // limpeza termina depois (dados_apagados_em fica vazio até concluir).
+      try {
+        await apagarDadosDaConta(userId);
+      } catch (e) {
+        console.error('[profile/delete-account] falha ao apagar dados:', e);
+      }
       res.json({ ok: true });
     } catch (err) {
       console.error('[profile/delete-account]', err);
@@ -21505,6 +21769,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   };
   void apagarGruposVencidos();
   setInterval(() => void apagarGruposVencidos(), 60 * 60 * 1000);
+  // LGPD: termina de apagar os dados de contas excluídas (25 por vez, a cada 10 min).
+  setTimeout(() => void limparContasExcluidasPendentes(), 2 * 60 * 1000);
+  setInterval(() => void limparContasExcluidasPendentes(), 10 * 60 * 1000);
 
   return app;
 }

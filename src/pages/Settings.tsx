@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
-  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, MessageCircle, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2
+  ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, MessageCircle, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2, Download
 } from 'lucide-react';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Button } from '@/components/ui/button';
@@ -509,6 +509,7 @@ export default function Settings() {
   };
 
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [baixandoDados, setBaixandoDados] = useState(false);
   const [deleteReasonCode, setDeleteReasonCode] = useState<string>('');
   const [deleteReasonText, setDeleteReasonText] = useState('');
 
@@ -2027,6 +2028,42 @@ export default function Settings() {
             </Button>
           </div>
 
+          {/* LGPD: cópia dos dados da conta */}
+          <div className="glass rounded-xl p-4 sm:p-6 space-y-3">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Download className="w-5 h-5 text-primary" />
+              Seus dados
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Baixe uma cópia de tudo que está na sua conta: perfil, fotos e vídeos (com links), posts, stories, contos,
+              comentários, curtidas, mensagens que você enviou, compras e comissões. É um arquivo .json, que abre em qualquer editor de texto.
+            </p>
+            <Button
+              variant="outline"
+              className="gap-2 min-h-[44px]"
+              disabled={baixandoDados}
+              onClick={async () => {
+                setBaixandoDados(true);
+                try {
+                  await profileService.baixarMeusDados();
+                  toast({ title: 'Arquivo baixado ✅', description: 'Os links das fotos privadas valem por 24 horas.' });
+                } catch (e: any) {
+                  const status = e?.response?.status;
+                  toast({
+                    title: 'Não foi possível baixar',
+                    description: status === 429 ? 'Aguarde um minuto para baixar de novo.' : 'Tente novamente em instantes.',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setBaixandoDados(false);
+                }
+              }}
+            >
+              {baixandoDados ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {baixandoDados ? 'Preparando...' : 'Baixar meus dados'}
+            </Button>
+          </div>
+
           <div
             id="excluir-conta"
             ref={zonaPerigoRef}
@@ -2087,7 +2124,7 @@ export default function Settings() {
               <div>
                 <p className="font-medium">Excluir conta</p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Seu perfil é desativado e seus dados de identificação (nome, e-mail, foto, bio) são apagados. Essa ação não pode ser desfeita — você não consegue mais acessar essa conta, nem com Google.
+                  Sua conta e seus dados são apagados de vez: perfil, fotos e vídeos, posts, stories, mensagens que você enviou, comentários, curtidas e localização. Ficam só os registros de pagamento que a lei obriga a guardar. Essa ação não pode ser desfeita. Se quiser uma cópia, baixe seus dados antes.
                 </p>
               </div>
               <AlertDialog>
@@ -2107,7 +2144,7 @@ export default function Settings() {
                     <AlertDialogDescription className="space-y-2">
                       <span className="block">Esta ação é definitiva:</span>
                       <ul className="list-disc list-inside space-y-1 text-sm">
-                        <li>Seu nome, e-mail, foto e bio são apagados</li>
+                        <li>Seu perfil, fotos, vídeos, posts, stories e mensagens enviadas são apagados</li>
                         <li>Seu perfil some de buscas, feed e chat</li>
                         <li>Você não consegue mais entrar nessa conta, nem com Google</li>
                       </ul>
