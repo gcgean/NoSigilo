@@ -3800,4 +3800,19 @@ describe('nosigilo backend', () => {
     await request(ctx.app).get('/api/admin/desempenho').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
+
+  it('promotor troca a chave Pix só com a senha certa', async () => {
+    const p = await registerInvitedUser(ctx, sponsorToken, { name: 'Promotor Pix', email: 'promotor-pix@example.com', password: 'senha123', gender: 'Homem' });
+    const auth = { Authorization: `Bearer ${p.token}` };
+    // Sem ser promotor: 404.
+    await request(ctx.app).put('/api/promoter/pix').set(auth).send({ pixKey: 'nova@pix.com', senha: 'senha123' }).expect(404);
+    await request(ctx.app).post('/api/promoter/activate').set(auth).send({ fullName: 'Promotor Pix', pixKey: 'antiga@pix.com', acceptTerms: true }).expect(200);
+    const errada = await request(ctx.app).put('/api/promoter/pix').set(auth).send({ pixKey: 'nova@pix.com', senha: 'errada' }).expect(400);
+    expect(errada.body.error).toBe('wrong_password');
+    await request(ctx.app).put('/api/promoter/pix').set(auth).send({ pixKey: 'antiga@pix.com', senha: 'senha123' }).expect(400);
+    const ok = await request(ctx.app).put('/api/promoter/pix').set(auth).send({ pixKey: 'nova@pix.com', senha: 'senha123' }).expect(200);
+    expect(ok.body.pixKey).toBe('nova@pix.com');
+    const row = (await ctx.db.queryOne('SELECT pix_key FROM promoters WHERE user_id = ?', [String(p.user.id)])) as any;
+    expect(row.pix_key).toBe('nova@pix.com');
+  });
 });

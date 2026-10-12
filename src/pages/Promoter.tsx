@@ -64,6 +64,11 @@ export default function Promoter() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [promoter, setPromoter] = useState<PromoterProfile | null>(null);
+  // Trocar a chave Pix (pede a senha da conta).
+  const [trocandoPix, setTrocandoPix] = useState(false);
+  const [novaChave, setNovaChave] = useState('');
+  const [senhaPix, setSenhaPix] = useState('');
+  const [salvandoPix, setSalvandoPix] = useState(false);
   const [stats, setStats] = useState<PromoterStats | null>(null);
   const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
   useEffect(() => {
@@ -456,7 +461,46 @@ export default function Promoter() {
                 <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-400/30 text-xs">Ativo</Badge>
               </div>
               <h1 className="text-2xl font-bold">Seu painel de promotor</h1>
-              <p className="text-muted-foreground text-sm">Pix cadastrado: <strong>{promoter.pixKey}</strong></p>
+              <p className="flex flex-wrap items-center gap-x-2 text-muted-foreground text-sm">
+                Pix cadastrado: <strong>{promoter.pixKey}</strong>
+                {!trocandoPix && (
+                  <button type="button" className="inline-flex min-h-[36px] items-center font-medium text-emerald-600 hover:underline" onClick={() => setTrocandoPix(true)}>
+                    Trocar
+                  </button>
+                )}
+              </p>
+              {trocandoPix && (
+                <div className="mt-2 max-w-sm space-y-2 rounded-xl border bg-secondary/30 p-3">
+                  <p className="text-xs text-muted-foreground">As próximas comissões vão para a nova chave. Para sua segurança, confirme com a senha da conta.</p>
+                  <Input value={novaChave} onChange={(e) => setNovaChave(e.target.value)} placeholder="Nova chave Pix (CPF, e-mail, celular ou aleatória)" className="h-11 text-[16px] sm:text-sm" />
+                  <Input type="password" autoComplete="current-password" value={senhaPix} onChange={(e) => setSenhaPix(e.target.value)} placeholder="Sua senha" className="h-11 text-[16px] sm:text-sm" />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 text-white hover:bg-emerald-700"
+                      disabled={salvandoPix || novaChave.trim().length < 5 || !senhaPix}
+                      onClick={async () => {
+                        setSalvandoPix(true);
+                        try {
+                          const r = await promoterService.trocarPix(novaChave.trim(), senhaPix);
+                          setPromoter((atual) => (atual ? { ...atual, pixKey: r.pixKey } : atual));
+                          setTrocandoPix(false);
+                          setNovaChave('');
+                          setSenhaPix('');
+                          toast({ title: 'Chave Pix alterada ✅', description: 'As próximas comissões vão para a nova chave.' });
+                        } catch (e: any) {
+                          toast({ title: 'Não foi possível trocar', description: e?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
+                        } finally {
+                          setSalvandoPix(false);
+                        }
+                      }}
+                    >
+                      {salvandoPix ? 'Salvando...' : 'Salvar nova chave'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { setTrocandoPix(false); setNovaChave(''); setSenhaPix(''); }}>Cancelar</Button>
+                  </div>
+                </div>
+              )}
             </div>
             <Button
               variant="outline"

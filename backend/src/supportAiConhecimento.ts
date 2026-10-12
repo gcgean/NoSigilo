@@ -93,4 +93,4 @@ Programa de promotores (menu Ganhe dinheiro)
 - O promotor divulga o link de convite e ganha 20% de cada pagamento dos assinantes que entraram pelo link, no primeiro pagamento e em cada renovação mensal. Só existe comissão quando o assinante paga de fato.
 - Situação da comissão: em análise → aprovada → paga.
 - O Pix sai quando o saldo aprovado chega a R$ 10,00 (PROMOTER_MIN_PAYOUT_CENTS). Abaixo disso, acumula entre os meses, nada se perde.
-- A chave Pix é cadastrada na área do promotor e precisa estar correta para receber.`;
+- A chave Pix é cadastrada na área do promotor e precisa estar correta para receber. Para TROCAR: menu "Ganhe dinheiro" (painel do promotor), ao lado de "Pix cadastrado" toque em "Trocar", digite a nova chave e a senha da conta. Quem entra pelo Google (sem senha) precisa pedir a troca à equipe.`;

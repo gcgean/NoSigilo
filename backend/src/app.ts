@@ -4469,6 +4469,45 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // ── Programa de Indicação (Promotores) ────────────────────────────────────
 
+  // Trocar a chave Pix do promotor (para onde vão as comissões). Pede a senha:
+  // com a conta invadida, ninguém desvia o pagamento só trocando a chave.
+  app.put('/api/promoter/pix', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ pixKey: z.string().trim().min(5).max(200), senha: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input', message: 'Digite a nova chave Pix e a sua senha.' }); return; }
+    const userId = req.auth!.userId;
+    const promotor = (await queryOne(db, 'SELECT pix_key FROM promoters WHERE user_id = ? LIMIT 1', [userId])) as any;
+    if (!promotor) { res.status(404).json({ error: 'not_promoter', message: 'Você ainda não é promotor.' }); return; }
+    const u = (await queryOne(db, 'SELECT name, email, password_hash FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    if (!u?.password_hash) {
+      res.status(400).json({ error: 'no_password', message: 'Sua conta entra pelo Google. Para trocar a chave Pix, fale com o suporte.' });
+      return;
+    }
+    // 400 (não 401): 401 faz o app deslogar a pessoa.
+    if (!(await bcrypt.compare(parsed.data.senha, String(u.password_hash)))) {
+      res.status(400).json({ error: 'wrong_password', message: 'Senha incorreta.' });
+      return;
+    }
+    const nova = parsed.data.pixKey;
+    if (nova === String(promotor.pix_key || '').trim()) { res.status(400).json({ error: 'same_key', message: 'Essa já é a sua chave Pix.' }); return; }
+    await run(db, 'UPDATE promoters SET pix_key = ? WHERE user_id = ?', [nova, userId]);
+    await persist();
+    const final = (k: string) => (k.length > 4 ? `…${k.slice(-4)}` : k);
+    try {
+      await createNotification({ db, io: req.app.get('io') }, {
+        userId,
+        type: 'promoter.pix_alterado',
+        title: 'Chave Pix alterada',
+        description: `Suas comissões agora vão para a chave terminada em ${final(nova)}. Se não foi você, fale com o suporte na hora.`,
+        dataJson: { url: '/promoter' },
+      });
+    } catch { /* não impede a troca */ }
+    void notifyAdminsTelegram({ db, env },
+      `🔑 <b>Promotor trocou a chave Pix</b>\n\n<b>${String(u.name || 'Promotor')}</b> ${String(u.email || '')}\n${final(String(promotor.pix_key || ''))} → ${final(nova)}`,
+      'pagamentos'
+    ).catch(() => {});
+    res.json({ ok: true, pixKey: nova });
+  });
+
   app.post('/api/promoter/activate', requireAuth(env, db), async (req, res) => {
     const schema = z.object({
       fullName: z.string().min(3).max(200),

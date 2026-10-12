@@ -972,6 +972,10 @@ export const promoterService = {
     const response = await apiClient.post('/promoter/activate', data);
     return response.data;
   },
+  trocarPix: async (pixKey: string, senha: string) => {
+    const response = await apiClient.put('/promoter/pix', { pixKey, senha });
+    return response.data as { ok: boolean; pixKey: string };
+  },
   getProfile: async (): Promise<{ promoter: PromoterProfile | null }> => {
     const response = await apiClient.get('/promoter/profile');
     return response.data;
