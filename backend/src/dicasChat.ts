@@ -27,7 +27,10 @@ export function textoDaDica(etapa: number, c: ContextoDaDica): string | null {
   const voce = c.casal ? 'vocês' : 'você';
   const Voce = c.casal ? 'Vocês' : 'Você';
   const seu = c.casal ? 'de vocês' : 'seu';
-  const nome = c.nome.trim().split(/\s+/)[0] || (c.casal ? 'casal' : 'tudo bem');
+  // Nomes aqui são apelidos ("D e C", "Casal Fortal"): usa o apelido inteiro;
+  // só corta quando é longo demais para uma saudação.
+  const apelido = c.nome.trim().replace(/\s+/g, ' ');
+  const nome = (apelido.length <= 24 ? apelido : apelido.split(' ')[0]) || (c.casal ? 'casal' : 'tudo bem');
 
   switch (etapa) {
     case 0: {

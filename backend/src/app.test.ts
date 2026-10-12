@@ -3988,7 +3988,7 @@ describe('nosigilo backend', () => {
     const conv = (await ctx.db.queryOne('SELECT id FROM conversations WHERE (user_a_id = ? AND user_b_id = ?) OR (user_a_id = ? AND user_b_id = ?)', [oficial.id, novoId, novoId, oficial.id])) as any;
     const msgs = (await ctx.db.queryAll('SELECT sender_id, content FROM messages WHERE conversation_id = ? ORDER BY created_at', [String(conv.id)])) as any[];
     expect(msgs).toHaveLength(1);
-    expect(msgs[0].content).toContain('Oi, Casal!');
+    expect(msgs[0].content).toContain('Oi, Casal Novato!');
     expect(msgs[0].content).toContain('Que bom ter vocês aqui');
     expect(msgs[0].content).toContain('PARAR');
     const fila = (await ctx.db.queryOne('SELECT etapa, proxima_em FROM dicas_chat WHERE user_id = ?', [novoId])) as any;
