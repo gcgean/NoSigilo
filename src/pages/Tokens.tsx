@@ -186,7 +186,7 @@ export default function Tokens() {
               type="button"
               onClick={() => setRankTab(t.id)}
               className={cn(
-                'flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                'min-h-[36px] flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
                 rankTab === t.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'
               )}
             >

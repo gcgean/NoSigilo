@@ -298,7 +298,7 @@ export default function ProfilePostCard({
           type="button"
           onClick={() => void alternarCurtida()}
           aria-label={curtido ? 'Remover curtida' : 'Curtir publicação'}
-          className="flex items-center gap-1.5 text-sm transition-colors"
+          className="-my-2.5 flex min-h-[44px] items-center gap-1.5 px-1 py-2.5 text-sm transition-colors"
         >
           <Heart className={cn('h-5 w-5', curtido ? 'fill-current text-primary' : 'text-muted-foreground')} />
           <span className={cn('font-medium', curtido ? 'text-brand-pink' : 'text-muted-foreground')}>{curtidas}</span>
@@ -308,7 +308,7 @@ export default function ProfilePostCard({
           type="button"
           onClick={() => void alternarComentarios()}
           aria-label={abertos ? 'Fechar comentários' : 'Ver comentários'}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          className="-my-2.5 flex min-h-[44px] items-center gap-1.5 px-1 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <MessageCircle className="h-5 w-5" />
           <span className="font-medium">{totalComentarios}</span>

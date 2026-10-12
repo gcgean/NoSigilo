@@ -738,7 +738,7 @@ export default function Settings() {
                     ) : (
                       <button
                         type="button"
-                        className="text-xs font-medium text-brand-pink hover:underline"
+                        className="inline-flex min-h-[40px] items-center text-xs font-medium text-brand-pink hover:underline"
                         onClick={() => setNameReqOpen(true)}
                       >
                         Mudar nome
@@ -819,7 +819,7 @@ export default function Settings() {
                               Seu último pedido (para "{generoSituacao.requestedGender}") foi recusado{generoSituacao.reviewNote ? `: ${generoSituacao.reviewNote}` : '.'}
                             </p>
                           )}
-                          <button type="button" className="text-xs font-medium text-brand-pink hover:underline" onClick={() => setGeneroAberto(true)}>
+                          <button type="button" className="inline-flex min-h-[40px] items-center text-xs font-medium text-brand-pink hover:underline" onClick={() => setGeneroAberto(true)}>
                             Pedir mudança de tipo de perfil
                           </button>
                         </div>

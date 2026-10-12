@@ -910,7 +910,7 @@ export default function SearchPage() {
               });
               setShowWizard(true);
             }}
-            className="flex shrink-0 items-center gap-1 text-xs font-medium text-brand-pink hover:underline"
+            className="-my-2 flex min-h-[40px] shrink-0 items-center gap-1 px-1 text-xs font-medium text-brand-pink hover:underline"
           >
             <Pencil className="h-3 w-3" /> Editar padrão
           </button>
@@ -1082,7 +1082,7 @@ export default function SearchPage() {
                   key={v}
                   type="button"
                   onClick={() => setRadar(v)}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  className={`min-h-[36px] shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
                     radar === v
                       ? 'border-primary bg-primary text-white'
                       : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'

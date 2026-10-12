@@ -1189,7 +1189,7 @@ export default function Profile() {
               ) : (
                 <Dialog open={verificacaoAberta} onOpenChange={setVerificacaoAberta}>
                   <DialogTrigger asChild>
-                    <button type="button" className="inline-flex items-center gap-1 rounded-full border border-sky-400/50 px-2.5 py-0.5 text-xs font-semibold text-sky-600 hover:bg-sky-500/10">
+                    <button type="button" className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-sky-400/50 px-3 py-1 text-xs font-semibold text-sky-600 hover:bg-sky-500/10">
                       ✔ Verificar perfil
                     </button>
                   </DialogTrigger>

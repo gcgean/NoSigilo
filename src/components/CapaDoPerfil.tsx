@@ -76,7 +76,7 @@ export default function CapaDoPerfil({
         <button
           type="button"
           onClick={onEditar}
-          className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-xs font-medium text-white backdrop-blur hover:bg-black/70"
+          className="absolute right-2 top-2 flex min-h-[36px] items-center gap-1 rounded-full bg-black/55 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-black/70"
         >
           <Pencil className="h-3 w-3" /> Editar capa
         </button>

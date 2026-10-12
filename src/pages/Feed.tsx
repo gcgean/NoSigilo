@@ -3270,7 +3270,7 @@ export default function Feed() {
                       onTouchCancel={cancelLikeLongPress}
                       onClick={() => void handleLikeButtonClick(item.post)}
                       className={cn(
-                        'flex items-center gap-2 transition-colors',
+                        '-m-2.5 flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 p-2.5 transition-colors',
                         item.post.likedByMe ? 'text-primary' : 'text-muted-foreground hover:text-primary'
                       )}
                     >
@@ -3315,7 +3315,7 @@ export default function Feed() {
                     type="button"
                     aria-label="Ver comentários"
                     onClick={() => void toggleComments(item.post.id)}
-                    className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="-my-2.5 flex min-h-[44px] items-center gap-2 px-1 py-2.5 text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <MessageCircle className="w-5 h-5" />
                     <span className="text-sm font-medium">{item.post.commentsCount}</span>

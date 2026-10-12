@@ -71,7 +71,7 @@ export default function TokenBadge({ className }: { className?: string }) {
         title="Seus tokens"
         aria-label={`${points} tokens`}
         className={cn(
-          'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold transition-all',
+          'flex min-h-[36px] items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold transition-all',
           celebrate
             ? 'border-amber-300 bg-amber-400/25 text-amber-300 shadow-[0_0_16px_rgba(251,191,36,0.75)] ring-2 ring-amber-300/70'
             : 'border-amber-400/40 bg-amber-400/10 text-amber-400 hover:bg-amber-400/20'
