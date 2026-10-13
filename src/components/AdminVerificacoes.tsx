@@ -51,7 +51,7 @@ export default function AdminVerificacoes() {
           <div key={p.id} className="rounded-xl border p-3">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <div>
-                <p className="font-semibold">{p.nome} <span className="text-xs font-normal text-muted-foreground">· {p.genero || '—'}</span></p>
+                <p className="font-semibold"><a href={`/users/${p.userId}`} target="_blank" rel="noopener noreferrer" className="hover:text-primary hover:underline">{p.nome} ↗</a> <span className="text-xs font-normal text-muted-foreground">· {p.genero || '—'}</span></p>
                 <p className="text-xs text-muted-foreground">{p.email || 'sem e-mail'} · conta de {dataHora(p.contaDesde)} · enviou em {dataHora(p.enviadoEm)}</p>
               </div>
               <p className="rounded-lg bg-primary/10 px-2 py-1 font-mono text-sm font-bold text-primary">Código: {p.codigo}</p>

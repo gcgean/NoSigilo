@@ -1611,18 +1611,19 @@ export default function Admin() {
               <div className="space-y-2">
                 {nameRequests.map((r) => (
                   <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
-                    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary">
+                    <a href={`/users/${r.userId}`} target="_blank" rel="noopener noreferrer" title="Ver perfil" className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary ring-primary/40 hover:ring-2">
                       {r.avatar ? (
                         <img src={resolveServerUrl(r.avatar)} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted-foreground">{(r.currentName || r.requestedName || '?')[0]}</div>
                       )}
-                    </div>
+                    </a>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">
                         <span className="text-muted-foreground line-through">{r.currentName || '—'}</span>
                         <span className="mx-2">→</span>
                         <span className="font-semibold text-foreground">{r.requestedName}</span>
+                        <a href={`/users/${r.userId}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-primary hover:underline">ver perfil ↗</a>
                       </p>
                       <p className="text-xs text-muted-foreground">{r.email || 'sem e-mail'} · {formatDateTime(r.createdAt)}</p>
                       {r.reason ? <p className="text-xs text-muted-foreground">Motivo: {r.reason}</p> : null}

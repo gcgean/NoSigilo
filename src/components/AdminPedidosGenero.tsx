@@ -49,15 +49,18 @@ export default function AdminPedidosGenero() {
         {pedidos.map((p) => (
           <div key={p.id} className="rounded-xl border p-3">
             <div className="flex flex-wrap items-start gap-3">
-              <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary">
+              {/* Foto e nome abrem o perfil em outra aba (o painel fica onde estava). */}
+              <a href={`/users/${p.userId}`} target="_blank" rel="noopener noreferrer" title="Ver perfil" className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-secondary ring-primary/40 hover:ring-2">
                 {p.avatar ? (
                   <img src={resolveServerUrl(p.avatar)} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-sm font-bold text-muted-foreground">{(p.name || '?')[0]}</div>
                 )}
-              </div>
+              </a>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{p.name || 'Sem nome'}</p>
+                <a href={`/users/${p.userId}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold hover:text-primary hover:underline">
+                  {p.name || 'Sem nome'} ↗
+                </a>
                 <p className="text-sm">
                   <span className="text-muted-foreground line-through">{p.currentGender || '—'}</span>
                   <span className="mx-2">→</span>
