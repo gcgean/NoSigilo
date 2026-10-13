@@ -20197,6 +20197,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const totalUsersByCity = Number((totalUsersByCityRow as any)?.c || 0);
       const totalVisits = Number((totalRow as any)?.c || 0);
+      // Tráfego total por hora: TODOS os acessos (páginas abertas, logado ou não),
+      // média por hora nos últimos 30 dias. Responde "qual o horário de menor
+      // movimento" (para manutenção), o que os únicos por hora não respondem.
+      const acessosPorHoraRows = (await queryAll(
+        db,
+        `SELECT ${localHourExpr} AS hour_num, COUNT(*) AS c
+           FROM site_visits sv
+          WHERE sv.created_at >= ? AND LENGTH(sv.created_at) >= 13
+          GROUP BY hour_num`,
+        [thirtyDaysAgoIso]
+      )) as any[];
+      const acessosPorHora = new Array(24).fill(0);
+      for (const r of acessosPorHoraRows) {
+        const h = Number(r.hour_num);
+        if (Number.isInteger(h) && h >= 0 && h <= 23) acessosPorHora[h] += Number(r.c || 0);
+      }
+      const trafficByHour = acessosPorHora.map((total, hour) => ({ hour, count: Math.round(total / 30) }));
+
       // Média de usuários únicos por hora: soma dos únicos/dia ÷ 30 (janela fixa).
       const hourSum = new Array(24).fill(0);
       for (const r of hourlyRows as any[]) {
@@ -20357,6 +20375,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         byPage: groupCounts(history.map((item) => item.pagePath), '/'),
         history,
         byHour: byHourFinal,
+        trafficByHour,
         // Usuários únicos que acessaram por dia (local), últimos 30 dias.
         uniqueUsersByDay: (uniqueByDayRows as any[]).map((row: any) => ({
           label: String(row.day || ''),

@@ -225,6 +225,8 @@ type VisitAnalytics = {
   byPage: VisitBreakdown[];
   history: VisitHistoryItem[];
   byHour: Array<{ hour: number; count: number }>;
+  /** Todos os acessos (logado ou não), média por hora nos últimos 30 dias. */
+  trafficByHour: Array<{ hour: number; count: number }>;
   uniqueUsersByDay: VisitBreakdown[];
   newUsersByDay: VisitBreakdown[];
   growingCities: GrowingCity[];
@@ -280,6 +282,7 @@ const DEFAULT_VISIT_ANALYTICS: VisitAnalytics = {
   byPage: [],
   history: [],
   byHour: [],
+  trafficByHour: [],
   uniqueUsersByDay: [],
   newUsersByDay: [],
   growingCities: [],
@@ -3230,6 +3233,64 @@ export default function Admin() {
                       </div>
                       <div className="mt-1 flex gap-0.5">
                         {visitAnalytics.byHour.map((h) => (
+                          <span key={h.hour} className="flex-1 text-center text-[9px] text-muted-foreground tabular-nums">
+                            {h.hour % 6 === 0 ? `${h.hour}h` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </Card>
+            )}
+
+            {/* ── Tráfego total por hora: horário de menor movimento ── */}
+            {visitAnalytics.trafficByHour.some((h) => h.count > 0) && (
+              <Card className="p-5 glass">
+                <h3 className="font-semibold mb-1">Tráfego por hora (média)</h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Todos os acessos à plataforma (páginas abertas, de quem está logado ou não) a cada hora do dia, em média nos últimos 30 dias (horário de Brasília). Mostra o horário de menor movimento, o melhor para manutenção.
+                </p>
+                {(() => {
+                  const itens = visitAnalytics.trafficByHour;
+                  const max = Math.max(1, ...itens.map((h) => h.count));
+                  const vale = itens.reduce((a, b) => (b.count < a.count ? b : a), itens[0]);
+                  const pico = itens.reduce((a, b) => (b.count > a.count ? b : a), itens[0]);
+                  const total = itens.reduce((s, h) => s + h.count, 0);
+                  return (
+                    <>
+                      <p className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+                        <span>
+                          <span className="text-muted-foreground">Menor movimento: </span>
+                          <span className="font-semibold text-emerald-600">{vale.hour}h</span>
+                          <span className="text-muted-foreground"> · ~{vale.count.toLocaleString('pt-BR')} acessos/h</span>
+                        </span>
+                        <span>
+                          <span className="text-muted-foreground">Pico: </span>
+                          <span className="font-semibold text-foreground">{pico.hour}h</span>
+                          <span className="text-muted-foreground"> · ~{pico.count.toLocaleString('pt-BR')} acessos/h</span>
+                        </span>
+                        <span className="text-muted-foreground">~{total.toLocaleString('pt-BR')} acessos/dia</span>
+                      </p>
+                      <div className="flex items-end gap-0.5 h-24">
+                        {itens.map((h) => {
+                          const pct = (h.count / max) * 100;
+                          const ehVale = h.hour === vale.hour;
+                          return (
+                            <div key={h.hour} className="group relative flex h-full flex-1 items-end">
+                              <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 hidden group-hover:block bg-popover border rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap z-10 shadow-sm">
+                                {h.hour}h: ~{h.count.toLocaleString('pt-BR')} acessos/h
+                              </div>
+                              <div
+                                className={`w-full rounded-sm transition-all ${ehVale ? 'bg-emerald-500' : 'bg-sky-500/40'}`}
+                                style={{ height: `${Math.max(2, pct)}%` }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-1 flex gap-0.5">
+                        {itens.map((h) => (
                           <span key={h.hour} className="flex-1 text-center text-[9px] text-muted-foreground tabular-nums">
                             {h.hour % 6 === 0 ? `${h.hour}h` : ''}
                           </span>
