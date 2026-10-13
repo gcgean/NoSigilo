@@ -19886,8 +19886,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/admin/analytics/visits', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const chave = `${String(req.query.limit || '')}|${String(req.query.cityUsersPeriodDays || '')}|${String(req.query.accessPeriodDays || '')}`;
     const guardado = cacheVisitas.get(chave);
-    if (guardado && Date.now() - guardado.emMs < VALIDADE_VISITAS_MS) {
+    const recalculoInterno = req.headers['x-recalcular-visitas'] === '1';
+    if (guardado && !recalculoInterno && Date.now() - guardado.emMs < VALIDADE_VISITAS_MS) {
       res.json(guardado.dados);
+      return;
+    }
+    // Vencido, mas recente (até 6h): entrega o guardado NA HORA e recalcula em
+    // segundo plano. Antes, quem abria depois do vencimento esperava as ~17
+    // consultas sobre 1,9 milhão de visitas (8 a 14 s). O recálculo é um pedido
+    // interno a esta mesma rota, com o mesmo login, marcado para ignorar o cache.
+    if (guardado && !recalculoInterno && Date.now() - guardado.emMs < 6 * 3_600_000) {
+      res.json(guardado.dados);
+      if (!visitasEmCurso.has(chave)) {
+        const porta = Number(process.env.PORT || 4001);
+        void fetch(`http://127.0.0.1:${porta}${req.originalUrl}`, {
+          headers: { authorization: String(req.headers.authorization || ''), 'x-recalcular-visitas': '1' },
+        }).catch(() => {});
+      }
       return;
     }
     const emCurso = visitasEmCurso.get(chave);
