@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0b0716">
+<title>NoSigilo · Voltamos já</title>
+<style>
+  :root { --rosa: #ec4d6b; --lilas: #a78bfa; --fundo: #0b0716; --texto: #f5f3ff; --suave: #b9b3c9; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, rgba(236,77,107,.22), transparent 60%),
+                radial-gradient(900px 500px at 100% 110%, rgba(167,139,250,.16), transparent 60%), var(--fundo);
+    color: var(--texto); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 440px; text-align: center; }
+  .logo { display: inline-flex; border-radius: 22px; box-shadow: 0 10px 40px rgba(236,77,107,.35); }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 22px 0 10px; }
+  h1 span { background: linear-gradient(90deg, var(--rosa), var(--lilas)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { color: var(--suave); line-height: 1.6; margin: 0 0 14px; font-size: 1rem; }
+  .caixa { margin: 22px 0; padding: 14px 16px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: rgba(255,255,255,.04); text-align: left; }
+  .caixa li { color: var(--suave); margin: 6px 0; line-height: 1.5; font-size: .95rem; }
+  .caixa ul { margin: 0; padding-left: 20px; }
+  .pulso { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; color: var(--suave); }
+  .pulso i { width: 9px; height: 9px; border-radius: 50%; background: var(--rosa); animation: pulso 1.4s ease-in-out infinite; }
+  @keyframes pulso { 0%,100% { opacity: .35; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.15); } }
+  @media (prefers-reduced-motion: reduce) { .pulso i { animation: none; } }
+  .marca { margin-top: 26px; font-size: .8rem; color: #6f6880; }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><svg width="72" height="72" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="18" x2="168" y2="174" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1B2450" />
+      <stop offset="0.45" stop-color="#11162E" />
+      <stop offset="1" stop-color="#060814" />
+    </linearGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(54 30) rotate(42.5) scale(152.517)">
+      <stop stop-color="#FF87F3" stop-opacity="0.9" />
+      <stop offset="0.4" stop-color="#8B5CFF" stop-opacity="0.28" />
+      <stop offset="1" stop-color="#8B5CFF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="stroke" x1="50" y1="32" x2="146" y2="140" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB8F6" />
+      <stop offset="0.5" stop-color="#F472FF" />
+      <stop offset="1" stop-color="#8B5CFF" />
+    </linearGradient>
+    <filter id="shadow" x="18" y="18" width="156" height="156" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#050816" flood-opacity="0.44" />
+    </filter>
+  </defs>
+
+  <rect width="192" height="192" rx="44" fill="url(#bg)" />
+  <rect width="192" height="192" rx="44" fill="url(#halo)" />
+
+  <g filter="url(#shadow)">
+    <path
+      d="M66 79V68C66 45.91 83.91 28 106 28C126.2 28 142.91 42.99 145.56 62.45"
+      stroke="url(#stroke)"
+      stroke-width="10"
+      stroke-linecap="round"
+    />
+    <path
+      d="M58 79H116C129.25 79 140 89.75 140 103V124C140 137.25 129.25 148 116 148H58C44.75 148 34 137.25 34 124V103C34 89.75 44.75 79 58 79Z"
+      stroke="url(#stroke)"
+      stroke-width="10"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M87 110C87 104.48 91.48 100 97 100C102.52 100 107 104.48 107 110C107 113.73 104.95 117 101.91 118.73V129H92.09V118.73C89.05 117 87 113.73 87 110Z"
+      fill="url(#stroke)"
+    />
+    <path
+      d="M124 65L160 76.25V96.75C160 114.93 147.55 129.22 129 134.75C110.45 129.22 98 114.93 98 96.75V76.25L124 68.13"
+      stroke="url(#stroke)"
+      stroke-width="8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M129 82L133.51 91.14L143.6 92.61L136.3 99.71L138.03 109.73L129 104.98L119.97 109.73L121.7 99.71L114.4 92.61L124.49 91.14L129 82Z"
+      fill="url(#stroke)"
+    />
+  </g>
+</svg></div>
+  <h1>Estamos deixando o <span>NoSigilo</span> ainda mais rápido 🔥</h1>
+  <p>O site está em uma manutenção rápida e volta em breve, mais veloz pra você.</p>
+  <div class="caixa">
+    <ul>
+      <li>🔒 Seu perfil, fotos, mensagens e assinatura estão guardados e seguros.</li>
+      <li>⏱️ É coisa de poucos minutos. Não precisa fazer nada.</li>
+      <li>🔄 Esta página se atualiza sozinha e te leva de volta assim que terminarmos.</li>
+    </ul>
+  </div>
+  <span class="pulso"><i></i> Voltamos já</span>
+  <div class="marca">NoSigilo.net</div>
+</main>
+<script>
+  // Tenta voltar sozinho: a cada 30 s confere se o site já respondeu normalmente.
+  setInterval(function () {
+    fetch('/api/health', { cache: 'no-store' }).then(function (r) {
+      if (r.ok) location.reload();
+    }).catch(function () {});
+  }, 30000);
+</script>
+</body>
+</html>
