@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
 import {
@@ -1350,7 +1351,7 @@ function StatsModal({
                         </div>
                       )}
                       <div className="min-w-0">
-                        <p className="text-sm font-medium">{c.commenter.name}</p>
+                        <p className="text-sm font-medium"><NomePerfil id={c.commenter.id} nome={c.commenter.name} aoNavegar={onClose} /></p>
                         <p className="text-sm text-muted-foreground">{c.text}</p>
                         <p className="text-xs text-muted-foreground/60 mt-0.5">{formatTime(c.createdAt)}</p>
                       </div>

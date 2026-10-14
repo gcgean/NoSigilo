@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import {
   AlertCircle,
   ArrowRight,
@@ -695,7 +696,7 @@ export default function Promoter() {
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{u.name || 'Usuário'}</p>
+                        <p className="truncate text-sm font-medium"><NomePerfil id={u.id} nome={u.name || 'Usuário'} /></p>
                         <p className="text-xs text-muted-foreground">Entrou em {formatDate(u.joinedAt)}</p>
                       </div>
                       <span className={`shrink-0 text-xs rounded-full px-2 py-0.5 border font-medium ${meta.color}`}>

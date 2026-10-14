@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { INTENTION_OPTIONS } from '@/pages/Search';
 import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -271,7 +272,7 @@ function PhotoItem({
                           {REACTION_EMOJI[l.reaction || 'heart'] ?? '💜'}
                         </span>
                       </div>
-                      <span className="text-sm text-white/90 truncate">{l.user.name}</span>
+                      <NomePerfil id={l.user.id} nome={l.user.name} className="text-sm text-white/90 truncate" />
                     </div>
                   ))}
                 </div>
@@ -1531,7 +1532,7 @@ export default function Profile() {
             <div className="space-y-1">
               <p className="font-semibold">Padrinho na rede</p>
               <p className="text-sm text-muted-foreground">
-                Seu acesso ao NoSigilo foi convidado por <span className="font-medium text-foreground">{user.invitedBy.name}</span>.
+                Seu acesso ao NoSigilo foi convidado por <NomePerfil id={user.invitedBy.id} nome={user.invitedBy.name} className="font-medium text-foreground" />.
               </p>
             </div>
           </div>
@@ -1636,7 +1637,7 @@ export default function Profile() {
 
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate font-semibold">{visit.visitor?.name || 'Alguém'}</p>
+                                <p className="truncate font-semibold"><NomePerfil id={visit.visitor?.id} nome={visit.visitor?.name} /></p>
                                 <Badge variant="secondary" className="bg-secondary/80 text-[10px]">
                                   {visitTimeAgo(visit.createdAt)}
                                 </Badge>

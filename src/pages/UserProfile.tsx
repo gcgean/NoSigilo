@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { textoDistancia } from '@/utils/distancia';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink, MessageSquareQuote } from 'lucide-react';
@@ -1840,7 +1841,7 @@ export default function UserProfile() {
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm">{t.author.name}</span>
+                            <NomePerfil id={t.author.id} nome={t.author.name} className="font-semibold text-sm" />
                             {formatProfileIdentityLine(t.author) ? (
                               <span className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</span>
                             ) : null}

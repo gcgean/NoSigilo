@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { useNavigate } from 'react-router-dom';
 import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -218,7 +219,7 @@ function VideoCard({
             </div>
           )}
           <p className="min-w-0 flex-1 truncate text-[11px] font-semibold text-white">
-            {item.author.name}
+            <NomePerfil id={item.author.id} nome={item.author.name} dentroDeBotao />
           </p>
         </div>
 

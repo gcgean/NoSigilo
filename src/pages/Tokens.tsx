@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import ComprarTokens from '@/components/ComprarTokens';
 import { Coins, TrendingUp, Gift, Trophy, Zap, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -213,7 +214,7 @@ export default function Tokens() {
                 </span>
                 <UserAvatar user={{ name: r.name, avatar: r.avatar }} className="h-9 w-9" />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                  {r.name}{r.isMe && ' (você)'}
+                  <NomePerfil id={r.id} nome={r.name} />{r.isMe && ' (você)'}
                 </span>
                 <span className="shrink-0 text-sm font-bold text-amber-400">{r.total}</span>
               </div>

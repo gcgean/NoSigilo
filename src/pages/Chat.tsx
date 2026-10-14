@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, Suspense, lazy } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { textoDistancia } from '@/utils/distancia';
 import { ArrowLeft, BellOff, Check, CheckCheck, ChevronRight, Copy, Crown, Eye, EyeOff, Heart, HeartHandshake, Image, Lock, Mail, MessageCircle, MoreVertical, Phone, Pin, Radio, Reply, Search, Send, Smile, Star, Trash2, User, Users, Video, WifiOff, X, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -1801,7 +1802,7 @@ export default function Chat() {
                   <div className="flex w-full max-w-sm flex-col items-center gap-2 rounded-2xl border bg-secondary/20 px-4 py-5 text-center">
                     <UserAvatar user={activeConversation.user} className="h-20 w-20" />
                     <div className="flex items-center gap-1.5">
-                      <p className="text-base font-semibold">{activeConversation.user.name}</p>
+                      <p className="text-base font-semibold"><NomePerfil id={activeConversation.user.id} nome={activeConversation.user.name} /></p>
                       {emptyStateProfile?.isPremium ? (
                         <Crown role="img" aria-label="Assinante" className="h-4 w-4 shrink-0 text-gold" />
                       ) : null}

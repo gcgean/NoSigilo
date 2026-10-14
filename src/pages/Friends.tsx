@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { Search, MapPin, MessageCircle, UserCheck, UserX, Users, Zap, Sparkles } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Input } from '@/components/ui/input';
@@ -433,7 +434,7 @@ export default function FriendsPage() {
                       />
                     </NavLink>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{req.fromUser.name}</p>
+                      <p className="font-medium truncate"><NomePerfil id={req.fromUser.id} nome={req.fromUser.name} /></p>
                       <p className="text-xs text-muted-foreground truncate">
                         {[req.fromUser.gender, req.fromUser.city].filter(Boolean).join(' · ')}
                       </p>
@@ -487,7 +488,7 @@ export default function FriendsPage() {
                       />
                     </NavLink>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{req.toUser.name}</p>
+                      <p className="font-medium truncate"><NomePerfil id={req.toUser.id} nome={req.toUser.name} /></p>
                       <p className="text-xs text-muted-foreground truncate">
                         {[req.toUser.gender, req.toUser.city].filter(Boolean).join(' · ')}
                       </p>

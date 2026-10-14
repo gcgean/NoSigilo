@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { Heart, MessageCircle, Eye, Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import { feedService, interactionsService } from '@/services/api';
 import { Button } from '@/components/ui/button';
@@ -346,8 +347,8 @@ export default function ProfilePostCard({
             ))}
           </span>
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            Curtido por <strong className="text-foreground">{quemCurtiu[0].name}</strong>
-            {quemCurtiu.length > 1 && <> e <strong className="text-foreground">{quemCurtiu.length === 2 ? quemCurtiu[1].name : `mais ${quemCurtiu.length - 1}`}</strong></>}
+            Curtido por <strong className="text-foreground"><NomePerfil id={quemCurtiu[0].id} nome={quemCurtiu[0].name} dentroDeBotao /></strong>
+            {quemCurtiu.length > 1 && <> e <strong className="text-foreground">{quemCurtiu.length === 2 ? <NomePerfil id={quemCurtiu[1].id} nome={quemCurtiu[1].name} dentroDeBotao /> : `mais ${quemCurtiu.length - 1}`}</strong></>}
           </span>
           <span className="shrink-0 text-xs font-semibold text-primary">{listaCurtidasAberta ? 'Fechar' : 'Ver todos'}</span>
         </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { getSiteUrl } from '@/utils/serverUrl';
 import {
   Award,
@@ -326,7 +327,7 @@ export default function Invites() {
             <div className="space-y-1">
               <p className="font-semibold">Seu padrinho na rede</p>
               <p className="text-sm text-muted-foreground">
-                Seu acesso ao NoSigilo foi patrocinado por <span className="font-medium text-foreground">{user.invitedBy.name}</span>.
+                Seu acesso ao NoSigilo foi patrocinado por <NomePerfil id={user.invitedBy.id} nome={user.invitedBy.name} className="font-medium text-foreground" />.
               </p>
             </div>
           </div>
@@ -374,7 +375,7 @@ export default function Invites() {
                           <div className="space-y-1">
                             {invite.entries.map((entry) => (
                               <div key={entry.id} className="rounded-lg bg-secondary/40 px-3 py-2 text-sm">
-                                <span className="font-medium text-foreground">{entry.invitee?.name || entry.inviteeEmail || 'Novo membro'}</span>
+                                <NomePerfil id={entry.invitee?.id} className="font-medium text-foreground">{entry.invitee?.name || entry.inviteeEmail || 'Novo membro'}</NomePerfil>
                                 <span className="text-muted-foreground"> entrou em {new Date(entry.createdAt).toLocaleString('pt-BR')}</span>
                               </div>
                             ))}

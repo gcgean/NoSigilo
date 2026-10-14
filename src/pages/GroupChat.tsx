@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft, Ban, Bell, BellOff, ChevronRight, Copy, Crown, Eye, EyeOff, Image as ImageIcon, Loader2, LogOut, MoreVertical, Pin, PinOff,
@@ -404,7 +405,7 @@ export default function GroupChat() {
             <p className="truncate font-semibold leading-tight">{group.title}</p>
             <p className="truncate text-xs text-muted-foreground">
               {group.members.length} participante{group.members.length === 1 ? '' : 's'}
-              {dono && <> · <Crown className="mb-0.5 inline h-3 w-3 text-gold-text" /> Moderador: <span className="font-medium text-foreground">{dono.name}</span></>}
+              {dono && <> · <Crown className="mb-0.5 inline h-3 w-3 text-gold-text" /> Moderador: <NomePerfil id={dono.id} nome={dono.name} className="font-medium text-foreground" /></>}
               {moderadores.length > 0 && ` +${moderadores.length}`}
             </p>
           </div>

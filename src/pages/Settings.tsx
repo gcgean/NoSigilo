@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import NomePerfil from '@/components/NomePerfil';
 import {
   User, Lock, Bell, Eye, Shield, Globe, Moon, Sun, LogOut,
   ChevronRight, Camera, Mail, MapPin, Calendar, Trash2, UserPlus, EyeOff, MessageSquarePlus, MessageCircle, CheckCircle2, Clock, XCircle, Lightbulb, Send, Zap, Film, Loader2, Download
@@ -1928,7 +1929,7 @@ export default function Settings() {
 
             {user?.invitedBy ? (
               <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
-                Você entrou por convite de <span className="font-semibold">{user.invitedBy.name}</span>.
+                Você entrou por convite de <NomePerfil id={user.invitedBy.id} nome={user.invitedBy.name} className="font-semibold" />.
               </div>
             ) : null}
 
