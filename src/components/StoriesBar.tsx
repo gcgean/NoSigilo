@@ -167,8 +167,9 @@ export default function StoriesBar() {
             type="button"
             onClick={() =>
               unlocked
-                ? navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed${premium ? '' : '&taste=1'}`)
-                : navigate('/subscriptions')
+                ? navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed`)
+                // Bloqueado: abre a amostra dos mais curtidos (sem revelar este perfil).
+                : navigate('/stories?amostra=1&from=feed')
             }
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
 import {
@@ -160,6 +160,7 @@ type FeedStory = {
   audience?: StoryAudience;
   createdAt: string; expiresAt: string; viewed: boolean;
   likeCount: number; likedByMe: boolean; myReaction?: string | null;
+  isVideoLocked?: boolean;
   author: {
     id: string; name: string; gender: string | null; avatar: string | null;
     age: number | null; partnerAge: number | null;
@@ -488,18 +489,23 @@ function FavoritesPicker({
   ), document.body);
 }
 
+// Respostas rápidas: aparecem quando a pessoa toca em "Responder" e vão direto
+// para o chat com um toque (é o que mais faz story virar conversa).
+const RESPOSTAS_RAPIDAS = ['🔥', '😍', '😈', '💦', '👏', '😮'];
+
 function StoryViewer({
   stories,
   startIndex,
   myUserId,
-  isPremium,
+  modoAmostra = false,
   onClose,
   onTogglePin,
 }: {
   stories: FeedStory[];
   startIndex: number;
   myUserId: string;
-  isPremium: boolean;
+  /** Não assinante vendo os mais curtidos: no fim, leva para os planos. */
+  modoAmostra?: boolean;
   onClose: () => void;
   onTogglePin: (autorId: string) => void | Promise<void>;
 }) {
@@ -508,7 +514,37 @@ function StoryViewer({
   const { user: espectador } = useAuth();
   const bottomInset = useBottomChromeInset();
   useBodyScrollLock(true); // o visualizador só existe montado, então trava sempre
-  const [idx, setIdx]           = useState(startIndex);
+  // Stories agrupados por perfil, como no Instagram: as barras do topo mostram
+  // só os stories da pessoa atual; tocar avança dentro do perfil e deslizar
+  // pula de perfil. Antes era uma fila única (149 stories de 96 perfis = 149
+  // tracinhos no topo e nenhum jeito de pular quem não interessa).
+  // Perfis na ordem da fileira; dentro do perfil, do mais antigo ao mais novo.
+  const grupos = useMemo(() => {
+    const ordem: string[] = [];
+    const porAutor = new Map<string, FeedStory[]>();
+    for (const st of stories) {
+      const a = st.author.id;
+      if (!porAutor.has(a)) { porAutor.set(a, []); ordem.push(a); }
+      porAutor.get(a)!.push(st);
+    }
+    return ordem.map((a) => [...porAutor.get(a)!].sort((x, y) => x.createdAt.localeCompare(y.createdAt)));
+  }, [stories]);
+  // Vistos nesta abertura (o "viewed" do servidor só atualiza no próximo load).
+  const vistosAqui = useRef(new Set<string>());
+  // Ao entrar num perfil, começa pelo primeiro story que a pessoa ainda não viu.
+  const inicioDoGrupo = useCallback((g: FeedStory[]) => {
+    const i = g.findIndex((st) => !st.viewed && !vistosAqui.current.has(st.id));
+    return i >= 0 ? i : 0;
+  }, []);
+  const [pos, setPos] = useState(() => {
+    const alvo = stories[startIndex];
+    const gi = Math.max(0, grupos.findIndex((g) => g.some((st) => st.id === alvo?.id)));
+    const g = grupos[gi] ?? [];
+    const si = alvo && !alvo.viewed ? inicioDoGrupo(g) : Math.max(0, g.findIndex((st) => st.id === alvo?.id));
+    return { gi, si };
+  });
+  // Direção da última troca de perfil (anima a entrada como o "cubo" do Instagram).
+  const [dirEntrada, setDirEntrada] = useState<0 | 1 | -1>(0);
   const [progress, setProgress] = useState(0);
   const [comment, setComment]   = useState('');
   const [sending, setSending]   = useState(false);
@@ -519,21 +555,32 @@ function StoryViewer({
   const [myReaction, setMyReaction] = useState<string | null>(null);
   const [showReactions, setShowReactions] = useState(false);
   const [muted, setMuted] = useState(true); // começa mudo (política de autoplay); som liga com o botão
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(false); // segurando o dedo na tela
+  const [digitando, setDigitando] = useState(false); // respondendo: o story espera
+  const [oculto, setOculto] = useState(false); // app em segundo plano
+  const [coracaoGrande, setCoracaoGrande] = useState(false);
+  const pausaEfetiva = paused || digitando || oculto;
   const pausedRef = useRef(false);
   const heldRef = useRef(false);       // true quando foi "segurar" (não é toque)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const story = stories[idx];
+  const grupo = useMemo(() => grupos[Math.min(pos.gi, grupos.length - 1)] ?? [], [grupos, pos.gi]);
+  const story = grupo[Math.min(pos.si, grupo.length - 1)] ?? stories[0];
 
   // Mantém o ref em sincronia (o loop de animação lê o ref, não o estado).
-  useEffect(() => { pausedRef.current = paused; }, [paused]);
-  // Pausa/retoma o vídeo conforme o "segurar".
+  useEffect(() => { pausedRef.current = pausaEfetiva; }, [pausaEfetiva]);
+  // Pausa/retoma o vídeo (segurar, digitando ou app em segundo plano).
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (paused) v.pause(); else void v.play().catch(() => {});
-  }, [paused]);
+    if (pausaEfetiva) v.pause(); else void v.play().catch(() => {});
+  }, [pausaEfetiva]);
+  // Trocou de aba/app: pausa; voltou: continua de onde parou.
+  useEffect(() => {
+    const aoMudar = () => setOculto(document.visibilityState === 'hidden');
+    document.addEventListener('visibilitychange', aoMudar);
+    return () => document.removeEventListener('visibilitychange', aoMudar);
+  }, []);
 
   // Segurar-para-pausar (estilo Instagram). Um toque rápido navega (tap zones);
   // segurar > 180ms pausa; ao soltar, retoma.
@@ -556,20 +603,75 @@ function StoryViewer({
     setProgress(0);
   }, [story.id, story.mimeType]);
 
+  // Fim da fila: fecha. Na amostra grátis, convida a assinar.
+  const fimDaFila = useCallback(() => {
+    onClose();
+    if (modoAmostra) {
+      toast({ title: 'Curtiu? 🔥', description: 'Esses foram os stories mais curtidos de agora. Assine para ver todos, sem limite.' });
+      navigate('/subscriptions');
+    }
+  }, [onClose, modoAmostra, navigate, toast]);
+  const irParaGrupo = useCallback((d: 1 | -1) => {
+    const ng = pos.gi + d;
+    if (ng >= grupos.length) { fimDaFila(); return; }
+    if (ng < 0) { setPos((p) => ({ ...p, si: 0 })); setProgress(0); return; }
+    setDirEntrada(d);
+    setPos({ gi: ng, si: d > 0 ? inicioDoGrupo(grupos[ng]) : 0 });
+  }, [pos.gi, grupos, fimDaFila, inicioDoGrupo]);
+  // Tocar: anda dentro do perfil; passou do último (ou antes do primeiro), troca de perfil.
   const go = useCallback((delta: number) => {
-    // Amostra grátis: não-assinante vê só 1 story; ao tentar avançar, vai pro paywall.
-    if (!isPremium) { onClose(); navigate('/subscriptions'); return; }
-    const next = idx + delta;
-    if (next < 0 || next >= stories.length) { onClose(); return; }
-    setIdx(next);
-  }, [idx, stories.length, onClose, isPremium, navigate]);
+    const nsi = pos.si + delta;
+    if (nsi >= 0 && nsi < grupo.length) { setPos({ gi: pos.gi, si: nsi }); return; }
+    irParaGrupo(delta > 0 ? 1 : -1);
+  }, [pos.gi, pos.si, grupo.length, irParaGrupo]);
+
+  // Teclado (computador): setas navegam, espaço pausa, Esc fecha.
+  useEffect(() => {
+    const aoTeclar = (e: KeyboardEvent) => {
+      const alvo = e.target as HTMLElement | null;
+      if (alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA')) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      else if (e.key === ' ') { e.preventDefault(); setPaused((v) => !v); }
+    };
+    window.addEventListener('keydown', aoTeclar);
+    return () => window.removeEventListener('keydown', aoTeclar);
+  }, [go, onClose]);
+
+  // Pré-carrega o próximo story e o primeiro do próximo perfil: sem tela preta
+  // esperando a foto/vídeo baixar a cada toque.
+  useEffect(() => {
+    const proximos: FeedStory[] = [];
+    if (pos.si + 1 < grupo.length) proximos.push(grupo[pos.si + 1]);
+    const seguinte = grupos[pos.gi + 1];
+    if (seguinte?.length) proximos.push(seguinte[inicioDoGrupo(seguinte)]);
+    const elementos = proximos.filter((st) => st?.mediaUrl).map((st) => {
+      const url = resolveServerUrl(st.mediaUrl || '');
+      if (st.mimeType.startsWith('video/')) {
+        const v = document.createElement('video');
+        v.preload = 'auto';
+        v.muted = true;
+        v.src = url;
+        v.load();
+        return v;
+      }
+      const im = new Image();
+      im.src = url;
+      return im;
+    });
+    return () => {
+      for (const el of elementos) {
+        if (el instanceof HTMLVideoElement) { el.removeAttribute('src'); el.load(); }
+      }
+    };
+  }, [pos.gi, pos.si, grupo, grupos, inicioDoGrupo]);
 
   // Auto-avanço estilo Instagram: imagem/texto enchem a barra em ~5s e passam
   // para o próximo. Vídeo é controlado pelo tempo do próprio vídeo (onTimeUpdate
   // + onEnded). Não-assinante não auto-avança (fica na amostra até tocar).
   useEffect(() => {
     if (story.mimeType.startsWith('video/')) return; // vídeo: progresso pelo player
-    if (!isPremium) { setProgress(100); return; }
     const DURATION = 5000;
     let raf = 0;
     let acc = 0;                       // ms acumulados (não avança enquanto pausado)
@@ -586,12 +688,23 @@ function StoryViewer({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [story.id, story.mimeType, isPremium, go]);
+  }, [story.id, story.mimeType, go]);
 
   // Registrar view
   useEffect(() => {
+    vistosAqui.current.add(story.id);
     void storiesService.view(story.id).catch(() => {});
   }, [story.id]);
+
+  // Resposta rápida (emoji) → vai como resposta do story, direto para o chat.
+  const enviarRespostaRapida = async (emoji: string) => {
+    try {
+      await storiesService.addComment(story.id, emoji);
+      toast({ title: `${emoji} enviado!`, description: 'Foi direto para as mensagens.' });
+    } catch {
+      toast({ title: 'Não foi possível enviar', variant: 'destructive' });
+    }
+  };
 
   const handleSendComment = async () => {
     if (!comment.trim() || sending) return;
@@ -640,13 +753,36 @@ function StoryViewer({
     }
   };
 
-  // Touch navigation (esquerda/direita)
-  const touchStartX = useRef(0);
-  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
-  const handleTouchEnd   = (e: React.TouchEvent) => {
-    const dx = e.changedTouches[0].clientX - touchStartX.current;
-    if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+  // Gestos: deslizar para os lados troca de PERFIL; para baixo, fecha.
+  const toqueInicio = useRef({ x: 0, y: 0 });
+  const handleTouchStart = (e: React.TouchEvent) => {
+    toqueInicio.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - toqueInicio.current.x;
+    const dy = e.changedTouches[0].clientY - toqueInicio.current.y;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) irParaGrupo(dx < 0 ? 1 : -1);
+    else if (dy > 100 && Math.abs(dy) > Math.abs(dx) * 1.5 && !digitando) onClose();
+  };
+
+  // Toque duplo no meio da tela curte (coração grande); toque simples avança.
+  const ultimoToqueNoMeio = useRef(0);
+  const toqueNoMeioTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tocarNoMeio = () => {
+    if (heldRef.current) { heldRef.current = false; return; }
+    const agora = Date.now();
+    if (agora - ultimoToqueNoMeio.current < 260) {
+      ultimoToqueNoMeio.current = 0;
+      if (toqueNoMeioTimer.current) clearTimeout(toqueNoMeioTimer.current);
+      setCoracaoGrande(true);
+      setTimeout(() => setCoracaoGrande(false), 800);
+      if (story.author.id !== myUserId && !myReaction) void handleReact('heart');
+      return;
+    }
+    ultimoToqueNoMeio.current = agora;
+    toqueNoMeioTimer.current = setTimeout(() => go(1), 260);
+  };
+  useEffect(() => () => { if (toqueNoMeioTimer.current) clearTimeout(toqueNoMeioTimer.current); }, []);
 
   return createPortal((
     // O container cobre a viewport de LAYOUT inteira (inset-0) e o conteúdo é
@@ -668,20 +804,30 @@ function StoryViewer({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Progress bars */}
-      <div className="flex gap-1 px-3 pt-3 pb-2">
-        {stories.map((_, i) => (
-          <div key={i} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
+      <style>{`
+        @keyframes nsCuboDir { from { transform: perspective(1200px) rotateY(-24deg) translateX(30%); opacity: .35; } to { transform: none; opacity: 1; } }
+        @keyframes nsCuboEsq { from { transform: perspective(1200px) rotateY(24deg) translateX(-30%); opacity: .35; } to { transform: none; opacity: 1; } }
+      `}</style>
+      {/* Cada perfil é uma "face": trocar de perfil remonta e anima a entrada. */}
+      <div
+        key={story.author.id}
+        className="flex min-h-0 flex-1 flex-col"
+        style={dirEntrada !== 0 ? { animation: `${dirEntrada > 0 ? 'nsCuboDir' : 'nsCuboEsq'} 320ms ease-out` } : undefined}
+      >
+      {/* Barras: só os stories deste perfil. Somem enquanto segura o dedo. */}
+      <div className={cn('flex gap-1 px-3 pt-3 pb-2 transition-opacity duration-200', paused && 'opacity-0')}>
+        {grupo.map((st, i) => (
+          <div key={st.id} className="flex-1 h-0.5 rounded-full bg-white/30 overflow-hidden">
             <div
               className="h-full bg-white transition-none"
-              style={{ width: i < idx ? '100%' : i === idx ? `${progress}%` : '0%' }}
+              style={{ width: i < pos.si ? '100%' : i === pos.si ? `${progress}%` : '0%' }}
             />
           </div>
         ))}
       </div>
 
       {/* Header */}
-      <div className="flex items-center gap-3 px-3 pb-2">
+      <div className={cn('flex items-center gap-3 px-3 pb-2 transition-opacity duration-200', paused && 'opacity-0')}>
         {story.author.avatar ? (
           <img src={resolveServerUrl(story.author.avatar)} alt={story.author.name} className="h-9 w-9 rounded-full object-cover ring-2 ring-white/60" />
         ) : (
@@ -707,7 +853,7 @@ function StoryViewer({
             {story.audience === 'favorites' && <SeloFavoritos />}
           </div>
           <p className="text-xs text-white/60">
-            {story.author.pinnedByMe ? 'Fixado · ' : ''}{timeLeft(story.expiresAt)}
+            {modoAmostra ? '🔥 Em alta agora · ' : ''}{story.author.pinnedByMe ? 'Fixado · ' : ''}{timeLeft(story.expiresAt)}
           </p>
         </div>
         {/* Fixar: a partir daqui os stories deste perfil vêm no topo da fileira. */}
@@ -789,14 +935,27 @@ function StoryViewer({
         />
         <button
           type="button"
+          className="absolute left-1/3 top-0 h-3/5 w-1/3 z-10"
+          onClick={tocarNoMeio}
+          aria-label="Próximo (toque duplo curte)"
+        />
+        <button
+          type="button"
           className="absolute right-0 top-0 h-3/5 w-1/3 z-10"
           onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(1); }}
           aria-label="Próximo"
         />
 
+        {/* Coração grande do toque duplo */}
+        {coracaoGrande && (
+          <div className="pointer-events-none absolute inset-0 z-[15] flex items-center justify-center">
+            <Heart className="h-28 w-28 fill-white text-white drop-shadow-[0_4px_24px_rgba(236,77,107,.8)] animate-in zoom-in-50 fade-in duration-300" />
+          </div>
+        )}
+
         {/* Profile info overlay estilo Match — não own story */}
         {story.author.id !== myUserId && (
-          <div className="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-16">
+          <div className={cn('absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-16 transition-opacity duration-200', paused && 'opacity-0')}>
             {/* Linha 1: Nome + idade */}
             {/* Nome clicável (abre o perfil) e idade menor ao lado. */}
             <div className="flex items-center gap-2 flex-wrap">
@@ -860,7 +1019,24 @@ function StoryViewer({
 
       {/* Comment bar + Like (not own story) */}
       {story.author.id !== myUserId && (
-        <div className="relative z-30 flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3">
+        <div className={cn('relative z-30 flex items-center gap-2 border-t border-white/10 bg-black/80 px-3 py-3 transition-opacity duration-200', paused && 'opacity-0')}>
+          {/* Respostas rápidas: aparecem ao tocar em "Responder" */}
+          {digitando && (
+            <div className="absolute bottom-full left-0 right-0 flex justify-around bg-gradient-to-t from-black/90 to-transparent px-4 pb-3 pt-8">
+              {RESPOSTAS_RAPIDAS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => void enviarRespostaRapida(emoji)}
+                  className="text-3xl leading-none transition-transform active:scale-90 hover:scale-110"
+                  aria-label={`Responder com ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           {/* Botão reagir (tap = reação atual/💜, segurar = escolher) */}
           <div className="relative shrink-0">
             {showReactions && (
@@ -924,6 +1100,9 @@ function StoryViewer({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void handleSendComment(); }}
+            onFocus={() => setDigitando(true)}
+            // Espera um pouco: tocar num emoji tira o foco antes do clique chegar.
+            onBlur={() => setTimeout(() => setDigitando(false), 220)}
             disabled={sending}
           />
           <button
@@ -939,6 +1118,7 @@ function StoryViewer({
         </div>
       )}
     </div>
+      </div>
   ), document.body);
 }
 
@@ -1202,6 +1382,8 @@ export default function Stories() {
   const [loading,      setLoading]      = useState(true);
   const [uploading,    setUploading]    = useState(false);
   const [viewerIdx,    setViewerIdx]    = useState<number | null>(null);
+  // Não assinante: amostra com os stories mais curtidos do momento.
+  const [amostra,      setAmostra]      = useState<FeedStory[] | null>(null);
   const [previewIdx,   setPreviewIdx]   = useState<number | null>(null); // preview own stories
   const [ownMuted, setOwnMuted] = useState(true); // som ao revisar os próprios stories
   const [statsStoryId, setStatsStoryId] = useState<string | null>(null);
@@ -1326,15 +1508,36 @@ export default function Stories() {
     }
   };
 
+  // Amostra grátis para quem não assina: o story tocado (se for foto) e os mais
+  // curtidos do momento, até 3 perfis diferentes. Mostrar o que a comunidade
+  // mais gostou vende melhor que um story qualquer, e dá visualização a quem
+  // posta bem. Vídeo de story é só para assinante, então fica de fora.
+  const montarAmostra = useCallback((tocado?: FeedStory) => {
+    const fotos = feed.filter((st) => !st.isVideoLocked && !st.mimeType.startsWith('video/') && (st.mediaUrl || st.text));
+    const maisCurtidos = [...fotos].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0));
+    const escolhidos: FeedStory[] = [];
+    const autores = new Set<string>();
+    const primeiro = tocado && fotos.some((st) => st.id === tocado.id) ? [tocado] : [];
+    for (const st of [...primeiro, ...maisCurtidos]) {
+      if (autores.has(st.author.id)) continue;
+      autores.add(st.author.id);
+      escolhidos.push(st);
+      if (escolhidos.length >= 3) break;
+    }
+    return escolhidos;
+  }, [feed]);
+
   const handleOpenStory = useCallback(async (idx: number) => {
     if (!isPremium) {
-      setPaywallOpen(true);
+      const selecao = montarAmostra(feedVisivel[idx]);
+      if (selecao.length === 0) { setPaywallOpen(true); return; }
+      setAmostra(selecao);
       return;
     }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
     setViewerIdx(idx);
-  }, [isPremium, requireFields]);
+  }, [isPremium, requireFields, montarAmostra, feedVisivel]);
 
   // Auto-abre o story certo ao chegar por link:
   //  ?open=<id>   → story de outro autor (vindo da barra no Feed) → viewer
@@ -1345,7 +1548,8 @@ export default function Stories() {
     const params = new URLSearchParams(window.location.search);
     const openId = params.get('open');
     const ownId = params.get('storyId');
-    if (!openId && !ownId) return;
+    const pedeAmostra = params.get('amostra') === '1';
+    if (!openId && !ownId && !pedeAmostra) return;
     autoOpenedRef.current = true;
     // Aberto a partir do feed → ao fechar o story, volta pro feed (não fica em /stories)
     if (params.get('from') === 'feed') setReturnTo('/feed');
@@ -1353,6 +1557,12 @@ export default function Stories() {
     if (ownId) {
       const ownIdx = myStories.findIndex((s) => s.id === ownId);
       if (ownIdx >= 0) { setPreviewIdx(ownIdx); return; }
+    }
+    if (pedeAmostra) {
+      if (isPremium) return;
+      const selecao = montarAmostra();
+      if (selecao.length > 0) setAmostra(selecao); else setPaywallOpen(true);
+      return;
     }
     if (openId) {
       // O link manda abrir um story específico. Se o filtro ligado esconde
@@ -1365,13 +1575,11 @@ export default function Stories() {
       }
       const idx = feedVisivel.findIndex((s) => s.id === openId);
       if (idx >= 0) {
-        // Amostra grátis vinda da barra do feed: abre mesmo sem premium (o viewer
-        // trava ao avançar). Caso normal segue pelo gate do handleOpenStory.
-        if (!isPremium && params.get('taste') === '1') setViewerIdx(idx);
-        else void handleOpenStory(idx);
+        // Não assinante cai na amostra dos mais curtidos (handleOpenStory decide).
+        void handleOpenStory(idx);
       }
     }
-  }, [loading, feed, feedVisivel, filtro, myStories, handleOpenStory, isPremium]);
+  }, [loading, feed, feedVisivel, filtro, myStories, handleOpenStory, isPremium, montarAmostra]);
 
   // Escolha da audiência, igual nos dois composers. Fica junto do botão de
   // publicar de propósito: é a última coisa que a pessoa lê antes de postar.
@@ -1943,8 +2151,17 @@ export default function Stories() {
           stories={feedVisivel}
           startIndex={viewerIdx}
           myUserId={user?.id || ''}
-          isPremium={isPremium}
           onClose={() => { setViewerIdx(null); if (returnTo) navigate(returnTo); else void load(); }}
+          onTogglePin={alternaPin}
+        />
+      )}
+      {amostra && (
+        <StoryViewer
+          stories={amostra}
+          startIndex={0}
+          myUserId={user?.id || ''}
+          modoAmostra
+          onClose={() => { setAmostra(null); if (returnTo) navigate(returnTo); }}
           onTogglePin={alternaPin}
         />
       )}

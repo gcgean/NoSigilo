@@ -43,7 +43,7 @@ export function getNotificationHref(notification: any): string | null {
   if (type === 'experience.liked' || type === 'experience.commented') return '/feed';
 
   // ── Stories ──────────────────────────────────────────────────────────────
-  if (type === 'story.liked' || type === 'story.hot' || type === 'story.comment' || type === 'story.mentioned') {
+  if (type === 'story.liked' || type === 'story.hot' || type === 'story.comment' || type === 'story.mentioned' || type === 'story.marco') {
     return storyId ? `/stories?storyId=${encodeURIComponent(storyId)}` : '/stories';
   }
 

@@ -4034,4 +4034,27 @@ describe('nosigilo backend', () => {
     expect(pos(cidade.user.id)).toBeLessThan(pos(estado.user.id));
     expect(pos(estado.user.id)).toBeLessThan(pos(longe.user.id));
   });
+
+  it('stories: autor recebe aviso quando o story chega a 25 visualizações', async () => {
+    const autora = await registerInvitedUser(ctx, sponsorToken, { name: 'Lia Stories', email: 'lia-stories@example.com', password: 'senha123', gender: 'Mulher' });
+    const fa = await registerInvitedUser(ctx, sponsorToken, { name: 'Fa Stories', email: 'fa-stories@example.com', password: 'senha123', gender: 'Homem' });
+    const autoraId = String(autora.user.id);
+    const storyId = `story-marco-${Date.now()}`;
+    const agora = new Date();
+    await run(ctx.db, "INSERT INTO stories (id, user_id, media_id, text, background, audience, created_at, expires_at) VALUES (?, ?, '', 'oi', 'sunset', 'all', ?, ?)",
+      [storyId, autoraId, agora.toISOString(), new Date(agora.getTime() + 86_400_000).toISOString()]);
+    // 24 visualizações de outras pessoas já registradas.
+    for (let i = 0; i < 24; i++) {
+      await run(ctx.db, 'INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [`sv-${storyId}-${i}`, storyId, `viewer-falso-${i}`, agora.toISOString()]);
+    }
+    await ctx.db.persist();
+    // A 25ª, pela rota de verdade.
+    await request(ctx.app).post(`/api/stories/${storyId}/view`).set({ Authorization: `Bearer ${fa.token}` }).expect(200);
+    let aviso: any = null;
+    for (let i = 0; i < 20 && !aviso; i++) {
+      aviso = await ctx.db.queryOne("SELECT title FROM notifications WHERE user_id = ? AND type = 'story.marco'", [autoraId]);
+      if (!aviso) await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(aviso?.title).toContain('25 pessoas');
+  });
 });

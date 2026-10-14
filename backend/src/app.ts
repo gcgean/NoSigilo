@@ -7882,6 +7882,65 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // POST /api/stories — criar story a partir de media_id já uploaded OU de texto
   // com fundo colorido (sem mídia: media_id = '' como sentinela).
+  // Story novo → push para quem curtiu o perfil do autor ou fixou ele nos
+  // stories (o "seguir" daqui). Só no 1º story de uma leva (nada do autor nas
+  // 6h anteriores) e no máximo 2 avisos desse tipo por pessoa por dia, para não
+  // virar spam. Story restrito a favoritos não avisa ninguém.
+  const avisosDeStoryHoje = new Map<string, { dia: string; n: number }>();
+  const avisarSeguidoresDoStory = async (autorId: string, storyId: string) => {
+    const seisHorasAtras = new Date(Date.now() - 6 * 3_600_000).toISOString();
+    const anterior = await queryOne(
+      db,
+      'SELECT 1 AS x FROM stories WHERE user_id = ? AND id <> ? AND created_at >= ? LIMIT 1',
+      [autorId, storyId, seisHorasAtras]
+    );
+    if (anterior) return;
+    const autor = (await queryOne(db, 'SELECT name FROM users WHERE id = ?', [autorId])) as any;
+    const nome = String(autor?.name || 'Alguém').trim();
+    const destinos = (await queryAll(
+      db,
+      `SELECT DISTINCT u.id
+         FROM (
+           SELECT l.user_id AS uid FROM likes l WHERE l.target_type = 'user' AND l.target_id = ?
+           UNION
+           SELECT p.user_id AS uid FROM story_pins p WHERE p.pinned_user_id = ?
+         ) d
+         JOIN users u ON u.id = d.uid
+        WHERE u.id <> ?
+          AND u.deleted_at IS NULL
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND COALESCE(u.is_showcase, 0) = 0
+          AND EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = u.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM blocks b
+             WHERE (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+                OR (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+          )
+        LIMIT 400`,
+      [autorId, autorId, autorId, autorId, autorId]
+    )) as any[];
+    const dia = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    for (const d of destinos) {
+      const uid = String(d.id);
+      const conta = avisosDeStoryHoje.get(uid);
+      const n = conta && conta.dia === dia ? conta.n : 0;
+      if (n >= 2) continue;
+      avisosDeStoryHoje.set(uid, { dia, n: n + 1 });
+      await sendPushToUser({ db, env }, {
+        userId: uid,
+        payload: {
+          title: `${nome} postou um story 🔥`,
+          body: 'Corre ver antes que suma em 24 horas 👀',
+          url: `/stories?open=${encodeURIComponent(storyId)}`,
+          tag: `story.novo:${autorId}`,
+          data: { storyId },
+        },
+      }).catch(() => {});
+    }
+    if (avisosDeStoryHoje.size > 50_000) avisosDeStoryHoje.clear();
+  };
+
   app.post('/api/stories', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const { mediaId } = req.body as { mediaId?: string };
@@ -7971,6 +8030,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           dados: { storyId: id },
         }
       );
+    }
+
+    if (!paraFavoritos) {
+      void avisarSeguidoresDoStory(userId, id).catch((e) => console.error('[stories] aviso de story novo', e));
     }
 
     res.json({ id, expiresAt, audience: paraFavoritos ? 'favorites' : 'all' });
@@ -8173,6 +8236,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         [randomUUID(), storyId, viewerId, new Date().toISOString()]
       );
       await persist();
+      // Quem vê resultado posta de novo: avisa o autor nos marcos de visualização.
+      const total = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM story_views WHERE story_id = ?', [storyId])) as any)?.c || 0);
+      if ([25, 50, 100, 200, 500].includes(total)) {
+        const titulo = `👀 Seu story já foi visto por ${total} pessoas`;
+        const texto = 'Está bombando! Poste outro e continue no topo dos stories 🔥';
+        void createNotification({ db, io: req.app.get('io') }, {
+          userId: String(story.user_id),
+          type: 'story.marco',
+          title: titulo,
+          description: texto,
+          dataJson: { url: `/stories?storyId=${encodeURIComponent(storyId)}`, storyId },
+        }).catch(() => {});
+        void sendPushToUser({ db, env }, {
+          userId: String(story.user_id),
+          payload: { title: titulo, body: texto, url: `/stories?storyId=${encodeURIComponent(storyId)}`, tag: `story.marco:${storyId}`, data: { storyId } },
+        }).catch(() => {});
+      }
     }
     res.json({ ok: true });
   });
