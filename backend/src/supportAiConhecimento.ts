@@ -1,6 +1,7 @@
 // ─── O que o suporte sabe sobre o NoSigilo ──────────────────────────────────
 //
-// Levantado lendo o código (rotas, regras e telas) em 17/09/2026. Não é gerado
+// Levantado lendo o código (rotas, regras e telas) em 17/09/2026 e revisado em
+// 14/10/2026 (stories, eventos, conta oficial, LGPD, localização). Não é gerado
 // automaticamente: quando uma regra mudar no código, mude aqui também. Números
 // que vêm de constantes têm a referência ao lado para facilitar achar.
 //
@@ -49,6 +50,10 @@ Radar (Premium)
 - Tem limite de uso por dia e por semana. Quem recebe pode entrar em contato pelo próprio Radar.
 
 Stories
+- Assistir: os stories vêm separados por perfil (as barrinhas do topo são só da pessoa atual). Tocar no lado direito avança, no esquerdo volta; deslizar para o lado pula para o próximo perfil; deslizar para baixo fecha; segurar o dedo pausa. Começa sempre no primeiro story que a pessoa ainda não viu. No computador: setas, espaço pausa e Esc fecha.
+- Toque duplo no meio da tela curte o story (coração grande). Ao tocar em "Responder", aparecem reações rápidas (🔥😍😈💦👏😮) que vão direto para o chat; o story pausa enquanto a pessoa digita.
+- Quem não assina vê uma amostra com os 3 stories mais curtidos do momento (só fotos; vídeo de story é Premium) e depois é convidado a assinar.
+- Avisos: quando alguém que a pessoa curtiu ou fixou posta um story, ela recebe uma notificação no celular (no máximo 2 desse tipo por dia). Quem posta recebe aviso quando o story chega a 25, 50, 100, 200 e 500 visualizações.
 - Filtros para ver todos, só os fixados ou só de perfis curtidos.
 - Dá para postar story só para Favoritos (estrela verde), escolhendo quem são os favoritos na hora.
 - Dá para fixar um perfil como fã, para os stories dele aparecerem primeiro. O dono vê quem visualizou e quem fixou o perfil dele (Premium).
@@ -64,7 +69,8 @@ Perfil, fotos e postagens
 Chat, grupos e eventos
 - Conversas privadas no Chat (Premium para iniciar e enviar). Mensagens podem ser apagadas.
 - Grupos: lista em Grupos; mandar mensagem exige Premium.
-- Eventos: lista de eventos por perto; criar e confirmar presença exigem Premium.
+- Eventos: lista de eventos por perto; criar e confirmar presença exigem Premium. Quem cria escolhe QUEM pode participar (casais, mulheres, homens, trans e travestis, crossdressers, ou todos) e o LIMITE de participantes. Quem não está entre os perfis escolhidos nem vê o evento. Quando lota, aparece "Evento lotado" e ninguém mais confirma. Confirmou presença, entra no grupo do evento. Eventos que já passaram vão para a aba Encerrados (o grupo fica só leitura por alguns dias e depois some).
+- Mensagem que não vai: se o app diz "Mensagem não enviada" com um motivo (ex.: "Este perfil só recebe mensagens de quem deu match", "só de amigos", "só de mulheres e casais", "não está recebendo mensagens"), não é defeito: é escolha de quem recebe, em Configurações › Privacidade dela. Oriente a curtir o perfil (se a curtida voltar, libera) ou procurar outros perfis.
 
 Segurança
 - Bloquear: no perfil da pessoa. Quem é bloqueado não consegue mais contato.
@@ -76,6 +82,11 @@ Conta
 - Excluir conta: no Perfil tem o botão "Excluir minha conta" (também em Configurações > Segurança > Zona de Perigo). Apaga de vez o perfil, fotos e vídeos, posts, stories, mensagens enviadas, comentários, curtidas e localização (ficam só registros de pagamento exigidos por lei), não tem volta e cancela a assinatura. Antes, a pessoa pode baixar uma cópia em Configurações > Segurança > "Baixar meus dados".
 - Verificação em duas etapas (opcional): em Configurações › Segurança. Ligada, entrar com senha num aparelho novo pede também um código de 6 números enviado ao e-mail (vale 10 minutos; "Reenviar código" na própria tela). Marcando "Confiar neste aparelho", o código não é pedido de novo nele. Os aparelhos de confiança aparecem na mesma tela e podem ser esquecidos. Quem entra pelo Google não usa esse código. Código não chegou: conferir spam e tocar em "Reenviar código".
 - Esqueceu a senha: na tela de login, "Esqueceu a senha?", recebe um código por e-mail que vale 15 minutos.
+- Baixar meus dados: Configurações › Segurança › "Seus dados" › "Baixar meus dados" gera um arquivo com perfil, fotos (com links), posts, stories, contos, comentários, curtidas, mensagens enviadas, compras e comissões. Dá para baixar 1 vez por minuto.
+- Privacidade (LGPD): a Política de Privacidade completa fica no link do rodapé e no cadastro. O NoSigilo não vende dados; e-mail, senha e localização exata nunca aparecem para ninguém. A selfie de verificação é privada (só a equipe vê) e é apagada logo depois da análise. Para assuntos de privacidade, a pessoa fala com a equipe por este chat de Suporte.
+- Distância e localização: a distância é aproximada (o GPS é guardado com precisão de mais ou menos 1 km, para proteger quem mora perto). Aparece em km inteiros; bem perto aparece "menos de 2 km". "Em Fortaleza" (ou outra cidade) quer dizer que a pessoa é da mesma cidade mas não ativou a localização do aparelho, então não dá para calcular a distância exata.
+- Conta oficial "NoSigilo" no Chat: é a equipe mandando boas-vindas e dicas (perfil, match, stories, radar, eventos, segurança). Ninguém lê as respostas nessa conversa; para falar com a equipe é aqui no Suporte. Responder PARAR naquela conversa encerra as dicas.
+- Nome no cadastro: se o apelido já estiver em uso, o cadastro sugere variações livres para escolher com um toque. Em qualquer tela, tocar no nome de alguém abre o perfil da pessoa.
 - Trocar o nome do perfil: Configurações › Perfil › "Mudar nome". Vale na hora, sem aprovação; só não aceita nome que outra pessoa já usa ou nome proibido.
 - Trocar o tipo de perfil (Mulher, Homem, Casal, Trans...): Configurações › Perfil › "Pedir mudança de tipo de perfil". Escolhe o novo tipo e escreve o motivo; a equipe analisa e a resposta chega nas notificações. Você (IA) não aprova nem promete aprovação.
 - Trocar o e-mail da conta: Configurações › Segurança › "Trocar e-mail". Digita o e-mail novo e a senha atual, recebe um código de 6 números NO E-MAIL NOVO e confirma. Quem entra pelo Google não tem senha: precisa falar com a equipe.
