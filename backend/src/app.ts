@@ -19496,10 +19496,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Mede o topo do funil (quem chega sem conta) usando site_visits. O elo com o
   // cadastro é o ip_hash: users.registration_ip_hash usa o mesmo hash. Não
   // identifica ninguém — é hash, serve só para contar.
+  // Cache de 10 min por período: o relatório varre 30–90 dias de visitas.
+  const cacheVisitantes = new Map<number, { em: number; dados: unknown }>();
   app.get('/api/admin/analytics/visitantes', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const pedido = Number(req.query.dias || 7);
       const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
+      const guardado = cacheVisitantes.get(dias);
+      if (guardado && Date.now() - guardado.em < 10 * 60 * 1000) { res.json(guardado.dados); return; }
       const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       // Origem = o PRIMEIRO site externo de onde a pessoa veio. Antes era
@@ -19533,39 +19537,44 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          WHERE sv.user_id IS NULL AND sv.ip_hash IS NOT NULL AND sv.created_at >= ?
          GROUP BY sv.ip_hash`;
 
-      const [totais] = (await queryAll(
+      // UMA consulta, uma linha por visitante; totais e recortes saem daqui em
+      // memória. Antes eram 4 consultas iguais (~7 s cada em 30 dias), e abrir
+      // o relatório pesava ~30 s no banco.
+      const porPessoa = (await queryAll(
         db,
-        `WITH v AS (${base}), c AS (
-           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira) THEN 1 ELSE 0 END AS cadastrou,
-                  CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira
-                                      AND (COALESCE(u.is_premium,0) = 1 OR COALESCE(u.hub_access_status,'') = 'licensed')) THEN 1 ELSE 0 END AS assinou
-             FROM v
-         )
-         SELECT COUNT(*) AS visitantes,
-                SUM(abriu_cadastro) AS abriram_cadastro,
-                SUM(cadastrou) AS cadastraram,
-                SUM(assinou) AS assinaram,
-                SUM(CASE WHEN paginas = 1 THEN 1 ELSE 0 END) AS so_uma_pagina,
-                SUM(CASE WHEN abriu_cadastro = 1 AND cadastrou = 0 THEN 1 ELSE 0 END) AS desistiram_no_cadastro
-           FROM c`,
-        [desde, desde]
-      )) as any[];
-
-      const recorte = async (coluna: string, limite: number) => (await queryAll(
-        db,
-        `WITH v AS (${base}), c AS (
-           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira) THEN 1 ELSE 0 END AS cadastrou
-             FROM v
-         )
-         SELECT COALESCE(NULLIF(${coluna}, ''), 'direto') AS chave,
-                COUNT(*) AS visitantes,
-                SUM(cadastrou) AS cadastraram
-           FROM c GROUP BY 1 ORDER BY 2 DESC LIMIT ${limite}`,
+        `WITH v AS (${base})
+         SELECT v.abriu_cadastro, v.paginas, v.origem, v.aparelho, v.dominio,
+                CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira) THEN 1 ELSE 0 END AS cadastrou,
+                CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira
+                                    AND (COALESCE(u.is_premium,0) = 1 OR COALESCE(u.hub_access_status,'') = 'licensed')) THEN 1 ELSE 0 END AS assinou
+           FROM v`,
         [desde, desde]
       )) as any[];
 
       const n = (v: any) => Number(v || 0);
       const pct = (num: number, den: number) => (den > 0 ? Math.round((num / den) * 1000) / 10 : 0);
+      const totais = {
+        visitantes: porPessoa.length,
+        abriram_cadastro: porPessoa.reduce((a, r) => a + n(r.abriu_cadastro), 0),
+        cadastraram: porPessoa.reduce((a, r) => a + n(r.cadastrou), 0),
+        assinaram: porPessoa.reduce((a, r) => a + n(r.assinou), 0),
+        so_uma_pagina: porPessoa.filter((r) => n(r.paginas) === 1).length,
+        desistiram_no_cadastro: porPessoa.filter((r) => n(r.abriu_cadastro) === 1 && n(r.cadastrou) === 0).length,
+      };
+      const recorte = (coluna: 'origem' | 'aparelho' | 'dominio', limite: number) => {
+        const grupos = new Map<string, { visitantes: number; cadastraram: number }>();
+        for (const r of porPessoa) {
+          const chave = String(r[coluna] || '').trim() || 'direto';
+          const g = grupos.get(chave) ?? { visitantes: 0, cadastraram: 0 };
+          g.visitantes += 1;
+          g.cadastraram += n(r.cadastrou);
+          grupos.set(chave, g);
+        }
+        return [...grupos.entries()]
+          .map(([chave, g]) => ({ chave, ...g }))
+          .sort((a, b) => b.visitantes - a.visitantes)
+          .slice(0, limite);
+      };
       const mapear = (linhas: any[]) => linhas.map((l) => ({
         chave: String(l.chave || 'direto'),
         visitantes: n(l.visitantes),
@@ -19578,7 +19587,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const cadastraram = n(totais?.cadastraram);
       const assinaram = n(totais?.assinaram);
 
-      res.json({
+      const resposta = {
         dias,
         funil: [
           { etapa: 'Entraram no site sem conta', pessoas: visitantes, pct: 100 },
@@ -19592,10 +19601,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           desistiramNoCadastro: n(totais?.desistiram_no_cadastro),
           pctDesistenciaNoCadastro: pct(n(totais?.desistiram_no_cadastro), abriram),
         },
-        porOrigem: mapear(await recorte('origem', 8)),
-        porAparelho: mapear(await recorte('aparelho', 5)),
-        porDominio: mapear(await recorte('dominio', 10)),
-      });
+        porOrigem: mapear(recorte('origem', 8)),
+        porAparelho: mapear(recorte('aparelho', 5)),
+        porDominio: mapear(recorte('dominio', 10)),
+      };
+      cacheVisitantes.set(dias, { em: Date.now(), dados: resposta });
+      res.json(resposta);
     } catch (error) {
       console.error('[admin/analytics/visitantes]', error);
       res.status(500).json({ error: 'visitantes_indisponivel' });
