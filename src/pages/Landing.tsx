@@ -364,10 +364,10 @@ export default function Landing() {
           <div className="landing-shell landing-desire-grid">
             <figure className="landing-desire-image landing-desire-lead">
               <img
-                src="/landing/desire-kiss-trio.webp"
+                src="/landing/real-kiss-trio-840.webp"
                 width={840}
                 height={560}
-                alt="Três adultos em um momento de intimidade e desejo consensual"
+                alt="Três adultos em um momento de carinho e cumplicidade"
                 loading="lazy"
                 decoding="async"
               />
@@ -389,32 +389,32 @@ export default function Landing() {
             <figure className="landing-desire-image landing-desire-portrait">
               <img
                 className="landing-desire-portrait-top"
-                src="/landing/masked-woman-722.webp"
-                srcSet="/landing/masked-woman-361.webp 361w, /landing/masked-woman-722.webp 722w"
+                src="/landing/real-bw-kiss-722.webp"
+                srcSet="/landing/real-bw-kiss-361.webp 361w, /landing/real-bw-kiss-722.webp 588w"
                 sizes="(max-width: 900px) 100vw, 361px"
-                width={722}
-                height={481}
-                alt="Mulher adulta mascarada em um baile elegante"
+                width={588}
+                height={392}
+                alt="Três adultos abraçados em preto e branco"
                 loading="lazy"
                 decoding="async"
               />
               <img
                 className="landing-desire-portrait-center"
-                src="/landing/lounge-trio.jpg"
+                src="/landing/real-gaze-trio-640.webp"
                 width={640}
-                height={425}
+                height={427}
                 alt="Três adultos juntos em um ambiente reservado"
                 loading="lazy"
                 decoding="async"
               />
               <img
                 className="landing-desire-portrait-bottom"
-                src="/landing/first-touch-722.webp"
-                srcSet="/landing/first-touch-361.webp 361w, /landing/first-touch-722.webp 722w"
+                src="/landing/real-curls-722.webp"
+                srcSet="/landing/real-curls-361.webp 361w, /landing/real-curls-722.webp 722w"
                 sizes="(max-width: 900px) 100vw, 361px"
                 width={722}
                 height={481}
-                alt="Casal adulto mascarado trocando olhares em um encontro elegante"
+                alt="Casal adulto trocando olhares em um encontro a três"
                 loading="lazy"
                 decoding="async"
               />
@@ -422,10 +422,10 @@ export default function Landing() {
 
             <figure className="landing-desire-image landing-desire-touch">
               <img
-                src="/landing/bed-trio.webp"
+                src="/landing/real-sofa-trio-600.webp"
                 width={600}
                 height={400}
-                alt="Três adultos deitados próximos em um encontro consensual"
+                alt="Três adultos rindo juntos em um sofá"
                 loading="lazy"
                 decoding="async"
               />
