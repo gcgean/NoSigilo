@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { lePrimeiroToque } from '@/utils/primeiroToque';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
@@ -151,6 +152,8 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'blacklisted'>('idle');
+  // Nome em uso: variações livres para escolher com um toque.
+  const [sugestoesNome, setSugestoesNome] = useState<string[]>([]);
   const [loadingLabel, setLoadingLabel] = useState('Criando sua conta...');
   const [gpsLoading, setGpsLoading] = useState(false);
   const [proofIndex, setProofIndex] = useState(0);
@@ -316,8 +319,9 @@ export default function Register() {
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
-        const { available, reason } = await authService.checkName(name);
+        const { available, reason, sugestoes } = await authService.checkName(name);
         if (cancelled) return;
+        setSugestoesNome(available === false && reason !== 'blacklisted' ? (sugestoes ?? []) : []);
         if (available === true) setNameStatus('available');
         else if (reason === 'blacklisted') setNameStatus('blacklisted');
         else if (available === false) setNameStatus('taken');
@@ -445,11 +449,13 @@ export default function Register() {
         return;
       }
       if (!formData.name.trim()) {
+        marcarPassoCadastro('erro_name_vazio');
         marcarErro('name', 'Como quer ser chamado?', 'Informe seu nome ou apelido.');
         return;
       }
       if (nameStatus === 'taken' || nameStatus === 'blacklisted') {
-        marcarErro('name', nameStatus === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso', 'Escolha outro nome para continuar.');
+        marcarPassoCadastro(nameStatus === 'blacklisted' ? 'erro_name_bloqueado' : 'erro_name_em_uso');
+        marcarErro('name', nameStatus === 'blacklisted' ? 'Nome indisponível' : 'Nome já em uso', sugestoesNome.length ? 'Toque numa das sugestões abaixo ou escolha outro.' : 'Escolha outro nome para continuar.');
         return;
       }
       // Se ainda não confirmou disponível, valida agora antes de avançar.
@@ -550,6 +556,8 @@ export default function Register() {
       lookingFor: lookingForDoEspiar(respostasEspiar.interesse, formData.gender),
       // Registro do aceite (LGPD: quem trata os dados precisa provar o consentimento).
       termosVersao: VERSAO_POLITICA,
+      // De onde a pessoa veio na 1ª visita (Instagram, Google, link com UTM...).
+      primeiroToque: lePrimeiroToque(),
     };
 
     const attemptRegister = async (attempt: number): Promise<Awaited<ReturnType<typeof register>>> => {
@@ -837,7 +845,25 @@ export default function Register() {
                     <p className="px-1 text-xs font-medium text-emerald-600">✓ Nome disponível</p>
                   )}
                   {nameStatus === 'taken' && (
-                    <p className="px-1 text-xs font-medium text-destructive">Esse nome já está em uso. Escolha outro.</p>
+                    <div className="space-y-2 px-1">
+                      <p className="text-xs font-medium text-destructive">
+                        Esse nome já está em uso.{sugestoesNome.length ? ' Que tal um destes? É só tocar:' : ' Escolha outro.'}
+                      </p>
+                      {sugestoesNome.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {sugestoesNome.map((sug) => (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => { updateField('name', sug); marcarPassoCadastro('nome_sugestao_usada'); }}
+                              className="min-h-[40px] rounded-full border border-primary/40 bg-primary/10 px-4 text-sm font-medium text-foreground transition-colors hover:bg-primary/20 active:scale-95"
+                            >
+                              {sug}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                   {nameStatus === 'blacklisted' && (
                     <p className="px-1 text-xs font-medium text-destructive">Esse nome não está disponível. Escolha outro.</p>

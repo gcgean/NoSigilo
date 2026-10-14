@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { capturaPrimeiroToque } from '@/utils/primeiroToque';
 import React from "react";
 import App from "./App.tsx";
 import "./index.css";
@@ -7,6 +8,7 @@ import { capturaOrigem } from "./utils/origemCadastro";
 // Antes de o React Router assumir e reescrever a URL: quem chega pelas paginas
 // regionais de SEO traz ?origem= no link do CTA, e e a unica chance de ler isso.
 capturaOrigem();
+capturaPrimeiroToque();
 
 // Depois de um deploy, uma aba já aberta ainda tem o bundle ANTIGO em memória.
 // Se o usuário navega pra uma rota cujo chunk não estava carregado ainda, o

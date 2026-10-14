@@ -4037,7 +4037,7 @@ describe('nosigilo backend', () => {
 
   it('stories: autor recebe aviso quando o story chega a 25 visualizações', async () => {
     const autora = await registerInvitedUser(ctx, sponsorToken, { name: 'Lia Stories', email: 'lia-stories@example.com', password: 'senha123', gender: 'Mulher' });
-    const fa = await registerInvitedUser(ctx, sponsorToken, { name: 'Fa Stories', email: 'fa-stories@example.com', password: 'senha123', gender: 'Homem' });
+    const fa = await registerInvitedUser(ctx, sponsorToken, { name: 'Fa Marco Stories', email: 'fa-marco-stories@example.com', password: 'senha123', gender: 'Homem' });
     const autoraId = String(autora.user.id);
     const storyId = `story-marco-${Date.now()}`;
     const agora = new Date();
@@ -4056,5 +4056,30 @@ describe('nosigilo backend', () => {
       if (!aviso) await new Promise((r) => setTimeout(r, 50));
     }
     expect(aviso?.title).toContain('25 pessoas');
+  });
+
+  it('cadastro: nome em uso devolve sugestões livres; origem do 1º contato é gravada', async () => {
+    await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Teste SP', email: 'casal-teste-sp@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const r = await request(ctx.app).get('/api/auth/check-name').query({ name: 'casal teste sp' }).expect(200);
+    expect(r.body.available).toBe(false);
+    expect(r.body.sugestoes.length).toBeGreaterThan(0);
+    for (const sug of r.body.sugestoes as string[]) {
+      const livre = await request(ctx.app).get('/api/auth/check-name').query({ name: sug }).expect(200);
+      expect(livre.body.available).toBe(true);
+    }
+
+    const novo = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Veio Do Insta', email: 'veio-do-insta@example.com', password: 'senha123', gender: 'Homem',
+      primeiroToque: { ref: 'l.instagram.com', app: 'instagram', em: new Date().toISOString() },
+    } as any);
+    const u = (await ctx.db.queryOne('SELECT origem_canal, origem_json FROM users WHERE id = ?', [String(novo.user.id)])) as any;
+    expect(u.origem_canal).toBe('Instagram');
+    expect(JSON.parse(u.origem_json).ref).toBe('l.instagram.com');
+
+    const utm = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Veio Da Campanha', email: 'veio-da-campanha@example.com', password: 'senha123', gender: 'Mulher',
+      primeiroToque: { utmSource: 'tiktok', ref: 'google.com' },
+    } as any);
+    expect(((await ctx.db.queryOne('SELECT origem_canal FROM users WHERE id = ?', [String(utm.user.id)])) as any).origem_canal).toBe('TikTok');
   });
 });

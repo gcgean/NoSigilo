@@ -63,6 +63,7 @@ export default function AdminVisitantes() {
   const [passos, setPassos] = useState<CadastroPassos | null>(null);
   const [teste, setTeste] = useState<TesteEspiar | null>(null);
   const [uso, setUso] = useState<UsoDoApp | null>(null);
+  const [porCanal, setPorCanal] = useState<Awaited<ReturnType<typeof adminVisitantesService.cadastrosPorOrigem>> | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(false);
 
@@ -76,6 +77,8 @@ export default function AdminVisitantes() {
         adminVisitantesService.testeEspiar(dias).catch(() => null),
         adminVisitantesService.usoDoApp(dias).catch(() => null),
       ]);
+      // A origem gravada no cadastro aceita 7, 30 ou 90 dias ("Hoje" usa 7).
+      setPorCanal(await adminVisitantesService.cadastrosPorOrigem(dias === 1 ? 7 : dias).catch(() => null));
       setDados(relatorio);
       setPassos(cadastro);
       setTeste(ab);
@@ -313,7 +316,42 @@ export default function AdminVisitantes() {
             <Barra linhas={dados.porAparelho} titulo="Em que aparelho" ajuda="Se o celular converte bem menos, o problema costuma ser a tela de cadastro no celular." />
           </div>
 
-          <Barra linhas={dados.porDominio} titulo="Sites que mais mandam gente" ajuda="Domínio que trouxe visitantes no período e quanto de cada um virou cadastro." />
+          <Barra linhas={dados.porDominio} titulo="Sites que mais mandam gente" ajuda="Primeiro site externo de onde cada visitante veio (o próprio NoSigilo, o login com Google e a volta do pagamento não contam) e quanto virou cadastro depois da visita. Estimado pelo IP." />
+
+          {porCanal && porCanal.canais.length > 0 && (
+            <Card className="p-5 glass">
+              <h3 className="font-semibold mb-1">Cadastros por origem (registrada no cadastro)</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                De onde veio cada pessoa que criou conta nos últimos {porCanal.dias} dias, gravado no próprio cadastro (a primeira vez que ela chegou ao site), e quantos já pagam. Mais preciso que o IP. Começou a ser gravado em 14/10/2026.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-xs text-muted-foreground">
+                      <th className="py-2 pr-3 font-medium">Canal</th>
+                      <th className="py-2 pr-3 text-right font-medium">Cadastros</th>
+                      <th className="py-2 pr-3 text-right font-medium">Pagantes</th>
+                      <th className="py-2 pr-3 text-right font-medium">Mulheres</th>
+                      <th className="py-2 text-right font-medium">Casais</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porCanal.canais.map((c) => (
+                      <tr key={c.canal} className="border-b last:border-0">
+                        <td className={cn('py-2 pr-3', c.canal.startsWith('Sem registro') && 'text-muted-foreground')}>{c.canal}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{c.cadastros.toLocaleString('pt-BR')}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {c.pagantes.toLocaleString('pt-BR')} <span className="text-xs text-muted-foreground">({c.pctPagantes.toLocaleString('pt-BR')}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{c.mulheres.toLocaleString('pt-BR')}</td>
+                        <td className="py-2 text-right tabular-nums">{c.casais.toLocaleString('pt-BR')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </>
       )}
     </div>

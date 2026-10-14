@@ -1,4 +1,5 @@
 import type React from 'react';
+import { lePrimeiroToque } from '@/utils/primeiroToque';
 import { leOrigem } from '@/utils/origemCadastro';
 import { VERSAO_POLITICA } from '@/pages/Privacy';
 
@@ -35,6 +36,9 @@ export default function GoogleSignInButton({
     const origem = leOrigem();
     if (origem) params.set('origem', origem);
     if (aceite) params.set('termos', VERSAO_POLITICA);
+    // De onde a pessoa veio na 1ª visita (o cadastro pelo Google sai do app).
+    const toque = lePrimeiroToque();
+    if (toque) params.set('pt', JSON.stringify(toque).slice(0, 400));
     const query = params.toString();
     window.location.href = `/api/auth/google${query ? `?${query}` : ''}`;
   };

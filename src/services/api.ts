@@ -89,7 +89,7 @@ export const authService = {
     return response.data;
   },
 
-  checkName: async (name: string): Promise<{ available: boolean | null; reason?: string }> => {
+  checkName: async (name: string): Promise<{ available: boolean | null; reason?: string; sugestoes?: string[] }> => {
     if (USE_MOCKS) return { available: true };
     const response = await apiClient.get('/auth/check-name', { params: { name } });
     return response.data;
@@ -1448,6 +1448,11 @@ export const adminVisitantesService = {
   },
   relatorio: async (dias: number): Promise<VisitantesRelatorio> => {
     const response = await apiClient.get('/admin/analytics/visitantes', { params: { dias } });
+    return response.data;
+  },
+  // Origem gravada no próprio cadastro (desde 14/10/2026): 7, 30 ou 90 dias.
+  cadastrosPorOrigem: async (dias: number): Promise<{ dias: number; canais: Array<{ canal: string; cadastros: number; pagantes: number; pctPagantes: number; mulheres: number; casais: number }> }> => {
+    const response = await apiClient.get('/admin/analytics/cadastros-por-origem', { params: { dias } });
     return response.data;
   },
 };

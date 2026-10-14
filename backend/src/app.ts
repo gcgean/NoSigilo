@@ -1957,6 +1957,57 @@ function sanitizeCityValue(value: unknown): string | null {
  *  barra de enderecos para o relatorio encher de linhas de uma ocorrencia. O
  *  cadastro em si nunca falha por isso — origem invalida so vira "veio pelo
  *  caminho principal", que e a resposta honesta quando nao se sabe. */
+// Primeiro contato da pessoa com o site (gravado no navegador na 1ª visita e
+// enviado no cadastro). Responde "de onde vem quem se cadastra" sem depender
+// do IP, que no 4G é compartilhado e muda o tempo todo.
+type PrimeiroToque = { ref?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; app?: string; em?: string };
+const origemSchema = z.object({
+  ref: z.string().max(120).optional(),
+  utmSource: z.string().max(60).optional(),
+  utmMedium: z.string().max(60).optional(),
+  utmCampaign: z.string().max(80).optional(),
+  app: z.string().max(20).optional(),
+  em: z.string().max(40).optional(),
+}).partial();
+function limpaPrimeiroToque(valor: unknown): PrimeiroToque | null {
+  const r = origemSchema.safeParse(valor);
+  if (!r.success) return null;
+  const limpo: PrimeiroToque = {};
+  for (const [k, v] of Object.entries(r.data)) {
+    const t = String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9._:/-]/g, '').slice(0, 120);
+    if (t) (limpo as any)[k] = t;
+  }
+  return Object.keys(limpo).length ? limpo : null;
+}
+/** Canal em português, para o admin. UTM vence (é intenção explícita do link),
+ *  depois o navegador de dentro do app, depois o site que mandou a pessoa. */
+function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): string {
+  const utm = o?.utmSource || '';
+  const ref = o?.ref || '';
+  const app = o?.app || '';
+  const tem = (x: string, ...termos: string[]) => termos.some((t) => x.includes(t));
+  if (utm) {
+    if (tem(utm, 'insta', 'ig')) return 'Instagram';
+    if (tem(utm, 'google')) return 'Google';
+    if (tem(utm, 'face', 'fb', 'meta')) return 'Facebook';
+    if (tem(utm, 'whats', 'wa')) return 'WhatsApp';
+    if (tem(utm, 'tiktok')) return 'TikTok';
+    if (tem(utm, 'email', 'mail')) return 'E-mail';
+    return `Campanha: ${utm}`;
+  }
+  if (app === 'instagram' || tem(ref, 'instagram')) return 'Instagram';
+  if (app === 'tiktok' || tem(ref, 'tiktok')) return 'TikTok';
+  if (app === 'facebook' || tem(ref, 'facebook', 'fb.')) return 'Facebook';
+  if (tem(ref, 'whatsapp', 'wa.me')) return 'WhatsApp';
+  if (ref === 'com.google.android.gm' || tem(ref, 'mail.google')) return 'E-mail';
+  if (tem(ref, 'google')) return signupSource ? 'Google (páginas da cidade)' : 'Google';
+  if (tem(ref, 'bing', 'yahoo', 'duckduckgo')) return 'Outras buscas';
+  if (ref === 't.co' || tem(ref, 'twitter', 'x.com')) return 'X / Twitter';
+  if (signupSource) return 'Páginas da cidade';
+  if (ref) return 'Outros sites';
+  return 'Direto';
+}
+
 function sanitizeSignupSource(value: unknown): string | null {
   const v = String(value ?? '').trim().replace(/^\/+|\/+$/g, '');
   if (!/^swing(\/[a-z0-9-]+){0,2}$/.test(v)) return null;
@@ -3959,7 +4010,22 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const name = String(req.query.name || '').trim();
     if (name.length < 2) { res.json({ available: null }); return; }
     const existing = await queryOne(db, 'SELECT id FROM users WHERE LOWER(name) = LOWER(?) LIMIT 1', [name]);
-    if (existing) { res.json({ available: false, reason: 'in_use' }); return; }
+    if (existing) {
+      // "Nome já em uso" era o maior motivo de desistência no cadastro (23% de
+      // quem abre pelo Instagram). Em vez de só recusar, oferece variações
+      // livres para escolher com um toque.
+      const base = name.replace(/\s+/g, ' ').slice(0, 24);
+      const numero = (max: number) => String(Math.floor(Math.random() * max) + 1);
+      const candidatos = Array.from(new Set([
+        `${base}${numero(99)}`, `${base}${numero(99)}`, `${base}_${numero(999)}`,
+        `${base}${new Date().getFullYear() % 100}`, `${base}.oficial`, `${base}_${numero(99)}`,
+      ])).filter((c) => c.toLowerCase() !== name.toLowerCase());
+      const ph = candidatos.map(() => '?').join(',');
+      const usados = new Set(((await queryAll(db, `SELECT LOWER(name) AS n FROM users WHERE LOWER(name) IN (${ph})`, candidatos.map((c) => c.toLowerCase()))) as any[]).map((r) => String(r.n)));
+      const sugestoes = candidatos.filter((c) => !usados.has(c.toLowerCase())).slice(0, 3);
+      res.json({ available: false, reason: 'in_use', sugestoes });
+      return;
+    }
     if (await isNameBlacklisted(db, name)) { res.json({ available: false, reason: 'blacklisted' }); return; }
     res.json({ available: true });
   });
@@ -3974,6 +4040,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       signupSource: z.string().max(120).optional(),
       // Versão da Política aceita na caixinha do cadastro (LGPD: prova do consentimento).
       termosVersao: z.string().max(20).optional(),
+      // Primeiro contato com o site (Instagram, Google, link com UTM...).
+      primeiroToque: z.any().optional(),
       birthDate: z.string().optional(),
       gender: z.string().optional(),
       city: z.string().optional(),
@@ -4112,6 +4180,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
     // O cadastro por e-mail só envia com a caixinha marcada; app antigo não manda a versão.
     await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, parsed.data.termosVersao || 'anterior', id]);
+    {
+      const toque = limpaPrimeiroToque(parsed.data.primeiroToque);
+      const fonte = sanitizeSignupSource(parsed.data.signupSource);
+      await run(db, 'UPDATE users SET origem_canal = ?, origem_json = ? WHERE id = ?', [canalDaOrigem(toque, fonte), toque ? JSON.stringify(toque) : null, id]);
+    }
     await agendarDicas(id, { veterano: false, emMs: 2 * 60 * 1000 });
     if (invite) {
       // Compute validation deadline (REFERRAL_VALIDATION_DAYS days from signup)
@@ -5967,6 +6040,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     if (typeof req.query.origem === 'string' && req.query.origem) statePayload.origem = req.query.origem;
     // Aceite dos termos mostrado junto do botão do Google no cadastro.
     if (typeof req.query.termos === 'string' && req.query.termos) statePayload.termos = req.query.termos.slice(0, 20);
+    // Primeiro contato (JSON curto) para gravar a origem se a conta for criada.
+    if (typeof req.query.pt === 'string' && req.query.pt.length <= 400) statePayload.pt = req.query.pt;
     const state = jwt.sign(statePayload, env.JWT_SECRET, { expiresIn: '10m' });
     const params = new URLSearchParams({
       client_id: clientId,
@@ -6126,6 +6201,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         );
         if (stateClaims.termos) {
           await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, String(stateClaims.termos), id]);
+        }
+        {
+          let toque: PrimeiroToque | null = null;
+          try { toque = stateClaims.pt ? limpaPrimeiroToque(JSON.parse(String(stateClaims.pt))) : null; } catch { toque = null; }
+          await run(db, 'UPDATE users SET origem_canal = ?, origem_json = ? WHERE id = ?', [canalDaOrigem(toque, signupSource), toque ? JSON.stringify(toque) : null, id]);
         }
         await agendarDicas(id, { veterano: false, emMs: 2 * 60 * 1000 });
         await persist();
@@ -6340,6 +6420,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const EVENTOS_CADASTRO = [
     'abriu', 'passo1_ok', 'passo2_ok', 'enviou', 'criou_conta',
     'erro_gender', 'erro_name', 'erro_email', 'erro_password', 'erro_city', 'erro_terms', 'erro_envio',
+    // Detalhe do erro de nome (o maior motivo de desistência) e uso das sugestões.
+    'erro_name_vazio', 'erro_name_em_uso', 'erro_name_bloqueado', 'nome_sugestao_usada',
     // Teste A/B do botão Espiar: A = página inicial sem o botão, B = com.
     'ab_espiar_a', 'ab_espiar_b', 'espiar_abriu', 'espiar_parede',
   ] as const;
@@ -19420,6 +19502,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const dias = [1, 7, 30, 90].includes(pedido) ? pedido : 7;
       const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+      // Origem = o PRIMEIRO site externo de onde a pessoa veio. Antes era
+      // MIN(referrer_domain), que pega o primeiro em ordem ALFABÉTICA: quem
+      // passou pelo login do Google (accounts.google.com) ou pelo pagamento
+      // (livepix) era contado como vindo de lá. O próprio site (nosigilo.net,
+      // baselider) também não é origem: é a pessoa navegando entre domínios.
+      const externo = `COALESCE(x.referrer_domain, '') <> ''
+        AND LOWER(x.referrer_domain) NOT LIKE 'nosigilo%'
+        AND LOWER(x.referrer_domain) NOT LIKE '%baselider%'
+        AND LOWER(x.referrer_domain) <> 'accounts.google.com'
+        AND LOWER(x.referrer_domain) NOT LIKE '%livepix%'`;
       const base = `
         SELECT sv.ip_hash,
                MIN(sv.created_at) AS primeira,
@@ -19428,16 +19520,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                COUNT(*) AS paginas,
                MIN(sv.origin_type) AS origem,
                MIN(sv.device_type) AS aparelho,
-               MIN(sv.referrer_domain) AS dominio
+               MIN(pr.referrer_domain) AS dominio
           FROM site_visits sv
+          LEFT JOIN (
+            SELECT r.ip_hash, r.referrer_domain FROM (
+              SELECT x.ip_hash, LOWER(x.referrer_domain) AS referrer_domain,
+                     ROW_NUMBER() OVER (PARTITION BY x.ip_hash ORDER BY x.created_at) AS ordem
+                FROM site_visits x
+               WHERE x.user_id IS NULL AND x.ip_hash IS NOT NULL AND x.created_at >= ? AND ${externo}
+            ) r WHERE r.ordem = 1
+          ) pr ON pr.ip_hash = sv.ip_hash
          WHERE sv.user_id IS NULL AND sv.ip_hash IS NOT NULL AND sv.created_at >= ?
          GROUP BY sv.ip_hash`;
 
       const [totais] = (await queryAll(
         db,
         `WITH v AS (${base}), c AS (
-           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash) THEN 1 ELSE 0 END AS cadastrou,
-                  CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash
+           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira) THEN 1 ELSE 0 END AS cadastrou,
+                  CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira
                                       AND (COALESCE(u.is_premium,0) = 1 OR COALESCE(u.hub_access_status,'') = 'licensed')) THEN 1 ELSE 0 END AS assinou
              FROM v
          )
@@ -19448,20 +19548,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 SUM(CASE WHEN paginas = 1 THEN 1 ELSE 0 END) AS so_uma_pagina,
                 SUM(CASE WHEN abriu_cadastro = 1 AND cadastrou = 0 THEN 1 ELSE 0 END) AS desistiram_no_cadastro
            FROM c`,
-        [desde]
+        [desde, desde]
       )) as any[];
 
       const recorte = async (coluna: string, limite: number) => (await queryAll(
         db,
         `WITH v AS (${base}), c AS (
-           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash) THEN 1 ELSE 0 END AS cadastrou
+           SELECT v.*, CASE WHEN EXISTS (SELECT 1 FROM users u WHERE u.registration_ip_hash = v.ip_hash AND u.created_at >= v.primeira) THEN 1 ELSE 0 END AS cadastrou
              FROM v
          )
          SELECT COALESCE(NULLIF(${coluna}, ''), 'direto') AS chave,
                 COUNT(*) AS visitantes,
                 SUM(cadastrou) AS cadastraram
            FROM c GROUP BY 1 ORDER BY 2 DESC LIMIT ${limite}`,
-        [desde]
+        [desde, desde]
       )) as any[];
 
       const n = (v: any) => Number(v || 0);
@@ -19499,6 +19599,43 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } catch (error) {
       console.error('[admin/analytics/visitantes]', error);
       res.status(500).json({ error: 'visitantes_indisponivel' });
+    }
+  });
+
+  // Cadastros por canal de origem (gravado no próprio cadastro desde 14/10/2026)
+  // e quantos viraram pagantes. É a métrica confiável de canal: não depende do IP.
+  app.get('/api/admin/analytics/cadastros-por-origem', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 30);
+      const dias = [7, 30, 90].includes(pedido) ? pedido : 30;
+      const desde = new Date(Date.now() - dias * 86_400_000).toISOString();
+      const linhas = (await queryAll(
+        db,
+        `SELECT COALESCE(origem_canal, '') AS canal,
+                COUNT(*) AS cadastros,
+                SUM(CASE WHEN COALESCE(is_premium, 0) = 1 OR COALESCE(hub_access_status, '') = 'licensed' THEN 1 ELSE 0 END) AS pagantes,
+                SUM(CASE WHEN gender LIKE 'Mulher%' THEN 1 ELSE 0 END) AS mulheres,
+                SUM(CASE WHEN gender LIKE 'Casal%' THEN 1 ELSE 0 END) AS casais
+           FROM users
+          WHERE created_at >= ? AND COALESCE(is_showcase, 0) = 0 AND deleted_at IS NULL
+          GROUP BY 1 ORDER BY 2 DESC`,
+        [desde]
+      )) as any[];
+      const n = (v: any) => Number(v || 0);
+      res.json({
+        dias,
+        canais: linhas.map((l) => ({
+          canal: String(l.canal || '') || 'Sem registro (antes de 14/10)',
+          cadastros: n(l.cadastros),
+          pagantes: n(l.pagantes),
+          pctPagantes: n(l.cadastros) ? Math.round((n(l.pagantes) / n(l.cadastros)) * 1000) / 10 : 0,
+          mulheres: n(l.mulheres),
+          casais: n(l.casais),
+        })),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/cadastros-por-origem]', error);
+      res.status(500).json({ error: 'indisponivel' });
     }
   });
 
