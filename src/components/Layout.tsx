@@ -777,7 +777,10 @@ export default function Layout() {
                 Era o 9º controle de uma fileira de 36×36 — agora concentra
                 tema, divulgar, radar, eventos, planos e sair num só lugar,
                 com itens de tamanho cheio em vez de ícones espremidos. */}
-            <DropdownMenu>
+            {/* modal={false}: o menu "modal" travava a rolagem da página ao abrir;
+                com a página rolada, o cabeçalho sumia e o menu abria cortado no
+                topo, com a tela presa. Sem trava, ele abre inteiro sob a foto. */}
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
@@ -807,7 +810,7 @@ export default function Layout() {
                   </div>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuContent align="end" sideOffset={6} collisionPadding={8} className="w-64 max-h-[calc(100dvh-5rem)] overflow-y-auto">
                 <DropdownMenuLabel className="truncate">{user?.name || 'Minha conta'}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {/* É o item mais procurado do menu (o suporte repete "onde vejo
