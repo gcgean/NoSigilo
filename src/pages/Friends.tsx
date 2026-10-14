@@ -96,8 +96,8 @@ export default function FriendsPage() {
     try {
       const { id } = await chatService.createConversation(friendId);
       navigate(`/chat?conversationId=${encodeURIComponent(id)}`);
-    } catch {
-      toast({ title: 'Não foi possível abrir a conversa', variant: 'destructive' });
+    } catch (err: any) {
+      toast({ title: 'Não foi possível abrir a conversa', description: err?.response?.data?.message, variant: 'destructive' });
     }
   };
 

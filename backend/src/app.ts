@@ -2112,6 +2112,30 @@ async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: str
   return true;
 }
 
+// Por que canSendMessage recusou, em português, para o app mostrar. Antes o
+// app dizia só "Não foi possível enviar. Tente novamente." e a pessoa tentava
+// de novo achando que era defeito (e abria chamado no suporte).
+async function motivoMensagemBloqueada(db: DbHandle, fromUserId: string, toUserId: string): Promise<string> {
+  if (await isUserBlocked({ db }, { viewerId: fromUserId, targetId: toUserId })) {
+    return 'Não é possível conversar com este perfil.';
+  }
+  const row = (await queryOne(db, 'SELECT allow_messages, block_outside_prefs, looking_for_json FROM users WHERE id = ? LIMIT 1', [toUserId])) as any;
+  const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
+  if (setting === 'nobody') return 'Este perfil não está recebendo mensagens no momento.';
+  if (row?.block_outside_prefs) {
+    const lookingFor: string[] = safeJsonParse(row.looking_for_json) ?? [];
+    if (lookingFor.length > 0) {
+      const sender = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
+      if (sender?.gender && !lookingFor.includes(String(sender.gender))) {
+        return `Este perfil escolheu receber mensagens só de: ${lookingFor.join(', ')}.`;
+      }
+    }
+  }
+  if (setting === 'friends') return 'Este perfil só recebe mensagens de amigos. Envie um pedido de amizade primeiro.';
+  if (setting === 'matches') return 'Este perfil só recebe mensagens de quem deu match. Curta o perfil: se a curtida for retribuída, a conversa libera.';
+  return 'Este perfil não aceita mensagens suas no momento.';
+}
+
 // ─── Pedidos de contato ──────────────────────────────────────────────────────
 // Mensagem de quem a pessoa não conhece cai em "Pedidos" (não em Conversas) até
 // ela aceitar ou responder. Ligado por padrão para mulheres e casais (que
@@ -14161,7 +14185,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     const canCreate = await canSendMessage({ db }, { fromUserId: req.auth!.userId, toUserId: parsed.data.userId });
     if (!canCreate) {
-      res.status(403).json({ error: 'message_not_allowed' });
+      res.status(403).json({ error: 'message_not_allowed', message: await motivoMensagemBloqueada(db, req.auth!.userId, parsed.data.userId) });
       return;
     }
     const pair = [req.auth!.userId, parsed.data.userId].sort((a, b) => a.localeCompare(b));
@@ -14613,7 +14637,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const otherId = conv.user_a_id === req.auth!.userId ? String(conv.user_b_id) : String(conv.user_a_id);
     const canMessage = await canSendMessage({ db }, { fromUserId: req.auth!.userId, toUserId: otherId });
     if (!canMessage) {
-      res.status(403).json({ error: 'message_not_allowed' });
+      res.status(403).json({ error: 'message_not_allowed', message: await motivoMensagemBloqueada(db, req.auth!.userId, otherId) });
       return;
     }
 

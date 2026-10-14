@@ -821,8 +821,8 @@ export default function UserProfile() {
       const conversationId = res?.id ? String(res.id) : '';
       if (!conversationId) throw new Error('Falha ao iniciar conversa');
       navigate('/chat', { state: { conversationId } });
-    } catch {
-      toast({ title: 'Não foi possível iniciar o chat', description: 'Tente novamente.', variant: 'destructive' });
+    } catch (err: any) {
+      toast({ title: 'Não foi possível iniciar o chat', description: err?.response?.data?.message || 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsStartingChat(false);
     }

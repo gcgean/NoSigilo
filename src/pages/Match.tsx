@@ -353,10 +353,10 @@ export default function Match() {
     try {
       const conversation = await chatService.createConversation(currentProfile.id);
       navigate('/chat', { state: { conversationId: String(conversation?.id || '') } });
-    } catch {
+    } catch (err: any) {
       toast({
         title: 'Não foi possível abrir o chat',
-        description: 'Tente novamente em instantes.',
+        description: err?.response?.data?.message || 'Tente novamente em instantes.',
         variant: 'destructive',
       });
     }

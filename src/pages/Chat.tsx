@@ -776,8 +776,15 @@ export default function Chat() {
           await loadConversations();
           navigate(`/chat/${encodeURIComponent(data.id)}`, { replace: true });
         }
-      } catch {
-        // falha silenciosa — usuário continua na lista de conversas
+      } catch (err: any) {
+        // Antes era silencioso: quem tocava em "Mandar msg" caía na lista sem
+        // saber por quê. Agora diz o motivo (ex.: o perfil só aceita matches).
+        if (err?.response?.data?.error === 'premium_required') { redirectToPlans(); return; }
+        toast({
+          title: 'Não foi possível iniciar a conversa',
+          description: err?.response?.data?.message || 'Tente novamente em instantes.',
+          variant: 'destructive',
+        });
       }
     })();
   }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1159,9 +1166,17 @@ export default function Chat() {
           setCaixa('conversas');
         }
       }
-    } catch {
+    } catch (err: any) {
       setMessages(prev => prev.filter(m => m.clientId !== clientId));
-      toast({ title: 'Não foi possível enviar', description: 'Tente novamente.', variant: 'destructive' });
+      const codigo = err?.response?.data?.error;
+      if (codigo === 'premium_required') { redirectToPlans(); return; }
+      // Quando quem recebe restringiu as mensagens, o servidor explica o motivo:
+      // "Tente novamente" fazia a pessoa insistir achando que era defeito.
+      toast({
+        title: codigo === 'message_not_allowed' ? 'Mensagem não enviada' : 'Não foi possível enviar',
+        description: err?.response?.data?.message || 'Tente novamente.',
+        variant: 'destructive',
+      });
     }
   };
 
