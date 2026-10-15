@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Download, Ellipsis, House, Monitor, Share2, Smartphone } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Copy, Download, Ellipsis, ExternalLink, House, Monitor, Share2, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -10,6 +10,26 @@ function detectDevice(): Device {
   if (/iPad|iPhone|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) return 'ios';
   if (/Android/i.test(ua)) return 'android';
   return 'windows';
+}
+
+// Navegador de dentro do Instagram/Facebook: dali não dá para instalar. A
+// maior parte de quem chega vem do Instagram, então o primeiro passo precisa
+// ser sair dele para o Safari/Chrome.
+export function emNavegadorDeApp(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS/i.test(navigator.userAgent || '');
+}
+
+function passoSairDoApp(device: Device) {
+  const navegador = device === 'ios' ? 'Safari' : 'Chrome';
+  return {
+    title: `Abra no ${navegador}`,
+    detail: device === 'ios'
+      ? 'Você está no navegador do Instagram, que não instala apps. Toque nos três pontinhos ⋯ no canto de cima e escolha “Abrir no navegador externo” (ou “Abrir no Safari”). Se não aparecer, copie o link abaixo e cole no Safari.'
+      : 'Você está no navegador do Instagram, que não instala apps. Toque nos três pontinhos ⋮ no canto de cima e escolha “Abrir no Chrome” (ou “Abrir no navegador”). Se não aparecer, copie o link abaixo e cole no Chrome.',
+    icon: ExternalLink,
+    visual: `⋯  Abrir no ${navegador}`,
+  };
 }
 
 const guides = {
@@ -51,6 +71,8 @@ interface Props {
 export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Props) {
   const [device, setDevice] = useState<Device>(detectDevice);
   const [step, setStep] = useState(0);
+  const [noApp] = useState(emNavegadorDeApp);
+  const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -60,7 +82,16 @@ export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Pr
   }, [open]);
 
   const guide = guides[device];
-  const current = guide.steps[step];
+  // No navegador do Instagram o passo "abra no Safari/Chrome" vira o passo
+  // detalhado; o resto do roteiro é o mesmo.
+  const passos = noApp && device !== 'windows' ? [passoSairDoApp(device), ...guide.steps.slice(1)] : guide.steps;
+  const current = passos[step];
+  const copiarLink = async () => {
+    try {
+      await navigator.clipboard.writeText('https://nosigilo.net');
+      setCopiado(true);
+    } catch { /* sem permissão: a pessoa digita o endereço */ }
+  };
   const Icon = current.icon;
 
   return (
@@ -80,7 +111,7 @@ export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Pr
         </div>
         <p className="text-xs text-muted-foreground">Tutorial para {guide.name} · {guide.browser}</p>
         <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:p-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Passo {step + 1} de {guide.steps.length}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-primary">Passo {step + 1} de {passos.length}</p>
           <div className="mt-3 flex min-h-40 items-center justify-center rounded-xl border border-border bg-background p-4" role="img" aria-label={`Ilustração: ${current.visual}`}>
             <div className="w-full max-w-xs overflow-hidden rounded-xl border border-border bg-card shadow-sm">
               <div className="flex items-center gap-1 border-b border-border bg-muted px-3 py-2"><span className="h-2 w-2 rounded-full bg-primary/50" /><span className="h-2 w-2 rounded-full bg-primary/30" /><span className="h-2 w-2 rounded-full bg-primary/20" /></div>
@@ -92,13 +123,18 @@ export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Pr
           </div>
           <h3 className="mt-4 text-base font-semibold">{current.title}</h3>
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{current.detail}</p>
+          {noApp && step === 0 && device !== 'windows' ? (
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={() => void copiarLink()}>
+              <Copy className="mr-1 h-4 w-4" />{copiado ? 'Link copiado!' : 'Copiar link nosigilo.net'}
+            </Button>
+          ) : null}
         </div>
-        <div className="flex items-center justify-center gap-1.5" aria-label={`Passo ${step + 1} de ${guide.steps.length}`}>
-          {guide.steps.map((_, index) => <span key={index} className={`h-2 rounded-full ${index === step ? 'w-5 bg-primary' : 'w-2 bg-muted-foreground/30'}`} />)}
+        <div className="flex items-center justify-center gap-1.5" aria-label={`Passo ${step + 1} de ${passos.length}`}>
+          {passos.map((_, index) => <span key={index} className={`h-2 rounded-full ${index === step ? 'w-5 bg-primary' : 'w-2 bg-muted-foreground/30'}`} />)}
         </div>
         <div className="flex justify-between gap-2">
           <Button type="button" variant="outline" disabled={step === 0} onClick={() => setStep((value) => value - 1)}><ChevronLeft className="mr-1 h-4 w-4" />Voltar</Button>
-          {step < guide.steps.length - 1 ? (
+          {step < passos.length - 1 ? (
             <Button type="button" onClick={() => setStep((value) => value + 1)}>Próximo<ChevronRight className="ml-1 h-4 w-4" /></Button>
           ) : onInstall && device !== 'ios' ? (
             <Button type="button" onClick={() => void onInstall()}><Download className="mr-1 h-4 w-4" />Instalar agora</Button>

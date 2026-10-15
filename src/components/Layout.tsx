@@ -54,7 +54,7 @@ import { saveLastAuthRoute } from '@/utils/sessionNavigation';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { syncPushSubscription } from '@/utils/pushNotifications';
-import PwaInstallTutorial from '@/components/PwaInstallTutorial';
+import PwaInstallTutorial, { emNavegadorDeApp } from '@/components/PwaInstallTutorial';
 import VerificacaoPerfil from '@/components/VerificacaoPerfil';
 
 type BeforeInstallPromptEvent = Event & {
@@ -242,6 +242,7 @@ export default function Layout() {
     return /iPad|iPhone|iPod/.test(ua) || iPadOS;
   });
   const [appInstalado] = useState(() => ehAppInstalado());
+  const [noNavegadorDoInstagram] = useState(() => emNavegadorDeApp());
   const [visitasHoje] = useState(() => registrarVisitaDoDia());
   const [interestsNudgeDismissed, setInterestsNudgeDismissed] = useState(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -592,9 +593,13 @@ export default function Layout() {
       return;
     }
     // Hora certa: só depois da pessoa curtir/comentar/conversar ou voltar
-    // pela segunda vez no dia. No primeiro acesso o convite só atrapalha.
-    setShowPwaInstallPrompt(jaEngajou() || visitasHoje >= 2);
-  }, [location.pathname]);
+    // pela segunda vez no dia. Exceção: conta criada há menos de 3 dias. Quem
+    // instala assina 4x mais (34,9% x 8,5%, out/2026), e quem não instala logo
+    // no começo raramente volta para instalar depois.
+    const contaNova = !!user?.trialStartedAt
+      && Date.now() - new Date(user.trialStartedAt).getTime() < 3 * 24 * 60 * 60 * 1000;
+    setShowPwaInstallPrompt(jaEngajou() || visitasHoje >= 2 || contaNova);
+  }, [location.pathname, user?.trialStartedAt]);
 
   // Abriu pelo app instalado: marca a conta e paga os 20 tokens uma vez só.
   useEffect(() => {
@@ -1071,7 +1076,9 @@ export default function Layout() {
                     <div>
                       <p className="font-semibold text-primary">Instale o app e ganhe 20 tokens 🎁</p>
                       <p className="text-sm text-muted-foreground">
-                        {ehIos
+                        {noNavegadorDoInstagram
+                          ? `Você está no navegador do Instagram. Abra no ${ehIos ? 'Safari' : 'Chrome'} para instalar: recebe aviso de mensagem na hora e ganha 20 tokens.`
+                          : ehIos
                           ? 'Abre direto da tela de início, carrega mais rápido e você ganha 20 tokens na primeira vez que entrar pelo app.'
                           : 'Receba aviso de mensagem nova na hora, abra mais rápido e ganhe 20 tokens na primeira vez que entrar pelo app.'}
                       </p>

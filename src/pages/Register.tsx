@@ -14,7 +14,7 @@ import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { VERSAO_POLITICA } from '@/pages/Privacy';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
-import { onboardingService, authService, appService, marcarPassoCadastro } from '@/services/api';
+import { onboardingService, authService, appService, marcarPassoCadastro, regiaoPublicaService, type RegiaoPublica } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { CitySearch } from '@/components/CitySearch';
@@ -78,6 +78,14 @@ function defaultLookingFor(gender: string): string[] {
 
 // Frases fixas saíram: no lugar entra o total real de perfis cadastrados,
 // buscado do servidor. As duas últimas continuam porque são fato, não número.
+// Passo 1: a maioria de quem desiste sai daqui sem nem tentar preencher
+// (curiosidade sem convencimento). Lembrar o que ela ganha lá dentro, em fatos.
+const BENEFICIOS = [
+  { icon: '📍', text: 'Perfis perto de você, ordenados por distância' },
+  { icon: '💬', text: 'Match e chat com casais, mulheres e homens da sua região' },
+  { icon: '🔒', text: 'Discreto: seu e-mail e sua localização exata nunca aparecem' },
+];
+
 const SOCIAL_PROOFS = [
   { icon: '🔒', text: 'Seu perfil é 100% privado por padrão' },
   { icon: '🔥', text: 'Conexões reais, sem julgamentos' },
@@ -296,11 +304,27 @@ export default function Register() {
 
   // Total real de perfis cadastrados na plataforma.
   const [totalPerfis, setTotalPerfis] = useState<number | null>(null);
+  const [onlineAgora, setOnlineAgora] = useState(0);
   useEffect(() => {
     appService.getStats()
-      .then((s: any) => setTotalPerfis(Number(s?.realUsers ?? s?.totalUsers ?? 0) || null))
+      .then((s: any) => {
+        setTotalPerfis(Number(s?.realUsers ?? s?.totalUsers ?? 0) || null);
+        setOnlineAgora(Number(s?.onlineNow || 0));
+      })
       .catch(() => setTotalPerfis(null));
   }, []);
+
+  // Veio do Espiar (ou das páginas de estado): mostra os números do estado dela.
+  const [regiao, setRegiao] = useState<RegiaoPublica | null>(null);
+  useEffect(() => {
+    if (!/^[A-Z]{2}$/.test(respostasEspiar.uf)) return;
+    regiaoPublicaService.porUf(respostasEspiar.uf)
+      .then((r) => setRegiao(r?.cadastrados ? r : null))
+      .catch(() => setRegiao(null));
+  }, [respostasEspiar.uf]);
+  const casaisNaRegiao = (regiao?.porTipo ?? [])
+    .filter((t) => t.tipo.startsWith('Casal'))
+    .reduce((soma, t) => soma + t.total, 0);
 
   // ── Social proof ticker ───────────────────────────────────────────────────
   useEffect(() => {
@@ -669,9 +693,11 @@ export default function Register() {
           <div className="mb-5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-primary/15 bg-primary/8 px-3.5 py-2.5">
             <span className="shrink-0 animate-pulse text-xs text-primary">●</span>
             <span className="truncate text-sm text-muted-foreground">
-              {totalPerfis
-                ? `👥 ${totalPerfis.toLocaleString('pt-BR')} perfis já cadastrados na plataforma`
-                : `${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
+              {regiao
+                ? `🔥 ${regiao.cadastrados.toLocaleString('pt-BR')} perfis em ${regiao.uf}${casaisNaRegiao ? `, ${casaisNaRegiao.toLocaleString('pt-BR')} casais` : ''}`
+                : totalPerfis
+                  ? `👥 ${totalPerfis.toLocaleString('pt-BR')} perfis${onlineAgora >= 20 ? ` · ${onlineAgora.toLocaleString('pt-BR')} online agora` : ' já cadastrados'}`
+                  : `${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
             </span>
           </div>
 
@@ -715,6 +741,17 @@ export default function Register() {
                     Escolha seu perfil — define como outros te encontram.
                   </p>
                 </div>
+
+                {!formData.gender && (
+                  <ul className="space-y-1.5 rounded-xl border border-border/60 bg-secondary/30 px-3.5 py-3">
+                    {BENEFICIOS.map((b) => (
+                      <li key={b.text} className="flex items-start gap-2 text-sm leading-snug">
+                        <span aria-hidden="true">{b.icon}</span>
+                        <span>{b.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 {/* Caminho de um toque, no primeiro passo: no celular digitar
                     e-mail e inventar senha é o maior atrito do cadastro.
