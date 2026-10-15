@@ -1,10 +1,19 @@
 import initSqlJs from 'sql.js';
 import { Pool } from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type SqlJsDb = import('sql.js').Database;
+
+// Pedidos do painel admin rodam dentro deste contexto e usam um pool próprio e
+// pequeno. Ao abrir, o painel dispara ~20 relatórios pesados de uma vez; no
+// pool único (padrão de 10 conexões) eles ocupavam tudo por até 30 s e os
+// pedidos dos usuários (feed, chat, notificações) ficavam na fila (15/10/2026).
+export const contextoAdmin = new AsyncLocalStorage<true>();
+const CONEXOES_USUARIOS = 30;
+const CONEXOES_ADMIN = 4;
 
 export type DbMode = 'sqljs' | 'pg';
 
@@ -140,29 +149,31 @@ async function tryInitPostgres(databaseUrl: string, migrationsDir: string): Prom
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const pool = new Pool({ connectionString: databaseUrl });
-      await pool.query('SELECT 1');
-      await applyPgMigrations({ pool, migrationsDir });
+      const poolUsuarios = new Pool({ connectionString: databaseUrl, max: CONEXOES_USUARIOS });
+      const poolAdmin = new Pool({ connectionString: databaseUrl, max: CONEXOES_ADMIN });
+      const pool = () => (contextoAdmin.getStore() ? poolAdmin : poolUsuarios);
+      await poolUsuarios.query('SELECT 1');
+      await applyPgMigrations({ pool: poolUsuarios, migrationsDir });
       console.log(`[db] PostgreSQL connected and migrations applied (attempt ${attempt})`);
       return {
         mode: 'pg',
         exec: async (sql: string) => {
-          await pool.query(sql);
+          await pool().query(sql);
         },
         queryAll: async (sql: string, params: unknown[] = []) => {
-          const r = await pool.query(toPgSql(sql), toPgParams(params) as any);
+          const r = await pool().query(toPgSql(sql), toPgParams(params) as any);
           return r.rows;
         },
         queryOne: async (sql: string, params: unknown[] = []) => {
-          const r = await pool.query(toPgSql(sql), toPgParams(params) as any);
+          const r = await pool().query(toPgSql(sql), toPgParams(params) as any);
           return r.rows.length > 0 ? r.rows[0] : null;
         },
         run: async (sql: string, params: unknown[] = []) => {
-          await pool.query(toPgSql(sql), toPgParams(params) as any);
+          await pool().query(toPgSql(sql), toPgParams(params) as any);
         },
         persist: async () => {},
         close: async () => {
-          await pool.end();
+          await Promise.all([poolUsuarios.end(), poolAdmin.end()]);
         },
       };
     } catch (err) {

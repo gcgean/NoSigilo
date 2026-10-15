@@ -14,7 +14,7 @@ import webpush from 'web-push';
 import { z } from 'zod';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
-import { queryAll, queryOne, run } from './db.js';
+import { contextoAdmin, queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, responderSugestaoComIa, SENDER_ID_IA, suporteEstaDigitando, textoDaSugestaoNoChat, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
@@ -3238,6 +3238,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   app.use(express.json({ limit: '2mb' }));
   // Tempo de resposta de cada pedido à API (resumo a cada 5 min no admin).
   app.use(medirTempoDeResposta());
+  // Tudo do painel admin usa o pool separado de conexões (ver contextoAdmin em db.ts).
+  app.use('/api/admin', (_req, _res, next) => contextoAdmin.run(true, next));
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
