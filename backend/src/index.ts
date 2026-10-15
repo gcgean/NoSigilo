@@ -85,20 +85,27 @@ async function runDailyReengagement(db: DbHandle) {
     ? 'u.notify_email IS NOT FALSE'
     : '(u.notify_email IS NULL OR u.notify_email != 0)';
 
+  // No Postgres last_seen_at é timestamptz, mas os created_at são texto ISO:
+  // comparar os dois direto dá "operator does not exist: text > timestamptz"
+  // e a rotina inteira falhava todo dia sem mandar nenhum e-mail.
+  const vistoEm = db.mode === 'pg'
+    ? `TO_CHAR(u.last_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`
+    : 'u.last_seen_at';
+
   // Fetch users inactive 7–90 days, not emailed in last 7 days
   // Include looking_for_json + gender so we can personalise the email
   const users = await db.queryAll(
     `SELECT u.id, u.name, u.email, u.last_seen_at, u.city, u.state,
             u.gender, u.looking_for_json,
             (SELECT COUNT(*) FROM profile_visits pv
-               WHERE pv.visited_user_id = u.id AND pv.created_at > u.last_seen_at) as visits,
+               WHERE pv.visited_user_id = u.id AND pv.created_at > ${vistoEm}) as visits,
             (SELECT COUNT(*) FROM likes l
                WHERE l.target_type = 'user' AND l.target_id = u.id
-               AND l.created_at > u.last_seen_at) as likes,
+               AND l.created_at > ${vistoEm}) as likes,
             (SELECT COUNT(*) FROM messages m
                JOIN conversations c ON c.id = m.conversation_id
                WHERE (c.user_a_id = u.id OR c.user_b_id = u.id)
-               AND m.sender_id != u.id AND m.created_at > u.last_seen_at
+               AND m.sender_id != u.id AND m.created_at > ${vistoEm}
                AND m.is_read = 0) as messages
      FROM users u
      WHERE u.email IS NOT NULL AND u.email != ''
@@ -128,7 +135,7 @@ async function runDailyReengagement(db: DbHandle) {
            AND u2.created_at > ?
            AND u2.is_banned = 0
            ${genderClause}`,
-        [u.city, u.id, u.last_seen_at]
+        [u.city, u.id, new Date(u.last_seen_at).toISOString()]
       ) as any : null;
       const newMatches = Number(newMatchRow?.c || 0);
 
