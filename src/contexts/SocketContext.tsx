@@ -41,12 +41,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     import('socket.io-client').then(({ io }) => {
       if (cancelado) return;
 
+      // Antes: 5 tentativas em ~15 s e depois desistia para sempre. No iPhone,
+      // o site em segundo plano (ou aberto durante um deploy) perdia o tempo
+      // real e o chat, as notificações e o feed paravam de atualizar até
+      // recarregar a página (suporte: Wyl, 14/10/2026). Agora tenta sempre,
+      // com espera crescente até 15 s.
       const newSocket = io(SOCKET_URL, {
         auth: { token },
         transports: ['websocket', 'polling'],
         reconnection: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 15000,
       });
 
       newSocket.on('connect', () => {
@@ -67,8 +73,22 @@ export function SocketProvider({ children }: { children: ReactNode }) {
       // Falha ao carregar o módulo: o app segue sem tempo real.
     });
 
+    // Voltou para o site (trocou de app, desbloqueou a tela) ou a internet
+    // voltou: reconecta na hora, sem esperar a próxima tentativa agendada.
+    const reconectarSeCaiu = () => {
+      if (document.visibilityState === 'visible' && socketAtivo && !socketAtivo.connected) {
+        socketAtivo.connect();
+      }
+    };
+    document.addEventListener('visibilitychange', reconectarSeCaiu);
+    window.addEventListener('online', reconectarSeCaiu);
+    window.addEventListener('pageshow', reconectarSeCaiu);
+
     return () => {
       cancelado = true;
+      document.removeEventListener('visibilitychange', reconectarSeCaiu);
+      window.removeEventListener('online', reconectarSeCaiu);
+      window.removeEventListener('pageshow', reconectarSeCaiu);
       socketAtivo?.disconnect();
       setSocket(null);
       setIsConnected(false);

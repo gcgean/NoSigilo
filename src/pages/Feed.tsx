@@ -2395,6 +2395,13 @@ export default function Feed() {
                     ? `Enviando mídia… ${uploadProgress}%`
                     : 'Processando e publicando…'}
                 </p>
+                {/* No iPhone o envio PAUSA se o site vai para segundo plano
+                    (trocar de app, bloquear a tela) e parecia travado em 1%. */}
+                {uploadProgress !== null && uploadProgress < 100 && (
+                  <p className="mt-0.5 text-xs text-muted-foreground/80">
+                    📱 Deixe esta tela aberta até terminar: se trocar de app ou bloquear o celular, o envio pausa.
+                  </p>
+                )}
               </div>
             )}
           </div>
