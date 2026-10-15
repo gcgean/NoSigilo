@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck } from 'lucide-react';
+import { BadgeCheck, Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -26,7 +26,7 @@ import CapaDoPerfil, { type FotoDeCapa } from '@/components/CapaDoPerfil';
 import EditarCapaDialog from '@/components/EditarCapaDialog';
 import MuralDoPerfil from '@/components/MuralDoPerfil';
 import QuemCurtiuMinhasFotos from '@/components/QuemCurtiuMinhasFotos';
-import { authService, twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService } from '@/services/api';
+import { authService, twoFactorService, feedService, notificationsService, privatePhotosService, profileService, testimonialsService, usersService, interactionsService, locationService, supportService, verificacaoService, type SituacaoVerificacao } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { useSocket } from '@/contexts/SocketContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
@@ -411,6 +411,24 @@ export default function Profile() {
   const { socket } = useSocket();
   const [activeTab, setActiveTab] = useState('posts');
   const [verificacaoAberta, setVerificacaoAberta] = useState(false);
+  // Convite para verificar: aparece no próprio perfil (onde a pessoa vem editar)
+  // enquanto não tem o selo nem pedido em análise. "Agora não" vale 7 dias.
+  const CONVITE_VERIFICAR_KEY = 'nosigilo:convite-verificar-fechado';
+  const [situacaoVerificacao, setSituacaoVerificacao] = useState<SituacaoVerificacao | null>(null);
+  const [conviteVerificarFechado, setConviteVerificarFechado] = useState(() => {
+    try {
+      const em = Number(localStorage.getItem(CONVITE_VERIFICAR_KEY) || 0);
+      return Date.now() - em < 7 * 24 * 60 * 60 * 1000;
+    } catch { return false; }
+  });
+  useEffect(() => {
+    if (user?.isVerified) return;
+    verificacaoService.situacao().then(setSituacaoVerificacao).catch(() => setSituacaoVerificacao(null));
+  }, [user?.isVerified, verificacaoAberta]);
+  const fecharConviteVerificar = () => {
+    try { localStorage.setItem(CONVITE_VERIFICAR_KEY, String(Date.now())); } catch { /* ok */ }
+    setConviteVerificarFechado(true);
+  };
   // Minhas publicações em lista — o mesmo que o perfil de terceiros mostra na
   // aba "Postagens". Como clicar no próprio nome leva para cá (e não para
   // /users/:id), sem isto não havia onde ver as próprias postagens.
@@ -1250,6 +1268,33 @@ export default function Profile() {
                 <span className="truncate">{String((profileData as any).bioLink).replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-70" />
               </a>
+            ) : null}
+
+            {!profileData.verified && situacaoVerificacao?.podeVerificar && !situacaoVerificacao.verificada
+              && situacaoVerificacao.pedido?.status !== 'em_analise'
+              && (!conviteVerificarFechado || situacaoVerificacao.pedido?.status === 'recusada') ? (
+              <div className="mb-4 rounded-xl border border-sky-400/40 bg-sky-500/10 px-4 py-3.5 text-left">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-sky-700 dark:text-sky-300">
+                  <BadgeCheck className="h-4 w-4 shrink-0" />
+                  {situacaoVerificacao.pedido?.status === 'recusada' ? 'Sua verificação não foi aprovada' : 'Verifique seu perfil'}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {situacaoVerificacao.pedido?.status === 'recusada'
+                    ? `${situacaoVerificacao.pedido.motivo ? `Motivo: ${situacaoVerificacao.pedido.motivo}. ` : ''}Pode tentar de novo quando quiser.`
+                    : situacaoVerificacao.acessoVitalicio
+                      ? 'Ganhe o selo azul de verificada e acesso grátis para sempre. Leva 1 minuto: uma selfie segurando um código.'
+                      : 'Ganhe o selo azul: mostra que seu perfil é real e passa mais confiança para quem te vê. Leva 1 minuto: uma selfie segurando um código.'}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">🔒 A selfie é privada: só a equipe vê e ela é apagada depois da análise.</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" className="bg-sky-600 text-white hover:bg-sky-700" onClick={() => setVerificacaoAberta(true)}>
+                    {situacaoVerificacao.pedido?.status === 'recusada' ? 'Tentar de novo' : 'Verificar agora'}
+                  </Button>
+                  {situacaoVerificacao.pedido?.status !== 'recusada' ? (
+                    <Button type="button" size="sm" variant="ghost" onClick={fecharConviteVerificar}>Agora não</Button>
+                  ) : null}
+                </div>
+              </div>
             ) : null}
 
             <div className="mb-4 rounded-xl border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3.5">
