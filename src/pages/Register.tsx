@@ -14,7 +14,7 @@ import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { VERSAO_POLITICA } from '@/pages/Privacy';
 import { getApiErrorInfo } from '@/utils/apiError';
 import { cn } from '@/lib/utils';
-import { onboardingService, authService, appService, marcarPassoCadastro, regiaoPublicaService, type RegiaoPublica } from '@/services/api';
+import { onboardingService, authService, marcarPassoCadastro } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { CitySearch } from '@/components/CitySearch';
@@ -76,8 +76,7 @@ function defaultLookingFor(gender: string): string[] {
 
 // ─── Social proof ticker ───────────────────────────────────────────────────────
 
-// Frases fixas saíram: no lugar entra o total real de perfis cadastrados,
-// buscado do servidor. As duas últimas continuam porque são fato, não número.
+// Só frases fixas: o dono preferiu não mostrar contagem de perfis no cadastro.
 // Passo 1: a maioria de quem desiste sai daqui sem nem tentar preencher
 // (curiosidade sem convencimento). Lembrar o que ela ganha lá dentro, em fatos.
 const BENEFICIOS = [
@@ -301,30 +300,6 @@ export default function Register() {
       });
     }
   }, [searchParams, toast]);
-
-  // Total real de perfis cadastrados na plataforma.
-  const [totalPerfis, setTotalPerfis] = useState<number | null>(null);
-  const [onlineAgora, setOnlineAgora] = useState(0);
-  useEffect(() => {
-    appService.getStats()
-      .then((s: any) => {
-        setTotalPerfis(Number(s?.realUsers ?? s?.totalUsers ?? 0) || null);
-        setOnlineAgora(Number(s?.onlineNow || 0));
-      })
-      .catch(() => setTotalPerfis(null));
-  }, []);
-
-  // Veio do Espiar (ou das páginas de estado): mostra os números do estado dela.
-  const [regiao, setRegiao] = useState<RegiaoPublica | null>(null);
-  useEffect(() => {
-    if (!/^[A-Z]{2}$/.test(respostasEspiar.uf)) return;
-    regiaoPublicaService.porUf(respostasEspiar.uf)
-      .then((r) => setRegiao(r?.cadastrados ? r : null))
-      .catch(() => setRegiao(null));
-  }, [respostasEspiar.uf]);
-  const casaisNaRegiao = (regiao?.porTipo ?? [])
-    .filter((t) => t.tipo.startsWith('Casal'))
-    .reduce((soma, t) => soma + t.total, 0);
 
   // ── Social proof ticker ───────────────────────────────────────────────────
   useEffect(() => {
@@ -693,11 +668,7 @@ export default function Register() {
           <div className="mb-5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-primary/15 bg-primary/8 px-3.5 py-2.5">
             <span className="shrink-0 animate-pulse text-xs text-primary">●</span>
             <span className="truncate text-sm text-muted-foreground">
-              {regiao
-                ? `🔥 ${regiao.cadastrados.toLocaleString('pt-BR')} perfis em ${regiao.uf}${casaisNaRegiao ? `, ${casaisNaRegiao.toLocaleString('pt-BR')} casais` : ''}`
-                : totalPerfis
-                  ? `👥 ${totalPerfis.toLocaleString('pt-BR')} perfis${onlineAgora >= 20 ? ` · ${onlineAgora.toLocaleString('pt-BR')} online agora` : ' já cadastrados'}`
-                  : `${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
+              {`${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
             </span>
           </div>
 
