@@ -190,7 +190,27 @@ export default function Layout() {
   const [isChatConvOpen, setIsChatConvOpen] = useState(false);
   const [isReelsMaximized, setIsReelsMaximized] = useState(false);
   const isMobileReelsMaximized = isMobileReelsRoute && isReelsMaximized;
-  const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileGroupChatRoute || isMobileReelsMaximized;
+  // iPhone: com zoom de pinça (ou depois do teclado), o Safari prende os
+  // elementos fixos na página "sem zoom" e a barra de baixo aparecia no meio da
+  // tela, por cima da foto. Enquanto a área visível não é a tela inteira, a
+  // barra some e volta sozinha quando o zoom/teclado sai.
+  const [telaComZoom, setTelaComZoom] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const conferir = () => {
+      const comZoom = vv.scale > 1.05 || vv.height < window.innerHeight * 0.72;
+      setTelaComZoom((atual) => (atual === comZoom ? atual : comZoom));
+    };
+    conferir();
+    vv.addEventListener('resize', conferir);
+    vv.addEventListener('scroll', conferir);
+    return () => {
+      vv.removeEventListener('resize', conferir);
+      vv.removeEventListener('scroll', conferir);
+    };
+  }, []);
+  const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileGroupChatRoute || isMobileReelsMaximized || telaComZoom;
 
   // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
   useEffect(() => {

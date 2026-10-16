@@ -750,8 +750,14 @@ export default function Chat() {
     if (!q) return messages;
     return messages.filter((m) => String(m.content || '').toLowerCase().includes(q));
   }, [messages, messageSearch]);
-  const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) =>
-    String(profile?.gender || '').trim();
+  // Tipo de perfil e, se a pessoa for do MESMO estado, a cidade dela.
+  const getIdentityLine = (profile?: { gender?: string | null; city?: string | null; state?: string | null } | null) => {
+    const genero = String(profile?.gender || '').trim();
+    const mesmoEstado = !!profile?.state && !!user?.state
+      && String(profile.state).trim().toUpperCase() === String(user.state).trim().toUpperCase();
+    const cidade = mesmoEstado ? String(profile?.city || '').trim() : '';
+    return [genero, cidade].filter(Boolean).join(' · ');
+  };
 
   // Quem tem centenas de conversas recebe as 300 mais recentes; as antigas
   // vêm no botão do fim da lista ou ao buscar (e continuam depois).

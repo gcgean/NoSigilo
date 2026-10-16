@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import SugestoesPerfis from '@/components/SugestoesPerfis';
 import { textoDistancia } from '@/utils/distancia';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check } from 'lucide-react';
@@ -618,6 +619,13 @@ export default function Feed() {
     return items;
   }, [feedFilter, feedSessionBaseline, visiblePosts, cityOnly, nearbyRadius, (user as any)?.state]);
 
+  // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
+  const feedItensComSugestoes = useMemo(() => {
+    const itens: Array<(typeof feedDisplayItems)[number] | { type: 'sugestoes'; id: string }> = [...feedDisplayItems];
+    if (feedFilter === 'all' && itens.length > 4) itens.splice(4, 0, { type: 'sugestoes', id: 'feed-sugestoes-perfis' });
+    return itens;
+  }, [feedDisplayItems, feedFilter]);
+
   // Visualizações: um único IntersectionObserver observa todos os cards de post
   // e dispara 1 view sempre que o post fica >=50% visível — sem dedup, cada
   // entrada na tela soma (inclusive ao rolar de volta pro mesmo post). Reobserva
@@ -1118,14 +1126,15 @@ export default function Feed() {
     return { aspectRatio: '16 / 9' as any };
   };
 
-  // No desktop, mídia vertical no feed ocupa um quadro horizontal (16/9) em vez
-  // de esticar o post para baixo. A imagem aparece inteira (object-contain) e as
-  // laterais recebem uma cópia borrada dela — nada é cortado.
-  // No celular o comportamento original é mantido: retrato continua 9/16.
-  const feedMediaIsFitted = (key: string) => !isMobile && aspectByKey[key] === 'portrait';
+  // Mídia vertical no feed não estica mais o post para baixo. No desktop ocupa
+  // um quadro 16/9; no celular, 4/5 (como Instagram): a foto + nome + botões
+  // cabem numa tela. A imagem aparece inteira (object-contain) e as laterais
+  // recebem uma cópia borrada dela — nada é cortado. Antes, no celular, era
+  // 9/16: a foto passava da altura da tela e o post ficava cortado.
+  const feedMediaIsFitted = (key: string) => aspectByKey[key] === 'portrait';
 
   const feedAspectStyleForKey = (key: string) =>
-    feedMediaIsFitted(key) ? { aspectRatio: '16 / 9' as any } : aspectStyleForKey(key);
+    feedMediaIsFitted(key) ? { aspectRatio: (isMobile ? '4 / 5' : '16 / 9') as any } : aspectStyleForKey(key);
 
   useEffect(() => {
     if (!hasMore) return;
@@ -2196,7 +2205,7 @@ export default function Feed() {
                 // barra de rolagem; o curto cabe, e o completo aparece ao tocar.
                 placeholder={composerEmUso
                   ? 'Compartilhe aqui prazer com fotos, vídeos e textos picantes! Use @ para marcar alguém.'
-                  : 'Compartilhe algo picante… 🔥'}
+                  : 'Poste algo picante 🔥'}
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 onPaste={handlePasteOnComposer}
@@ -2625,55 +2634,7 @@ export default function Feed() {
               </div>
             </Card>
           ) : null}
-          {feedFilter === 'all' && radarHighlights.length > 0 ? (
-            <Card className="overflow-hidden border-rose-200/50 bg-gradient-to-r from-rose-50/80 via-background to-orange-50/70 p-4 glass md:hidden">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Radio className="h-4 w-4 text-rose-500" />
-                    <p className="text-sm font-semibold text-foreground">Radares ativos perto de você agora</p>
-                  </div>
-                  {radarHighlightsSummary ? (
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{radarHighlightsSummary}</p>
-                  ) : null}
-                </div>
-                <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => navigate('/radar')}>
-                  Ver radar
-                </Button>
-              </div>
-              <div className="mt-3 grid gap-3">
-                {radarHighlights.slice(0, 3).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => navigate('/radar')}
-                    className="rounded-2xl border border-rose-200/60 bg-white/85 p-3 text-left transition-colors hover:border-rose-300 hover:bg-white"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="truncate text-sm font-semibold text-foreground">{item.sender.name}</span>
-                          {typeof item.distanceKm === 'number' ? (
-                            <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[11px] font-medium text-rose-600">
-                              {textoDistancia(item.distanceKm, { cidade: item.city })}
-                            </Badge>
-                          ) : null}
-                        </div>
-                        {getIdentityLine(item.sender) ? (
-                          <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.sender)}</div>
-                        ) : null}
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.message}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1 text-xs font-medium text-rose-600">
-                        <TimerReset className="h-3.5 w-3.5" />
-                        <span>{formatRemainingRadarTime(item.expiresAt)}</span>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Card>
-          ) : null}
+          {/* Radares ativos no celular: já aparecem no topo ("Perto de você"); o card repetido no meio do feed saiu. */}
           {feedFilter === 'experiences' ? (
             <>
               {/* Weekly theme challenge card */}
@@ -3064,8 +3025,10 @@ export default function Feed() {
               </div>
             </Card>
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && feedDisplayItems.map((item) => (
-            item.type === 'section' ? (
+          {feedFilter !== 'experiences' && !isLoading && feedItensComSugestoes.map((item) => (
+            item.type === 'sugestoes' ? (
+              <SugestoesPerfis key={item.id} />
+            ) : item.type === 'section' ? (
               <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
                 <div className="flex flex-col items-center gap-0.5 text-center">

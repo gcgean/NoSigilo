@@ -62,6 +62,16 @@ const DAY_THEMES: DayTheme[] = [
  */
 export default function FeedGreeting({ userName, summary }: { userName?: string | null; summary?: string | null }) {
   const [now, setNow] = useState(() => new Date());
+  // Aparece só na primeira abertura do feed no dia; nas outras some (o dono
+  // pediu: a saudação repetida a cada visita virava ruído).
+  const [jaViuHoje] = useState(() => {
+    const hoje = new Date().toLocaleDateString('sv-SE');
+    try {
+      const visto = localStorage.getItem('nosigilo:saudacao-do-dia') === hoje;
+      if (!visto) localStorage.setItem('nosigilo:saudacao-do-dia', hoje);
+      return visto;
+    } catch { return false; }
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 5 * 60 * 1000);
@@ -72,6 +82,8 @@ export default function FeedGreeting({ userName, summary }: { userName?: string 
 
   const firstName = String(userName || '').trim().split(/\s+/)[0] || '';
   const subtitle = summary ? `${theme.subtitle} ${summary}` : theme.subtitle;
+
+  if (jaViuHoje) return null;
 
   return (
     <div className={`mb-3 sm:mb-4 overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-r ${theme.accent} px-4 py-3 glass`}>

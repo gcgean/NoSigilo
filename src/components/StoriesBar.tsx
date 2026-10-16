@@ -13,7 +13,7 @@ type BarFeedStory = {
   id: string;
   viewed: boolean;
   audience?: 'all' | 'favorites';
-  author: { id: string; name: string; avatar: string | null; pinnedByMe?: boolean };
+  author: { id: string; name: string; avatar: string | null; pinnedByMe?: boolean; onlineRecente?: boolean };
 };
 
 type AuthorGroup = {
@@ -27,6 +27,8 @@ type AuthorGroup = {
   // Algum story do autor é restrito aos favoritos dele. Só chega aqui story
   // que este usuário pode ver, então o anel verde diz "você está na lista".
   paraFavoritos: boolean;
+  // Autor online agora ou visto há pouco (15 min): anel verde girando.
+  online?: boolean;
 };
 
 /**
@@ -66,6 +68,7 @@ export default function StoriesBar() {
         if (existing) {
           if (!s.viewed) existing.allViewed = false;
           if (s.audience === 'favorites') existing.paraFavoritos = true;
+          if (a.onlineRecente) existing.online = true;
         } else {
           byAuthor.set(a.id, {
             authorId: a.id,
@@ -75,6 +78,7 @@ export default function StoriesBar() {
             allViewed: s.viewed,
             pinned: !!a.pinnedByMe,
             paraFavoritos: s.audience === 'favorites',
+            online: !!a.onlineRecente,
           });
         }
       }
@@ -173,6 +177,11 @@ export default function StoriesBar() {
             }
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
+            <div className="relative">
+            {/* Online agora (ou há pouco): anel verde girando em volta, e o selo. */}
+            {unlocked && g.online && (
+              <span aria-hidden className="pointer-events-none absolute -inset-[3px] animate-[spin_2.5s_linear_infinite] rounded-full bg-[conic-gradient(#22c55e,#bbf7d0,#22c55e,#15803d,#22c55e)]" />
+            )}
             <div className={cn(
               'relative h-16 w-16 rounded-full p-[2px]',
               !unlocked
@@ -206,6 +215,10 @@ export default function StoriesBar() {
                   ) : null}
                 </div>
               </div>
+            </div>
+            {unlocked && g.online && (
+              <span className="absolute -bottom-1.5 left-1/2 z-10 -translate-x-1/2 rounded-full border border-background bg-[#22c55e] px-1.5 text-[8px] font-bold uppercase leading-[14px] text-white">online</span>
+            )}
             </div>
             <span className={cn('w-full truncate text-center text-[11px]', !unlocked ? 'font-semibold text-yellow-500' : 'text-muted-foreground')}>
               {unlocked ? g.name : 'Premium'}

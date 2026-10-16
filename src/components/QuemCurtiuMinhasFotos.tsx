@@ -55,7 +55,7 @@ export default function QuemCurtiuMinhasFotos({
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => { if (!v) aoFechar(); }}>
-      <DialogContent className="max-h-[88vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[88dvh] w-[calc(100vw-1rem)] max-w-md overflow-y-auto overflow-x-hidden [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Heart className="h-4 w-4 fill-rose-500 text-rose-500" /> Quem curtiu suas fotos

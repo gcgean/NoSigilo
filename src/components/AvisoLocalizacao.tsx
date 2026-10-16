@@ -13,7 +13,7 @@ const SETE_DIAS = 7 * 24 * 60 * 60 * 1000;
  * distância não aparece em km, nem para ela nem para quem a vê. Pede a
  * permissão do navegador com um toque. "Agora não" esconde por 7 dias.
  */
-export default function AvisoLocalizacao({ aoAtivar }: { aoAtivar?: () => void }) {
+export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAtivar?: () => void; compacto?: boolean }) {
   const { user, updateUser } = useAuth();
   const { toast } = useToast();
   const [ocupado, setOcupado] = useState(false);
@@ -47,6 +47,22 @@ export default function AvisoLocalizacao({ aoAtivar }: { aoAtivar?: () => void }
       setOcupado(false);
     }
   };
+
+  // Versão de uma linha (Match): a tela não tem espaço sobrando.
+  if (compacto && !bloqueado) {
+    return (
+      <div className="mb-2 flex items-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2 text-left">
+        <MapPin className="h-4 w-4 shrink-0 text-sky-500" />
+        <p className="min-w-0 flex-1 text-xs leading-tight">Ative a localização para ver a distância em km</p>
+        <Button type="button" size="sm" disabled={ocupado} onClick={() => void ativar()} className="h-8 shrink-0 bg-sky-600 px-3 text-white hover:bg-sky-700">
+          {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Ativar'}
+        </Button>
+        <button type="button" onClick={fechar} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary" aria-label="Fechar">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative mb-4 rounded-xl border border-sky-400/40 bg-sky-500/10 p-3.5 pr-9 text-left">

@@ -7614,6 +7614,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/stories', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const now = new Date().toISOString();
+    const presencaStories = req.app.get('presence') as undefined | { isOnline?: (id: string) => boolean };
 
     const me = (await queryOne(db, 'SELECT gender, looking_for_json, lat, lon, city, state, email, is_premium, trial_ends_at, hub_license_end_at FROM users WHERE id = ?', [userId])) as any;
     const myLookingFor: string[] = safeJsonParse(me?.looking_for_json) ?? [];
@@ -7667,7 +7668,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.name, u.gender, u.birth_date, u.partner_birth_date,
               u.city, u.state, u.bio,
               u.fetiches_json, u.intentions_json,
-              u.lat, u.lon,
+              u.lat, u.lon, u.last_seen_at,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
               (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed,
               (CASE WHEN pin.pinned_user_id IS NOT NULL THEN 1 ELSE 0 END) as is_pinned,
@@ -7822,6 +7823,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           distanceKm,
           likedByMe: curtidosPorMim.has(String(r.user_id)),
           pinnedByMe: Number(r.is_pinned) === 1,
+          // Online agora ou visto nos últimos 15 min: anel verde girando na barra.
+          onlineRecente: presencaStories?.isOnline?.(String(r.user_id))
+            || (!!r.last_seen_at && Date.now() - new Date(r.last_seen_at).getTime() < 15 * 60_000),
         },
       };
     });

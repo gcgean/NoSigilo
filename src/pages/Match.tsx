@@ -398,11 +398,11 @@ export default function Match() {
 
   return (
     <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0 lg:max-w-[560px]">
-      <AvisoLocalizacao />
+      <AvisoLocalizacao compacto />
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>
-          <p className="text-[0.98rem] font-normal text-muted-foreground/90 sm:text-lg">Encontre sua conexão</p>
+          <p className="hidden text-[0.98rem] font-normal text-muted-foreground/90 sm:block sm:text-lg">Encontre sua conexão</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Popover>
@@ -478,8 +478,11 @@ export default function Match() {
       {/* svh (não dvh): dvh recalcula ao vivo conforme a barra de endereço do
           navegador mobile some/aparece durante o scroll, fazendo o card e tudo
           abaixo dele mudar de altura e "pular" de posição a cada rolagem. svh
-          usa o menor viewport possível (com a barra visível) e fica estável. */}
-      <div className="relative h-[min(58svh,480px)] min-h-[300px] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
+          usa o menor viewport possível (com a barra visível) e fica estável.
+          A altura desconta o que fica em volta (cabeçalho, botões, menu de
+          baixo ~370px): com 58svh fixo, em celular baixo o card empurrava os
+          botões para fora da tela. */}
+      <div className="relative h-[clamp(240px,calc(100svh-370px),480px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && (
           <div className="absolute inset-0">
             <MobileState
@@ -826,7 +829,7 @@ export default function Match() {
           title="Super Curtida · 5 tokens"
         >
           <span className="text-2xl leading-none sm:text-[1.7rem]">⭐</span>
-          <span className="text-[9px] font-bold leading-none">5 tokens</span>
+          <span className="text-[9px] font-bold leading-none">Super curtida</span>
         </Button>
 
         {/* Mensagem — requer premium */}
