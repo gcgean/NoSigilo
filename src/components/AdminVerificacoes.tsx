@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
-import { BadgeCheck, Loader2 } from 'lucide-react';
+import { BadgeCheck, Loader2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { verificacaoService, type PedidoVerificacao } from '@/services/api';
+
+// Motivos mais comuns, para preencher com um toque (dá para editar depois).
+const MOTIVOS_PRONTOS = [
+  'O código não aparece na foto ou não dá para ler.',
+  'O rosto não aparece direito na selfie (foto escura, cortada ou de longe).',
+  'A pessoa da selfie não aparece nas fotos do perfil.',
+  'Perfil de casal: as duas pessoas precisam aparecer na selfie com o código.',
+  'O perfil não tem fotos suficientes para comparar com a selfie.',
+];
 
 const dataHora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
@@ -19,6 +28,19 @@ export default function AdminVerificacoes() {
   const [recusando, setRecusando] = useState<string | null>(null);
   const [motivo, setMotivo] = useState('');
   const [ampliada, setAmpliada] = useState<string | null>(null);
+  const [melhorando, setMelhorando] = useState(false);
+
+  const melhorarComIa = async (p: PedidoVerificacao) => {
+    if (!motivo.trim()) return;
+    setMelhorando(true);
+    try {
+      setMotivo((await verificacaoService.melhorarMotivo(motivo.trim(), p.genero)).texto);
+    } catch (e: any) {
+      toast({ title: 'A IA não conseguiu agora', description: e?.response?.data?.message || 'Tente de novo ou envie como está.', variant: 'destructive' });
+    } finally {
+      setMelhorando(false);
+    }
+  };
 
   const carregar = () => verificacaoService.listarPendentes().then((d) => setPedidos(d.pedidos)).catch(() => {});
   useEffect(() => { void carregar(); }, []);
@@ -27,7 +49,7 @@ export default function AdminVerificacoes() {
     setOcupado(p.id);
     try {
       await verificacaoService.decidir(p.id, acao, acao === 'recusar' ? motivo.trim() || undefined : undefined);
-      toast({ title: acao === 'aprovar' ? `${p.nome} verificada ✔` : 'Verificação recusada', description: 'Ela foi avisada nas notificações.' });
+      toast({ title: acao === 'aprovar' ? `${p.nome} verificada ✔` : 'Verificação recusada', description: 'A pessoa foi avisada nas notificações.' });
       setRecusando(null);
       setMotivo('');
       await carregar();
@@ -85,8 +107,23 @@ export default function AdminVerificacoes() {
             </div>
             {recusando === p.id && (
               <div className="mt-2 space-y-2">
-                <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (ela vê na notificação). Ex.: o código não aparece na foto." maxLength={300} rows={2} />
-                <Button size="sm" variant="destructive" disabled={ocupado === p.id} onClick={() => void decidir(p, 'recusar')}>Confirmar recusa</Button>
+                <div className="flex flex-wrap gap-1.5">
+                  {MOTIVOS_PRONTOS.map((m) => (
+                    <button key={m} type="button" onClick={() => setMotivo(m)}
+                      className="rounded-full border border-border px-2.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (a pessoa vê na notificação). Escolha um acima ou escreva do seu jeito." maxLength={300} rows={3} disabled={melhorando} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="outline" disabled={melhorando || !motivo.trim()} onClick={() => void melhorarComIa(p)}>
+                    {melhorando ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                    Melhorar com IA
+                  </Button>
+                  <Button size="sm" variant="destructive" disabled={ocupado === p.id || melhorando} onClick={() => void decidir(p, 'recusar')}>Confirmar recusa</Button>
+                  <span className="text-[11px] text-muted-foreground">{motivo.length}/300</span>
+                </div>
               </div>
             )}
           </div>

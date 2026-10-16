@@ -19,6 +19,7 @@ import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, c
 import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
+import { melhorarMotivoRecusa } from './verificacaoIa.js';
 import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
@@ -10591,6 +10592,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       });
     }
     res.json({ pedidos: lista });
+  });
+
+  // Reescreve com a IA o motivo de recusa que o admin rascunhou (não grava nada).
+  app.post('/api/admin/verificacoes/melhorar-motivo', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const rascunho = String(req.body?.rascunho || '').trim().slice(0, 600);
+    if (!rascunho) { res.status(400).json({ error: 'invalid_input', message: 'Escreva um rascunho do motivo primeiro.' }); return; }
+    if (!env.DEEPSEEK_API_KEY) { res.status(503).json({ error: 'ia_indisponivel', message: 'IA não configurada.' }); return; }
+    const genero = req.body?.genero ? String(req.body.genero).slice(0, 40) : null;
+    const texto = await melhorarMotivoRecusa(env.DEEPSEEK_API_KEY, { rascunho, genero });
+    if (!texto) { res.status(502).json({ error: 'ia_falhou', message: 'A IA não respondeu agora. Tente de novo.' }); return; }
+    res.json({ texto });
   });
 
   app.post('/api/admin/verificacoes/:id/:acao', requireAuth(env, db), requireAdmin(), async (req, res) => {

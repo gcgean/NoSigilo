@@ -1345,6 +1345,8 @@ export const verificacaoService = {
   gerarCodigo: async (): Promise<{ codigo: string }> => (await apiClient.post('/verificacao/codigo')).data,
   enviar: async (mediaId: string) => (await apiClient.post('/verificacao/enviar', { mediaId })).data as { ok: boolean },
   listarPendentes: async (): Promise<{ pedidos: PedidoVerificacao[] }> => (await apiClient.get('/admin/verificacoes')).data,
+  melhorarMotivo: async (rascunho: string, genero?: string | null): Promise<{ texto: string }> =>
+    (await apiClient.post('/admin/verificacoes/melhorar-motivo', { rascunho, genero })).data,
   decidir: async (id: string, acao: 'aprovar' | 'recusar', motivo?: string) =>
     (await apiClient.post(`/admin/verificacoes/${id}/${acao}`, { motivo })).data as { ok: boolean },
 };
