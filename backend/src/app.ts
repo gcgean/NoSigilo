@@ -521,6 +521,11 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   checkin: { points: 5,  dailyCap: 1 },
   // Pago uma vez só, na primeira abertura pelo app instalado.
   app_instalado: { points: 20, dailyCap: 1 },
+  // Top do Dia (posts mais curtidos em 24h, às 11h): prêmio por posição.
+  top_dia_1: { points: 30, dailyCap: 1 },
+  top_dia_2: { points: 20, dailyCap: 1 },
+  top_dia_3: { points: 15, dailyCap: 1 },
+  top_dia:   { points: 10, dailyCap: 1 },
   // Primeiro pagamento no cartão (renova sozinho): uma vez só por conta.
   pagou_cartao: { points: 50, dailyCap: 1 },
   // Voltou pela campanha de volta e renovou em até 30 dias.
@@ -665,6 +670,19 @@ async function awardContentTokensIfEligible(db: DbHandle, userId: string, action
   const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
   if (!genderEarnsPostTokens(u?.gender)) return;
   await awardTokens(db, userId, actionType, refId, io);
+}
+
+// Prêmio do Top do Dia. Segue a regra de conteúdo (só mulher e casal pontuam
+// por publicar). Devolve quantos tokens a pessoa ganhou (0 = não pontua).
+export async function premiarTopDoDia(db: DbHandle, userId: string, posicao: number, dia: string): Promise<number> {
+  const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  if (!genderEarnsPostTokens(u?.gender)) return 0;
+  const acao = posicao === 1 ? 'top_dia_1' : posicao === 2 ? 'top_dia_2' : posicao === 3 ? 'top_dia_3' : 'top_dia';
+  const antes = (await queryOne(db, 'SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = ? AND ref_id = ? LIMIT 1', [userId, acao, `top-dia-${dia}`])) as any;
+  if (antes) return 0;
+  await awardTokens(db, userId, acao, `top-dia-${dia}`);
+  const ganhou = (await queryOne(db, 'SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = ? AND ref_id = ? LIMIT 1', [userId, acao, `top-dia-${dia}`])) as any;
+  return ganhou ? TOKEN_RULES[acao].points : 0;
 }
 
 // Debita pontos por uma ação que CONSOME tokens (ex.: Coração Quente no story).

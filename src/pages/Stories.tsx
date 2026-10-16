@@ -27,14 +27,20 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
 
 // Como ganhar tokens de graça (mesmos valores de TOKEN_RULES no backend).
+// Pontos por publicar (e o Top do Dia) só valem para mulher e casal.
 const GANHAR_TOKENS = [
-  { icon: '📅', texto: 'Entrar no app todo dia', pontos: 5 },
-  { icon: '❤️', texto: 'Curtir', pontos: 1 },
-  { icon: '💬', texto: 'Comentar', pontos: 3 },
-  { icon: '📝', texto: 'Publicar um post', pontos: 5 },
-  { icon: '📸', texto: 'Postar um story', pontos: 8 },
-  { icon: '🖼️', texto: 'Publicar uma foto', pontos: 10 },
+  { icon: '📅', texto: 'Entrar todo dia', pontos: '+5', conteudo: false },
+  { icon: '❤️', texto: 'Curtir', pontos: '+1', conteudo: false },
+  { icon: '💬', texto: 'Comentar', pontos: '+3', conteudo: false },
+  { icon: '📝', texto: 'Post', pontos: '+5', conteudo: true },
+  { icon: '📸', texto: 'Story', pontos: '+8', conteudo: true },
+  { icon: '🖼️', texto: 'Foto', pontos: '+10', conteudo: true },
+  { icon: '🏆', texto: 'Top do Dia', pontos: 'até +30', conteudo: true },
 ];
+const ganhaPorConteudo = (gender: unknown) => {
+  const g = String(gender || '').trim().toLowerCase();
+  return g === 'mulher' || g.startsWith('casal');
+};
 
 // Três listas diferentes convivem nesta tela, e confundi-las é fácil. Em uma
 // frase cada:
@@ -1191,11 +1197,11 @@ function StoryViewer({
               <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">🎁 Ganhe tokens de graça</p>
               <p className="mt-0.5 text-xs text-muted-foreground">É só usar o NoSigilo: cada ação vale tokens.</p>
               <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-                {GANHAR_TOKENS.map((g) => (
+                {GANHAR_TOKENS.filter((g) => !g.conteudo || ganhaPorConteudo(espectador?.gender)).map((g) => (
                   <li key={g.texto} className="flex items-center gap-1.5 text-sm">
                     <span aria-hidden="true">{g.icon}</span>
-                    <span className="min-w-0 flex-1 truncate">{g.texto}</span>
-                    <span className="shrink-0 font-semibold text-emerald-600 dark:text-emerald-400">+{g.pontos}</span>
+                    <span className="min-w-0 flex-1 leading-tight">{g.texto}</span>
+                    <span className="shrink-0 font-semibold text-emerald-600 dark:text-emerald-400">{g.pontos}</span>
                   </li>
                 ))}
               </ul>

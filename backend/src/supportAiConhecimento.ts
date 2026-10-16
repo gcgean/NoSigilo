@@ -33,6 +33,8 @@ Premium
 
 Tokens (menu Tokens)
 - Ganha pontos usando o app: curtir (1, até 20 por dia), comentar (3, até 10 por dia), foto nova (10, até 3 por dia), story (8, até 3 por dia), postagem (5, até 3 por dia; pontos por postagem só para perfis de mulher e casal) e check-in diário (5, 1 por dia).
+- Top do Dia: todo dia às 11h, os autores dos posts mais curtidos das últimas 24h ganham tokens: 1º lugar 30, 2º 20, 3º 15, do 4º ao 12º 10 (só perfis de mulher e casal, como os outros pontos por conteúdo).
+- Coração Quente nos stories custa 1 token; a curtida normal e as outras reações do story são grátis e dão 1 ponto.
 - A cada 100 pontos, vira automaticamente 1 dia de Premium grátis.
 - Destaque de perfil: custa 30 tokens e deixa o perfil em destaque por 24 horas.
 - Dá para presentear tokens a outro usuário. Existe ranking por tipo de perfil.

@@ -3,7 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
 import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
-import { createApp, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
+import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
 import { seedBrazilianCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -407,6 +407,7 @@ async function runTopDayNotifications(db: DbHandle) {
      WHERE p.created_at >= ?
        AND (u.is_banned = 0 OR u.is_banned IS NULL)
        AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND COALESCE(u.is_showcase, 0) = 0
        AND p.media_ids_json IS NOT NULL AND p.media_ids_json != '[]'
        AND (p.is_reels_only = 0 OR p.is_reels_only IS NULL)
      ORDER BY like_count DESC, p.created_at DESC
@@ -431,11 +432,16 @@ async function runTopDayNotifications(db: DbHandle) {
       ) as any;
       if (recent) continue;
 
-      const title = '🏆 Você está no Top do Dia!';
-      const body = `Seu post está entre os mais curtidos de hoje (top ${rank}). Aproveite o destaque para conectar!`;
+      // Posição entre os AUTORES (o mesmo autor com 2 posts no top conta uma vez).
+      const posicao = seenAuthors.size;
+      const tokens = await premiarTopDoDia(db, authorId, posicao, new Date().toISOString().slice(0, 10));
+      const title = tokens > 0 ? `🏆 Top do Dia: você ganhou ${tokens} tokens!` : '🏆 Você está no Top do Dia!';
+      const body = tokens > 0
+        ? `Seu post é o ${posicao}º mais curtido de hoje. Continue postando: o Top do Dia premia todo dia às 11h.`
+        : `Seu post está entre os mais curtidos de hoje (top ${posicao}). Aproveite o destaque para conectar!`;
       await db.run(
         `INSERT INTO notifications (id, user_id, type, title, description, data_json, is_read, created_at) VALUES (?, ?, 'feed.top_day', ?, ?, ?, 0, ?)`,
-        [randomUUID(), authorId, title, body, JSON.stringify({ postId: String(r.id), rank }), new Date().toISOString()]
+        [randomUUID(), authorId, title, body, JSON.stringify({ postId: String(r.id), rank: posicao, tokens }), new Date().toISOString()]
       );
 
       // Push (best-effort)

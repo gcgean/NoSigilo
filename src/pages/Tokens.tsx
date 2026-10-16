@@ -29,6 +29,13 @@ const ACTION_LABELS: Record<string, string> = {
   convert_day: '🎉 1 dia grátis resgatado',
   gift_received: '🎁 Presente recebido',
   gift_sent: 'Presente enviado',
+  top_dia_1: '🏆 Top do Dia — 1º lugar',
+  top_dia_2: '🏆 Top do Dia — 2º lugar',
+  top_dia_3: '🏆 Top do Dia — 3º lugar',
+  top_dia: '🏆 Top do Dia',
+  hot_heart: 'Coração Quente no story',
+  boost: 'Destaque do perfil',
+  pedido_destaque: 'Destaque de pedido de contato',
 };
 
 const RANKING_TABS: Array<{ id: 'homem' | 'mulher' | 'casal'; label: string }> = [
