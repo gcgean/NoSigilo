@@ -1179,6 +1179,14 @@ function StoryViewer({
               </button>
             </div>
 
+            {/* A interação não se perde: a curtida normal é grátis. */}
+            {myReaction !== 'heart' ? (
+              <Button type="button" className="mt-4 w-full bg-gradient-primary text-white hover:opacity-90"
+                onClick={() => { setSemTokens(false); void handleReact('heart'); }}>
+                ❤️ Mandar uma curtida normal (grátis)
+              </Button>
+            ) : null}
+
             <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
               <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">🎁 Ganhe tokens de graça</p>
               <p className="mt-0.5 text-xs text-muted-foreground">É só usar o NoSigilo: cada ação vale tokens.</p>
