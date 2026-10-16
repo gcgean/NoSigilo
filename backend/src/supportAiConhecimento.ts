@@ -1,7 +1,8 @@
 // ─── O que o suporte sabe sobre o NoSigilo ──────────────────────────────────
 //
 // Levantado lendo o código (rotas, regras e telas) em 17/09/2026 e revisado em
-// 14/10/2026 (stories, eventos, conta oficial, LGPD, localização). Não é gerado
+// 14/10/2026 (stories, eventos, conta oficial, LGPD, localização) e em 16/10/2026
+// (usos de tokens, Top do Dia, verificação para todos, GPS, senha de conta Google). Não é gerado
 // automaticamente: quando uma regra mudar no código, mude aqui também. Números
 // que vêm de constantes têm a referência ao lado para facilitar achar.
 //
@@ -71,7 +72,7 @@ Perfil, fotos e postagens
 - Postagens: no perfil, aba Postagens, menu "⋯" para editar o texto ou remover.
 - Quem visitou o perfil fica em Perfil > Visitantes (Premium).
 - Quem curtiu as fotos e publicações: Perfil > botão "Ver quem curtiu suas fotos" (Premium). Mostra todas as curtidas numa lista só, com a foto curtida e, no topo, quem mais curtiu.
-- Selo de verificado aparece em perfis verificados.
+- Selo de verificado aparece em perfis verificados. QUALQUER perfil pode verificar (casal, homem, mulher...): no próprio Perfil aparece o cartão azul "Verifique seu perfil" com o botão "Verificar agora" (ou o botãozinho "✔ Verificar perfil" ao lado do nome). Só para mulher a verificação dá também acesso grátis para sempre; os outros ganham o selo. A selfie precisa mostrar o ROSTO e o PAPEL com o código escrito à mão, bem legível; perfil de casal: as DUAS pessoas na selfie com o papel. Recusada: o motivo aparece no cartão do Perfil e na notificação, e dá para tentar de novo em "Tentar de novo".
 
 Chat, grupos e eventos
 - Conversas privadas no Chat (Premium para iniciar e enviar). Mensagens podem ser apagadas.
@@ -92,7 +93,7 @@ Conta
 - Quem entra pelo Google e quer uma senha (ou trocar "a senha"): é o MESMO caminho. Sai da conta, na tela de login toca em "Esqueceu a senha?", usa o e-mail do Google, recebe o código e cria a senha. Depois disso entra dos dois jeitos (Google ou e-mail e senha). NÃO precisa chamar a equipe para isso.
 - Baixar meus dados: Configurações › Segurança › "Seus dados" › "Baixar meus dados" gera um arquivo com perfil, fotos (com links), posts, stories, contos, comentários, curtidas, mensagens enviadas, compras e comissões. Dá para baixar 1 vez por minuto.
 - Privacidade (LGPD): a Política de Privacidade completa fica no link do rodapé e no cadastro. O NoSigilo não vende dados; e-mail, senha e localização exata nunca aparecem para ninguém. A selfie de verificação é privada (só a equipe vê) e é apagada logo depois da análise. Para assuntos de privacidade, a pessoa fala com a equipe por este chat de Suporte.
-- Distância e localização: a distância é aproximada (o GPS é guardado com precisão de mais ou menos 1 km, para proteger quem mora perto). Aparece em km inteiros; bem perto aparece "menos de 2 km". "Em Fortaleza" (ou outra cidade) quer dizer que a pessoa é da mesma cidade mas não ativou a localização do aparelho, então não dá para calcular a distância exata.
+- Distância e localização: a distância é aproximada (o GPS é guardado com precisão de mais ou menos 1 km, para proteger quem mora perto). Aparece em km inteiros; bem perto aparece "menos de 2 km". "Em Fortaleza" (ou outra cidade) quer dizer que a pessoa é da mesma cidade mas não ativou a localização do aparelho, então não dá para calcular a distância exata. Para ver e mostrar km: na Busca e no Match aparece o aviso "📍 Ative sua localização" com o botão "Ativar localização"; se o navegador bloqueou, tocar no cadeado ao lado do endereço do site › Localização › Permitir e tentar de novo. A localização exata nunca aparece para ninguém.
 - Conta oficial "NoSigilo" no Chat: é a equipe mandando boas-vindas e dicas (perfil, match, stories, radar, eventos, segurança). Ninguém lê as respostas nessa conversa; para falar com a equipe é aqui no Suporte. Responder PARAR naquela conversa encerra as dicas.
 - Nome no cadastro: se o apelido já estiver em uso, o cadastro sugere variações livres para escolher com um toque. Em qualquer tela, tocar no nome de alguém abre o perfil da pessoa.
 - Trocar o nome do perfil: Configurações › Perfil › "Mudar nome". Vale na hora, sem aprovação; só não aceita nome que outra pessoa já usa ou nome proibido.
