@@ -2294,7 +2294,7 @@ export const storiesService = {
   },
   like: async (id: string, reaction?: 'heart' | 'love' | 'wow' | 'devil' | 'fire' | 'splash' | 'hot') => {
     const res = await apiClient.post(`/stories/${id}/like`, reaction ? { reaction } : {});
-    return res.data as { liked: boolean; likeCount: number; myReaction: string | null; reactions: Array<{ type: string; count: number }> };
+    return res.data as { liked: boolean; likeCount: number; myReaction: string | null; reactions: Array<{ type: string; count: number }>; tokensRestantes?: number | null };
   },
 };
 

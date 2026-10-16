@@ -8544,12 +8544,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     // Coração Quente: cobra 1 token ao aplicar (não no toggle-off). Idempotente por
     // story — quem já pagou pode tirar/recolocar de graça depois.
+    // Saldo depois do Coração Quente: o app avisa quando foi o último token.
+    let tokensRestantes: number | null = null;
     if (reaction === 'hot' && !isToggleOff && String(story.user_id) !== likerId) {
       const charge = await spendTokens(db, likerId, HOT_HEART_COST, 'hot_heart', storyId, req.app.get('io'));
       if (!charge.ok) {
-        res.status(402).json({ error: 'insufficient_tokens', message: 'Você precisa de pelo menos 1 token para dar um Coração Quente.' });
+        res.status(402).json({ error: 'insufficient_tokens', message: 'Você precisa de pelo menos 1 token para dar um Coração Quente.', tokens: charge.balance });
         return;
       }
+      tokensRestantes = charge.charged ? charge.balance : null;
     }
 
     let myReaction: string | null = null;
@@ -8599,7 +8602,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [storyId]
     )) as any[];
     const reactions = reactionRows.map((r) => ({ type: String(r.reaction), count: Number(r.c) }));
-    res.json({ liked: myReaction !== null, likeCount: Number(countRow?.c || 0), myReaction, reactions });
+    res.json({ liked: myReaction !== null, likeCount: Number(countRow?.c || 0), myReaction, reactions, tokensRestantes });
   });
 
   // ── Video search (browse reels like profile search) ───────────────────────

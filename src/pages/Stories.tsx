@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { storiesService, profileService } from '@/services/api';
+import { storiesService, profileService, tokenService } from '@/services/api';
+import ComprarTokens from '@/components/ComprarTokens';
 import type { StoryAudience, StoryFavoriteCandidate } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
@@ -24,6 +25,16 @@ import BackToTop from '@/components/BackToTop';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
+
+// Como ganhar tokens de graça (mesmos valores de TOKEN_RULES no backend).
+const GANHAR_TOKENS = [
+  { icon: '📅', texto: 'Entrar no app todo dia', pontos: 5 },
+  { icon: '❤️', texto: 'Curtir', pontos: 1 },
+  { icon: '💬', texto: 'Comentar', pontos: 3 },
+  { icon: '📝', texto: 'Publicar um post', pontos: 5 },
+  { icon: '📸', texto: 'Postar um story', pontos: 8 },
+  { icon: '🖼️', texto: 'Publicar uma foto', pontos: 10 },
+];
 
 // Três listas diferentes convivem nesta tela, e confundi-las é fácil. Em uma
 // frase cada:
@@ -560,7 +571,15 @@ function StoryViewer({
   const [digitando, setDigitando] = useState(false); // respondendo: o story espera
   const [oculto, setOculto] = useState(false); // app em segundo plano
   const [coracaoGrande, setCoracaoGrande] = useState(false);
-  const pausaEfetiva = paused || digitando || oculto;
+  // Saldo de tokens (Coração Quente custa 1). null = ainda não sabemos.
+  const [saldoTokens, setSaldoTokens] = useState<number | null>(null);
+  const [semTokens, setSemTokens] = useState(false); // janela "seus tokens acabaram"
+  const [mostrarCompra, setMostrarCompra] = useState(false);
+  useEffect(() => {
+    tokenService.me().then((t) => setSaldoTokens(Number(t?.points ?? 0))).catch(() => {});
+  }, []);
+  const abrirSemTokens = () => { setMostrarCompra(false); setSemTokens(true); };
+  const pausaEfetiva = paused || digitando || oculto || semTokens;
   const pausedRef = useRef(false);
   const heldRef = useRef(false);       // true quando foi "segurar" (não é toque)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -727,6 +746,11 @@ function StoryViewer({
 
   const handleReact = async (reaction: string) => {
     setShowReactions(false);
+    // Sem token para o Coração Quente: avisa antes, sem animar à toa.
+    if (reaction === 'hot' && myReaction !== 'hot' && saldoTokens !== null && saldoTokens < 1) {
+      abrirSemTokens();
+      return;
+    }
     const prev = { liked, likeCount, myReaction };
     // Atualização otimista
     const isToggleOff = myReaction === reaction;
@@ -740,16 +764,23 @@ function StoryViewer({
       setLiked(res.liked);
       setLikeCount(res.likeCount);
       setMyReaction(res.myReaction);
+      if (typeof res.tokensRestantes === 'number') {
+        setSaldoTokens(res.tokensRestantes);
+        if (res.tokensRestantes === 0) {
+          toast({
+            title: 'Esse foi seu último token 😉',
+            description: 'Ganhe mais de graça curtindo, comentando e postando, ou compre para agilizar.',
+            action: <Button size="sm" variant="outline" onClick={() => navigate('/tokens')}>Ganhar mais</Button>,
+          });
+        }
+      }
     } catch (err) {
       setLiked(prev.liked);
       setLikeCount(prev.likeCount);
       setMyReaction(prev.myReaction);
       if (reaction === 'hot' && (err as any)?.response?.status === 402) {
-        toast({
-          title: 'Tokens insuficientes',
-          description: 'O Coração Quente custa 1 token. Ganhe tokens publicando e interagindo na plataforma.',
-          variant: 'destructive',
-        });
+        setSaldoTokens(Number((err as any)?.response?.data?.tokens ?? 0));
+        abrirSemTokens();
       }
     }
   };
@@ -1088,7 +1119,9 @@ function StoryViewer({
             <span className={cn('text-2xl leading-none transition-transform duration-200', likeAnim && myReaction === 'hot' && 'scale-125')}>
               {HOT_HEART}
             </span>
-            <span className="text-[8px] font-semibold leading-none text-white/60">1 token</span>
+            <span className="text-[8px] font-semibold leading-none text-white/60">
+              {saldoTokens === 0 && myReaction !== 'hot' ? '0 tokens' : '1 token'}
+            </span>
           </button>
 
           {/* Input comentário com efeito de apagar */}
@@ -1119,6 +1152,65 @@ function StoryViewer({
         </div>
       )}
     </div>
+      {semTokens && (
+        // Fica por cima do story (que pausa) e não deixa o toque vazar para
+        // os gestos de avançar/voltar.
+        <div
+          className="absolute inset-0 z-[60] flex items-end justify-center bg-black/70 p-3 sm:items-center"
+          onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) setSemTokens(false); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Seus tokens acabaram"
+        >
+          <div className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-2xl bg-background p-5 text-foreground shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-lg font-bold">Seus tokens acabaram {HOT_HEART}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  O Coração Quente custa 1 token e faz você se destacar para quem postou o story.
+                </p>
+              </div>
+              <button type="button" onClick={() => setSemTokens(false)} className="rounded-full p-1 text-muted-foreground hover:bg-secondary" aria-label="Fechar">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">🎁 Ganhe tokens de graça</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">É só usar o NoSigilo: cada ação vale tokens.</p>
+              <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                {GANHAR_TOKENS.map((g) => (
+                  <li key={g.texto} className="flex items-center gap-1.5 text-sm">
+                    <span aria-hidden="true">{g.icon}</span>
+                    <span className="min-w-0 flex-1 truncate">{g.texto}</span>
+                    <span className="shrink-0 font-semibold text-emerald-600 dark:text-emerald-400">+{g.pontos}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button type="button" className="mt-3 w-full bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => { setSemTokens(false); onClose(); navigate('/tokens'); }}>
+                Ver como ganhar grátis
+              </Button>
+            </div>
+
+            {mostrarCompra ? (
+              <div className="mt-4">
+                <ComprarTokens aoCreditar={() => {
+                  tokenService.me().then((t) => setSaldoTokens(Number(t?.points ?? 0))).catch(() => {});
+                  setSemTokens(false);
+                }} />
+              </div>
+            ) : (
+              <button type="button" onClick={() => setMostrarCompra(true)} className="mt-3 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground">
+                Está com pressa? Comprar tokens para agilizar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       </div>
   ), document.body);
 }
