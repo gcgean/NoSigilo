@@ -98,7 +98,7 @@ export default function ComprarTokens({ aoCreditar }: { aoCreditar?: () => void 
       <div>
         <h2 className="flex items-center gap-2 text-lg font-bold"><Coins className="h-5 w-5 text-amber-400" /> Comprar tokens</h2>
         <p className="text-xs text-muted-foreground">
-          Use para <strong className="text-foreground">destacar pedidos de contato</strong> (20 tokens), destacar seu perfil (30) ou presentear alguém. Tokens comprados não viram dias grátis.
+          Use para <strong className="text-foreground">⭐ Super Curtida</strong> no Match (5), <strong className="text-foreground">🔥 Disponível hoje</strong> (10), 📌 story em destaque (15), 💌 destacar pedido de contato (20), destacar seu perfil (30), 🎉 destacar evento (30) e 🎁 presentes no chat. Tokens comprados não viram dias grátis.
         </p>
       </div>
 

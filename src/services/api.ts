@@ -487,9 +487,9 @@ export const matchService = {
     return response.data;
   },
 
-  like: async (userId: string) => {
-    const response = await apiClient.post('/match/like', { userId });
-    return response.data;
+  like: async (userId: string, opcoes?: { superCurtida?: boolean }) => {
+    const response = await apiClient.post('/match/like', { userId, ...(opcoes?.superCurtida ? { superCurtida: true } : {}) });
+    return response.data as { ok: boolean; mutual?: boolean; conversationId?: string; superCurtida?: boolean; tokensRestantes?: number | null };
   },
 
   pass: async (userId: string) => {
@@ -2321,6 +2321,23 @@ export interface TokenRankingEntry {
 }
 
 export type PacoteTokens = { id: string; tokens: number; valorCents: number; rotulo: string; maisVendido: boolean };
+
+export type PerfilDisponivel = { id: string; name: string; avatar: string | null; gender?: string | null; city?: string | null; state?: string | null; distanceKm: number | null; disponivelAte: string; isOnline?: boolean };
+export const usosTokensService = {
+  disponiveisHoje: async (): Promise<{ perfis: PerfilDisponivel[]; meuDisponivelAte: string | null; custo: number; horas: number }> =>
+    (await apiClient.get('/disponiveis-hoje')).data,
+  ficarDisponivel: async (): Promise<{ ok: boolean; disponivelAte: string; jaAtivo?: boolean }> =>
+    (await apiClient.post('/tokens/disponivel-hoje')).data,
+  encerrarDisponivel: async () => (await apiClient.post('/tokens/disponivel-hoje/encerrar')).data,
+  destacarStory: async (storyId: string): Promise<{ ok: boolean; destaqueAte: string; jaAtivo?: boolean }> =>
+    (await apiClient.post(`/stories/${storyId}/destacar`)).data,
+  destacarEvento: async (eventId: string): Promise<{ ok: boolean; destaqueAte: string; jaAtivo?: boolean }> =>
+    (await apiClient.post(`/events/${eventId}/destacar`)).data,
+  presentes: async (): Promise<{ presentes: Array<{ id: string; emoji: string; nome: string; tokens: number }> }> =>
+    (await apiClient.get('/presentes-chat')).data,
+  enviarPresente: async (conversationId: string, presente: string) =>
+    (await apiClient.post(`/conversations/${conversationId}/presente`, { presente })).data as { ok: boolean; message: any; balance: number },
+};
 
 export const tokenService = {
   pacotes: async (): Promise<{ disponivel: boolean; pacotes: PacoteTokens[] }> => {

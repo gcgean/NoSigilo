@@ -81,6 +81,13 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        // Presente no chat: entra pulando e balança um pouco.
+        presente: {
+          "0%": { transform: "scale(0.3) rotate(-12deg)", opacity: "0" },
+          "55%": { transform: "scale(1.25) rotate(6deg)", opacity: "1" },
+          "75%": { transform: "scale(0.95) rotate(-4deg)" },
+          "100%": { transform: "scale(1) rotate(0deg)" },
+        },
         "accordion-down": {
           from: { height: "0" },
           to: { height: "var(--radix-accordion-content-height)" },
@@ -116,6 +123,7 @@ export default {
         },
       },
       animation: {
+        presente: "presente 0.9s cubic-bezier(.2,.9,.3,1.3) both",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "slide-up": "slide-up 0.5s ease-out",

@@ -17,6 +17,7 @@ import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { hasPremiumAccess } from '@/utils/premium';
 import MobileState from '@/components/MobileState';
+import SemTokensDialog from '@/components/SemTokensDialog';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import SeekingYouModal from '@/components/SeekingYouModal';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
@@ -44,6 +45,8 @@ type MatchProfile = {
   badges?: string[];
   availabilityStatus?: string | null;
   distanceKm?: number | null;
+  superCurtidaRecebida?: boolean;
+  disponivelHoje?: boolean;
 };
 
 
@@ -301,12 +304,16 @@ export default function Match() {
     }, 300);
   };
 
-  const handleLike = async () => {
+  const [semTokensSuper, setSemTokensSuper] = useState(false);
+  const handleLike = async (superCurtida = false) => {
     const ok = await requireFields(['photo', 'birthDate', 'city']);
     if (!ok) return;
     if (!currentProfile) return;
     try {
-      await matchService.like(currentProfile.id);
+      await matchService.like(currentProfile.id, { superCurtida });
+      if (superCurtida) {
+        toast({ title: '⭐ Super Curtida enviada!', description: `${currentProfile.name} vai ser avisado(a) e te ver em destaque.` });
+      }
       addFavorite({
         id: currentProfile.id,
         name: currentProfile.name,
@@ -328,7 +335,13 @@ export default function Match() {
           ...prev,
         ];
       });
-    } catch {}
+    } catch (e: any) {
+      // Sem tokens para a Super Curtida: mostra como ganhar e não passa o card.
+      if (superCurtida && e?.response?.status === 402) {
+        setSemTokensSuper(true);
+        return;
+      }
+    }
     handleSwipe('right');
   };
 
@@ -659,6 +672,16 @@ export default function Match() {
               <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                 <div className="flex min-w-0 items-end justify-between gap-3">
                   <div className="min-w-0 flex-1">
+                    {(currentProfile.superCurtidaRecebida || currentProfile.disponivelHoje) && (
+                      <div className="mb-2 flex flex-wrap gap-1.5">
+                        {currentProfile.superCurtidaRecebida && (
+                          <span className="rounded-full bg-sky-500/90 px-2.5 py-1 text-xs font-bold text-white shadow">⭐ Te deu uma Super Curtida</span>
+                        )}
+                        {currentProfile.disponivelHoje && (
+                          <span className="rounded-full bg-orange-500/90 px-2.5 py-1 text-xs font-bold text-white shadow">🔥 Disponível hoje</span>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       className="mb-1 text-left text-[clamp(1.45rem,7vw,2.05rem)] font-semibold leading-tight tracking-tight text-white break-words hover:underline sm:text-3xl"
@@ -790,19 +813,18 @@ export default function Match() {
           <Heart className="h-7 w-7 sm:h-10 sm:w-10" fill="white" />
         </Button>
 
-        {/* Ver Perfil — livre para todos */}
+        {/* Super Curtida — 5 tokens: chega com aviso e em destaque para a pessoa */}
         <Button
           size="lg"
           variant="outline"
-          className="h-[58px] w-full rounded-[22px] border-2 border-primary text-primary transition-all hover:bg-primary hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
-          onClick={() => {
-            if (!currentProfile) return;
-            navigate(getUserProfileHref(currentProfile.id, user?.id, '/match'));
-          }}
+          className="relative h-[58px] w-full flex-col gap-0 rounded-[22px] border-2 border-sky-500 text-sky-500 transition-all hover:bg-sky-500 hover:text-white sm:h-16 sm:w-16 sm:rounded-full"
+          onClick={() => void handleLike(true)}
           disabled={!currentProfile}
-          aria-label="Ver perfil"
+          aria-label="Super Curtida (5 tokens)"
+          title="Super Curtida · 5 tokens"
         >
-          <User className="h-7 w-7 sm:h-8 sm:w-8" />
+          <span className="text-2xl leading-none sm:text-[1.7rem]">⭐</span>
+          <span className="text-[9px] font-bold leading-none">5 tokens</span>
         </Button>
 
         {/* Mensagem — requer premium */}
@@ -822,6 +844,7 @@ export default function Match() {
       <p className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      <SemTokensDialog open={semTokensSuper} onOpenChange={setSemTokensSuper} custo={5} recurso="A Super Curtida" />
       <SeekingYouModal open={showSeekingYou} onClose={() => setShowSeekingYou(false)} />
     </div>
   );

@@ -12,7 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
-import { authService, chatService, groupsService, profileService, matchService, usersService, type GroupSummary } from '@/services/api';
+import { authService, chatService, groupsService, profileService, matchService, usersService, usosTokensService, type GroupSummary } from '@/services/api';
+import SemTokensDialog from '@/components/SemTokensDialog';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -184,7 +185,18 @@ type Message = {
   createdAt: string;
   isSending?: boolean;
   clientId?: string;
+  /** Presente pago em tokens (rosa, champanhe...): vira cartão animado. */
+  presente?: string | null;
 };
+
+// Presentes do chat: mesma lista de PRESENTES_CHAT no backend.
+const PRESENTES_CHAT = [
+  { id: 'beijo', emoji: '💋', nome: 'Beijo', tokens: 3 },
+  { id: 'rosa', emoji: '🌹', nome: 'Rosa', tokens: 5 },
+  { id: 'gostoso', emoji: '🔥', nome: 'Te achei gostoso(a)', tokens: 10 },
+  { id: 'champanhe', emoji: '🍾', nome: 'Champanhe', tokens: 15 },
+  { id: 'coroa', emoji: '👑', nome: 'Coroa', tokens: 30 },
+];
 
 const HIGHLIGHT_COLORS: Array<{ id: 'rose' | 'amber' | 'violet' | 'sky'; label: string; className: string; borderColor: string }> = [
   { id: 'rose', label: 'Rosa', className: 'bg-rose-50/70', borderColor: '#f43f5e' },
@@ -258,6 +270,28 @@ export default function Chat() {
   const [isUploading, setIsUploading] = useState(false);
   const [isViewOnceEnabled, setIsViewOnceEnabled] = useState(false);
   const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+  // 🎁 Presentes no chat (pagos em tokens, que vão para a pessoa).
+  const [presentesAbertos, setPresentesAbertos] = useState(false);
+  const [enviandoPresente, setEnviandoPresente] = useState<string | null>(null);
+  const [semTokensPresente, setSemTokensPresente] = useState<{ custo: number } | null>(null);
+  const enviarPresente = async (presente: string) => {
+    if (!selectedChat) return;
+    setEnviandoPresente(presente);
+    try {
+      const r = await usosTokensService.enviarPresente(selectedChat, presente);
+      setMessages((prev) => (prev.some((m) => m.id === r.message.id) ? prev : [...prev, r.message]));
+      setPresentesAbertos(false);
+    } catch (e: any) {
+      if (e?.response?.status === 402) {
+        setPresentesAbertos(false);
+        setSemTokensPresente({ custo: Number(e?.response?.data?.custo || 0) });
+      } else {
+        toast({ title: 'Não foi possível mandar o presente', description: e?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+      }
+    } finally {
+      setEnviandoPresente(null);
+    }
+  };
   const [contextMenu, setContextMenu] = useState<{ messageId: string; x: number; y: number } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [confirmDeleteConv, setConfirmDeleteConv] = useState(false);
@@ -2135,7 +2169,17 @@ export default function Chat() {
                               </p>
                             </div>
                           )}
-                          {msg.content && (
+                          {msg.presente ? (() => {
+                            const p = PRESENTES_CHAT.find((x) => x.id === msg.presente);
+                            if (!p) return null;
+                            return (
+                              <div className="flex flex-col items-center gap-1 px-3 py-2 text-center">
+                                <span className="animate-presente text-6xl leading-none drop-shadow">{p.emoji}</span>
+                                <span className="text-sm font-bold">{p.nome}</span>
+                                <span className="text-[11px] opacity-80">🎁 presente · {isMine ? `você enviou ${p.tokens} tokens` : `+${p.tokens} tokens para você`}</span>
+                              </div>
+                            );
+                          })() : msg.content && (
                             <p
                               className={cn(
                                 'break-words text-[16px] leading-6 md:text-base',
@@ -2395,6 +2439,28 @@ export default function Chat() {
                       <Image className="w-5 h-5" />
                     )}
                   </Button>
+
+                  <Popover open={presentesAbertos} onOpenChange={setPresentesAbertos}>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-11 w-9 rounded-xl text-lg md:h-9 md:w-9" aria-label="Mandar presente">
+                        🎁
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="center" sideOffset={8} collisionPadding={8} className="w-72 p-3">
+                      <p className="text-sm font-semibold">Mandar um presente</p>
+                      <p className="mb-2 text-xs text-muted-foreground">Quebra o gelo: os tokens vão para a pessoa.</p>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {PRESENTES_CHAT.map((p) => (
+                          <button key={p.id} type="button" disabled={!!enviandoPresente} onClick={() => void enviarPresente(p.id)}
+                            className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-left text-sm transition-colors hover:border-primary/50 hover:bg-primary/5 disabled:opacity-50">
+                            <span className="text-2xl leading-none">{p.emoji}</span>
+                            <span className="min-w-0 flex-1 font-medium">{p.nome}</span>
+                            <span className="shrink-0 text-xs font-semibold text-amber-500">{enviandoPresente === p.id ? '...' : `${p.tokens} tokens`}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
                   <Popover>
                     <PopoverTrigger asChild>
@@ -2742,6 +2808,7 @@ export default function Chat() {
         </div>
       )}
 
+      <SemTokensDialog open={!!semTokensPresente} onOpenChange={(v) => { if (!v) setSemTokensPresente(null); }} custo={semTokensPresente?.custo || 0} recurso="Esse presente" />
     </div>
   );
 }

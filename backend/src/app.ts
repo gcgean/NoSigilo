@@ -133,6 +133,7 @@ export type PublicUser = {
   officialAmbassadorSince?: string | null;
   officialAmbassadorHidden?: boolean;
   boosted?: boolean;
+  disponivelHoje?: boolean;
   topMonth?: { position: number; month: string | null } | null;
   telegramChatId?: string | null;
   distanceKm?: number | null;
@@ -580,6 +581,21 @@ const POINTS_PER_FREE_DAY = 100;
 // Destaque de perfil (sink de tokens): custo e duração.
 const BOOST_COST = 30;
 const BOOST_HOURS = 24;
+// Outros usos de tokens (16/10/2026).
+const SUPER_CURTIDA_TOKENS = 5;
+const DISPONIVEL_HOJE_TOKENS = 10;
+const DISPONIVEL_HOJE_HORAS = 12;
+const STORY_DESTAQUE_TOKENS = 15;
+const STORY_DESTAQUE_HORAS = 24;
+const EVENTO_DESTAQUE_TOKENS = 30;
+// Presentes no chat: o valor em tokens vai inteiro para quem recebe.
+const PRESENTES_CHAT: Record<string, { emoji: string; nome: string; tokens: number }> = {
+  beijo:      { emoji: '💋', nome: 'Beijo', tokens: 3 },
+  rosa:       { emoji: '🌹', nome: 'Rosa', tokens: 5 },
+  gostoso:    { emoji: '🔥', nome: 'Te achei gostoso(a)', tokens: 10 },
+  champanhe:  { emoji: '🍾', nome: 'Champanhe', tokens: 15 },
+  coroa:      { emoji: '👑', nome: 'Coroa', tokens: 30 },
+};
 
 // Credita pontos por uma ação. Best-effort: nunca lança (não derruba a ação principal).
 // Aplica dedup por alvo (refId) e teto diário; ao cruzar 100 pontos, converte
@@ -2462,6 +2478,7 @@ function rowToPublicUser(
         }
       : {}),
     boosted: !!(row.boost_until && new Date(row.boost_until).getTime() > Date.now()),
+    disponivelHoje: !!(row.disponivel_ate && new Date(row.disponivel_ate).getTime() > Date.now()),
     topMonth: row.top_month_position
       ? { position: Number(row.top_month_position), month: row.top_month_month ? String(row.top_month_month) : null }
       : null,
@@ -7530,7 +7547,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const now = new Date().toISOString();
     const rows = (await queryAll(
       db,
-      `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at,
+      `SELECT s.id, s.media_id, s.text, s.background, s.text_overlay, s.audience, s.created_at, s.expires_at, s.destaque_ate,
               m.filename, m.mime_type
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
@@ -7556,6 +7573,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         audience: storyAudience(s.audience),
         createdAt: String(s.created_at),
         expiresAt: String(s.expires_at),
+        destaqueAte: s.destaque_ate && new Date(String(s.destaque_ate)).getTime() > Date.now() ? String(s.destaque_ate) : null,
         viewCount: Number(viewCount?.c || 0),
         commentCount: Number(commentCount?.c || 0),
         likeCount: Number(likeCount?.c || 0),
@@ -7627,7 +7645,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
               u.lat, u.lon,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) as avatar_filename,
               (CASE WHEN sv.story_id IS NOT NULL THEN 1 ELSE 0 END) as is_viewed,
-              (CASE WHEN pin.pinned_user_id IS NOT NULL THEN 1 ELSE 0 END) as is_pinned
+              (CASE WHEN pin.pinned_user_id IS NOT NULL THEN 1 ELSE 0 END) as is_pinned,
+              s.destaque_ate
        FROM stories s
        LEFT JOIN media m ON m.id = s.media_id
        JOIN users u ON u.id = s.user_id
@@ -7649,9 +7668,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        ORDER BY is_pinned DESC,
                 (CASE WHEN COALESCE(u.is_showcase, 0) = 1 THEN 1 ELSE 0 END) ASC,
                 is_viewed ASC,
+                -- Story em destaque (pago em tokens) vai na frente para quem
+                -- ainda não viu e é do mesmo estado do autor.
+                (CASE WHEN s.destaque_ate IS NOT NULL AND s.destaque_ate > ? ${myStateRaw ? `AND UPPER(TRIM(u.state)) = '${myStateRaw}'` : ''} THEN 0 ELSE 1 END) ASC,
                 ${storyRegionOrder}
                 s.created_at DESC`,
-      [userId, userId, now, userId, userId]
+      [userId, userId, now, userId, userId, now]
     )) as any[];
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
@@ -10103,6 +10125,167 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await db.persist();
 
     res.json({ ok: true, balance: spend.balance, boostUntil, boostHours: BOOST_HOURS });
+  });
+
+  // ── Tokens: "Disponível hoje" — selo no perfil + faixa no Radar por 12h ──
+  app.post('/api/tokens/disponivel-hoje', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const row = (await queryOne(db, 'SELECT disponivel_ate FROM users WHERE id = ?', [userId])) as any;
+    const atual = row?.disponivel_ate ? new Date(String(row.disponivel_ate)).getTime() : 0;
+    if (atual > Date.now()) {
+      return res.json({ ok: true, jaAtivo: true, disponivelAte: String(row.disponivel_ate) });
+    }
+    const gasto = await spendTokens(db, userId, DISPONIVEL_HOJE_TOKENS, 'disponivel_hoje', `disp-${Date.now()}`, io);
+    if (!gasto.ok) return res.status(402).json({ error: 'insufficient_tokens', message: `Custa ${DISPONIVEL_HOJE_TOKENS} tokens.`, tokens: gasto.balance, custo: DISPONIVEL_HOJE_TOKENS });
+    const disponivelAte = new Date(Date.now() + DISPONIVEL_HOJE_HORAS * 3600_000).toISOString();
+    await run(db, 'UPDATE users SET disponivel_ate = ? WHERE id = ?', [disponivelAte, userId]);
+    await db.persist();
+    res.json({ ok: true, disponivelAte, horas: DISPONIVEL_HOJE_HORAS, balance: gasto.balance });
+  });
+
+  app.post('/api/tokens/disponivel-hoje/encerrar', requireAuth(env, db), async (req, res) => {
+    await run(db, 'UPDATE users SET disponivel_ate = NULL WHERE id = ?', [req.auth!.userId]);
+    await db.persist();
+    res.json({ ok: true });
+  });
+
+  // Quem está "Disponível hoje" perto de mim (compatível com o que procuro).
+  app.get('/api/disponiveis-hoje', requireAuth(env, db), async (req, res) => {
+    const eu = (await queryOne(db, 'SELECT id, gender, looking_for_json, lat, lon, city, state, disponivel_ate FROM users WHERE id = ?', [req.auth!.userId])) as any;
+    if (!eu) { res.json({ perfis: [], meuDisponivelAte: null }); return; }
+    const meuDisponivelAte = eu.disponivel_ate && new Date(String(eu.disponivel_ate)).getTime() > Date.now() ? String(eu.disponivel_ate) : null;
+    const procuro = (safeJsonParse(eu.looking_for_json) as string[] | null) ?? [];
+    const linhas = (await queryAll(
+      db,
+      `SELECT u.* FROM users u
+        WHERE u.disponivel_ate IS NOT NULL AND u.disponivel_ate > ? AND u.id <> ?
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+          AND u.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id) OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?))
+          ${eu.state ? 'AND UPPER(TRIM(u.state)) = UPPER(TRIM(?))' : ''}
+        LIMIT 200`,
+      eu.state ? [nowIso(), eu.id, eu.id, eu.id, eu.state] : [nowIso(), eu.id, eu.id, eu.id]
+    )) as any[];
+    const meuLat = eu.lat != null ? Number(eu.lat) : null;
+    const meuLon = eu.lon != null ? Number(eu.lon) : null;
+    const presence = req.app.get('presence') as undefined | { isOnline: (id: string) => boolean };
+    const perfis = linhas
+      .filter((u) => procuro.length === 0 || matchesLookingFor(procuro, u.gender))
+      .map((u) => {
+        const km = meuLat !== null && meuLon !== null && u.lat != null && u.lon != null
+          ? roundDistanceKm(haversineKm({ lat: meuLat, lon: meuLon }, { lat: Number(u.lat), lon: Number(u.lon) }))
+          : null;
+        return { ...rowToPublicUser(u, presence?.isOnline ? presence.isOnline(String(u.id)) : false), distanceKm: km, disponivelAte: String(u.disponivel_ate) };
+      })
+      .sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9))
+      .slice(0, 30);
+    res.json({ perfis, meuDisponivelAte, custo: DISPONIVEL_HOJE_TOKENS, horas: DISPONIVEL_HOJE_HORAS });
+  });
+
+  // ── Tokens: story em destaque (24h, na frente da barra da região) ──────────
+  app.post('/api/stories/:id/destacar', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const story = (await queryOne(db, 'SELECT id, user_id, expires_at, destaque_ate FROM stories WHERE id = ?', [String(req.params.id)])) as any;
+    if (!story || String(story.user_id) !== userId) { res.status(404).json({ error: 'not_found' }); return; }
+    if (new Date(String(story.expires_at)).getTime() <= Date.now()) { res.status(400).json({ error: 'expirado', message: 'Esse story já saiu do ar.' }); return; }
+    if (story.destaque_ate && new Date(String(story.destaque_ate)).getTime() > Date.now()) {
+      res.json({ ok: true, jaAtivo: true, destaqueAte: String(story.destaque_ate) }); return;
+    }
+    const gasto = await spendTokens(db, userId, STORY_DESTAQUE_TOKENS, 'story_destaque', String(story.id), io);
+    if (!gasto.ok) { res.status(402).json({ error: 'insufficient_tokens', message: `Custa ${STORY_DESTAQUE_TOKENS} tokens.`, tokens: gasto.balance, custo: STORY_DESTAQUE_TOKENS }); return; }
+    // O destaque não passa do fim do story.
+    const destaqueAte = new Date(Math.min(Date.now() + STORY_DESTAQUE_HORAS * 3600_000, new Date(String(story.expires_at)).getTime())).toISOString();
+    await run(db, 'UPDATE stories SET destaque_ate = ? WHERE id = ?', [destaqueAte, String(story.id)]);
+    await db.persist();
+    res.json({ ok: true, destaqueAte, balance: gasto.balance });
+  });
+
+  // ── Tokens: destacar evento (no topo da lista até a data do evento) ────────
+  app.post('/api/events/:eventId/destacar', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const ev = (await queryOne(db, 'SELECT id, user_id, payload_json, destaque_ate FROM events WHERE id = ?', [String(req.params.eventId)])) as any;
+    if (!ev || String(ev.user_id) !== userId) { res.status(404).json({ error: 'not_found' }); return; }
+    const payload = safeJsonParse(ev.payload_json) ?? {};
+    if (eventoEncerrado(payload)) { res.status(400).json({ error: 'encerrado', message: 'Esse evento já aconteceu.' }); return; }
+    if (ev.destaque_ate && new Date(String(ev.destaque_ate)).getTime() > Date.now()) {
+      res.json({ ok: true, jaAtivo: true, destaqueAte: String(ev.destaque_ate) }); return;
+    }
+    const gasto = await spendTokens(db, userId, EVENTO_DESTAQUE_TOKENS, 'evento_destaque', String(ev.id), io);
+    if (!gasto.ok) { res.status(402).json({ error: 'insufficient_tokens', message: `Custa ${EVENTO_DESTAQUE_TOKENS} tokens.`, tokens: gasto.balance, custo: EVENTO_DESTAQUE_TOKENS }); return; }
+    // Até o fim do dia do evento (ou 7 dias, se a data não der para ler).
+    const dataEvento = String(payload?.date || '');
+    const fim = /^\d{4}-\d{2}-\d{2}$/.test(dataEvento) ? new Date(`${dataEvento}T23:59:59-03:00`).getTime() : NaN;
+    const destaqueAte = new Date(Number.isNaN(fim) ? Date.now() + 7 * 86400_000 : fim).toISOString();
+    await run(db, 'UPDATE events SET destaque_ate = ? WHERE id = ?', [destaqueAte, String(ev.id)]);
+    await db.persist();
+    res.json({ ok: true, destaqueAte, balance: gasto.balance });
+  });
+
+  // ── Tokens: presentes no chat (rosa, champanhe...). Vira mensagem animada ──
+  app.get('/api/presentes-chat', requireAuth(env, db), async (_req, res) => {
+    res.json({ presentes: Object.entries(PRESENTES_CHAT).map(([id, p]) => ({ id, ...p })) });
+  });
+
+  app.post('/api/conversations/:conversationId/presente', requireAuth(env, db), async (req, res) => {
+    const eu = req.auth!.userId;
+    const io = req.app.get('io') as SocketIOServer | undefined;
+    const chave = String(req.body?.presente || '');
+    const presente = PRESENTES_CHAT[chave];
+    if (!presente) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const conversationId = String(req.params.conversationId);
+    const conv = (await queryOne(db, 'SELECT id, user_a_id, user_b_id FROM conversations WHERE id = ?', [conversationId])) as any;
+    if (!conv || (String(conv.user_a_id) !== eu && String(conv.user_b_id) !== eu)) { res.status(404).json({ error: 'not_found' }); return; }
+    const outro = String(conv.user_a_id) === eu ? String(conv.user_b_id) : String(conv.user_a_id);
+    if (await isUserBlocked({ db }, { viewerId: eu, targetId: outro })) { res.status(403).json({ error: 'blocked', message: 'Não é possível presentear este perfil.' }); return; }
+
+    const saldoRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p, COALESCE(tokens_comprados,0) AS comprados, name FROM users WHERE id = ?', [eu])) as any;
+    const saldo = Number(saldoRow?.p || 0);
+    if (saldo < presente.tokens) { res.status(402).json({ error: 'insufficient_tokens', message: `Esse presente custa ${presente.tokens} tokens.`, tokens: saldo, custo: presente.tokens }); return; }
+    const parteComprada = Math.min(presente.tokens, Number(saldoRow?.comprados || 0));
+    const presenteId = randomUUID();
+    const agora = nowIso();
+    // Mesma regra do /api/tokens/gift: sai primeiro a parte comprada e chega como comprada.
+    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ?, tokens_comprados = COALESCE(tokens_comprados,0) - ? WHERE id = ?', [presente.tokens, parteComprada, eu]);
+    await run(db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), eu, 'gift_sent', -presente.tokens, presenteId, agora]);
+    await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ?, tokens_comprados = COALESCE(tokens_comprados,0) + ? WHERE id = ?', [presente.tokens, presente.tokens, parteComprada, outro]);
+    await run(db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), outro, 'gift_received', presente.tokens, presenteId, agora]);
+
+    const texto = `${presente.emoji} ${presente.nome} (presente de ${presente.tokens} tokens)`;
+    const mensagemId = randomUUID();
+    await run(
+      db,
+      'INSERT INTO messages (id, conversation_id, sender_id, content, is_delivered, created_at, presente) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [mensagemId, conversationId, eu, texto, 1, agora, chave]
+    );
+    await db.persist();
+    const payload = {
+      id: mensagemId, conversationId, senderId: eu, content: texto, mediaId: null, mediaUrl: null, mediaMimeType: null,
+      clientId: null, isViewOnce: false, isDelivered: true, createdAt: agora, presente: chave,
+    };
+    io?.to(`user:${eu}`).emit('message.new', payload);
+    io?.to(`user:${outro}`).emit('message.new', payload);
+    const nomeEu = String(saldoRow?.name || 'Alguém');
+    try {
+      await createNotification({ db, io }, {
+        userId: outro, type: 'tokens.gift',
+        title: `${presente.emoji} Você ganhou um presente!`,
+        description: `${nomeEu} te mandou ${presente.nome.toLowerCase()} no chat (+${presente.tokens} tokens).`,
+        dataJson: { fromUserId: eu, fromName: nomeEu, amount: presente.tokens, conversationId },
+      });
+      await sendPushToUser({ db, env }, {
+        userId: outro,
+        payload: { title: `${presente.emoji} Você ganhou um presente!`, body: `${nomeEu} te mandou ${presente.nome.toLowerCase()} (+${presente.tokens} tokens).`, url: `/chat?conversationId=${encodeURIComponent(conversationId)}`, tag: `presente-${presenteId}` },
+      });
+    } catch { /* não impede o presente */ }
+    const sNovo = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [eu])) as any;
+    const rNovo = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [outro])) as any;
+    io?.to(`user:${eu}`).emit('tokens.updated', { points: Number(sNovo?.p || 0) });
+    io?.to(`user:${outro}`).emit('tokens.updated', { points: Number(rNovo?.p || 0), gifted: presente.tokens });
+    res.json({ ok: true, message: payload, balance: Number(sNovo?.p || 0) });
   });
 
   app.get('/api/profile', requireAuth(env, db), async (req, res) => {
@@ -12852,6 +13035,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       })
       .map((x) => x.r);
 
+    // Quem me deu Super Curtida vem primeiro, com o selo; depois quem está
+    // "Disponível hoje". O resto mantém a ordem acima.
+    const superMim = new Set(
+      ((await queryAll(
+        db,
+        "SELECT user_id FROM likes WHERE target_type = 'user' AND target_id = ? AND super_at IS NOT NULL",
+        [req.auth!.userId]
+      )) as any[]).map((l) => String(l.user_id))
+    );
+    const agoraMs = Date.now();
+    const disponivel = (r: any) => !!(r.disponivel_ate && new Date(r.disponivel_ate).getTime() > agoraMs);
+    ordenados.sort((a: any, b: any) =>
+      Number(superMim.has(String(b.id))) - Number(superMim.has(String(a.id)))
+      || Number(disponivel(b)) - Number(disponivel(a)));
+
     res.json(
       ordenados.map((r: any) => {
         const u = rowToPublicUser(r, estaOnline(String(r.id)));
@@ -12870,6 +13068,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           mediaSummary: { photosCount, videosCount },
           badges: computeBadges(r),
           distanceKm,
+          superCurtidaRecebida: superMim.has(String(r.id)),
         };
       })
     );
@@ -12882,7 +13081,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // exclusivos e eventos — nada disso passa por aqui.
 
     const io = req.app.get('io') as SocketIOServer | undefined;
-    const schema = z.object({ userId: z.string().min(1) });
+    const schema = z.object({ userId: z.string().min(1), superCurtida: z.boolean().optional() });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: 'invalid_input' });
@@ -12891,6 +13090,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const targetUserId = parsed.data.userId;
     const myId = req.auth!.userId;
+    const querSuper = parsed.data.superCurtida === true;
 
     if (targetUserId === myId) {
       res.status(400).json({ error: 'cannot_like_self' });
@@ -12914,11 +13114,24 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    const existing = (await queryOne(db, 'SELECT id FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?', [
+    const existing = (await queryOne(db, 'SELECT id, super_at FROM likes WHERE user_id = ? AND target_type = ? AND target_id = ?', [
       myId,
       'user',
       targetUserId,
     ])) as any;
+
+    // Super Curtida: cobra uma vez por perfil (refazer não cobra de novo).
+    let superCobrada = false;
+    let tokensRestantes: number | null = null;
+    if (querSuper && !existing?.super_at) {
+      const cobranca = await spendTokens(db, myId, SUPER_CURTIDA_TOKENS, 'super_curtida', targetUserId, io);
+      if (!cobranca.ok) {
+        res.status(402).json({ error: 'insufficient_tokens', message: `A Super Curtida custa ${SUPER_CURTIDA_TOKENS} tokens.`, tokens: cobranca.balance, custo: SUPER_CURTIDA_TOKENS });
+        return;
+      }
+      superCobrada = true;
+      tokensRestantes = cobranca.balance;
+    }
 
     let isMutualMatch = false;
     let matchConversationId: string | undefined;
@@ -12941,10 +13154,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         { db, io },
         {
           userId: targetUserId,
-          type: 'profile.liked',
-          title: 'Você recebeu um match',
-          description: `${actorName} deu match com você.`,
-          dataJson: { actorId: myId, actorName },
+          type: superCobrada ? 'profile.super_liked' : 'profile.liked',
+          title: superCobrada ? '⭐ Você recebeu uma Super Curtida!' : 'Você recebeu um match',
+          description: superCobrada ? `${actorName} te deu uma Super Curtida. Veja o perfil!` : `${actorName} deu match com você.`,
+          dataJson: { actorId: myId, actorName, superCurtida: superCobrada },
         }
       );
       await sendPushToUser(
@@ -12952,9 +13165,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         {
           userId: targetUserId,
           payload: {
-            title: 'Você recebeu um match',
-            body: `${actorName} deu match com você.`,
-            url: '/match',
+            title: superCobrada ? '⭐ Você recebeu uma Super Curtida!' : 'Você recebeu um match',
+            body: superCobrada ? `${actorName} te deu uma Super Curtida. Veja o perfil!` : `${actorName} deu match com você.`,
+            url: superCobrada ? `/users/${myId}` : '/match',
             tag: `profile.liked:${myId}`,
             data: { actorId: myId, actorName },
           },
@@ -13074,10 +13287,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         });
       }
     }
+    if (superCobrada) {
+      await run(db, "UPDATE likes SET super_at = ? WHERE user_id = ? AND target_type = 'user' AND target_id = ?", [nowIso(), myId, targetUserId]);
+      // Curtida que já existia e virou Super: o aviso não saiu acima, sai agora.
+      if (existing?.id) {
+        const eu = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [myId])) as any;
+        const nomeEu = eu?.name ? String(eu.name) : 'Alguém';
+        await createNotification({ db, io }, {
+          userId: targetUserId,
+          type: 'profile.super_liked',
+          title: '⭐ Você recebeu uma Super Curtida!',
+          description: `${nomeEu} te deu uma Super Curtida. Veja o perfil!`,
+          dataJson: { actorId: myId, actorName: nomeEu, superCurtida: true },
+        });
+        await sendPushToUser({ db, env }, {
+          userId: targetUserId,
+          payload: { title: '⭐ Você recebeu uma Super Curtida!', body: `${nomeEu} te deu uma Super Curtida. Veja o perfil!`, url: `/users/${myId}`, tag: `super:${myId}` },
+        });
+      }
+    }
     await run(db, 'DELETE FROM match_passes WHERE user_id = ? AND passed_user_id = ?', [myId, targetUserId]);
     await persist();
 
-    res.json({ ok: true, mutual: isMutualMatch, conversationId: matchConversationId });
+    res.json({ ok: true, mutual: isMutualMatch, conversationId: matchConversationId, superCurtida: superCobrada || !!existing?.super_at, tokensRestantes });
   });
 
   // Check if current user has liked a specific profile
@@ -14391,7 +14623,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       db,
       `
       SELECT m.id, m.conversation_id, m.sender_id, m.content, m.media_id, m.is_view_once, m.is_viewed, m.is_delivered, m.created_at, m.is_read,
-             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction, m.reply_to_message_id, m.via_radar,
+             m.deleted_for_all, m.deleted_by_ids, m.story_id, m.reaction, m.reply_to_message_id, m.via_radar, m.presente,
              med.filename as media_filename, med.mime_type as media_mime_type,
              smed.filename as story_media_filename, smed.mime_type as story_media_mime_type,
              s.text as story_text, s.background as story_background,
@@ -14418,15 +14650,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           id: m.id,
           conversationId: m.conversation_id,
           senderId: m.sender_id,
-          content: deletedForMe ? null : (canViewReceived || m.sender_id === viewerId ? m.content : null),
+          content: deletedForMe ? null : (canViewReceived || m.sender_id === viewerId || m.presente ? m.content : null),
           mediaId: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : m.media_id),
           mediaUrl: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : (m.media_filename ? `/uploads/${m.media_filename}` : null)),
           mediaMimeType: deletedForMe ? null : (m.is_view_once && m.is_viewed ? null : m.media_mime_type),
+          // Presente aparece para quem recebe mesmo sem assinatura (é dele).
+          presente: deletedForMe || !m.presente ? null : String(m.presente),
           isViewOnce: !!m.is_view_once,
           isViewed: !!m.is_viewed,
           isDelivered: !!m.is_delivered,
           viaRadar: !!m.via_radar,
-          isLocked: !deletedForMe && !canViewReceived && m.sender_id !== viewerId,
+          isLocked: !deletedForMe && !canViewReceived && m.sender_id !== viewerId && !m.presente,
           replyStory: deletedForMe || !m.story_id ? null : {
             id: String(m.story_id),
             mediaUrl: m.story_media_filename ? `/uploads/${m.story_media_filename}` : null,
@@ -16947,17 +17181,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = await queryAll(
       db,
       `
-      SELECT e.id, e.user_id, e.payload_json, e.created_at, u.name as user_name,
+      SELECT e.id, e.user_id, e.payload_json, e.created_at, e.destaque_ate, u.name as user_name,
         (SELECT COUNT(*) FROM event_attendees ea WHERE ea.event_id = e.id) as attendees_count,
         EXISTS (SELECT 1 FROM event_attendees ea2 WHERE ea2.event_id = e.id AND ea2.user_id = ?) as is_going,
         (SELECT eg.id FROM event_groups eg WHERE eg.event_id = e.id) as group_id
       FROM events e
       JOIN users u ON u.id = e.user_id
       WHERE (? = 0 OR e.user_id = ?)
-      ORDER BY e.created_at DESC
+      ORDER BY CASE WHEN e.destaque_ate IS NOT NULL AND e.destaque_ate > ? THEN 0 ELSE 1 END, e.created_at DESC
       LIMIT 200
     `,
-      [viewerId, myEvents ? 1 : 0, viewerId]
+      [viewerId, myEvents ? 1 : 0, viewerId, nowIso()]
     );
     const eu = (await queryOne(db, 'SELECT gender, is_admin FROM users WHERE id = ?', [viewerId])) as any;
     const souAdmin = Number(eu?.is_admin) === 1;
@@ -16979,6 +17213,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         lotado: limite !== null && attendees >= limite,
         groupId: r.group_id ? String(r.group_id) : null,
         encerrado: eventoEncerrado(payload),
+        emDestaque: !!(r.destaque_ate && new Date(String(r.destaque_ate)).getTime() > Date.now()),
+        souCriador,
       }];
     });
     res.json(soProximos ? lista.filter((e) => !e.encerrado) : lista);

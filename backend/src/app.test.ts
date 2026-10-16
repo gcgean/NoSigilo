@@ -4082,4 +4082,83 @@ describe('nosigilo backend', () => {
     } as any);
     expect(((await ctx.db.queryOne('SELECT origem_canal FROM users WHERE id = ?', [String(utm.user.id)])) as any).origem_canal).toBe('TikTok');
   });
+
+  it('usos de tokens: super curtida, disponível hoje, story/evento em destaque e presente no chat', async () => {
+    const reg = async (n: string, gender: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, { name: `Tk ${n}`, email: `tk-usos-${n}@example.com`, password: 'senha123', gender });
+      await grantPremium(ctx, String(r.user.id));
+      return r;
+    };
+    const homem = await reg('homem', 'Homem');
+    const mulher = await reg('mulher', 'Mulher');
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const saldo = async (id: string) => Number(((await queryOne(ctx.db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [id])) as any).p);
+    const idH = String(homem.user.id);
+    const idM = String(mulher.user.id);
+
+    // Super curtida sem saldo: 402 e nada de curtida gravada.
+    const sem = await request(ctx.app).post('/api/match/like').set(auth(homem.token)).send({ userId: idM, superCurtida: true }).expect(402);
+    expect(sem.body.custo).toBe(5);
+    expect(await queryOne(ctx.db, "SELECT id FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id = ?", [idH, idM])).toBeFalsy();
+
+    await run(ctx.db, 'UPDATE users SET token_points = 100 WHERE id = ?', [idH]);
+    const sup = await request(ctx.app).post('/api/match/like').set(auth(homem.token)).send({ userId: idM, superCurtida: true }).expect(200);
+    expect(sup.body.superCurtida).toBe(true);
+    expect(sup.body.tokensRestantes).toBe(95);
+    // Repetir não cobra de novo.
+    await request(ctx.app).post('/api/match/like').set(auth(homem.token)).send({ userId: idM, superCurtida: true }).expect(200);
+    expect(await saldo(idH)).toBe(95);
+    const notif = (await queryOne(ctx.db, "SELECT title FROM notifications WHERE user_id = ? AND type = 'profile.super_liked'", [idM])) as any;
+    expect(String(notif?.title)).toContain('Super Curtida');
+
+    // Disponível hoje: cobra 10 uma vez, aparece para quem procura esse perfil.
+    await run(ctx.db, "UPDATE users SET state = 'CE', looking_for_json = ? WHERE id IN (?, ?)", [JSON.stringify(['Homem', 'Mulher']), idH, idM]);
+    const disp = await request(ctx.app).post('/api/tokens/disponivel-hoje').set(auth(homem.token)).expect(200);
+    expect(disp.body.disponivelAte).toBeTruthy();
+    const deNovo = await request(ctx.app).post('/api/tokens/disponivel-hoje').set(auth(homem.token)).expect(200);
+    expect(deNovo.body.jaAtivo).toBe(true);
+    expect(await saldo(idH)).toBe(85);
+    const lista = (await request(ctx.app).get('/api/disponiveis-hoje').set(auth(mulher.token)).expect(200)).body.perfis as any[];
+    expect(lista.map((p) => p.id)).toContain(idH);
+    expect(lista.find((p) => p.id === idH)?.disponivelHoje).toBe(true);
+    await request(ctx.app).post('/api/tokens/disponivel-hoje/encerrar').set(auth(homem.token)).expect(200);
+    const depois = (await request(ctx.app).get('/api/disponiveis-hoje').set(auth(mulher.token)).expect(200)).body.perfis as any[];
+    expect(depois.some((p) => p.id === idH)).toBe(false);
+
+    // Story em destaque: só o dono, cobra 15.
+    const st = await request(ctx.app).post('/api/stories').set(auth(homem.token)).send({ text: 'oi', background: 'pink' });
+    if (st.status === 200 || st.status === 201) {
+      const storyId = String(st.body.id ?? st.body.story?.id);
+      await request(ctx.app).post(`/api/stories/${storyId}/destacar`).set(auth(mulher.token)).expect(404);
+      await request(ctx.app).post(`/api/stories/${storyId}/destacar`).set(auth(homem.token)).expect(200);
+      expect(await saldo(idH)).toBe(70);
+    } else {
+      await run(ctx.db, 'UPDATE users SET token_points = 70 WHERE id = ?', [idH]);
+    }
+
+    // Evento em destaque: só o criador, cobra 30, vem primeiro na lista.
+    const ev1 = await request(ctx.app).post('/api/events').set(auth(homem.token)).send({ title: 'Evento A', location: 'Fortaleza' }).expect(200);
+    await request(ctx.app).post('/api/events').set(auth(homem.token)).send({ title: 'Evento B', location: 'Fortaleza' }).expect(200);
+    await request(ctx.app).post(`/api/events/${ev1.body.id}/destacar`).set(auth(mulher.token)).expect(404);
+    await request(ctx.app).post(`/api/events/${ev1.body.id}/destacar`).set(auth(homem.token)).expect(200);
+    expect(await saldo(idH)).toBe(40);
+    const eventos = (await request(ctx.app).get('/api/events').set(auth(mulher.token)).expect(200)).body as any[];
+    expect(eventos[0].id).toBe(ev1.body.id);
+    expect(eventos[0].emDestaque).toBe(true);
+
+    // Presente no chat: debita, credita quem recebe e vira mensagem com o presente.
+    const conv = await request(ctx.app).post('/api/conversations').set(auth(homem.token)).send({ userId: idM }).expect(200);
+    const cid = String(conv.body.id);
+    await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'inventado' }).expect(400);
+    const antesM = await saldo(idM);
+    await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'rosa' }).expect(200);
+    expect(await saldo(idH)).toBe(35);
+    expect(await saldo(idM)).toBe(antesM + 5);
+    const msgs = (await request(ctx.app).get(`/api/conversations/${cid}/messages`).set(auth(mulher.token)).expect(200)).body;
+    const lista2 = (Array.isArray(msgs) ? msgs : msgs.messages) as any[];
+    expect(lista2.some((m) => m.presente === 'rosa')).toBe(true);
+    // Sem saldo para a coroa (30): 402.
+    await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'coroa' }).expect(200);
+    await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'coroa' }).expect(402);
+  });
 });

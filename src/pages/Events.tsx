@@ -48,7 +48,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { dataDoEvento } from '@/utils/dataDoEvento';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
-import { eventsService, profileService } from '@/services/api';
+import { eventsService, profileService, usosTokensService } from '@/services/api';
+import SemTokensDialog from '@/components/SemTokensDialog';
 import { CitySearch } from '@/components/CitySearch';
 import BackToTop from '@/components/BackToTop';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -87,6 +88,9 @@ interface Event {
   perfisPermitidos?: string[];
   /** Atingiu o limite de participantes. */
   lotado?: boolean;
+  /** Destacado com tokens: aparece no topo da lista. */
+  emDestaque?: boolean;
+  souCriador?: boolean;
 }
 
 // Quem pode participar (o servidor esconde o evento de quem não está na lista).
@@ -122,6 +126,8 @@ const normalizeEvent = (raw: any): Event => {
     lotado: !!raw?.lotado,
     groupId: raw?.groupId ? String(raw.groupId) : null,
     encerrado: !!raw?.encerrado,
+    emDestaque: !!raw?.emDestaque,
+    souCriador: !!raw?.souCriador,
   };
 };
 
@@ -269,6 +275,23 @@ export default function Events() {
     onlyPremium: false,
     customMessage: '',
   });
+
+  // 🎉 Destacar evento: 30 tokens, fica no topo da lista até a data do evento.
+  const [destacandoEvento, setDestacandoEvento] = useState<string | null>(null);
+  const [semTokensEvento, setSemTokensEvento] = useState(false);
+  const destacarEvento = async (eventId: string) => {
+    setDestacandoEvento(eventId);
+    try {
+      await usosTokensService.destacarEvento(eventId);
+      setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, emDestaque: true } : e)));
+      toast({ title: '🎉 Evento em destaque!', description: 'Ele aparece no topo da lista de eventos até a data dele.' });
+    } catch (e: any) {
+      if (e?.response?.status === 402) setSemTokensEvento(true);
+      else toast({ title: 'Não foi possível destacar', description: e?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+    } finally {
+      setDestacandoEvento(null);
+    }
+  };
 
   const handleToggleAttendance = async (eventId: string) => {
     if (!premiumAccess) { setPaywallOpen(true); return; }
@@ -1092,6 +1115,9 @@ export default function Events() {
             {/* Event Info */}
             <div className="p-4">
               <h3 className="font-semibold text-lg mb-2">{event.title}</h3>
+              {event.emDestaque ? (
+                <span className="mb-2 inline-block rounded-full bg-amber-400/15 px-2.5 py-0.5 text-xs font-bold text-amber-500">🎉 Em destaque</span>
+              ) : null}
               <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
                 {event.description}
               </p>
@@ -1132,6 +1158,12 @@ export default function Events() {
                   variant={event.isGoing ? "outline" : "default"}
                 >
                   {event.isGoing ? 'Cancelar Presença' : event.lotado ? 'Evento lotado' : 'Confirmar Presença'}
+                </Button>
+              )}
+              {event.souCriador && !event.encerrado && !event.emDestaque && (
+                <Button type="button" variant="outline" disabled={destacandoEvento === event.id} onClick={() => void destacarEvento(event.id)}
+                  className="mt-2 w-full border-amber-400/50 text-amber-600 hover:bg-amber-400/10 dark:text-amber-400">
+                  🎉 Destacar no topo · 30 tokens
                 </Button>
               )}
               {event.isGoing && event.groupId && (
@@ -1208,6 +1240,7 @@ export default function Events() {
         </div>
       )}
 
+      <SemTokensDialog open={semTokensEvento} onOpenChange={setSemTokensEvento} custo={30} recurso="Destacar o evento" />
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
 
       <BackToTop />

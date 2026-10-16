@@ -32,6 +32,7 @@ import { hasPremiumAccess } from '@/utils/premium';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import DisponivelHoje from '@/components/DisponivelHoje';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -426,6 +427,8 @@ export default function Radar() {
           </p>
         </div>
       </div>
+
+      <DisponivelHoje />
 
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card className="glass overflow-hidden">

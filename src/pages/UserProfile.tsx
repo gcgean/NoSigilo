@@ -1255,6 +1255,9 @@ export default function UserProfile() {
                   <Zap className="w-3 h-3" /> Em destaque
                 </Badge>
               )}
+              {(profile as any)?.disponivelHoje && (
+                <Badge className="gap-1 border border-orange-500/40 bg-orange-500/15 text-orange-500">🔥 Disponível hoje</Badge>
+              )}
               {(profile as any)?.topMonth && (
                 <Badge className="gap-1 border border-amber-400/40 bg-amber-400/15 text-amber-500">
                   {['🥇', '🥈', '🥉'][(((profile as any).topMonth.position as number) || 1) - 1] || '🏆'} Top do Mês

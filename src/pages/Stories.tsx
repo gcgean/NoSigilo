@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { storiesService, profileService, tokenService } from '@/services/api';
+import { storiesService, profileService, tokenService, usosTokensService } from '@/services/api';
+import SemTokensDialog from '@/components/SemTokensDialog';
 import ComprarTokens from '@/components/ComprarTokens';
 import type { StoryAudience, StoryFavoriteCandidate } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
@@ -1864,6 +1865,23 @@ export default function Stories() {
     }
   };
 
+  // 📌 Story em destaque: 15 tokens, 24h na frente da barra da região.
+  const [destacando, setDestacando] = useState<string | null>(null);
+  const [semTokensDestaque, setSemTokensDestaque] = useState(false);
+  const destacarStory = async (storyId: string) => {
+    setDestacando(storyId);
+    try {
+      const r = await usosTokensService.destacarStory(storyId);
+      setMyStories((prev) => prev.map((x: any) => (x.id === storyId ? { ...x, destaqueAte: r.destaqueAte } : x)));
+      toast({ title: '📌 Story em destaque!', description: 'Ele aparece primeiro para quem é da sua região pelas próximas 24h.' });
+    } catch (e: any) {
+      if (e?.response?.status === 402) setSemTokensDestaque(true);
+      else toast({ title: 'Não foi possível destacar', description: e?.response?.data?.message || 'Tente de novo.', variant: 'destructive' });
+    } finally {
+      setDestacando(null);
+    }
+  };
+
   const handleDelete = async (storyId: string) => {
     setDeleting(storyId);
     try {
@@ -1986,6 +2004,14 @@ export default function Stories() {
                     <span className="ml-auto text-[9px] text-white/60 truncate">{timeLeft(s.expiresAt)}</span>
                   </div>
                 </button>
+                {(s as any).destaqueAte ? (
+                  <p className="mt-1 text-center text-[11px] font-semibold text-amber-500">📌 Em destaque</p>
+                ) : (
+                  <button type="button" disabled={destacando === s.id} onClick={() => void destacarStory(s.id)}
+                    className="mt-1 w-full rounded-lg border border-amber-400/40 bg-amber-400/10 py-1 text-[11px] font-semibold text-amber-600 hover:bg-amber-400/20 disabled:opacity-50 dark:text-amber-400">
+                    {destacando === s.id ? '...' : '📌 Destacar · 15'}
+                  </button>
+                )}
                 {/* Ações: stats + apagar */}
                 <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
@@ -2274,6 +2300,7 @@ export default function Stories() {
       )}
 
       {/* Stats modal */}
+      <SemTokensDialog open={semTokensDestaque} onOpenChange={setSemTokensDestaque} custo={15} recurso="Destacar o story por 24h" />
       {statsOpen && (statsStoryId ?? myStory?.id) && (
         <StatsModal
           storyId={(statsStoryId ?? myStory?.id)!}

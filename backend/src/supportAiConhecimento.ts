@@ -37,6 +37,11 @@ Tokens (menu Tokens)
 - Coração Quente nos stories custa 1 token; a curtida normal e as outras reações do story são grátis e dão 1 ponto.
 - A cada 100 pontos, vira automaticamente 1 dia de Premium grátis.
 - Destaque de perfil: custa 30 tokens e deixa o perfil em destaque por 24 horas.
+- Super Curtida (botão ⭐ no Match): 5 tokens. A pessoa recebe aviso e o perfil de quem mandou aparece primeiro no Match dela, com o selo "Te deu uma Super Curtida". Cobra uma vez por perfil.
+- Disponível hoje (no Radar): 10 tokens, vale 12 horas. Selo 🔥 no perfil, prioridade no Match e aparece na faixa "Disponíveis hoje" de quem é do mesmo estado. Dá para encerrar antes.
+- Story em destaque (botão "📌 Destacar" embaixo do story, na tela de Stories): 15 tokens, 24 horas na frente da barra de stories para quem é do mesmo estado.
+- Destacar evento (no card do evento, para quem criou): 30 tokens, fica no topo da lista até a data do evento.
+- Presentes no chat (botão 🎁 na conversa): beijo 3, rosa 5, "te achei gostoso(a)" 10, champanhe 15, coroa 30 tokens. Os tokens vão para quem recebe e o presente aparece animado na conversa, mesmo para quem não assina.
 - Dá para presentear tokens a outro usuário. Existe ranking por tipo de perfil.
 
 Convites (menu Gerar/Gerenciar convites)
