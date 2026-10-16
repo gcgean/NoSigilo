@@ -1512,6 +1512,8 @@ export const adminPromoterService = {
     const response = await apiClient.put('/admin/support-ai', data);
     return response.data;
   },
+  melhorarRespostaSuporte: async (userId: string, rascunho: string): Promise<{ texto: string }> =>
+    (await apiClient.post(`/admin/promoter-support/${userId}/melhorar`, { rascunho })).data,
   sendSupportMessage: async (userId: string, message: string, imageUrl?: string) => {
     const response = await apiClient.post(`/admin/promoter-support/${userId}`, { message, imageUrl });
     return response.data;

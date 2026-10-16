@@ -20,6 +20,7 @@ import { analisarPaineis } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
 import { melhorarMotivoRecusa } from './verificacaoIa.js';
+import { melhorarRespostaSuporte } from './respostaSuporteIa.js';
 import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
@@ -5578,6 +5579,27 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   });
 
   // Admin: responder a um promotor
+  // "Melhorar com IA" na resposta manual: reescreve o rascunho (não envia nada).
+  app.post('/api/admin/promoter-support/:userId/melhorar', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const rascunho = String(req.body?.rascunho || '').trim().slice(0, 2000);
+    if (!rascunho) { res.status(400).json({ error: 'invalid_input', message: 'Escreva um rascunho primeiro.' }); return; }
+    if (!env.DEEPSEEK_API_KEY) { res.status(503).json({ error: 'ia_indisponivel', message: 'IA não configurada.' }); return; }
+    const userId = String(req.params.userId);
+    const u = (await queryOne(db, 'SELECT name, gender FROM users WHERE id = ?', [userId])) as any;
+    const msgs = (await queryAll(
+      db,
+      'SELECT sender_type, sender_id, message FROM promoter_support_messages WHERE promoter_user_id = ? ORDER BY created_at DESC LIMIT 12',
+      [userId]
+    )) as any[];
+    const conversa = msgs.reverse().filter((m) => m.message).map((m) => ({
+      de: (String(m.sender_type) === 'promoter' ? 'usuario' : String(m.sender_id) === SENDER_ID_IA ? 'ia' : 'equipe') as 'usuario' | 'equipe' | 'ia',
+      texto: String(m.message),
+    }));
+    const texto = await melhorarRespostaSuporte(env.DEEPSEEK_API_KEY, { rascunho, nome: u?.name ? String(u.name) : null, genero: u?.gender ? String(u.gender) : null, conversa });
+    if (!texto) { res.status(502).json({ error: 'ia_falhou', message: 'A IA não respondeu agora. Tente de novo ou envie como está.' }); return; }
+    res.json({ texto });
+  });
+
   app.post('/api/admin/promoter-support/:userId', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const targetUserId = String(req.params.userId || '');
     // Texto, imagem (print/foto enviada antes por /api/media/upload) ou os dois.

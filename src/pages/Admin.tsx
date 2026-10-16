@@ -5164,6 +5164,23 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
     if (chatFileRef.current) chatFileRef.current.value = '';
   };
 
+  // Reescreve o rascunho com a IA e devolve para a caixa (quem envia é o admin).
+  const [melhorandoResposta, setMelhorandoResposta] = useState(false);
+  const [rascunhoAntesDaIa, setRascunhoAntesDaIa] = useState<string | null>(null);
+  const melhorarRespostaComIa = async () => {
+    if (!selectedChat || !chatInput.trim()) return;
+    setMelhorandoResposta(true);
+    try {
+      const original = chatInput;
+      const data = await adminPromoterService.melhorarRespostaSuporte(selectedChat.userId, original.trim());
+      if (data?.texto) { setRascunhoAntesDaIa(original); setChatInput(String(data.texto)); }
+    } catch (e: any) {
+      toast({ title: 'A IA não conseguiu agora', description: e?.response?.data?.message || 'Tente de novo ou envie como está.', variant: 'destructive' });
+    } finally {
+      setMelhorandoResposta(false);
+    }
+  };
+
   const handleSendChat = async () => {
     if (!selectedChat || (!chatInput.trim() && !chatImage)) return;
     setIsSendingChat(true);
@@ -5175,6 +5192,7 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
       }
       await adminPromoterService.sendSupportMessage(selectedChat.userId, chatInput.trim(), imageUrl);
       setChatInput('');
+      setRascunhoAntesDaIa(null);
       limparImagemChat();
       const data = await adminPromoterService.getSupportMessages(selectedChat.userId);
       setChatMessages(data.messages);
@@ -5360,6 +5378,12 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
             </button>
           </div>
         )}
+        {rascunhoAntesDaIa !== null && (
+          <button type="button" onClick={() => { setChatInput(rascunhoAntesDaIa); setRascunhoAntesDaIa(null); }}
+            className="self-start text-xs text-muted-foreground hover:text-foreground hover:underline">
+            ↩ Voltar ao meu texto
+          </button>
+        )}
         <div className="flex gap-2">
           <input
             ref={chatFileRef}
@@ -5376,8 +5400,9 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
           >
             <ImagePlus className="w-4 h-4" />
           </button>
-          <input
-            className="flex-1 rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+          <textarea
+            rows={chatInput.length > 90 || chatInput.includes(String.fromCharCode(10)) ? 4 : 1}
+            className="flex-1 resize-none rounded-xl border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder="Responder... (Ctrl+V cola um print)"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
@@ -5387,6 +5412,15 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
             }}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleSendChat(); }}}
           />
+          <button
+            onClick={() => void melhorarRespostaComIa()}
+            disabled={!chatInput.trim() || melhorandoResposta || isSendingChat}
+            className="rounded-xl border px-3 py-2 text-sm text-primary hover:bg-primary/10 disabled:opacity-50 flex items-center gap-1.5"
+            title="Reescreve seu rascunho com a IA (não envia). Você revisa e envia."
+          >
+            {melhorandoResposta ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">Melhorar com IA</span>
+          </button>
           <button
             onClick={handleSendChat}
             disabled={(!chatInput.trim() && !chatImage) || isSendingChat}
