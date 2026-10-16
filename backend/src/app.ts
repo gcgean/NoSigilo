@@ -134,6 +134,7 @@ export type PublicUser = {
   officialAmbassadorHidden?: boolean;
   boosted?: boolean;
   disponivelHoje?: boolean;
+  localizacaoGps?: boolean;
   topMonth?: { position: number; month: string | null } | null;
   telegramChatId?: string | null;
   distanceKm?: number | null;
@@ -2475,6 +2476,8 @@ function rowToPublicUser(
       ? {
           officialAmbassadorSince: row.embaixador_oficial_em ?? null,
           officialAmbassadorHidden: Number(row.embaixador_oficial_oculto || 0) === 1,
+          // Só para a própria pessoa: o app pede para ativar o GPS se não tiver.
+          localizacaoGps: String(row.location_source || '') === 'gps',
         }
       : {}),
     boosted: !!(row.boost_until && new Date(row.boost_until).getTime() > Date.now()),

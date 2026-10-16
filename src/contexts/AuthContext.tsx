@@ -39,6 +39,8 @@ export interface User {
   availabilityStatus?: 'now' | 'week' | 'month' | 'online_only' | 'not_looking' | null;
   meetingTagline?: string | null;
   isVerified?: boolean;
+  /** A própria pessoa tem localização por GPS (e não só a cidade do cadastro). */
+  localizacaoGps?: boolean;
   isPremium?: boolean;
   isAdmin?: boolean;
   trialStartedAt?: string | null;

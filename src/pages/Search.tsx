@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AvisoLocalizacao from '@/components/AvisoLocalizacao';
 import { textoDistancia } from '@/utils/distancia';
 import { Search, Filter, MapPin, Heart, Sparkles, Radar as RadarIcon, SlidersHorizontal, Zap, Pencil, ChevronRight, ChevronDown, Check, Loader2 } from 'lucide-react';
 import ActiveNowBar from '@/components/ActiveNowBar';
@@ -1161,6 +1162,8 @@ export default function SearchPage() {
 
         </div>
       )}
+
+      <AvisoLocalizacao aoAtivar={() => void fetchFirstPage()} />
 
       {/* Filters Panel */}
       {showFilters && (
