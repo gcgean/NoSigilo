@@ -168,7 +168,10 @@ const WEEKLY_THEME = {
 };
 
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
-const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+// A Cloudflare (na frente do site) recusa qualquer envio acima de 100 MB; o
+// servidor aceitaria mais, mas o arquivo nunca chega até ele. 95 MB dá folga.
+const VIDEO_MAX_BYTES = 95 * 1024 * 1024;
+const AVISO_VIDEO_GRANDE = 'O limite é 95 MB por vídeo. Dica: grave em 720p ou corte o vídeo em partes menores.';
 // Máximo de fotos/vídeos numa publicação (o servidor aceita até 10 mediaIds).
 const MAX_ANEXOS_POST = 10;
 function formatWhen(iso: string) {
@@ -1199,7 +1202,7 @@ export default function Feed() {
     e.preventDefault();
     const accepted = raw.filter((f) => {
       if (f.type.startsWith('video/') && f.size > VIDEO_MAX_BYTES) {
-        toast({ title: 'Vídeo muito grande', description: 'O tamanho máximo é 500 MB por vídeo.', variant: 'destructive' });
+        toast({ title: 'Vídeo muito grande', description: AVISO_VIDEO_GRANDE, variant: 'destructive' });
         return false;
       }
       return true;
@@ -1225,7 +1228,7 @@ export default function Feed() {
       if (f.type.startsWith('video/') && f.size > VIDEO_MAX_BYTES) {
         toast({
           title: 'Vídeo muito grande',
-          description: 'O tamanho máximo permitido é 500 MB por vídeo.',
+          description: AVISO_VIDEO_GRANDE,
           variant: 'destructive',
         });
         return false;

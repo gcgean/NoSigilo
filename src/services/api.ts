@@ -425,7 +425,7 @@ export const profileService = {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 413) {
-        throw new Error('A mídia excedeu o limite atual do servidor. Se o backend já foi atualizado, refaça o envio em instantes.');
+        throw new Error('O arquivo passou do limite de envio (95 MB). Grave em qualidade menor (720p) ou corte o vídeo e tente de novo.');
       }
       throw error;
     }
