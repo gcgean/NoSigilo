@@ -411,8 +411,14 @@ export const profileService = {
     }
     const formData = new FormData();
     formData.append('file', uploadFile);
+    // A Cloudflare recusa envios acima de 100 MB. Arquivo grande vai direto ao
+    // servidor por upload.nosigilo.net (sem proxy, só aceita esta rota).
+    const ENVIO_DIRETO_ACIMA_DE = 90 * 1024 * 1024;
+    const rotaDoEnvio = uploadFile.size > ENVIO_DIRETO_ACIMA_DE
+      ? 'https://upload.nosigilo.net/api/media/upload'
+      : '/media/upload';
     try {
-      const response = await apiClient.post('/media/upload', formData, {
+      const response = await apiClient.post(rotaDoEnvio, formData, {
         params: { isPrivate: options?.isPrivate ? 1 : 0, source: options?.source || 'post' },
         headers: { 'Content-Type': 'multipart/form-data' },
         maxContentLength: Infinity,
@@ -425,7 +431,10 @@ export const profileService = {
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 413) {
-        throw new Error('O arquivo passou do limite de envio (95 MB). Grave em qualidade menor (720p) ou corte o vídeo e tente de novo.');
+        throw new Error('O arquivo passou do limite de envio (500 MB). Grave em qualidade menor (720p) ou corte o vídeo e tente de novo.');
+      }
+      if (axios.isAxiosError(error) && !error.response && rotaDoEnvio.startsWith('https://upload.')) {
+        throw new Error('Não conseguimos enviar esse vídeo grande agora. Tente um vídeo de até 90 MB (grave em 720p) ou tente de novo em alguns minutos.');
       }
       throw error;
     }

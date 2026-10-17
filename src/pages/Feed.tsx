@@ -168,10 +168,10 @@ const WEEKLY_THEME = {
 };
 
 const PHOTO_REACTION_LONG_PRESS_MS = 400;
-// A Cloudflare (na frente do site) recusa qualquer envio acima de 100 MB; o
-// servidor aceitaria mais, mas o arquivo nunca chega até ele. 95 MB dá folga.
-const VIDEO_MAX_BYTES = 95 * 1024 * 1024;
-const AVISO_VIDEO_GRANDE = 'O limite é 95 MB por vídeo. Dica: grave em 720p ou corte o vídeo em partes menores.';
+// Acima de 90 MB o envio vai direto ao servidor (upload.nosigilo.net), porque
+// a Cloudflare recusa mais de 100 MB. O servidor aceita até 500 MB e compacta.
+const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+const AVISO_VIDEO_GRANDE = 'O limite é 500 MB por vídeo. Dica: grave em 720p ou corte o vídeo em partes menores.';
 // Máximo de fotos/vídeos numa publicação (o servidor aceita até 10 mediaIds).
 const MAX_ANEXOS_POST = 10;
 function formatWhen(iso: string) {
