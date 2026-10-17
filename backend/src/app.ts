@@ -3272,6 +3272,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         const allowed = env.FRONTEND_ORIGIN;
         if (!requestOrigin) return callback(null, true);
         if (requestOrigin === allowed) return callback(null, true);
+        // O site também roda em nosigilo.baselider.com.br (mesmo app): os envios
+        // grandes vão para upload.nosigilo.net e precisam aceitar as duas origens.
+        if (requestOrigin === 'https://nosigilo.baselider.com.br' || requestOrigin === 'https://www.nosigilo.net') return callback(null, true);
         if (/^https?:\/\/localhost(:\d+)?$/.test(requestOrigin)) return callback(null, true);
         if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(requestOrigin)) return callback(null, true);
         return callback(null, false);
