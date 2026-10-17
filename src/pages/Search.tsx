@@ -104,6 +104,8 @@ export default function SearchPage() {
   // New: availability + intention
   const [availableOnly, setAvailableOnly] = useState(false);
   const [selectedIntention, setSelectedIntention] = useState('');
+  // Orientação declarada no perfil (vazio = qualquer).
+  const [orientacao, setOrientacao] = useState('');
 
   // ── Search preferences (saved defaults) ───────────────────────────────────
   type SavedPrefs = {
@@ -155,8 +157,9 @@ export default function SearchPage() {
       sort,
       availableOnly: availableOnly || undefined,
       intention: selectedIntention || undefined,
+      orientacao: orientacao || undefined,
     }),
-    [search, city, faixaIdade, selectedGenders, radar, sort, availableOnly, selectedIntention]
+    [search, city, faixaIdade, selectedGenders, radar, sort, availableOnly, selectedIntention, orientacao]
   );
 
   const applyLikedFilters = useCallback(
@@ -1175,6 +1178,19 @@ export default function SearchPage() {
               <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
             </div>
             <div>
+              <label className="text-sm font-medium mb-2 block">Orientação</label>
+              <Select value={orientacao || 'todas'} onValueChange={(v) => setOrientacao(v === 'todas' ? '' : v)}>
+                <SelectTrigger className="mb-4 h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm">
+                  <SelectValue placeholder="Qualquer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Qualquer orientação</SelectItem>
+                  <SelectItem value="Homossexual">Gays e lésbicas</SelectItem>
+                  <SelectItem value="Bissexual,Pansexual">Bi e pan</SelectItem>
+                  <SelectItem value="Homossexual,Bissexual,Pansexual">LGBT+ (gay, lésbica, bi, pan)</SelectItem>
+                  <SelectItem value="Heterossexual">Hétero</SelectItem>
+                </SelectContent>
+              </Select>
               <label className="text-sm font-medium mb-2 block">Radar (km)</label>
               <div className="relative">
                 <RadarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />

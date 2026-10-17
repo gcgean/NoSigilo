@@ -69,6 +69,9 @@ function lookingForDoEspiar(interesse: string, gender: string): string[] {
 function defaultLookingFor(gender: string): string[] {
   if (gender === 'Mulher') return ['Casal (Ele/Ela)', 'Homem'];
   if (gender === 'Homem')  return ['Casal (Ele/Ela)', 'Mulher'];
+  // Casal do mesmo sexo não recebe "todos" por padrão (ver backend googleDefaultLookingFor).
+  if (gender === 'Casal (Ela/Ela)') return ['Mulher', 'Casal (Ela/Ela)', 'Casal (Ele/Ela)'];
+  if (gender === 'Casal (Ele/Ele)') return ['Homem', 'Casal (Ele/Ele)', 'Casal (Ele/Ela)'];
   if (gender.startsWith('Casal'))
     return ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'];
   return ['Mulher', 'Homem', 'Casal (Ele/Ela)'];
@@ -181,6 +184,8 @@ export default function Register() {
   // A cidade só é "confirmada" (caixa travada) quando vem do GPS ou de uma seleção
   // da lista. Enquanto o usuário digita manualmente, o campo permanece editável.
   const [cityConfirmed, setCityConfirmed] = useState(rascunho?.cityConfirmed ?? false);
+  // Orientação: opcional (alimenta o filtro da Busca; ajuda a comunidade LGBT a se achar).
+  const [orientacao, setOrientacao] = useState('');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -553,6 +558,7 @@ export default function Register() {
       city: formData.city || undefined,
       state: formData.state || undefined,
       lookingFor: lookingForDoEspiar(respostasEspiar.interesse, formData.gender),
+      sexualOrientation: orientacao || undefined,
       // Registro do aceite (LGPD: quem trata os dados precisa provar o consentimento).
       termosVersao: VERSAO_POLITICA,
       // De onde a pessoa veio na 1ª visita (Instagram, Google, link com UTM...).
@@ -1038,6 +1044,25 @@ export default function Register() {
                     faz você aparecer para quem está na sua região. Só cidade e
                     estado ficam visíveis no perfil; endereço, nunca.
                   </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Orientação <span className="font-normal text-muted-foreground">(opcional)</span></Label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { v: 'Heterossexual', l: 'Hétero' },
+                      { v: 'Homossexual', l: 'Gay / Lésbica' },
+                      { v: 'Bissexual', l: 'Bi' },
+                      { v: 'Pansexual', l: 'Pan' },
+                    ].map((o) => (
+                      <button key={o.v} type="button" onClick={() => setOrientacao(orientacao === o.v ? '' : o.v)}
+                        className={cn('rounded-full border px-3 py-1.5 text-sm transition-colors',
+                          orientacao === o.v ? 'border-primary bg-primary/10 font-semibold text-primary' : 'border-border text-muted-foreground hover:border-primary/40')}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="px-1 text-xs text-muted-foreground/70">Ajuda quem procura o mesmo que você a te encontrar. Dá para mudar depois.</p>
                 </div>
               </div>
             )}

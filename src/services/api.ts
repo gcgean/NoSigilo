@@ -801,6 +801,7 @@ export const usersService = {
     sort?: string;
     availableOnly?: boolean;
     intention?: string;
+    orientacao?: string;
   }) => {
     const response = await apiClient.get('/users', { params });
     return response.data as { users: any[]; hasMore: boolean; page: number };

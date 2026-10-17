@@ -1143,6 +1143,7 @@ function audienciaItems(casaisDesc) {
     { ic: 'users', title: 'Casais liberais', desc: casaisDesc },
     { ic: 'user', title: 'Mulheres solteiras', desc: 'Definem o próprio ritmo e com quem querem falar.' },
     { ic: 'user', title: 'Homens solteiros', desc: 'Em encontros de ménage e relações abertas, com discrição.' },
+    { ic: 'users', title: 'Comunidade LGBT+', desc: 'Casais lésbicos e gays, pessoas trans, travestis, crossdressers e bissexuais também se encontram aqui, com filtro por orientação.' },
   ];
 }
 
@@ -1321,7 +1322,7 @@ function statePage(st) {
       </figure>
       <div class="cl-alt-copy">
         <h2>Quem você <em>encontra</em></h2>
-        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <p>A comunidade reúne públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
         <div class="cl-list">${listItemsHtml(audienciaItems(`Buscam troca de casais ou uma terceira pessoa, em ${esc(st.capital)} e em todo o estado.`))}</div>
       </div>
     </section>
@@ -1515,7 +1516,7 @@ function cityPage(city) {
       </figure>
       <div class="cl-alt-copy">
         <h2>Quem você <em>encontra</em></h2>
-        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <p>A comunidade reúne públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
         <div class="cl-list">${listItemsHtml(audienciaItems(`Buscam troca de casais ou uma terceira pessoa, em ${esc(city.name)} e região.`))}</div>
       </div>
     </section>
@@ -1706,7 +1707,7 @@ function hubPage() {
       </figure>
       <div class="cl-alt-copy">
         <h2>Quem você <em>encontra</em></h2>
-        <p>A comunidade reúne três públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
+        <p>A comunidade reúne públicos que se procuram — cada perfil indica o que busca, e os filtros fazem o resto.</p>
         <div class="cl-list">${listItemsHtml(audienciaItems('Buscam troca de casais ou uma terceira pessoa, em qualquer estado do Brasil.'))}</div>
       </div>
     </section>

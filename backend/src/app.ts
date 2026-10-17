@@ -2180,7 +2180,7 @@ async function motivoMensagemBloqueada(db: DbHandle, fromUserId: string, toUserI
 
 // ─── Pedidos de contato ──────────────────────────────────────────────────────
 // Mensagem de quem a pessoa não conhece cai em "Pedidos" (não em Conversas) até
-// ela aceitar ou responder. Ligado por padrão para mulheres e casais (que
+// ela aceitar ou responder. Ligado por padrão para mulheres, casais, trans, travestis e CDs (que
 // recebem ~6-8 abordagens novas por mês e respondem só ~13%); quem é de um tipo
 // de perfil liberado, tem curtida mútua, é amigo ou já foi curtido vai direto.
 const CATEGORIAS_PEDIDO = ['mulher', 'casal', 'homem', 'outros'] as const;
@@ -2197,7 +2197,9 @@ function categoriaDoPerfil(gender: unknown): CategoriaPedido {
 
 function configDePedidos(row: any): { ativo: boolean; direto: CategoriaPedido[] } {
   const cat = categoriaDoPerfil(row?.gender);
-  const padraoLigado = cat === 'mulher' || cat === 'casal';
+  // Ligado para mulheres, casais e "outros" (trans, travesti, CD): esses perfis
+  // recebem muito mais abordagem do que conseguem responder.
+  const padraoLigado = cat === 'mulher' || cat === 'casal' || cat === 'outros';
   const modo = String(row?.pedidos_contato || '');
   const ativo = modo === 'on' ? true : modo === 'off' ? false : padraoLigado;
   const salvo = safeJsonParse(row?.pedidos_direto_json);
@@ -4118,6 +4120,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
       city: z.string().optional(),
       state: z.string().optional(),
       lookingFor: z.array(z.string()).optional(),
+      sexualOrientation: z.enum(['Heterossexual', 'Homossexual', 'Bissexual', 'Pansexual', 'Assexual']).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -4251,6 +4254,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     );
     // O cadastro por e-mail só envia com a caixinha marcada; app antigo não manda a versão.
     await run(db, 'UPDATE users SET termos_aceitos_em = ?, termos_versao = ? WHERE id = ?', [createdAt, parsed.data.termosVersao || 'anterior', id]);
+    // Orientação é opcional no cadastro (alimenta o filtro de orientação da Busca).
+    if (parsed.data.sexualOrientation) {
+      await run(db, 'UPDATE users SET sexual_orientation = ? WHERE id = ?', [parsed.data.sexualOrientation, id]);
+    }
     {
       const toque = limpaPrimeiroToque(parsed.data.primeiroToque);
       const fonte = sanitizeSignupSource(parsed.data.signupSource);
@@ -6096,6 +6103,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   function googleDefaultLookingFor(gender: string): string[] {
     if (gender === 'Mulher') return ['Casal (Ele/Ela)', 'Homem'];
     if (gender === 'Homem')  return ['Casal (Ele/Ela)', 'Mulher'];
+    // Casal do mesmo sexo: antes recebia "todos" e aparecia para milhares de
+    // homens (casais Ela/Ela recebiam 30x mais mensagem de homem que de mulher).
+    if (gender === 'Casal (Ela/Ela)') return ['Mulher', 'Casal (Ela/Ela)', 'Casal (Ele/Ela)'];
+    if (gender === 'Casal (Ele/Ele)') return ['Homem', 'Casal (Ele/Ele)', 'Casal (Ele/Ela)'];
     if (gender.startsWith('Casal'))
       return ['Mulher', 'Homem', 'Casal (Ele/Ela)', 'Casal (Ele/Ele)', 'Casal (Ela/Ela)', 'Transexual', 'Crossdresser (CD)', 'Travesti'];
     return ['Mulher', 'Homem', 'Casal (Ele/Ela)'];
@@ -11698,6 +11709,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const sort         = ['active', 'new', 'nearby', 'available'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'nearby';
     const availableOnly = req.query.availableOnly === 'true' || req.query.availableOnly === '1';
     const intentionFilter = req.query.intention ? String(req.query.intention).trim() : '';
+    // Orientação declarada (Heterossexual, Homossexual, Bissexual, Pansexual...).
+    const ORIENTACOES = ['Heterossexual', 'Homossexual', 'Bissexual', 'Pansexual', 'Assexual'];
+    const orientacoesFiltro = String(req.query.orientacao || '').split(',').map((o) => o.trim()).filter((o) => ORIENTACOES.includes(o));
 
     const params: any[] = [];
     const conditions: string[] = [
@@ -11779,6 +11793,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     if (intentionFilter) {
       conditions.push(`(u.intentions_json IS NOT NULL AND u.intentions_json LIKE ?)`);
       params.push(`%${intentionFilter}%`);
+    }
+
+    if (orientacoesFiltro.length > 0) {
+      conditions.push(`u.sexual_orientation IN (${orientacoesFiltro.map(() => '?').join(', ')})`);
+      params.push(...orientacoesFiltro);
     }
 
     let viewerLat: number | null = viewerRow?.lat != null ? Number(viewerRow.lat) : null;

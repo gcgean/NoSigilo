@@ -287,9 +287,9 @@ export default function Landing() {
                 O que parece proibido lá fora, <em>aqui pode ser vivido.</em>
               </h1>
               <p>
-                A comunidade liberal para casais e singles que desejam viver swing,
-                troca de casais, ménage e exibicionismo com liberdade, consentimento,
-                discrição e sigilo.
+                A comunidade liberal para casais e singles (héteros e LGBT+) que desejam
+                viver swing, troca de casais, ménage e exibicionismo com liberdade,
+                consentimento, discrição e sigilo.
               </p>
               <a className="landing-hero-discover" href="#experiencia">
                 Conheça a experiência
@@ -440,8 +440,9 @@ export default function Landing() {
             <div className="landing-section-copy">
               <h2>Uma experiência feita para <em>aproximar, sem expor.</em></h2>
               <p className="landing-section-intro">
-                Encontre casais e singles para swing, troca de casais, ménage e novas
-                experiências — sempre com consentimento e discrição.
+                Encontre casais (héteros, lésbicos ou gays), singles e pessoas trans para
+                swing, troca de casais, ménage e novas experiências — sempre com
+                consentimento e discrição.
               </p>
 
               <div className="landing-feature-list">
