@@ -587,6 +587,10 @@ export default function Admin() {
         );
 
         const normalizedUsers = normalizeUsers(rawUsersResult);
+        // Contagem por canal também na carga inicial (antes só vinha ao mexer num filtro).
+        if (isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).contagemCanais)) {
+          setContagemCanais((rawUsersResult as any).contagemCanais);
+        }
         const pendingReportCounts = new Map<string, number>();
         if (Array.isArray(rawReports)) {
           for (const entry of rawReports) {
