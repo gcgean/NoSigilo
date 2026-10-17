@@ -97,7 +97,9 @@ export default function SearchPage() {
   const [radar, setRadar] = useState('all');
   const [selectedGenders, setSelectedGenders] = useState<string[]>([]);
   const [isLocating, setIsLocating] = useState(false);
-  const [sort, setSort] = useState<'nearby' | 'active' | 'new' | 'available'>('nearby');
+  // ?ordem=ativos abre direto em "Ativos" (atalho do cartão de primeiros passos).
+  const [sort, setSort] = useState<'nearby' | 'active' | 'new' | 'available'>(() =>
+    new URLSearchParams(window.location.search).get('ordem') === 'ativos' ? 'active' : 'nearby');
 
   // New: availability + intention
   const [availableOnly, setAvailableOnly] = useState(false);

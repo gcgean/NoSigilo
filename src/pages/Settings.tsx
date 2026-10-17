@@ -513,6 +513,38 @@ export default function Settings() {
   const [baixandoDados, setBaixandoDados] = useState(false);
   const [deleteReasonCode, setDeleteReasonCode] = useState<string>('');
   const [deleteReasonText, setDeleteReasonText] = useState('');
+  const [excluirAberto, setExcluirAberto] = useState(false);
+  const [alternativaOcupada, setAlternativaOcupada] = useState(false);
+
+  // Em vez de apagar tudo: pausar (perfil some, nada se perde; volta ao entrar).
+  // Quase metade de quem exclui só queria sumir por um tempo ou ter discrição.
+  const pausarConta = async () => {
+    setAlternativaOcupada(true);
+    try {
+      await profileService.deactivateProfile();
+      toast({ title: 'Conta pausada ⏸', description: 'Seu perfil não aparece para ninguém. Para voltar, é só entrar de novo.' });
+      setExcluirAberto(false);
+      logout();
+    } catch {
+      toast({ title: 'Não foi possível pausar agora', description: 'Tente de novo.', variant: 'destructive' });
+    } finally {
+      setAlternativaOcupada(false);
+    }
+  };
+  const desligarEmails = async () => {
+    setAlternativaOcupada(true);
+    try {
+      await profileService.updateProfile({ notificationEmail: false });
+      updateUser({ notificationEmail: false });
+      setNotifications((n: any) => ({ ...n, email: false }));
+      toast({ title: 'E-mails desligados ✅', description: 'Você não recebe mais avisos por e-mail. Dá para religar em Notificações.' });
+      setExcluirAberto(false);
+    } catch {
+      toast({ title: 'Não foi possível desligar agora', variant: 'destructive' });
+    } finally {
+      setAlternativaOcupada(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     // "Outro motivo" sem texto não diz nada — é o único caso em que exigimos.
@@ -2129,7 +2161,7 @@ export default function Settings() {
                   Sua conta e seus dados são apagados de vez: perfil, fotos e vídeos, posts, stories, mensagens que você enviou, comentários, curtidas e localização. Ficam só os registros de pagamento que a lei obriga a guardar. Essa ação não pode ser desfeita. Se quiser uma cópia, baixe seus dados antes.
                 </p>
               </div>
-              <AlertDialog>
+              <AlertDialog open={excluirAberto} onOpenChange={setExcluirAberto}>
                 <AlertDialogTrigger asChild>
                   <Button
                     variant="destructive"
@@ -2176,6 +2208,45 @@ export default function Settings() {
                         </label>
                       ))}
                     </div>
+                    {/* Alternativa ao "excluir" conforme o motivo escolhido. */}
+                    {['temporary_break', 'privacy_concern', 'fear_exposed', 'partner_quit'].includes(deleteReasonCode) && (
+                      <div className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-3">
+                        <p className="text-sm font-semibold">⏸ Prefere só pausar?</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Seu perfil some para todo mundo (busca, feed, chat) e nada é apagado: fotos, conversas e assinatura ficam guardadas. Para voltar, é só entrar de novo.
+                        </p>
+                        <Button type="button" size="sm" disabled={alternativaOcupada} onClick={() => void pausarConta()} className="mt-2 bg-sky-600 text-white hover:bg-sky-700">
+                          Pausar minha conta
+                        </Button>
+                      </div>
+                    )}
+                    {deleteReasonCode === 'too_many_emails' && (
+                      <div className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-3">
+                        <p className="text-sm font-semibold">📭 Dá para só desligar os e-mails</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Você para de receber avisos por e-mail e continua com a conta.</p>
+                        <Button type="button" size="sm" disabled={alternativaOcupada} onClick={() => void desligarEmails()} className="mt-2 bg-sky-600 text-white hover:bg-sky-700">
+                          Desligar e-mails
+                        </Button>
+                      </div>
+                    )}
+                    {deleteReasonCode === 'wrong_signup' && (
+                      <div className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-3">
+                        <p className="text-sm font-semibold">✏️ Dá para corrigir sem excluir</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Trocar o nome vale na hora. O tipo de perfil você pede ali mesmo, em Perfil › Identidade.</p>
+                        <Button type="button" size="sm" onClick={() => { setExcluirAberto(false); setAbaAtiva('profile'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="mt-2 bg-sky-600 text-white hover:bg-sky-700">
+                          Corrigir meu perfil
+                        </Button>
+                      </div>
+                    )}
+                    {['no_one_in_region', 'few_active_users'].includes(deleteReasonCode) && (
+                      <div className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-3">
+                        <p className="text-sm font-semibold">📍 Já olhou o estado todo?</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Na Busca, escolha o raio "Qualquer" para ver todos os perfis do seu estado, não só da sua cidade.</p>
+                        <Button type="button" size="sm" onClick={() => { setExcluirAberto(false); navigate('/search'); }} className="mt-2 bg-sky-600 text-white hover:bg-sky-700">
+                          Ver perfis do meu estado
+                        </Button>
+                      </div>
+                    )}
                     {deleteReasonCode ? (
                       <>
                         <p className="text-sm font-medium">

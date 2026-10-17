@@ -17,6 +17,11 @@ export const ACCOUNT_DELETION_REASONS = [
   { code: 'bad_experience', label: 'Tive uma experiência ruim' },
   { code: 'technical_issues', label: 'Problemas técnicos no site/app' },
   { code: 'temporary_break', label: 'Só quero dar uma pausa' },
+  // Motivos que mais apareciam escritos em "Outro motivo" (análise de 17/10/2026).
+  { code: 'partner_quit', label: 'Meu parceiro(a) não quer mais' },
+  { code: 'wrong_signup', label: 'Me cadastrei errado (nome ou tipo de perfil)' },
+  { code: 'fear_exposed', label: 'Medo de ser descoberto(a) / me reconheceram' },
+  { code: 'too_many_emails', label: 'Muitos e-mails e notificações' },
   { code: 'other', label: 'Outro motivo' },
 ] as const;
 
@@ -36,6 +41,10 @@ export const PERGUNTA_POR_MOTIVO: Record<string, string> = {
   bad_experience: 'O que aconteceu? Se foi com alguém da plataforma, conte aqui.',
   technical_issues: 'O que deu errado e em qual aparelho?',
   temporary_break: 'O que faria você voltar?',
+  partner_quit: 'Se quiser, conte o que fez vocês mudarem de ideia.',
+  wrong_signup: 'O que ficou errado no cadastro?',
+  fear_exposed: 'O que aconteceu? Queremos proteger quem usa o site.',
+  too_many_emails: 'Quais avisos incomodaram mais?',
   other: 'Conte com suas palavras o que te fez sair.',
 };
 

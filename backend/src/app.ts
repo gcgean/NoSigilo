@@ -1130,6 +1130,10 @@ const ACCOUNT_DELETION_REASON_CODES = [
   'bad_experience',
   'technical_issues',
   'temporary_break',
+  'partner_quit',
+  'wrong_signup',
+  'fear_exposed',
+  'too_many_emails',
   'other',
 ] as const;
 

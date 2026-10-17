@@ -649,6 +649,25 @@ export default function Layout() {
     setPromoterBannerDismissed(true);
   };
 
+  // Cartões das primeiras horas/semanas (ver BannerSlot "primeiros-passos" e "casal-privacidade").
+  const idadeDaContaMs = user?.trialStartedAt ? Date.now() - new Date(user.trialStartedAt).getTime() : Infinity;
+  const contaNovaPrimeirosPassos = idadeDaContaMs < 48 * 3600_000;
+  const casalNovoPrivacidade = String(user?.gender || '').startsWith('Casal') && idadeDaContaMs < 14 * 86400_000;
+  const [primeirosPassosFechado, setPrimeirosPassosFechado] = useState(() => {
+    try { return localStorage.getItem('nosigilo:primeiros-passos-fechado') === '1'; } catch { return false; }
+  });
+  const fecharPrimeirosPassos = () => {
+    try { localStorage.setItem('nosigilo:primeiros-passos-fechado', '1'); } catch { /* ok */ }
+    setPrimeirosPassosFechado(true);
+  };
+  const [casalPrivacidadeFechado, setCasalPrivacidadeFechado] = useState(() => {
+    try { return localStorage.getItem('nosigilo:casal-privacidade-fechado') === '1'; } catch { return false; }
+  });
+  const fecharCasalPrivacidade = () => {
+    try { localStorage.setItem('nosigilo:casal-privacidade-fechado', '1'); } catch { /* ok */ }
+    setCasalPrivacidadeFechado(true);
+  };
+
   const dismissInterestsNudge = () => {
     localStorage.setItem(INTERESTS_NUDGE_DISMISS_KEY, new Date().toISOString().slice(0, 10));
     setInterestsNudgeDismissed(true);
@@ -1111,6 +1130,56 @@ export default function Layout() {
                         Ver como instalar
                       </Button>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </BannerSlot>
+
+            {/* Primeiras 48h: 47% de quem exclui a conta sai na primeira hora
+                achando a região vazia. Atalhos para o que já tem movimento. */}
+            <BannerSlot id="primeiros-passos" priority={5} eligible={!isMobileChatRoute && contaNovaPrimeirosPassos && !primeirosPassosFechado}>
+              <div className="mb-4 rounded-2xl border border-primary/25 bg-primary/10 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold">👋 Começando? Veja quem está por perto</p>
+                    <p className="text-sm text-muted-foreground">
+                      Se sua cidade estiver calma, mostramos também o resto do estado e as cidades vizinhas, dos mais perto para os mais longe.
+                    </p>
+                  </div>
+                  <button type="button" onClick={fecharPrimeirosPassos} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary" aria-label="Fechar">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <Button type="button" size="sm" variant="outline" className="h-auto flex-col gap-0.5 py-2" onClick={() => navigate('/search?ordem=ativos')}>
+                    <span className="text-lg leading-none">🟢</span><span className="text-xs">Online agora</span>
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="h-auto flex-col gap-0.5 py-2" onClick={() => navigate('/stories')}>
+                    <span className="text-lg leading-none">📸</span><span className="text-xs">Stories</span>
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="h-auto flex-col gap-0.5 py-2" onClick={() => navigate('/match')}>
+                    <span className="text-lg leading-none">💞</span><span className="text-xs">Dar match</span>
+                  </Button>
+                </div>
+              </div>
+            </BannerSlot>
+
+            {/* Casal nas 2 primeiras semanas: o incômodo nº 1 de casal é single
+                masculino insistindo. As opções já existem; só mostra onde ficam. */}
+            <BannerSlot id="casal-privacidade" priority={15} eligible={!isMobileChatRoute && casalNovoPrivacidade && !casalPrivacidadeFechado}>
+              <div className="mb-4 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-semibold">🔒 Vocês decidem quem chama vocês</p>
+                    <p className="text-sm text-muted-foreground">
+                      Mensagem de quem vocês não conhecem chega em "Pedidos", e vocês escolhem quais perfis podem mandar mensagem (por exemplo, só casais e mulheres).
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Button type="button" size="sm" variant="outline" onClick={fecharCasalPrivacidade}>Agora não</Button>
+                    <Button type="button" size="sm" className="bg-sky-600 text-white hover:bg-sky-700" onClick={() => { navigate('/settings?aba=privacy'); fecharCasalPrivacidade(); }}>
+                      Ajustar privacidade
+                    </Button>
                   </div>
                 </div>
               </div>
