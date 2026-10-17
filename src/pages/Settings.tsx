@@ -713,11 +713,14 @@ export default function Settings() {
                     <Label htmlFor="name">Nome</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      {/* Tocar no campo já abre a troca: o campo cinza e travado
+                          fazia a pessoa achar que o nome não mudava (e excluir a conta). */}
                       <Input
                         id="name"
                         value={profile.name}
                         readOnly
-                        className="pl-9 cursor-not-allowed opacity-80"
+                        onClick={() => setNameReqOpen(true)}
+                        className="pl-9 cursor-pointer"
                       />
                     </div>
                     {nameReqOpen ? (
@@ -738,15 +741,13 @@ export default function Settings() {
                         </div>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        className="inline-flex min-h-[40px] items-center text-xs font-medium text-brand-pink hover:underline"
-                        onClick={() => setNameReqOpen(true)}
-                      >
+                      <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => setNameReqOpen(true)}>
                         Mudar nome
-                      </button>
+                      </Button>
                     )}
-                    <p className="text-[11px] text-muted-foreground/70">O nome só pode ser alterado com aprovação do suporte.</p>
+                    <p className="text-[11px] text-muted-foreground/70">
+                      {isCoupleProfile ? 'É o nome do perfil do casal, que todo mundo vê. ' : ''}A troca vale na hora.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -821,9 +822,9 @@ export default function Settings() {
                               Seu último pedido (para "{generoSituacao.requestedGender}") foi recusado{generoSituacao.reviewNote ? `: ${generoSituacao.reviewNote}` : '.'}
                             </p>
                           )}
-                          <button type="button" className="inline-flex min-h-[40px] items-center text-xs font-medium text-brand-pink hover:underline" onClick={() => setGeneroAberto(true)}>
-                            Pedir mudança de tipo de perfil
-                          </button>
+                          <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => setGeneroAberto(true)}>
+                            Cadastrou errado? Pedir mudança de tipo de perfil
+                          </Button>
                         </div>
                       )
                     )}
@@ -1084,9 +1085,9 @@ export default function Settings() {
                           : 'bg-background text-muted-foreground hover:bg-muted'
                       }`}
                     >
-                      {p === 1
-                        ? (profile.name || 'Pessoa 1')
-                        : (profile.partnerName || 'Pessoa 2')}
+                      {/* Pessoa 1 não tem nome próprio (o nome do perfil é do casal):
+                          mostrar o nome do perfil aqui parecia um campo editável. */}
+                      {p === 1 ? 'Pessoa 1' : (profile.partnerName || 'Pessoa 2')}
                     </button>
                   ))}
                 </div>
@@ -1098,7 +1099,7 @@ export default function Settings() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   {(!isCoupleProfile || profilePerson === 1) && (
                     <div className="space-y-2">
-                      <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — ${profile.name || 'Pessoa 1'}` : 'Data de nascimento'}</Label>
+                      <Label htmlFor="birthDate">{isCoupleProfile ? `Nascimento — Pessoa 1` : 'Data de nascimento'}</Label>
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
