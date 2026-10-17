@@ -2284,54 +2284,35 @@ export default function Chat() {
                 </span>
               </button>
             )}
-            {/* Pedido de contato recebido: aceitar ou excluir (responder também aceita). */}
+            {/* Pedido de contato recebido: é só responder que vira conversa
+                normal (o backend aceita na primeira resposta). Antes a tela
+                perguntava "Aceita?" com dois botões e parecia obrigatório. */}
             {activeConversation?.pedido && (
-              <div className="mb-2 rounded-xl border border-primary/30 bg-primary/5 p-3 text-center">
-                <p className="text-sm font-semibold">Aceita o contato de {activeConversation.user.name}?</p>
+              <div className="mb-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+                <p className="text-sm font-semibold">Começar conversa com {activeConversation.user.name}?</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Se aceitar, vocês conversam normalmente e {activeConversation.user.name} passa a ver quando você está online.
+                  É só responder: a conversa vai para suas Conversas e {activeConversation.user.name} passa a ver quando você está online.
                 </p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-11 text-destructive"
-                    disabled={acaoPedido}
-                    onClick={async () => {
-                      setAcaoPedido(true);
-                      try {
-                        await chatService.excluirPedido(activeConversation.id);
-                        setConversations((prev) => prev.filter((c) => c.id !== activeConversation.id));
-                        setSelectedChat(null);
-                        toast({ title: 'Pedido excluído' });
-                      } catch {
-                        toast({ title: 'Não foi possível excluir agora', variant: 'destructive' });
-                      } finally {
-                        setAcaoPedido(false);
-                      }
-                    }}
-                  >
-                    Excluir
-                  </Button>
-                  <Button
-                    className="h-11 bg-gradient-primary"
-                    disabled={acaoPedido}
-                    onClick={async () => {
-                      setAcaoPedido(true);
-                      try {
-                        await chatService.aceitarPedido(activeConversation.id);
-                        setConversations((prev) => prev.map((c) => (c.id === activeConversation.id ? { ...c, pedido: false } : c)));
-                        setCaixa('conversas');
-                        toast({ title: 'Pedido aceito ✅', description: 'Agora é uma conversa normal.' });
-                      } catch {
-                        toast({ title: 'Não foi possível aceitar agora', variant: 'destructive' });
-                      } finally {
-                        setAcaoPedido(false);
-                      }
-                    }}
-                  >
-                    Aceitar
-                  </Button>
-                </div>
+                <Button
+                  variant="outline"
+                  className="mt-2 h-10 w-full text-destructive"
+                  disabled={acaoPedido}
+                  onClick={async () => {
+                    setAcaoPedido(true);
+                    try {
+                      await chatService.excluirPedido(activeConversation.id);
+                      setConversations((prev) => prev.filter((c) => c.id !== activeConversation.id));
+                      setSelectedChat(null);
+                      toast({ title: 'Pedido recusado e excluído' });
+                    } catch {
+                      toast({ title: 'Não foi possível excluir agora', variant: 'destructive' });
+                    } finally {
+                      setAcaoPedido(false);
+                    }
+                  }}
+                >
+                  <Trash2 className="mr-1.5 h-4 w-4" /> Recusar e excluir
+                </Button>
               </div>
             )}
 
