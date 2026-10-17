@@ -578,6 +578,7 @@ function StoryViewer({
   const [digitando, setDigitando] = useState(false); // respondendo: o story espera
   const [oculto, setOculto] = useState(false); // app em segundo plano
   const [coracaoGrande, setCoracaoGrande] = useState(false);
+  const seguraCoracao = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Saldo de tokens (Coração Quente custa 1). null = ainda não sabemos.
   const [saldoTokens, setSaldoTokens] = useState<number | null>(null);
   const [semTokens, setSemTokens] = useState(false); // janela "seus tokens acabaram"
@@ -965,22 +966,24 @@ function StoryViewer({
           </div>
         ) : null}
 
-        {/* Navigation tap zones — só na metade superior para não bloquear os botões */}
+        {/* Zonas de toque na tela inteira, como no Instagram (o bloco de perfil
+            que cobria a parte de baixo saiu). touch-manipulation tira o atraso
+            e o zoom do toque duplo no iPhone. */}
         <button
           type="button"
-          className="absolute left-0 top-0 h-3/5 w-1/3 z-10"
+          className="absolute left-0 top-0 h-full w-1/3 z-10 touch-manipulation"
           onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(-1); }}
           aria-label="Anterior"
         />
         <button
           type="button"
-          className="absolute left-1/3 top-0 h-3/5 w-1/3 z-10"
+          className="absolute left-1/3 top-0 h-full w-1/3 z-10 touch-manipulation"
           onClick={tocarNoMeio}
           aria-label="Próximo (toque duplo curte)"
         />
         <button
           type="button"
-          className="absolute right-0 top-0 h-3/5 w-1/3 z-10"
+          className="absolute right-0 top-0 h-full w-1/3 z-10 touch-manipulation"
           onClick={() => { if (heldRef.current) { heldRef.current = false; return; } go(1); }}
           aria-label="Próximo"
         />
@@ -992,66 +995,11 @@ function StoryViewer({
           </div>
         )}
 
-        {/* Profile info overlay estilo Match — não own story */}
-        {story.author.id !== myUserId && (
-          <div className={cn('absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-4 pb-3 pt-16 transition-opacity duration-200', paused && 'opacity-0')}>
-            {/* Linha 1: Nome + idade */}
-            {/* Nome clicável (abre o perfil) e idade menor ao lado. */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => { onClose(); navigate(`/users/${story.author.id}`); }}
-                className="flex items-baseline gap-1.5 text-left text-white hover:underline active:opacity-80"
-              >
-                <span className="text-lg font-bold leading-tight">{story.author.name}</span>
-                {story.author.age != null && (
-                  <span className="text-sm font-medium text-white/75">
-                    {story.author.age}
-                    {story.author.partnerAge != null && ` & ${story.author.partnerAge}`}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Linha 2: gênero sempre; cidade só quando é perto.
-                Ver linhaDeIdentidadeDoStory para o porquê. */}
-            {linhaDeIdentidadeDoStory(story.author, espectador ?? {}) && (
-              <p className="text-sm text-white/80 mt-0.5">
-                {linhaDeIdentidadeDoStory(story.author, espectador ?? {})}
-              </p>
-            )}
-
-            {/* Fetiches + intenções */}
-            {(story.author.intentions.length > 0 || story.author.fetiches.length > 0) && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {story.author.intentions.slice(0, 2).map((i) => (
-                  <span key={i} className="rounded-full bg-primary/80 px-2 py-0.5 text-[10px] text-white font-medium">{i}</span>
-                ))}
-                {story.author.fetiches.slice(0, 3).map((f) => (
-                  <span key={f} className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] text-white/90">{f}</span>
-                ))}
-              </div>
-            )}
-
-            {/* Botões Ver Perfil + Mandar msg (igual Match) */}
-            <div className="flex gap-2 mt-3">
-              <button
-                type="button"
-                onClick={() => { onClose(); navigate(`/users/${story.author.id}`); }}
-                className="flex items-center gap-1.5 rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 active:scale-95 transition-all"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                Ver Perfil
-              </button>
-              <button
-                type="button"
-                onClick={() => { onClose(); navigate(`/chat?userId=${story.author.id}`); }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 active:scale-95 transition-all"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                Mandar msg
-              </button>
-            </div>
+        {/* Só uma linha discreta (tipo de perfil e cidade); o perfil abre tocando
+            no nome lá em cima e a mensagem vai pela caixa de resposta. */}
+        {story.author.id !== myUserId && linhaDeIdentidadeDoStory(story.author, espectador ?? {}) && (
+          <div className={cn('pointer-events-none absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-black/70 to-transparent px-4 pb-2 pt-10 transition-opacity duration-200', paused && 'opacity-0')}>
+            <p className="text-xs text-white/85">{linhaDeIdentidadeDoStory(story.author, espectador ?? {})}</p>
           </div>
         )}
       </div>
@@ -1095,16 +1043,27 @@ function StoryViewer({
             )}
             <button
               type="button"
-              onClick={() => setShowReactions((v) => !v)}
-              className="flex flex-col items-center gap-0.5"
-              aria-label="Reagir ao story"
+              // Como no Instagram: um toque curte (ou descurte); segurar abre as reações.
+              onPointerDown={() => { seguraCoracao.current = setTimeout(() => { seguraCoracao.current = null; setShowReactions(true); }, 450); }}
+              onPointerUp={() => {
+                if (seguraCoracao.current) {
+                  clearTimeout(seguraCoracao.current);
+                  seguraCoracao.current = null;
+                  if (showReactions) { setShowReactions(false); return; }
+                  void handleReact(myReaction && myReaction !== 'hot' ? myReaction : 'heart');
+                }
+              }}
+              onPointerLeave={() => { if (seguraCoracao.current) { clearTimeout(seguraCoracao.current); seguraCoracao.current = null; } }}
+              onContextMenu={(e) => e.preventDefault()}
+              className="flex h-11 w-11 flex-col items-center justify-center gap-0.5 select-none touch-manipulation"
+              aria-label={myReaction ? 'Descurtir' : 'Curtir (segure para mais reações)'}
             >
-              {myReaction ? (
-                <span className={cn('text-2xl leading-none transition-transform duration-200', likeAnim && 'scale-125')}>
+              {myReaction && myReaction !== 'heart' ? (
+                <span className={cn('text-[26px] leading-none transition-transform duration-200', likeAnim && 'scale-125')}>
                   {myReaction === 'hot' ? HOT_HEART : (REACTION_EMOJI[myReaction] ?? '💜')}
                 </span>
               ) : (
-                <Heart className={cn('h-6 w-6 text-white/70 transition-all duration-200', likeAnim && 'scale-125')} />
+                <Heart className={cn('h-7 w-7 transition-all duration-200', myReaction ? 'fill-rose-500 text-rose-500' : 'text-white', likeAnim && 'scale-125')} />
               )}
               {likeCount > 0 && (
                 <span className="text-[9px] text-white/60 leading-none">{likeCount}</span>
@@ -1117,7 +1076,7 @@ function StoryViewer({
             type="button"
             onClick={() => void handleReact('hot')}
             className={cn(
-              'flex shrink-0 flex-col items-center gap-0.5 rounded-full px-2 py-1 transition-all active:scale-90',
+              'flex h-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-full px-1.5 transition-all active:scale-90 touch-manipulation',
               myReaction === 'hot' ? 'bg-rose-500/25 ring-1 ring-rose-400/60' : 'hover:bg-white/10'
             )}
             aria-label="Dar um Coração Quente (1 token)"
@@ -1137,7 +1096,7 @@ function StoryViewer({
               'flex-1 rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
               clearing ? 'opacity-0' : 'opacity-100'
             )}
-            placeholder="Responder ao story..."
+            placeholder="Enviar mensagem..."
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') void handleSendComment(); }}
