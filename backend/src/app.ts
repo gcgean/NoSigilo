@@ -37,6 +37,7 @@ import {
   getHubSubscriptionAnalytics,
   getHubPaymentMethods,
   getHubPaymentsLedger,
+  type HubLedgerItem,
   getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
@@ -19023,6 +19024,61 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } catch (error) {
       console.error('[admin/finance/payment-methods]', (error as Error).message);
       res.status(502).json({ error: 'payment_methods_unavailable', message: (error as Error).message });
+    }
+  });
+
+  // Receita por canal de chegada (Instagram, Google...): soma TODOS os pagamentos
+  // já feitos por quem chegou por cada canal, com os mesmos filtros da aba
+  // Usuários (data de cadastro, cidade, UF). O extrato do Hub fica 5 min em
+  // cache: a aba recarrega a cada filtro e o Hub demora alguns segundos.
+  let extratoHubCache: { em: number; itens: HubLedgerItem[] } | null = null;
+  app.get('/api/admin/finance/receita-por-canal', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    if (!shouldUseHubBilling(env)) { res.json({ canais: [], indisponivel: true }); return; }
+    try {
+      if (!extratoHubCache || Date.now() - extratoHubCache.em > 5 * 60_000) {
+        const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+        const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), timeout]);
+        extratoHubCache = { em: Date.now(), itens: ledger.itens };
+      }
+      const conds: string[] = ['(is_admin = 0 OR is_admin IS NULL)'];
+      const params: unknown[] = [];
+      const cidade = String(req.query.city || '').trim();
+      const uf = String(req.query.state || '').trim();
+      const de = String(req.query.createdFrom || '').trim();
+      const ate = String(req.query.createdTo || '').trim();
+      if (cidade) { conds.push("LOWER(COALESCE(city, '')) LIKE ?"); params.push(`%${cidade.toLowerCase()}%`); }
+      if (uf) { conds.push("LOWER(COALESCE(state, '')) = ?"); params.push(uf.toLowerCase()); }
+      if (de) { conds.push('created_at >= ?'); params.push(de); }
+      if (ate) { conds.push('created_at <= ?'); params.push(`${ate}T23:59:59.999Z`); }
+      const usuarios = (await queryAll(
+        db,
+        `SELECT id, COALESCE(origem_canal, '') AS canal, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub
+           FROM users WHERE ${conds.join(' AND ')}`,
+        params
+      )) as any[];
+      const porHub = new Map<string, any>();
+      const porEmail = new Map<string, any>();
+      for (const u of usuarios) {
+        if (u.hub) porHub.set(String(u.hub), u);
+        if (u.email) porEmail.set(String(u.email), u);
+      }
+      const somas = new Map<string, { receitaCents: number; pagantes: Set<string> }>();
+      for (const p of extratoHubCache.itens) {
+        const u = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(p.email)) || null;
+        if (!u) continue;
+        const canal = String(u.canal || '');
+        const s = somas.get(canal) ?? { receitaCents: 0, pagantes: new Set<string>() };
+        s.receitaCents += p.valorCents;
+        s.pagantes.add(String(u.id));
+        somas.set(canal, s);
+      }
+      res.json({
+        canais: [...somas.entries()].map(([canal, s]) => ({ canal, receitaCents: s.receitaCents, pagantes: s.pagantes.size })),
+        atualizadoEm: new Date(extratoHubCache.em).toISOString(),
+      });
+    } catch (error) {
+      console.error('[admin/finance/receita-por-canal]', (error as Error).message);
+      res.json({ canais: [], indisponivel: true });
     }
   });
 

@@ -446,7 +446,19 @@ export default function Admin() {
   // Canal do primeiro contato (Instagram, Google...) + contagem de cada um.
   const [filterCanal, setFilterCanal] = useState('');
   const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number }>>([]);
+  const [receitaCanais, setReceitaCanais] = useState<Map<string, { receitaCents: number; pagantes: number }>>(new Map());
   const [filterCreatedTo, setFilterCreatedTo] = useState('');
+  // Receita por canal (pagamentos do Hub) com os mesmos filtros de data/cidade/UF.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      adminService.receitaPorCanal({
+        city: filterCity || undefined, state: filterState || undefined,
+        createdFrom: filterCreatedFrom || undefined, createdTo: filterCreatedTo || undefined,
+      }).then((r) => setReceitaCanais(new Map(r.canais.map((c) => [c.canal, { receitaCents: c.receitaCents, pagantes: c.pagantes }]))))
+        .catch(() => setReceitaCanais(new Map()));
+    }, 500);
+    return () => clearTimeout(t);
+  }, [filterCity, filterState, filterCreatedFrom, filterCreatedTo]);
   const usersFilterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usersFilterMountedRef = useRef(false);
   const usersSentinelRef = useRef<HTMLDivElement | null>(null);
@@ -1783,20 +1795,28 @@ export default function Admin() {
 
             {contagemCanais.length > 0 && (
               <div className="mb-3">
-                <p className="mb-1.5 text-xs text-muted-foreground">Canal de chegada (primeiro contato com o site, gravado desde 14/10/2026)</p>
+                <p className="mb-1.5 text-xs text-muted-foreground">Canal de chegada (primeiro contato com o site, gravado desde 14/10/2026). Em verde: tudo o que quem chegou por esse canal já pagou (Hub de pagamentos) e quantos pagaram.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {(() => {
                     const icone = (canal: string) =>
                       ({ Instagram: '📸', Google: '🔍', Facebook: '📘', WhatsApp: '💬', TikTok: '🎵', 'E-mail': '✉️', Direto: '🔗' } as Record<string, string>)[canal.split(' ')[0]] ?? (canal ? '🌐' : '❔');
-                    const chip = (chave: string, valor: string, rotulo: string, total: number) => (
+                    const reais = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    const chip = (chave: string, valor: string, rotulo: string, total: number, receita?: { receitaCents: number; pagantes: number }) => (
                       <button key={chave} type="button" onClick={() => setFilterCanal(valor)}
-                        className={`rounded-full border px-3 py-1 text-xs transition-colors ${filterCanal === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50'}`}>
-                        {rotulo} <strong>{total.toLocaleString('pt-BR')}</strong>
+                        title={receita ? `${receita.pagantes} pagante(s) · ${reais(receita.receitaCents)} em pagamentos` : 'Nenhum pagamento'}
+                        className={`flex flex-col items-start rounded-xl border px-3 py-1 text-left text-xs leading-tight transition-colors ${filterCanal === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50'}`}>
+                        <span>{rotulo} <strong>{total.toLocaleString('pt-BR')}</strong></span>
+                        <span className={filterCanal === valor ? 'opacity-90' : 'text-emerald-600 dark:text-emerald-400'}>
+                          {receita ? `${reais(receita.receitaCents)} · ${receita.pagantes} pag.` : 'R$ 0,00'}
+                        </span>
                       </button>
                     );
+                    const totalReceita = [...receitaCanais.values()].reduce(
+                      (acc, r) => ({ receitaCents: acc.receitaCents + r.receitaCents, pagantes: acc.pagantes + r.pagantes }),
+                      { receitaCents: 0, pagantes: 0 });
                     return [
-                      chip('__todos__', '', 'Todos', contagemCanais.reduce((soma, c) => soma + c.total, 0)),
-                      ...contagemCanais.map((c) => chip(c.canal || '__sem__', c.canal || '__sem__', `${icone(c.canal)} ${c.canal || 'Sem registro'}`, c.total)),
+                      chip('__todos__', '', 'Todos', contagemCanais.reduce((soma, c) => soma + c.total, 0), totalReceita),
+                      ...contagemCanais.map((c) => chip(c.canal || '__sem__', c.canal || '__sem__', `${icone(c.canal)} ${c.canal || 'Sem registro'}`, c.total, receitaCanais.get(c.canal))),
                     ];
                   })()}
                 </div>
