@@ -10813,6 +10813,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         nome: String(r.name || ''),
         email: r.email ? String(r.email) : null,
         genero: r.gender ? String(r.gender) : null,
+        // Já foi "Homem" (trocou de tipo depois): conferir com cuidado antes de
+        // dar acesso grátis para sempre.
+        eraHomem: !!(await queryOne(db, "SELECT 1 AS x FROM gender_change_requests WHERE user_id = ? AND current_gender = 'Homem' AND status = 'approved' LIMIT 1", [String(r.user_id)])),
         contaDesde: r.conta_desde ? String(r.conta_desde) : null,
         codigo: String(r.codigo),
         enviadoEm: r.enviado_em ? String(r.enviado_em) : null,
@@ -18221,7 +18224,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const rows = (await queryAll(
       db,
       `SELECT r.id, r.user_id, r.current_gender, r.requested_gender, r.reason, r.created_at,
-              u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.is_premium AS user_premium, u.created_at AS user_created_at
+              u.name AS user_name, u.email AS user_email, u.avatar AS user_avatar, u.is_premium AS user_premium, u.created_at AS user_created_at,
+              (SELECT COUNT(*) FROM gender_change_requests r2 WHERE r2.user_id = r.user_id AND r2.id <> r.id) AS pedidos_anteriores
          FROM gender_change_requests r
          JOIN users u ON u.id = r.user_id
         WHERE r.status = 'pending'
@@ -18240,6 +18244,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         requestedGender: String(r.requested_gender),
         reason: String(r.reason || ''),
         createdAt: String(r.created_at),
+        pedidosAnteriores: Number(r.pedidos_anteriores || 0),
+        // Homem querendo virar casal/mulher: é o caso de quem tenta usar de graça.
+        suspeito: String(r.current_gender || '') === 'Homem' && String(r.requested_gender) !== 'Homem',
       })),
     });
   });
@@ -18256,9 +18263,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       await run(db, 'UPDATE users SET gender = ? WHERE id = ?', [novo, String(pedido.user_id)]);
       const antes = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
       const verificada = (await queryOne(db, 'SELECT is_verified FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
-      if (ehMulher(novo)) {
-        const fim = Number(verificada?.is_verified || 0) === 1 ? ACESSO_SEM_PRAZO_ATE : addDaysIso(agora, 30);
-        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [fim, String(pedido.user_id)]);
+      // Trocar de tipo NUNCA dá período grátis novo (antes, virar "Mulher" dava
+      // 30 dias na hora: homem pedia a troca para usar de graça). Mulher só
+      // ganha acesso livre pela verificação com selfie; até lá fica com o
+      // prazo que já tinha.
+      if (ehMulher(novo) && Number(verificada?.is_verified || 0) === 1) {
+        await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, String(pedido.user_id)]);
       } else if (String(antes?.trial_ends_at || '') === ACESSO_SEM_PRAZO_ATE) {
         await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [agora, String(pedido.user_id)]);
       }

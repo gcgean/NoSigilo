@@ -78,6 +78,11 @@ export default function AdminVerificacoes() {
               </div>
               <p className="rounded-lg bg-primary/10 px-2 py-1 font-mono text-sm font-bold text-primary">Código: {p.codigo}</p>
             </div>
+            {p.eraHomem && (
+              <p className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                ⚠️ Esta conta era de <strong>Homem</strong> e trocou de tipo depois. Aprovar dá acesso grátis para sempre se for mulher: confira bem se a selfie é de quem diz ser.
+              </p>
+            )}
             <div className="flex flex-wrap gap-3">
               <div>
                 <p className="mb-1 text-[11px] font-semibold text-muted-foreground">Selfie com o código</p>

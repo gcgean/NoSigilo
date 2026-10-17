@@ -1334,6 +1334,7 @@ export type PedidoVerificacao = {
   nome: string;
   email: string | null;
   genero: string | null;
+  eraHomem?: boolean;
   contaDesde: string | null;
   codigo: string;
   enviadoEm: string | null;
@@ -1365,6 +1366,8 @@ export type PedidoTrocaGenero = {
   requestedGender: string;
   reason: string;
   createdAt: string;
+  pedidosAnteriores?: number;
+  suspeito?: boolean;
 };
 
 export const trocaGeneroService = {

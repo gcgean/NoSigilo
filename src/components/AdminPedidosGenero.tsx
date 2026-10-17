@@ -43,7 +43,7 @@ export default function AdminPedidosGenero() {
     <div className="glass mb-4 rounded-xl p-6">
       <h3 className="mb-1 font-semibold">Pedidos de troca de tipo de perfil ({pedidos.length})</h3>
       <p className="mb-4 text-xs text-muted-foreground">
-        O tipo de perfil muda o preço/teste grátis e quem vê a pessoa. Leia a justificativa antes de aprovar.
+        O tipo de perfil muda quem vê a pessoa. Aprovar não dá dias grátis novos; mulher só ganha acesso livre verificando com selfie.
       </p>
       <div className="space-y-2">
         {pedidos.map((p) => (
@@ -70,6 +70,12 @@ export default function AdminPedidosGenero() {
                   {p.email || 'sem e-mail'} · {p.premium ? 'assinante' : 'sem assinatura'} · conta de {dataHora(p.userCreatedAt)} · pediu em {dataHora(p.createdAt)}
                 </p>
                 <p className="mt-2 rounded-lg bg-secondary/40 p-2 text-sm">“{p.reason}”</p>
+                {p.suspeito && (
+                  <p className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+                    ⚠️ Homem pedindo para virar {p.requestedGender}. Homem paga desde o cadastro; confira se não é para usar de graça (fotos do perfil, conversas, se já pediu antes). Aprovar NÃO dá dias grátis: {String(p.requestedGender).startsWith('Mulher') ? 'como mulher, só ganha acesso livre se passar pela verificação com selfie.' : 'o prazo continua o mesmo de antes.'}
+                    {p.pedidosAnteriores ? ` Já fez ${p.pedidosAnteriores} pedido(s) antes.` : ''}
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 gap-2">
                 <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={ocupado === p.id} onClick={() => void decidir(p, 'approve')}>
