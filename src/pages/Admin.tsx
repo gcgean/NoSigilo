@@ -5128,6 +5128,8 @@ function calcDueDate(period: string | null): string {
 function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'suporte' }) {
   const { toast } = useToast();
   const [promoters, setPromoters] = useState<PromoterRow[]>([]);
+  // Fila de pagamento: por padrão mostra só quem já pode receber (saldo >= mínimo).
+  const [soLiberados, setSoLiberados] = useState(true);
   const [commissions, setCommissions] = useState<CommissionRow[]>([]);
   const [commFilter, setCommFilter] = useState<string>('pending');
   const [isLoading, setIsLoading] = useState(true);
@@ -5819,8 +5821,28 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
           </p>
         </div>
         {promoters.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">Nenhum promotor ainda.</p>}
+        {(() => {
+          const liberados = promoters.filter((p) => p.approvedCents >= minPayoutCents);
+          const total = liberados.reduce((soma, p) => soma + p.approvedCents, 0);
+          return promoters.length > 0 ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm">
+                <strong>{liberados.length}</strong> promotor(es) para pagar agora · total <strong>{formatBRLAdmin(total)}</strong>
+                <span className="block text-xs text-muted-foreground">Faça o Pix para a chave de cada um e depois toque em "Pagar" para registrar e enviar o recibo.</span>
+              </p>
+              <button type="button" onClick={() => setSoLiberados((v) => !v)}
+                className="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-secondary">
+                {soLiberados ? `Ver todos os ${promoters.length} promotores` : 'Mostrar só quem está liberado'}
+              </button>
+            </div>
+          ) : null;
+        })()}
         <div className="space-y-3">
-          {promoters.map((p) => {
+          {[...promoters]
+            .filter((p) => !soLiberados || p.approvedCents >= minPayoutCents)
+            // Quem já pode receber primeiro (maior saldo antes); depois o resto.
+            .sort((a, b) => Number(b.approvedCents >= minPayoutCents) - Number(a.approvedCents >= minPayoutCents) || b.approvedCents - a.approvedCents)
+            .map((p) => {
             const eligible = p.approvedCents >= minPayoutCents;
             const missingCents = Math.max(0, minPayoutCents - p.approvedCents);
             return (
@@ -5833,7 +5855,19 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">{p.userEmail}</p>
-                <p className="text-xs text-muted-foreground">Pix: <strong>{p.pixKey}</strong></p>
+                <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                  Pix: <strong className="break-all text-foreground">{p.pixKey}</strong>
+                  {p.pixKey && (
+                    <button type="button" onClick={() => {
+                      void navigator.clipboard.writeText(String(p.pixKey)).then(
+                        () => toast({ title: 'Chave Pix copiada', description: `${p.fullName}: ${formatBRLAdmin(p.approvedCents)}` }),
+                        () => toast({ title: 'Não foi possível copiar', variant: 'destructive' }),
+                      );
+                    }} className="rounded border px-1.5 py-0.5 text-[10px] font-medium hover:bg-secondary">
+                      Copiar
+                    </button>
+                  )}
+                </p>
                 {p.whatsapp && <p className="text-xs text-muted-foreground">WhatsApp: <strong>{p.whatsapp}</strong></p>}
                 <p className="text-xs text-muted-foreground">
                   📧 {p.contactEmail ?? p.userEmail}
