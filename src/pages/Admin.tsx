@@ -445,7 +445,7 @@ export default function Admin() {
   const [filterOrigem, setFilterOrigem] = useState('');
   // Canal do primeiro contato (Instagram, Google...) + contagem de cada um.
   const [filterCanal, setFilterCanal] = useState('');
-  const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number }>>([]);
+  const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number; homens?: number; mulheres?: number; casais?: number; outros?: number }>>([]);
   const [receitaCanais, setReceitaCanais] = useState<Map<string, { receitaCents: number; pagantes: number }>>(new Map());
   const [filterCreatedTo, setFilterCreatedTo] = useState('');
   // Receita por canal (pagamentos do Hub) com os mesmos filtros de data/cidade/UF.
@@ -1801,7 +1801,8 @@ export default function Admin() {
                     const icone = (canal: string) =>
                       ({ Instagram: '📸', Google: '🔍', Facebook: '📘', WhatsApp: '💬', TikTok: '🎵', 'E-mail': '✉️', Direto: '🔗' } as Record<string, string>)[canal.split(' ')[0]] ?? (canal ? '🌐' : '❔');
                     const reais = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                    const chip = (chave: string, valor: string, rotulo: string, total: number, receita?: { receitaCents: number; pagantes: number }) => (
+                    type Tipos = { homens?: number; mulheres?: number; casais?: number; outros?: number };
+                    const chip = (chave: string, valor: string, rotulo: string, total: number, receita?: { receitaCents: number; pagantes: number }, tipos?: Tipos) => (
                       <button key={chave} type="button" onClick={() => setFilterCanal(valor)}
                         title={receita ? `${receita.pagantes} pagante(s) · ${reais(receita.receitaCents)} em pagamentos` : 'Nenhum pagamento'}
                         className={`flex flex-col items-start rounded-xl border px-3 py-1 text-left text-xs leading-tight transition-colors ${filterCanal === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50'}`}>
@@ -1809,14 +1810,23 @@ export default function Admin() {
                         <span className={filterCanal === valor ? 'opacity-90' : 'text-emerald-600 dark:text-emerald-400'}>
                           {receita ? `${reais(receita.receitaCents)} · ${receita.pagantes} pag.` : 'R$ 0,00'}
                         </span>
+                        {tipos && (
+                          <span className={filterCanal === valor ? 'opacity-90' : 'text-muted-foreground'}>
+                            👨 {tipos.homens ?? 0} · 👩 {tipos.mulheres ?? 0} · 👫 {tipos.casais ?? 0}{tipos.outros ? ` · ⚧ ${tipos.outros}` : ''}
+                          </span>
+                        )}
                       </button>
                     );
+                    const somaTipos = contagemCanais.reduce<Tipos>((acc, c) => ({
+                      homens: (acc.homens ?? 0) + (c.homens ?? 0), mulheres: (acc.mulheres ?? 0) + (c.mulheres ?? 0),
+                      casais: (acc.casais ?? 0) + (c.casais ?? 0), outros: (acc.outros ?? 0) + (c.outros ?? 0),
+                    }), {});
                     const totalReceita = [...receitaCanais.values()].reduce(
                       (acc, r) => ({ receitaCents: acc.receitaCents + r.receitaCents, pagantes: acc.pagantes + r.pagantes }),
                       { receitaCents: 0, pagantes: 0 });
                     return [
-                      chip('__todos__', '', 'Todos', contagemCanais.reduce((soma, c) => soma + c.total, 0), totalReceita),
-                      ...contagemCanais.map((c) => chip(c.canal || '__sem__', c.canal || '__sem__', `${icone(c.canal)} ${c.canal || 'Sem registro'}`, c.total, receitaCanais.get(c.canal))),
+                      chip('__todos__', '', 'Todos', contagemCanais.reduce((soma, c) => soma + c.total, 0), totalReceita, somaTipos),
+                      ...contagemCanais.map((c) => chip(c.canal || '__sem__', c.canal || '__sem__', `${icone(c.canal)} ${c.canal || 'Sem registro'}`, c.total, receitaCanais.get(c.canal), c)),
                     ];
                   })()}
                 </div>

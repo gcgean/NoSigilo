@@ -17976,9 +17976,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const whereSemCanal = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
       const contagemCanais = ((await queryAll(
         db,
-        `SELECT COALESCE(origem_canal, '') AS canal, COUNT(*) AS n FROM users ${whereSemCanal} GROUP BY 1 ORDER BY 2 DESC`,
+        `SELECT COALESCE(origem_canal, '') AS canal, COUNT(*) AS n,
+                SUM(CASE WHEN gender = 'Homem' THEN 1 ELSE 0 END) AS homens,
+                SUM(CASE WHEN gender = 'Mulher' THEN 1 ELSE 0 END) AS mulheres,
+                SUM(CASE WHEN gender LIKE 'Casal%' THEN 1 ELSE 0 END) AS casais
+           FROM users ${whereSemCanal} GROUP BY 1 ORDER BY 2 DESC`,
         [...whereParams]
-      )) as any[]).map((r) => ({ canal: String(r.canal || ''), total: Number(r.n || 0) }));
+      )) as any[]).map((r) => {
+        const total = Number(r.n || 0), homens = Number(r.homens || 0), mulheres = Number(r.mulheres || 0), casais = Number(r.casais || 0);
+        // "Outros" = trans, CD, travesti e quem ficou sem tipo.
+        return { canal: String(r.canal || ''), total, homens, mulheres, casais, outros: Math.max(0, total - homens - mulheres - casais) };
+      });
       const canalFilter = String(req.query.canal || '').trim();
       if (canalFilter === '__sem__') {
         conditions.push("COALESCE(origem_canal, '') = ''");
