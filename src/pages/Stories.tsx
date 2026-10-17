@@ -247,6 +247,26 @@ function pisoDoChromeIOS(): number {
   return temIndicadorDeHome ? 34 : 0;
 }
 
+/**
+ * Recuo de baixo dos overlays de tela cheia.
+ *
+ * No Safari do iPhone (navegador, não o app instalado) a barra do Safari já
+ * fica embaixo e o risquinho de home fica atrás dela; somar a área segura ali
+ * deixava uma faixa preta vazia entre a caixa de resposta e a barra (relato de
+ * 17/10/2026). No app instalado e nos outros navegadores segue a área segura.
+ */
+function recuoInferior(bottomInset: number): number | string {
+  if (bottomInset > 0) return bottomInset;
+  if (typeof navigator !== 'undefined' && typeof window !== 'undefined') {
+    const ua = navigator.userAgent;
+    const safariIPhone = /iPhone|iPad/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+    const instalado = (navigator as Navigator & { standalone?: boolean }).standalone === true
+      || window.matchMedia?.('(display-mode: standalone)').matches;
+    if (safariIPhone && !instalado) return 4;
+  }
+  return 'env(safe-area-inset-bottom, 0px)';
+}
+
 function useBottomChromeInset() {
   const [inset, setInset] = useState(0);
   useEffect(() => {
@@ -839,7 +859,7 @@ function StoryViewer({
       className="fixed inset-0 z-[9995] flex flex-col bg-black"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: recuoInferior(bottomInset),
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -1231,7 +1251,7 @@ function StatsModal({
       className="fixed inset-0 z-[9996] flex items-end justify-center bg-black/70"
       style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: recuoInferior(bottomInset),
       }}
       onClick={onClose}
     >
@@ -2169,7 +2189,7 @@ export default function Stories() {
             className="fixed inset-0 z-[9995] flex flex-col bg-black"
             style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: recuoInferior(bottomInset),
       }}
           >
             {/* Barras de progresso */}
@@ -2275,7 +2295,7 @@ export default function Stories() {
           className="fixed inset-0 z-[9997] flex flex-col bg-black/95"
           style={{
         paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: bottomInset > 0 ? bottomInset : 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: recuoInferior(bottomInset),
       }}
         >
           {/* topo */}
