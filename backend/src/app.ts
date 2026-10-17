@@ -7231,7 +7231,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             const totalScore = recencyScore + distanceScore + affinityScore + localPopularityScore + postEngagementScore + mediaScore + interestScore + newContentBonus + jitter;
 
             let reason: 'nearby' | 'affinity' | 'popular_local' | 'recent' = 'recent';
-            let label = isNewSinceLastVisit ? '🆕 Novo para você' : 'Recente';
+            // "Recente" só para post de até 2 dias: o selo aparecia até em post de 133 dias.
+            let label = isNewSinceLastVisit ? '🆕 Novo para você' : recencyHours <= 48 ? 'Recente' : '';
             if (distanceScore >= 18 || (distanceKm !== null && distanceKm <= 20)) {
               reason = 'nearby';
               label = distanceKm !== null && distanceKm <= 20 ? `${distanceKm} km de você` : 'Perto de você';

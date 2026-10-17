@@ -14,7 +14,6 @@ import { Dialog, DialogClose, DialogContent, DialogTrigger } from '@/components/
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
-import DailyMissions from '@/components/DailyMissions';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
 import TopDayBar from '@/components/TopDayBar';
@@ -2183,6 +2182,13 @@ export default function Feed() {
         </Card>
       ) : (
       <Card className="mb-4 glass border-2 border-primary/40 p-3 shadow-[0_0_18px_rgba(236,72,153,0.18)] sm:mb-6 sm:p-4">
+        {/* Incentivo a postar: quem posta aparece primeiro para quem está perto
+            (mulher e casal ainda ganham tokens por foto, story e post). */}
+        <p className="mb-2 text-xs font-medium text-brand-pink">
+          {/^(mulher|casal)/i.test(String(user?.gender || ''))
+            ? '🔥 Poste uma foto ou vídeo: você aparece para quem está perto e ganha até +10 tokens'
+            : '🔥 Poste uma foto ou vídeo: quem posta aparece para quem está perto de você'}
+        </p>
         <div className="flex min-w-0 gap-3 sm:gap-4">
           <div className="relative shrink-0">
             <Avatar className="h-10 w-10">
@@ -2588,8 +2594,7 @@ export default function Feed() {
                 </div>
               </div>
             ) : null}
-            {/* Missões do dia numa linha dentro deste cartão (era um cartão à parte). */}
-            <DailyMissions embutido />
+            {/* Missões do dia saíram do feed (17/10/2026): poluíam o topo no celular. */}
           </Card>
           {/* Social Pulse — variable reward curiosity gap card (mobile only; moves to sidebar on desktop) */}
           {feedFilter === 'all' && nearbyRadius === null && !cityOnly ? (
@@ -2598,32 +2603,7 @@ export default function Feed() {
             </div>
           ) : null}
 
-          {/* Proximity active banner */}
-          {feedFilter !== 'experiences' && (nearbyRadius !== null || cityOnly) ? (
-            <Card className="overflow-hidden border-emerald-400/25 bg-gradient-to-r from-emerald-50/70 via-background to-teal-50/50 p-4 glass dark:from-emerald-950/30 dark:to-teal-950/20">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-lg">📍</span>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {cityOnly ? 'Pessoas da sua região' : `Pessoas a até ${nearbyRadius} km de você`}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {cityOnly
-                        ? 'Primeiro sua cidade, depois outras cidades do estado e regiões próximas.'
-                        : 'Toque em qualquer perfil para iniciar uma conversa e marcar um encontro.'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { setNearbyRadius(null); setCityOnly(false); void triggerNearbyReload(null, false); }}
-                  className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors underline"
-                >
-                  Ver todos
-                </button>
-              </div>
-            </Card>
-          ) : null}
+          {/* Faixa "Pessoas da sua região" saiu: os chips (Minha região, 10 km...) já mostram o filtro. */}
           {feedFilter === 'all' && nearbyRadius === null && !cityOnly && feedInsightsSummary ? (
             <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass md:hidden">
               <div className="flex items-start justify-between gap-3">
@@ -3111,7 +3091,6 @@ export default function Feed() {
                     {getIdentityLine(item.post.author) ? (
                       <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.post.author)}</div>
                     ) : null}
-                    <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(item.post.createdAt)}</span>
                   </div>
                 </Link>
                 <div className="flex shrink-0 items-center gap-1">
