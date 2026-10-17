@@ -17970,6 +17970,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         conditions.push('signup_source = ?');
         whereParams.push(origemFilter);
       }
+      // Contagem por canal (Instagram, Google...) com os MESMOS filtros acima,
+      // antes de aplicar o filtro de canal: os botões mostram quantos há em cada.
+      const whereSemCanal = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+      const contagemCanais = ((await queryAll(
+        db,
+        `SELECT COALESCE(origem_canal, '') AS canal, COUNT(*) AS n FROM users ${whereSemCanal} GROUP BY 1 ORDER BY 2 DESC`,
+        [...whereParams]
+      )) as any[]).map((r) => ({ canal: String(r.canal || ''), total: Number(r.n || 0) }));
+      const canalFilter = String(req.query.canal || '').trim();
+      if (canalFilter === '__sem__') {
+        conditions.push("COALESCE(origem_canal, '') = ''");
+      } else if (canalFilter) {
+        conditions.push('origem_canal = ?');
+        whereParams.push(canalFilter);
+      }
       const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       const [totalRow, rows] = await Promise.all([
@@ -18027,6 +18042,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // null = veio pelo caminho principal do site. Nao e dado faltando:
         // e a origem mais comum, e o que as paginas regionais disputam.
         signupSource: row.signup_source ? String(row.signup_source) : null,
+        // Canal do primeiro contato (Instagram, Google...), gravado desde 14/10/2026.
+        origemCanal: row.origem_canal ? String(row.origem_canal) : null,
         deletedAt: row.deleted_at ?? null,
         exclusao: row.deleted_at
           ? {
@@ -18046,6 +18063,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         limit,
         hasMore: offset + mappedUsers.length < total,
         onlineNow: presence?.countOnline ? Number(presence.countOnline()) : 0,
+        contagemCanais,
       });
     } catch (err) {
       console.error('[admin/users]', err);

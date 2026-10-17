@@ -1802,7 +1802,7 @@ export const adminService = {
     return response.data;
   },
 
-  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string; origem?: string }) => {
+  getUsers: async (params?: { page?: number; limit?: number; search?: string; city?: string; state?: string; createdFrom?: string; createdTo?: string; origem?: string; canal?: string }) => {
     const response = await apiClient.get('/admin/users', { params });
     return response.data;
   },

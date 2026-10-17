@@ -80,6 +80,7 @@ type AdminUser = {
   /** Pagina de SEO de onde o cadastro partiu (/swing/ceara/fortaleza/).
    *  null = veio pelo caminho principal do site. */
   signupSource?: string | null;
+  origemCanal?: string | null;
   reports: number;
 };
 
@@ -442,6 +443,9 @@ export default function Admin() {
   const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
   // '' = todas, 'regional' = veio de alguma pagina de SEO, 'direto' = home/link/convite
   const [filterOrigem, setFilterOrigem] = useState('');
+  // Canal do primeiro contato (Instagram, Google...) + contagem de cada um.
+  const [filterCanal, setFilterCanal] = useState('');
+  const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number }>>([]);
   const [filterCreatedTo, setFilterCreatedTo] = useState('');
   const usersFilterDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const usersFilterMountedRef = useRef(false);
@@ -541,6 +545,7 @@ export default function Admin() {
           // desde sempre, o da pagina de SEO desde que foi criado.
           fromPromoter: !!item.fromPromoter,
           signupSource: item.signupSource ? String(item.signupSource) : null,
+          origemCanal: (item as any).origemCanal ? String((item as any).origemCanal) : null,
           reports: 0,
         } satisfies AdminUser;
       });
@@ -862,8 +867,12 @@ export default function Admin() {
       state: filterState || undefined,
       createdFrom: filterCreatedFrom || undefined,
       origem: filterOrigem || undefined,
+      canal: filterCanal || undefined,
       createdTo: filterCreatedTo || undefined,
     });
+    if (isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).contagemCanais)) {
+      setContagemCanais((rawUsersResult as any).contagemCanais);
+    }
     const usersArray = Array.isArray(rawUsersResult)
       ? rawUsersResult
       : isRecord(rawUsersResult) && Array.isArray((rawUsersResult as any).users)
@@ -894,6 +903,7 @@ export default function Admin() {
         exclusao: (item as any).exclusao ?? null,
         fromPromoter: !!item.fromPromoter,
         signupSource: item.signupSource ? String(item.signupSource) : null,
+        origemCanal: (item as any).origemCanal ? String((item as any).origemCanal) : null,
         reports: reportCountMap.get(String(item.id || '')) || 0,
       } satisfies AdminUser;
     });
@@ -961,7 +971,7 @@ export default function Admin() {
     }, 400);
     return () => { if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem]);
+  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem, filterCanal]);
 
   // Rolagem infinita: observa o sentinel no fim da lista e carrega a próxima
   // página quando ele entra na viewport.
@@ -1767,6 +1777,28 @@ export default function Admin() {
               </div>
             </div>
 
+            {contagemCanais.length > 0 && (
+              <div className="mb-3">
+                <p className="mb-1.5 text-xs text-muted-foreground">Canal de chegada (primeiro contato com o site, gravado desde 14/10/2026)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(() => {
+                    const icone = (canal: string) =>
+                      ({ Instagram: '📸', Google: '🔍', Facebook: '📘', WhatsApp: '💬', TikTok: '🎵', 'E-mail': '✉️', Direto: '🔗' } as Record<string, string>)[canal.split(' ')[0]] ?? (canal ? '🌐' : '❔');
+                    const chip = (chave: string, valor: string, rotulo: string, total: number) => (
+                      <button key={chave} type="button" onClick={() => setFilterCanal(valor)}
+                        className={`rounded-full border px-3 py-1 text-xs transition-colors ${filterCanal === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50'}`}>
+                        {rotulo} <strong>{total.toLocaleString('pt-BR')}</strong>
+                      </button>
+                    );
+                    return [
+                      chip('__todos__', '', 'Todos', contagemCanais.reduce((soma, c) => soma + c.total, 0)),
+                      ...contagemCanais.map((c) => chip(c.canal || '__sem__', c.canal || '__sem__', `${icone(c.canal)} ${c.canal || 'Sem registro'}`, c.total)),
+                    ];
+                  })()}
+                </div>
+              </div>
+            )}
+
             <div className="mb-3 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
                 {isLoadingMoreUsers && users.length === 0
@@ -1776,7 +1808,7 @@ export default function Admin() {
                       {showOnlyShowcase ? <> · {filteredUsers.length} na vitrine</> : null}
                     </>}
               </p>
-              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem) && (
+              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem || filterCanal) && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline"
@@ -1787,6 +1819,7 @@ export default function Admin() {
                     setFilterCreatedFrom('');
                     setFilterCreatedTo('');
                     setFilterOrigem('');
+                    setFilterCanal('');
                   }}
                 >
                   Limpar filtros
@@ -1828,9 +1861,16 @@ export default function Admin() {
                           >
                             🔎 {nomeDaPagina(entry.signupSource)}
                           </Badge>
-                        ) : (
+                        ) : null}
+                        {/* Canal do primeiro contato (Instagram, Google, Direto...). Antes
+                            de 14/10/2026 não era gravado: aí vale o selo antigo. */}
+                        {entry.origemCanal && !(entry.signupSource && entry.origemCanal.startsWith('Páginas')) ? (
+                          <Badge variant="outline" className="text-xs" title="De onde a pessoa chegou ao site pela primeira vez">
+                            {({ Instagram: '📸', Google: '🔍', Facebook: '📘', WhatsApp: '💬', TikTok: '🎵', 'E-mail': '✉️', Direto: '🔗' } as Record<string, string>)[entry.origemCanal.split(' ')[0]] ?? '🌐'} {entry.origemCanal}
+                          </Badge>
+                        ) : !entry.fromPromoter && !entry.signupSource ? (
                           <Badge variant="outline" className="text-xs text-muted-foreground">Cadastro direto</Badge>
-                        )}
+                        ) : null}
                         {entry.isPremium && <Badge className="bg-gold text-black text-xs">Premium</Badge>}
                         {entry.isAdmin && <Badge variant="secondary" className="text-xs">Admin</Badge>}
                         {entry.status === 'banned' && <Badge variant="destructive" className="text-xs">Banido</Badge>}
