@@ -2044,8 +2044,8 @@ Responda com UMA palavra:
         lista.push(m);
         if ((idx + 1) % 2 === 0) lista.push(vinhetas[k++ % vinhetas.length]);
       });
-      // Poucas músicas: garante que todas as vinhetas apareçam na volta.
-      while (k < vinhetas.length) lista.push(vinhetas[k++]);
+      // Sem música não tem rádio: a Lola não fica falando sem parar.
+      if (musicas.length === 0) lista = [];
     }
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
@@ -2129,6 +2129,19 @@ Responda com UMA palavra:
       [lista[i], lista[j]] = [lista[j], lista[i]];
       await salvarPlaylist(lista);
     }
+    res.json({ ok: true });
+  });
+
+  // Trocar o tipo de um áudio (música, vinheta, abertura, fechamento).
+  app.post('/api/casa/admin/playlist/:id/tipo', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const tipo = (['musica', 'vinheta', 'abertura', 'fechamento'] as const).find((x) => x === (req.body as any)?.tipo);
+    if (!tipo) { res.status(400).json({ error: 'tipo' }); return; }
+    const lista = await lerPlaylist();
+    const f = lista.find((x) => x.id === req.params.id);
+    if (!f) { res.status(404).json({ error: 'not_found' }); return; }
+    f.tipo = tipo;
+    await salvarPlaylist(lista);
     res.json({ ok: true });
   });
 

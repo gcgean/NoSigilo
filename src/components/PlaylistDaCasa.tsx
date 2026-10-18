@@ -52,6 +52,10 @@ export default function PlaylistDaCasa() {
     await apiClient.post(`/casa/admin/playlist/${id}/mover`, { direcao }).catch(() => {});
     await carregar();
   };
+  const trocarTipo = async (f: Faixa, tipo: string) => {
+    await apiClient.post(`/casa/admin/playlist/${f.id}/tipo`, { tipo }).catch(() => {});
+    await carregar();
+  };
   const excluir = async (f: Faixa) => {
     if (!window.confirm(`Tirar "${f.titulo}" da playlist?`)) return;
     await apiClient.delete(`/casa/admin/playlist/${f.id}`).catch(() => {});
@@ -99,7 +103,15 @@ export default function PlaylistDaCasa() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{f.tipo === 'vinheta' ? '💋 ' : f.tipo === 'abertura' ? '🌙 ' : f.tipo === 'fechamento' ? '🌅 ' : ''}{f.titulo}{f.tipo && f.tipo !== 'musica' && <span className="ml-1 rounded-full bg-fuchsia-500/15 px-1.5 text-[10px] text-fuchsia-500">{f.tipo === 'vinheta' ? 'vinheta' : f.tipo === 'abertura' ? 'abertura 21h' : 'fechamento 1h'}</span>}</p>
               <p className="truncate text-[11px] text-muted-foreground">{f.artista || 'sem artista'} · {mmss(f.duracao)}{f.fonte ? ` · ${f.fonte}` : ''}</p>
-              <audio src={resolveServerUrl(f.url)} controls preload="none" className="mt-1 h-8 w-full" />
+              <div className="mt-1 flex items-center gap-2">
+                <audio src={resolveServerUrl(f.url)} controls preload="none" className="h-8 min-w-0 flex-1" />
+                <select value={f.tipo ?? 'musica'} onChange={(e) => void trocarTipo(f, e.target.value)} className="rounded-md border bg-background px-1 py-1 text-[11px]" aria-label="Tipo do áudio">
+                  <option value="musica">🎵 Música</option>
+                  <option value="vinheta">💋 Vinheta</option>
+                  <option value="abertura">🌙 Abertura 21h</option>
+                  <option value="fechamento">🌅 Fechamento 1h</option>
+                </select>
+              </div>
             </div>
             <div className="flex flex-col">
               <button type="button" disabled={i === 0} onClick={() => void mover(f.id, 'cima')} className="rounded p-1 hover:bg-muted disabled:opacity-30" aria-label="Subir"><ArrowUp className="h-4 w-4" /></button>
