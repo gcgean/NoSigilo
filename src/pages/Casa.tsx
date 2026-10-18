@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
@@ -32,7 +33,7 @@ type Info = {
   souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
-type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean };
+type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number } };
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -44,10 +45,26 @@ type Jogo = {
 type Estado = {
   sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string };
   mensagens: Msg[]; presentes: Pessoa[]; espiando: number; jogo: Jogo | null;
-  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean };
+  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null };
   midiasVistas: string[];
 };
 type Convite = { id: string; de: { id: string; nome: string; avatar: string | null; cat: Categoria }; sala: string };
+
+type Pulseira = 'verde' | 'amarela' | 'roxa' | 'vermelha';
+// Pulseiras da noite, como nas casas de swing de verdade.
+const PULSEIRAS: { cor: Pulseira; emoji: string; titulo: string; descricao: string; classe: string }[] = [
+  { cor: 'verde', emoji: '🟢', titulo: 'Aberto(a) a tudo', descricao: 'Troca, ménage, o que rolar com química', classe: 'bg-emerald-500' },
+  { cor: 'amarela', emoji: '🟡', titulo: 'Só soft', descricao: 'Beijos, carícias e provocação', classe: 'bg-amber-400' },
+  { cor: 'roxa', emoji: '🟣', titulo: 'Single é bem-vindo', descricao: 'Casal ou mulher aberta a um single', classe: 'bg-violet-500' },
+  { cor: 'vermelha', emoji: '🔴', titulo: 'Só olhando hoje', descricao: 'Voyeur: curtir o clima sem participar', classe: 'bg-rose-600' },
+];
+const corDaPulseira = (c?: Pulseira | null) => PULSEIRAS.find((x) => x.cor === c);
+const DRINKS = [
+  { id: 'cerveja', emoji: '🍺', nome: 'Cerveja', tokens: 3 },
+  { id: 'caipirinha', emoji: '🍹', nome: 'Caipirinha', tokens: 5 },
+  { id: 'gin', emoji: '🍸', nome: 'Gin tônica', tokens: 8 },
+  { id: 'champanhe', emoji: '🍾', nome: 'Champanhe', tokens: 15 },
+];
 
 const ROTULO_CAT: Record<Categoria, string> = { casal: 'Casal', mulher: 'Mulher', homem: 'Homem', outros: 'Perfil' };
 const COR_CAT: Record<Categoria, string> = {
@@ -208,6 +225,10 @@ export default function Casa() {
   const { user } = useAuth();
   const cameraRef = useRef<HTMLInputElement>(null);
   const [revelarAte, setRevelarAte] = useState<number>(0);
+  const [escolhendoPulseira, setEscolhendoPulseira] = useState(false);
+  const [pulseiraDispensada, setPulseiraDispensada] = useState(false);
+  const [mostrandoBar, setMostrandoBar] = useState(false);
+  const [cruzados, setCruzados] = useState<{ id: string; nome: string; avatar: string | null; cat: Categoria } | null>(null);
   const modoRevelacao = useRef(false);
   const segundosRevelacao = useSegundosAte(revelarAte > Date.now() ? new Date(revelarAte).toISOString() : undefined);
   const fimDaLista = useRef<HTMLDivElement>(null);
@@ -294,16 +315,38 @@ export default function Casa() {
       setRevelarAte(Date.parse(d.ate));
       toast({ title: '👀 Revelação liberada!', description: `Por 5 minutos, mande uma foto extra: quem quiser abrir paga ${d.preco} tokens para você.` });
     };
+    const aoOlhar = (d: { de: { id: string; nome: string; pulseira?: Pulseira | null } }) => {
+      toast({
+        title: `👀 ${d.de.nome} está de olho em você`,
+        description: d.de.pulseira ? `Pulseira ${corDaPulseira(d.de.pulseira)?.emoji} ${corDaPulseira(d.de.pulseira)?.titulo}` : 'Olha de volta?',
+        action: <ToastAction altText="Olhar de volta" onClick={() => void olharRef.current(d.de)}>Olhar de volta</ToastAction>,
+      });
+    };
+    const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setCruzados(d.com);
+    const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
+      toast({
+        title: `${d.de.nome} te pagou ${d.drink} 😏`,
+        description: `+${d.tokens} tokens pra você.`,
+        action: <ToastAction altText="Brindar de volta" onClick={() => void brindarRef.current(d.de)}>Brindar 🥂</ToastAction>,
+      });
+    };
+    const aoBrinde = (d: { de: { id: string; nome: string } }) => {
+      toast({
+        title: `🥂 ${d.de.nome} brindou com você`,
+        description: 'O clima esquentou… chama pra cabine?',
+        action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
+      });
+    };
     const aoResposta = () => toast({ title: 'Não rolou agora 😉', description: 'A pessoa não aceitou o convite pra cabine.' });
     const aoCabine = (d: { conversationId: string; com: string }) => {
       toast({ title: `🚪 Cabine aberta com ${d.com}!` });
       navigate(`/chat/${d.conversationId}`);
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -313,6 +356,10 @@ export default function Casa() {
   useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`).catch(() => {}); }, []);
 
   useEffect(() => { fimDaLista.current?.scrollIntoView({ block: 'end' }); }, [estado?.mensagens.length]);
+  // Recepção: quem entra escolhe a pulseira da noite (como na casa de verdade).
+  useEffect(() => {
+    if (estado?.eu.podeFalar && !estado.eu.pulseira && !pulseiraDispensada) setEscolhendoPulseira(true);
+  }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
   const enviar = async () => {
     const t = texto.trim();
@@ -374,13 +421,48 @@ export default function Casa() {
     setEstado({ ...estado, eu: { ...estado.eu, querBrincar: quer } });
     try { await apiClient.post(`/casa/${salaAtual}/brincar`, { quer }); } catch { /* volta no próximo estado */ }
   };
-  const convidar = async (p: Pessoa) => {
+  const escolherPulseira = async (cor: Pulseira) => {
+    setEscolhendoPulseira(false);
+    if (!salaAtual) return;
+    setEstado((e) => e ? { ...e, eu: { ...e.eu, pulseira: cor, querBrincar: cor === 'vermelha' ? false : e.eu.querBrincar } } : e);
+    try { await apiClient.post(`/casa/${salaAtual}/pulseira`, { cor }); } catch { /* volta no próximo estado */ }
+  };
+  const olhar = async (p: { id: string; nome: string }) => {
+    setPessoaAberta(null);
+    try {
+      const { data } = await apiClient.post(`/casa/${salaAtual}/olhar`, { para: p.id });
+      if (!data?.cruzados) toast({ title: `👀 Você deu uma olhada em ${p.nome}`, description: 'Só a pessoa fica sabendo. Se ela olhar de volta, a Lola avisa os dois.' });
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível agora.') }); }
+  };
+  const pagarDrink = async (p: Pessoa, drink: string) => {
+    setMostrandoBar(false);
+    setPessoaAberta(null);
+    try {
+      await apiClient.post(`/casa/${salaAtual}/drink`, { para: p.id, drink });
+    } catch (e) {
+      const semSaldo = (e as any)?.response?.status === 402;
+      toast({
+        title: erroDe(e, 'Não foi possível pagar o drink.'),
+        variant: 'destructive',
+        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => navigate('/tokens?comprar=1')}>Comprar tokens</ToastAction> : undefined,
+      });
+    }
+  };
+  const brindar = async (de: { id: string }) => {
+    try { await apiClient.post(`/casa/${salaAtual}/brindar`, { para: de.id }); } catch { /* ok */ }
+  };
+
+  const convidar = async (p: { id: string; nome: string }) => {
     setPessoaAberta(null);
     try {
       await apiClient.post(`/casa/${salaAtual}/convidar`, { para: p.id });
       toast({ title: `Convite enviado para ${p.nome} 🚪`, description: 'Se aceitar, a cabine abre na hora.' });
     } catch (e) { toast({ title: erroDe(e, 'Não foi possível chamar agora.'), variant: 'destructive' }); }
   };
+  // Os avisos do socket usam as ações mais recentes sem refazer a inscrição.
+  const olharRef = useRef(olhar); olharRef.current = olhar;
+  const brindarRef = useRef(brindar); brindarRef.current = brindar;
+  const convidarRef = useRef(convidar); convidarRef.current = convidar;
   const responderConvite = async (aceitar: boolean) => {
     const c = convite;
     setConvite(null);
@@ -401,10 +483,18 @@ export default function Casa() {
   // ─── Sala ────────────────────────────────────────────────────────────────
   const sala = estado && createPortal(
     <div
-      className="fixed inset-0 z-[9990] flex flex-col bg-zinc-950 text-white"
+      className="fixed inset-0 z-[9990] flex flex-col overflow-hidden bg-zinc-950 text-white"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+      {/* Luz de boate: dois focos neon que passeiam devagar pelo fundo. */}
+      <style>{`
+        @keyframes nsFoco1 { 0%,100% { transform: translate(-30%, -10%); } 50% { transform: translate(40%, 30%); } }
+        @keyframes nsFoco2 { 0%,100% { transform: translate(40%, 60%); } 50% { transform: translate(-20%, 10%); } }
+      `}</style>
+      <div className="pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full bg-fuchsia-600/25 blur-3xl" style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
+      <div className="pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full bg-rose-600/20 blur-3xl" style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
+
+      <div className="relative flex items-center gap-2 border-b border-white/10 px-3 py-2">
         <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da sala">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -415,6 +505,17 @@ export default function Casa() {
           </p>
         </div>
         {estado.eu.podeFalar && (
+          <button
+            type="button"
+            onClick={() => setEscolhendoPulseira(true)}
+            className="rounded-full border border-white/20 px-2 py-1.5 text-xs"
+            aria-label="Trocar pulseira"
+            title="Sua pulseira da noite"
+          >
+            {corDaPulseira(estado.eu.pulseira)?.emoji ?? '⚪'}
+          </button>
+        )}
+        {estado.eu.podeFalar && estado.eu.pulseira !== 'vermelha' && (
           <button
             type="button"
             onClick={() => void alternarBrincar()}
@@ -437,6 +538,7 @@ export default function Casa() {
               <Avatar p={p} tamanho="h-11 w-11" />
               {p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
               {p.rei && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm">👑</span>}
+              {p.pulseira && <span className={cn('absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full ring-2 ring-zinc-950', corDaPulseira(p.pulseira)?.classe)} />}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
           </button>
@@ -546,6 +648,45 @@ export default function Casa() {
         </div>
       )}
 
+      <Dialog open={escolhendoPulseira} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
+        <DialogContent className="z-[9995] max-w-sm">
+          <DialogHeader><DialogTitle>Escolha sua pulseira da noite</DialogTitle></DialogHeader>
+          <p className="-mt-2 text-xs text-muted-foreground">Como numa casa de verdade: todo mundo vê a sua cor e sabe o que você topa hoje. Dá para trocar quando quiser.</p>
+          <div className="grid gap-2">
+            {PULSEIRAS.map((p) => (
+              <button
+                key={p.cor}
+                type="button"
+                onClick={() => void escolherPulseira(p.cor)}
+                className={cn('flex items-center gap-3 rounded-xl border p-3 text-left transition hover:bg-muted', estado.eu.pulseira === p.cor && 'border-primary bg-primary/10')}
+              >
+                <span className={cn('h-4 w-10 shrink-0 rounded-full', p.classe)} />
+                <span>
+                  <span className="block text-sm font-semibold">{p.emoji} {p.titulo}</span>
+                  <span className="block text-xs text-muted-foreground">{p.descricao}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!cruzados} onOpenChange={(v) => !v && setCruzados(null)}>
+        <DialogContent className="z-[9995] max-w-xs">
+          {cruzados && (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Avatar p={cruzados} tamanho="h-20 w-20" />
+              <p className="text-lg font-bold">💘 Olhares cruzados!</p>
+              <p className="text-sm text-muted-foreground">Você e <b>{cruzados.nome}</b> se olharam. A Lola acha que isso merece uma cabine 😈</p>
+              <div className="grid w-full grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => setCruzados(null)}>Depois</Button>
+                <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => { const c = cruzados; setCruzados(null); void convidar(c); }}>Chamar 🚪</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {vendo && (
         <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
           <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar">
@@ -558,7 +699,7 @@ export default function Casa() {
         </div>
       )}
 
-      <Dialog open={!!pessoaAberta} onOpenChange={(v) => !v && setPessoaAberta(null)}>
+      <Dialog open={!!pessoaAberta} onOpenChange={(v) => { if (!v) { setPessoaAberta(null); setMostrandoBar(false); } }}>
         <DialogContent className="z-[9995] max-w-xs">
           {pessoaAberta && (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -566,13 +707,35 @@ export default function Casa() {
               <div>
                 <p className="text-lg font-semibold">{pessoaAberta.nome}</p>
                 <p className="text-xs text-muted-foreground">{ROTULO_CAT[pessoaAberta.cat]}{pessoaAberta.querBrincar ? ' · 🔥 brincando' : ''}</p>
+                {pessoaAberta.pulseira && (
+                  <p className="mt-1 text-xs">Pulseira {corDaPulseira(pessoaAberta.pulseira)?.emoji} <b>{corDaPulseira(pessoaAberta.pulseira)?.titulo}</b></p>
+                )}
               </div>
+              {mostrandoBar ? (
+                <div className="grid w-full grid-cols-2 gap-2">
+                  {DRINKS.map((d) => (
+                    <Button key={d.id} variant="outline" className="h-auto flex-col py-2" onClick={() => void pagarDrink(pessoaAberta, d.id)}>
+                      <span className="text-2xl">{d.emoji}</span>
+                      <span className="text-xs">{d.nome}</span>
+                      <span className="text-[10px] text-muted-foreground">{d.tokens} tokens</span>
+                    </Button>
+                  ))}
+                  <p className="col-span-2 text-[11px] text-muted-foreground">Os tokens vão para {pessoaAberta.nome}, e a sala vê que você pagou 😏</p>
+                </div>
+              ) : (
               <div className="grid w-full gap-2">
                 {estado.eu.podeFalar && (
-                  <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" onClick={() => void olhar(pessoaAberta)}>👀 Dar uma olhada</Button>
+                      <Button variant="outline" onClick={() => setMostrandoBar(true)}>🍸 Pagar um drink</Button>
+                    </div>
+                    <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
+                  </>
                 )}
                 <Button variant="outline" onClick={() => navigate(`/users/${pessoaAberta.id}`)}>Ver perfil</Button>
               </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -597,6 +760,9 @@ export default function Casa() {
         )}
         <ul className="mt-3 grid gap-1 text-xs text-white/75">
           <li>💋 Lola, a anfitriã IA, puxa brincadeiras quentes: eu nunca, verdade ou desafio, enquetes e match às cegas</li>
+          <li>🟢🟡🟣🔴 Pulseira da noite: todo mundo sabe o que você topa</li>
+          <li>🍸 Bar: pague um drink pra quem te chamou atenção; 👀 olhares cruzados viram cabine</li>
+          <li>🎆 Show da Meia-Noite: o desafio mais quente da noite</li>
           <li>🚪 Chame quem quiser pra cabine: abre uma conversa a dois, só com aceite</li>
           <li>🎁 +5 tokens por noite só por entrar; acertou o quiz, +3</li>
         </ul>

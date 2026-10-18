@@ -29,6 +29,28 @@ import {
 } from './casaBrincadeiras.js';
 
 type Categoria = 'homem' | 'mulher' | 'casal' | 'outros';
+/** Pulseira da noite, como nas casas de swing de verdade. */
+type Pulseira = 'verde' | 'amarela' | 'roxa' | 'vermelha';
+const PULSEIRAS: Record<Pulseira, string> = {
+  verde: '🟢 aberto(a) a tudo',
+  amarela: '🟡 só soft (beijos e carícias)',
+  roxa: '🟣 single é bem-vindo',
+  vermelha: '🔴 só olhando hoje',
+};
+/** Bar da Casa: o drink custa tokens, que vão para quem recebe. */
+const DRINKS: Record<string, { emoji: string; nome: string; tokens: number }> = {
+  cerveja: { emoji: '🍺', nome: 'uma cerveja', tokens: 3 },
+  caipirinha: { emoji: '🍹', nome: 'uma caipirinha', tokens: 5 },
+  gin: { emoji: '🍸', nome: 'um gin tônica', tokens: 8 },
+  champanhe: { emoji: '🍾', nome: 'um champanhe', tokens: 15 },
+};
+const CHEGADAS = [
+  '{nome} acabou de passar pela recepção 😈',
+  '{nome} chegou na pista 🔥',
+  'Olha quem chegou: {nome} 👀',
+  '{nome} entrou e já está olhando a sala toda 😏',
+  'Boa noite, {nome}! Pega um drink no bar e fica à vontade 🍸',
+];
 type SalaId = 'salao' | 'casais' | 'quarto';
 
 type Presente = {
@@ -46,6 +68,9 @@ type Presente = {
   ultimoConvite: number;
   /** Cumpriu um desafio: pode mandar uma "revelação" (foto extra paga) até esta hora. */
   revelarAte: number;
+  pulseira: Pulseira | null;
+  /** Olhares que esta pessoa deu: alvo -> quando (olhares cruzados viram sugestão de cabine). */
+  olhares: Map<string, number>;
 };
 
 type Msg = {
@@ -239,7 +264,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const resumoPresentes = (sala: Sala) => ({
     sala: sala.id,
     presentes: [...sala.presentes.values()].filter((p) => p.podeFalar).map((p) => ({
-      id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat, querBrincar: p.querBrincar, rei: ehRei(p.id),
+      id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat, querBrincar: p.querBrincar, rei: ehRei(p.id), pulseira: p.pulseira,
     })),
     espiando: sala.espiando.size + [...sala.presentes.values()].filter((p) => !p.podeFalar).length,
   });
@@ -338,7 +363,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     }
   };
 
-  const brincantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar && p.querBrincar);
+  // Pulseira vermelha = "só olhando": nunca é sorteada para desafio, duelo ou match.
+  const brincantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar && p.querBrincar && p.pulseira !== 'vermelha');
   const falantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar);
 
   const bloqueados = async (a: string, b: string) => !!(await db.queryOne(
@@ -346,7 +372,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     [a, b, b, a],
   ));
 
-  const iniciarJogo = async (sala: Sala) => {
+  const iniciarJogo = async (sala: Sala, forcado?: string) => {
     if (sala.iniciando) return;
     sala.iniciando = true;
     try {
@@ -367,6 +393,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       let r = Math.random() * totalPeso;
       let tipo = 'eu_nunca';
       for (const o of opcoes) { if ((r -= o.peso) <= 0) { tipo = o.tipo; break; } }
+      if (forcado) tipo = forcado;
 
       const agora = Date.now();
       if (tipo === 'eu_nunca') {
@@ -534,6 +561,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const avisosEnviados = new Set<string>();
   let noiteAnterior: string | null = null;
   let ultimaLimpeza = '';
+  const showAvisado = new Set<string>();
+  const showFeito = new Set<string>();
   const tick = async () => {
     const agora = Date.now();
     const noite = await noiteAtual();
@@ -568,6 +597,20 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         sala.convocado = { userId: proximo, ate: agora + 3 * 60_000 };
         emitirPara(proximo, 'casa.vaga', { sala: sala.id, nome: sala.nome });
         void deps.push(proximo, { title: `🔥 Abriu vaga no ${sala.nome}!`, body: 'Sua vez na fila d\'A Casa: você tem 3 minutos para entrar.', url: '/casa', tag: 'casa-vaga' }).catch(() => {});
+      }
+      // Show da Meia-Noite: aviso às 23h55 e, à meia-noite, o desafio mais quente da noite.
+      const br = agoraBrasilia();
+      const minuto = new Date().getUTCMinutes();
+      const chaveShow = `${noite.chave}:${sala.id}`;
+      if (br.hora === 23 && minuto >= 55 && !showAvisado.has(chaveShow)) {
+        showAvisado.add(chaveShow);
+        lola(sala, '🎆 Daqui a 5 minutos começa o SHOW DA MEIA-NOITE! Marquem "Quero brincar" e preparem a câmera 😈');
+      }
+      if (br.hora === 0 && !showFeito.has(chaveShow) && falantes(sala).length >= 2) {
+        showFeito.add(chaveShow);
+        if (sala.jogo) await encerrarJogo(sala, 'fim');
+        lola(sala, '🎆🎆 SHOW DA MEIA-NOITE! As luzes baixaram… é agora que a Casa esquenta de verdade 🔥');
+        await iniciarJogo(sala, brincantes(sala).length >= 2 && falantes(sala).length >= 3 ? 'duelo' : 'relampago');
       }
       if (sala.jogo && agora >= sala.jogo.fimEm) await encerrarJogo(sala, 'tempo');
       if (!sala.jogo && agora >= sala.proximoJogoEm && falantes(sala).length >= 2) await iniciarJogo(sala);
@@ -795,7 +838,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     presentes: resumoPresentes(sala).presentes,
     espiando: resumoPresentes(sala).espiando,
     jogo: jogoPublico(sala.jogo, userId),
-    eu: { podeFalar: !!p?.podeFalar, querBrincar: !!p?.querBrincar, espiando: !p },
+    eu: { podeFalar: !!p?.podeFalar, querBrincar: !!p?.querBrincar, espiando: !p, pulseira: p?.pulseira ?? null },
   });
 
   app.post('/api/casa/:sala/entrar', deps.requireAuth, async (req, res) => {
@@ -848,12 +891,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const p: Presente = jaEstava ?? {
       id: userId, nome: perfil.nome, avatar: perfil.avatar, genero: perfil.genero, cat: perfil.cat, procura: perfil.procura,
       podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimaMidia: 0, ultimoConvite: 0, revelarAte: 0,
+      pulseira: null, olhares: new Map(),
     };
     p.ultimoPing = Date.now();
     sala.presentes.set(userId, p);
     if (!jaEstava) {
       if (falantes(sala).length === 1 || sala.mensagens.length === 0) lola(sala, sortear(BOAS_VINDAS));
-      publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} entrou na sala` });
+      publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
@@ -1163,6 +1207,75 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         avisarJogo(sala);
       }
     }
+    res.json({ ok: true });
+  });
+
+  // Pulseira da noite.
+  app.post('/api/casa/:sala/pulseira', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const p = sala?.presentes.get(userDe(req));
+    if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    const cor = String((req.body as any)?.cor || '') as Pulseira;
+    if (!PULSEIRAS[cor]) { res.status(400).json({ error: 'cor' }); return; }
+    const antes = p.pulseira;
+    p.pulseira = cor;
+    if (cor === 'vermelha') p.querBrincar = false;
+    if (antes !== cor) publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} colocou a pulseira ${PULSEIRAS[cor]}` });
+    avisarPresentes(sala);
+    res.json({ ok: true, pulseira: cor });
+  });
+
+  // Olhar discreto: só a pessoa olhada fica sabendo. Olhares cruzados = sugestão de cabine.
+  app.post('/api/casa/:sala/olhar', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    const paraId = String((req.body as any)?.para || '');
+    const alvo = sala?.presentes.get(paraId);
+    if (!sala || !p || !alvo || paraId === userId) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
+    if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
+    const ultimo = p.olhares.get(paraId) ?? 0;
+    if (Date.now() - ultimo < 10 * 60_000) { res.json({ ok: true, repetido: true }); return; }
+    if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    p.olhares.set(paraId, Date.now());
+    const devolveu = (alvo.olhares.get(userId) ?? 0) > Date.now() - 20 * 60_000;
+    if (devolveu) {
+      emitirPara(paraId, 'casa.olhares', { com: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat } });
+      emitirPara(userId, 'casa.olhares', { com: { id: alvo.id, nome: alvo.nome, avatar: alvo.avatar, cat: alvo.cat } });
+    } else {
+      emitirPara(paraId, 'casa.olhar', { de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat, pulseira: p.pulseira } });
+    }
+    res.json({ ok: true, cruzados: devolveu });
+  });
+
+  // Bar: pagar um drink (os tokens vão para quem recebe). A sala vê; quem recebe pode brindar de volta.
+  app.post('/api/casa/:sala/drink', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    const paraId = String((req.body as any)?.para || '');
+    const alvo = sala?.presentes.get(paraId);
+    const drink = DRINKS[String((req.body as any)?.drink || '')];
+    if (!sala || !p || !alvo || paraId === userId) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
+    if (!drink) { res.status(400).json({ error: 'drink' }); return; }
+    if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
+    if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    const pagou = await deps.transferirTokens(userId, paraId, drink.tokens, `casa-drink-${randomUUID()}`);
+    if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
+    publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏` });
+    registrarEvento(sala.id, 'drink', userId, paraId);
+    emitirPara(paraId, 'casa.drink', { de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/casa/:sala/brindar', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    const alvo = sala?.presentes.get(String((req.body as any)?.para || ''));
+    if (!sala || !p || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    publicarMsg(sala, { tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥` });
+    emitirPara(alvo.id, 'casa.brinde', { de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat } });
     res.json({ ok: true });
   });
 

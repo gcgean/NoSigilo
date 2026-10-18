@@ -3692,6 +3692,18 @@ describe('nosigilo backend', () => {
     expect(detalhe.mensagens.some((m: any) => m.texto === 'Boa noite, sala!')).toBe(true);
     expect(detalhe.mensagens.find((m: any) => m.midia)?.midia.vistas).toBe(1);
 
+    // Clima de casa de swing: pulseira, olhar e drink (sem saldo = 402).
+    expect((await request(ctx.app).post('/api/casa/salao/pulseira').set(auth(casal.token)).send({ cor: 'verde' }).expect(200)).body.pulseira).toBe('verde');
+    await request(ctx.app).post('/api/casa/salao/pulseira').set(auth(casal.token)).send({ cor: 'azul' }).expect(400);
+    expect((await request(ctx.app).post('/api/casa/salao/olhar').set(auth(homens[0].token)).send({ para: String(casal.user.id) }).expect(200)).body.cruzados).toBe(false);
+    expect((await request(ctx.app).post('/api/casa/salao/olhar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200)).body.cruzados).toBe(true);
+    await run(ctx.db, 'UPDATE users SET token_points = 0, tokens_comprados = 0 WHERE id = ?', [String(homens[0].user.id)]);
+    await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(402);
+    await run(ctx.db, 'UPDATE users SET token_points = 20 WHERE id = ?', [String(homens[0].user.id)]);
+    await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(200);
+    const saldoCasal = (await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(casal.user.id)])) as any;
+    expect(Number(saldoCasal.token_points)).toBeGreaterThanOrEqual(15);
+
     // Página pública: sem login, só números.
     const pub = (await request(ctx.app).get('/api/casa/publico').expect(200)).body;
     expect(pub.aberta).toBe(true);
