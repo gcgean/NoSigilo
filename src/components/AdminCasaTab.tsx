@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
+import NegocioDaCasa from '@/components/NegocioDaCasa';
 
 /** Admin › A Casa: tudo da boate virtual num lugar só (ao vivo, reservas, moderação, rádio, histórico). */
 type AoVivo = {
@@ -100,6 +101,8 @@ export default function AdminCasaTab() {
           A Lola abre sozinha sexta e sábado às 21h, avisa todo mundo, puxa as brincadeiras, modera e fecha à 1h. Você recebe no Telegram a abertura, a meia-noite, o resumo, expulsões e denúncias.
         </p>
       </Bloco>
+
+      <NegocioDaCasa />
 
       {vivo?.aberta && (
         <>

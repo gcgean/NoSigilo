@@ -135,6 +135,8 @@ export type DependenciasDaCasa = {
   /** Devolve/entrega tokens (desafio cumprido, recusado ou vencido). */
   creditar: (userId: string, valor: number, motivo: string, refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
+  /** Pagamentos de assinatura (extrato do Hub) já ligados ao usuário. */
+  assinaturasPagas: () => Promise<Array<{ userId: string; valorCents: number; pagoEm: string }>>;
   /** E-mail "A Casa abriu" para quem reservou (respeita quem desligou e-mail). */
   emailAbriu: (userId: string, tema: string) => Promise<void>;
   /** Alerta no Telegram do admin (categoria "A Casa"). */
@@ -745,10 +747,23 @@ Responda com UMA palavra:
   const resumoMeiaNoite = new Set<string>();
   const showAvisado = new Set<string>();
   const showFeito = new Set<string>();
+  const espiouHoje = new Set<string>();
+  // Pico de gente ao mesmo tempo na noite (vai para o painel de negócio).
+  const picoDaNoite = new Map<string, number>();
   const tick = async () => {
     const agora = Date.now();
     const noite = await noiteAtual();
     chaveDaNoite = noite?.chave ?? '';
+    if (noite) {
+      let agoraNaCasa = 0;
+      for (const sl of salas.values()) agoraNaCasa += sl.presentes.size + sl.espiando.size;
+      if (agoraNaCasa > (picoDaNoite.get(noite.chave) ?? 0)) {
+        picoDaNoite.set(noite.chave, agoraNaCasa);
+        void db.run('DELETE FROM system_settings WHERE key = ?', [`casa_pico:${noite.chave}`])
+          .then(() => db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_pico:${noite.chave}`, String(agoraNaCasa), new Date().toISOString()]))
+          .catch(() => {});
+      }
+    }
     for (const sala of salas.values()) {
       let mudou = false;
       for (const [id, p] of sala.presentes) {
@@ -1167,6 +1182,7 @@ Responda com UMA palavra:
     if (!podeFalar) {
       sala.presentes.delete(userId);
       sala.espiando.set(userId, Date.now());
+      if (!espiouHoje.has(`${noite.chave}:${userId}`)) { espiouHoje.add(`${noite.chave}:${userId}`); registrarEvento(sala.id, 'espiou', userId); }
       avisarPresentes(sala);
       res.json(await estadoPara(sala, userId, null));
       return;
@@ -1697,6 +1713,88 @@ Responda com UMA palavra:
       expulsos: expulsosHoje,
       contadores: { ...contadoresDaNoite },
     });
+  });
+
+  // ─── Admin: a Casa como negócio (por noite) ───────────────────────────────
+  // Faturamento = dinheiro que entrou de verdade: assinaturas e compras de
+  // tokens feitas DURANTE a noite por quem entrou ou espiou a Casa. Tokens
+  // gastos lá dentro (drinks, revelações, desafios) passam de um usuário para
+  // outro: medem o movimento, não são faturamento.
+  app.get('/api/casa/admin/negocio', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noites = (await db.queryAll(
+      `SELECT noite, MIN(created_at) AS inicio, MAX(created_at) AS fim FROM casa_eventos GROUP BY noite ORDER BY noite DESC LIMIT 30`, [],
+    )) as any[];
+    let assinaturas: Array<{ userId: string; valorCents: number; pagoEm: string }> = [];
+    let extratoIndisponivel = false;
+    try { assinaturas = await deps.assinaturasPagas(); } catch { extratoIndisponivel = true; }
+    const resultado = [];
+    for (const n of noites) {
+      const noite = String(n.noite);
+      const inicio = String(n.inicio);
+      const fim = new Date(Date.parse(String(n.fim)) + 60 * 60_000).toISOString(); // 1h depois de fechar ainda conta
+      const part = (await db.queryAll(
+        `SELECT user_id, MAX(CASE WHEN tipo = 'entrou' THEN 1 ELSE 0 END) AS entrou, MAX(CASE WHEN tipo = 'espiou' THEN 1 ELSE 0 END) AS espiou
+           FROM casa_eventos WHERE noite = ? AND user_id IS NOT NULL AND tipo IN ('entrou', 'espiou') GROUP BY user_id`,
+        [noite],
+      )) as any[];
+      const ids = new Set(part.map((x) => String(x.user_id)));
+      const soEspiaram = new Set(part.filter((x) => Number(x.espiou) === 1 && Number(x.entrou) === 0).map((x) => String(x.user_id)));
+      const assinNaNoite = assinaturas.filter((a) => ids.has(a.userId) && a.pagoEm >= inicio && a.pagoEm <= fim);
+      const convertidos = new Set(assinNaNoite.filter((a) => soEspiaram.has(a.userId)).map((a) => a.userId));
+      const compras = ids.size === 0 ? [] : (await db.queryAll(
+        `SELECT user_id, valor_cents, tokens FROM compras_tokens WHERE status = 'paga' AND pago_em >= ? AND pago_em <= ?`,
+        [inicio, fim],
+      ) as any[]).filter((c) => ids.has(String(c.user_id)));
+      const tx = (await db.queryAll(
+        `SELECT action_type, ref_id, points FROM token_transactions
+          WHERE created_at >= ? AND created_at <= ? AND (action_type LIKE 'casa_%')`,
+        [inicio, fim],
+      )) as any[];
+      const soma = (f: (t: any) => boolean) => tx.filter(f).reduce((s2, t) => s2 + Number(t.points || 0), 0);
+      const conta = (f: (t: any) => boolean) => tx.filter(f).length;
+      const ehDrink = (t: any) => t.action_type === 'casa_revelacao_paga' && String(t.ref_id || '').startsWith('casa-drink-');
+      const ehRevelacao = (t: any) => t.action_type === 'casa_revelacao_paga' && String(t.ref_id || '').startsWith('casa-revelacao-');
+      const m = (await db.queryOne(
+        `SELECT COUNT(*) AS msgs, SUM(CASE WHEN tipo = 'midia' THEN 1 ELSE 0 END) AS midias, COUNT(DISTINCT autor_id) AS falaram FROM casa_mensagens WHERE noite = ?`,
+        [noite],
+      )) as any;
+      const ev = (await db.queryOne(
+        `SELECT SUM(CASE WHEN tipo = 'cabine' THEN 1 ELSE 0 END) AS cabines, SUM(CASE WHEN tipo = 'expulso' THEN 1 ELSE 0 END) AS expulsos,
+                SUM(CASE WHEN tipo = 'denuncia' THEN 1 ELSE 0 END) AS denuncias FROM casa_eventos WHERE noite = ?`,
+        [noite],
+      )) as any;
+      const dia = noite.replace('extra-', '');
+      const cadastros = Number(((await db.queryOne(
+        `SELECT COUNT(*) AS c FROM users WHERE origem_canal LIKE 'A Casa%' AND created_at >= ? AND created_at <= ?`,
+        [inicio, fim],
+      )) as any)?.c || 0);
+      const pico = Number(((await db.queryOne('SELECT value FROM system_settings WHERE key = ?', [`casa_pico:${noite}`])) as any)?.value || 0);
+      const receitaAssinaturas = assinNaNoite.reduce((s2, a) => s2 + a.valorCents, 0);
+      const receitaTokens = compras.reduce((s2, c) => s2 + Number(c.valor_cents || 0), 0);
+      resultado.push({
+        noite, dia, extra: noite.startsWith('extra-'),
+        pessoas: ids.size, entraram: ids.size - soEspiaram.size, soEspiaram: soEspiaram.size, pico,
+        falaram: Number(m?.falaram || 0), mensagens: Number(m?.msgs || 0), midias: Number(m?.midias || 0),
+        cabines: Number(ev?.cabines || 0), expulsos: Number(ev?.expulsos || 0), denuncias: Number(ev?.denuncias || 0),
+        cadastrosPelaCasa: cadastros,
+        receita: {
+          assinaturasCents: receitaAssinaturas, assinaturas: assinNaNoite.length, convertidosDeEspiao: convertidos.size,
+          tokensCents: receitaTokens, compras: compras.length, totalCents: receitaAssinaturas + receitaTokens,
+        },
+        tokens: {
+          drinks: conta(ehDrink), drinksTokens: -soma(ehDrink),
+          revelacoes: conta(ehRevelacao), revelacoesTokens: -soma(ehRevelacao),
+          desafiosCumpridos: conta((t) => t.action_type === 'casa_desafio_recebido'), desafiosTokens: soma((t) => t.action_type === 'casa_desafio_recebido'),
+          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
+        },
+      });
+    }
+    // Quem chegou ao site PELA Casa e quanto já pagou (desde sempre).
+    const pelaCasa = (await db.queryAll("SELECT id FROM users WHERE origem_canal LIKE 'A Casa%'", [])) as any[];
+    const idsPelaCasa = new Set(pelaCasa.map((u) => String(u.id)));
+    const receitaPelaCasa = assinaturas.filter((a) => idsPelaCasa.has(a.userId)).reduce((s2, a) => s2 + a.valorCents, 0);
+    res.json({ noites: resultado, extratoIndisponivel, cadastrosPelaCasa: idsPelaCasa.size, receitaDeQuemVeioPelaCasaCents: receitaPelaCasa });
   });
 
   // Admin: devolve a entrada de quem foi retirado nesta noite.

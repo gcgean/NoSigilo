@@ -22779,6 +22779,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
     alertar: (texto) => notifyAdminsTelegram({ db, env }, texto, 'casa'),
+    // Assinaturas pagas (extrato do Hub, 5 min em cache) ligadas ao usuário por cliente do Hub ou e-mail.
+    assinaturasPagas: async () => {
+      if (!shouldUseHubBilling(env)) return [];
+      if (!extratoHubCache || Date.now() - extratoHubCache.em > 5 * 60_000) {
+        const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+        const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), timeout]);
+        extratoHubCache = { em: Date.now(), itens: ledger.itens };
+      }
+      const usuarios = (await queryAll(db, "SELECT id, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub FROM users", [])) as any[];
+      const porHub = new Map<string, string>();
+      const porEmail = new Map<string, string>();
+      for (const u of usuarios) { if (u.hub) porHub.set(String(u.hub), String(u.id)); if (u.email) porEmail.set(String(u.email), String(u.id)); }
+      const saida: Array<{ userId: string; valorCents: number; pagoEm: string }> = [];
+      for (const p of extratoHubCache.itens) {
+        const id = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(String(p.email).toLowerCase().trim())) || null;
+        if (id) saida.push({ userId: id, valorCents: Number(p.valorCents || 0), pagoEm: String(p.pagoEm) });
+      }
+      return saida;
+    },
     // E-mail "A Casa abriu" para quem reservou (respeita quem desligou e-mail).
     // Fica no mesmo registro do disparo de fim de semana, para contar na cota do Resend.
     emailAbriu: async (userId, tema) => {

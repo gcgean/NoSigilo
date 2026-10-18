@@ -3709,6 +3709,12 @@ describe('nosigilo backend', () => {
     expect(vivo.salas.find((x: any) => x.id === 'salao').presentes.length).toBeGreaterThanOrEqual(1);
     await request(ctx.app).post('/api/casa/admin/recado').set(auth(casal.token)).send({ texto: 'Boa noite, Casa!', sala: 'salao' }).expect(200);
 
+    // Painel de negócio (sem Hub nos testes: assinaturas vazias).
+    await request(ctx.app).get('/api/casa/admin/negocio').set(auth(homens[0].token)).expect(403);
+    const negocio = (await request(ctx.app).get('/api/casa/admin/negocio').set(auth(casal.token)).expect(200)).body;
+    expect(negocio.noites.length).toBeGreaterThanOrEqual(1);
+    expect(negocio.noites[0].tokens.premiosDaCasa).toBeGreaterThanOrEqual(5); // +5 de entrada por pessoa
+
     // Histórico do admin.
     await request(ctx.app).get('/api/casa/admin/noites').set(auth(homens[0].token)).expect(403);
     const noites = (await request(ctx.app).get('/api/casa/admin/noites').set(auth(casal.token)).expect(200)).body.noites;
