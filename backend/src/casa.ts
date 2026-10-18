@@ -42,15 +42,18 @@ type Presente = {
   querBrincar: boolean;
   ultimoPing: number;
   ultimaMsg: number;
+  ultimaMidia: number;
   ultimoConvite: number;
 };
 
 type Msg = {
   id: string;
-  tipo: 'pessoa' | 'lola' | 'sistema';
+  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia';
   autor?: { id: string; nome: string; avatar: string | null; cat: Categoria };
   texto: string;
   criadoEm: string;
+  /** Foto ou vídeo de visualização única: o link só sai pelo /ver, uma vez por pessoa. */
+  midia?: { tipo: 'foto' | 'video' };
 };
 
 type Jogo =
@@ -73,6 +76,10 @@ type Sala = {
   proximoJogoEm: number;
   usados: Set<string>;
   iniciando: boolean;
+  /** Fila de espera de homens quando a cota da sala está cheia. */
+  fila: string[];
+  /** Primeiro da fila chamado para a vaga: tem 3 minutos de prioridade. */
+  convocado: { userId: string; ate: number } | null;
 };
 
 export type DependenciasDaCasa = {
@@ -158,6 +165,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     id, nome, emoji, descricao, nivel, semHomens,
     presentes: new Map(), espiando: new Map(), mensagens: [], jogo: null,
     proximoJogoEm: Date.now() + 2 * 60_000, usados: new Set(), iniciando: false,
+    fila: [], convocado: null,
   });
   const salas = new Map<SalaId, Sala>([
     ['salao', novaSala('salao', 'Salão Principal', '🍸', 'A pista de todo mundo: conhecer, provocar e chamar pra cabine.', 'quente', false)],
@@ -195,8 +203,21 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     deps.getIo()?.to(`user:${userId}`).emit(evento, dados);
   };
 
-  const publicarMsg = (sala: Sala, msg: Omit<Msg, 'id' | 'criadoEm'>) => {
+  // Noite em curso (chave do histórico do admin). Atualizada no relógio e ao entrar.
+  let chaveDaNoite = '';
+  const registrarEvento = (salaId: SalaId | null, tipo: string, userId: string | null, outroId: string | null = null) => {
+    if (!chaveDaNoite) return;
+    void db.run('INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, outro_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [randomUUID(), chaveDaNoite, salaId, tipo, userId, outroId, new Date().toISOString()]).catch(() => {});
+  };
+
+  const publicarMsg = (sala: Sala, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string | null = null) => {
     const completa: Msg = { ...msg, id: randomUUID(), criadoEm: new Date().toISOString() };
+    // Tudo que acontece na Casa fica guardado para o admin (histórico por noite).
+    if (chaveDaNoite) {
+      void db.run('INSERT INTO casa_mensagens (id, noite, sala, tipo, autor_id, texto, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [completa.id, chaveDaNoite, sala.id, completa.tipo, completa.autor?.id ?? null, completa.texto, mediaId, completa.criadoEm]).catch((e) => console.error('[casa] histórico', e));
+    }
     sala.mensagens.push(completa);
     if (sala.mensagens.length > MAX_MENSAGENS) sala.mensagens.splice(0, sala.mensagens.length - MAX_MENSAGENS);
     emitirParaSala(sala, 'casa.mensagem', { sala: sala.id, msg: completa });
@@ -416,15 +437,18 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     // Se era um pedido pendente, os dois aceitaram na Casa: vira conversa normal.
     await db.run('UPDATE conversations SET pedido_aceito_em = COALESCE(pedido_aceito_em, ?), pedido_recusado_em = NULL WHERE id = ? AND pedido_para IS NOT NULL', [agoraIso, String(conv.id)]);
     await db.persist();
+    registrarEvento(null, 'cabine', a, b);
     return String(conv.id);
   };
 
   // ─── Relógio da Casa: presença, jogos, fechamento e aviso das 21h ─────────
   const avisosEnviados = new Set<string>();
   let noiteAnterior: string | null = null;
+  let ultimaLimpeza = '';
   const tick = async () => {
     const agora = Date.now();
     const noite = await noiteAtual();
+    chaveDaNoite = noite?.chave ?? '';
     for (const sala of salas.values()) {
       let mudou = false;
       for (const [id, p] of sala.presentes) {
@@ -444,7 +468,17 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         sala.jogo = null;
         sala.mensagens = [];
         sala.usados.clear();
+        sala.fila = [];
+        sala.convocado = null;
         continue;
+      }
+      // Fila de espera dos homens: abriu vaga, chama o primeiro (3 min de prioridade).
+      if (sala.convocado && agora > sala.convocado.ate) sala.convocado = null;
+      if (!sala.convocado && sala.fila.length > 0 && contagem(sala).homem < limiteDeHomens(sala)) {
+        const proximo = sala.fila.shift()!;
+        sala.convocado = { userId: proximo, ate: agora + 3 * 60_000 };
+        emitirPara(proximo, 'casa.vaga', { sala: sala.id, nome: sala.nome });
+        void deps.push(proximo, { title: `🔥 Abriu vaga no ${sala.nome}!`, body: 'Sua vez na fila d\'A Casa: você tem 3 minutos para entrar.', url: '/casa', tag: 'casa-vaga' }).catch(() => {});
       }
       if (sala.jogo && agora >= sala.jogo.fimEm) await encerrarJogo(sala, 'tempo');
       if (!sala.jogo && agora >= sala.proximoJogoEm && falantes(sala).length >= 2) await iniciarJogo(sala);
@@ -485,19 +519,43 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     }
 
     for (const [id, c] of convites) if (agora - c.criadoEm > 120_000) convites.delete(id);
+
+    // Histórico da Casa fica 90 dias (limpeza uma vez por dia, fora da noite).
+    if (!noite && relogioBr.data !== ultimaLimpeza) {
+      ultimaLimpeza = relogioBr.data;
+      const limite = new Date(agora - 90 * 86_400_000).toISOString();
+      void (async () => {
+        await db.run('DELETE FROM casa_midia_vistas WHERE mensagem_id IN (SELECT id FROM casa_mensagens WHERE created_at < ?)', [limite]);
+        await db.run('DELETE FROM casa_mensagens WHERE created_at < ?', [limite]);
+        await db.run('DELETE FROM casa_eventos WHERE created_at < ?', [limite]);
+        await db.run('DELETE FROM casa_reservas WHERE created_at < ?', [limite]);
+      })().catch((e) => console.error('[casa] limpeza do histórico', e));
+    }
   };
 
   const avisarAbertura = async (tema: 'sexta' | 'sabado') => {
     const t = TEMAS_DA_NOITE[tema];
+    const reservados = (await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [chaveDaNoite])) as any[];
+    const jaAvisados = new Set<string>();
+    for (const r of reservados) {
+      const id = String(r.user_id);
+      jaAvisados.add(id);
+      await deps.push(id, {
+        title: '🔥 Seu lugar n\'A Casa está esperando!',
+        body: `${t.nome} começou agora, até 1h. Você reservou: entra e chega antes da sala lotar 😈`,
+        url: '/casa',
+        tag: 'casa-abriu',
+      }).catch(() => {});
+    }
     await avisarParaAtivos({
       title: `🔥 A Casa abriu: ${t.nome}!`,
       body: 'Até 1h da manhã: salas ao vivo, brincadeiras quentes com a Lola e cabine a dois. Entra!',
       url: '/casa',
       tag: 'casa-abriu',
-    });
+    }, jaAvisados);
   };
 
-  const avisarParaAtivos = async (payload: { title: string; body: string; url: string; tag: string }) => {
+  const avisarParaAtivos = async (payload: { title: string; body: string; url: string; tag: string }, pular: Set<string> = new Set()) => {
     const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const pessoas = (await db.queryAll(
       `SELECT DISTINCT u.id FROM users u JOIN push_subscriptions ps ON ps.user_id = u.id
@@ -507,6 +565,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     )) as any[];
     let enviados = 0;
     for (const p of pessoas) {
+      if (pular.has(String(p.id))) continue;
       try {
         await deps.push(String(p.id), payload);
         enviados++;
@@ -540,6 +599,21 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     };
   };
 
+  /** Chave da noite em curso ou da próxima (é nela que a reserva vale). */
+  const proximaNoite = async (): Promise<{ chave: string; inicio: string | null }> => {
+    const agora = await noiteAtual();
+    if (agora) return { chave: agora.chave, inicio: null };
+    const base = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+    for (let h = 0; h < 8 * 24; h++) {
+      const t = new Date(base + h * 3_600_000);
+      const n = noiteDoHorario(t);
+      if (n) return { chave: n.chave, inicio: t.toISOString() };
+    }
+    return { chave: '', inicio: null };
+  };
+  const totalReservas = async (chave: string) =>
+    Number(((await db.queryOne('SELECT COUNT(*) AS c FROM casa_reservas WHERE noite = ?', [chave])) as any)?.c || 0);
+
   const salaDe = (req: express.Request) => salas.get(String(req.params.sala) as SalaId) ?? null;
   const userDe = (req: express.Request) => String((req as any).auth?.userId || '');
 
@@ -558,10 +632,12 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       }
     }
     res.setHeader('Cache-Control', 'public, max-age=30');
+    const prox = await proximaNoite();
     res.json({
       aberta: !!noite,
       tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
       pessoas,
+      reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: proxima,
       salas: [...salas.values()].map((s) => ({ nome: s.nome, emoji: s.emoji, descricao: s.descricao, nivel: s.nivel })),
     });
@@ -572,10 +648,15 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const noite = await noiteAtual();
     const perfil = await carregarPerfil(userId);
     const podeFalar = await deps.temPremium(userId);
+    const prox = await proximaNoite();
+    const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
     res.json({
       aberta: !!noite,
       tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
       horario: 'Sexta e sábado, das 21h à 1h',
+      reservado,
+      reservas: prox.chave ? await totalReservas(prox.chave) : 0,
+      proximaAbertura: prox.inicio,
       souAdmin: !!perfil?.admin,
       podeFalar,
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
@@ -588,7 +669,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
           espiando: s.espiando.size,
           contagem: c,
           bloqueadaParaMim: s.semHomens && souHomem,
-          lotadaParaMim: !s.semHomens && souHomem && podeFalar && c.homem >= limiteDeHomens(s),
+          lotadaParaMim: !s.semHomens && souHomem && podeFalar && c.homem >= limiteDeHomens(s) && s.convocado?.userId !== userId,
+          posicaoNaFila: s.fila.indexOf(userId) >= 0 ? s.fila.indexOf(userId) + 1 : null,
         };
       }),
     });
@@ -607,7 +689,18 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     res.json({ ok: true, abertaAte: minutos > 0 ? ate : null });
   });
 
-  const estadoPara = (sala: Sala, userId: string, p: Presente | null) => ({
+  const midiasQueVi = async (sala: Sala, userId: string) => {
+    const ids = sala.mensagens.filter((m) => m.tipo === 'midia').map((m) => m.id);
+    if (ids.length === 0) return [] as string[];
+    const rows = (await db.queryAll(
+      `SELECT mensagem_id FROM casa_midia_vistas WHERE user_id = ? AND mensagem_id IN (${ids.map(() => '?').join(',')})`,
+      [userId, ...ids],
+    )) as any[];
+    return rows.map((r) => String(r.mensagem_id));
+  };
+
+  const estadoPara = async (sala: Sala, userId: string, p: Presente | null) => ({
+    midiasVistas: await midiasQueVi(sala, userId),
     sala: { id: sala.id, nome: sala.nome, emoji: sala.emoji, descricao: sala.descricao, nivel: sala.nivel },
     mensagens: sala.mensagens.slice(-60),
     presentes: resumoPresentes(sala).presentes,
@@ -622,6 +715,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const userId = userDe(req);
     const noite = await noiteAtual();
     if (!noite) { res.status(403).json({ error: 'fechada', message: 'A Casa abre sexta e sábado, das 21h à 1h.' }); return; }
+    chaveDaNoite = noite.chave;
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
     if (sala.semHomens && perfil.cat === 'homem') {
@@ -641,28 +735,41 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       sala.presentes.delete(userId);
       sala.espiando.set(userId, Date.now());
       avisarPresentes(sala);
-      res.json(estadoPara(sala, userId, null));
+      res.json(await estadoPara(sala, userId, null));
       return;
     }
     const jaEstava = sala.presentes.get(userId);
-    if (!jaEstava && perfil.cat === 'homem' && contagem(sala).homem >= limiteDeHomens(sala)) {
-      res.status(409).json({ error: 'lotada_homens', message: 'Esta sala está com a cota de homens cheia (no máximo metade da sala). Tente outra sala ou volte em alguns minutos.' });
-      return;
+    if (!jaEstava && perfil.cat === 'homem') {
+      const convocadoAtivo = sala.convocado && sala.convocado.ate > Date.now() ? sala.convocado : null;
+      const souConvocado = convocadoAtivo?.userId === userId;
+      const vagaGuardada = convocadoAtivo && !souConvocado ? 1 : 0;
+      if (contagem(sala).homem + vagaGuardada >= limiteDeHomens(sala)) {
+        const pos = sala.fila.indexOf(userId);
+        res.status(409).json({
+          error: 'lotada_homens',
+          posicaoNaFila: pos >= 0 ? pos + 1 : null,
+          message: 'A cota de homens desta sala está cheia (no máximo metade da sala). Entre na fila: quando abrir vaga, a gente te chama.',
+        });
+        return;
+      }
+      if (souConvocado) sala.convocado = null;
     }
+    sala.fila = sala.fila.filter((id) => id !== userId);
     sala.espiando.delete(userId);
     const p: Presente = jaEstava ?? {
       id: userId, nome: perfil.nome, avatar: perfil.avatar, genero: perfil.genero, cat: perfil.cat, procura: perfil.procura,
-      podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimoConvite: 0,
+      podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimaMidia: 0, ultimoConvite: 0,
     };
     p.ultimoPing = Date.now();
     sala.presentes.set(userId, p);
     if (!jaEstava) {
       if (falantes(sala).length === 1 || sala.mensagens.length === 0) lola(sala, sortear(BOAS_VINDAS));
       publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} entrou na sala` });
+      registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
     }
-    res.json(estadoPara(sala, userId, p));
+    res.json(await estadoPara(sala, userId, p));
   });
 
   app.post('/api/casa/:sala/ping', deps.requireAuth, async (req, res) => {
@@ -683,6 +790,142 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     sala.espiando.delete(userId);
     if (sala.presentes.delete(userId)) avisarPresentes(sala);
     res.json({ ok: true });
+  });
+
+  // Fila de espera (homem com a cota da sala cheia).
+  app.post('/api/casa/:sala/fila', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!(await noiteAtual())) { res.status(403).json({ error: 'fechada' }); return; }
+    sala.fila = sala.fila.filter((id) => id !== userId);
+    if ((req.body as any)?.entrar !== false) sala.fila.push(userId);
+    const pos = sala.fila.indexOf(userId);
+    res.json({ ok: true, posicaoNaFila: pos >= 0 ? pos + 1 : null });
+  });
+
+  // Reservar lugar na próxima noite (ou na de hoje): aviso no celular quando abrir.
+  app.post('/api/casa/reservar', deps.requireAuth, async (req, res) => {
+    const userId = userDe(req);
+    const prox = await proximaNoite();
+    if (!prox.chave) { res.status(400).json({ error: 'sem_noite' }); return; }
+    if ((req.body as any)?.reservar === false) {
+      await db.run('DELETE FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave]);
+    } else {
+      await db.run(
+        db.mode === 'pg'
+          ? 'INSERT INTO casa_reservas (user_id, noite, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
+          : 'INSERT OR IGNORE INTO casa_reservas (user_id, noite, created_at) VALUES (?, ?, ?)',
+        [userId, prox.chave, new Date().toISOString()],
+      );
+    }
+    await db.persist();
+    res.json({ ok: true, reservado: (req.body as any)?.reservar !== false, reservas: await totalReservas(prox.chave) });
+  });
+
+  // Foto ou vídeo ao vivo na sala, sempre de visualização única.
+  app.post('/api/casa/:sala/midia', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
+    if (Date.now() - p.ultimaMidia < 3000) { res.status(429).json({ error: 'devagar' }); return; }
+    const mediaId = String((req.body as any)?.mediaId || '');
+    const m = (await db.queryOne('SELECT id, user_id, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
+    if (!m || String(m.user_id) !== userId) { res.status(404).json({ error: 'midia' }); return; }
+    const tipo = String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    p.ultimaMidia = Date.now();
+    p.ultimoPing = Date.now();
+    publicarMsg(sala, {
+      tipo: 'midia',
+      autor: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat },
+      texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única',
+      midia: { tipo },
+    }, String(m.id));
+    res.json({ ok: true });
+  });
+
+  app.post('/api/casa/:sala/midia/:msgId/ver', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (!p.podeFalar) { res.status(403).json({ error: 'premium_required', message: 'Assine para ver as fotos e vídeos da Casa.' }); return; }
+    const row = (await db.queryOne(
+      `SELECT cm.id, cm.autor_id, med.filename, med.mime_type FROM casa_mensagens cm
+         JOIN media med ON med.id = cm.media_id WHERE cm.id = ? AND cm.sala = ? LIMIT 1`,
+      [String(req.params.msgId), sala.id],
+    )) as any;
+    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
+    const ja = await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId]);
+    if (ja) { res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' }); return; }
+    await db.run('INSERT INTO casa_midia_vistas (mensagem_id, user_id, viewed_at) VALUES (?, ?, ?)', [String(row.id), userId, new Date().toISOString()]);
+    await db.persist();
+    res.json({ url: `/uploads/${String(row.filename)}`, mime: row.mime_type ? String(row.mime_type) : null });
+  });
+
+  // ─── Admin: tudo o que aconteceu na Casa, noite por noite ─────────────────
+  app.get('/api/casa/admin/noites', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noites = (await db.queryAll(
+      `SELECT noite, COUNT(*) AS mensagens,
+              SUM(CASE WHEN tipo = 'midia' THEN 1 ELSE 0 END) AS midias,
+              COUNT(DISTINCT autor_id) AS falaram, MIN(created_at) AS inicio, MAX(created_at) AS fim
+         FROM casa_mensagens GROUP BY noite ORDER BY noite DESC LIMIT 60`,
+      [],
+    )) as any[];
+    const eventos = (await db.queryAll(
+      `SELECT noite, COUNT(DISTINCT CASE WHEN tipo = 'entrou' THEN user_id END) AS pessoas,
+              SUM(CASE WHEN tipo = 'cabine' THEN 1 ELSE 0 END) AS cabines
+         FROM casa_eventos GROUP BY noite`,
+      [],
+    )) as any[];
+    const porNoite = new Map(eventos.map((e) => [String(e.noite), e]));
+    const reservas = (await db.queryAll('SELECT noite, COUNT(*) AS c FROM casa_reservas GROUP BY noite', [])) as any[];
+    const resPorNoite = new Map(reservas.map((r) => [String(r.noite), Number(r.c || 0)]));
+    res.json({
+      noites: noites.map((n) => ({
+        noite: String(n.noite),
+        mensagens: Number(n.mensagens || 0),
+        midias: Number(n.midias || 0),
+        falaram: Number(n.falaram || 0),
+        pessoas: Number(porNoite.get(String(n.noite))?.pessoas || 0),
+        cabines: Number(porNoite.get(String(n.noite))?.cabines || 0),
+        reservas: resPorNoite.get(String(n.noite)) ?? 0,
+        inicio: n.inicio, fim: n.fim,
+      })),
+    });
+  });
+
+  app.get('/api/casa/admin/noites/:noite', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noite = String(req.params.noite);
+    const mensagens = (await db.queryAll(
+      `SELECT cm.id, cm.sala, cm.tipo, cm.texto, cm.created_at, cm.autor_id, u.name AS autor_nome, u.gender AS autor_genero,
+              med.filename, med.mime_type,
+              (SELECT COUNT(*) FROM casa_midia_vistas v WHERE v.mensagem_id = cm.id) AS vistas
+         FROM casa_mensagens cm
+         LEFT JOIN users u ON u.id = cm.autor_id
+         LEFT JOIN media med ON med.id = cm.media_id
+        WHERE cm.noite = ? ORDER BY cm.created_at ASC LIMIT 5000`,
+      [noite],
+    )) as any[];
+    const cabines = (await db.queryAll(
+      `SELECT e.created_at, a.name AS a_nome, b.name AS b_nome FROM casa_eventos e
+         LEFT JOIN users a ON a.id = e.user_id LEFT JOIN users b ON b.id = e.outro_id
+        WHERE e.noite = ? AND e.tipo = 'cabine' ORDER BY e.created_at ASC`,
+      [noite],
+    )) as any[];
+    res.json({
+      mensagens: mensagens.map((m) => ({
+        id: String(m.id), sala: String(m.sala), tipo: String(m.tipo), texto: String(m.texto || ''), criadoEm: String(m.created_at),
+        autor: m.autor_id ? { id: String(m.autor_id), nome: String(m.autor_nome || 'conta excluída'), genero: m.autor_genero ? String(m.autor_genero) : '' } : null,
+        midia: m.filename ? { url: `/uploads/${String(m.filename)}`, mime: String(m.mime_type || ''), vistas: Number(m.vistas || 0) } : null,
+      })),
+      cabines: cabines.map((c) => ({ criadoEm: String(c.created_at), a: String(c.a_nome || '?'), b: String(c.b_nome || '?') })),
+    });
   });
 
   app.post('/api/casa/:sala/brincar', deps.requireAuth, async (req, res) => {

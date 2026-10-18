@@ -3660,6 +3660,38 @@ describe('nosigilo backend', () => {
 
     await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[1].token)).expect(200);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(200);
+    // Fila de espera: o terceiro homem entra na fila (sala cheia para homens).
+    const fila = (await request(ctx.app).post('/api/casa/salao/fila').set(auth(homens[2].token)).send({ entrar: true }).expect(200)).body;
+    expect(fila.posicaoNaFila).toBe(1);
+    const infoFila = (await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body;
+    expect(infoFila.salas.find((x: any) => x.id === 'salao').posicaoNaFila).toBe(1);
+
+    // Reserva da noite.
+    const reserva = (await request(ctx.app).post('/api/casa/reservar').set(auth(homens[1].token)).send({ reservar: true }).expect(200)).body;
+    expect(reserva.reservado).toBe(true);
+    expect(reserva.reservas).toBeGreaterThanOrEqual(1);
+
+    // Foto de visualização única: quem recebe abre 1 vez; quem enviou não reabre.
+    const mid = `m-casa-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'casa.webp', 'image/webp', 0, 0, 'chat', ?)", [mid, String(casal.user.id), new Date().toISOString()]);
+    await request(ctx.app).post('/api/casa/salao/midia').set(auth(homens[0].token)).send({ mediaId: mid }).expect(404); // mídia de outra pessoa
+    await request(ctx.app).post('/api/casa/salao/midia').set(auth(casal.token)).send({ mediaId: mid }).expect(200);
+    await new Promise((r) => setTimeout(r, 50)); // o histórico é gravado em segundo plano
+    const msgMidia = (await ctx.db.queryOne("SELECT id FROM casa_mensagens WHERE media_id = ? LIMIT 1", [mid])) as any;
+    expect(msgMidia?.id).toBeTruthy();
+    const vista = (await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(homens[0].token)).expect(200)).body;
+    expect(vista.url).toBe('/uploads/casa.webp');
+    await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(homens[0].token)).expect(410);
+    await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(casal.token)).expect(400);
+
+    // Histórico do admin.
+    await request(ctx.app).get('/api/casa/admin/noites').set(auth(homens[0].token)).expect(403);
+    const noites = (await request(ctx.app).get('/api/casa/admin/noites').set(auth(casal.token)).expect(200)).body.noites;
+    expect(noites.length).toBeGreaterThanOrEqual(1);
+    const detalhe = (await request(ctx.app).get(`/api/casa/admin/noites/${encodeURIComponent(noites[0].noite)}`).set(auth(casal.token)).expect(200)).body;
+    expect(detalhe.mensagens.some((m: any) => m.texto === 'Boa noite, sala!')).toBe(true);
+    expect(detalhe.mensagens.find((m: any) => m.midia)?.midia.vistas).toBe(1);
+
     // Página pública: sem login, só números.
     const pub = (await request(ctx.app).get('/api/casa/publico').expect(200)).body;
     expect(pub.aberta).toBe(true);

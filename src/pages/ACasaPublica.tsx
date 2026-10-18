@@ -12,6 +12,7 @@ import BrandLogo from '@/components/BrandLogo';
  * conta, cai direto na Casa. ?invite=<token> leva o convite do promotor junto.
  */
 type Publico = {
+  reservas: number;
   aberta: boolean; tema: { nome: string; descricao: string } | null; pessoas: number;
   proximaAbertura: string | null; salas: { nome: string; emoji: string; descricao: string; nivel: string }[];
 };
@@ -47,8 +48,13 @@ export default function ACasaPublica() {
     return () => { clearInterval(t1); clearInterval(t2); };
   }, []);
 
+  // Veio do e-mail (?reservar=1) já logado: reserva direto na Casa.
+  useEffect(() => {
+    if (isAuthenticated && params.get('reservar') === '1') navigate('/casa?reservar=1', { replace: true });
+  }, [isAuthenticated, params, navigate]);
+
   const quero = () => {
-    if (isAuthenticated) { navigate('/casa'); return; }
+    if (isAuthenticated) { navigate(info && !info.aberta ? '/casa?reservar=1' : '/casa'); return; }
     guardarDestinoPosCadastro('/casa');
     navigate(convite ? `/register?invite=${encodeURIComponent(convite)}` : '/register');
   };
@@ -63,7 +69,7 @@ export default function ACasaPublica() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing que cabe no seu celular. Toda <b>sexta e sábado, das 21h à 1h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo, feita para a nossa comunidade. Toda <b>sexta e sábado, das 21h à 1h</b>: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>
@@ -93,8 +99,11 @@ export default function ACasaPublica() {
         </div>
 
         <Button size="lg" className="h-14 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={quero}>
-          {isAuthenticated ? 'Entrar na Casa' : 'Quero entrar na Casa'}
+          {isAuthenticated ? (info && !info.aberta ? '🎟️ Reservar meu lugar' : 'Entrar na Casa') : 'Quero entrar na Casa'}
         </Button>
+        {!info?.aberta && (info?.reservas ?? 0) > 0 && (
+          <p className="text-center text-sm text-fuchsia-200">🎟️ {info?.reservas} pessoa(s) já reservaram lugar para a próxima noite</p>
+        )}
         {!isAuthenticated && (
           <p className="text-center text-sm text-white/70">
             Já tem conta? <Link to="/login" state={{ from: { pathname: '/casa' } }} className="font-semibold text-fuchsia-300 underline">Entrar</Link>

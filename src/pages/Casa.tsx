@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, Lock, Send, Users } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Camera, Crown, Lock, Send, Users, X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useSocket } from '@/contexts/SocketContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
+import HistoricoDaCasa from '@/components/HistoricoDaCasa';
+import { profileService } from '@/services/api';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -22,14 +25,15 @@ type Categoria = 'homem' | 'mulher' | 'casal' | 'outros';
 type SalaResumo = {
   id: string; nome: string; emoji: string; descricao: string; nivel: 'quente' | 'muito_quente';
   total: number; espiando: number; contagem: Record<Categoria, number>;
-  bloqueadaParaMim: boolean; lotadaParaMim: boolean;
+  bloqueadaParaMim: boolean; lotadaParaMim: boolean; posicaoNaFila: number | null;
 };
 type Info = {
   aberta: boolean; tema: { nome: string; descricao: string } | null; horario: string;
   souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
+  reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' } };
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match'; fimEm: string;
   texto?: string; opcoes?: string[]; meuVoto?: number | null; votos?: number[] | null; total?: number;
@@ -40,6 +44,7 @@ type Estado = {
   sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string };
   mensagens: Msg[]; presentes: Pessoa[]; espiando: number; jogo: Jogo | null;
   eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean };
+  midiasVistas: string[];
 };
 type Convite = { id: string; de: { id: string; nome: string; avatar: string | null; cat: Categoria }; sala: string };
 
@@ -146,6 +151,11 @@ export default function Casa() {
   const [texto, setTexto] = useState('');
   const [pessoaAberta, setPessoaAberta] = useState<Pessoa | null>(null);
   const [convite, setConvite] = useState<Convite | null>(null);
+  const [enviandoMidia, setEnviandoMidia] = useState<number | null>(null);
+  const [vendo, setVendo] = useState<{ url: string; mime: string | null } | null>(null);
+  const [params, setParams] = useSearchParams();
+  const { user } = useAuth();
+  const cameraRef = useRef<HTMLInputElement>(null);
   const fimDaLista = useRef<HTMLDivElement>(null);
   const salaAtual = estado?.sala.id ?? null;
 
@@ -164,13 +174,37 @@ export default function Casa() {
       const { data } = await apiClient.post(`/casa/${salaId}/entrar`);
       setEstado(data);
     } catch (e) {
-      if (!silencioso) toast({ title: erroDe(e, 'Não foi possível entrar agora.'), variant: 'destructive' });
+      if ((e as any)?.response?.data?.error === 'lotada_homens') {
+        if (!silencioso) toast({ title: 'Cota de homens cheia nesta sala', description: 'Toque em "Entrar na fila" e a gente te chama quando abrir vaga.' });
+      } else if (!silencioso) toast({ title: erroDe(e, 'Não foi possível entrar agora.'), variant: 'destructive' });
       setEstado(null);
       void carregar();
     } finally {
       setEntrando(null);
     }
   }, [toast, carregar]);
+
+  const reservar = useCallback(async (reservarLugar = true) => {
+    try {
+      const { data } = await apiClient.post('/casa/reservar', { reservar: reservarLugar });
+      setInfo((i) => i ? { ...i, reservado: !!data.reservado, reservas: Number(data.reservas || 0) } : i);
+      if (reservarLugar) toast({ title: '🎟️ Lugar reservado!', description: 'Quando A Casa abrir, a gente avisa no seu celular.' });
+    } catch { toast({ title: 'Não foi possível reservar agora.', variant: 'destructive' }); }
+  }, [toast]);
+  useEffect(() => {
+    if (params.get('reservar') !== '1' || !info) return;
+    params.delete('reservar');
+    setParams(params, { replace: true });
+    if (!info.aberta && !info.reservado) void reservar(true);
+  }, [params, setParams, info, reservar]);
+
+  const entrarNaFila = async (salaId: string) => {
+    try {
+      const { data } = await apiClient.post(`/casa/${salaId}/fila`, { entrar: true });
+      toast({ title: `Você está na fila (posição ${data.posicaoNaFila})`, description: 'Quando abrir vaga, chega um aviso e você tem 3 minutos para entrar.' });
+      void carregar();
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível entrar na fila.'), variant: 'destructive' }); }
+  };
 
   const sair = useCallback(async () => {
     if (salaAtual) void apiClient.post(`/casa/${salaAtual}/sair`).catch(() => {});
@@ -198,18 +232,22 @@ export default function Casa() {
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
     const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
     const aoConvite = (c: Convite) => setConvite(c);
+    const aoVaga = (d: { sala: string; nome: string }) => {
+      toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
+      void entrar(d.sala);
+    };
     const aoResposta = () => toast({ title: 'Não rolou agora 😉', description: 'A pessoa não aceitou o convite pra cabine.' });
     const aoCabine = (d: { conversationId: string; com: string }) => {
       toast({ title: `🚪 Cabine aberta com ${d.com}!` });
       navigate(`/chat/${d.conversationId}`);
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga);
     };
-  }, [on, off, toast, navigate, carregar]);
+  }, [on, off, toast, navigate, carregar, entrar]);
 
   // Sai da sala ao deixar a página.
   const salaRef = useRef<string | null>(null);
@@ -225,6 +263,36 @@ export default function Casa() {
     try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t }); }
     catch (e) { setTexto(t); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
   };
+  // Foto/vídeo tirado na hora (abre a câmera no celular), sempre visualização única.
+  const enviarMidia = async (arquivo: File | undefined) => {
+    if (!arquivo || !salaAtual) return;
+    if (arquivo.type.startsWith('video/') && arquivo.size > 200 * 1024 * 1024) {
+      toast({ title: 'Vídeo grande demais', description: 'Grave um vídeo mais curto (até 1 minuto).', variant: 'destructive' });
+      return;
+    }
+    setEnviandoMidia(0);
+    try {
+      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(pct));
+      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id });
+      toast({ title: 'Enviado para a sala 🔥', description: 'Cada pessoa abre só 1 vez.' });
+    } catch (e) {
+      toast({ title: (e as Error)?.message || erroDe(e, 'Não foi possível enviar.'), variant: 'destructive' });
+    } finally {
+      setEnviandoMidia(null);
+      if (cameraRef.current) cameraRef.current.value = '';
+    }
+  };
+  const verMidia = async (m: Msg) => {
+    if (!salaAtual) return;
+    try {
+      const { data } = await apiClient.post(`/casa/${salaAtual}/midia/${m.id}/ver`);
+      setVendo({ url: data.url, mime: data.mime });
+    } catch (e) {
+      toast({ title: erroDe(e, 'Esta mídia não está mais disponível.') });
+    }
+    setEstado((e) => e ? { ...e, midiasVistas: [...e.midiasVistas, m.id] } : e);
+  };
+
   const jogar = async (valor: unknown) => {
     if (!salaAtual || !estado?.jogo) return;
     try {
@@ -310,6 +378,29 @@ export default function Casa() {
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {estado.mensagens.map((m) => m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
+        ) : m.tipo === 'midia' ? (
+          <div key={m.id} className="flex items-start gap-2">
+            {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
+              {(() => {
+                const minha = m.autor?.id === user?.id;
+                const vista = estado.midiasVistas.includes(m.id);
+                return (
+                  <button
+                    type="button"
+                    disabled={minha || vista || !estado.eu.podeFalar}
+                    onClick={() => void verMidia(m)}
+                    className={cn('mt-0.5 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm',
+                      minha || vista ? 'bg-white/5 text-white/50' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600 font-semibold')}
+                  >
+                    {m.midia?.tipo === 'video' ? '🎥' : '📸'}
+                    {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : estado.eu.podeFalar ? 'Toque para ver (1 vez)' : 'Assine para ver'}
+                  </button>
+                );
+              })()}
+            </div>
+          </div>
         ) : m.tipo === 'lola' ? (
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
@@ -335,6 +426,24 @@ export default function Casa() {
           onSubmit={(e) => { e.preventDefault(); void enviar(); }}
         >
           <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*,video/*"
+            capture="user"
+            className="hidden"
+            onChange={(e) => void enviarMidia(e.target.files?.[0])}
+          />
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            disabled={enviandoMidia !== null}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50"
+            aria-label="Tirar foto ou vídeo agora"
+            title="Foto ou vídeo ao vivo (visualização única)"
+          >
+            {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia}%</span> : <Camera className="h-4 w-4" />}
+          </button>
+          <input
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             maxLength={280}
@@ -351,6 +460,18 @@ export default function Casa() {
             <Crown className="mr-2 h-4 w-4" /> Assine para falar, brincar e ir pra cabine
           </Button>
           <p className="mt-1 text-center text-[11px] text-white/50">Você está espiando: ninguém vê que você está aqui.</p>
+        </div>
+      )}
+
+      {vendo && (
+        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
+          <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar">
+            <X className="h-5 w-5" />
+          </button>
+          {vendo.mime?.startsWith('video/')
+            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline controls={false} onEnded={() => setVendo(null)} className="max-h-full max-w-full select-none" />
+            : <img src={resolveServerUrl(vendo.url)} alt="" draggable={false} className="max-h-full max-w-full select-none" />}
+          <p className="absolute bottom-4 left-0 right-0 text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
         </div>
       )}
 
@@ -398,6 +519,22 @@ export default function Casa() {
         </ul>
       </div>
 
+      {info && !info.aberta && (
+        <div className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/5 p-4 text-center">
+          <p className="text-sm font-semibold">{info.reservado ? '🎟️ Seu lugar está reservado!' : 'Garanta seu lugar na próxima noite'}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {info.reservas > 0 ? `${info.reservas} pessoa(s) já reservaram. ` : ''}Quando abrir, a gente avisa no seu celular.
+          </p>
+          <Button
+            className={cn('mt-3 w-full', info.reservado ? '' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600')}
+            variant={info.reservado ? 'outline' : 'default'}
+            onClick={() => void reservar(!info.reservado)}
+          >
+            {info.reservado ? 'Cancelar reserva' : '🎟️ Reservar meu lugar'}
+          </Button>
+        </div>
+      )}
+
       {info?.souAdmin && (
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed p-3 text-xs">
           <span className="font-semibold">Admin:</span>
@@ -408,10 +545,11 @@ export default function Casa() {
       )}
 
       {info?.souAdmin && <PlaylistDaCasa />}
+      {info?.souAdmin && <HistoricoDaCasa />}
 
       <div className="grid gap-3">
         {(info?.salas ?? []).map((s) => {
-          const travada = !info?.aberta || s.bloqueadaParaMim || s.lotadaParaMim;
+          const travada = !info?.aberta || s.bloqueadaParaMim || (s.lotadaParaMim && s.posicaoNaFila != null);
           return (
             <div key={s.id} className={cn('rounded-2xl border bg-card p-4', !info?.aberta && 'opacity-70')}>
               <div className="flex items-start gap-3">
@@ -434,11 +572,11 @@ export default function Casa() {
               <Button
                 className="mt-3 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600"
                 disabled={travada || entrando !== null}
-                onClick={() => void entrar(s.id)}
+                onClick={() => void (s.lotadaParaMim ? entrarNaFila(s.id) : entrar(s.id))}
               >
                 {!info?.aberta ? <><Lock className="mr-2 h-4 w-4" />Abre sexta e sábado às 21h</>
                   : s.bloqueadaParaMim ? 'Só casais e mulheres'
-                  : s.lotadaParaMim ? 'Cota de homens cheia: tente daqui a pouco'
+                  : s.lotadaParaMim ? (s.posicaoNaFila ? `Na fila: você é o ${s.posicaoNaFila}º` : 'Sala cheia para homens · Entrar na fila')
                   : entrando === s.id ? 'Entrando…'
                   : info.podeFalar ? 'Entrar' : 'Espiar'}
               </Button>
