@@ -550,7 +550,7 @@ export default function Promoter() {
                 chega pela página da boate e, ao se cadastrar, cai direto nela. */}
             {(() => {
               const tokenDoConvite = inviteUrl.split('/invite/')[1] || '';
-              const linkCasa = `${getSiteUrl()}/a-casa?invite=${tokenDoConvite}`;
+              const linkCasa = `${getSiteUrl()}/acasa?invite=${tokenDoConvite}`;
               const textoCasa = `🔥 Sexta e sábado, 21h, tem A Casa: a boate virtual dos liberais, ao vivo. Entra comigo: ${linkCasa}`;
               return (
                 <div className="mt-2 space-y-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">

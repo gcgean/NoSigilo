@@ -104,6 +104,7 @@ const App = () => (
                     <Route path="/descobrir" element={<CampaignLanding />} />
                     <Route path="/espiar" element={<Espiar />} />
                     <Route path="/a-casa" element={<ACasaPublica />} />
+                    <Route path="/acasa" element={<ACasaPublica />} />
                     <Route path="/login" element={<Login />} />
                     {/* Botão "Renovar com Pix" dos e-mails: sem login, link assinado. */}
                     <Route path="/renovar" element={<Renovar />} />

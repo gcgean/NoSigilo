@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import BrandLogo from '@/components/BrandLogo';
 
 /**
- * Página pública d'A Casa (/a-casa), para divulgar fora do site.
+ * Página pública d'A Casa (/acasa; /a-casa também funciona), para divulgar fora do site.
  * Quem chega aqui fica marcado com origem "A Casa" (primeiroToque) e, ao criar a
  * conta, cai direto na Casa. ?invite=<token> leva o convite do promotor junto.
  */

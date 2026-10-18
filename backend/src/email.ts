@@ -326,7 +326,7 @@ export async function sendWeekendEngagementEmail(
       headline: 'Hoje às 21h a Casa abre 😈',
       body: 'A Casa: a boate virtual dos casais liberais do NoSigilo, ao vivo e só para a comunidade. Salas com casais, mulheres e singles, a Lola puxando brincadeiras bem quentes, música e cabine a dois. Até 1h da manhã. Chama seu par!',
       ctaLabel: 'Reservar meu lugar →',
-      ctaPath: '/a-casa?reservar=1',
+      ctaPath: '/acasa?reservar=1',
       second: { label: 'Ver quem está perto', path: '/search' },
     },
     {
@@ -335,7 +335,7 @@ export async function sendWeekendEngagementEmail(
       headline: 'Sexta Liberal começa às 21h',
       body: 'Na Casa, a boate virtual dos casais liberais do NoSigilo, tem eu nunca, verdade ou desafio e match às cegas com gente da comunidade, tudo ao vivo. Quem curtir a vibe vai pra cabine a dois. Discreto e só com quem você aceitar.',
       ctaLabel: 'Entrar na Casa às 21h →',
-      ctaPath: '/a-casa?reservar=1',
+      ctaPath: '/acasa?reservar=1',
       second: { label: 'Abrir o Match', path: '/match' },
     },
     {
@@ -344,7 +344,7 @@ export async function sendWeekendEngagementEmail(
       headline: 'Volta pra noite de hoje?',
       body: 'Enquanto você esteve fora, a comunidade ganhou A Casa: a boate virtual dos casais liberais do NoSigilo, que abre sexta e sábado, das 21h à 1h. Entra, dá uma espiada e sinta o clima 🔥',
       ctaLabel: 'Espiar A Casa →',
-      ctaPath: '/a-casa?reservar=1',
+      ctaPath: '/acasa?reservar=1',
       second: { label: 'Ver as novidades do feed', path: '/feed' },
     },
     {
@@ -353,7 +353,7 @@ export async function sendWeekendEngagementEmail(
       headline: 'Tem sala muito quente hoje',
       body: 'Na Casa, a boate virtual dos casais liberais do NoSigilo, tem Salão Principal, Sala dos Casais e Quarto Escuro: escolha a sua, entre nas brincadeiras e chame quem você quiser pra cabine. Hoje, das 21h à 1h.',
       ctaLabel: 'Ver as salas da Casa →',
-      ctaPath: '/a-casa?reservar=1',
+      ctaPath: '/acasa?reservar=1',
       second: { label: 'Abrir o Chat', path: '/chat' },
     },
   ];

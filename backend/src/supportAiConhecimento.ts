@@ -38,7 +38,7 @@ Premium
 - Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem curtiu suas fotos, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
 - Dias grátis ganhos (tokens, convites) valem mesmo depois que a assinatura paga vence.
 
-A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa 🔥", ou nosigilo.net/a-casa)
+A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa 🔥", ou nosigilo.net/acasa)
 - Abre sexta e sábado, das 21h à 1h (horário de Brasília). Inauguração: sexta, 23/10/2026, às 21h. Quem reserva o lugar ("Reservar meu lugar") recebe aviso no celular quando abre.
 - Salas: Salão Principal (quente), Sala dos Casais (só casais e mulheres), Quarto Escuro e Glory Hole (anônimo; cada um revela quem é se quiser). Homens ocupam no máximo metade de cada sala; quando lota, dá para entrar na fila e é chamado quando abre vaga.
 - Quem não assina entra espiando (lê, não fala). Para falar, brincar, mandar foto e ir para a cabine precisa de Premium (ou período grátis).

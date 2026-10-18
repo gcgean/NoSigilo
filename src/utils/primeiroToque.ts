@@ -47,7 +47,7 @@ export function capturaPrimeiroToque(): void {
       utmSource: busca.get('utm_source') || undefined,
       utmMedium: busca.get('utm_medium') || undefined,
       // Página pública d'A Casa conta como campanha própria (canal "A Casa" no admin).
-      utmCampaign: busca.get('utm_campaign') || (window.location.pathname.startsWith('/a-casa') ? 'a-casa' : undefined),
+      utmCampaign: busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : undefined),
       app: appDoNavegador(navigator.userAgent || ''),
       em: new Date().toISOString(),
     };
