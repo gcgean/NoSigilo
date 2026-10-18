@@ -423,13 +423,18 @@ export default function Feed() {
   const longPressExpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggeredExpIdRef = useRef<string | null>(null);
 
-  const [feedFilter, setFeedFilter] = useState<'all' | 'friends' | 'favorites' | 'experiences'>(() => {
-    const v = localStorage.getItem('nosigilo_feed_filter');
-    return v === 'favorites' || v === 'experiences' || v === 'friends' ? v : 'all';
-  });
+  // Sempre começa no feed principal. Antes lembrava a última aba e quem saía
+  // pelos Contos eróticos voltava neles sem saber como voltar ao feed (18/10/2026).
+  const [feedFilter, setFeedFilter] = useState<'all' | 'friends' | 'favorites' | 'experiences'>('all');
+  // Tocar em "Feed" no menu estando já no feed também volta ao feed principal
+  // (a navegação gera uma nova location.key sem remontar a página).
+  const chaveDaNavegacao = useRef(location.key);
   useEffect(() => {
-    localStorage.setItem('nosigilo_feed_filter', feedFilter);
-  }, [feedFilter]);
+    if (chaveDaNavegacao.current === location.key) return;
+    chaveDaNavegacao.current = location.key;
+    const pedeContos = (location.state as any)?.openExperienceForm || new URLSearchParams(location.search).get('contar');
+    if (!pedeContos) setFeedFilter('all');
+  }, [location.key, location.state, location.search]);
 
   // Proximity filter: null = todos, number = raio rígido; cityOnly mantém o
   // nome legado, mas representa a região progressiva (cidade → estado → distância).
