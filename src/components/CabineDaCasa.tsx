@@ -21,6 +21,7 @@ type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovado
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
+  quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number;
 };
 
 const erroDe = (e: unknown, padrao: string) => (e as any)?.response?.data?.message || padrao;
@@ -177,6 +178,23 @@ export default function CabineDaCasa({
             )}
           </div>
           <p className="text-[11px] text-white/50">A porta só abre quando todos aqui dentro querem. Qualquer um pode fechar.</p>
+          {/* Esquentar: a Lola guia o sexo virtual, com o nível subindo com o tempo. Só liga com todos topando. */}
+          {cab.membros.length >= 2 && (cab.quente ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-rose-600/20 p-2">
+              <span className="text-xs font-bold text-rose-200">{'🔥'.repeat(Math.max(1, cab.nivel))} Cabine quente</span>
+              <Button size="sm" className="h-8 bg-rose-600 text-xs hover:bg-rose-500" onClick={() => void post('provocacao', { dado: false })}>🎲 Nova provocação</Button>
+              <Button size="sm" className="h-8 bg-fuchsia-600 text-xs hover:bg-fuchsia-500" onClick={() => void post('provocacao', { dado: true })}>🎲 Dado do prazer</Button>
+              <Button size="sm" variant="outline" className="h-8 border-white/30 bg-transparent text-xs text-white" onClick={() => void post('esquentar', { quer: false })}>🧊 Esfriar</Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              className={cn('h-9 w-full text-xs', cab.voteiQuente ? 'bg-rose-900/60' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600')}
+              onClick={() => void post('esquentar', { quer: !cab.voteiQuente })}
+            >
+              {cab.voteiQuente ? `Você topou ✓ esperando os outros (${cab.votosQuente}/${cab.membros.length}) · tocar pra desistir` : `🔥 Esquentar a cabine: a Lola guia vocês (${cab.votosQuente}/${cab.membros.length})`}
+            </Button>
+          ))}
           {convidando && (
             <div className="flex gap-2 overflow-x-auto pb-1">
               {convidaveis.filter((p) => !idsDentro.has(p.id) && p.id !== meuIdPublico).map((p) => (

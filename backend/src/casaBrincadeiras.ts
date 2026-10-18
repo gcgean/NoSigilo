@@ -355,3 +355,41 @@ export const SUGESTOES_DE_DESAFIO: Item[] = [
   mq('Vídeo de 10 segundos se tocando, sem rosto'),
   mq('Foto totalmente sem roupa, sem rosto'),
 ];
+
+// ─── Cabine esquentada (todos de dentro aceitaram) ───────────────────────────
+// Provocações da Lola que sobem de nível com o tempo: 1 = flerte, 2 = nudez e
+// toque, 3 = sexo virtual explícito. Tudo por texto, foto e vídeo de
+// visualização única, só entre quem está na cabine (e quem espia, se a porta
+// estiver aberta).
+export const PROVOCACOES_CABINE: Record<1 | 2 | 3, string[]> = {
+  1: [
+    'Contem um pro outro o que cada um está vestindo agora… com detalhes 😏',
+    'Cada um diz a primeira coisa que faria se estivesse aí pessoalmente.',
+    'Mandem uma foto de um detalhe do corpo que vocês acham irresistível (sem rosto).',
+    'Escrevam, devagar, como seria o primeiro beijo de vocês.',
+    'Qual parte do corpo do outro você quer ver primeiro? Peça com jeitinho 😈',
+    'Uma confissão: o que vocês estão sentindo agora, só de estar nessa cabine?',
+  ],
+  2: [
+    'Tirem uma peça de roupa agora e mandem a foto. Quem demorar paga um drink 🔥',
+    'Vídeo de 10 segundos passando a mão devagar pelo próprio corpo, sem rosto.',
+    'Descrevam onde vocês estão tocando agora… e mandem a prova em foto.',
+    'Casais: mostrem o beijo mais quente de vocês em vídeo para quem está na cabine 💋',
+    'Foto de lingerie (ou só de cueca) na pose que mais provoca.',
+    'Cada um pede ao outro uma foto específica. O outro tem 1 minuto pra cumprir.',
+    'Strip lento: mandem um vídeo tirando a próxima peça, bem devagar 🖤',
+  ],
+  3: [
+    'Agora sem roupa nenhuma: mandem a foto que vocês nunca mandaram pra ninguém 😈',
+    'Vídeo de 15 segundos se tocando pensando em quem está na cabine.',
+    'Casais: mostrem em vídeo a posição favorita de vocês, pra cabine inteira ver 🔥',
+    'Escrevam em detalhes o que fariam com o outro na cama… e mostrem em vídeo como fariam.',
+    'Um comanda, o outro obedece: o primeiro manda o que o segundo deve fazer na câmera.',
+    'Mostrem como vocês gozam… em vídeo ou em palavras. Quem tem coragem? 💦',
+    'Casais: transem pensando em quem está na cabine e mandem um vídeo de 10 segundos.',
+  ],
+};
+
+/** Dado do prazer: ação + parte do corpo. */
+export const DADO_ACOES = ['beijar', 'lamber', 'morder de leve', 'acariciar', 'apertar', 'soprar', 'tocar devagar', 'chupar'];
+export const DADO_PARTES = ['o pescoço', 'a boca', 'as coxas', 'os seios/peito', 'a barriga', 'a nuca', 'o bumbum', 'onde você quiser 😈'];

@@ -45,7 +45,7 @@ A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa �
 - A Lola (anfitriã IA) puxa brincadeiras: eu nunca, enquete, verdade ou desafio, quiz, match às cegas, desafio da foto, duelo, relâmpago e o Show da Meia-Noite. Só sorteia quem marca "Quero brincar"; "Passo" sempre vale.
 - Pulseira da noite: verde (aberto a tudo), amarela (só soft: beijos e carícias, sem sexo com outros), roxa (single bem-vindo), vermelha (só olhando; nunca é sorteado).
 - Bar: pagar um drink (3 a 15 tokens, vão para quem recebe). Olhar discreto; olhares cruzados sugerem cabine. Desafio sugerido: oferece tokens; se a pessoa aceitar e cumprir em 5 min recebe; se não, os tokens voltam.
-- Cabine: a dois ou em grupo; a porta só abre se todos de dentro quiserem; com a porta aberta, outros espiam e podem pedir para entrar (todos de dentro aprovam). "Continuar no chat" leva a conversa para o chat normal.
+- Cabine: a dois ou em grupo; a porta só abre se todos de dentro quiserem; com a porta aberta, outros espiam e podem pedir para entrar (todos de dentro aprovam). "Continuar no chat" leva a conversa para o chat normal. Na cabine dá para "Esquentar": quando todos de dentro topam, a Lola guia o sexo virtual com provocações que sobem de nível (flerte, nudez, explícito) e o "dado do prazer"; qualquer um toca em "Esfriar" e para na hora.
 - Fotos e vídeos são de visualização única (não impede print). Ranking dos casais da noite e do mês. +5 tokens por noite só por entrar.
 - Regras: só maiores de 18, consentimento, sem Pix/dinheiro, sem contato de fora na sala, sem mídia de terceiros. A Lola modera e pode retirar a pessoa da noite; dá para denunciar alguém tocando na foto dele na sala.
 

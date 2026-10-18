@@ -24,7 +24,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import {
   BOAS_VINDAS, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU,
-  PERGUNTAS_QUENTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
+  PERGUNTAS_QUENTES, PROVOCACOES_CABINE, DADO_ACOES, DADO_PARTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
   type Item, type Nivel,
 } from './casaBrincadeiras.js';
 
@@ -239,6 +239,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   type Cabine = {
     id: string; salaId: SalaId; membros: Map<string, Membro>; porta: Set<string>; aberta: boolean;
     espectadores: Map<string, number>; entradas: Map<string, Entrada>; mensagens: Msg[]; criadaEm: number;
+    /** Esquentar: só liga quando TODOS de dentro topam; qualquer um esfria. */
+    topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
   };
   const cabines = new Map<string, Cabine>();
   const MAX_NA_CABINE = 6;
@@ -262,6 +264,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         }))
         : [],
       pedi: c.entradas.has(userId),
+      quente: c.quente,
+      votosQuente: [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length,
+      voteiQuente: c.topamEsquentar.has(userId),
+      nivel: c.quente ? nivelDaCabine(c) : 0,
       mensagens: c.mensagens.slice(-60),
     };
   };
@@ -271,6 +277,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const msgCabine = (c: Cabine, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string | null = null) => {
     const completa: Msg = { ...msg, id: randomUUID(), criadoEm: new Date().toISOString() };
     c.mensagens.push(completa);
+    if (msg.tipo === 'pessoa' || msg.tipo === 'midia') c.ultimaFala = Date.now();
     if (c.mensagens.length > MAX_MENSAGENS) c.mensagens.splice(0, c.mensagens.length - MAX_MENSAGENS);
     if (chaveDaNoite) {
       void db.run('INSERT INTO casa_mensagens (id, noite, sala, tipo, autor_id, texto, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -279,10 +286,42 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem', { cabineId: c.id, msg: completa });
     return completa;
   };
+  // Nível sobe com o tempo de cabine esquentada: flerte → nudez → sexo virtual.
+  const nivelDaCabine = (c: Cabine): 1 | 2 | 3 => {
+    const min = (Date.now() - c.quenteDesde) / 60_000;
+    return min < 6 ? 1 : min < 14 ? 2 : 3;
+  };
+  const provocar = (c: Cabine, dado = false) => {
+    c.ultimaProvocacao = Date.now();
+    if (dado) {
+      const nomes = [...c.membros.values()].map((m) => m.nome);
+      const quem = nomes[Math.floor(Math.random() * nomes.length)];
+      msgCabine(c, { tipo: 'lola', texto: `🎲 DADO DO PRAZER: ${quem}, ${sortear(DADO_ACOES)} ${sortear(DADO_PARTES)}… e mostra na câmera (visualização única) 😈` });
+      return;
+    }
+    const nivel = nivelDaCabine(c);
+    const lista = PROVOCACOES_CABINE[nivel].map((t, i) => ({ t, k: `${nivel}-${i}` }));
+    let livres = lista.filter((x) => !c.usadas.has(x.k));
+    if (livres.length === 0) { lista.forEach((x) => c.usadas.delete(x.k)); livres = lista; }
+    const escolha = sortear(livres);
+    c.usadas.add(escolha.k);
+    const selo = nivel === 1 ? '🔥' : nivel === 2 ? '🔥🔥' : '🔥🔥🔥';
+    msgCabine(c, { tipo: 'lola', texto: `${selo} ${escolha.t}` });
+  };
+  // Quem entra depois ainda não topou: a cabine esfria até todos toparem de novo.
+  const conferirQuente = (c: Cabine) => {
+    const todos = c.membros.size >= 2 && [...c.membros.keys()].every((id) => c.topamEsquentar.has(id));
+    if (c.quente && !todos) {
+      c.quente = false;
+      msgCabine(c, { tipo: 'sistema', texto: '🧊 A cabine esfriou: para esquentar de novo, todos aqui dentro precisam topar.' });
+    }
+  };
+
   const criarCabine = (sala: Sala, a: Presente, b: Presente) => {
     const c: Cabine = {
       id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
+      topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -876,6 +915,7 @@ Responda com UMA palavra:
     for (const [id, c] of convites) if (agora - c.criadoEm > 120_000) convites.delete(id);
     for (const c of [...cabines.values()]) {
       if (!noite) { fecharCabine(c); continue; }
+      if (c.quente && agora - c.ultimaProvocacao > 3 * 60_000 && agora - c.ultimaFala > 45_000) provocar(c, Math.random() < 0.3);
       let mudou = false;
       for (const [id, t] of c.espectadores) if (agora - t > PING_EXPIRA_MS) { c.espectadores.delete(id); mudou = true; }
       for (const [id, e] of c.entradas) if (agora - e.criadoEm > 3 * 60_000) { c.entradas.delete(id); mudou = true; }
@@ -1005,8 +1045,9 @@ Responda com UMA palavra:
       c.espectadores.delete(userId);
       if (c.membros.delete(userId)) {
         c.porta.delete(userId);
+        c.topamEsquentar.delete(userId);
         if (c.membros.size === 0) fecharCabine(c);
-        else { msgCabine(c, { tipo: 'sistema', texto: `🚫 ${nome} foi retirado(a) da Casa.` }); avisarCabine(c); }
+        else { conferirQuente(c); msgCabine(c, { tipo: 'sistema', texto: `🚫 ${nome} foi retirado(a) da Casa.` }); avisarCabine(c); }
       }
     }
     emitirPara(userId, 'casa.expulso', { motivo });
@@ -2252,12 +2293,56 @@ Responda com UMA palavra:
     c.espectadores.delete(idReal);
     c.membros.set(idReal, e.pessoa);
     c.porta.delete(idReal);
+    conferirQuente(c);
     c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
     msgCabine(c, { tipo: 'lola', texto: `🔥 ${e.pessoa.nome} entrou na cabine! Agora são ${c.membros.size} 😈` });
     const sala = salas.get(c.salaId);
     if (sala) lola(sala, `🔥 ${e.pessoa.nome} entrou na cabine de ${[...c.membros.values()].filter((x) => x.id !== idReal).map((x) => x.nome).join(', ')}…`);
     emitirPara(idReal, 'casa.cabine', { cabineId: c.id, com: 'a cabine' });
   };
+
+  // Esquentar a cabine (sexo virtual guiado pela Lola): todos de dentro precisam topar.
+  app.post('/api/casa/cabine/:id/esquentar', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    const m = c?.membros.get(userId);
+    if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    const quer = !!(req.body as any)?.quer;
+    if (!quer) {
+      c.topamEsquentar.delete(userId);
+      if (c.quente) {
+        c.quente = false;
+        msgCabine(c, { tipo: 'sistema', texto: `🧊 ${m.nome} esfriou a cabine. Tudo bem, aqui o limite de cada um manda.` });
+      }
+      avisarCabine(c);
+      res.json({ ok: true, quente: false });
+      return;
+    }
+    c.topamEsquentar.add(userId);
+    const todos = c.membros.size >= 2 && [...c.membros.keys()].every((id) => c.topamEsquentar.has(id));
+    if (todos && !c.quente) {
+      c.quente = true;
+      c.quenteDesde = Date.now();
+      msgCabine(c, { tipo: 'lola', texto: '🔥 Todos toparam: a cabine esquentou! Eu vou provocando vocês, e o nível sobe com o tempo… Qualquer um pode tocar em "Esfriar" quando quiser. Começando 😈' });
+      provocar(c);
+    } else if (!todos) {
+      const n = [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length;
+      msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} quer esquentar a cabine (${n}/${c.membros.size})` });
+    }
+    avisarCabine(c);
+    res.json({ ok: true, quente: c.quente });
+  });
+
+  app.post('/api/casa/cabine/:id/provocacao', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    if (!c || !c.membros.has(userId)) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    if (!c.quente) { res.status(409).json({ error: 'fria', message: 'Esquentem a cabine primeiro (todos precisam topar).' }); return; }
+    if (Date.now() - c.ultimaProvocacao < 15_000) { res.status(429).json({ error: 'devagar', message: 'Calma… cumpram essa primeiro 😏' }); return; }
+    provocar(c, (req.body as any)?.dado === true);
+    avisarCabine(c);
+    res.json({ ok: true });
+  });
 
   // Quem espia pede para participar: todos de dentro precisam aprovar.
   app.post('/api/casa/cabine/:id/pedir', deps.requireAuth, async (req, res) => {
@@ -2353,7 +2438,9 @@ Responda com UMA palavra:
     if (!m) { res.json({ ok: true }); return; }
     c.membros.delete(userId);
     c.porta.delete(userId);
+    c.topamEsquentar.delete(userId);
     if (c.membros.size === 0) { fecharCabine(c); res.json({ ok: true }); return; }
+    conferirQuente(c);
     c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
     msgCabine(c, { tipo: 'sistema', texto: `${m.nome} saiu da cabine` });
     avisarCabine(c);

@@ -3661,6 +3661,10 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(403); // porta fechada
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(casal.token)).send({ abrir: true }).expect(200);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: true }).expect(200)).body.aberta).toBe(true);
+    // Esquentar: só liga quando os dois topam; provocação só com a cabine quente.
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/provocacao`).set(auth(casal.token)).send({}).expect(409);
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/esquentar`).set(auth(casal.token)).send({ quer: true }).expect(200)).body.quente).toBe(false);
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200)).body.quente).toBe(true);
     const espiando = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(200)).body.cabine;
     expect(espiando.souEspectador).toBe(true);
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/mensagem`).set(auth(homens[1].token)).send({ texto: 'oi' }).expect(403);
