@@ -19119,6 +19119,96 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Usuários (data de cadastro, cidade, UF). O extrato do Hub fica 5 min em
   // cache: a aba recarrega a cada filtro e o Hub demora alguns segundos.
   let extratoHubCache: { em: number; itens: HubLedgerItem[] } | null = null;
+  // ─── Anúncios: cada campanha (canal + janela + valor) e o que ela trouxe ───
+  // Cadastros = quem chegou pelo canal dentro da janela; faturamento = tudo o
+  // que essas pessoas já pagaram (extrato do Hub). Campanhas em system_settings.
+  type Anuncio = { id: string; nome: string; canal: string; inicio: string; fim: string; valorCents: number };
+  const lerAnuncios = async (): Promise<Anuncio[]> => {
+    const v = safeJsonParse(await getSystemSetting(db, 'anuncios_campanhas'));
+    if (Array.isArray(v)) return v as Anuncio[];
+    // Primeira vez: as campanhas do Instagram de outubro/2026 já medidas (gravadas para ter id fixo).
+    const iniciais: Anuncio[] = [
+      { id: randomUUID(), nome: 'Instagram R$100', canal: 'Instagram', inicio: '2026-10-15T15:00:00.000Z', fim: '2026-10-16T15:00:00.000Z', valorCents: 10000 },
+      { id: randomUUID(), nome: 'Instagram R$200', canal: 'Instagram', inicio: '2026-10-16T15:00:00.000Z', fim: '2026-10-17T15:00:00.000Z', valorCents: 20000 },
+      { id: randomUUID(), nome: 'Instagram R$300', canal: 'Instagram', inicio: '2026-10-17T15:00:00.000Z', fim: '2026-10-18T15:00:00.000Z', valorCents: 30000 },
+    ];
+    await run(db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', ['anuncios_campanhas', JSON.stringify(iniciais), nowIso()]);
+    await persist();
+    return iniciais;
+  };
+  const salvarAnuncios = async (lista: Anuncio[]) => {
+    await run(db, 'DELETE FROM system_settings WHERE key = ?', ['anuncios_campanhas']);
+    await run(db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', ['anuncios_campanhas', JSON.stringify(lista), nowIso()]);
+    await persist();
+  };
+
+  app.get('/api/admin/anuncios', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    const campanhas = await lerAnuncios();
+    let itens: HubLedgerItem[] = [];
+    let extratoIndisponivel = false;
+    if (shouldUseHubBilling(env)) {
+      try {
+        if (!extratoHubCache || Date.now() - extratoHubCache.em > 5 * 60_000) {
+          const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+          const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), timeout]);
+          extratoHubCache = { em: Date.now(), itens: ledger.itens };
+        }
+        itens = extratoHubCache.itens;
+      } catch { extratoIndisponivel = true; }
+    }
+    const resultado = [];
+    for (const c of campanhas) {
+      const usuarios = (await queryAll(
+        db,
+        `SELECT id, gender, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub
+           FROM users WHERE origem_canal LIKE ? AND created_at >= ? AND created_at < ?`,
+        [`${c.canal}%`, c.inicio, c.fim]
+      )) as any[];
+      const porHub = new Map(usuarios.filter((u) => u.hub).map((u) => [String(u.hub), u]));
+      const porEmail = new Map(usuarios.filter((u) => u.email).map((u) => [String(u.email), u]));
+      const tipo = (g: unknown) => { const s = String(g || ''); return s.startsWith('Casal') ? 'casal' : s === 'Mulher' ? 'mulher' : s === 'Homem' ? 'homem' : 'outros'; };
+      const porTipo: Record<string, { cadastros: number; pagantes: number; receitaCents: number }> = {};
+      for (const u of usuarios) (porTipo[tipo(u.gender)] ??= { cadastros: 0, pagantes: 0, receitaCents: 0 }).cadastros++;
+      const pagantes = new Set<string>();
+      let receita = 0; let pagamentos = 0;
+      for (const p of itens) {
+        const u = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(String(p.email).toLowerCase().trim()));
+        if (!u) continue;
+        receita += Number(p.valorCents || 0); pagamentos++;
+        const t = porTipo[tipo(u.gender)];
+        t.receitaCents += Number(p.valorCents || 0);
+        if (!pagantes.has(String(u.id))) { pagantes.add(String(u.id)); t.pagantes++; }
+      }
+      resultado.push({
+        ...c,
+        cadastros: usuarios.length, pagantes: pagantes.size, pagamentos, receitaCents: receita,
+        retorno: c.valorCents > 0 ? receita / c.valorCents : null,
+        custoPorCadastroCents: usuarios.length ? Math.round(c.valorCents / usuarios.length) : null,
+        custoPorPaganteCents: pagantes.size ? Math.round(c.valorCents / pagantes.size) : null,
+        porTipo,
+      });
+    }
+    res.json({ campanhas: resultado, extratoIndisponivel });
+  });
+
+  app.post('/api/admin/anuncios', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const schema = z.object({ nome: z.string().trim().min(1).max(80), canal: z.string().trim().min(1).max(60), inicio: z.string().min(10), fim: z.string().min(10), valorCents: z.number().int().min(0).max(100_000_000) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const inicio = new Date(parsed.data.inicio), fim = new Date(parsed.data.fim);
+    if (Number.isNaN(inicio.getTime()) || Number.isNaN(fim.getTime()) || fim <= inicio) { res.status(400).json({ error: 'datas', message: 'O fim precisa ser depois do início.' }); return; }
+    const lista = await lerAnuncios();
+    lista.push({ id: randomUUID(), nome: parsed.data.nome, canal: parsed.data.canal, inicio: inicio.toISOString(), fim: fim.toISOString(), valorCents: parsed.data.valorCents });
+    await salvarAnuncios(lista);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/admin/anuncios/:id', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const lista = await lerAnuncios();
+    await salvarAnuncios(lista.filter((c) => c.id !== req.params.id));
+    res.json({ ok: true });
+  });
+
   app.get('/api/admin/finance/receita-por-canal', requireAuth(env, db), requireAdmin(), async (req, res) => {
     if (!shouldUseHubBilling(env)) { res.json({ canais: [], indisponivel: true }); return; }
     try {

@@ -3706,6 +3706,14 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(homens[0].token)).expect(410);
     await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(casal.token)).expect(400);
 
+    // Anúncios: começa com as 3 campanhas do Instagram e aceita novas.
+    await request(ctx.app).get('/api/admin/anuncios').set(auth(homens[0].token)).expect(403);
+    const anuncios = (await request(ctx.app).get('/api/admin/anuncios').set(auth(casal.token)).expect(200)).body.campanhas;
+    expect(anuncios.length).toBe(3);
+    await request(ctx.app).post('/api/admin/anuncios').set(auth(casal.token)).send({ nome: 'Teste', canal: 'Instagram', inicio: '2026-10-20T00:00:00Z', fim: '2026-10-19T00:00:00Z', valorCents: 1000 }).expect(400);
+    await request(ctx.app).post('/api/admin/anuncios').set(auth(casal.token)).send({ nome: 'Teste', canal: 'Instagram', inicio: '2026-10-19T00:00:00Z', fim: '2026-10-20T00:00:00Z', valorCents: 1000 }).expect(200);
+    expect((await request(ctx.app).get('/api/admin/anuncios').set(auth(casal.token)).expect(200)).body.campanhas.length).toBe(4);
+
     // Painel ao vivo do admin.
     await request(ctx.app).get('/api/casa/admin/ao-vivo').set(auth(homens[0].token)).expect(403);
     const vivo = (await request(ctx.app).get('/api/casa/admin/ao-vivo').set(auth(casal.token)).expect(200)).body;

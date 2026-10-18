@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AdminCasaTab from '@/components/AdminCasaTab';
+import AdminAnuncios from '@/components/AdminAnuncios';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
@@ -1496,6 +1497,10 @@ export default function Admin() {
           <TabsTrigger value="casa" className="gap-2">
             <Martini className="w-4 h-4" />
             A Casa
+          </TabsTrigger>
+          <TabsTrigger value="anuncios" className="gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Anúncios
           </TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2">
             <TrendingUp className="w-4 h-4" />
@@ -3888,6 +3893,10 @@ export default function Admin() {
 
         <TabsContent value="casa">
           <AdminCasaTab />
+        </TabsContent>
+
+        <TabsContent value="anuncios">
+          <AdminAnuncios />
         </TabsContent>
 
         <TabsContent value="telegram">
