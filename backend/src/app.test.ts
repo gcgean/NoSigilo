@@ -3655,7 +3655,7 @@ describe('nosigilo backend', () => {
     // Story: só visualiza.
     await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'x.webp', 'image/webp', 0, 0, 'post', ?)", [`m-vit-${agora}`, aid, new Date().toISOString()]);
     await run(ctx.db, 'INSERT INTO stories (id, user_id, media_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)', [`s-vit-${agora}`, aid, `m-vit-${agora}`, new Date().toISOString(), new Date(agora + 86_400_000).toISOString()]);
-    const st = await runShowcaseStoryEngagement(ctx.db);
+    const st = await runShowcaseStoryEngagement(ctx.db, { chancePorRodada: 1, percentualQueVe: 100 });
     expect(st.likes).toBe(0);
     expect(st.views).toBeGreaterThanOrEqual(1);
     await run(ctx.db, 'UPDATE users SET is_showcase = 0 WHERE id = ?', [String(vit.user.id)]);

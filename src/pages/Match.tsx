@@ -480,9 +480,9 @@ export default function Match() {
           abaixo dele mudar de altura e "pular" de posição a cada rolagem. svh
           usa o menor viewport possível (com a barra visível) e fica estável.
           A altura desconta o que fica em volta (cabeçalho, botões, menu de
-          baixo ~370px): com 58svh fixo, em celular baixo o card empurrava os
+          baixo; medido no iPhone em 17/10/2026 ~270px, 300 deixa folga): com 58svh fixo, em celular baixo o card empurrava os
           botões para fora da tela. */}
-      <div className="relative h-[clamp(240px,calc(100svh-370px),480px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
+      <div className="relative h-[clamp(240px,calc(100svh-300px),520px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && (
           <div className="absolute inset-0">
             <MobileState

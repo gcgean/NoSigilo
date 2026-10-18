@@ -509,9 +509,15 @@ export async function runShowcaseFeedLikes(
 // perfis reais, e 50% das vitrines COMPATÍVEIS reagem (like) ao story. Views são
 // silenciosas (só inflam o contador de visualizações); likes geram a notificação
 // real "Reagiram ao seu story". Idempotente (dedup por vitrine).
+function hashSimples(texto: string): number {
+  let h = 0;
+  for (let i = 0; i < texto.length; i++) h = (h * 31 + texto.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 export async function runShowcaseStoryEngagement(
   db: DbHandle,
-  opts: { capRatio?: number; maxViewsPerRun?: number; maxLikesPerRun?: number } = {}
+  opts: { capRatio?: number; maxViewsPerRun?: number; maxLikesPerRun?: number; chancePorRodada?: number; percentualQueVe?: number } = {}
 ): Promise<{ views: number; likes: number }> {
   const capRatio = opts.capRatio ?? 0.5;
   const maxViews = opts.maxViewsPerRun ?? 3000;
@@ -544,7 +550,12 @@ export async function runShowcaseStoryEngagement(
     const sid = String(story.id);
     const authorId = String(story.user_id);
 
-    // 1) VIEWS: todas as vitrines visualizam o story (menos quem já viu).
+    // 1) VIEWS: espalhadas no tempo, como gente de verdade. Antes todas as
+    //    vitrines viam o story na mesma rodada e a lista mostrava dezenas de
+    //    nomes com o mesmo horário (parecia fake — relato de 17/10/2026).
+    //    Agora: só ~3/4 das vitrines chegam a ver cada story (escolha fixa por
+    //    story), cada uma com ~6% de chance por rodada de 5 min (média ~1h20,
+    //    a maioria nas primeiras horas) e com horário sorteado dentro da rodada.
     if (views < maxViews) {
       const viewers = (await db.queryAll('SELECT viewer_id FROM story_views WHERE story_id = ?', [sid])) as any[];
       const viewerSet = new Set(viewers.map((v) => String(v.viewer_id)));
@@ -552,7 +563,10 @@ export async function runShowcaseStoryEngagement(
         if (views >= maxViews) break;
         const scId = String(sc.id);
         if (scId === authorId || viewerSet.has(scId)) continue;
-        await db.run('INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), sid, scId, nowStr]);
+        if (hashSimples(sid + scId) % 100 >= (opts.percentualQueVe ?? 75)) continue;
+        if (Math.random() >= (opts.chancePorRodada ?? 0.06)) continue;
+        const vistoEm = new Date(Date.now() - Math.floor(Math.random() * 5 * 60 * 1000)).toISOString();
+        await db.run('INSERT INTO story_views (id, story_id, viewer_id, viewed_at) VALUES (?, ?, ?, ?)', [randomUUID(), sid, scId, vistoEm]);
         actedIds.add(scId);
         views++;
       }

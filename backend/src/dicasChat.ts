@@ -37,6 +37,7 @@ export function textoDaDica(etapa: number, c: ContextoDaDica): string | null {
       const abertura = c.veterano
         ? `Oi, ${nome}! 🔥 Aqui é a equipe do NoSigilo, na nossa conta oficial. A partir de agora a gente manda por aqui umas dicas quentes pra ${voce} aproveitar ainda mais a comunidade liberal que mais cresce no Brasil 😈`
         : `Oi, ${nome}! 🔥 Aqui é a equipe do NoSigilo, na nossa conta oficial. Que bom ter ${voce} aqui na comunidade liberal que mais cresce no Brasil 😈\n\nAqui tem casais, mulheres e homens de mente aberta, procurando a mesma coisa que ${voce}: conhecer gente nova com muita discrição. Nos próximos dias eu mando por aqui umas dicas pra ${voce} encontrar quem combina com ${c.casal ? 'vocês' : 'você'} rapidinho.`;
+      // Links no formato [[Texto|/rota]] viram botões no Chat (só rotas internas da lista do Chat.tsx).
       return `${abertura}
 
 Antes de tudo, o combinado que vale ouro:
@@ -61,7 +62,8 @@ O que funciona por aqui:
 • Bio: conte o que ${voce} ${c.casal ? 'curtem' : 'curte'} e o que ${c.casal ? 'procuram' : 'procura'} (troca de casais, ménage, só conversa, voyeur...). Quem é direto atrai quem combina.
 • Fotos privadas: guarde as mais ousadas no álbum privado e libere só pra quem merecer 🔥
 
-Pra caprichar: menu Perfil › Editar perfil.`;
+Pra caprichar: menu Perfil › Editar perfil.
+👉 [[Editar meu perfil|/profile]]`;
     }
     case 2:
       return `😈 Dica 2: ache quem tem a ${c.casal ? 'vibe de vocês' : 'sua vibe'}
@@ -69,7 +71,8 @@ Pra caprichar: menu Perfil › Editar perfil.`;
 • Match: passe os perfis e curta quem te deu vontade. Curtiu e foi curtido de volta? A conversa abre na hora.
 • Buscar: filtre por tipo de perfil (casal, mulher, homem...), idade e distância e veja quem está perto agora.
 
-Dica de ouro: curta bastante. Quem curte aparece mais e recebe mais curtidas de volta 😉`;
+Dica de ouro: curta bastante. Quem curte aparece mais e recebe mais curtidas de volta 😉
+👉 [[Abrir o Match|/match]]  [[Buscar perfis|/search]]`;
     case 3:
       return `📸 Dica 3: hora de se exibir
 
@@ -77,19 +80,22 @@ Quem posta aparece no topo do feed de quem está por perto.
 • Stories: aquela foto provocante que some em 24 horas. Ótimo pra provocar sem compromisso 🔥
 • Publicação no feed: fica no perfil ${seu} e atrai visitas, curtidas e mensagens.
 
-Pode postar sem mostrar o rosto. Só não vale foto de outra pessoa sem autorização, combinado?`;
+Pode postar sem mostrar o rosto. Só não vale foto de outra pessoa sem autorização, combinado?
+👉 [[Postar um story|/stories]]  [[Postar no feed|/feed]]`;
     case 4:
       return `📡 Dica 4: ative o Radar
 
 Bateu a vontade hoje? Ligue o Radar e avise a galera da região que ${voce} ${c.casal ? 'estão disponíveis' : 'está disponível'} agora. Quem combina recebe o aviso e pode chamar na hora.
 
-É o jeito mais rápido de transformar vontade em encontro 😈 Fica no menu: Radar.`;
+É o jeito mais rápido de transformar vontade em encontro 😈
+👉 [[Abrir o Radar|/radar]]`;
     case 5:
       return `🎉 Dica 5: festas e encontros
 
 Em Eventos ${voce} ${c.casal ? 'encontram' : 'encontra'} festas, encontros e viagens liberais perto ${c.casal ? 'de vocês' : 'de você'}, e ${c.casal ? 'podem' : 'pode'} criar o ${c.casal ? 'de vocês' : 'seu'}: dá pra escolher quem pode participar (só casais, só mulheres...) e o limite de pessoas.
 
-Confirmou presença? ${Voce} ${c.casal ? 'entram' : 'entra'} no grupo do evento pra já ir conhecendo a galera antes 🔥`;
+Confirmou presença? ${Voce} ${c.casal ? 'entram' : 'entra'} no grupo do evento pra já ir conhecendo a galera antes 🔥
+👉 [[Ver eventos|/events]]`;
     case 6: {
       const selo = c.verificado
         ? `• O perfil ${seu} já tem o selo ✔️ de verificado. Isso passa muita confiança!`
@@ -98,7 +104,7 @@ Confirmou presença? ${Voce} ${c.casal ? 'entram' : 'entra'} no grupo do evento 
 
 • Comente algo do perfil da pessoa. "Oi, tudo bem?" quase nunca funciona 😅
 • Seja direto sobre o que ${c.casal ? 'procuram' : 'procura'}, mas com educação: aqui, respeito é o que mais excita.
-${selo}`;
+${selo}${c.verificado ? '' : '\n👉 [[Verificar meu perfil|/settings]]'}`;
     }
     case 7:
       return `🛡️ Dica 7: encontro seguro é encontro gostoso

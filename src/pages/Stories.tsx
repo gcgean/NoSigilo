@@ -579,7 +579,10 @@ function StoryViewer({
     const alvo = stories[startIndex];
     const gi = Math.max(0, grupos.findIndex((g) => g.some((st) => st.id === alvo?.id)));
     const g = grupos[gi] ?? [];
-    const si = alvo && !alvo.viewed ? inicioDoGrupo(g) : Math.max(0, g.findIndex((st) => st.id === alvo?.id));
+    // Sempre retoma do primeiro story ainda não visto do perfil (mesmo tocando
+    // num que já foi visto); se viu todos, abre no story tocado.
+    const temNaoVisto = g.some((st) => !st.viewed);
+    const si = temNaoVisto ? inicioDoGrupo(g) : Math.max(0, g.findIndex((st) => st.id === alvo?.id));
     return { gi, si };
   });
   // Direção da última troca de perfil (anima a entrada como o "cubo" do Instagram).
@@ -1551,6 +1554,21 @@ export default function Stories() {
     filtro === 'fixados'  ? !!s.author.pinnedByMe :
     filtro === 'curtidos' ? !!s.author.likedByMe  : true
   ));
+  // Um quadro por perfil (como no Instagram): a capa é o primeiro story que
+  // falta ver (ou o mais novo, se já viu todos) e o selo mostra novos/vistos.
+  const quadrosPorPerfil = useMemo(() => {
+    const porAutor = new Map<string, { i: number; st: FeedStory }[]>();
+    feedVisivel.forEach((st, i) => {
+      const lista = porAutor.get(st.author.id);
+      if (lista) lista.push({ i, st }); else porAutor.set(st.author.id, [{ i, st }]);
+    });
+    return [...porAutor.values()].map((lista) => {
+      const ordenada = [...lista].sort((a, b) => a.st.createdAt.localeCompare(b.st.createdAt));
+      const capa = ordenada.find((x) => !x.st.viewed) ?? ordenada[ordenada.length - 1];
+      const novos = lista.filter((x) => !x.st.viewed).length;
+      return { story: capa.st, i: capa.i, novos, vistos: lista.length - novos };
+    });
+  }, [feedVisivel]);
   const totalFixados  = feed.filter((s) => s.author.pinnedByMe).length;
   const totalCurtidos = feed.filter((s) => s.author.likedByMe).length;
 
@@ -2103,13 +2121,20 @@ export default function Stories() {
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {feedVisivel.map((story, i) => (
+            {quadrosPorPerfil.map(({ story, i, novos, vistos }) => (
               <button
-                key={story.id}
+                key={story.author.id}
                 type="button"
                 onClick={() => void handleOpenStory(i)}
                 className="relative aspect-[9/16] overflow-hidden rounded-2xl bg-black group"
               >
+                {/* Quantos stories do perfil faltam ver e quantos já foram vistos. */}
+                {novos + vistos > 1 && (
+                  <div className="pointer-events-none absolute bottom-6 left-2 right-2 z-[1] flex flex-wrap gap-1">
+                    {novos > 0 && <span className="rounded-full bg-brand-pink px-1.5 py-0.5 text-[9px] font-bold text-white">{novos} {novos === 1 ? 'novo' : 'novos'}</span>}
+                    {vistos > 0 && <span className="rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold text-white/85">{vistos} {vistos === 1 ? 'visto' : 'vistos'}</span>}
+                  </div>
+                )}
                 {/* Mídia — borrada só nos NÃO-vistos, p/ gerar curiosidade */}
                 <div className={cn('absolute inset-0', !story.viewed && 'scale-110 blur-xl brightness-[0.8]')}>
                   <StoryContent story={story} thumb />
