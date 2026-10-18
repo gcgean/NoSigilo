@@ -8538,6 +8538,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           } else {
             conversationId = randomUUID();
             await run(db, 'INSERT INTO conversations (id, user_a_id, user_b_id, created_at) VALUES (?, ?, ?, ?)', [conversationId, pair[0], pair[1], now]);
+            // Mesma regra de "Mandar mensagem": resposta de story de quem a pessoa
+            // não conhece e não é de um tipo que ela libera cai em Pedidos, não
+            // em Conversas (relato de 17/10/2026).
+            if (await deveVirarPedido(db, commenterId, String(story.user_id))) {
+              await run(db, 'UPDATE conversations SET pedido_para = ? WHERE id = ? AND pedido_para IS NULL', [String(story.user_id), conversationId]);
+            }
           }
           const msgId = randomUUID();
           await run(
