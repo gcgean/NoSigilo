@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import BrandLogo from '@/components/BrandLogo';
 import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
@@ -208,6 +209,27 @@ function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; pode
         <p className="text-sm text-white/80">{jogo.aNome} e {jogo.bNome} estão decidindo se vão pra cabine 👀</p>
       ))}
     </div>
+  );
+}
+
+function ContagemRegressiva({ alvo }: { alvo: string | null }) {
+  const [agora, setAgora] = useState(Date.now());
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
+  if (!alvo) return <p className="text-sm text-white/70">Sexta e sábado, 21h.</p>;
+  const seg = Math.max(0, Math.floor((Date.parse(alvo) - agora) / 1000));
+  const partes: [string, number][] = [['dias', Math.floor(seg / 86400)], ['h', Math.floor((seg % 86400) / 3600)], ['min', Math.floor((seg % 3600) / 60)], ['seg', seg % 60]];
+  return (
+    <>
+      <p className="text-sm text-white/70">A próxima noite começa em</p>
+      <div className="mt-2 flex justify-center gap-3 font-black tabular-nums">
+        {partes.map(([r, v]) => (
+          <div key={r} className="w-16 rounded-xl bg-black/40 py-2">
+            <p className="text-2xl">{String(v).padStart(2, '0')}</p>
+            <p className="text-[10px] font-normal text-white/60">{r}</p>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -1010,124 +1032,130 @@ export default function Casa() {
     document.body,
   );
 
-  // ─── Lobby ───────────────────────────────────────────────────────────────
+  // ─── Lobby (mesmo visual da página de apresentação /acasa) ───────────────
+  const total = (info?.salas ?? []).reduce((s, x) => s + x.total + x.espiando, 0);
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-5 text-white shadow-xl">
-        <p className="text-xs font-semibold uppercase tracking-widest text-fuchsia-200">Boate virtual · só adultos</p>
-        <h1 className="mt-1 text-3xl font-black">A Casa 🔥</h1>
-        {info?.aberta ? (
-          <p className="mt-2 text-sm text-white/85">
-            <span className="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-            Aberta agora{info.tema ? `: ${info.tema.nome}` : ''}. {info.tema?.descricao}
+    <div className="dark -mx-3 -mt-3 -mb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] min-h-[calc(100vh-4rem)] bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 pb-32 pt-8 text-white sm:-mx-4 sm:-mt-6 md:-mb-6 md:pb-16">
+      <div className="mx-auto max-w-lg space-y-6">
+        <div className="text-center">
+          <div className="flex justify-center"><BrandLogo /></div>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
+          <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
+          <p className="mt-3 text-base text-white/85">
+            A casa de swing online do NoSigilo. Toda <b>sexta e sábado, das 21h à 1h</b>: salas ao vivo com casais, mulheres e singles,
+            brincadeiras quentes e cabine a dois.
           </p>
-        ) : (
-          <p className="mt-2 text-sm text-white/85">Abre <b>sexta e sábado, das 21h à 1h</b>. Às 21h a gente avisa no seu celular 😈</p>
-        )}
-        <ul className="mt-3 grid gap-1 text-xs text-white/75">
-          <li>💋 Lola, a anfitriã IA, puxa brincadeiras quentes: eu nunca, verdade ou desafio, enquetes e match às cegas</li>
-          <li>🟢🟡🟣🔴 Pulseira da noite: todo mundo sabe o que você topa</li>
-          <li>🍸 Bar: pague um drink pra quem te chamou atenção; 👀 olhares cruzados viram cabine</li>
-          <li>🎆 Show da Meia-Noite: o desafio mais quente da noite</li>
-          <li>😈 Proponha desafios a outros casais valendo tokens: aceitou e cumpriu, leva os tokens</li>
-          <li>🏆 Ranking dos casais da noite e do mês</li>
-          <li>👀 Cabine de porta aberta: espie e peça para participar (só entra se todos de dentro aprovarem)</li>
-          <li>🕳️ Glory Hole: sala anônima, revela quem quiser</li>
-          <li>🚪 Chame quem quiser pra cabine: abre uma conversa a dois, só com aceite</li>
-          <li>🎁 +5 tokens por noite só por entrar; acertou o quiz, +3</li>
-        </ul>
-      </div>
-
-      {/* Como funciona: o mesmo vídeo-tour da página de apresentação (/acasa). */}
-      <details className="rounded-2xl border bg-card p-4" open={!info?.aberta}>
-        <summary className="cursor-pointer font-semibold">▶️ Como funciona A Casa (vídeo de 1 min)</summary>
-        <div className="mx-auto mt-3 w-full max-w-[320px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_40px_rgba(236,72,153,0.3)]">
-          <video
-            src="/api/casa/apresentacao/video.mp4"
-            poster="/api/casa/apresentacao/capa.jpg"
-            controls
-            playsInline
-            preload="none"
-            className="block aspect-[9/16] w-full bg-black object-cover"
-          />
         </div>
-      </details>
 
-      {info && !info.aberta && (
-        <div className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/5 p-4 text-center">
-          <p className="text-sm font-semibold">{info.reservado ? '🎟️ Seu lugar está reservado!' : 'Garanta seu lugar na próxima noite'}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {info.reservas > 0 ? `${info.reservas} pessoa(s) já reservaram. ` : ''}Quando abrir, a gente avisa no seu celular.
-          </p>
-          <Button
-            className={cn('mt-3 w-full', info.reservado ? '' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600')}
-            variant={info.reservado ? 'outline' : 'default'}
-            onClick={() => void reservar(!info.reservado)}
-          >
-            {info.reservado ? 'Cancelar reserva' : '🎟️ Reservar meu lugar'}
-          </Button>
+        <div className="rounded-3xl border border-white/15 bg-white/5 p-5 text-center">
+          {info?.aberta ? (
+            <>
+              <p className="flex items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" /> ABERTA AGORA{info.tema ? ` · ${info.tema.nome}` : ''}
+              </p>
+              <p className="mt-2 text-4xl font-black">{total > 0 ? total : '…'}</p>
+              <p className="text-sm text-white/70">{total > 0 ? 'pessoas lá dentro neste momento' : 'a festa está começando'}</p>
+            </>
+          ) : <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />}
         </div>
-      )}
 
-      {info?.souAdmin && (
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed p-3 text-xs">
-          <span className="font-semibold">Admin:</span>
-          {info.abertaAte
-            ? <>aberta até {new Date(info.abertaAte).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} <Button size="sm" variant="outline" onClick={() => void abrirAgora(0)}>Fechar abertura extra</Button></>
-            : <Button size="sm" variant="outline" onClick={() => void abrirAgora(60)}>Abrir agora por 1h (teste)</Button>}
-        </div>
-      )}
-
-      <details className="rounded-2xl border bg-card p-4">
-        <summary className="cursor-pointer font-semibold">🏆 Ranking dos casais</summary>
-        <div className="mt-3"><RankingDaCasa /></div>
-      </details>
-
-      {info?.souAdmin && (
-        <Button variant="outline" className="w-full" onClick={() => navigate('/admin?aba=casa')}>⚙️ Gerenciar A Casa (admin)</Button>
-      )}
-
-      <div className="grid gap-3">
-        {(info?.salas ?? []).map((s) => {
-          const travada = !info?.aberta || s.bloqueadaParaMim || (s.lotadaParaMim && s.posicaoNaFila != null);
-          return (
-            <div key={s.id} className={cn('rounded-2xl border bg-card p-4', !info?.aberta && 'opacity-70')}>
-              <div className="flex items-start gap-3">
-                <span className="text-3xl leading-none">{s.emoji}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold">{s.nome}</p>
-                    {s.nivel === 'muito_quente' && <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-500">MUITO QUENTE</span>}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{s.descricao}</p>
-                  {info?.aberta && (
-                    <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1"><Users className="h-3 w-3" />{s.total}</span>
-                      <span>💑 {s.contagem.casal}</span><span>👩 {s.contagem.mulher}</span><span>👨 {s.contagem.homem}</span>
-                      {s.espiando > 0 && <span>👀 {s.espiando}</span>}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <Button
-                className="mt-3 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600"
-                disabled={travada || entrando !== null}
-                onClick={() => void (s.lotadaParaMim ? entrarNaFila(s.id) : entrar(s.id))}
-              >
-                {!info?.aberta ? <><Lock className="mr-2 h-4 w-4" />Abre sexta e sábado às 21h</>
-                  : s.bloqueadaParaMim ? 'Só casais e mulheres'
-                  : s.lotadaParaMim ? (s.posicaoNaFila ? `Na fila: você é o ${s.posicaoNaFila}º` : 'Sala cheia para homens · Entrar na fila')
-                  : entrando === s.id ? 'Entrando…'
-                  : info.podeFalar ? 'Entrar' : 'Espiar'}
+        {info && !info.aberta && (
+          <div className="space-y-3 text-center">
+            {info.reservado ? (
+              <>
+                <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 font-semibold text-emerald-200">🎟️ Seu lugar está reservado! Quando abrir, a gente avisa no seu celular.</div>
+                <button type="button" className="text-xs text-white/50 underline" onClick={() => void reservar(false)}>Cancelar reserva</button>
+              </>
+            ) : (
+              <Button size="lg" className="h-14 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={() => void reservar(true)}>
+                🎟️ Reservar meu lugar
               </Button>
-            </div>
-          );
-        })}
-      </div>
+            )}
+            {info.reservas > 0 && <p className="text-sm text-fuchsia-200">🎟️ {info.reservas} pessoa(s) já reservaram lugar para a próxima noite</p>}
+          </div>
+        )}
+        {info?.aberta && <p className="text-center text-sm font-semibold text-fuchsia-200">Escolha sua sala e entre 👇</p>}
 
-      <p className="px-2 text-center text-[11px] text-muted-foreground">
-        Regra da Casa: consentimento sempre. "Passo" é respeitado, ninguém é exposto e quem desrespeitar é removido.
-      </p>
+        {info?.souAdmin && (
+          <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 p-3 text-xs text-white/80">
+            <span className="font-semibold">Admin:</span>
+            {info.abertaAte
+              ? <>aberta até {new Date(info.abertaAte).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} <Button size="sm" variant="outline" className="border-white/30 bg-transparent text-white" onClick={() => void abrirAgora(0)}>Fechar abertura extra</Button></>
+              : <Button size="sm" variant="outline" className="border-white/30 bg-transparent text-white" onClick={() => void abrirAgora(60)}>Abrir agora por 1h (teste)</Button>}
+            <Button size="sm" variant="outline" className="border-white/30 bg-transparent text-white" onClick={() => navigate('/admin?aba=casa')}>⚙️ Gerenciar</Button>
+          </div>
+        )}
+
+        <div className="grid gap-3">
+          {(info?.salas ?? []).map((s) => {
+            const travada = !info?.aberta || s.bloqueadaParaMim || (s.lotadaParaMim && s.posicaoNaFila != null);
+            return (
+              <div key={s.id} className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+                <div className="flex items-start gap-3">
+                  <span className="text-3xl leading-none">{s.emoji}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">
+                      {s.nome}
+                      {s.nivel === 'muito_quente' && <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-300">MUITO QUENTE</span>}
+                    </p>
+                    <p className="text-sm text-white/70">{s.descricao}</p>
+                    {info?.aberta && (
+                      <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-white/70">
+                        <span className="flex items-center gap-1"><Users className="h-3 w-3" />{s.total}</span>
+                        <span>💑 {s.contagem.casal}</span><span>👩 {s.contagem.mulher}</span><span>👨 {s.contagem.homem}</span>
+                        {s.espiando > 0 && <span>👀 {s.espiando}</span>}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {info?.aberta && (
+                  <Button
+                    className="mt-3 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600"
+                    disabled={travada || entrando !== null}
+                    onClick={() => void (s.lotadaParaMim ? entrarNaFila(s.id) : entrar(s.id))}
+                  >
+                    {s.bloqueadaParaMim ? 'Só casais e mulheres'
+                      : s.lotadaParaMim ? (s.posicaoNaFila ? `Na fila: você é o ${s.posicaoNaFila}º` : 'Sala cheia para homens · Entrar na fila')
+                      : entrando === s.id ? 'Entrando…'
+                      : info.podeFalar ? 'Entrar' : 'Espiar'}
+                  </Button>
+                )}
+                {!info?.aberta && <p className="mt-2 flex items-center gap-1 text-xs text-white/50"><Lock className="h-3 w-3" />Abre sexta e sábado às 21h</p>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Como funciona: o vídeo-tour da Lola. */}
+        <div>
+          <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_60px_rgba(236,72,153,0.35)]">
+            <video src="/api/casa/apresentacao/video.mp4" poster="/api/casa/apresentacao/capa.jpg" controls playsInline preload="metadata" className="block aspect-[9/16] w-full bg-black object-cover" />
+          </div>
+          <p className="mt-2 text-center text-xs text-white/60">▶️ Aperte o play: a Lola te mostra como funciona (1 min)</p>
+        </div>
+
+        <div className="rounded-3xl bg-gradient-to-br from-fuchsia-800/60 to-rose-800/60 p-5">
+          <p className="text-xs font-bold uppercase tracking-wide text-fuchsia-200">💋 O que rola lá dentro</p>
+          <ul className="mt-3 grid gap-1.5 text-sm text-white/85">
+            <li>🟢🟡🟣🔴 Pulseira da noite: todo mundo sabe o que você topa</li>
+            <li>💋 A Lola puxa o jogo: eu nunca, verdade ou desafio, duelos e desafios com foto</li>
+            <li>🍸 Bar: pague um drink pra quem te chamou atenção</li>
+            <li>👀 Olhares cruzados viram cabine, de porta fechada ou aberta</li>
+            <li>😈 Desafios valendo tokens entre casais</li>
+            <li>🕳️ Glory Hole: sala anônima, revela quem quiser</li>
+            <li>🎆 Show da Meia-Noite e 🏆 ranking dos casais</li>
+            <li>🎁 +5 tokens por noite só por entrar</li>
+          </ul>
+        </div>
+
+        <div className="rounded-3xl bg-white/5 p-5 ring-1 ring-white/10">
+          <p className="mb-3 font-semibold">🏆 Ranking dos casais</p>
+          <RankingDaCasa />
+        </div>
+
+        <p className="px-2 text-center text-[11px] text-white/50">
+          Regra da Casa: consentimento sempre. "Passo" é respeitado, ninguém é exposto e quem desrespeitar é removido. Só maiores de 18.
+        </p>
 
       {sala}
 
@@ -1146,6 +1174,7 @@ export default function Casa() {
           )}
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
