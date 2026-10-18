@@ -1733,7 +1733,7 @@ export default function Stories() {
         return;
       }
     }
-    // Validação de vídeo máx 30s via duration
+    // Validação de vídeo máx 60s (igual ao Instagram) via duration
     if (file.type.startsWith('video/')) {
       const duration = await new Promise<number>((resolve) => {
         const v = document.createElement('video');
@@ -1742,8 +1742,8 @@ export default function Stories() {
         v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); resolve(v.duration); };
         v.onerror = () => resolve(0);
       });
-      if (duration > 30) {
-        toast({ title: 'Vídeo muito longo', description: 'O vídeo deve ter no máximo 30 segundos.', variant: 'destructive' });
+      if (duration > 60) {
+        toast({ title: 'Vídeo muito longo', description: 'O vídeo deve ter no máximo 60 segundos.', variant: 'destructive' });
         return;
       }
     }
@@ -2027,7 +2027,7 @@ export default function Stories() {
             <div>
               <p className="text-lg font-bold">Poste um momento quente 🔥</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Foto, vídeo de até 30s ou só texto · fica 24h no ar · aparece para quem combina com você
+                Foto, vídeo de até 60s ou só texto · fica 24h no ar · aparece para quem combina com você
               </p>
             </div>
             <div className="flex justify-center gap-3 flex-wrap">

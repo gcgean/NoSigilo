@@ -103,8 +103,8 @@ export default function StoriesBar() {
         v.onloadedmetadata = () => { URL.revokeObjectURL(v.src); resolve(v.duration); };
         v.onerror = () => resolve(0);
       });
-      if (duration > 30) {
-        toast({ title: 'Vídeo muito longo', description: 'O vídeo deve ter no máximo 30 segundos.', variant: 'destructive' });
+      if (duration > 60) {
+        toast({ title: 'Vídeo muito longo', description: 'O vídeo deve ter no máximo 60 segundos.', variant: 'destructive' });
         return;
       }
     }

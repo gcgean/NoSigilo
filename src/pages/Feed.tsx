@@ -1332,7 +1332,7 @@ export default function Feed() {
         }
       }
       await reload();
-      // Pergunta se quer postar nos stories (só para imagens — vídeos podem exceder 30s)
+      // Pergunta se quer postar nos stories (só para imagens — vídeos podem exceder 60s)
       const firstImageId = attachments.find((a) => a.file.type.startsWith('image/'))
         ? mediaIds[attachments.findIndex((a) => a.file.type.startsWith('image/'))]
         : null;
