@@ -731,7 +731,7 @@ export default function Layout() {
             <BrandLogo
               size="sm"
               className="gap-2"
-              markClassName="h-9 w-9 rounded-lg p-2 shadow-[0_12px_28px_rgba(169,59,255,0.34)] sm:h-10 sm:w-10 sm:rounded-xl"
+              markClassName="h-9 w-9 shadow-[0_0_18px_rgba(236,72,153,0.5)] sm:h-10 sm:w-10"
               textClassName="hidden sm:block truncate text-xl"
             />
           </NavLink>

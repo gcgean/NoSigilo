@@ -6,7 +6,7 @@ type BrandLogoProps = {
   textClassName?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   showText?: boolean;
-  /** Só o cadeado no ícone (sem o "NoSigilo.net" de dentro do círculo), para usar com o nome ao lado. */
+  /** Só o cadeado no ícone (sem o "NoSigilo.net" de dentro do círculo). Padrão: sim quando o nome aparece ao lado. */
   soCadeado?: boolean;
 };
 
@@ -21,7 +21,9 @@ const sizeClasses = {
 // original tinha 1254px e 76 KB — mais de 30x a resolução usada.
 const MARK_PX = 96;
 
-export function BrandLogo({ className, markClassName, textClassName, size = 'md', showText = true, soCadeado = false }: BrandLogoProps) {
+// Com o nome escrito ao lado, o ícone mostra só o cadeado (o nome não se repete
+// dentro do círculo). Sozinho, o ícone mantém a logo completa com o nome.
+export function BrandLogo({ className, markClassName, textClassName, size = 'md', showText = true, soCadeado = showText }: BrandLogoProps) {
   const sizing = sizeClasses[size];
 
   return (
@@ -33,7 +35,8 @@ export function BrandLogo({ className, markClassName, textClassName, size = 'md'
           role="img"
           aria-label="NoSigilo.net"
           className={cn('block shrink-0 rounded-full p-[2px] shadow-[0_0_18px_rgba(236,72,153,0.55)]', sizing.mark.replace(/rounded-\S+/, ''), markClassName)}
-          style={{ backgroundImage: 'linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6)' }}
+          // Redondo e com aro fino sempre, mesmo quando a página passa um mark com outro raio/padding.
+          style={{ backgroundImage: 'linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6)', borderRadius: '9999px', padding: 2 }}
         >
           <span
             className="block h-full w-full rounded-full bg-[#0b0618]"
