@@ -1998,6 +1998,17 @@ Responda com UMA palavra:
     res.sendFile(caminho);
   });
 
+  // Vídeo de apresentação da página pública (/acasa): arquivos fixos no storage.
+  const pastaApresentacao = path.join(deps.pastaMusicas, '..', 'casa-apresentacao');
+  app.get('/api/casa/apresentacao/:arquivo', (req, res) => {
+    const nome = String(req.params.arquivo);
+    if (!['video.mp4', 'capa.jpg', 'capa.png'].includes(nome)) { res.status(404).end(); return; }
+    const caminho = path.join(pastaApresentacao, nome);
+    if (!existsSync(caminho)) { res.status(404).end(); return; }
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(caminho);
+  });
+
   const envioDeMusica = multer({
     storage: multer.diskStorage({
       destination: (_req, _f, cb) => cb(null, deps.pastaMusicas),
