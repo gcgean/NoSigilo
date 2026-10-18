@@ -2819,15 +2819,45 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
     // sexta E sábado: ~52 mil e-mails em set/2026, a cota do Resend acabou em
     // 19/09 e junto pararam código de 2 fatores, senha e suporte.
     const desde60d = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    // O e-mail serve para trazer de volta quem SUMIU (pedido do dono, 18/10/2026):
+    // quem entrou nos últimos 3 dias já está usando e não precisa dele.
+    const ha3d = new Date(Date.now() - 3 * 86_400_000).toISOString();
     const users = (await queryAll(
       db,
-      `SELECT u.id, u.name, u.email FROM users u
+      `SELECT u.id, u.name, u.email, u.last_seen_at FROM users u
        WHERE u.email IS NOT NULL AND u.email != '' AND u.email NOT LIKE '%@nosigilo.internal'
          AND u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-         AND u.last_seen_at > ?
+         AND u.last_seen_at > ? AND u.last_seen_at < ?
          AND ${db.mode === 'pg' ? 'u.notify_email IS NOT FALSE' : '(u.notify_email IS NULL OR u.notify_email != 0)'}`,
-      [desde60d]
+      [desde60d, ha3d]
     )) as any[];
+
+    // Reserva de cota: o disparo só usa até 80% da cota mensal do Resend
+    // (system_settings.email_cota_mensal, padrão 50 mil), contando o que já saiu
+    // no mês. Os outros 20% ficam para senha, 2FA, verificação e suporte, que
+    // não passam por este registro. Se não couber todo mundo, vão primeiro os
+    // que sumiram há menos tempo (são os que mais voltam).
+    let cotaMensal = 50_000;
+    try {
+      const v = Number(await getSystemSetting(db, 'email_cota_mensal'));
+      if (Number.isFinite(v) && v > 0) cotaMensal = v;
+    } catch { /* padrão */ }
+    const inicioDoMes = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString();
+    const jaNoMes = Number(((await queryOne(
+      db,
+      "SELECT COUNT(*) AS c FROM reengagement_emails WHERE status IN ('sent','weekly_sent') AND sent_at >= ?",
+      [inicioDoMes]
+    )) as any)?.c || 0);
+    const orcamento = Math.floor(cotaMensal * 0.8) - jaNoMes;
+    if (orcamento <= 0) {
+      void notifyAdminsTelegram({ db, env }, `ℹ️ E-mail de fim de semana NÃO enviado: o mês já usou ${jaNoMes} e-mails (limite de 80% de ${cotaMensal}). Cota guardada para senha, 2FA e suporte.`, 'servidor');
+      return;
+    }
+    if (users.length > orcamento) {
+      users.sort((a: any, b: any) => String(b.last_seen_at || '').localeCompare(String(a.last_seen_at || '')));
+      users.length = orcamento;
+      void notifyAdminsTelegram({ db, env }, `ℹ️ E-mail de fim de semana limitado a ${orcamento} pessoas (as que sumiram há menos tempo) para guardar cota do Resend (${jaNoMes} já enviados no mês, limite 80% de ${cotaMensal}).`, 'servidor');
+    }
 
     let sent = 0; let errors = 0;
     let cotaSeguidas = 0;
