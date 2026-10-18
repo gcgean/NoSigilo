@@ -74,19 +74,6 @@ export default function ACasaPublica() {
           </p>
         </div>
 
-        {/* Vídeo de apresentação narrado pela Lola (arquivos em storage/casa-apresentacao). */}
-        <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_60px_rgba(236,72,153,0.35)]">
-          <video
-            src="/api/casa/apresentacao/video.mp4"
-            poster="/api/casa/apresentacao/capa.jpg"
-            controls
-            playsInline
-            preload="metadata"
-            className="block aspect-[9/16] w-full bg-black object-cover"
-          />
-        </div>
-        <p className="-mt-3 text-center text-xs text-white/60">▶️ Aperte o play: a Lola te mostra como funciona (1 min)</p>
-
         <div className="rounded-3xl border border-white/15 bg-white/5 p-5 text-center">
           {info?.aberta ? (
             <>
@@ -122,6 +109,19 @@ export default function ACasaPublica() {
             Já tem conta? <Link to="/login" state={{ from: { pathname: '/casa' } }} className="font-semibold text-fuchsia-300 underline">Entrar</Link>
           </p>
         )}
+
+        {/* Vídeo de apresentação narrado pela Lola (arquivos em storage/casa-apresentacao). */}
+        <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_60px_rgba(236,72,153,0.35)]">
+          <video
+            src="/api/casa/apresentacao/video.mp4"
+            poster="/api/casa/apresentacao/capa.jpg"
+            controls
+            playsInline
+            preload="metadata"
+            className="block aspect-[9/16] w-full bg-black object-cover"
+          />
+        </div>
+        <p className="-mt-3 text-center text-xs text-white/60">▶️ Aperte o play: a Lola te mostra como funciona (1 min)</p>
 
         <div className="space-y-3">
           {(info?.salas ?? []).map((s) => (
