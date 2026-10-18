@@ -29,7 +29,7 @@ export default function RadioDaCasa() {
   const [bloqueado, setBloqueado] = useState(false);
   const [mostrarVolume, setMostrarVolume] = useState(false);
 
-  const sintonizar = useCallback(async () => {
+  const sintonizar = useCallback(async (soSeMudou = false) => {
     try {
       const pedidoEm = Date.now();
       const { data } = await apiClient.get('/casa/radio');
@@ -40,7 +40,11 @@ export default function RadioDaCasa() {
       const atraso = (Date.now() - pedidoEm) / 2000;
       const alvo = Math.min(t.offset + atraso, Math.max(0, t.duracao - 0.5));
       const src = resolveServerUrl(t.url);
-      if (!el.src.endsWith(t.url)) el.src = src;
+      const mesmaFaixa = el.src.endsWith(t.url);
+      // Conferência periódica: só mexe se a faixa mudou (ex.: vinheta de fechamento)
+      // ou se o áudio daqui ficou mais de 3s fora do tempo da Casa.
+      if (soSeMudou && mesmaFaixa && Math.abs(el.currentTime - alvo) < 3) return;
+      if (!mesmaFaixa) el.src = src;
       const posicionar = () => { try { el.currentTime = alvo; } catch { /* ainda carregando */ } };
       if (el.readyState >= 1) posicionar(); else el.addEventListener('loadedmetadata', posicionar, { once: true });
       if (ligado) {
@@ -50,6 +54,10 @@ export default function RadioDaCasa() {
   }, [ligado]);
 
   useEffect(() => { void sintonizar(); }, [sintonizar]);
+  useEffect(() => {
+    const t = setInterval(() => { void sintonizar(true); }, 20_000);
+    return () => clearInterval(t);
+  }, [sintonizar]);
   useEffect(() => {
     if (audio.current) audio.current.volume = volume;
     gravar(CHAVE_VOLUME, String(volume));

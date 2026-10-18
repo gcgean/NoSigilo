@@ -145,7 +145,7 @@ export type DependenciasDaCasa = {
   pastaMusicas: string;
 };
 
-type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' };
+type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
 
 /** Duração do áudio em segundos (ffprobe); 0 se não conseguir ler. */
 function duracaoDoAudio(arquivo: string): Promise<number> {
@@ -1978,7 +1978,22 @@ Responda com UMA palavra:
     // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
     // A sequência é fixa (mesma ordem para todo mundo), então a sincronia continua.
     const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
-    const musicas = todas.filter((f) => f.tipo !== 'vinheta');
+    // Abertura (21h) e fechamento (terminando à 1h) tocam só no horário certo.
+    const noiteAgora = await noiteAtual();
+    const agoraMs = Date.now();
+    const vinhetaNaHora = (f: Faixa, inicioMs: number) => res.json({
+      tocando: { id: f.id, titulo: '💋 Lola', artista: f.tipo === 'abertura' ? 'a Casa abriu' : 'a Casa vai fechar', url: urlDaFaixa(f), duracao: f.duracao, offset: Math.max(0, (agoraMs - inicioMs) / 1000), vinheta: true },
+      proxima: null,
+    });
+    if (noiteAgora) {
+      const inicioNoite = noiteAgora.forcada ? null : Date.parse(`${noiteAgora.chave}T21:00:00-03:00`);
+      const fimNoite = noiteAgora.forcada ? await abertaAte() : (inicioNoite as number) + 4 * 3_600_000;
+      const abertura = todas.find((f) => f.tipo === 'abertura');
+      const fechamento = todas.find((f) => f.tipo === 'fechamento');
+      if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
+      if (fechamento && agoraMs >= fimNoite - fechamento.duracao * 1000 && agoraMs < fimNoite) { vinhetaNaHora(fechamento, fimNoite - fechamento.duracao * 1000); return; }
+    }
+    const musicas = todas.filter((f) => !f.tipo || f.tipo === 'musica');
     const vinhetas = todas.filter((f) => f.tipo === 'vinheta');
     let lista: Faixa[] = musicas;
     if (vinhetas.length > 0) {
@@ -2055,7 +2070,7 @@ Responda com UMA palavra:
       titulo: String(corpo.titulo || '').trim().slice(0, 80) || 'Sem título',
       artista: String(corpo.artista || '').trim().slice(0, 80),
       fonte: String(corpo.fonte || '').trim().slice(0, 200),
-      tipo: corpo.tipo === 'vinheta' ? 'vinheta' : 'musica',
+      tipo: (['vinheta', 'abertura', 'fechamento'] as const).find((x) => x === corpo.tipo) ?? 'musica',
       duracao: Math.round(duracao * 10) / 10,
     };
     const lista = await lerPlaylist();

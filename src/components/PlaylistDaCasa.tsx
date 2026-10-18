@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
  * Admin: playlist da rádio d'A Casa. Só músicas livres para uso comercial
  * (ex.: Pixabay Music) — tocar música com direito autoral exige ECAD.
  */
-type Faixa = { id: string; titulo: string; artista: string; fonte: string; duracao: number; url: string; tipo?: 'musica' | 'vinheta' };
+type Faixa = { id: string; titulo: string; artista: string; fonte: string; duracao: number; url: string; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
@@ -21,7 +21,7 @@ export default function PlaylistDaCasa() {
   const [artista, setArtista] = useState('');
   const [fonte, setFonte] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [tipo, setTipo] = useState<'musica' | 'vinheta'>('musica');
+  const [tipo, setTipo] = useState<'musica' | 'vinheta' | 'abertura' | 'fechamento'>('musica');
 
   const carregar = useCallback(async () => {
     try { setFaixas((await apiClient.get('/casa/admin/playlist')).data.faixas ?? []); } catch { /* sem acesso */ }
@@ -75,7 +75,11 @@ export default function PlaylistDaCasa() {
         <div className="flex gap-2">
           <Button size="sm" variant={tipo === 'musica' ? 'default' : 'outline'} onClick={() => setTipo('musica')}>🎵 Música</Button>
           <Button size="sm" variant={tipo === 'vinheta' ? 'default' : 'outline'} onClick={() => setTipo('vinheta')}>💋 Vinheta da Lola</Button>
+          <Button size="sm" variant={tipo === 'abertura' ? 'default' : 'outline'} onClick={() => setTipo('abertura')}>🌙 Abertura (21h)</Button>
+          <Button size="sm" variant={tipo === 'fechamento' ? 'default' : 'outline'} onClick={() => setTipo('fechamento')}>🌅 Fechamento (1h)</Button>
         </div>
+        {tipo === 'abertura' && <p className="text-[11px] text-muted-foreground">Toca uma vez, assim que a Casa abre às 21h. Se houver mais de uma, vale a primeira da lista.</p>}
+        {tipo === 'fechamento' && <p className="text-[11px] text-muted-foreground">Toca no fim da noite, terminando exatamente à 1h.</p>}
         {tipo === 'vinheta' && <p className="text-[11px] text-muted-foreground">Vinhetas tocam entre as músicas: uma a cada 2 músicas, revezando entre as que você subir.</p>}
         <input type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} className="text-xs" />
         <div className="grid gap-2 sm:grid-cols-2">
@@ -93,7 +97,7 @@ export default function PlaylistDaCasa() {
           <li key={f.id} className="flex items-center gap-2 rounded-xl border p-2">
             <span className="w-5 text-center text-xs text-muted-foreground">{i + 1}</span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{f.tipo === 'vinheta' ? '💋 ' : ''}{f.titulo}{f.tipo === 'vinheta' && <span className="ml-1 rounded-full bg-fuchsia-500/15 px-1.5 text-[10px] text-fuchsia-500">vinheta</span>}</p>
+              <p className="truncate text-sm font-medium">{f.tipo === 'vinheta' ? '💋 ' : f.tipo === 'abertura' ? '🌙 ' : f.tipo === 'fechamento' ? '🌅 ' : ''}{f.titulo}{f.tipo && f.tipo !== 'musica' && <span className="ml-1 rounded-full bg-fuchsia-500/15 px-1.5 text-[10px] text-fuchsia-500">{f.tipo === 'vinheta' ? 'vinheta' : f.tipo === 'abertura' ? 'abertura 21h' : 'fechamento 1h'}</span>}</p>
               <p className="truncate text-[11px] text-muted-foreground">{f.artista || 'sem artista'} · {mmss(f.duracao)}{f.fonte ? ` · ${f.fonte}` : ''}</p>
               <audio src={resolveServerUrl(f.url)} controls preload="none" className="mt-1 h-8 w-full" />
             </div>
