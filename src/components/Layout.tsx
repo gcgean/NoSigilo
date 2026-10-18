@@ -48,6 +48,7 @@ import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
 import SupportChatDialog from '@/components/SupportChatDialog';
 import ViewportDebug from '@/components/ViewportDebug'; // TEMPORÁRIO — diagnóstico do corte no iOS
+import LancamentoDaCasa from '@/components/LancamentoDaCasa';
 import InviteModal from '@/components/InviteModal';
 import { hasPremiumAccess } from '@/utils/premium';
 import { saveLastAuthRoute } from '@/utils/sessionNavigation';
@@ -714,6 +715,7 @@ export default function Layout() {
   return (
     <div className="min-h-[100svh] bg-background flex flex-col">
       <ViewportDebug /> {/* TEMPORÁRIO: só com ?debugvp=1 na URL */}
+      <LancamentoDaCasa /> {/* campanha de inauguração d'A Casa até 23/10 */}
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
@@ -887,6 +889,10 @@ export default function Layout() {
                 <DropdownMenuItem onClick={() => navigate('/events')}>
                   <Calendar className="mr-2 h-4 w-4 text-amber-500" />
                   Eventos
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/casa')}>
+                  <Martini className="mr-2 h-4 w-4 text-fuchsia-500" />
+                  A Casa 🔥
                 </DropdownMenuItem>
                 {subscriptionsEnabled ? (
                   <DropdownMenuItem onClick={() => navigate('/subscriptions')}>
