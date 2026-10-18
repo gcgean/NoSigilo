@@ -145,7 +145,7 @@ export type DependenciasDaCasa = {
   pastaMusicas: string;
 };
 
-type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number };
+type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' };
 
 /** Duração do áudio em segundos (ffprobe); 0 se não conseguir ler. */
 function duracaoDoAudio(arquivo: string): Promise<number> {
@@ -1975,7 +1975,22 @@ Responda com UMA palavra:
 
   app.get('/api/casa/radio', deps.requireAuth, async (req, res) => {
     if (!(await noiteAtual()) && !(await souAdmin(req))) { res.json({ tocando: null }); return; }
-    const lista = (await lerPlaylist()).filter((f) => f.duracao > 0);
+    // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
+    // A sequência é fixa (mesma ordem para todo mundo), então a sincronia continua.
+    const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
+    const musicas = todas.filter((f) => f.tipo !== 'vinheta');
+    const vinhetas = todas.filter((f) => f.tipo === 'vinheta');
+    let lista: Faixa[] = musicas;
+    if (vinhetas.length > 0) {
+      lista = [];
+      let k = 0;
+      musicas.forEach((m, idx) => {
+        lista.push(m);
+        if ((idx + 1) % 2 === 0) lista.push(vinhetas[k++ % vinhetas.length]);
+      });
+      // Poucas músicas: garante que todas as vinhetas apareçam na volta.
+      while (k < vinhetas.length) lista.push(vinhetas[k++]);
+    }
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
     let pos = ((Date.now() - INICIO_DA_RADIO) / 1000) % total;
@@ -1983,7 +1998,7 @@ Responda com UMA palavra:
     while (i < lista.length - 1 && pos >= lista[i].duracao) { pos -= lista[i].duracao; i += 1; }
     const f = lista[i];
     res.json({
-      tocando: { id: f.id, titulo: f.titulo, artista: f.artista, url: urlDaFaixa(f), duracao: f.duracao, offset: pos },
+      tocando: { id: f.id, titulo: f.tipo === 'vinheta' ? '💋 Lola' : f.titulo, artista: f.tipo === 'vinheta' ? 'anfitriã da Casa' : f.artista, url: urlDaFaixa(f), duracao: f.duracao, offset: pos, vinheta: f.tipo === 'vinheta' },
       proxima: lista[(i + 1) % lista.length]?.titulo ?? null,
     });
   });
@@ -2040,6 +2055,7 @@ Responda com UMA palavra:
       titulo: String(corpo.titulo || '').trim().slice(0, 80) || 'Sem título',
       artista: String(corpo.artista || '').trim().slice(0, 80),
       fonte: String(corpo.fonte || '').trim().slice(0, 200),
+      tipo: corpo.tipo === 'vinheta' ? 'vinheta' : 'musica',
       duracao: Math.round(duracao * 10) / 10,
     };
     const lista = await lerPlaylist();
