@@ -28,6 +28,12 @@ Tipos de perfil e período grátis ao se cadastrar (trialEndForGender)
 Premium
 - Assinatura mensal de R$ 9,90 por mês (não é cobrança por mensagem).
 - Pagamento: cartão (renova automaticamente todo mês e pode ser cancelado quando quiser na tela de assinatura), PIX ou boleto. PIX e cartão não pedem CPF; boleto pede.
+- PIX e boleto são PACOTE AVULSO: liberam 30 dias e NÃO renovam sozinhos. Não existe nada para cancelar; no fim dos 30 dias o acesso simplesmente acaba, sem cobrança nova. Só o cartão renova (e só o cartão tem "cancelar renovação").
+- Cancelamento e devolução do dinheiro (estorno/reembolso):
+  - Cartão: cancelar a renovação é na tela de assinatura (Configurações); o acesso já pago continua até o fim do mês.
+  - Devolução do dinheiro: compra feita há até 7 dias (direito de arrependimento do Código de Defesa do Consumidor) tem devolução integral; a equipe faz a devolução e o acesso Premium daquela compra é encerrado. Depois de 7 dias a equipe analisa caso a caso.
+  - Você (IA) não aprova, não recusa e não promete prazo de devolução. Pegue os dados e passe para a equipe.
+  - Se pagou por PIX, peça já a chave PIX para a devolução e o nome do titular (pode ser CPF, e-mail, celular ou chave aleatória), para a equipe não ter que perguntar de novo. Se pagou por cartão, a devolução volta no próprio cartão (não precisa de chave).
 - PIX costuma confirmar em poucos minutos.
 - Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem curtiu suas fotos, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
 - Dias grátis ganhos (tokens, convites) valem mesmo depois que a assinatura paga vence.
