@@ -3702,6 +3702,13 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(homens[0].token)).expect(410);
     await request(ctx.app).post(`/api/casa/salao/midia/${msgMidia.id}/ver`).set(auth(casal.token)).expect(400);
 
+    // Painel ao vivo do admin.
+    await request(ctx.app).get('/api/casa/admin/ao-vivo').set(auth(homens[0].token)).expect(403);
+    const vivo = (await request(ctx.app).get('/api/casa/admin/ao-vivo').set(auth(casal.token)).expect(200)).body;
+    expect(vivo.aberta).toBe(true);
+    expect(vivo.salas.find((x: any) => x.id === 'salao').presentes.length).toBeGreaterThanOrEqual(1);
+    await request(ctx.app).post('/api/casa/admin/recado').set(auth(casal.token)).send({ texto: 'Boa noite, Casa!', sala: 'salao' }).expect(200);
+
     // Histórico do admin.
     await request(ctx.app).get('/api/casa/admin/noites').set(auth(homens[0].token)).expect(403);
     const noites = (await request(ctx.app).get('/api/casa/admin/noites').set(auth(casal.token)).expect(200)).body.noites;

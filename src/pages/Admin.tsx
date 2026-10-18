@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AdminCasaTab from '@/components/AdminCasaTab';
 import {
   Users, Image, DollarSign, FileText, Shield, Ban, Check, X,
   Eye, Search, Filter, TrendingUp, Flag, ExternalLink, Globe2, MapPin, MousePointerClick,
   Lightbulb, CheckCircle2, Clock, XCircle, MessageSquare, ChevronDown, ChevronUp, Monitor, Smartphone, Tablet,
   Gift, Award, Trophy, UserCheck, Mail, Send, RefreshCw, CheckSquare, Square, AlertCircle, Sparkles,
-  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star, ImagePlus, Bell
+  BadgeDollarSign, MessageCircle, Wallet, ArrowLeft, Calendar, Loader2, AlertTriangle, Trash2, Copy, Star, ImagePlus, Bell,
+  Martini,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -478,7 +480,8 @@ export default function Admin() {
   const [menConvPeriod, setMenConvPeriod] = useState<1 | 7 | 30>(7);
   const [cityUsersPeriod, setCityUsersPeriod] = useState<'all' | '30' | '90' | '365'>('all');
   const [accessPeriod, setAccessPeriod] = useState<'all' | '7' | '30' | '90'>('all');
-  const [abaAtiva, setAbaAtiva] = useState('metrics');
+  // ?aba=casa abre direto numa aba (ex.: link da página d'A Casa).
+  const [abaAtiva, setAbaAtiva] = useState(() => new URLSearchParams(window.location.search).get('aba') || 'metrics');
 
   // Painéis que o Analista IA enxerga. Só números agregados: listas de pessoas
   // (usuários, quem abandonou o PIX, promotores) não são publicadas.
@@ -1489,6 +1492,10 @@ export default function Admin() {
           <TabsTrigger value="suporte" className="gap-2">
             <MessageCircle className="w-4 h-4" />
             Suporte
+          </TabsTrigger>
+          <TabsTrigger value="casa" className="gap-2">
+            <Martini className="w-4 h-4" />
+            A Casa
           </TabsTrigger>
           <TabsTrigger value="metrics" className="gap-2">
             <TrendingUp className="w-4 h-4" />
@@ -3877,6 +3884,10 @@ export default function Admin() {
 
         <TabsContent value="reengagement">
           <AdminReengagementTab />
+        </TabsContent>
+
+        <TabsContent value="casa">
+          <AdminCasaTab />
         </TabsContent>
 
         <TabsContent value="telegram">

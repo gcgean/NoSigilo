@@ -1649,6 +1649,81 @@ Responda com UMA palavra:
     res.json({ ok: true });
   });
 
+  // ─── Admin: painel ao vivo da Casa ─────────────────────────────────────────
+  app.get('/api/casa/admin/ao-vivo', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noite = await noiteAtual();
+    const prox = await proximaNoite();
+    const reservados = prox.chave
+      ? ((await db.queryAll(
+        `SELECT r.user_id, u.name, u.gender, r.created_at FROM casa_reservas r JOIN users u ON u.id = r.user_id
+          WHERE r.noite = ? ORDER BY r.created_at DESC LIMIT 300`,
+        [prox.chave],
+      )) as any[])
+      : [];
+    const nomeDe = async (id: string) => String(((await db.queryOne('SELECT name FROM users WHERE id = ?', [id])) as any)?.name || '?');
+    const salasVivo = await Promise.all([...salas.values()].map(async (sl) => ({
+      id: sl.id, nome: sl.nome, emoji: sl.emoji, anonima: sl.anonima,
+      presentes: [...sl.presentes.values()].map((p) => ({
+        id: p.id, idPublico: p.idPublico, nome: p.nomeReal, apelido: p.nome !== p.nomeReal ? p.nome : null, cat: p.cat,
+        pulseira: p.pulseira, querBrincar: p.querBrincar, podeFalar: p.podeFalar, rei: ehRei(p.id), avisos: avisosDaNoite.get(p.id) ?? 0,
+      })),
+      espiando: sl.espiando.size,
+      fila: await Promise.all(sl.fila.map(async (id) => ({ id, nome: await nomeDe(id) }))),
+      jogo: sl.jogo ? { tipo: sl.jogo.tipo, texto: 'texto' in sl.jogo ? sl.jogo.texto : 'tema' in sl.jogo ? sl.jogo.tema : null } : null,
+      mensagens: sl.mensagens.length,
+    })));
+    const expulsosHoje = await Promise.all([...expulsos.entries()].filter(([, n]) => n === chaveDaNoite).map(async ([id]) => ({ id, nome: await nomeDe(id) })));
+    res.json({
+      aberta: !!noite,
+      forcada: !!noite?.forcada,
+      tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
+      abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
+      proximaAbertura: prox.inicio,
+      proximaNoite: prox.chave,
+      reservas: reservados.map((r) => ({ id: String(r.user_id), nome: String(r.name || '?'), cat: categoria(r.gender), em: String(r.created_at) })),
+      salas: salasVivo,
+      cabines: [...cabines.values()].map((c) => ({
+        id: c.id, sala: c.salaId, aberta: c.aberta, espectadores: c.espectadores.size, mensagens: c.mensagens.length,
+        membros: [...c.membros.values()].map((m) => m.nome), pedidos: c.entradas.size,
+      })),
+      propostas: [...propostas.values()].map((p) => ({ de: p.deNome, para: p.paraNome, texto: p.texto, tokens: p.tokens, status: p.status, privado: p.privado })),
+      expulsos: expulsosHoje,
+      contadores: { ...contadoresDaNoite },
+    });
+  });
+
+  // Admin: devolve a entrada de quem foi retirado nesta noite.
+  app.post('/api/casa/admin/perdoar', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const id = String((req.body as any)?.userId || '');
+    expulsos.delete(id);
+    avisosDaNoite.delete(id);
+    res.json({ ok: true });
+  });
+
+  // Admin: recado da Lola numa sala (ou em todas).
+  app.post('/api/casa/admin/recado', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const texto = String((req.body as any)?.texto || '').trim().slice(0, 400);
+    const alvo = String((req.body as any)?.sala || 'todas');
+    if (!texto) { res.status(400).json({ error: 'texto' }); return; }
+    if (!(await noiteAtual())) { res.status(409).json({ error: 'fechada', message: 'A Casa está fechada.' }); return; }
+    let enviados = 0;
+    for (const sl of salas.values()) if (alvo === 'todas' || alvo === sl.id) { lola(sl, texto); enviados++; }
+    res.json({ ok: true, enviados });
+  });
+
+  // Admin: tira alguém da Casa direto do painel (pelo id real).
+  app.post('/api/casa/admin/expulsar', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const id = String((req.body as any)?.userId || '');
+    const nome = String(((await db.queryOne('SELECT name FROM users WHERE id = ?', [id])) as any)?.name || '');
+    if (!nome) { res.status(404).json({ error: 'not_found' }); return; }
+    await expulsar(id, nome, 'Retirado(a) pelo admin', null, 'painel');
+    res.json({ ok: true });
+  });
+
   app.post('/api/casa/:sala/expulsar', deps.requireAuth, async (req, res) => {
     if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
     const sala = salaDe(req);

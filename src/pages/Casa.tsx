@@ -12,8 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
-import PlaylistDaCasa from '@/components/PlaylistDaCasa';
-import HistoricoDaCasa from '@/components/HistoricoDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
 import { profileService } from '@/services/api';
@@ -1068,8 +1066,9 @@ export default function Casa() {
         <div className="mt-3"><RankingDaCasa /></div>
       </details>
 
-      {info?.souAdmin && <PlaylistDaCasa />}
-      {info?.souAdmin && <HistoricoDaCasa />}
+      {info?.souAdmin && (
+        <Button variant="outline" className="w-full" onClick={() => navigate('/admin?aba=casa')}>⚙️ Gerenciar A Casa (admin)</Button>
+      )}
 
       <div className="grid gap-3">
         {(info?.salas ?? []).map((s) => {
