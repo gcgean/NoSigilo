@@ -24,6 +24,7 @@ import { melhorarRespostaSuporte } from './respostaSuporteIa.js';
 import { filtroMarcaDagua, textoDaMarca } from './marcaDagua.js';
 import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
+import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
@@ -534,6 +535,9 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   pagou_cartao: { points: 50, dailyCap: 1 },
   // Voltou pela campanha de volta e renovou em até 30 dias.
   volta_renovou: { points: 50, dailyCap: 1 },
+  // A Casa: entrar na noite (1x por noite) e acertar o quiz da Lola.
+  casa_entrada: { points: 5, dailyCap: 1 },
+  casa_quiz: { points: 3, dailyCap: 5 },
 };
 
 // Só perfis de mulheres e casais recebem tokens por postagem feita.
@@ -22718,6 +22722,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // A Casa: boate virtual de sexta e sábado (casa.ts).
+  registrarCasa(app, {
+    db,
+    deepseekKey: env.DEEPSEEK_API_KEY,
+    requireAuth: requireAuth(env, db),
+    getIo: () => app.get('io') as SocketIOServer | undefined,
+    temPremium: (userId) => userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS),
+    premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
+    push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
+  });
+
   app.use((req, res) => {
     res.status(404).json({ error: 'not_found', path: req.path });
   });
@@ -22821,6 +22836,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // LGPD: termina de apagar os dados de contas excluídas (25 por vez, a cada 10 min).
   setTimeout(() => void limparContasExcluidasPendentes(), 2 * 60 * 1000);
   setInterval(() => void limparContasExcluidasPendentes(), 10 * 60 * 1000);
+
 
   return app;
 }

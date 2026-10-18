@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { appService } from '@/services/api';
 import { BannerSlot, FeedBannerQueueProvider } from '@/contexts/FeedBannerQueueContext';
-import { Home, Heart, MessageCircle, User, Bell, Search, Clapperboard, LogOut, Settings, Calendar, Shield, Star, Crown, Radio, Sparkles, UserPlus, Users, CheckCircle2, Circle, Camera, Send, PartyPopper, X, Gift, Moon, Sun, BadgeDollarSign, Coins, Plus, LifeBuoy, UsersRound, Smartphone, ChevronRight } from 'lucide-react';
+import { Home, Heart, MessageCircle, User, Bell, Search, Clapperboard, LogOut, Settings, Calendar, Shield, Star, Crown, Radio, Sparkles, UserPlus, Users, CheckCircle2, Circle, Camera, Send, PartyPopper, X, Gift, Moon, Sun, BadgeDollarSign, Coins, Plus, LifeBuoy, UsersRound, Smartphone, ChevronRight, Martini } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -66,6 +66,7 @@ const navItems = [
   { path: '/feed', icon: Home, label: 'Feed' },
   { path: '/match', icon: Heart, label: 'Match' },
   { path: '/radar', icon: Radio, label: 'Radar', accentClass: 'text-rose-500' },
+  { path: '/casa', icon: Martini, label: 'A Casa 🔥', accentClass: 'text-fuchsia-500' },
   { path: '/events', icon: Calendar, label: 'Eventos', accentClass: 'text-amber-500' },
   { path: '/chat', icon: MessageCircle, label: 'Chat' },
   { path: '/friends', icon: Users, label: 'Amigos' },

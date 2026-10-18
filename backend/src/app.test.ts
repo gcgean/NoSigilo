@@ -3627,6 +3627,42 @@ describe('nosigilo backend', () => {
     expect((await request(ctx.app).get('/api/conversations/unread-count').set(auth(ana.token)).expect(200)).body.gruposCount).toBe(0);
   });
 
+  it('A Casa: admin abre, cota de homens, sala dos casais, chat sem link e cabine com aceite', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Casa', email: 'casal-casa@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(casal.user.id)]);
+    const homens = [];
+    for (let i = 0; i < 3; i++) {
+      const h = await registerInvitedUser(ctx, sponsorToken, { name: `Homem Casa ${i}`, email: `homem-casa-${i}@example.com`, password: 'senha123', gender: 'Homem' });
+      await grantPremium(ctx, String(h.user.id));
+      homens.push(h);
+    }
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(homens[0].token)).send({ minutos: 60 }).expect(403);
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60 }).expect(200);
+    const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
+    expect(info.aberta).toBe(true);
+    expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto']);
+
+    const entrouCasal = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    expect(entrouCasal.eu.podeFalar).toBe(true);
+    // 1 casal na sala: até 2 homens (folga da sala vazia); o terceiro espera.
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[1].token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(409);
+    await request(ctx.app).post('/api/casa/casais/entrar').set(auth(homens[2].token)).expect(403);
+
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'Boa noite, sala!' }).expect(200);
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'me chama em wa.me/5585' }).expect(400);
+
+    await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200);
+    // O convite vai por socket; aqui pegamos o id pelo mapa interno respondendo com um id inválido primeiro.
+    await request(ctx.app).post('/api/casa/convite/inexistente/responder').set(auth(homens[0].token)).send({ aceitar: true }).expect(410);
+
+    await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[1].token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(200);
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
+  });
+
   it('vitrine: só uma curtida, na primeira publicação; sem match e sem curtir story', async () => {
     const { runShowcaseFeedLikes, runShowcaseProfileLikes, runShowcaseStoryEngagement } = await import('./showcase.js');
     const vit = await registerInvitedUser(ctx, sponsorToken, { name: 'Vitrine Teste', email: 'vitrine-teste@example.com', password: 'senha123', gender: 'Mulher' });

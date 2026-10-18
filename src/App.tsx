@@ -44,6 +44,7 @@ const InviteLanding = lazy(() => import("./pages/InviteLanding"));
 const Feed = lazy(() => import("./pages/Feed"));
 const Match = lazy(() => import("./pages/Match"));
 const Radar = lazy(() => import("./pages/Radar"));
+const Casa = lazy(() => import("./pages/Casa"));
 const Stories = lazy(() => import("./pages/Stories"));
 const Profile = lazy(() => import("./pages/Profile"));
 const ProfileVisitors = lazy(() => import("./pages/ProfileVisitors"));
@@ -121,6 +122,7 @@ const App = () => (
                       <Route path="/feed" element={<Feed />} />
                       <Route path="/match" element={<Match />} />
                       <Route path="/radar" element={<Radar />} />
+                      <Route path="/casa" element={<Casa />} />
                       <Route path="/stories" element={<Stories />} />
                       <Route path="/profile" element={<Profile />} />
                       <Route path="/profile/visitors" element={<ProfileVisitors />} />
