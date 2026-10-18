@@ -4,13 +4,25 @@ import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { enablePushNotifications } from '@/utils/pushNotifications';
 
 /**
- * Campanha de inauguração d'A Casa (até sexta, 23/10/2026, 21h).
- * Aparece uma vez por dia, só para quem ainda não reservou lugar nem está na fila.
+ * Convite para reservar lugar n'A Casa.
+ * - Até a inauguração (sexta, 23/10/2026, 21h): uma vez por dia para todos que
+ *   ainda não reservaram nem estão na fila (campanha de lançamento).
+ * - Depois: só para contas novas (até 7 dias), uma única vez, chamando para a
+ *   próxima noite — todo cadastro novo já conhece A Casa logo no começo.
  */
 const FIM_DA_CAMPANHA = Date.parse('2026-10-24T00:00:00Z'); // sexta 23/10, 21h em Brasília
 const CHAVE = 'nosigilo:casa-lancamento-visto';
+const CHAVE_CONTA_NOVA = 'nosigilo:casa-convite-conta-nova';
+const CONTA_NOVA_MS = 7 * 86_400_000;
+
+function diaDaNoite(iso: string | null) {
+  if (!iso) return 'sexta, às 21h';
+  const d = new Date(iso);
+  return `${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' })}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })}, às 21h`;
+}
 
 export default function LancamentoDaCasa() {
   const navigate = useNavigate();
@@ -18,19 +30,31 @@ export default function LancamentoDaCasa() {
   const { toast } = useToast();
   const [aberto, setAberto] = useState(false);
   const [reservas, setReservas] = useState(0);
+  const [lancamento, setLancamento] = useState(true);
+  const [quando, setQuando] = useState<string>('sexta 23/10 · 21h');
 
   useEffect(() => {
-    if (Date.now() >= FIM_DA_CAMPANHA || pathname.startsWith('/casa')) return;
+    if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
+    const emCampanha = Date.now() < FIM_DA_CAMPANHA;
     const hoje = new Date().toLocaleDateString('pt-BR');
-    try { if (localStorage.getItem(CHAVE) === hoje) return; } catch { /* sem storage: mostra */ }
+    try {
+      if (emCampanha && localStorage.getItem(CHAVE) === hoje) return;
+      if (!emCampanha && localStorage.getItem(CHAVE_CONTA_NOVA)) return;
+    } catch { /* sem storage: mostra */ }
     const t = setTimeout(async () => {
       try {
         const { data } = await apiClient.get('/casa');
         const naFila = (data?.salas ?? []).some((s: any) => s.posicaoNaFila);
         if (data?.reservado || naFila || data?.aberta) return;
+        if (!emCampanha) {
+          const criada = Date.parse(String(data?.contaCriadaEm || ''));
+          if (!criada || Date.now() - criada > CONTA_NOVA_MS) return;
+        }
+        setLancamento(emCampanha);
+        if (!emCampanha) setQuando(diaDaNoite(data?.proximaAbertura ?? null));
         setReservas(Number(data?.reservas || 0));
         setAberto(true);
-        try { localStorage.setItem(CHAVE, hoje); } catch { /* ok */ }
+        try { localStorage.setItem(emCampanha ? CHAVE : CHAVE_CONTA_NOVA, emCampanha ? hoje : '1'); } catch { /* ok */ }
       } catch { /* sem aviso */ }
     }, 4000); // deixa a tela carregar antes
     return () => clearTimeout(t);
@@ -40,9 +64,11 @@ export default function LancamentoDaCasa() {
 
   const reservar = async () => {
     setAberto(false);
+    // O aviso de "abriu" chega por notificação: pede a permissão no mesmo toque.
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void enablePushNotifications().catch(() => {});
     try {
       await apiClient.post('/casa/reservar', { reservar: true });
-      toast({ title: '🎟️ Lugar reservado para a inauguração!', description: 'Sexta, 23/10, às 21h a gente avisa no seu celular.' });
+      toast({ title: lancamento ? '🎟️ Lugar reservado para a inauguração!' : '🎟️ Lugar reservado!', description: lancamento ? 'Sexta, 23/10, às 21h a gente avisa no seu celular.' : `Quando abrir (${quando}), a gente avisa no seu celular.` });
     } catch {
       toast({ title: 'Não foi possível reservar agora.', variant: 'destructive' });
     }
@@ -52,10 +78,10 @@ export default function LancamentoDaCasa() {
     <Dialog open={aberto} onOpenChange={setAberto}>
       <DialogContent className="max-w-sm overflow-hidden border-fuchsia-500/40 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 p-0 text-white">
         <div className="space-y-3 p-6 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">Inauguração · sexta 23/10 · 21h</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? 'Inauguração · sexta 23/10 · 21h' : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>
           <p className="text-sm text-white/85">
-            A casa de swing virtual do NoSigilo abre nesta sexta! Salas ao vivo com casais, mulheres e singles,
+            {lancamento ? 'A casa de swing virtual do NoSigilo abre nesta sexta!' : 'Bem-vindo(a)! Toda sexta e sábado, das 21h à 1h, acontece A Casa: a casa de swing virtual do NoSigilo.'} Salas ao vivo com casais, mulheres e singles,
             pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e Glory Hole.
           </p>
           <ul className="space-y-1 text-left text-xs text-white/75">

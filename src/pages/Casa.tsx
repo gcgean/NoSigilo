@@ -6,6 +6,7 @@ import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useSocket } from '@/contexts/SocketContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { enablePushNotifications } from '@/utils/pushNotifications';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -275,6 +276,7 @@ export default function Casa() {
   }, [toast, carregar]);
 
   const reservar = useCallback(async (reservarLugar = true) => {
+    if (reservarLugar && typeof Notification !== 'undefined' && Notification.permission === 'default') void enablePushNotifications().catch(() => {});
     try {
       const { data } = await apiClient.post('/casa/reservar', { reservar: reservarLugar });
       setInfo((i) => i ? { ...i, reservado: !!data.reservado, reservas: Number(data.reservas || 0) } : i);

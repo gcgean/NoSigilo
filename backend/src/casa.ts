@@ -934,7 +934,7 @@ Responda com UMA palavra:
   // ─── Rotas ────────────────────────────────────────────────────────────────
   const carregarPerfil = async (userId: string) => {
     const u = (await db.queryOne(
-      `SELECT u.id, u.name, u.gender, u.looking_for_json, u.is_admin, u.avatar, u.city, u.state,
+      `SELECT u.id, u.name, u.gender, u.looking_for_json, u.is_admin, u.avatar, u.city, u.state, u.created_at,
               (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS foto
          FROM users u WHERE u.id = ? LIMIT 1`,
       [userId],
@@ -950,6 +950,7 @@ Responda com UMA palavra:
       procura,
       admin: Number(u.is_admin || 0) === 1,
       avatar: u.foto ? `/uploads/${u.foto}` : (u.avatar ? String(u.avatar) : null),
+      criadoEm: u.created_at ? String(u.created_at) : null,
       cidade: u.city ? String(u.city) : null,
       uf: u.state ? String(u.state).trim().toUpperCase() : null,
     };
@@ -1079,6 +1080,7 @@ Responda com UMA palavra:
       tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
       horario: 'Sexta e sábado, das 21h à 1h',
       reservado,
+      contaCriadaEm: perfil?.criadoEm ?? null,
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: prox.inicio,
       souAdmin: !!perfil?.admin,
