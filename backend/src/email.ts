@@ -317,41 +317,43 @@ export async function sendWeekendEngagementEmail(
   const safeName = escapeHtml((payload.userName || 'você').split(' ')[0] || payload.userName || 'você');
 
   type Variant = { subject: string; emoji: string; headline: string; body: string; ctaLabel: string; ctaPath: string; second?: { label: string; path: string } };
+  // Sai sexta às 20h para quem sumiu: chama para A Casa, que abre às 21h
+  // (evento com hora marcada puxa mais do que convite genérico — 18/10/2026).
   const variants: Variant[] = [
     {
-      subject: `🔥 ${safeName}, é noite de aparecer no ${appName}`,
+      subject: `🔥 ${safeName}, hoje às 21h tem A Casa no ${appName}`,
       emoji: '🔥',
-      headline: 'Hora de se exibir 😈',
-      body: 'O fim de semana é quando a rede mais ferve. Poste uma foto ou um vídeo agora e apareça para quem está online e procurando alguém como você.',
-      ctaLabel: 'Publicar agora →',
-      ctaPath: '/feed?firstAccess=post',
-      second: { label: 'Ativar meu Radar', path: '/radar' },
+      headline: 'Hoje às 21h a Casa abre 😈',
+      body: 'A boate virtual dos liberais, ao vivo: salas com casais, mulheres e singles, a Lola puxando brincadeiras bem quentes, música e cabine a dois. Até 1h da manhã. Chama seu par!',
+      ctaLabel: 'Quero entrar na Casa →',
+      ctaPath: '/a-casa',
+      second: { label: 'Ver quem está perto', path: '/search' },
     },
     {
-      subject: `👀 ${safeName}, veja quem reagiu ao que você postou`,
-      emoji: '👀',
-      headline: 'Alguém andou de olho em você',
-      body: 'Enquanto você tocava a vida, seu perfil e seus posts podem ter recebido curtidas, comentários e visitas. Volte e veja o que rolou — e responda quem demonstrou interesse.',
-      ctaLabel: 'Ver minhas notificações →',
-      ctaPath: '/notifications',
-      second: { label: 'Ver meu perfil', path: '/profile' },
+      subject: `🍸 ${safeName}, a festa de sexta é na Casa (21h)`,
+      emoji: '🍸',
+      headline: 'Sexta Liberal começa às 21h',
+      body: 'Eu nunca, verdade ou desafio e match às cegas com gente da comunidade, tudo ao vivo. Quem curtir a vibe vai pra cabine a dois. Discreto e só com quem você aceitar.',
+      ctaLabel: 'Entrar na Casa às 21h →',
+      ctaPath: '/a-casa',
+      second: { label: 'Abrir o Match', path: '/match' },
     },
     {
-      subject: `💤 ${safeName}, você perdeu movimento no ${appName}`,
-      emoji: '💤',
-      headline: 'Rolou coisa boa enquanto você esteve fora',
-      body: 'Novos perfis entraram, gente da sua região ficou disponível e o feed encheu de novidade. Dá uma olhada no que apareceu — pode ter alguém perfeito pra hoje.',
-      ctaLabel: 'Ver as novidades →',
-      ctaPath: '/feed',
-      second: { label: 'Buscar perto de mim', path: '/search' },
+      subject: `💋 ${safeName}, sentimos sua falta: hoje tem Casa às 21h`,
+      emoji: '💋',
+      headline: 'Volta pra noite de hoje?',
+      body: 'Enquanto você esteve fora, a comunidade ganhou A Casa: uma boate virtual que abre sexta e sábado, das 21h à 1h. Entra, dá uma espiada e sinta o clima 🔥',
+      ctaLabel: 'Espiar A Casa →',
+      ctaPath: '/a-casa',
+      second: { label: 'Ver as novidades do feed', path: '/feed' },
     },
     {
-      subject: `💬 ${safeName}, que tal marcar algo gostoso pra hoje?`,
-      emoji: '💬',
-      headline: 'Puxa conversa e marca a brincadeira',
-      body: 'Sexta e sábado à noite são os melhores momentos pra combinar um encontro. Encontre alguém do seu interesse, mande a primeira mensagem e deixe rolar 🔥',
-      ctaLabel: 'Encontrar alguém →',
-      ctaPath: '/match',
+      subject: `🖤 ${safeName}, o Quarto Escuro abre às 21h`,
+      emoji: '🖤',
+      headline: 'Tem sala muito quente hoje',
+      body: 'Salão Principal, Sala dos Casais e Quarto Escuro: escolha a sua, entre nas brincadeiras e chame quem você quiser pra cabine. Hoje, das 21h à 1h.',
+      ctaLabel: 'Ver as salas da Casa →',
+      ctaPath: '/a-casa',
       second: { label: 'Abrir o Chat', path: '/chat' },
     },
   ];
@@ -370,7 +372,7 @@ export async function sendWeekendEngagementEmail(
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:48px;margin-bottom:8px;">${v.emoji}</div>
       <h1 style="margin:0 0 6px;font-size:24px;font-weight:800;color:#ffffff;">${v.headline}</h1>
-      <p style="font-size:14px;color:#c99aab;margin:0;">Oi, ${safeName}! É fim de semana no ${appName} 🌙</p>
+      <p style="font-size:14px;color:#c99aab;margin:0;">Oi, ${safeName}! Hoje é sexta no ${appName} 🌙</p>
     </div>
 
     <p style="font-size:16px;line-height:1.6;color:#e8d3db;margin:0 0 24px;text-align:center;">
