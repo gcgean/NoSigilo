@@ -1453,3 +1453,36 @@ export async function sendEmbaixadorOficialEmail(
     </div>`.trim();
   return enviarPorResend(options, payload.to, `👑 Você agora é Embaixador Oficial do ${appName}`, html);
 }
+
+// ─── A Casa abriu (para quem reservou lugar) ────────────────────────────────
+export async function sendCasaAbriuEmail(
+  options: { apiKey?: string; fromEmail?: string; appName?: string; siteUrl?: string },
+  payload: { to: string; userName: string; tema: string }
+) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+  const appName = options.appName || 'NoSigilo';
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const nome = escapeHtml((payload.userName || 'você').split(' ')[0] || 'você');
+  const tema = escapeHtml(payload.tema);
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#1a0f14;font-family:Arial,sans-serif;">
+<div style="max-width:580px;margin:0 auto;padding:24px 16px;">
+  <div style="background:#25141b;border-radius:20px;border:1px solid #4a2230;padding:36px 32px;text-align:center;">
+    <div style="font-size:48px;margin-bottom:8px;">🔥</div>
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#ffffff;">${nome}, A Casa abriu!</h1>
+    <p style="font-size:15px;color:#c99aab;margin:0 0 18px;">${tema} · agora até 1h da manhã</p>
+    <p style="font-size:16px;line-height:1.6;color:#e8d3db;margin:0 0 24px;">
+      Seu lugar está reservado n'A Casa: a boate virtual dos casais liberais do ${appName}. Salas ao vivo, pulseiras, bar, desafios quentes com a Lola e cabine a dois. Chega cedo, antes da sala lotar 😈
+    </p>
+    <a href="${siteUrl}/casa" style="display:inline-block;background:linear-gradient(135deg,#e83e68,#c0264a);color:white;font-size:17px;font-weight:800;padding:17px 40px;border-radius:14px;text-decoration:none;">Entrar na Casa →</a>
+    <p style="font-size:12px;color:#9a6b7a;margin:22px 0 0;">Você recebeu porque reservou lugar n'A Casa. 🔒 Discreto e só entre maiores de 18.</p>
+  </div>
+</div>
+</body></html>`.trim();
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${options.apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: options.fromEmail, to: [payload.to], subject: `🔥 ${nome}, A Casa abriu: seu lugar está esperando`, html: withUnsubscribe(html, payload.to) }),
+  });
+  if (!response.ok) throw new Error(`resend_casa_error:${response.status}:${await response.text()}`);
+  return { skipped: false as const };
+}

@@ -26,7 +26,7 @@ import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
-import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail } from './email.js';
+import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
 import {
   cancelHubSubscription,
@@ -22779,6 +22779,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
     alertar: (texto) => notifyAdminsTelegram({ db, env }, texto, 'casa'),
+    // E-mail "A Casa abriu" para quem reservou (respeita quem desligou e-mail).
+    // Fica no mesmo registro do disparo de fim de semana, para contar na cota do Resend.
+    emailAbriu: async (userId, tema) => {
+      const u = (await queryOne(db, 'SELECT name, email, notify_email, is_banned FROM users WHERE id = ?', [userId])) as any;
+      if (!u?.email || String(u.email).endsWith('@nosigilo.internal') || Number(u.is_banned || 0) === 1) return;
+      if (u.notify_email === false || u.notify_email === 0) return;
+      let status = 'sent';
+      let erro: string | null = null;
+      try {
+        await sendCasaAbriuEmail(
+          { apiKey: env.RESEND_API_KEY, fromEmail: env.RESEND_FROM_EMAIL, appName: 'NoSigilo', siteUrl: env.FRONTEND_ORIGIN || 'https://nosigilo.net' },
+          { to: String(u.email), userName: String(u.name || 'você'), tema }
+        );
+      } catch (e: any) { status = 'error'; erro = String(e?.message ?? e).slice(0, 500); }
+      await run(db, 'INSERT INTO reengagement_emails (id, user_id, sent_at, status, error_message, campaign) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), userId, nowIso(), status, erro, 'casa']).catch(() => {});
+    },
     // Revelação paga na Casa: mesma regra dos presentes do chat (sai primeiro a
     // parte comprada e chega como comprada; o resto chega como ganho).
     transferirTokens: async (de, para, valor, refId) => {

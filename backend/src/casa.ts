@@ -135,6 +135,8 @@ export type DependenciasDaCasa = {
   /** Devolve/entrega tokens (desafio cumprido, recusado ou vencido). */
   creditar: (userId: string, valor: number, motivo: string, refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
+  /** E-mail "A Casa abriu" para quem reservou (respeita quem desligou e-mail). */
+  emailAbriu: (userId: string, tema: string) => Promise<void>;
   /** Alerta no Telegram do admin (categoria "A Casa"). */
   alertar: (texto: string) => Promise<unknown>;
   /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
@@ -900,6 +902,8 @@ Responda com UMA palavra:
         url: '/casa',
         tag: 'casa-abriu',
       }).catch(() => {});
+      await deps.emailAbriu(id, t.nome).catch(() => {});
+      await new Promise((r) => setTimeout(r, 120)); // respeita o limite do Resend
     }
     await avisarParaAtivos({
       title: `🔥 A Casa abriu: ${t.nome}!`,
