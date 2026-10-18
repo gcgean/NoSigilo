@@ -3641,7 +3641,7 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60 }).expect(200);
     const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
     expect(info.aberta).toBe(true);
-    expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto']);
+    expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto', 'glory']);
 
     const entrouCasal = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
     expect(entrouCasal.eu.podeFalar).toBe(true);
@@ -3654,7 +3654,25 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'Boa noite, sala!' }).expect(200);
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'me chama em wa.me/5585' }).expect(400);
 
-    await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200);
+    const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200)).body;
+    // Cabine da Casa: porta fecha por padrão; abre só quando os dois querem; quem espia pede para entrar.
+    const cab = (await request(ctx.app).post(`/api/casa/convite/${convite.id}/responder`).set(auth(homens[0].token)).send({ aceitar: true }).expect(200)).body;
+    expect(cab.cabineId).toBeTruthy();
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(403); // porta fechada
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(casal.token)).send({ abrir: true }).expect(200);
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: true }).expect(200)).body.aberta).toBe(true);
+    const espiando = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(200)).body.cabine;
+    expect(espiando.souEspectador).toBe(true);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/mensagem`).set(auth(homens[1].token)).send({ texto: 'oi' }).expect(403);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/mensagem`).set(auth(casal.token)).send({ texto: 'que delícia' }).expect(200);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/pedir`).set(auth(homens[1].token)).expect(200);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/entrada/${String(homens[1].user.id)}`).set(auth(casal.token)).send({ aprovar: true }).expect(200);
+    let estadoCab = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(estadoCab.membros.length).toBe(2); // falta a aprovação do outro
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/entrada/${String(homens[1].user.id)}`).set(auth(homens[0].token)).send({ aprovar: true }).expect(200);
+    estadoCab = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(estadoCab.membros.length).toBe(3);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/sair`).set(auth(homens[1].token)).expect(200);
     // O convite vai por socket; aqui pegamos o id pelo mapa interno respondendo com um id inválido primeiro.
     await request(ctx.app).post('/api/casa/convite/inexistente/responder').set(auth(homens[0].token)).send({ aceitar: true }).expect(410);
 
@@ -3720,6 +3738,14 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/salao/midia/${privada.id}/ver`).set(auth(casal.token)).expect(200);
     const ranking = (await request(ctx.app).get('/api/casa/ranking?periodo=noite&cat=todos').set(auth(casal.token)).expect(200)).body.ranking;
     expect(ranking.some((r: any) => r.id === String(homens[0].user.id))).toBe(true);
+
+    // Glory Hole: anônimo (id e nome escondidos) até a pessoa revelar.
+    const glory = (await request(ctx.app).post('/api/casa/glory/entrar').set(auth(casal.token)).expect(200)).body;
+    const euNaGlory = glory.presentes.find((x: any) => x.id === glory.eu.idPublico);
+    expect(euNaGlory.nome).toMatch(/^Anônimo/);
+    expect(glory.eu.idPublico).not.toBe(String(casal.user.id));
+    await request(ctx.app).post('/api/casa/glory/revelar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
 
     // Página pública: sem login, só números.
     const pub = (await request(ctx.app).get('/api/casa/publico').expect(200)).body;

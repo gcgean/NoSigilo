@@ -13,7 +13,8 @@ type Linha = {
   midia: { url: string; mime: string; vistas: number } | null;
 };
 
-const NOME_SALA: Record<string, string> = { salao: '🍸 Salão', casais: '💑 Casais', quarto: '🖤 Quarto Escuro' };
+const NOME_SALA: Record<string, string> = { salao: '🍸 Salão', casais: '💑 Casais', quarto: '🖤 Quarto Escuro', glory: '🕳️ Glory Hole' };
+const nomeDaSala = (s: string) => NOME_SALA[s] ?? (s.startsWith('cab:') ? '🚪 Cabine' : s);
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 export default function HistoricoDaCasa() {
@@ -41,7 +42,7 @@ export default function HistoricoDaCasa() {
     }
   };
 
-  const visiveis = linhas.filter((l) => sala === 'todas' || l.sala === sala);
+  const visiveis = linhas.filter((l) => sala === 'todas' || l.sala === sala || (sala === 'cabines' && l.sala.startsWith('cab:')));
   return (
     <div className="space-y-3 rounded-2xl border bg-card p-4">
       <div className="flex items-center gap-2">
@@ -64,9 +65,9 @@ export default function HistoricoDaCasa() {
           {aberta === n.noite && (
             <div className="space-y-2 border-t p-3">
               <div className="flex flex-wrap gap-1.5">
-                {['todas', 'salao', 'casais', 'quarto'].map((s) => (
+                {['todas', 'salao', 'casais', 'quarto', 'glory', 'cabines'].map((s) => (
                   <Button key={s} size="sm" variant={sala === s ? 'default' : 'outline'} className="h-7 text-xs" onClick={() => setSala(s)}>
-                    {s === 'todas' ? 'Todas as salas' : NOME_SALA[s]}
+                    {s === 'todas' ? 'Todas as salas' : s === 'cabines' ? '🚪 Cabines' : NOME_SALA[s]}
                   </Button>
                 ))}
               </div>
@@ -80,7 +81,7 @@ export default function HistoricoDaCasa() {
               <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
                 {visiveis.map((l) => (
                   <div key={l.id} className={cn('rounded-lg px-2 py-1 text-xs', l.tipo === 'lola' ? 'bg-fuchsia-500/10' : l.tipo === 'sistema' ? 'text-muted-foreground' : 'bg-muted/40')}>
-                    <span className="text-muted-foreground">{hora(l.criadoEm)} · {NOME_SALA[l.sala] ?? l.sala} · </span>
+                    <span className="text-muted-foreground">{hora(l.criadoEm)} · {nomeDaSala(l.sala)} · </span>
                     <b>{l.tipo === 'lola' ? 'Lola (IA)' : l.autor ? `${l.autor.nome} (${l.autor.genero || '?'})` : ''}</b>{' '}
                     <span className="whitespace-pre-line">{l.texto}</span>
                     {l.midia && (

@@ -15,6 +15,7 @@ import RadioDaCasa from '@/components/RadioDaCasa';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
+import CabineDaCasa from '@/components/CabineDaCasa';
 import { profileService } from '@/services/api';
 
 /**
@@ -34,7 +35,7 @@ type Info = {
   souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
-type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null };
+type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number } };
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -46,7 +47,8 @@ type Jogo = {
 type Estado = {
   sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string };
   mensagens: Msg[]; presentes: Pessoa[]; espiando: number; jogo: Jogo | null;
-  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null };
+  eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null; idPublico: string | null; revelado: boolean };
+  sala_anonima?: boolean;
   midiasVistas: string[];
 };
 type Convite = { id: string; de: { id: string; nome: string; avatar: string | null; cat: Categoria }; sala: string };
@@ -230,6 +232,10 @@ export default function Casa() {
   const [pulseiraDispensada, setPulseiraDispensada] = useState(false);
   const [mostrandoBar, setMostrandoBar] = useState(false);
   const [rankingAberto, setRankingAberto] = useState(false);
+  const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
+  const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
+  const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
+  const [conviteCabine, setConviteCabine] = useState<{ cabineId: string; membros: string[] } | null>(null);
   const [propondoPara, setPropondoPara] = useState<Pessoa | null>(null);
   const [sugestoes, setSugestoes] = useState<{ texto: string; nivel: string }[]>([]);
   const [textoDesafio, setTextoDesafio] = useState('');
@@ -356,15 +362,26 @@ export default function Casa() {
       toast({ title: d.cumprida ? `✅ ${d.nome} cumpriu seu desafio!` : 'Desafio encerrado', description: d.cumprida ? `Os ${d.tokens} tokens foram para ${d.nome}.` : d.motivo });
     };
     const aoResposta = () => toast({ title: 'Não rolou agora 😉', description: 'A pessoa não aceitou o convite pra cabine.' });
-    const aoCabine = (d: { conversationId: string; com: string }) => {
-      toast({ title: `🚪 Cabine aberta com ${d.com}!` });
-      navigate(`/chat/${d.conversationId}`);
+    const aoCabine = (d: { cabineId: string; com: string }) => {
+      toast({ title: `🚪 Você está na cabine com ${d.com}!` });
+      setMinhasCabines((l) => (l.includes(d.cabineId) ? l : [...l, d.cabineId]));
+      setCabineAberta({ id: d.cabineId, modo: 'membro' });
+    };
+    const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => setConviteCabine(d);
+    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' });
+    const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
+    const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
+      toast({
+        title: `🕳️ ${d.de.nome} bateu na parede…`,
+        description: `É ${ROTULO_CAT[d.de.cat].toLowerCase()}. Quer chamar pra cabine?`,
+        action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
+      });
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -531,12 +548,46 @@ export default function Casa() {
     if (!c) return;
     try {
       const { data } = await apiClient.post(`/casa/convite/${c.id}/responder`, { aceitar });
-      if (aceitar && data?.conversationId) {
-        toast({ title: `🚪 Cabine aberta com ${data.com}!` });
-        navigate(`/chat/${data.conversationId}`);
+      if (aceitar && data?.cabineId) {
+        setMinhasCabines((l) => (l.includes(data.cabineId) ? l : [...l, data.cabineId]));
+        setCabineAberta({ id: data.cabineId, modo: 'membro' });
       }
     } catch (e) { toast({ title: erroDe(e, 'Esse convite expirou.') }); }
   };
+  useEffect(() => {
+    if (!salaAtual) { setCabinesAbertas([]); return; }
+    const buscar = () => apiClient.get(`/casa/${salaAtual}/cabines`).then((r) => setCabinesAbertas(r.data.cabines ?? [])).catch(() => {});
+    void buscar();
+    const t = setInterval(buscar, 15_000);
+    return () => clearInterval(t);
+  }, [salaAtual, cabineAberta]);
+  const responderConviteCabine = async (aceitar: boolean) => {
+    const c = conviteCabine;
+    setConviteCabine(null);
+    if (!c) return;
+    try {
+      const { data } = await apiClient.post(`/casa/cabine/${c.cabineId}/convite/responder`, { aceitar });
+      if (aceitar && data?.cabine) {
+        setMinhasCabines((l) => (l.includes(c.cabineId) ? l : [...l, c.cabineId]));
+        setCabineAberta({ id: c.cabineId, modo: 'membro' });
+      }
+    } catch (e) { toast({ title: erroDe(e, 'Esse convite expirou.') }); }
+  };
+  const revelar = async () => {
+    if (!salaAtual || !window.confirm('Revelar seu nome e sua foto para a sala? Não dá para voltar a ser anônimo nesta noite.')) return;
+    try {
+      await apiClient.post(`/casa/${salaAtual}/revelar`);
+      setEstado((e) => e ? { ...e, eu: { ...e.eu, revelado: true } } : e);
+    } catch { /* ok */ }
+  };
+  const bater = async (p: { id: string; nome: string }) => {
+    setPessoaAberta(null);
+    try {
+      await apiClient.post(`/casa/${salaAtual}/bater`, { para: p.id });
+      toast({ title: `🕳️ Você bateu na parede de ${p.nome}`, description: 'A pessoa não sabe quem foi. Se quiser, ela te chama.' });
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível agora.') }); }
+  };
+
   const abrirAgora = async (minutos: number) => {
     try { await apiClient.post('/casa/abrir-agora', { minutos }); await carregar(); }
     catch (e) { toast({ title: erroDe(e, 'Falhou.'), variant: 'destructive' }); }
@@ -566,6 +617,9 @@ export default function Casa() {
             {estado.presentes.length} na sala{estado.espiando > 0 ? ` · ${estado.espiando} espiando 👀` : ''}
           </p>
         </div>
+        {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
+          <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
+        )}
         <button type="button" onClick={() => setRankingAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Ranking" title="Ranking da Casa">🏆</button>
         {estado.eu.podeFalar && (
           <button
@@ -604,9 +658,27 @@ export default function Casa() {
               {p.pulseira && <span className={cn('absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full ring-2 ring-zinc-950', corDaPulseira(p.pulseira)?.classe)} />}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
+            {p.cidade && <span className="-mt-1 w-full truncate text-center text-[9px] text-white/50">{p.cidade}</span>}
           </button>
         ))}
       </div>
+
+      {cabinesAbertas.length > 0 && (
+        <div className="relative flex gap-2 overflow-x-auto border-b border-white/10 px-3 py-2 [scrollbar-width:none]">
+          {cabinesAbertas.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCabineAberta({ id: c.id, modo: c.souMembro ? 'membro' : 'espiar' })}
+              className={cn('flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs', c.souMembro ? 'bg-rose-600' : 'bg-white/10')}
+            >
+              <span>{c.souMembro ? '🚪 Minha cabine' : '👀 Espiar'}</span>
+              <span className="max-w-[140px] truncate text-white/80">{c.membros.map((m) => m.nome).join(' & ')}</span>
+              {c.espectadores > 0 && <span className="text-white/60">· {c.espectadores} 👀</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Desafio do momento: fica fixo no topo enquanto a conversa corre embaixo. */}
       {estado.jogo && <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />}
@@ -633,7 +705,7 @@ export default function Casa() {
             <div className="min-w-0">
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
               {(() => {
-                const minha = m.autor?.id === user?.id;
+                const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);
                 return (
                   <>
@@ -825,6 +897,29 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
+      {cabineAberta && (
+        <CabineDaCasa
+          key={`${cabineAberta.id}-${cabineAberta.modo}`}
+          cabineId={cabineAberta.id}
+          modo={cabineAberta.modo}
+          meuIdPublico={estado.eu.idPublico ?? user?.id ?? null}
+          convidaveis={estado.presentes}
+          onVoltar={() => setCabineAberta(null)}
+          onSaiu={() => { setMinhasCabines((l) => l.filter((x) => x !== cabineAberta.id)); setCabineAberta(null); }}
+        />
+      )}
+
+      <Dialog open={!!conviteCabine} onOpenChange={(v) => !v && void responderConviteCabine(false)}>
+        <DialogContent className="z-[9995] max-w-xs">
+          <DialogHeader><DialogTitle>🚪 Convite para a cabine</DialogTitle></DialogHeader>
+          <p className="text-sm"><b>{conviteCabine?.membros.join(', ')}</b> te chamaram para entrar na cabine deles 😈</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={() => void responderConviteCabine(false)}>Agora não</Button>
+            <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void responderConviteCabine(true)}>Entrar 🔥</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {vendo && (
         <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
           <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar">
@@ -844,7 +939,7 @@ export default function Casa() {
               <Avatar p={pessoaAberta} tamanho="h-20 w-20" />
               <div>
                 <p className="text-lg font-semibold">{pessoaAberta.nome}</p>
-                <p className="text-xs text-muted-foreground">{ROTULO_CAT[pessoaAberta.cat]}{pessoaAberta.querBrincar ? ' · 🔥 brincando' : ''}</p>
+                <p className="text-xs text-muted-foreground">{ROTULO_CAT[pessoaAberta.cat]}{pessoaAberta.cidade ? ` · ${pessoaAberta.cidade}` : ''}{pessoaAberta.querBrincar ? ' · 🔥 brincando' : ''}</p>
                 {pessoaAberta.pulseira && (
                   <p className="mt-1 text-xs">Pulseira {corDaPulseira(pessoaAberta.pulseira)?.emoji} <b>{corDaPulseira(pessoaAberta.pulseira)?.titulo}</b></p>
                 )}
@@ -874,7 +969,11 @@ export default function Casa() {
                     <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
                   </>
                 )}
-                <Button variant="outline" onClick={() => navigate(`/users/${pessoaAberta.id}`)}>Ver perfil</Button>
+                {estado.sala_anonima ? (
+                  estado.eu.podeFalar && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
+                ) : (
+                  <Button variant="outline" onClick={() => navigate(`/users/${pessoaAberta.id}`)}>Ver perfil</Button>
+                )}
               </div>
               )}
             </div>
@@ -906,6 +1005,8 @@ export default function Casa() {
           <li>🎆 Show da Meia-Noite: o desafio mais quente da noite</li>
           <li>😈 Proponha desafios a outros casais valendo tokens: aceitou e cumpriu, leva os tokens</li>
           <li>🏆 Ranking dos casais da noite e do mês</li>
+          <li>👀 Cabine de porta aberta: espie e peça para participar (só entra se todos de dentro aprovarem)</li>
+          <li>🕳️ Glory Hole: sala anônima, revela quem quiser</li>
           <li>🚪 Chame quem quiser pra cabine: abre uma conversa a dois, só com aceite</li>
           <li>🎁 +5 tokens por noite só por entrar; acertou o quiz, +3</li>
         </ul>
