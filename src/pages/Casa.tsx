@@ -32,11 +32,12 @@ type Info = {
   souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
-type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' } };
+type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number } };
 type Jogo = {
-  id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match'; fimEm: string;
-  texto?: string; opcoes?: string[]; meuVoto?: number | null; votos?: number[] | null; total?: number;
+  id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
+  fase?: 'fotos' | 'votacao'; jaEnviei?: boolean; vencedorNome?: string | null; cumpriram?: number; quem?: 'todos' | 'casal';
+  texto?: string; opcoes?: string[]; meuVoto?: number | string | null; votos?: number[] | null; total?: number;
   alvoNome?: string; souAlvo?: boolean;
   aNome?: string; bNome?: string; souParte?: boolean; jaRespondi?: boolean;
 };
@@ -75,11 +76,19 @@ function useSegundosAte(iso?: string) {
   return iso ? Math.max(0, Math.round((Date.parse(iso) - agora) / 1000)) : 0;
 }
 
-function CartaoDoJogo({ jogo, podeFalar, onJogar }: { jogo: Jogo; podeFalar: boolean; onJogar: (valor: unknown) => void }) {
+function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; podeFalar: boolean; onJogar: (valor: unknown) => void; onCamera: () => void }) {
   const segundos = useSegundosAte(jogo.fimEm);
-  const titulo = { enquete: '📊 Enquete', eu_nunca: '🍷 Eu nunca', quiz: '🎓 Quiz liberal', vd: '🎲 Verdade ou desafio', match: '💘 Match às cegas' }[jogo.tipo];
+  const titulo = {
+    enquete: '📊 Enquete', eu_nunca: '🍷 Eu nunca', quiz: '🎓 Quiz liberal', vd: '🎲 Verdade ou desafio', match: '💘 Match às cegas',
+    foto: '📸 Desafio da foto', duelo: '🔥 Duelo', relampago: '⚡ Desafio relâmpago',
+  }[jogo.tipo];
+  const camera = (rotulo: string) => (
+    <Button size="sm" className="w-full bg-rose-600 hover:bg-rose-500" disabled={!podeFalar} onClick={onCamera}>
+      <Camera className="mr-1.5 h-4 w-4" />{rotulo}
+    </Button>
+  );
   return (
-    <div className="mx-3 mb-2 rounded-2xl border border-fuchsia-500/40 bg-gradient-to-br from-fuchsia-950/80 to-rose-950/80 p-3 text-white shadow-lg">
+    <div className="mx-3 my-2 rounded-2xl border border-fuchsia-500/40 bg-gradient-to-br from-fuchsia-950/80 to-rose-950/80 p-3 text-white shadow-lg">
       <div className="mb-1 flex items-center justify-between text-xs font-semibold text-fuchsia-200">
         <span>{titulo}</span>
         <span className="tabular-nums">{segundos}s</span>
@@ -126,6 +135,48 @@ function CartaoDoJogo({ jogo, podeFalar, onJogar }: { jogo: Jogo; podeFalar: boo
         <p className="text-sm text-white/80">A vez é de <b>{jogo.alvoNome}</b>… verdade, desafio ou passa? 😈</p>
       ))}
 
+      {jogo.tipo === 'foto' && (jogo.souAlvo ? (
+        <div className="grid grid-cols-[1fr_auto] gap-2">
+          {camera('Abrir câmera e cumprir')}
+          <Button size="sm" variant="outline" className="border-white/30 bg-transparent text-white" onClick={() => onJogar('passo')}>Passo</Button>
+        </div>
+      ) : (
+        <p className="text-sm text-white/80">Esperando <b>{jogo.alvoNome}</b> cumprir… a sala torce 🔥</p>
+      ))}
+
+      {jogo.tipo === 'duelo' && (jogo.fase === 'fotos' ? (
+        jogo.souParte && !jogo.jaEnviei ? camera('Mandar minha foto do duelo') : (
+          <p className="text-sm text-white/80"><b>{jogo.aNome}</b> x <b>{jogo.bNome}</b>: esperando as fotos chegarem…</p>
+        )
+      ) : jogo.souParte ? (
+        <p className="text-sm text-white/80">A sala está votando em você 👀 ({jogo.total ?? 0} votos)</p>
+      ) : (
+        <div>
+          <p className="mb-2 text-xs text-white/70">Abra as duas fotos no chat (1 vez cada) e vote:</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(['a', 'b'] as const).map((lado) => (
+              <Button
+                key={lado}
+                size="sm"
+                disabled={!podeFalar}
+                onClick={() => onJogar(lado)}
+                className={cn(jogo.meuVoto === lado ? 'bg-white text-rose-700 hover:bg-white' : 'bg-rose-600 hover:bg-rose-500')}
+              >
+                {lado === 'a' ? jogo.aNome : jogo.bNome}
+              </Button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-white/60">{jogo.total ?? 0} voto(s)</p>
+        </div>
+      ))}
+
+      {jogo.tipo === 'relampago' && (
+        <div className="space-y-1.5">
+          {jogo.vencedorNome && <p className="text-xs text-amber-200">⚡ {jogo.vencedorNome} levou os tokens · {jogo.cumpriram} cumpriram</p>}
+          {jogo.jaEnviei ? <p className="text-sm text-white/80">Você cumpriu! 🔥</p> : camera(jogo.quem === 'casal' ? 'Cumprir agora (só casais)' : 'Cumprir agora')}
+        </div>
+      )}
+
       {jogo.tipo === 'match' && (jogo.souParte && !jogo.jaRespondi ? (
         <div>
           <p className="mb-2 text-sm">{jogo.aNome} e {jogo.bNome}: topam ir pra cabine?</p>
@@ -156,6 +207,9 @@ export default function Casa() {
   const [params, setParams] = useSearchParams();
   const { user } = useAuth();
   const cameraRef = useRef<HTMLInputElement>(null);
+  const [revelarAte, setRevelarAte] = useState<number>(0);
+  const modoRevelacao = useRef(false);
+  const segundosRevelacao = useSegundosAte(revelarAte > Date.now() ? new Date(revelarAte).toISOString() : undefined);
   const fimDaLista = useRef<HTMLDivElement>(null);
   const salaAtual = estado?.sala.id ?? null;
 
@@ -236,16 +290,20 @@ export default function Casa() {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
     };
+    const aoRevelacao = (d: { ate: string; preco: number }) => {
+      setRevelarAte(Date.parse(d.ate));
+      toast({ title: '👀 Revelação liberada!', description: `Por 5 minutos, mande uma foto extra: quem quiser abrir paga ${d.preco} tokens para você.` });
+    };
     const aoResposta = () => toast({ title: 'Não rolou agora 😉', description: 'A pessoa não aceitou o convite pra cabine.' });
     const aoCabine = (d: { conversationId: string; com: string }) => {
       toast({ title: `🚪 Cabine aberta com ${d.com}!` });
       navigate(`/chat/${d.conversationId}`);
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -273,22 +331,31 @@ export default function Casa() {
     setEnviandoMidia(0);
     try {
       const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(pct));
-      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id });
-      toast({ title: 'Enviado para a sala 🔥', description: 'Cada pessoa abre só 1 vez.' });
+      const revelacao = modoRevelacao.current;
+      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao });
+      if (revelacao) setRevelarAte(0);
+      toast({ title: revelacao ? 'Revelação enviada 👀' : 'Enviado para a sala 🔥', description: 'Cada pessoa abre só 1 vez.' });
     } catch (e) {
       toast({ title: (e as Error)?.message || erroDe(e, 'Não foi possível enviar.'), variant: 'destructive' });
     } finally {
       setEnviandoMidia(null);
+      modoRevelacao.current = false;
       if (cameraRef.current) cameraRef.current.value = '';
     }
   };
+  const abrirCamera = (revelacao = false) => {
+    modoRevelacao.current = revelacao;
+    cameraRef.current?.click();
+  };
   const verMidia = async (m: Msg) => {
     if (!salaAtual) return;
+    if (m.midia?.preco && !window.confirm(`Abrir a revelação de ${m.autor?.nome} por ${m.midia.preco} tokens? Os tokens vão para ${m.autor?.nome}.`)) return;
     try {
       const { data } = await apiClient.post(`/casa/${salaAtual}/midia/${m.id}/ver`);
       setVendo({ url: data.url, mime: data.mime });
     } catch (e) {
       toast({ title: erroDe(e, 'Esta mídia não está mais disponível.') });
+      if ((e as any)?.response?.status === 402) return; // sem tokens: pode tentar de novo depois
     }
     setEstado((e) => e ? { ...e, midiasVistas: [...e.midiasVistas, m.id] } : e);
   };
@@ -369,11 +436,15 @@ export default function Casa() {
             <div className="relative">
               <Avatar p={p} tamanho="h-11 w-11" />
               {p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
+              {p.rei && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm">👑</span>}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
           </button>
         ))}
       </div>
+
+      {/* Desafio do momento: fica fixo no topo enquanto a conversa corre embaixo. */}
+      {estado.jogo && <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />}
 
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {estado.mensagens.map((m) => m.tipo === 'sistema' ? (
@@ -387,6 +458,8 @@ export default function Casa() {
                 const minha = m.autor?.id === user?.id;
                 const vista = estado.midiasVistas.includes(m.id);
                 return (
+                  <>
+                  <p className="text-[11px] text-white/60">{m.texto}</p>
                   <button
                     type="button"
                     disabled={minha || vista || !estado.eu.podeFalar}
@@ -395,8 +468,9 @@ export default function Casa() {
                       minha || vista ? 'bg-white/5 text-white/50' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600 font-semibold')}
                   >
                     {m.midia?.tipo === 'video' ? '🎥' : '📸'}
-                    {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : estado.eu.podeFalar ? 'Toque para ver (1 vez)' : 'Assine para ver'}
+                    {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : !estado.eu.podeFalar ? 'Assine para ver' : m.midia?.preco ? `Abrir por ${m.midia.preco} tokens` : 'Toque para ver (1 vez)'}
                   </button>
+                  </>
                 );
               })()}
             </div>
@@ -418,8 +492,17 @@ export default function Casa() {
         <div ref={fimDaLista} />
       </div>
 
-      {estado.jogo && <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} />}
 
+      {estado.eu.podeFalar && segundosRevelacao > 0 && (
+        <button
+          type="button"
+          onClick={() => abrirCamera(true)}
+          className="mx-3 mb-1 flex items-center justify-between rounded-xl bg-amber-500/20 px-3 py-2 text-left text-xs text-amber-100"
+        >
+          <span>👀 <b>Revelação liberada:</b> mande uma foto extra; quem abrir paga 5 tokens pra você</span>
+          <span className="tabular-nums">{Math.floor(segundosRevelacao / 60)}:{String(segundosRevelacao % 60).padStart(2, '0')}</span>
+        </button>
+      )}
       {estado.eu.podeFalar ? (
         <form
           className="flex items-center gap-2 border-t border-white/10 px-3 py-2"
@@ -435,7 +518,7 @@ export default function Casa() {
           />
           <button
             type="button"
-            onClick={() => cameraRef.current?.click()}
+            onClick={() => abrirCamera(false)}
             disabled={enviandoMidia !== null}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50"
             aria-label="Tirar foto ou vídeo agora"

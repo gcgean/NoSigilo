@@ -538,6 +538,9 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   // A Casa: entrar na noite (1x por noite) e acertar o quiz da Lola.
   casa_entrada: { points: 5, dailyCap: 1 },
   casa_quiz: { points: 3, dailyCap: 5 },
+  casa_desafio: { points: 5, dailyCap: 10 },
+  casa_duelo: { points: 10, dailyCap: 3 },
+  casa_relampago: { points: 10, dailyCap: 3 },
 };
 
 // Só perfis de mulheres e casais recebem tokens por postagem feita.
@@ -22768,6 +22771,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
+    // Revelação paga na Casa: mesma regra dos presentes do chat (sai primeiro a
+    // parte comprada e chega como comprada; o resto chega como ganho).
+    transferirTokens: async (de, para, valor, refId) => {
+      const saldoRow = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p, COALESCE(tokens_comprados,0) AS comprados FROM users WHERE id = ?', [de])) as any;
+      if (Number(saldoRow?.p || 0) < valor) return false;
+      const parteComprada = Math.min(valor, Number(saldoRow?.comprados || 0));
+      const agora = nowIso();
+      await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) - ?, tokens_comprados = COALESCE(tokens_comprados,0) - ? WHERE id = ?', [valor, parteComprada, de]);
+      await run(db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), de, 'casa_revelacao_paga', -valor, refId, agora]);
+      await run(db, 'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ?, tokens_comprados = COALESCE(tokens_comprados,0) + ? WHERE id = ?', [valor, valor, parteComprada, para]);
+      await run(db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), para, 'casa_revelacao_recebida', valor, refId, agora]);
+      await persist();
+      const io = app.get('io') as SocketIOServer | undefined;
+      for (const id of [de, para]) {
+        const b = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [id])) as any;
+        io?.to(`user:${id}`).emit('tokens.updated', { points: Number(b?.p || 0) });
+      }
+      return true;
+    },
   });
 
   app.use((req, res) => {

@@ -24,7 +24,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import {
   BOAS_VINDAS, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU,
-  PERGUNTAS_QUENTES, QUIZ, TEMAS_DA_NOITE, VERDADES,
+  PERGUNTAS_QUENTES, QUIZ, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
   type Item, type Nivel,
 } from './casaBrincadeiras.js';
 
@@ -44,6 +44,8 @@ type Presente = {
   ultimaMsg: number;
   ultimaMidia: number;
   ultimoConvite: number;
+  /** Cumpriu um desafio: pode mandar uma "revelação" (foto extra paga) até esta hora. */
+  revelarAte: number;
 };
 
 type Msg = {
@@ -53,14 +55,17 @@ type Msg = {
   texto: string;
   criadoEm: string;
   /** Foto ou vídeo de visualização única: o link só sai pelo /ver, uma vez por pessoa. */
-  midia?: { tipo: 'foto' | 'video' };
+  midia?: { tipo: 'foto' | 'video'; preco?: number };
 };
 
 type Jogo =
   | { id: string; tipo: 'enquete' | 'eu_nunca'; texto: string; opcoes: string[]; votos: Map<string, number>; fimEm: number }
   | { id: string; tipo: 'quiz'; texto: string; opcoes: string[]; correta: number; votos: Map<string, number>; fimEm: number }
   | { id: string; tipo: 'vd'; alvoId: string; alvoNome: string; fimEm: number }
-  | { id: string; tipo: 'match'; aId: string; aNome: string; bId: string; bNome: string; respostas: Map<string, boolean>; fimEm: number };
+  | { id: string; tipo: 'match'; aId: string; aNome: string; bId: string; bNome: string; respostas: Map<string, boolean>; fimEm: number }
+  | { id: string; tipo: 'foto'; alvoId: string; alvoNome: string; tema: string; fimEm: number }
+  | { id: string; tipo: 'duelo'; aId: string; aNome: string; bId: string; bNome: string; tema: string; fase: 'fotos' | 'votacao'; enviados: Set<string>; votos: Map<string, 'a' | 'b'>; fimEm: number }
+  | { id: string; tipo: 'relampago'; tema: string; quem: 'todos' | 'casal'; vencedor: { id: string; nome: string } | null; cumpriram: Set<string>; fimEm: number };
 
 type Sala = {
   id: SalaId;
@@ -88,7 +93,9 @@ export type DependenciasDaCasa = {
   requireAuth: express.RequestHandler;
   getIo: () => SocketIOServer | undefined;
   temPremium: (userId: string) => Promise<boolean>;
-  premiar: (userId: string, acao: 'casa_entrada' | 'casa_quiz', refId: string) => Promise<void>;
+  premiar: (userId: string, acao: 'casa_entrada' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
+  /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
+  transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
   /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
   pastaMusicas: string;
@@ -108,6 +115,7 @@ function duracaoDoAudio(arquivo: string): Promise<number> {
 }
 
 const MAX_MENSAGENS = 120;
+const PRECO_REVELACAO = 5;
 const PING_EXPIRA_MS = 75_000;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
 const TZ = 'America/Sao_Paulo';
@@ -225,10 +233,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   };
   const lola = (sala: Sala, texto: string) => publicarMsg(sala, { tipo: 'lola', texto });
 
+  // Rei/Rainha da Noite: quem venceu um duelo nesta noite ganha a 👑 na Casa.
+  const reisDaNoite = new Map<string, string>(); // userId -> chave da noite
+  const ehRei = (userId: string) => !!chaveDaNoite && reisDaNoite.get(userId) === chaveDaNoite;
   const resumoPresentes = (sala: Sala) => ({
     sala: sala.id,
     presentes: [...sala.presentes.values()].filter((p) => p.podeFalar).map((p) => ({
-      id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat, querBrincar: p.querBrincar,
+      id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat, querBrincar: p.querBrincar, rei: ehRei(p.id),
     })),
     espiando: sala.espiando.size + [...sala.presentes.values()].filter((p) => !p.podeFalar).length,
   });
@@ -250,6 +261,17 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (j.tipo === 'vd') return { ...base, alvoId: j.alvoId, alvoNome: j.alvoNome, souAlvo: j.alvoId === userId };
     if (j.tipo === 'match') {
       return { ...base, aNome: j.aNome, bNome: j.bNome, souParte: j.aId === userId || j.bId === userId, jaRespondi: j.respostas.has(userId) };
+    }
+    if (j.tipo === 'foto') return { ...base, texto: j.tema, alvoNome: j.alvoNome, souAlvo: j.alvoId === userId };
+    if (j.tipo === 'duelo') {
+      const souParte = j.aId === userId || j.bId === userId;
+      return {
+        ...base, texto: j.tema, aNome: j.aNome, bNome: j.bNome, fase: j.fase, souParte,
+        jaEnviei: j.enviados.has(userId), meuVoto: j.votos.get(userId) ?? null, total: j.votos.size,
+      };
+    }
+    if (j.tipo === 'relampago') {
+      return { ...base, texto: j.tema, quem: j.quem, vencedorNome: j.vencedor?.nome ?? null, cumpriram: j.cumpriram.size, jaEnviei: j.cumpriram.has(userId) };
     }
     const contagemVotos = j.opcoes.map((_, i) => [...j.votos.values()].filter((v) => v === i).length);
     return { ...base, texto: j.texto, opcoes: j.opcoes, meuVoto: j.votos.get(userId) ?? null, votos: j.tipo === 'quiz' ? null : contagemVotos, total: j.votos.size };
@@ -336,6 +358,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         { tipo: 'quiz', peso: 10 },
         { tipo: 'vd', peso: pessoas.length >= 1 ? 22 : 0 },
         { tipo: 'match', peso: pessoas.length >= 2 ? 12 : 0 },
+        // Desafios com câmera: os que mais esquentam a sala.
+        { tipo: 'foto', peso: pessoas.length >= 1 ? 18 : 0 },
+        { tipo: 'duelo', peso: pessoas.length >= 2 && falantes(sala).length >= 3 ? 14 : 0 },
+        { tipo: 'relampago', peso: falantes(sala).length >= 2 ? 12 : 0 },
       ];
       const totalPeso = opcoes.reduce((s, o) => s + o.peso, 0);
       let r = Math.random() * totalPeso;
@@ -388,6 +414,35 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         const [a, b] = par;
         sala.jogo = { id: randomUUID(), tipo: 'match', aId: a.id, aNome: a.nome, bId: b.id, bNome: b.nome, respostas: new Map(), fimEm: agora + 90_000 };
         lola(sala, `💘 MATCH ÀS CEGAS: ${a.nome} e ${b.nome}, vocês combinam no que procuram! Topam ir pra cabine? Só abre se os dois aceitarem 🚪`);
+      } else if (tipo === 'foto') {
+        const alvo = sortear(pessoas);
+        const tema = itemDoBanco(sala, TEMAS_FOTO, 'fo').replace('{nome}', alvo.nome);
+        sala.jogo = { id: randomUUID(), tipo: 'foto', alvoId: alvo.id, alvoNome: alvo.nome, tema, fimEm: agora + 150_000 };
+        lola(sala, `📸 DESAFIO DA FOTO! ${tema}\nVocê tem 2 minutos e meio. Cumpriu, ganha +5 tokens. Não quer? Toca em "Passo" 😉`);
+      } else if (tipo === 'duelo') {
+        // De preferência dois do mesmo tipo de perfil (casal x casal, mulher x mulher).
+        const embaralhados = embaralhar(pessoas);
+        let par: [Presente, Presente] | null = null;
+        for (const a of embaralhados) {
+          const b = embaralhados.find((x) => x.id !== a.id && x.cat === a.cat);
+          if (b) { par = [a, b]; break; }
+        }
+        if (!par) par = [embaralhados[0], embaralhados[1]];
+        const [a, b] = par;
+        const tema = itemDoBanco(sala, TEMAS_DUELO, 'du');
+        sala.jogo = { id: randomUUID(), tipo: 'duelo', aId: a.id, aNome: a.nome, bId: b.id, bNome: b.nome, tema, fase: 'fotos', enviados: new Set(), votos: new Map(), fimEm: agora + 180_000 };
+        lola(sala, `🔥 DUELO: ${a.nome} x ${b.nome}! Tema: ${tema} (sem rosto). Mandem a foto pela câmera em até 3 minutos. Depois a sala vota em quem foi mais quente, e quem ganhar vira Rei/Rainha da Noite 👑 + 10 tokens`);
+      } else if (tipo === 'relampago') {
+        const pode = TEMAS_RELAMPAGO.map((t, i) => ({ t, chave: `re${i}` }))
+          .filter(({ t }) => t.n === 'quente' || sala.nivel === 'muito_quente')
+          .filter(({ t }) => t.quem === 'todos' || falantes(sala).some((p) => p.cat === 'casal'));
+        let livres = pode.filter(({ chave }) => !sala.usados.has(chave));
+        if (livres.length === 0) { pode.forEach(({ chave }) => sala.usados.delete(chave)); livres = pode; }
+        if (livres.length === 0) { sala.proximoJogoEm = agora + 30_000; return; }
+        const { t, chave } = sortear(livres);
+        sala.usados.add(chave);
+        sala.jogo = { id: randomUUID(), tipo: 'relampago', tema: t.t, quem: t.quem, vencedor: null, cumpriram: new Set(), fimEm: agora + 180_000 };
+        lola(sala, `⚡ DESAFIO RELÂMPAGO pra sala toda! ${t.t}. Vale a câmera ao vivo, 3 minutos. Bora! 😈`);
       }
       avisarJogo(sala);
     } finally {
@@ -417,8 +472,42 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       lola(sala, sortear(FUGIU).replace('{nome}', j.alvoNome));
     } else if (j.tipo === 'match' && motivo === 'tempo') {
       lola(sala, 'O match às cegas ficou pra próxima 😉 Mas a cabine continua aberta pra quem quiser chamar.');
+    } else if (j.tipo === 'foto' && motivo === 'tempo') {
+      lola(sala, `${j.alvoNome} amarelou no desafio da foto 🙈 Fica pra próxima!`);
+    } else if (j.tipo === 'relampago') {
+      lola(sala, j.vencedor
+        ? `⚡ Fim do relâmpago! ${j.vencedor.nome} foi o primeiro e levou +10 tokens. ${j.cumpriram.size > 1 ? `${j.cumpriram.size} pessoas cumpriram, abram as fotos (1 vez) 🔥` : ''}`
+        : '⚡ Ninguém teve coragem no relâmpago desta vez 😏');
+    } else if (j.tipo === 'duelo') {
+      if (j.fase === 'fotos' && j.enviados.size < 2) {
+        const so = j.enviados.has(j.aId) ? { id: j.aId, nome: j.aNome } : j.enviados.has(j.bId) ? { id: j.bId, nome: j.bNome } : null;
+        if (so) await coroar(sala, so.id, so.nome, j.id, 'venceu o duelo por W.O.');
+        else lola(sala, `${j.aNome} e ${j.bNome} fugiram do duelo 🙈`);
+      } else if (j.fase === 'votacao') {
+        const a = [...j.votos.values()].filter((v) => v === 'a').length;
+        const b = [...j.votos.values()].filter((v) => v === 'b').length;
+        if (a === b) lola(sala, `🔥 Empate no duelo (${a} x ${b})! Os dois mandaram muito bem 😈`);
+        else {
+          const venc = a > b ? { id: j.aId, nome: j.aNome } : { id: j.bId, nome: j.bNome };
+          await coroar(sala, venc.id, venc.nome, j.id, `venceu o duelo por ${Math.max(a, b)} x ${Math.min(a, b)}`);
+        }
+      }
     }
     avisarJogo(sala);
+  };
+
+  const coroar = async (sala: Sala, userId: string, nome: string, jogoId: string, como: string) => {
+    reisDaNoite.set(userId, chaveDaNoite);
+    registrarEvento(sala.id, 'rei', userId);
+    lola(sala, `👑 ${nome} ${como} e é Rei/Rainha da Noite! +10 tokens 🔥`);
+    void deps.premiar(userId, 'casa_duelo', `casa-duelo-${jogoId}`).catch(() => {});
+    avisarPresentes(sala);
+  };
+
+  // Quem cumpriu um desafio pode mandar uma foto extra paga ("revelação") por 5 minutos.
+  const liberarRevelacao = (sala: Sala, p: Presente) => {
+    p.revelarAte = Date.now() + 5 * 60_000;
+    emitirPara(p.id, 'casa.revelacao', { sala: sala.id, ate: new Date(p.revelarAte).toISOString(), preco: PRECO_REVELACAO });
   };
 
   // ─── Cabine: conversa a dois, já aceita (sem passar por Pedidos) ──────────
@@ -758,7 +847,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     sala.espiando.delete(userId);
     const p: Presente = jaEstava ?? {
       id: userId, nome: perfil.nome, avatar: perfil.avatar, genero: perfil.genero, cat: perfil.cat, procura: perfil.procura,
-      podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimaMidia: 0, ultimoConvite: 0,
+      podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimaMidia: 0, ultimoConvite: 0, revelarAte: 0,
     };
     p.ultimoPing = Date.now();
     sala.presentes.set(userId, p);
@@ -835,14 +924,55 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const m = (await db.queryOne('SELECT id, user_id, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
     if (!m || String(m.user_id) !== userId) { res.status(404).json({ error: 'midia' }); return; }
     const tipo = String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    const revelacao = !!(req.body as any)?.revelacao;
+    if (revelacao && p.revelarAte < Date.now()) {
+      res.status(403).json({ error: 'sem_revelacao', message: 'A revelação fica liberada por 5 minutos depois de cumprir um desafio.' });
+      return;
+    }
     p.ultimaMidia = Date.now();
     p.ultimoPing = Date.now();
+    const j = sala.jogo;
+    let rotulo = tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única';
+    if (revelacao) {
+      rotulo = `👀 Revelação de ${p.nome}: ${PRECO_REVELACAO} tokens para abrir (vão para ${p.nome})`;
+      p.revelarAte = 0;
+    } else if (j?.tipo === 'foto' && j.alvoId === userId) rotulo = `📸 Desafio cumprido: ${j.tema.replace(`${p.nome}, `, '')}`;
+    else if (j?.tipo === 'duelo' && (j.aId === userId || j.bId === userId) && j.fase === 'fotos') rotulo = `🔥 Foto do duelo (${j.tema})`;
+    else if (j?.tipo === 'relampago') rotulo = `⚡ Relâmpago: ${tipo === 'video' ? 'vídeo' : 'foto'} de ${p.nome}`;
     publicarMsg(sala, {
       tipo: 'midia',
       autor: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat },
-      texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única',
-      midia: { tipo },
+      texto: rotulo,
+      midia: { tipo, ...(revelacao ? { preco: PRECO_REVELACAO } : {}) },
     }, String(m.id));
+
+    // Conta para o desafio da vez.
+    if (!revelacao && j) {
+      if (j.tipo === 'foto' && j.alvoId === userId) {
+        lola(sala, `🔥 ${p.nome} cumpriu o desafio! +5 tokens. Abram (1 vez) e comentem 😈`);
+        void deps.premiar(userId, 'casa_desafio', `casa-foto-${j.id}`).catch(() => {});
+        liberarRevelacao(sala, p);
+        await encerrarJogo(sala, 'fim');
+      } else if (j.tipo === 'duelo' && j.fase === 'fotos' && (j.aId === userId || j.bId === userId) && !j.enviados.has(userId)) {
+        j.enviados.add(userId);
+        liberarRevelacao(sala, p);
+        if (j.enviados.size === 2) {
+          j.fase = 'votacao';
+          j.fimEm = Date.now() + 120_000;
+          lola(sala, `🗳️ As duas fotos chegaram! Abram (1 vez) e votem: ${j.aNome} ou ${j.bNome}? 2 minutos!`);
+        }
+        avisarJogo(sala);
+      } else if (j.tipo === 'relampago' && !j.cumpriram.has(userId) && (j.quem === 'todos' || p.cat === 'casal')) {
+        j.cumpriram.add(userId);
+        liberarRevelacao(sala, p);
+        if (!j.vencedor) {
+          j.vencedor = { id: userId, nome: p.nome };
+          lola(sala, `⚡ ${p.nome} foi o primeiro! +10 tokens 🔥 Ainda dá tempo pros outros mostrarem que também têm coragem 😏`);
+          void deps.premiar(userId, 'casa_relampago', `casa-relampago-${j.id}`).catch(() => {});
+        }
+        avisarJogo(sala);
+      }
+    }
     res.json({ ok: true });
   });
 
@@ -861,6 +991,12 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
     const ja = await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId]);
     if (ja) { res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' }); return; }
+    const naSala = sala.mensagens.find((x) => x.id === String(row.id));
+    const preco = Number(naSala?.midia?.preco || 0);
+    if (preco > 0) {
+      const pagou = await deps.transferirTokens(userId, String(row.autor_id), preco, `casa-revelacao-${row.id}`);
+      if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `A revelação custa ${preco} tokens. Ganhe tokens usando o site ou compre em Tokens.` }); return; }
+    }
     await db.run('INSERT INTO casa_midia_vistas (mensagem_id, user_id, viewed_at) VALUES (?, ?, ?)', [String(row.id), userId, new Date().toISOString()]);
     await db.persist();
     res.json({ url: `/uploads/${String(row.filename)}`, mime: row.mime_type ? String(row.mime_type) : null });
@@ -996,6 +1132,19 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         lola(sala, `😈 DESAFIO: ${itemDoBanco(sala, DESAFIOS, 'de').replace('{nome}', p.nome)}`);
       } else { res.status(400).json({ error: 'opcao' }); return; }
       await encerrarJogo(sala, 'fim');
+    } else if (j.tipo === 'foto') {
+      if (j.alvoId !== userId || String(valor) !== 'passo') { res.status(400).json({ error: 'opcao' }); return; }
+      lola(sala, `${p.nome} passou o desafio da foto 😏 Tudo bem, aqui ninguém é obrigado a nada.`);
+      await encerrarJogo(sala, 'fim');
+    } else if (j.tipo === 'duelo') {
+      if (j.fase !== 'votacao') { res.status(409).json({ error: 'ainda_nao', message: 'A votação abre quando os dois mandarem a foto.' }); return; }
+      if (userId === j.aId || userId === j.bId) { res.status(403).json({ error: 'parte', message: 'Quem está no duelo não vota 😉' }); return; }
+      if (valor !== 'a' && valor !== 'b') { res.status(400).json({ error: 'opcao' }); return; }
+      j.votos.set(userId, valor);
+      avisarJogo(sala);
+    } else if (j.tipo === 'relampago') {
+      res.status(400).json({ error: 'use_a_camera' });
+      return;
     } else if (j.tipo === 'match') {
       if (j.aId !== userId && j.bId !== userId) { res.status(403).json({ error: 'nao_e_sua_vez' }); return; }
       j.respostas.set(userId, valor === true || valor === 'sim');

@@ -249,3 +249,59 @@ export const TEMAS_DA_NOITE: Record<'sexta' | 'sabado', { nome: string; descrica
   sexta: { nome: 'Sexta Liberal', descricao: 'Começo de fim de semana: provocar, conhecer e marcar o sábado 🍸' },
   sabado: { nome: 'Noite Voyeur', descricao: 'Sábado de exibir e espiar: desafios de story e cabine liberada 👀' },
 };
+
+// ─── Desafios com foto e vídeo (câmera ao vivo, visualização única, SEM ROSTO) ──
+
+/** Desafio da foto: a Lola sorteia alguém e pede uma foto com o tema. */
+export const TEMAS_FOTO: Item[] = [
+  q('{nome}, foto da sua lingerie (ou cueca) de hoje, sem rosto 😈'),
+  q('{nome}, foto do seu decote ou do seu peito agora, sem rosto 🔥'),
+  q('{nome}, foto da parte do seu corpo que você mais gosta, sem rosto'),
+  q('{nome}, foto da sua boca mordendo o lábio 💋'),
+  q('{nome}, foto das suas pernas agora 🦵'),
+  q('{nome}, foto do lugar onde você está, do jeito mais provocante possível'),
+  q('{nome}, vídeo de 5 segundos de você se ajeitando na cama 🛏️'),
+  q('{nome}, foto da sua mão descendo pelo seu corpo, sem rosto'),
+  q('{nome}, foto do seu bumbum (pode ser com roupa) 🍑'),
+  q('{nome}, foto do casal se abraçando bem colado, sem rosto 💑'),
+  mq('{nome}, foto de topless ou sem camisa, sem rosto 🔥'),
+  mq('{nome}, foto da lingerie mais ousada que você tem 😈'),
+  mq('{nome}, vídeo de 10 segundos de uma dança provocante, sem rosto 💃'),
+  mq('{nome}, foto do casal se pegando, sem rosto 💋'),
+  mq('{nome}, foto de você só de toalha (ou menos) 🚿'),
+  mq('{nome}, vídeo de 10 segundos tirando uma peça de roupa, sem rosto'),
+  mq('{nome}, foto da mão do seu par em você, no lugar que você escolher 🔥'),
+  mq('{nome}, foto de você de quatro na cama, de costas, sem rosto 🍑'),
+  mq('{nome}, foto do que você está vestindo por baixo agora 🖤'),
+  mq('{nome}, vídeo de 5 segundos de um beijo no pescoço do seu par 💋'),
+];
+
+/** Duelo: dois perfis mandam foto com o mesmo tema e a sala vota. */
+export const TEMAS_DUELO: Item[] = [
+  q('Melhor decote 🔥'),
+  q('Melhor pegada do casal 💑'),
+  q('Lingerie mais bonita 🖤'),
+  q('Melhor bumbum (pode ser com roupa) 🍑'),
+  q('Olhar mais safado (só os olhos) 👀'),
+  q('Melhores pernas 🦵'),
+  q('Look mais provocante de sexta 💃'),
+  mq('Topless mais ousado (sem rosto) 🔥'),
+  mq('Beijo mais quente do casal 💋'),
+  mq('Lingerie mais ousada 😈'),
+  mq('Foto mais quente na cama 🛏️'),
+  mq('Melhor "antes da festa" no espelho, sem rosto 🪞'),
+];
+
+/** Relâmpago: a sala toda pode cumprir; o primeiro ganha os tokens. */
+export const TEMAS_RELAMPAGO: Array<Item & { quem: 'todos' | 'casal' }> = [
+  { ...q('Primeiro casal que mandar um vídeo de 10 segundos de um beijo ganha 10 tokens 💋'), quem: 'casal' },
+  { ...q('Primeira foto de lingerie vermelha ganha 10 tokens 🔴'), quem: 'todos' },
+  { ...q('Primeiro a mandar uma foto do drink de hoje à noite ganha 10 tokens 🍸'), quem: 'todos' },
+  { ...q('Primeira foto de pernas cruzadas ganha 10 tokens 🦵'), quem: 'todos' },
+  { ...q('Primeiro casal que mandar foto de mãos dadas na cama ganha 10 tokens 🛏️'), quem: 'casal' },
+  { ...mq('Primeiro casal que mandar um vídeo de 10 segundos de pegação ganha 10 tokens 🔥'), quem: 'casal' },
+  { ...mq('Primeira foto sem sutiã (sem rosto) ganha 10 tokens 😈'), quem: 'todos' },
+  { ...mq('Primeiro vídeo de 5 segundos rebolando ganha 10 tokens 🍑'), quem: 'todos' },
+  { ...mq('Primeira foto do casal na posição favorita (com roupa ou sem) ganha 10 tokens 💑'), quem: 'casal' },
+  { ...mq('Primeira foto só de calcinha ou cueca ganha 10 tokens 🖤'), quem: 'todos' },
+];
