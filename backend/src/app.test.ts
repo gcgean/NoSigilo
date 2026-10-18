@@ -3660,6 +3660,11 @@ describe('nosigilo backend', () => {
 
     await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[1].token)).expect(200);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(200);
+    // Rádio: sem playlist não toca; playlist é só do admin.
+    expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();
+    await request(ctx.app).get('/api/casa/admin/playlist').set(auth(homens[0].token)).expect(403);
+    expect((await request(ctx.app).get('/api/casa/admin/playlist').set(auth(casal.token)).expect(200)).body.faixas).toEqual([]);
+    await request(ctx.app).get('/api/casa/musica/..%2F..%2Fdata.db').expect(404);
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
   });
 

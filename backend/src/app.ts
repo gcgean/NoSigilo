@@ -22731,6 +22731,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     temPremium: (userId) => userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS),
     premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
+    pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
   });
 
   app.use((req, res) => {

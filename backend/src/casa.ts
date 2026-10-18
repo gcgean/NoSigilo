@@ -15,6 +15,10 @@
  * - Verdade ou desafio e match às cegas só sorteiam quem marcou "Quero brincar".
  */
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import path from 'node:path';
+import multer from 'multer';
 import type express from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
@@ -79,7 +83,22 @@ export type DependenciasDaCasa = {
   temPremium: (userId: string) => Promise<boolean>;
   premiar: (userId: string, acao: 'casa_entrada' | 'casa_quiz', refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
+  /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
+  pastaMusicas: string;
 };
+
+type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number };
+
+/** Duração do áudio em segundos (ffprobe); 0 se não conseguir ler. */
+function duracaoDoAudio(arquivo: string): Promise<number> {
+  return new Promise((resolve) => {
+    const p = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', arquivo]);
+    let saida = '';
+    p.stdout.on('data', (d) => { saida += String(d); });
+    p.on('error', () => resolve(0));
+    p.on('close', () => resolve(Number.parseFloat(saida) || 0));
+  });
+}
 
 const MAX_MENSAGENS = 120;
 const PING_EXPIRA_MS = 75_000;
@@ -723,6 +742,109 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const id = randomUUID();
     convites.set(id, { de: userId, para: paraId, sala: sala.id, criadoEm: Date.now() });
     emitirPara(paraId, 'casa.convite', { id, de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: sala.nome });
+    res.json({ ok: true });
+  });
+
+  // ─── Rádio da Casa: todo mundo ouve a mesma faixa no mesmo ponto ─────────
+  // A posição sai do relógio: (agora - início fixo) módulo a duração total da
+  // playlist. Nada de estado no servidor; mexer na playlist só "pula" a faixa.
+  mkdirSync(deps.pastaMusicas, { recursive: true });
+  const INICIO_DA_RADIO = Date.UTC(2026, 0, 1);
+  const lerPlaylist = async (): Promise<Faixa[]> => {
+    const row = (await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_playlist' LIMIT 1", [])) as any;
+    try { const v = JSON.parse(String(row?.value || '[]')); return Array.isArray(v) ? v : []; } catch { return []; }
+  };
+  const salvarPlaylist = async (lista: Faixa[]) => {
+    await db.run("DELETE FROM system_settings WHERE key = 'casa_playlist'", []);
+    await db.run("INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_playlist', ?, ?)", [JSON.stringify(lista), new Date().toISOString()]);
+    await db.persist();
+  };
+  const urlDaFaixa = (f: Faixa) => `/api/casa/musica/${f.arquivo}`;
+  const souAdmin = async (req: express.Request) => !!(await carregarPerfil(userDe(req)))?.admin;
+
+  app.get('/api/casa/radio', deps.requireAuth, async (req, res) => {
+    if (!(await noiteAtual()) && !(await souAdmin(req))) { res.json({ tocando: null }); return; }
+    const lista = (await lerPlaylist()).filter((f) => f.duracao > 0);
+    const total = lista.reduce((s, f) => s + f.duracao, 0);
+    if (total <= 0) { res.json({ tocando: null }); return; }
+    let pos = ((Date.now() - INICIO_DA_RADIO) / 1000) % total;
+    let i = 0;
+    while (i < lista.length - 1 && pos >= lista[i].duracao) { pos -= lista[i].duracao; i += 1; }
+    const f = lista[i];
+    res.json({
+      tocando: { id: f.id, titulo: f.titulo, artista: f.artista, url: urlDaFaixa(f), duracao: f.duracao, offset: pos },
+      proxima: lista[(i + 1) % lista.length]?.titulo ?? null,
+    });
+  });
+
+  // Áudio público (nome aleatório, músicas livres): o <audio> não manda cabeçalho de login.
+  app.get('/api/casa/musica/:arquivo', (req, res) => {
+    const nome = path.basename(String(req.params.arquivo));
+    if (!/^[0-9a-f-]{36}\.(mp3|m4a|aac|ogg)$/i.test(nome)) { res.status(404).end(); return; }
+    const caminho = path.join(deps.pastaMusicas, nome);
+    if (!existsSync(caminho)) { res.status(404).end(); return; }
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.sendFile(caminho);
+  });
+
+  const envioDeMusica = multer({
+    storage: multer.diskStorage({
+      destination: (_req, _f, cb) => cb(null, deps.pastaMusicas),
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        cb(null, `${randomUUID()}${/^\.(mp3|m4a|aac|ogg)$/.test(ext) ? ext : '.mp3'}`);
+      },
+    }),
+    limits: { fileSize: 30 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => cb(null, /^audio\//.test(file.mimetype) || /\.(mp3|m4a|aac|ogg)$/i.test(file.originalname || '')),
+  });
+
+  app.get('/api/casa/admin/playlist', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    res.json({ faixas: (await lerPlaylist()).map((f) => ({ ...f, url: urlDaFaixa(f) })) });
+  });
+
+  app.post('/api/casa/admin/playlist', deps.requireAuth, envioDeMusica.single('arquivo'), async (req, res) => {
+    const arquivo = (req as any).file as { path: string; filename: string } | undefined;
+    const apagar = () => { if (arquivo) { try { unlinkSync(arquivo.path); } catch { /* ok */ } } };
+    if (!(await souAdmin(req))) { apagar(); res.status(403).json({ error: 'forbidden' }); return; }
+    if (!arquivo) { res.status(400).json({ error: 'arquivo', message: 'Envie um áudio (MP3) de até 30 MB.' }); return; }
+    const duracao = await duracaoDoAudio(arquivo.path);
+    if (duracao <= 0) { apagar(); res.status(400).json({ error: 'audio_invalido', message: 'Não consegui ler esse áudio. Tente um MP3.' }); return; }
+    const corpo = (req.body || {}) as Record<string, string>;
+    const faixa: Faixa = {
+      id: randomUUID(),
+      arquivo: arquivo.filename,
+      titulo: String(corpo.titulo || '').trim().slice(0, 80) || 'Sem título',
+      artista: String(corpo.artista || '').trim().slice(0, 80),
+      fonte: String(corpo.fonte || '').trim().slice(0, 200),
+      duracao: Math.round(duracao * 10) / 10,
+    };
+    const lista = await lerPlaylist();
+    lista.push(faixa);
+    await salvarPlaylist(lista);
+    res.json({ ok: true, faixa: { ...faixa, url: urlDaFaixa(faixa) } });
+  });
+
+  app.post('/api/casa/admin/playlist/:id/mover', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const lista = await lerPlaylist();
+    const i = lista.findIndex((f) => f.id === req.params.id);
+    const j = i + ((req.body as any)?.direcao === 'cima' ? -1 : 1);
+    if (i >= 0 && j >= 0 && j < lista.length) {
+      [lista[i], lista[j]] = [lista[j], lista[i]];
+      await salvarPlaylist(lista);
+    }
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/casa/admin/playlist/:id', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const lista = await lerPlaylist();
+    const f = lista.find((x) => x.id === req.params.id);
+    if (!f) { res.status(404).json({ error: 'not_found' }); return; }
+    await salvarPlaylist(lista.filter((x) => x.id !== f.id));
+    try { unlinkSync(path.join(deps.pastaMusicas, f.arquivo)); } catch { /* já não existia */ }
     res.json({ ok: true });
   });
 

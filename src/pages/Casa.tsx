@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import RadioDaCasa from '@/components/RadioDaCasa';
+import PlaylistDaCasa from '@/components/PlaylistDaCasa';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -289,6 +291,8 @@ export default function Casa() {
         )}
       </div>
 
+      <RadioDaCasa />
+
       {/* Quem está na sala: toque para ver o perfil ou chamar pra cabine. */}
       <div className="flex gap-3 overflow-x-auto border-b border-white/10 px-3 py-2.5 [scrollbar-width:none]">
         {estado.presentes.length === 0 && <p className="py-2 text-xs text-white/60">Ninguém falando ainda. Seja o primeiro 😉</p>}
@@ -402,6 +406,8 @@ export default function Casa() {
             : <Button size="sm" variant="outline" onClick={() => void abrirAgora(60)}>Abrir agora por 1h (teste)</Button>}
         </div>
       )}
+
+      {info?.souAdmin && <PlaylistDaCasa />}
 
       <div className="grid gap-3">
         {(info?.salas ?? []).map((s) => {
