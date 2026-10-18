@@ -465,10 +465,39 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     }
     if (!noite) noiteAnterior = null;
 
+    // Sexta, 18h: "Hoje tem Casa às 21h, chama seu par" (uma vez por sexta).
+    const relogioBr = agoraBrasilia();
+    if (relogioBr.dow === 5 && relogioBr.hora === 18) {
+      const chave18 = `casa_aviso18:${relogioBr.data}`;
+      if (!avisosEnviados.has(chave18)) {
+        avisosEnviados.add(chave18);
+        const ja = await db.queryOne('SELECT 1 AS x FROM system_settings WHERE key = ? LIMIT 1', [chave18]);
+        if (!ja) {
+          await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave18, 'enviando', new Date().toISOString()]);
+          void avisarParaAtivos({
+            title: '🔥 Hoje tem A Casa às 21h!',
+            body: 'Sexta Liberal ao vivo até 1h: brincadeiras quentes, música e cabine a dois. Chama seu par 😈',
+            url: '/casa',
+            tag: 'casa-hoje',
+          }).catch((err) => console.error('[casa] aviso das 18h falhou', err));
+        }
+      }
+    }
+
     for (const [id, c] of convites) if (agora - c.criadoEm > 120_000) convites.delete(id);
   };
 
   const avisarAbertura = async (tema: 'sexta' | 'sabado') => {
+    const t = TEMAS_DA_NOITE[tema];
+    await avisarParaAtivos({
+      title: `🔥 A Casa abriu: ${t.nome}!`,
+      body: 'Até 1h da manhã: salas ao vivo, brincadeiras quentes com a Lola e cabine a dois. Entra!',
+      url: '/casa',
+      tag: 'casa-abriu',
+    });
+  };
+
+  const avisarParaAtivos = async (payload: { title: string; body: string; url: string; tag: string }) => {
     const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const pessoas = (await db.queryAll(
       `SELECT DISTINCT u.id FROM users u JOIN push_subscriptions ps ON ps.user_id = u.id
@@ -476,20 +505,14 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
           AND COALESCE(u.is_deactivated,0) = 0 AND u.deleted_at IS NULL`,
       [desde],
     )) as any[];
-    const t = TEMAS_DA_NOITE[tema];
     let enviados = 0;
     for (const p of pessoas) {
       try {
-        await deps.push(String(p.id), {
-          title: `🔥 A Casa abriu: ${t.nome}!`,
-          body: 'Até 1h da manhã: salas ao vivo, brincadeiras quentes com a Lola e cabine a dois. Entra!',
-          url: '/casa',
-          tag: 'casa-abriu',
-        });
+        await deps.push(String(p.id), payload);
         enviados++;
       } catch { /* segue para o próximo */ }
     }
-    console.log(`[casa] aviso de abertura (${tema}) enviado para ${enviados} pessoa(s)`);
+    console.log(`[casa] aviso "${payload.tag}" enviado para ${enviados} pessoa(s)`);
   };
 
   const relogio = setInterval(() => { tick().catch((err) => console.error('[casa] tick', err)); }, 15_000);
@@ -519,6 +542,30 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   const salaDe = (req: express.Request) => salas.get(String(req.params.sala) as SalaId) ?? null;
   const userDe = (req: express.Request) => String((req as any).auth?.userId || '');
+
+  // Página pública d'A Casa (sem login): só números, nada de nomes ou fotos.
+  app.get('/api/casa/publico', async (_req, res) => {
+    const noite = await noiteAtual();
+    let pessoas = 0;
+    for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
+    // Próxima abertura: anda de hora em hora até cair dentro do horário.
+    let proxima: string | null = null;
+    if (!noite) {
+      const base = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
+      for (let h = 0; h < 8 * 24; h++) {
+        const t = new Date(base + h * 3_600_000);
+        if (noiteDoHorario(t)) { proxima = t.toISOString(); break; }
+      }
+    }
+    res.setHeader('Cache-Control', 'public, max-age=30');
+    res.json({
+      aberta: !!noite,
+      tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
+      pessoas,
+      proximaAbertura: proxima,
+      salas: [...salas.values()].map((s) => ({ nome: s.nome, emoji: s.emoji, descricao: s.descricao, nivel: s.nivel })),
+    });
+  });
 
   app.get('/api/casa', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import BrandLogo from '@/components/BrandLogo';
+import { consumirDestinoPosCadastro } from '@/utils/destinoPosCadastro';
 import { authService } from '@/services/api';
 
 export default function AuthCallback() {
@@ -56,10 +57,10 @@ export default function AuthCallback() {
       }
       // Todo cadastro novo cai no Feed, qualquer que seja o tipo de perfil.
       // Force full page reload so AuthContext re-initialises with new token/user
-      window.location.replace('/feed');
+      window.location.replace(consumirDestinoPosCadastro('/feed'));
     }).catch(() => {
       // Even if getMe fails, the token is stored — the app will retry on load
-      window.location.replace('/feed');
+      window.location.replace(consumirDestinoPosCadastro('/feed'));
     });
   }, [searchParams]);
 

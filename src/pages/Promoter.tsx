@@ -546,6 +546,34 @@ export default function Promoter() {
               "Entre para a plataforma pelo meu convite exclusivo e faça parte da comunidade: [link]"
             </p>
 
+            {/* Link d'A Casa: mesma indicação (convite do promotor), mas a pessoa
+                chega pela página da boate e, ao se cadastrar, cai direto nela. */}
+            {(() => {
+              const tokenDoConvite = inviteUrl.split('/invite/')[1] || '';
+              const linkCasa = `${getSiteUrl()}/a-casa?invite=${tokenDoConvite}`;
+              const textoCasa = `🔥 Sexta e sábado, 21h, tem A Casa: a boate virtual dos liberais, ao vivo. Entra comigo: ${linkCasa}`;
+              return (
+                <div className="mt-2 space-y-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">
+                  <p className="text-sm font-semibold">🔥 Link d'A Casa (boate virtual)</p>
+                  <p className="text-xs text-muted-foreground">Ótimo para divulgar sexta e sábado. A indicação continua sendo sua.</p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input readOnly value={linkCasa} onFocus={(e) => e.currentTarget.select()} className="h-10 min-w-0 w-full rounded-xl border bg-secondary/30 px-3 py-2 font-mono text-xs text-muted-foreground sm:flex-1" />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-10 gap-1.5"
+                      onClick={async () => {
+                        try { await navigator.clipboard.writeText(textoCasa); toast({ title: "Link d'A Casa copiado!" }); }
+                        catch { toast({ title: 'Copie manualmente o link acima.' }); }
+                      }}
+                    >
+                      <Copy className="h-3.5 w-3.5" /> Copiar
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Arte de divulgação pronta da marca (sem QR — o link vai à parte) */}
             <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
               <div className="flex items-start gap-2">

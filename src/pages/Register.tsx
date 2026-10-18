@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { lePrimeiroToque } from '@/utils/primeiroToque';
+import { consumirDestinoPosCadastro } from '@/utils/destinoPosCadastro';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
@@ -620,8 +621,9 @@ export default function Register() {
       limparRascunho(); // cadastro concluído: nada mais a restaurar
       marcarPassoCadastro('criou_conta');
       toast({ title: 'Conta criada! Bem-vindo(a) 🎉' });
-      // Todo cadastro novo cai no Feed, independente do tipo de perfil.
-      navigate('/feed');
+      // Todo cadastro novo cai no Feed, independente do tipo de perfil
+      // (exceto quem veio pela página d'A Casa: vai direto para ela).
+      navigate(consumirDestinoPosCadastro('/feed'));
     } catch (error) {
       const info = getApiErrorInfo(error, {
         title: 'Erro ao criar conta',

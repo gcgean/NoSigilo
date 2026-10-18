@@ -2028,6 +2028,12 @@ function limpaPrimeiroToque(valor: unknown): PrimeiroToque | null {
 /** Canal em português, para o admin. UTM vence (é intenção explícita do link),
  *  depois o navegador de dentro do app, depois o site que mandou a pessoa. */
 function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): string {
+  // Chegou pela página pública d'A Casa (/a-casa marca utm_campaign=a-casa):
+  // conta como A Casa, com o canal de onde veio entre parênteses.
+  if (o?.utmCampaign === 'a-casa') {
+    const base = canalDaOrigem({ ...o, utmCampaign: undefined }, signupSource);
+    return base === 'Direto' ? 'A Casa' : `A Casa (${base})`;
+  }
   const utm = o?.utmSource || '';
   const ref = o?.ref || '';
   const app = o?.app || '';

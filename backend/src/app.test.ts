@@ -3660,6 +3660,11 @@ describe('nosigilo backend', () => {
 
     await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[1].token)).expect(200);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(200);
+    // Página pública: sem login, só números.
+    const pub = (await request(ctx.app).get('/api/casa/publico').expect(200)).body;
+    expect(pub.aberta).toBe(true);
+    expect(pub.pessoas).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(pub)).not.toContain('Casal Casa');
     // Rádio: sem playlist não toca; playlist é só do admin.
     expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();
     await request(ctx.app).get('/api/casa/admin/playlist').set(auth(homens[0].token)).expect(403);

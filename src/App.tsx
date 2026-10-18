@@ -45,6 +45,7 @@ const Feed = lazy(() => import("./pages/Feed"));
 const Match = lazy(() => import("./pages/Match"));
 const Radar = lazy(() => import("./pages/Radar"));
 const Casa = lazy(() => import("./pages/Casa"));
+const ACasaPublica = lazy(() => import("./pages/ACasaPublica"));
 const Stories = lazy(() => import("./pages/Stories"));
 const Profile = lazy(() => import("./pages/Profile"));
 const ProfileVisitors = lazy(() => import("./pages/ProfileVisitors"));
@@ -102,6 +103,7 @@ const App = () => (
                     <Route path="/" element={<Landing />} />
                     <Route path="/descobrir" element={<CampaignLanding />} />
                     <Route path="/espiar" element={<Espiar />} />
+                    <Route path="/a-casa" element={<ACasaPublica />} />
                     <Route path="/login" element={<Login />} />
                     {/* Botão "Renovar com Pix" dos e-mails: sem login, link assinado. */}
                     <Route path="/renovar" element={<Renovar />} />
