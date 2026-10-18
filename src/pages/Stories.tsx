@@ -455,7 +455,7 @@ function FavoritesPicker({
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar perfil"
-              className="w-full rounded-xl border border-border bg-secondary/40 py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full rounded-xl border border-border bg-secondary/40 py-2 pl-9 pr-3 text-[16px] outline-none focus:ring-2 focus:ring-primary/40"
             />
           </div>
         </div>
@@ -1116,7 +1116,7 @@ function StoryViewer({
           {/* Input comentário com efeito de apagar */}
           <input
             className={cn(
-              'flex-1 rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
+              'flex-1 rounded-full bg-white/10 px-4 py-2 text-[16px] text-white placeholder:text-white/40 outline-none transition-opacity duration-200',
               clearing ? 'opacity-0' : 'opacity-100'
             )}
             placeholder="Enviar mensagem..."
@@ -2369,12 +2369,13 @@ export default function Stories() {
 
           {/* controles */}
           <div className="shrink-0 space-y-3 p-4">
+            {/* 16px: com letra menor o Safari do iPhone dá zoom ao tocar e corta a tela (relato de 18/10/2026). */}
             <textarea
               value={ovText}
               onChange={(e) => setOvText(e.target.value.slice(0, 280))}
               placeholder="Escreva um texto sobre a mídia (opcional)"
               rows={2}
-              className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full resize-none rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-[16px] text-white placeholder:text-white/40 outline-none focus:ring-2 focus:ring-primary/50"
             />
             {ovText.trim() ? (
               <p className="text-center text-[11px] text-white/50">✋ Arraste o texto sobre a mídia para posicionar</p>
@@ -2438,7 +2439,7 @@ export default function Stories() {
               onChange={(e) => setStoryText(e.target.value.slice(0, 280))}
               placeholder="O que você quer dizer?"
               rows={3}
-              className="w-full resize-none rounded-xl border border-border bg-secondary/40 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+              className="w-full resize-none rounded-xl border border-border bg-secondary/40 px-3 py-2 text-[16px] outline-none focus:ring-2 focus:ring-primary/40"
             />
             <div className="mb-3 mt-1 text-right text-[11px] text-muted-foreground">{storyText.length}/280</div>
 
