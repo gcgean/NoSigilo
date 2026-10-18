@@ -1038,6 +1038,21 @@ export default function Casa() {
         </ul>
       </div>
 
+      {/* Como funciona: o mesmo vídeo-tour da página de apresentação (/acasa). */}
+      <details className="rounded-2xl border bg-card p-4" open={!info?.aberta}>
+        <summary className="cursor-pointer font-semibold">▶️ Como funciona A Casa (vídeo de 1 min)</summary>
+        <div className="mx-auto mt-3 w-full max-w-[320px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_40px_rgba(236,72,153,0.3)]">
+          <video
+            src="/api/casa/apresentacao/video.mp4"
+            poster="/api/casa/apresentacao/capa.jpg"
+            controls
+            playsInline
+            preload="none"
+            className="block aspect-[9/16] w-full bg-black object-cover"
+          />
+        </div>
+      </details>
+
       {info && !info.aberta && (
         <div className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/5 p-4 text-center">
           <p className="text-sm font-semibold">{info.reservado ? '🎟️ Seu lugar está reservado!' : 'Garanta seu lugar na próxima noite'}</p>

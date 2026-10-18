@@ -94,7 +94,7 @@ export default function LancamentoDaCasa() {
             🎟️ Reservar meu lugar
           </Button>
           <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1 text-white/70 hover:bg-white/10 hover:text-white" onClick={() => { setAberto(false); navigate('/casa'); }}>
+            <Button variant="ghost" className="flex-1 text-white/70 hover:bg-white/10 hover:text-white" onClick={() => { setAberto(false); navigate('/acasa'); }}>
               Como funciona
             </Button>
             <Button variant="ghost" className="flex-1 text-white/50 hover:bg-white/10 hover:text-white" onClick={() => setAberto(false)}>
