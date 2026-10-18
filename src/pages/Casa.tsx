@@ -368,6 +368,13 @@ export default function Casa() {
       setCabineAberta({ id: d.cabineId, modo: 'membro' });
     };
     const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => setConviteCabine(d);
+    const aoAvisoLola = (d: { texto: string }) => toast({ title: d.texto });
+    const aoRemovida = (d: { sala: string; id: string }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: e.mensagens.filter((m) => m.id !== d.id) } : e);
+    const aoExpulso = (d: { motivo: string }) => {
+      setCabineAberta(null);
+      setEstado(null);
+      toast({ title: '🚫 Você foi retirado(a) da Casa nesta noite', description: `${d.motivo}. Na próxima noite você pode voltar.`, variant: 'destructive' });
+    };
     const aoPedidoCabine = (d: { cabineId: string; nome: string }) => toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' });
     const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
@@ -378,10 +385,10 @@ export default function Casa() {
       });
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -579,6 +586,21 @@ export default function Casa() {
       await apiClient.post(`/casa/${salaAtual}/revelar`);
       setEstado((e) => e ? { ...e, eu: { ...e.eu, revelado: true } } : e);
     } catch { /* ok */ }
+  };
+  const denunciar = async (p: { id: string; nome: string }) => {
+    const motivo = window.prompt(`Denunciar ${p.nome}: o que aconteceu? (vai direto para a equipe)`);
+    if (motivo === null) return;
+    setPessoaAberta(null);
+    try {
+      await apiClient.post(`/casa/${salaAtual}/denunciar`, { para: p.id, motivo });
+      toast({ title: '🚩 Denúncia enviada', description: 'A equipe recebeu agora mesmo. Obrigado por cuidar da Casa.' });
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível denunciar agora.') }); }
+  };
+  const tirarDaCasa = async (p: { id: string; nome: string }) => {
+    if (!window.confirm(`Tirar ${p.nome} da Casa nesta noite?`)) return;
+    setPessoaAberta(null);
+    try { await apiClient.post(`/casa/${salaAtual}/expulsar`, { para: p.id }); toast({ title: `${p.nome} foi retirado(a) da Casa` }); }
+    catch (e) { toast({ title: erroDe(e, 'Não foi possível.') }); }
   };
   const bater = async (p: { id: string; nome: string }) => {
     setPessoaAberta(null);
@@ -969,6 +991,10 @@ export default function Casa() {
                     <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
                   </>
                 )}
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="flex-1 text-xs text-muted-foreground" onClick={() => void denunciar(pessoaAberta)}>🚩 Denunciar</Button>
+                  {info?.souAdmin && <Button variant="ghost" size="sm" className="flex-1 text-xs text-destructive" onClick={() => void tirarDaCasa(pessoaAberta)}>🚫 Tirar da Casa</Button>}
+                </div>
                 {estado.sala_anonima ? (
                   estado.eu.podeFalar && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
                 ) : (

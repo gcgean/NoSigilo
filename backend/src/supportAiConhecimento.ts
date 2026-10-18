@@ -38,6 +38,17 @@ Premium
 - Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem curtiu suas fotos, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
 - Dias grátis ganhos (tokens, convites) valem mesmo depois que a assinatura paga vence.
 
+A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa 🔥", ou nosigilo.net/a-casa)
+- Abre sexta e sábado, das 21h à 1h (horário de Brasília). Inauguração: sexta, 23/10/2026, às 21h. Quem reserva o lugar ("Reservar meu lugar") recebe aviso no celular quando abre.
+- Salas: Salão Principal (quente), Sala dos Casais (só casais e mulheres), Quarto Escuro e Glory Hole (anônimo; cada um revela quem é se quiser). Homens ocupam no máximo metade de cada sala; quando lota, dá para entrar na fila e é chamado quando abre vaga.
+- Quem não assina entra espiando (lê, não fala). Para falar, brincar, mandar foto e ir para a cabine precisa de Premium (ou período grátis).
+- A Lola (anfitriã IA) puxa brincadeiras: eu nunca, enquete, verdade ou desafio, quiz, match às cegas, desafio da foto, duelo, relâmpago e o Show da Meia-Noite. Só sorteia quem marca "Quero brincar"; "Passo" sempre vale.
+- Pulseira da noite: verde (aberto a tudo), amarela (só soft: beijos e carícias, sem sexo com outros), roxa (single bem-vindo), vermelha (só olhando; nunca é sorteado).
+- Bar: pagar um drink (3 a 15 tokens, vão para quem recebe). Olhar discreto; olhares cruzados sugerem cabine. Desafio sugerido: oferece tokens; se a pessoa aceitar e cumprir em 5 min recebe; se não, os tokens voltam.
+- Cabine: a dois ou em grupo; a porta só abre se todos de dentro quiserem; com a porta aberta, outros espiam e podem pedir para entrar (todos de dentro aprovam). "Continuar no chat" leva a conversa para o chat normal.
+- Fotos e vídeos são de visualização única (não impede print). Ranking dos casais da noite e do mês. +5 tokens por noite só por entrar.
+- Regras: só maiores de 18, consentimento, sem Pix/dinheiro, sem contato de fora na sala, sem mídia de terceiros. A Lola modera e pode retirar a pessoa da noite; dá para denunciar alguém tocando na foto dele na sala.
+
 Tokens (menu Tokens)
 - Ganha pontos usando o app: curtir (1, até 20 por dia), comentar (3, até 10 por dia), foto nova (10, até 3 por dia), story (8, até 3 por dia), postagem (5, até 3 por dia; pontos por postagem só para perfis de mulher e casal) e check-in diário (5, 1 por dia).
 - Top do Dia: todo dia às 11h, os autores dos posts mais curtidos das últimas 24h ganham tokens: 1º lugar 30, 2º 20, 3º 15, do 4º ao 12º 10 (só perfis de mulher e casal, como os outros pontos por conteúdo).

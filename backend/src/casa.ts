@@ -135,6 +135,8 @@ export type DependenciasDaCasa = {
   /** Devolve/entrega tokens (desafio cumprido, recusado ou vencido). */
   creditar: (userId: string, valor: number, motivo: string, refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
+  /** Alerta no Telegram do admin (categoria "A Casa"). */
+  alertar: (texto: string) => Promise<unknown>;
   /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
   pastaMusicas: string;
 };
@@ -368,6 +370,62 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     return completa;
   };
   const lola = (sala: Sala, texto: string) => publicarMsg(sala, { tipo: 'lola', texto });
+
+  // ─── Moderação da Lola ─────────────────────────────────────────────────────
+  // Conversa sexual explícita entre adultos é PERMITIDA. A Lola só age em:
+  // menor de idade e coerção (expulsa na hora), Pix/dinheiro e contato de fora
+  // (bloqueia a mensagem; na 2ª vez expulsa) e ofensa (avisa; na 2ª expulsa).
+  const avisosDaNoite = new Map<string, number>(); // userId -> avisos
+  const expulsos = new Map<string, string>(); // userId -> chave da noite
+  const contadoresDaNoite = { expulsoes: 0, avisos: 0, denuncias: 0 };
+  const estaExpulso = (userId: string) => !!chaveDaNoite && expulsos.get(userId) === chaveDaNoite;
+  const BLOQUEIO_RAPIDO: Array<{ cat: 'dinheiro' | 'contato'; re: RegExp; aviso: string }> = [
+    { cat: 'dinheiro', re: /\bpix\b|chave pix|transfer[eê]ncia|\bcobro\b|\bcach[eê]\b|r\$\s*\d|\bprograma\s+(completo|com\s+valor)/i, aviso: 'Aqui não rola Pix, cachê nem programa: A Casa é só entre liberais 😉' },
+    { cat: 'contato', re: /(\d[\s().-]?){9,}|\b(whats(app)?|zap|wpp|telegram|insta(gram)?|onlyfans|privacy)\b/i, aviso: 'Contato de fora não vale na sala: chame a pessoa pra cabine e, se rolar, continuem no chat do NoSigilo 😉' },
+  ];
+  const SUSPEITA_MENOR = /\bmenor de idade\b|\b1[0-7]\s*anos\b|\bcrian[çc]as?\b|\badolescente|\bninfet|\bpedo|\bcolegial\b/i;
+
+  type Veredito = 'ok' | 'ofensa' | 'menor' | 'coercao';
+  let moderacoesRodando = 0;
+  const julgarComIa = async (texto: string): Promise<Veredito | null> => {
+    if (!deps.deepseekKey || moderacoesRodando >= 6) return null;
+    moderacoesRodando++;
+    const controle = new AbortController();
+    const timer = setTimeout(() => controle.abort(), 10_000);
+    try {
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          temperature: 0,
+          max_tokens: 10,
+          messages: [
+            {
+              role: 'system',
+              content: `Você modera o chat de uma boate virtual ADULTA e liberal (swing). Todos são maiores de 18. Conversa sexual explícita, palavrão carinhoso, fantasias e convites entre adultos são PERMITIDOS e devem ser "ok".
+Responda com UMA palavra:
+- menor: fala sexual envolvendo menor de idade, criança ou adolescente, ou alguém dizendo ter menos de 18 anos.
+- coercao: ameaça, forçar alguém sem consentimento, chantagem, expor/vazar foto de alguém, violência real.
+- ofensa: xingamento ou humilhação dirigida a alguém da sala, racismo, homofobia, gordofobia.
+- ok: todo o resto.`,
+            },
+            { role: 'user', content: texto.slice(0, 400) },
+          ],
+        }),
+        signal: controle.signal,
+      });
+      if (!r.ok) return null;
+      const json = await r.json() as any;
+      const v = String(json?.choices?.[0]?.message?.content || '').trim().toLowerCase();
+      return (['ok', 'ofensa', 'menor', 'coercao'] as const).find((x) => v.startsWith(x)) ?? null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      moderacoesRodando--;
+    }
+  };
 
   // Rei/Rainha da Noite: quem venceu um duelo nesta noite ganha a 👑 na Casa.
   const reisDaNoite = new Map<string, string>(); // userId -> chave da noite
@@ -681,6 +739,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const avisosEnviados = new Set<string>();
   let noiteAnterior: string | null = null;
   let ultimaLimpeza = '';
+  let noiteParaResumo: string | null = null;
+  const resumoMeiaNoite = new Set<string>();
   const showAvisado = new Set<string>();
   const showFeito = new Set<string>();
   const tick = async () => {
@@ -746,10 +806,36 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         if (!ja) {
           await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave, 'enviando', new Date().toISOString()]);
           void avisarAbertura(noite.tema).catch((err) => console.error('[casa] aviso de abertura falhou', err));
+          void (async () => {
+            const n = await totalReservas(noite.chave);
+            await deps.alertar(`🔥 A Casa abriu (${TEMAS_DA_NOITE[noite.tema].nome}). A Lola assumiu. Reservas para hoje: ${n}. Vou te avisar de expulsões, denúncias e o resumo da noite.`);
+          })().catch(() => {});
         }
       }
     }
     if (!noite) noiteAnterior = null;
+
+    // Resumo da meia-noite e resumo final (quando a noite acaba).
+    if (noite) {
+      noiteParaResumo = noite.chave;
+      const br0 = agoraBrasilia();
+      if (br0.hora === 0 && !resumoMeiaNoite.has(noite.chave)) {
+        resumoMeiaNoite.add(noite.chave);
+        const linhas = [...salas.values()].map((sl) => `${sl.emoji} ${sl.nome}: ${falantes(sl).length} na sala`).join('\n');
+        void deps.alertar(`🌙 Meia-noite na Casa\n${linhas}\nCabines: ${cabines.size} · avisos da Lola: ${contadoresDaNoite.avisos} · expulsões: ${contadoresDaNoite.expulsoes} · denúncias: ${contadoresDaNoite.denuncias}`).catch(() => {});
+      }
+    } else if (noiteParaResumo) {
+      const chave = noiteParaResumo;
+      noiteParaResumo = null;
+      const contadores = { ...contadoresDaNoite };
+      contadoresDaNoite.expulsoes = 0; contadoresDaNoite.avisos = 0; contadoresDaNoite.denuncias = 0;
+      avisosDaNoite.clear();
+      void (async () => {
+        const m = (await db.queryOne(`SELECT COUNT(*) AS msgs, SUM(CASE WHEN tipo = 'midia' THEN 1 ELSE 0 END) AS midias, COUNT(DISTINCT autor_id) AS falaram FROM casa_mensagens WHERE noite = ?`, [chave])) as any;
+        const e = (await db.queryOne(`SELECT COUNT(DISTINCT CASE WHEN tipo = 'entrou' THEN user_id END) AS pessoas, SUM(CASE WHEN tipo = 'cabine' THEN 1 ELSE 0 END) AS cabines, SUM(CASE WHEN tipo = 'drink' THEN 1 ELSE 0 END) AS drinks FROM casa_eventos WHERE noite = ?`, [chave])) as any;
+        await deps.alertar(`🌅 A Casa fechou (${chave}). Resumo:\n👥 ${Number(e?.pessoas || 0)} pessoas entraram · 🗣️ ${Number(m?.falaram || 0)} falaram\n💬 ${Number(m?.msgs || 0)} mensagens · 📸 ${Number(m?.midias || 0)} fotos/vídeos\n🚪 ${Number(e?.cabines || 0)} cabines · 🍸 ${Number(e?.drinks || 0)} drinks\n💋 Lola: ${contadores.avisos} avisos, ${contadores.expulsoes} expulsões · 🚩 ${contadores.denuncias} denúncias\nTudo no Histórico da Casa (admin).`);
+      })().catch(() => {});
+    }
 
     // Sexta, 18h: "Hoje tem Casa às 21h, chama seu par" (uma vez por sexta).
     const relogioBr = agoraBrasilia();
@@ -884,6 +970,72 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const totalReservas = async (chave: string) =>
     Number(((await db.queryOne('SELECT COUNT(*) AS c FROM casa_reservas WHERE noite = ?', [chave])) as any)?.c || 0);
 
+  const expulsar = async (userId: string, nome: string, motivo: string, texto: string | null, salaId: string) => {
+    expulsos.set(userId, chaveDaNoite);
+    contadoresDaNoite.expulsoes++;
+    for (const sala of salas.values()) {
+      const estava = sala.presentes.delete(userId) || sala.espiando.delete(userId);
+      sala.fila = sala.fila.filter((id) => id !== userId);
+      if (estava) {
+        publicarMsg(sala, { tipo: 'sistema', texto: `🚫 ${nome} foi retirado(a) da Casa por desrespeitar as regras.` });
+        avisarPresentes(sala);
+      }
+    }
+    for (const c of [...cabines.values()]) {
+      c.espectadores.delete(userId);
+      if (c.membros.delete(userId)) {
+        c.porta.delete(userId);
+        if (c.membros.size === 0) fecharCabine(c);
+        else { msgCabine(c, { tipo: 'sistema', texto: `🚫 ${nome} foi retirado(a) da Casa.` }); avisarCabine(c); }
+      }
+    }
+    emitirPara(userId, 'casa.expulso', { motivo });
+    registrarEvento(null, 'expulso', userId);
+    const email = ((await db.queryOne('SELECT email FROM users WHERE id = ?', [userId])) as any)?.email ?? '?';
+    void deps.alertar(`🚫 A Casa: ${nome} (${email}) foi retirado(a) da noite.\nMotivo: ${motivo}\nSala: ${salaId}${texto ? `\nMensagem: "${texto.slice(0, 200)}"` : ''}`).catch(() => {});
+  };
+
+  /** Bloqueio na hora (Pix/contato). Devolve a mensagem para a pessoa ou null se pode publicar. */
+  const bloqueioRapido = async (userId: string, nome: string, texto: string, salaId: string): Promise<string | null> => {
+    const achou = BLOQUEIO_RAPIDO.find((b) => b.re.test(texto));
+    if (!achou) return null;
+    const n = (avisosDaNoite.get(userId) ?? 0) + 1;
+    avisosDaNoite.set(userId, n);
+    contadoresDaNoite.avisos++;
+    if (n >= 2) {
+      await expulsar(userId, nome, achou.cat === 'dinheiro' ? 'Pix/dinheiro na sala (2º aviso)' : 'Contato de fora na sala (2º aviso)', texto, salaId);
+      return 'Você foi retirado(a) da Casa nesta noite por repetir o que a Lola pediu para não fazer.';
+    }
+    return `💋 Lola: ${achou.aviso} (1º aviso; no próximo você sai da Casa)`;
+  };
+
+  /** Depois de publicar: a IA olha menor de idade, coerção e ofensa. */
+  const moderarDepois = (userId: string, nome: string, texto: string, salaId: string, remover: () => void) => {
+    if (texto.length < 6) return;
+    void (async () => {
+      const veredito = await julgarComIa(texto);
+      if (veredito === null) {
+        if (SUSPEITA_MENOR.test(texto)) void deps.alertar(`⚠️ A Casa: possível menção a menor de idade (IA indisponível, confira).\n${nome}: "${texto.slice(0, 200)}"\nSala: ${salaId}`).catch(() => {});
+        return;
+      }
+      if (veredito === 'ok') return;
+      remover();
+      if (veredito === 'menor') { await expulsar(userId, nome, 'Menção a menor de idade', texto, salaId); return; }
+      if (veredito === 'coercao') { await expulsar(userId, nome, 'Ameaça / falta de consentimento', texto, salaId); return; }
+      const n = (avisosDaNoite.get(userId) ?? 0) + 1;
+      avisosDaNoite.set(userId, n);
+      contadoresDaNoite.avisos++;
+      if (n >= 2) await expulsar(userId, nome, 'Ofensa (2º aviso)', texto, salaId);
+      else emitirPara(userId, 'casa.aviso', { texto: '💋 Lola: aqui a regra é respeito. Sua mensagem foi removida (1º aviso; no próximo você sai da Casa).' });
+    })();
+  };
+
+  const removerMsgDaSala = (sala: Sala, msgId: string) => {
+    sala.mensagens = sala.mensagens.filter((m) => m.id !== msgId);
+    emitirParaSala(sala, 'casa.mensagem.removida', { sala: sala.id, id: msgId });
+    void db.run("UPDATE casa_mensagens SET tipo = 'removida' WHERE id = ?", [msgId]).catch(() => {});
+  };
+
   const acharPublico = (sala: Sala, idPublico: string) => [...sala.presentes.values()].find((x) => x.idPublico === idPublico);
 
   const salaDe = (req: express.Request) => salas.get(String(req.params.sala) as SalaId) ?? null;
@@ -989,6 +1141,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const noite = await noiteAtual();
     if (!noite) { res.status(403).json({ error: 'fechada', message: 'A Casa abre sexta e sábado, das 21h à 1h.' }); return; }
     chaveDaNoite = noite.chave;
+    if (estaExpulso(userId)) { res.status(403).json({ error: 'expulso', message: 'Você foi retirado(a) da Casa nesta noite. Na próxima noite você pode voltar.' }); return; }
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
     if (sala.semHomens && perfil.cat === 'homem') {
@@ -1300,7 +1453,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (Date.now() - p.ultimaMsg < 1200) { res.status(429).json({ error: 'devagar' }); return; }
     p.ultimaMsg = Date.now();
     p.ultimoPing = Date.now();
-    publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto });
+    const barrada = await bloqueioRapido(p.id, p.nome, texto, sala.nome);
+    if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
+    const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto });
+    moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id));
     res.json({ ok: true });
   });
 
@@ -1396,6 +1552,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const texto = String(corpo.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     if (texto.length < 3) { res.status(400).json({ error: 'texto', message: 'Escreva o desafio.' }); return; }
     if (/https?:\/\/|www\.|wa\.me|t\.me/i.test(texto)) { res.status(400).json({ error: 'link', message: 'Sem links no desafio.' }); return; }
+    const barradaProposta = await bloqueioRapido(userId, p.nome, texto, sala.nome);
+    if (barradaProposta) { res.status(400).json({ error: 'moderacao', message: barradaProposta }); return; }
     const tokens = Math.round(Number(corpo.tokens || 0));
     if (!Number.isFinite(tokens) || tokens < 3 || tokens > 100) { res.status(400).json({ error: 'tokens', message: 'Ofereça de 3 a 100 tokens.' }); return; }
     const minhas = [...propostas.values()].filter((x) => x.de === userId);
@@ -1469,6 +1627,35 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         avatar: r.foto ? `/uploads/${r.foto}` : null, pontos: Number(r.pontos || 0),
       })),
     });
+  });
+
+  // Denunciar alguém da sala: vai para o Telegram do admin com as últimas mensagens da pessoa.
+  const ultimaDenuncia = new Map<string, number>();
+  app.post('/api/casa/:sala/denunciar', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId) ?? null;
+    const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
+    if (!sala || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    if (Date.now() - (ultimaDenuncia.get(userId) ?? 0) < 60_000) { res.status(429).json({ error: 'devagar', message: 'Aguarde um minuto para denunciar de novo.' }); return; }
+    ultimaDenuncia.set(userId, Date.now());
+    contadoresDaNoite.denuncias++;
+    const motivo = String((req.body as any)?.motivo || '').replace(/\s+/g, ' ').trim().slice(0, 200) || 'sem motivo escrito';
+    const ultimas = sala.mensagens.filter((m) => m.autor?.id === alvo.idPublico).slice(-5).map((m) => `• ${m.texto}`).join('\n');
+    const quem = ((await db.queryOne('SELECT name, email FROM users WHERE id = ?', [userId])) as any) ?? {};
+    const denunciado = ((await db.queryOne('SELECT email FROM users WHERE id = ?', [alvo.id])) as any)?.email ?? '?';
+    registrarEvento(sala.id, 'denuncia', userId, alvo.id);
+    void deps.alertar(`🚩 A Casa — denúncia na sala ${sala.nome}\nDenunciado: ${alvo.nomeReal} (${denunciado})${alvo.nome !== alvo.nomeReal ? ` [aparece como ${alvo.nome}]` : ''}\nPor: ${quem.name ?? p?.nome ?? '?'} (${quem.email ?? '?'})\nMotivo: ${motivo}${ultimas ? `\nÚltimas mensagens:\n${ultimas}` : ''}`).catch(() => {});
+    res.json({ ok: true });
+  });
+
+  app.post('/api/casa/:sala/expulsar', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const sala = salaDe(req);
+    const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
+    if (!sala || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    await expulsar(alvo.id, alvo.nome, 'Retirado(a) pelo admin', null, sala.nome);
+    res.json({ ok: true });
   });
 
   // Glory Hole: revelar quem é (só se a pessoa quiser).
@@ -1763,7 +1950,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const texto = String((req.body as any)?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 280);
     if (!texto) { res.status(400).json({ error: 'texto_vazio' }); return; }
     if (/https?:\/\/|www\.|wa\.me|t\.me/i.test(texto)) { res.status(400).json({ error: 'link', message: 'Sem links na cabine.' }); return; }
-    msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto });
+    const barrada = await bloqueioRapido(userId, m.nome, texto, 'cabine');
+    if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
+    const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto });
+    moderarDepois(userId, m.nome, texto, 'cabine', () => {
+      c.mensagens = c.mensagens.filter((x) => x.id !== publicada.id);
+      for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: publicada.id });
+    });
     res.json({ ok: true });
   });
 

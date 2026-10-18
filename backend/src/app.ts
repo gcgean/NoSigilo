@@ -1643,6 +1643,7 @@ export const AVISOS_TELEGRAM = [
   { id: 'moderacao', rotulo: 'Moderação', descricao: 'Denúncia grave e conto segurado para revisão.' },
   { id: 'notas', rotulo: 'Notas baixas', descricao: 'Avaliação de 0 a 6 no app.' },
   { id: 'servidor', rotulo: 'Servidor e e-mail', descricao: 'CPU, memória ou disco no limite, hora de upgrade, cota do e-mail acabou.' },
+  { id: 'casa', rotulo: 'A Casa', descricao: 'Abertura, meia-noite e resumo da noite; expulsões e denúncias da Casa.' },
 ] as const;
 export type AvisoTelegram = (typeof AVISOS_TELEGRAM)[number]['id'];
 
@@ -22777,6 +22778,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
+    alertar: (texto) => notifyAdminsTelegram({ db, env }, texto, 'casa'),
     // Revelação paga na Casa: mesma regra dos presentes do chat (sai primeiro a
     // parte comprada e chega como comprada; o resto chega como ganho).
     transferirTokens: async (de, para, valor, refId) => {

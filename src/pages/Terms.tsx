@@ -8,7 +8,7 @@ import BrandLogo from '@/components/BrandLogo';
 export function TermsBody() {
   return (
     <div className="prose prose-invert max-w-none glass rounded-2xl p-8">
-      <p className="text-muted-foreground">Última atualização: Abril de 2026</p>
+      <p className="text-muted-foreground">Última atualização: 18 de outubro de 2026</p>
 
       <h2>1. Aceitação dos Termos</h2>
       <p>
@@ -70,7 +70,23 @@ export function TermsBody() {
         as Diretrizes da Comunidade ou a legislação aplicável. Em casos graves, poderemos preservar registros para cooperação com autoridades.
       </p>
 
-      <h2>8. Modificações</h2>
+      <h2>8. A Casa (boate virtual)</h2>
+      <p>
+        A Casa é um espaço ao vivo do NoSigilo, aberto em dias e horários definidos, com salas, cabines, brincadeiras conduzidas pela
+        Lola (assistente de inteligência artificial) e envio de fotos e vídeos. Além do restante destes Termos, valem estas regras:
+      </p>
+      <ul>
+        <li>Somente maiores de 18 anos. Qualquer menção, insinuação ou conteúdo envolvendo menor de idade leva à remoção imediata e ao banimento da conta, com preservação dos registros para as autoridades.</li>
+        <li>Consentimento sempre: participar de brincadeiras e desafios é opcional, "passo" e "não" devem ser respeitados, e cabines e convites só acontecem com o aceite de todos os envolvidos.</li>
+        <li>Você só pode enviar fotos e vídeos de si mesmo(a) e de quem está com você e consentiu, de forma livre e atual, em aparecer. É proibido enviar mídia de terceiros sem autorização, de pessoas dormindo, embriagadas a ponto de não consentir ou que não saibam que estão sendo gravadas.</li>
+        <li>Fotos e vídeos da Casa são de visualização única, mas isso não impede capturas de tela ou gravações por terceiros. Envie apenas o que se sentir à vontade, de preferência sem mostrar o rosto. Gravar, salvar ou divulgar fora da Casa o conteúdo de outras pessoas é proibido e pode configurar crime.</li>
+        <li>No Glory Hole, os participantes aparecem de forma anônima para os demais, mas a equipe do NoSigilo identifica todos os autores para fins de segurança e cumprimento da lei.</li>
+        <li>Não é permitido pedir ou oferecer dinheiro, Pix ou programa, nem passar contato externo (telefone, WhatsApp, redes) nas salas.</li>
+        <li>Tokens usados na Casa (drinks, revelações e desafios sugeridos) passam de um usuário para outro conforme as regras exibidas na tela; tokens de desafios não cumpridos voltam para quem ofereceu.</li>
+        <li>A Lola modera as conversas de forma automática e pode remover mensagens e retirar participantes da noite. A equipe acompanha os alertas, as denúncias e o histórico da Casa, que guarda mensagens e mídias por até 90 dias para segurança e é apagado junto com a conta, quando excluída.</li>
+      </ul>
+
+      <h2>9. Modificações</h2>
       <p>
         Reservamos o direito de modificar estes termos a qualquer momento.
         Notificaremos os usuários sobre alterações significativas.

@@ -5430,7 +5430,7 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
             <div key={m.id} className={`flex ${m.senderType === 'admin' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm ${m.senderType === 'admin' ? 'bg-primary text-primary-foreground rounded-br-sm' : 'bg-card border rounded-bl-sm'}`}>
                 {m.senderType === 'promoter' && <p className="text-[10px] font-semibold mb-0.5 text-muted-foreground">{selectedChat.fullName}</p>}
-                {m.isAi && <p className="text-[10px] font-semibold mb-0.5 text-primary-foreground/80">🤖 Assistente IA</p>}
+                {m.isAi && <p className="text-[10px] font-semibold mb-0.5 text-primary-foreground/80">💋 Lola (IA)</p>}
                 {m.imageUrl && (
                   <a href={resolveServerUrl(m.imageUrl)} target="_blank" rel="noreferrer" className="block mb-1">
                     <img src={resolveServerUrl(m.imageUrl)} alt="Imagem enviada" className="max-h-64 rounded-lg" />
@@ -5677,7 +5677,7 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
         <div className="glass rounded-xl p-5 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-semibold">🤖 Assistente IA do suporte (DeepSeek)</h3>
+              <h3 className="font-semibold">💋 Lola, assistente IA do suporte (DeepSeek)</h3>
               <p className="text-xs text-muted-foreground">
                 Responde sozinho no chat de suporte (usuários e promotores). Quando precisa de alguém da equipe, avisa no Telegram.
                 Se você responder uma conversa, a IA fica quieta nela por 12 horas.

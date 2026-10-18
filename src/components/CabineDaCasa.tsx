@@ -85,8 +85,11 @@ export default function CabineDaCasa({
       toast({ title: d.porta ? '🔒 Fecharam a porta da cabine' : 'A cabine fechou' });
       onSaiu();
     };
-    on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou);
-    return () => { off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); };
+    const aoRemovida = (d: { cabineId: string; id: string }) => {
+      if (d.cabineId === cabineId) setCab((c) => c ? { ...c, mensagens: c.mensagens.filter((m) => m.id !== d.id) } : c);
+    };
+    on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou); on('casa.cabine.mensagem.removida', aoRemovida);
+    return () => { off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu]);
   useEffect(() => { fim.current?.scrollIntoView({ block: 'end' }); }, [cab?.mensagens.length]);
 
