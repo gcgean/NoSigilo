@@ -63,7 +63,7 @@ export default function ACasaPublica() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 py-8 text-white">
       <div className="mx-auto max-w-lg space-y-6">
-        <div className="flex justify-center"><BrandLogo /></div>
+        <div className="flex justify-center"><BrandLogo soCadeado /></div>
 
         <div className="text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
