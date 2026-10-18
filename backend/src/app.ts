@@ -3509,6 +3509,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await apagar('DELETE FROM system_settings WHERE key = ?', [`support_handoff:${userId}`]);
     await apagar('UPDATE site_visits SET user_id = NULL WHERE user_id = ?', u);
     await apagar('UPDATE site_events SET user_id = NULL WHERE user_id = ?', u);
+    // A Casa: mensagens, mídias, pontos, reservas e eventos da pessoa.
+    await apagar('DELETE FROM casa_midia_vistas WHERE user_id = ? OR mensagem_id IN (SELECT id FROM casa_mensagens WHERE autor_id = ?)', [userId, userId]);
+    await apagar('DELETE FROM casa_mensagens WHERE autor_id = ? OR destino_id = ?', [userId, userId]);
+    await apagar('DELETE FROM casa_pontos WHERE user_id = ?', u);
+    await apagar('DELETE FROM casa_reservas WHERE user_id = ?', u);
+    await apagar('DELETE FROM casa_eventos WHERE user_id = ? OR outro_id = ?', [userId, userId]);
 
     // Perfil: tudo que descreve a pessoa. Gênero fica (sem ele o resto do sistema
     // não sabe tratar a linha), e cidade/UF ficam só no registro agregado da saída.
@@ -22789,6 +22795,26 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         io?.to(`user:${id}`).emit('tokens.updated', { points: Number(b?.p || 0) });
       }
       return true;
+    },
+    // Desafio sugerido: os tokens de quem propõe ficam guardados até cumprir.
+    debitar: async (userId, valor, motivo, refId) => {
+      const r = await spendTokens(db, userId, valor, motivo, refId, app.get('io') as SocketIOServer | undefined);
+      return r.ok && r.charged;
+    },
+    // Estorno volta como "comprado" (não vira dia grátis); o prêmio chega como ganho.
+    creditar: async (userId, valor, motivo, refId) => {
+      const estorno = motivo === 'casa_desafio_estorno';
+      await run(
+        db,
+        estorno
+          ? 'UPDATE users SET token_points = COALESCE(token_points,0) + ?, tokens_comprados = COALESCE(tokens_comprados,0) + ? WHERE id = ?'
+          : 'UPDATE users SET token_points = COALESCE(token_points,0) + ?, token_points_total = COALESCE(token_points_total,0) + ? WHERE id = ?',
+        [valor, valor, userId]
+      );
+      await run(db, 'INSERT INTO token_transactions (id, user_id, action_type, points, ref_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', [randomUUID(), userId, motivo, valor, refId, nowIso()]);
+      await persist();
+      const b = (await queryOne(db, 'SELECT COALESCE(token_points,0) AS p FROM users WHERE id = ?', [userId])) as any;
+      (app.get('io') as SocketIOServer | undefined)?.to(`user:${userId}`).emit('tokens.updated', { points: Number(b?.p || 0) });
     },
   });
 

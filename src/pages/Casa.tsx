@@ -14,6 +14,7 @@ import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
+import RankingDaCasa from '@/components/RankingDaCasa';
 import { profileService } from '@/services/api';
 
 /**
@@ -228,6 +229,16 @@ export default function Casa() {
   const [escolhendoPulseira, setEscolhendoPulseira] = useState(false);
   const [pulseiraDispensada, setPulseiraDispensada] = useState(false);
   const [mostrandoBar, setMostrandoBar] = useState(false);
+  const [rankingAberto, setRankingAberto] = useState(false);
+  const [propondoPara, setPropondoPara] = useState<Pessoa | null>(null);
+  const [sugestoes, setSugestoes] = useState<{ texto: string; nivel: string }[]>([]);
+  const [textoDesafio, setTextoDesafio] = useState('');
+  const [tokensDesafio, setTokensDesafio] = useState(10);
+  const [privadoDesafio, setPrivadoDesafio] = useState(false);
+  const [propostaRecebida, setPropostaRecebida] = useState<{ id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } } | null>(null);
+  const [meuDesafio, setMeuDesafio] = useState<{ id: string; texto: string; tokens: number; privado: boolean; deNome: string; prazo: string } | null>(null);
+  const propostaDaCamera = useRef<string | null>(null);
+  const segundosMeuDesafio = useSegundosAte(meuDesafio?.prazo);
   const [cruzados, setCruzados] = useState<{ id: string; nome: string; avatar: string | null; cat: Categoria } | null>(null);
   const modoRevelacao = useRef(false);
   const segundosRevelacao = useSegundosAte(revelarAte > Date.now() ? new Date(revelarAte).toISOString() : undefined);
@@ -337,16 +348,23 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
+    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setPropostaRecebida(d);
+    const aoPropostaAceita = (d: { nome: string }) => toast({ title: `🔥 ${d.nome} aceitou seu desafio!`, description: 'Tem 5 minutos para cumprir.' });
+    const aoPropostaFim = (d: { id: string; cumprida: boolean; motivo?: string; nome: string; tokens: number }) => {
+      setMeuDesafio((m) => (m?.id === d.id ? null : m));
+      setPropostaRecebida((pr) => (pr?.id === d.id ? null : pr));
+      toast({ title: d.cumprida ? `✅ ${d.nome} cumpriu seu desafio!` : 'Desafio encerrado', description: d.cumprida ? `Os ${d.tokens} tokens foram para ${d.nome}.` : d.motivo });
+    };
     const aoResposta = () => toast({ title: 'Não rolou agora 😉', description: 'A pessoa não aceitou o convite pra cabine.' });
     const aoCabine = (d: { conversationId: string; com: string }) => {
       toast({ title: `🚪 Cabine aberta com ${d.com}!` });
       navigate(`/chat/${d.conversationId}`);
     };
     on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -379,7 +397,9 @@ export default function Casa() {
     try {
       const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(pct));
       const revelacao = modoRevelacao.current;
-      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao });
+      const propostaId = propostaDaCamera.current;
+      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, ...(propostaId ? { propostaId } : {}) });
+      if (propostaId) setMeuDesafio(null);
       if (revelacao) setRevelarAte(0);
       toast({ title: revelacao ? 'Revelação enviada 👀' : 'Enviado para a sala 🔥', description: 'Cada pessoa abre só 1 vez.' });
     } catch (e) {
@@ -387,11 +407,13 @@ export default function Casa() {
     } finally {
       setEnviandoMidia(null);
       modoRevelacao.current = false;
+      propostaDaCamera.current = null;
       if (cameraRef.current) cameraRef.current.value = '';
     }
   };
   const abrirCamera = (revelacao = false) => {
     modoRevelacao.current = revelacao;
+    propostaDaCamera.current = null;
     cameraRef.current?.click();
   };
   const verMidia = async (m: Msg) => {
@@ -448,6 +470,46 @@ export default function Casa() {
       });
     }
   };
+  const abrirProposta = async (p: Pessoa) => {
+    setPessoaAberta(null);
+    setPropondoPara(p);
+    setTextoDesafio('');
+    if (sugestoes.length === 0) {
+      try { setSugestoes((await apiClient.get('/casa/sugestoes-de-desafio')).data.sugestoes ?? []); } catch { /* sem sugestões */ }
+    }
+  };
+  const enviarProposta = async () => {
+    const alvo = propondoPara;
+    if (!alvo || !salaAtual) return;
+    try {
+      await apiClient.post(`/casa/${salaAtual}/propor`, { para: alvo.id, texto: textoDesafio, tokens: tokensDesafio, privado: privadoDesafio });
+      setPropondoPara(null);
+      toast({ title: `😈 Desafio enviado para ${alvo.nome}`, description: `${tokensDesafio} tokens guardados: só saem se cumprir; se não, voltam pra você.` });
+    } catch (e) {
+      const semSaldo = (e as any)?.response?.status === 402;
+      toast({
+        title: erroDe(e, 'Não foi possível enviar o desafio.'),
+        variant: 'destructive',
+        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => navigate('/tokens?comprar=1')}>Comprar tokens</ToastAction> : undefined,
+      });
+    }
+  };
+  const responderProposta = async (aceitar: boolean) => {
+    const pr = propostaRecebida;
+    setPropostaRecebida(null);
+    if (!pr) return;
+    try {
+      const { data } = await apiClient.post(`/casa/proposta/${pr.id}/responder`, { aceitar });
+      if (aceitar) setMeuDesafio({ id: pr.id, texto: data.texto, tokens: data.tokens, privado: data.privado, deNome: data.deNome, prazo: data.prazo });
+    } catch (e) { toast({ title: erroDe(e, 'Esse desafio expirou.') }); }
+  };
+  const cumprirDesafio = () => {
+    if (!meuDesafio) return;
+    propostaDaCamera.current = meuDesafio.id;
+    modoRevelacao.current = false;
+    cameraRef.current?.click();
+  };
+
   const brindar = async (de: { id: string }) => {
     try { await apiClient.post(`/casa/${salaAtual}/brindar`, { para: de.id }); } catch { /* ok */ }
   };
@@ -504,6 +566,7 @@ export default function Casa() {
             {estado.presentes.length} na sala{estado.espiando > 0 ? ` · ${estado.espiando} espiando 👀` : ''}
           </p>
         </div>
+        <button type="button" onClick={() => setRankingAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Ranking" title="Ranking da Casa">🏆</button>
         {estado.eu.podeFalar && (
           <button
             type="button"
@@ -548,7 +611,20 @@ export default function Casa() {
       {/* Desafio do momento: fica fixo no topo enquanto a conversa corre embaixo. */}
       {estado.jogo && <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />}
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      {meuDesafio && segundosMeuDesafio > 0 && (
+        <div className="relative mx-3 mb-2 rounded-2xl border border-amber-400/50 bg-amber-500/15 p-3">
+          <p className="text-xs font-semibold text-amber-200">😈 Desafio de {meuDesafio.deNome} · {meuDesafio.tokens} tokens{meuDesafio.privado ? ' · 🤫 só pra ele(a)' : ''}</p>
+          <p className="my-1 text-sm">{meuDesafio.texto}</p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" className="flex-1 bg-amber-500 text-black hover:bg-amber-400" onClick={cumprirDesafio}>
+              <Camera className="mr-1.5 h-4 w-4" />Cumprir agora
+            </Button>
+            <span className="text-xs tabular-nums text-amber-100">{Math.floor(segundosMeuDesafio / 60)}:{String(segundosMeuDesafio % 60).padStart(2, '0')}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="relative flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {estado.mensagens.map((m) => m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
@@ -671,6 +747,68 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!propondoPara} onOpenChange={(v) => !v && setPropondoPara(null)}>
+        <DialogContent className="z-[9995] max-h-[85vh] max-w-sm overflow-y-auto">
+          <DialogHeader><DialogTitle>😈 Desafio para {propondoPara?.nome}</DialogTitle></DialogHeader>
+          <p className="-mt-2 text-xs text-muted-foreground">Se aceitar e cumprir em 5 minutos, recebe os tokens. Se recusar ou não cumprir, eles voltam pra você.</p>
+          <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+            {sugestoes.filter((x) => x.nivel === 'quente' || estado.sala.nivel === 'muito_quente').map((x) => (
+              <button key={x.texto} type="button" onClick={() => setTextoDesafio(x.texto)}
+                className={cn('rounded-full border px-2.5 py-1 text-left text-xs', textoDesafio === x.texto ? 'border-primary bg-primary/15' : 'hover:bg-muted')}>
+                {x.texto}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={textoDesafio}
+            onChange={(e) => setTextoDesafio(e.target.value)}
+            maxLength={160}
+            rows={2}
+            placeholder="Ou escreva o seu desafio…"
+            className="w-full rounded-xl border bg-background px-3 py-2 text-sm"
+          />
+          <div>
+            <p className="mb-1 text-xs font-semibold">Quanto vale?</p>
+            <div className="flex gap-1.5">
+              {[5, 10, 20, 50].map((t) => (
+                <Button key={t} size="sm" variant={tokensDesafio === t ? 'default' : 'outline'} className="h-8 flex-1 text-xs" onClick={() => setTokensDesafio(t)}>{t} tokens</Button>
+              ))}
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={privadoDesafio} onChange={(e) => setPrivadoDesafio(e.target.checked)} />
+            🤫 Só pra mim (a foto não aparece para a sala)
+          </label>
+          <Button className="bg-gradient-to-r from-rose-600 to-fuchsia-600" disabled={textoDesafio.trim().length < 3} onClick={() => void enviarProposta()}>
+            Enviar desafio ({tokensDesafio} tokens)
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!propostaRecebida} onOpenChange={(v) => !v && void responderProposta(false)}>
+        <DialogContent className="z-[9995] max-w-xs">
+          {propostaRecebida && (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Avatar p={propostaRecebida.de} tamanho="h-16 w-16" />
+              <p className="text-sm"><b>{propostaRecebida.de.nome}</b> te desafiou{propostaRecebida.privado ? ' (só ele(a) vai ver 🤫)' : ''}:</p>
+              <p className="rounded-xl bg-muted px-3 py-2 text-sm font-semibold">"{propostaRecebida.texto}"</p>
+              <p className="text-sm">Vale <b className="text-fuchsia-500">{propostaRecebida.tokens} tokens</b> se cumprir em 5 minutos.</p>
+              <div className="grid w-full grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => void responderProposta(false)}>Recusar</Button>
+                <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void responderProposta(true)}>Aceito 😈</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rankingAberto} onOpenChange={setRankingAberto}>
+        <DialogContent className="z-[9995] max-h-[85vh] max-w-sm overflow-y-auto">
+          <DialogHeader><DialogTitle>🏆 Ranking da Casa</DialogTitle></DialogHeader>
+          <RankingDaCasa />
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!cruzados} onOpenChange={(v) => !v && setCruzados(null)}>
         <DialogContent className="z-[9995] max-w-xs">
           {cruzados && (
@@ -730,6 +868,9 @@ export default function Casa() {
                       <Button variant="outline" onClick={() => void olhar(pessoaAberta)}>👀 Dar uma olhada</Button>
                       <Button variant="outline" onClick={() => setMostrandoBar(true)}>🍸 Pagar um drink</Button>
                     </div>
+                    {pessoaAberta.pulseira !== 'vermelha' && (
+                      <Button variant="outline" className="border-amber-400/60" onClick={() => void abrirProposta(pessoaAberta)}>😈 Propor um desafio (vale tokens)</Button>
+                    )}
                     <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
                   </>
                 )}
@@ -763,6 +904,8 @@ export default function Casa() {
           <li>🟢🟡🟣🔴 Pulseira da noite: todo mundo sabe o que você topa</li>
           <li>🍸 Bar: pague um drink pra quem te chamou atenção; 👀 olhares cruzados viram cabine</li>
           <li>🎆 Show da Meia-Noite: o desafio mais quente da noite</li>
+          <li>😈 Proponha desafios a outros casais valendo tokens: aceitou e cumpriu, leva os tokens</li>
+          <li>🏆 Ranking dos casais da noite e do mês</li>
           <li>🚪 Chame quem quiser pra cabine: abre uma conversa a dois, só com aceite</li>
           <li>🎁 +5 tokens por noite só por entrar; acertou o quiz, +3</li>
         </ul>
@@ -792,6 +935,11 @@ export default function Casa() {
             : <Button size="sm" variant="outline" onClick={() => void abrirAgora(60)}>Abrir agora por 1h (teste)</Button>}
         </div>
       )}
+
+      <details className="rounded-2xl border bg-card p-4">
+        <summary className="cursor-pointer font-semibold">🏆 Ranking dos casais</summary>
+        <div className="mt-3"><RankingDaCasa /></div>
+      </details>
 
       {info?.souAdmin && <PlaylistDaCasa />}
       {info?.souAdmin && <HistoricoDaCasa />}

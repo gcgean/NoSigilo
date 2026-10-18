@@ -274,6 +274,18 @@ export const TEMAS_FOTO: Item[] = [
   mq('{nome}, foto de você de quatro na cama, de costas, sem rosto 🍑'),
   mq('{nome}, foto do que você está vestindo por baixo agora 🖤'),
   mq('{nome}, vídeo de 5 segundos de um beijo no pescoço do seu par 💋'),
+  q('{nome}, vídeo de 10 segundos dançando sensual, sem rosto 💃'),
+  q('{nome}, vídeo descendo até o chão, sem rosto 🔥'),
+  q('{nome}, foto na sua pose mais sensual, sem rosto 😈'),
+  mq('{nome}, vídeo de 10 segundos rebolando de lingerie (ou cueca) 🍑'),
+  mq('{nome}, foto espanhola, sem rosto 🔥'),
+  mq('{nome}, vídeo de 10 segundos do casal na posição favorita, sem rosto 😈'),
+  mq('{nome}, vídeo de 10 segundos de um oral no seu par, sem rosto 💦'),
+  mq('{nome}, vídeo de 10 segundos mostrando como vocês metem gostoso, sem rosto 🔥'),
+  mq('{nome}, foto tirando a última peça de roupa, sem rosto 🖤'),
+  mq('{nome}, vídeo de 10 segundos de uma sentada caprichada, sem rosto 🍑'),
+  mq('{nome}, foto do casal de quatro, de costas, sem rosto 😈'),
+  mq('{nome}, vídeo de 10 segundos de você se tocando, sem rosto 💦'),
 ];
 
 /** Duelo: dois perfis mandam foto com o mesmo tema e a sala vota. */
@@ -290,6 +302,18 @@ export const TEMAS_DUELO: Item[] = [
   mq('Lingerie mais ousada 😈'),
   mq('Foto mais quente na cama 🛏️'),
   mq('Melhor "antes da festa" no espelho, sem rosto 🪞'),
+  q('Quem dança mais sensual 💃 (vídeo de 10s)'),
+  q('Quem desce melhor até o chão 🔥 (vídeo)'),
+  q('Pose mais sensual 😈'),
+  q('Lingerie mais bonita da noite 🖤'),
+  mq('Quem rebola melhor 🍑 (vídeo de 10s)'),
+  mq('Melhor foto espanhola 🔥'),
+  mq('Melhor boquete 💦 (vídeo de 10s, sem rosto)'),
+  mq('Quem mete melhor 😈 (vídeo de 10s, sem rosto)'),
+  mq('Melhor performance do casal 🔥 (vídeo de 10s)'),
+  mq('Melhor sentada 🍑 (vídeo de 10s, sem rosto)'),
+  mq('Melhor de quatro 😈'),
+  mq('Strip mais provocante 🖤 (vídeo de 10s)'),
 ];
 
 /** Relâmpago: a sala toda pode cumprir; o primeiro ganha os tokens. */
@@ -304,4 +328,30 @@ export const TEMAS_RELAMPAGO: Array<Item & { quem: 'todos' | 'casal' }> = [
   { ...mq('Primeiro vídeo de 5 segundos rebolando ganha 10 tokens 🍑'), quem: 'todos' },
   { ...mq('Primeira foto do casal na posição favorita (com roupa ou sem) ganha 10 tokens 💑'), quem: 'casal' },
   { ...mq('Primeira foto só de calcinha ou cueca ganha 10 tokens 🖤'), quem: 'todos' },
+  { ...q('Primeiro vídeo descendo até o chão ganha 10 tokens 🔥'), quem: 'todos' },
+  { ...q('Primeiro casal que mandar uma dança colada de 10 segundos ganha 10 tokens 💃'), quem: 'casal' },
+  { ...mq('Primeira foto espanhola ganha 10 tokens 🔥'), quem: 'todos' },
+  { ...mq('Primeiro casal que mandar um vídeo de oral de 10 segundos (sem rosto) ganha 10 tokens 💦'), quem: 'casal' },
+  { ...mq('Primeiro casal que mandar um vídeo de 10 segundos metendo (sem rosto) ganha 10 tokens 😈'), quem: 'casal' },
+  { ...mq('Primeiro vídeo tirando a lingerie ganha 10 tokens 🖤'), quem: 'todos' },
+];
+
+/** Sugestões prontas para quem quer propor um desafio a outro perfil (valendo tokens). */
+export const SUGESTOES_DE_DESAFIO: Item[] = [
+  q('Foto da sua lingerie (ou cueca) agora, sem rosto'),
+  q('Vídeo de 10 segundos dançando sensual'),
+  q('Vídeo descendo até o chão'),
+  q('Foto na pose mais sensual que você tiver'),
+  q('Foto do casal se beijando, sem rosto'),
+  q('Tira uma peça de roupa e manda a foto'),
+  mq('Tira mais uma peça e manda a foto 😈'),
+  mq('Vídeo de 10 segundos rebolando'),
+  mq('Foto espanhola, sem rosto'),
+  mq('Foto de topless, sem rosto'),
+  mq('Foto de quatro, de costas'),
+  mq('Vídeo de 10 segundos de oral no seu par, sem rosto'),
+  mq('Vídeo de 10 segundos do casal metendo, sem rosto'),
+  mq('Vídeo de 10 segundos de uma sentada, sem rosto'),
+  mq('Vídeo de 10 segundos se tocando, sem rosto'),
+  mq('Foto totalmente sem roupa, sem rosto'),
 ];

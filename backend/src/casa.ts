@@ -24,7 +24,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import {
   BOAS_VINDAS, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU,
-  PERGUNTAS_QUENTES, QUIZ, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
+  PERGUNTAS_QUENTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
   type Item, type Nivel,
 } from './casaBrincadeiras.js';
 
@@ -121,6 +121,10 @@ export type DependenciasDaCasa = {
   premiar: (userId: string, acao: 'casa_entrada' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
   /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
   transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
+  /** Tira tokens de alguém (desafio sugerido: fica guardado até cumprir). false = saldo insuficiente. */
+  debitar: (userId: string, valor: number, motivo: string, refId: string) => Promise<boolean>;
+  /** Devolve/entrega tokens (desafio cumprido, recusado ou vencido). */
+  creditar: (userId: string, valor: number, motivo: string, refId: string) => Promise<void>;
   push: (userId: string, payload: { title: string; body: string; url: string; tag: string }) => Promise<unknown>;
   /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
   pastaMusicas: string;
@@ -206,6 +210,18 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     ['quarto', novaSala('quarto', 'Quarto Escuro', '🖤', 'Para quem veio brincar de verdade. Sem filtro (com respeito).', 'muito_quente', false)],
   ]);
   const convites = new Map<string, { de: string; para: string; sala: SalaId; criadoEm: number }>();
+  // Desafios sugeridos por um perfil para outro, valendo tokens (guardados até cumprir).
+  type Proposta = {
+    id: string; de: string; deNome: string; para: string; paraNome: string; sala: SalaId;
+    texto: string; tokens: number; privado: boolean; status: 'pendente' | 'aceita'; criadoEm: number; prazo: number;
+  };
+  const propostas = new Map<string, Proposta>();
+  const devolverProposta = async (pr: Proposta, motivo: string) => {
+    propostas.delete(pr.id);
+    await deps.creditar(pr.de, pr.tokens, 'casa_desafio_estorno', `casa-proposta-${pr.id}`).catch(() => {});
+    emitirPara(pr.de, 'casa.proposta.fim', { id: pr.id, cumprida: false, motivo, nome: pr.paraNome, tokens: pr.tokens });
+    emitirPara(pr.para, 'casa.proposta.fim', { id: pr.id, cumprida: false, motivo, nome: pr.deNome, tokens: pr.tokens });
+  };
 
   // Abertura forçada pelo admin (teste ou noite extra), guardada no banco.
   let abertaAteCache: { valor: number; lidoEm: number } = { valor: 0, lidoEm: 0 };
@@ -242,6 +258,24 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (!chaveDaNoite) return;
     void db.run('INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, outro_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [randomUUID(), chaveDaNoite, salaId, tipo, userId, outroId, new Date().toISOString()]).catch(() => {});
+  };
+
+  // Ranking da Casa: pontos por desafio cumprido, duelo, relâmpago, drink recebido.
+  const pontuar = (userId: string, pontos: number, motivo: string) => {
+    if (!chaveDaNoite) return;
+    void db.run('INSERT INTO casa_pontos (id, noite, user_id, pontos, motivo, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [randomUUID(), chaveDaNoite, userId, pontos, motivo, new Date().toISOString()]).catch(() => {});
+  };
+
+  // Mídia que vai só para uma pessoa (desafio sugerido "só pra mim"): não entra na sala.
+  const publicarPrivado = (sala: Sala, destinoId: string, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string) => {
+    const completa: Msg = { ...msg, id: randomUUID(), criadoEm: new Date().toISOString() };
+    if (chaveDaNoite) {
+      void db.run('INSERT INTO casa_mensagens (id, noite, sala, tipo, autor_id, texto, media_id, destino_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [completa.id, chaveDaNoite, sala.id, completa.tipo, completa.autor?.id ?? null, completa.texto, mediaId, destinoId, completa.criadoEm]).catch((e) => console.error('[casa] histórico', e));
+    }
+    emitirPara(destinoId, 'casa.mensagem', { sala: sala.id, msg: completa });
+    return completa;
   };
 
   const publicarMsg = (sala: Sala, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string | null = null) => {
@@ -526,6 +560,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const coroar = async (sala: Sala, userId: string, nome: string, jogoId: string, como: string) => {
     reisDaNoite.set(userId, chaveDaNoite);
     registrarEvento(sala.id, 'rei', userId);
+    pontuar(userId, 30, 'duelo_venceu');
     lola(sala, `👑 ${nome} ${como} e é Rei/Rainha da Noite! +10 tokens 🔥`);
     void deps.premiar(userId, 'casa_duelo', `casa-duelo-${jogoId}`).catch(() => {});
     avisarPresentes(sala);
@@ -651,6 +686,15 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     }
 
     for (const [id, c] of convites) if (agora - c.criadoEm > 120_000) convites.delete(id);
+    for (const pr of [...propostas.values()]) {
+      if (!noite) { await devolverProposta(pr, 'A Casa fechou: os tokens voltaram.'); continue; }
+      if (pr.status === 'pendente' && agora - pr.criadoEm > 2 * 60_000) await devolverProposta(pr, 'Não respondeu a tempo: os tokens voltaram.');
+      else if (pr.status === 'aceita' && agora > pr.prazo) {
+        const sala = salas.get(pr.sala);
+        if (sala) lola(sala, `⏰ ${pr.paraNome} aceitou mas não cumpriu o desafio de ${pr.deNome} a tempo… os tokens voltaram 😏`);
+        await devolverProposta(pr, 'O prazo acabou: os tokens voltaram.');
+      }
+    }
 
     // Histórico da Casa fica 90 dias (limpeza uma vez por dia, fora da noite).
     if (!noite && relogioBr.data !== ultimaLimpeza) {
@@ -967,8 +1011,26 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const mediaId = String((req.body as any)?.mediaId || '');
     const m = (await db.queryOne('SELECT id, user_id, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
     if (!m || String(m.user_id) !== userId) { res.status(404).json({ error: 'midia' }); return; }
-    const tipo = String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    const tipo: 'foto' | 'video' = String(m.mime_type || '').startsWith('video/') ? 'video' : 'foto';
     const revelacao = !!(req.body as any)?.revelacao;
+    const propostaId = String((req.body as any)?.propostaId || '');
+    if (propostaId) {
+      const pr = propostas.get(propostaId);
+      if (!pr || pr.para !== userId || pr.status !== 'aceita') { res.status(410).json({ error: 'expirada', message: 'Esse desafio já acabou.' }); return; }
+      propostas.delete(pr.id);
+      p.ultimaMidia = Date.now();
+      const autor = { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat };
+      const rotulo = `😈 Desafio de ${pr.deNome} cumprido: ${pr.texto}`;
+      if (pr.privado) publicarPrivado(sala, pr.de, { tipo: 'midia', autor, texto: `🤫 ${rotulo} (só pra você)`, midia: { tipo } }, String(m.id));
+      else publicarMsg(sala, { tipo: 'midia', autor, texto: rotulo, midia: { tipo } }, String(m.id));
+      await deps.creditar(userId, pr.tokens, 'casa_desafio_recebido', `casa-proposta-${pr.id}`);
+      pontuar(userId, 10, 'desafio_sugerido');
+      lola(sala, `✅ ${p.nome} cumpriu o desafio de ${pr.deNome} e levou ${pr.tokens} tokens 🔥${pr.privado ? ' (foi só pra quem pediu 🤫)' : ''}`);
+      emitirPara(pr.de, 'casa.proposta.fim', { id: pr.id, cumprida: true, nome: p.nome, tokens: pr.tokens });
+      liberarRevelacao(sala, p);
+      res.json({ ok: true });
+      return;
+    }
     if (revelacao && p.revelarAte < Date.now()) {
       res.status(403).json({ error: 'sem_revelacao', message: 'A revelação fica liberada por 5 minutos depois de cumprir um desafio.' });
       return;
@@ -995,10 +1057,12 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       if (j.tipo === 'foto' && j.alvoId === userId) {
         lola(sala, `🔥 ${p.nome} cumpriu o desafio! +5 tokens. Abram (1 vez) e comentem 😈`);
         void deps.premiar(userId, 'casa_desafio', `casa-foto-${j.id}`).catch(() => {});
+        pontuar(userId, 10, 'desafio_foto');
         liberarRevelacao(sala, p);
         await encerrarJogo(sala, 'fim');
       } else if (j.tipo === 'duelo' && j.fase === 'fotos' && (j.aId === userId || j.bId === userId) && !j.enviados.has(userId)) {
         j.enviados.add(userId);
+        pontuar(userId, 5, 'duelo_participou');
         liberarRevelacao(sala, p);
         if (j.enviados.size === 2) {
           j.fase = 'votacao';
@@ -1008,11 +1072,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         avisarJogo(sala);
       } else if (j.tipo === 'relampago' && !j.cumpriram.has(userId) && (j.quem === 'todos' || p.cat === 'casal')) {
         j.cumpriram.add(userId);
+        pontuar(userId, 5, 'relampago_cumpriu');
         liberarRevelacao(sala, p);
         if (!j.vencedor) {
           j.vencedor = { id: userId, nome: p.nome };
           lola(sala, `⚡ ${p.nome} foi o primeiro! +10 tokens 🔥 Ainda dá tempo pros outros mostrarem que também têm coragem 😏`);
           void deps.premiar(userId, 'casa_relampago', `casa-relampago-${j.id}`).catch(() => {});
+          pontuar(userId, 15, 'relampago_primeiro');
         }
         avisarJogo(sala);
       }
@@ -1027,11 +1093,11 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required', message: 'Assine para ver as fotos e vídeos da Casa.' }); return; }
     const row = (await db.queryOne(
-      `SELECT cm.id, cm.autor_id, med.filename, med.mime_type FROM casa_mensagens cm
+      `SELECT cm.id, cm.autor_id, cm.destino_id, med.filename, med.mime_type FROM casa_mensagens cm
          JOIN media med ON med.id = cm.media_id WHERE cm.id = ? AND cm.sala = ? LIMIT 1`,
       [String(req.params.msgId), sala.id],
     )) as any;
-    if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    if (!row || (row.destino_id && String(row.destino_id) !== userId)) { res.status(404).json({ error: 'not_found' }); return; }
     if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
     const ja = await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId]);
     if (ja) { res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' }); return; }
@@ -1084,6 +1150,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     const noite = String(req.params.noite);
     const mensagens = (await db.queryAll(
       `SELECT cm.id, cm.sala, cm.tipo, cm.texto, cm.created_at, cm.autor_id, u.name AS autor_nome, u.gender AS autor_genero,
+              (SELECT name FROM users d WHERE d.id = cm.destino_id) AS destino_nome,
               med.filename, med.mime_type,
               (SELECT COUNT(*) FROM casa_midia_vistas v WHERE v.mensagem_id = cm.id) AS vistas
          FROM casa_mensagens cm
@@ -1100,7 +1167,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     )) as any[];
     res.json({
       mensagens: mensagens.map((m) => ({
-        id: String(m.id), sala: String(m.sala), tipo: String(m.tipo), texto: String(m.texto || ''), criadoEm: String(m.created_at),
+        id: String(m.id), sala: String(m.sala), tipo: String(m.tipo), criadoEm: String(m.created_at),
+        texto: `${String(m.texto || '')}${m.destino_nome ? ` [privado para ${String(m.destino_nome)}]` : ''}`,
         autor: m.autor_id ? { id: String(m.autor_id), nome: String(m.autor_nome || 'conta excluída'), genero: m.autor_genero ? String(m.autor_genero) : '' } : null,
         midia: m.filename ? { url: `/uploads/${String(m.filename)}`, mime: String(m.mime_type || ''), vistas: Number(m.vistas || 0) } : null,
       })),
@@ -1210,6 +1278,98 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     res.json({ ok: true });
   });
 
+  // Desafio sugerido: um perfil propõe a outro, valendo tokens.
+  app.get('/api/casa/sugestoes-de-desafio', deps.requireAuth, async (_req, res) => {
+    res.json({ sugestoes: SUGESTOES_DE_DESAFIO.map((x) => ({ texto: x.t, nivel: x.n })) });
+  });
+
+  app.post('/api/casa/:sala/propor', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    const corpo = (req.body || {}) as { para?: string; texto?: string; tokens?: number; privado?: boolean };
+    const alvo = sala?.presentes.get(String(corpo.para || ''));
+    if (!sala || !p || !alvo || alvo.id === userId) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
+    if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
+    if (alvo.pulseira === 'vermelha') { res.status(409).json({ error: 'so_olhando', message: `${alvo.nome} está de pulseira vermelha (só olhando hoje).` }); return; }
+    const texto = String(corpo.texto || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (texto.length < 3) { res.status(400).json({ error: 'texto', message: 'Escreva o desafio.' }); return; }
+    if (/https?:\/\/|www\.|wa\.me|t\.me/i.test(texto)) { res.status(400).json({ error: 'link', message: 'Sem links no desafio.' }); return; }
+    const tokens = Math.round(Number(corpo.tokens || 0));
+    if (!Number.isFinite(tokens) || tokens < 3 || tokens > 100) { res.status(400).json({ error: 'tokens', message: 'Ofereça de 3 a 100 tokens.' }); return; }
+    const minhas = [...propostas.values()].filter((x) => x.de === userId);
+    if (minhas.length >= 3) { res.status(429).json({ error: 'muitas', message: 'Você já tem 3 desafios esperando resposta.' }); return; }
+    if (minhas.some((x) => x.para === alvo.id)) { res.status(409).json({ error: 'repetida', message: 'Você já tem um desafio esperando essa pessoa.' }); return; }
+    if (await bloqueados(userId, alvo.id)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    const id = randomUUID();
+    const pago = await deps.debitar(userId, tokens, 'casa_desafio_reservado', `casa-proposta-${id}`);
+    if (!pago) { res.status(402).json({ error: 'insufficient_tokens', message: `Você não tem ${tokens} tokens.` }); return; }
+    const pr: Proposta = {
+      id, de: userId, deNome: p.nome, para: alvo.id, paraNome: alvo.nome, sala: sala.id,
+      texto, tokens, privado: !!corpo.privado, status: 'pendente', criadoEm: Date.now(), prazo: 0,
+    };
+    propostas.set(id, pr);
+    registrarEvento(sala.id, 'proposta', userId, alvo.id);
+    emitirPara(alvo.id, 'casa.proposta', {
+      id, texto, tokens, privado: pr.privado, de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat },
+    });
+    res.json({ ok: true, id });
+  });
+
+  app.post('/api/casa/proposta/:id/responder', deps.requireAuth, async (req, res) => {
+    const pr = propostas.get(String(req.params.id));
+    const userId = userDe(req);
+    if (!pr || pr.para !== userId || pr.status !== 'pendente') { res.status(410).json({ error: 'expirada', message: 'Esse desafio expirou.' }); return; }
+    const sala = salas.get(pr.sala);
+    if (!(req.body as any)?.aceitar) {
+      await devolverProposta(pr, `${pr.paraNome} recusou desta vez: os tokens voltaram.`);
+      res.json({ ok: true });
+      return;
+    }
+    pr.status = 'aceita';
+    pr.prazo = Date.now() + 5 * 60_000;
+    emitirPara(pr.de, 'casa.proposta.aceita', { id: pr.id, nome: pr.paraNome });
+    if (sala) {
+      lola(sala, pr.privado
+        ? `🤫🔥 ${pr.paraNome} aceitou um desafio secreto de ${pr.deNome} valendo ${pr.tokens} tokens… só ${pr.deNome} vai ver 😈`
+        : `🔥 ${pr.paraNome} aceitou o desafio de ${pr.deNome}: "${pr.texto}" valendo ${pr.tokens} tokens! Câmera ligada 😈`);
+    }
+    res.json({ ok: true, prazo: new Date(pr.prazo).toISOString(), texto: pr.texto, tokens: pr.tokens, privado: pr.privado, deNome: pr.deNome });
+  });
+
+  app.get('/api/casa/ranking', deps.requireAuth, async (req, res) => {
+    const periodo = String(req.query.periodo || 'noite') === 'mes' ? 'mes' : 'noite';
+    const soCasais = String(req.query.cat || 'casal') === 'casal';
+    let filtro = '';
+    const params: unknown[] = [];
+    if (periodo === 'noite') {
+      let noite = chaveDaNoite;
+      if (!noite) noite = String(((await db.queryOne('SELECT MAX(noite) AS n FROM casa_pontos', [])) as any)?.n || '');
+      filtro = 'cp.noite = ?';
+      params.push(noite);
+    } else {
+      const d = new Date();
+      filtro = 'cp.created_at >= ?';
+      params.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString());
+    }
+    const rows = (await db.queryAll(
+      `SELECT cp.user_id, SUM(cp.pontos) AS pontos, u.name, u.gender,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS foto
+         FROM casa_pontos cp JOIN users u ON u.id = cp.user_id
+        WHERE ${filtro} ${soCasais ? "AND u.gender LIKE 'Casal%'" : ''}
+        GROUP BY cp.user_id, u.name, u.gender, u.id
+        ORDER BY pontos DESC LIMIT 20`,
+      params,
+    )) as any[];
+    res.json({
+      periodo,
+      ranking: rows.map((r, i) => ({
+        posicao: i + 1, id: String(r.user_id), nome: String(r.name || '?'), cat: categoria(r.gender),
+        avatar: r.foto ? `/uploads/${r.foto}` : null, pontos: Number(r.pontos || 0),
+      })),
+    });
+  });
+
   // Pulseira da noite.
   app.post('/api/casa/:sala/pulseira', deps.requireAuth, async (req, res) => {
     const sala = salaDe(req);
@@ -1264,6 +1424,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
     publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏` });
     registrarEvento(sala.id, 'drink', userId, paraId);
+    pontuar(paraId, 2, 'drink_recebido');
     emitirPara(paraId, 'casa.drink', { de: { id: p.id, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens });
     res.json({ ok: true });
   });

@@ -3631,7 +3631,7 @@ describe('nosigilo backend', () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     const casal = await registerInvitedUser(ctx, sponsorToken, { name: 'Casal Casa', email: 'casal-casa@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
     await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(casal.user.id)]);
-    const homens = [];
+    const homens: Awaited<ReturnType<typeof registerInvitedUser>>[] = [];
     for (let i = 0; i < 3; i++) {
       const h = await registerInvitedUser(ctx, sponsorToken, { name: `Homem Casa ${i}`, email: `homem-casa-${i}@example.com`, password: 'senha123', gender: 'Homem' });
       await grantPremium(ctx, String(h.user.id));
@@ -3703,6 +3703,23 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(200);
     const saldoCasal = (await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(casal.user.id)])) as any;
     expect(Number(saldoCasal.token_points)).toBeGreaterThanOrEqual(15);
+
+    // Desafio sugerido valendo tokens (privado): guarda, aceita, cumpre e paga.
+    const prop = (await request(ctx.app).post('/api/casa/salao/propor').set(auth(casal.token)).send({ para: String(homens[0].user.id), texto: 'Foto da sua cueca agora', tokens: 10, privado: true }).expect(200)).body;
+    const saldoAntes = Number(((await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(homens[0].user.id)])) as any).token_points);
+    await request(ctx.app).post(`/api/casa/proposta/${prop.id}/responder`).set(auth(casal.token)).send({ aceitar: true }).expect(410); // só o desafiado responde
+    await request(ctx.app).post(`/api/casa/proposta/${prop.id}/responder`).set(auth(homens[0].token)).send({ aceitar: true }).expect(200);
+    const midHomem = `m-casa-h-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'cueca.webp', 'image/webp', 0, 0, 'chat', ?)", [midHomem, String(homens[0].user.id), new Date().toISOString()]);
+    await request(ctx.app).post('/api/casa/salao/midia').set(auth(homens[0].token)).send({ mediaId: midHomem, propostaId: prop.id }).expect(200);
+    const saldoDepois = Number(((await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(homens[0].user.id)])) as any).token_points);
+    expect(saldoDepois - saldoAntes).toBe(10);
+    await new Promise((r) => setTimeout(r, 50));
+    const privada = (await ctx.db.queryOne('SELECT id FROM casa_mensagens WHERE media_id = ?', [midHomem])) as any;
+    await request(ctx.app).post(`/api/casa/salao/midia/${privada.id}/ver`).set(auth(homens[2].token)).expect(404); // não é para ele
+    await request(ctx.app).post(`/api/casa/salao/midia/${privada.id}/ver`).set(auth(casal.token)).expect(200);
+    const ranking = (await request(ctx.app).get('/api/casa/ranking?periodo=noite&cat=todos').set(auth(casal.token)).expect(200)).body.ranking;
+    expect(ranking.some((r: any) => r.id === String(homens[0].user.id))).toBe(true);
 
     // Página pública: sem login, só números.
     const pub = (await request(ctx.app).get('/api/casa/publico').expect(200)).body;
