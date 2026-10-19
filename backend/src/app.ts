@@ -6761,6 +6761,31 @@ function faixaDeIdade(createdAt: string) {
   return horas <= 48 ? 0 : horas <= 24 * 7 ? 1 : horas <= 24 * 30 ? 2 : 3;
 }
 
+// Curtidas e comentários dos ~400 candidatos do feed só servem para ordenar.
+// Recontar tudo a cada abertura do feed era a consulta mais pesada do banco;
+// guarda por 60 s (os números exibidos nos posts continuam exatos).
+const contagemDoRanking = { likes: new Map<string, { c: number; ate: number }>(), comments: new Map<string, { c: number; ate: number }>() };
+async function contarParaRanking(tabela: 'likes' | 'comments', ids: string[]) {
+  const cache = contagemDoRanking[tabela];
+  const agora = Date.now();
+  const faltam = ids.filter((id) => (cache.get(id)?.ate ?? 0) <= agora);
+  if (faltam.length > 0) {
+    const rows = (await queryAll(
+      db,
+      `SELECT target_id, COUNT(*) as c FROM ${tabela} WHERE target_type = 'post' AND target_id IN (${faltam.map(() => '?').join(', ')}) GROUP BY target_id`,
+      faltam
+    )) as any[];
+    const achados = new Map(rows.map((r) => [String(r.target_id), Number(r.c || 0)]));
+    const ate = agora + 60_000;
+    for (const id of faltam) cache.set(id, { c: achados.get(id) ?? 0, ate });
+    if (cache.size > 20_000) {
+      for (const [k, v] of cache) if (v.ate <= agora) cache.delete(k);
+      if (cache.size > 20_000) cache.clear();
+    }
+  }
+  return ids.map((id) => ({ target_id: id, c: cache.get(id)?.c ?? 0 }));
+}
+
 app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const subscriptionsEnabled = await getSubscriptionsEnabled(db);
     const viewerRow = await queryOne(
@@ -7078,16 +7103,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             todayLikeRows,
             todayCommentRows,
           ] = await Promise.all([
-            queryAll(
-              db,
-              `SELECT target_id, COUNT(*) as c FROM likes WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
-              candidatePostIds
-            ),
-            queryAll(
-              db,
-              `SELECT target_id, COUNT(*) as c FROM comments WHERE target_type = 'post' AND target_id IN (${postPlaceholders}) GROUP BY target_id`,
-              candidatePostIds
-            ),
+            contarParaRanking('likes', candidatePostIds),
+            contarParaRanking('comments', candidatePostIds),
             queryAll(
               db,
               `SELECT target_id FROM likes WHERE target_type = 'user' AND user_id = ? AND target_id IN (${authorPlaceholders})`,
@@ -8506,6 +8523,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         [randomUUID(), storyId, viewerId, new Date().toISOString()]
       );
       await persist();
+    }
+    res.json({ ok: true });
+    if (existing) return;
+    // Depois de responder: o marco de visualizações não segura quem está vendo.
+    try {
       // Quem vê resultado posta de novo: avisa o autor nos marcos de visualização.
       const total = Number(((await queryOne(db, 'SELECT COUNT(*) AS c FROM story_views WHERE story_id = ?', [storyId])) as any)?.c || 0);
       if ([25, 50, 100, 200, 500].includes(total)) {
@@ -8523,8 +8545,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           payload: { title: titulo, body: texto, url: `/stories?storyId=${encodeURIComponent(storyId)}`, tag: `story.marco:${storyId}`, data: { storyId } },
         }).catch(() => {});
       }
+    } catch (err) {
+      console.warn('[stories] marco de visualizações falhou', err);
     }
-    res.json({ ok: true });
   });
 
   // GET /api/stories/:id/viewers — quem viu (apenas premium, apenas dono do story)
@@ -14640,7 +14663,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const c = await pedidoDaConversa(req.params.conversationId);
     if (!c || String(c.pedido_para || '') !== req.auth!.userId || c.pedido_aceito_em) { res.status(404).json({ error: 'not_found' }); return; }
     await run(db, 'UPDATE conversations SET pedido_recusado_em = ? WHERE id = ?', [nowIso(), String(c.id)]);
-    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [String(c.id), req.auth!.userId]);
+    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND is_read = 0', [String(c.id), req.auth!.userId]);
     await persist();
     res.json({ ok: true });
   });
@@ -14701,7 +14724,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
 
-    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [conversationId, req.auth!.userId]);
+    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND is_read = 0', [conversationId, req.auth!.userId]);
     await persist();
 
     const io = req.app.get('io') as SocketIOServer | undefined;
@@ -14751,7 +14774,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const canViewReceived = hasPremiumAccess(viewer, subscriptionsEnabled, env.BILLING_TEST_EMAILS) || ehCasal(viewer?.gender);
 
     // Mark messages as read
-    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ?', [conversationId, req.auth!.userId]);
+    await run(db, 'UPDATE messages SET is_read = 1 WHERE conversation_id = ? AND sender_id != ? AND is_read = 0', [conversationId, req.auth!.userId]);
     await persist();
 
     const io = req.app.get('io') as SocketIOServer | undefined;
