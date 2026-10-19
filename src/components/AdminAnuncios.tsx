@@ -85,7 +85,7 @@ export default function AdminAnuncios() {
       {campanhas === null && <p className="text-sm text-muted-foreground">Calculando…</p>}
 
       <div className="overflow-x-auto rounded-2xl border bg-card">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="text-left text-xs text-muted-foreground">
             <tr className="border-b">
               <th className="p-3">Campanha</th>
@@ -94,6 +94,7 @@ export default function AdminAnuncios() {
               <th className="p-3">Cadastros</th>
               <th className="p-3">Pagantes</th>
               <th className="p-3">Faturado</th>
+              <th className="p-3">Lucro / prejuízo</th>
               <th className="p-3">Retorno</th>
               <th className="p-3">Custo / cadastro</th>
               <th className="p-3">Custo / pagante</th>
@@ -110,6 +111,7 @@ export default function AdminAnuncios() {
                 <td className="p-3">{c.cadastros}</td>
                 <td className="p-3">{c.pagantes}</td>
                 <td className="p-3 font-bold text-emerald-600">{brl(c.receitaCents)}</td>
+                <td className={cn('p-3 font-bold whitespace-nowrap', c.receitaCents - c.valorCents < 0 ? 'text-rose-600' : 'text-emerald-600')}>{c.receitaCents - c.valorCents < 0 ? '−' : '+'}{brl(Math.abs(c.receitaCents - c.valorCents))}</td>
                 <td className={cn('p-3 font-bold', c.retorno != null && c.retorno < 1 ? 'text-rose-600' : 'text-emerald-600')}>{c.retorno == null ? '—' : `${c.retorno.toFixed(2).replace('.', ',')}×`}</td>
                 <td className="p-3">{brl(c.custoPorCadastroCents)}</td>
                 <td className="p-3">{brl(c.custoPorPaganteCents)}</td>
@@ -125,7 +127,7 @@ export default function AdminAnuncios() {
         </table>
       </div>
       <p className="text-xs text-muted-foreground">
-        Retorno = faturado ÷ investido (acima de 1,00× pagou o anúncio). O faturamento de uma campanha continua subindo com renovações e com casais que assinam no fim dos 15 dias grátis.
+        Lucro / prejuízo = faturado − investido (antes de taxas e impostos). Retorno = faturado ÷ investido (acima de 1,00× pagou o anúncio). O faturamento de uma campanha continua subindo com renovações e com casais que assinam no fim dos 15 dias grátis.
       </p>
     </div>
   );
