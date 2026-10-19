@@ -2220,6 +2220,11 @@ export default function Admin() {
                 { label: 'Não renovaram (12m)', value: String(a.summary.churnedLast12mo), tone: 'text-destructive' },
                 { label: 'Churn / Retenção', value: `${a.summary.churnRatePct}% / ${a.summary.retentionRatePct}%`, tone: 'text-foreground' },
                 { label: 'Ticket médio (ARPU)', value: brl(a.summary.arpuCents), tone: 'text-foreground' },
+                ...(a.triais ? [{
+                  label: `Triais convertidos (${a.triais.taxaPct.toString().replace('.', ',')}% dos ${a.triais.encerrados} encerrados · ${a.triais.emAndamento} em teste agora)`,
+                  value: `${a.triais.convertidos} de ${a.triais.total}`,
+                  tone: 'text-success',
+                }] : []),
               ];
               return (
                 <div className="space-y-6">
@@ -2320,6 +2325,7 @@ export default function Admin() {
                                 <th className="py-2 pr-3">{porDia ? 'Dia' : 'Mês'}</th>
                                 <th className="px-3 py-2 text-right">Faturamento</th>
                                 <th className="px-3 py-2 text-right">Novos</th>
+                                <th className="px-3 py-2 text-right" title="Quem estava no teste grátis e fez o 1º pagamento nesse período">Triais convertidos</th>
                                 <th className="px-3 py-2 text-right">Renovações</th>
                                 <th className="px-3 py-2 text-right">Não renovaram</th>
                               </tr>
@@ -2330,6 +2336,7 @@ export default function Admin() {
                                   <td className="py-1.5 pr-3 whitespace-nowrap">{m.rotulo}</td>
                                   <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
                                   <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
+                                  <td className="px-3 py-1.5 text-right text-success">{a.triais ? ((porDia ? a.triais.porDia : a.triais.porMes)[m.chave] ?? 0) : '—'}</td>
                                   <td className="px-3 py-1.5 text-right">{m.renewals}</td>
                                   <td className="px-3 py-1.5 text-right text-destructive">{m.churned}</td>
                                 </tr>

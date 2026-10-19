@@ -1765,6 +1765,11 @@ export type SubscriptionAnalytics = {
   /** Últimos 60 dias, dia no fuso de Brasília. Ausente em versões antigas do Hub. */
   daily?: Array<{ day: string; revenueCents: number; newCustomers: number; renewals: number; churned: number }>;
   projection: Array<{ month: string; projectedRevenueCents: number }>;
+  /** Triais (teste grátis) que viraram assinatura; null se o extrato do Hub não respondeu. */
+  triais?: {
+    total: number; emAndamento: number; encerrados: number; convertidos: number; taxaPct: number;
+    porDia: Record<string, number>; porMes: Record<string, number>;
+  } | null;
 };
 
 export type MetodoPagamento = 'pix' | 'credit_card' | 'boleto';

@@ -19125,6 +19125,52 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Triais (teste grátis de casais, mulheres e outros perfis; homem não tem) que
+  // viraram assinatura: o 1º pagamento no extrato do Hub conta no dia/mês em que
+  // aconteceu (fuso de Brasília).
+  async function conversaoDeTriais() {
+    if (!extratoHubCache || Date.now() - extratoHubCache.em > 5 * 60_000) {
+      const espera = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 15000));
+      const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), espera]);
+      extratoHubCache = { em: Date.now(), itens: ledger.itens };
+    }
+    const usuarios = (await queryAll(
+      db,
+      `SELECT id, trial_ends_at, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub
+         FROM users
+        WHERE trial_ends_at IS NOT NULL AND trial_ends_at > created_at AND trial_ends_at < '2090-01-01'
+          AND COALESCE(gender, '') NOT LIKE 'Homem%'`
+    )) as any[];
+    const porHub = new Map(usuarios.filter((u) => u.hub).map((u) => [String(u.hub), u]));
+    const porEmail = new Map(usuarios.filter((u) => u.email).map((u) => [String(u.email), u]));
+    const primeiroPagamento = new Map<string, string>();
+    for (const p of extratoHubCache.itens) {
+      const u = (p.customerId && porHub.get(p.customerId)) || (p.email && porEmail.get(String(p.email).toLowerCase().trim()));
+      if (!u || !p.pagoEm) continue;
+      const atual = primeiroPagamento.get(String(u.id));
+      if (!atual || p.pagoEm < atual) primeiroPagamento.set(String(u.id), p.pagoEm);
+    }
+    const porDia: Record<string, number> = {};
+    const porMes: Record<string, number> = {};
+    for (const pagoEm of primeiroPagamento.values()) {
+      const dia = new Date(new Date(pagoEm).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+      porDia[dia] = (porDia[dia] ?? 0) + 1;
+      porMes[dia.slice(0, 7)] = (porMes[dia.slice(0, 7)] ?? 0) + 1;
+    }
+    const agora = new Date().toISOString();
+    const encerrados = usuarios.filter((u) => String(u.trial_ends_at) <= agora);
+    const convertidosEncerrados = encerrados.filter((u) => primeiroPagamento.has(String(u.id))).length;
+    return {
+      total: usuarios.length,
+      emAndamento: usuarios.length - encerrados.length,
+      encerrados: encerrados.length,
+      convertidos: primeiroPagamento.size,
+      taxaPct: encerrados.length > 0 ? Math.round((convertidosEncerrados / encerrados.length) * 1000) / 10 : 0,
+      porDia,
+      porMes,
+    };
+  }
+
   // Analytics completo de assinaturas (faturamento 12m, novos, churn, retenção,
   // projeção). Os dados reais vivem no Hub (billing); aqui só repassamos.
   app.get('/api/admin/finance/subscription-analytics', requireAuth(env, db), requireAdmin(), async (_req, res) => {
@@ -19137,8 +19183,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('HubBilling timeout')), 15000)
       );
-      const analytics = await Promise.race([getHubSubscriptionAnalytics(hubConfig), timeout]);
-      res.json(analytics);
+      const [analytics, triais] = await Promise.all([
+        Promise.race([getHubSubscriptionAnalytics(hubConfig), timeout]),
+        conversaoDeTriais().catch((err) => { console.warn('[subscription-analytics] triais', (err as Error).message); return null; }),
+      ]);
+      res.json({ ...(analytics as object), triais });
     } catch (error) {
       console.error('[admin/finance/subscription-analytics]', (error as Error).message);
       res.status(502).json({ error: 'analytics_unavailable', message: (error as Error).message });
