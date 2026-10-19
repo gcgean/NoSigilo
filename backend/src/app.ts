@@ -1532,6 +1532,9 @@ function buildWebPushPayload(payload: PushDeliveryPayload) {
   });
 }
 
+// Falhas seguidas por inscrição de push (403 / 500 permanente). Zera quando um envio dá certo.
+const falhasDePush = new Map<string, number>();
+
 async function sendPushToUser(
   options: { db: DbHandle; env: Env },
   data: { userId: string; payload: PushDeliveryPayload }
@@ -1557,6 +1560,7 @@ async function sendPushToUser(
     try {
       await webpush.sendNotification(subscription as any, serializedPayload);
       sentCount += 1;
+      falhasDePush.delete(String(row.id));
       await run(options.db, 'UPDATE push_subscriptions SET last_used_at = ?, updated_at = ? WHERE id = ?', [
         nowIso(),
         nowIso(),
@@ -1587,6 +1591,24 @@ async function sendPushToUser(
         console.warn(
           `[push] inscricao removida por VapidPkHashMismatch (chave VAPID mudou): ${String(row.id)}`
         );
+        continue;
+      }
+
+      // 403 (serviço recusa a inscrição) e 500 com "do not retry" (o próprio
+      // Google diz que é permanente): apaga depois de 3 falhas seguidas, para
+      // um erro passageiro não derrubar ninguém. A pessoa reinscreve sozinha na
+      // próxima vez que abrir o site.
+      const permanente = statusCode === 403 || (statusCode === 500 && /do not retry/i.test(corpo));
+      if (permanente) {
+        const n = (falhasDePush.get(String(row.id)) ?? 0) + 1;
+        falhasDePush.set(String(row.id), n);
+        if (n >= 3) {
+          falhasDePush.delete(String(row.id));
+          await run(options.db, 'DELETE FROM push_subscriptions WHERE id = ?', [String(row.id)]);
+          console.warn(`[push] inscricao removida apos 3 falhas (${statusCode}): ${String(row.id)}`);
+        } else {
+          console.warn(`[push] falha ${n}/3 (${statusCode}) na inscricao ${String(row.id)}`);
+        }
         continue;
       }
 
