@@ -1724,6 +1724,16 @@ Responda com UMA palavra:
         [prox.chave],
       )) as any[])
       : [];
+    // A lista de nomes é limitada a 300; o total e a divisão por perfil contam todas as reservas.
+    const reservasPorPerfil: Record<Categoria, number> = { casal: 0, mulher: 0, homem: 0, outros: 0 };
+    if (prox.chave) {
+      const porGenero = (await db.queryAll(
+        'SELECT u.gender, COUNT(*) AS c FROM casa_reservas r JOIN users u ON u.id = r.user_id WHERE r.noite = ? GROUP BY u.gender',
+        [prox.chave],
+      )) as any[];
+      for (const g of porGenero) reservasPorPerfil[categoria(g.gender)] += Number(g.c || 0);
+    }
+    const totalReservas = Object.values(reservasPorPerfil).reduce((a, b) => a + b, 0);
     const nomeDe = async (id: string) => String(((await db.queryOne('SELECT name FROM users WHERE id = ?', [id])) as any)?.name || '?');
     const salasVivo = await Promise.all([...salas.values()].map(async (sl) => ({
       id: sl.id, nome: sl.nome, emoji: sl.emoji, anonima: sl.anonima,
@@ -1744,6 +1754,8 @@ Responda com UMA palavra:
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
       proximaAbertura: prox.inicio,
       proximaNoite: prox.chave,
+      totalReservas,
+      reservasPorPerfil,
       reservas: reservados.map((r) => ({ id: String(r.user_id), nome: String(r.name || '?'), cat: categoria(r.gender), em: String(r.created_at) })),
       salas: salasVivo,
       cabines: [...cabines.values()].map((c) => ({

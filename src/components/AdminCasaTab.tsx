@@ -13,6 +13,8 @@ type AoVivo = {
   aberta: boolean; forcada: boolean; tema: { nome: string } | null; abertaAte: string | null;
   proximaAbertura: string | null; proximaNoite: string;
   reservas: { id: string; nome: string; cat: string; em: string }[];
+  totalReservas?: number;
+  reservasPorPerfil?: Record<'casal' | 'mulher' | 'homem' | 'outros', number>;
   salas: {
     id: string; nome: string; emoji: string; anonima: boolean; espiando: number; mensagens: number;
     presentes: { id: string; nome: string; apelido: string | null; cat: string; pulseira: string | null; querBrincar: boolean; podeFalar: boolean; rei: boolean; avisos: number }[];
@@ -81,7 +83,12 @@ export default function AdminCasaTab() {
             </div>
             <div className="rounded-xl bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">Reservas ({vivo.proximaNoite || '—'})</p>
-              <p className="font-bold">{vivo.reservas.length}</p>
+              <p className="font-bold">{vivo.totalReservas ?? vivo.reservas.length}</p>
+              {vivo.reservasPorPerfil && (
+                <p className="text-xs text-muted-foreground">
+                  💑 {vivo.reservasPorPerfil.casal} · 👩 {vivo.reservasPorPerfil.mulher} · 👨 {vivo.reservasPorPerfil.homem}{vivo.reservasPorPerfil.outros ? ` · 🌈 ${vivo.reservasPorPerfil.outros}` : ''}
+                </p>
+              )}
             </div>
             <div className="rounded-xl bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">Moderação da noite</p>
