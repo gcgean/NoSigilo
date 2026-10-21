@@ -193,6 +193,17 @@ function categoria(genero: unknown): Categoria {
   return 'outros';
 }
 
+// Embaralha sempre do mesmo jeito para a mesma semente (Fisher-Yates com mulberry32).
+function embaralharComSemente<T>(lista: T[], semente: string): T[] {
+  let h = 1779033703 ^ semente.length;
+  for (let i = 0; i < semente.length; i++) { h = Math.imul(h ^ semente.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  let a = h >>> 0;
+  const aleatorio = () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const r = [...lista];
+  for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(aleatorio() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; }
+  return r;
+}
+
 function sortear<T>(lista: T[]): T {
   return lista[Math.floor(Math.random() * lista.length)];
 }
@@ -2029,7 +2040,7 @@ Responda com UMA palavra:
   app.get('/api/casa/radio', deps.requireAuth, async (req, res) => {
     if (!(await noiteAtual()) && !(await souAdmin(req))) { res.json({ tocando: null }); return; }
     // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
-    // A sequência é fixa (mesma ordem para todo mundo), então a sincronia continua.
+    // A sequência é a mesma para todo mundo na noite, então a sincronia continua.
     const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
     // Abertura (21h) e fechamento (terminando à 1h) tocam só no horário certo.
     const noiteAgora = await noiteAtual();
@@ -2046,8 +2057,11 @@ Responda com UMA palavra:
       if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
       if (fechamento && agoraMs >= fimNoite - fechamento.duracao * 1000 && agoraMs < fimNoite) { vinhetaNaHora(fechamento, fimNoite - fechamento.duracao * 1000); return; }
     }
-    const musicas = todas.filter((f) => !f.tipo || f.tipo === 'musica');
-    const vinhetas = todas.filter((f) => f.tipo === 'vinheta');
+    // Cada noite tem a sua ordem (embaralhada pela data da noite): sexta e sábado
+    // não repetem a mesma sequência, e todo mundo da mesma noite ouve igual.
+    const semente = noiteAgora?.chave ?? new Date(agoraMs - 3 * 3_600_000).toISOString().slice(0, 10);
+    const musicas = embaralharComSemente(todas.filter((f) => !f.tipo || f.tipo === 'musica'), semente);
+    const vinhetas = embaralharComSemente(todas.filter((f) => f.tipo === 'vinheta'), `${semente}:lola`);
     let lista: Faixa[] = musicas;
     if (vinhetas.length > 0) {
       lista = [];
@@ -2061,7 +2075,10 @@ Responda com UMA palavra:
     }
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
-    let pos = ((Date.now() - INICIO_DA_RADIO) / 1000) % total;
+    // Na noite normal a rádio começa do 1º item logo depois da abertura das 21h.
+    const inicioNormal = noiteAgora && !noiteAgora.forcada ? Date.parse(`${noiteAgora.chave}T21:00:00-03:00`) + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
+    const zero = inicioNormal && agoraMs >= inicioNormal ? inicioNormal : INICIO_DA_RADIO;
+    let pos = ((agoraMs - zero) / 1000) % total;
     let i = 0;
     while (i < lista.length - 1 && pos >= lista[i].duracao) { pos -= lista[i].duracao; i += 1; }
     const f = lista[i];

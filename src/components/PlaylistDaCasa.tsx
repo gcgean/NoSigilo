@@ -72,7 +72,7 @@ export default function PlaylistDaCasa() {
       </div>
       <p className="text-xs text-muted-foreground">
         Use só músicas livres para uso comercial (ex.: Pixabay Music). Música com direito autoral tocada para o público exige ECAD.
-        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo, na ordem abaixo, em repetição.
+        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo. A ordem das músicas e das vinhetas é embaralhada a cada noite (sexta e sábado tocam sequências diferentes); a abertura toca às 21h e o fechamento termina à 1h.
       </p>
 
       <div className="grid gap-2 rounded-xl border border-dashed p-3">
