@@ -639,7 +639,7 @@ export default function Profile() {
       setIsLoadingPhotos(true);
     }
     try {
-      const list = await feedService.getRecentPhotos();
+      const list = await feedService.getRecentPhotos({ limit: 200 });
       setPhotos(
         Array.isArray(list)
           ? list.map((p: any) => ({
@@ -664,7 +664,7 @@ export default function Profile() {
     if (!user?.id) return;
     setIsLoadingVideos(true);
     try {
-      const data = await usersService.getUserPosts(String(user.id), { videosOnly: true, limit: 30 });
+      const data = await usersService.getUserPosts(String(user.id), { videosOnly: true, limit: 60 });
       const posts = Array.isArray((data as any)?.posts) ? (data as any).posts : [];
       const vids = posts.flatMap((post: any) =>
         (post.media || [])

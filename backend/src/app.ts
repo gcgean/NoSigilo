@@ -9672,10 +9672,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   app.get('/api/photos/recent', requireAuth(env, db), async (req, res) => {
+    // Teto de 20 era fixo: quem tinha muitas fotos via as antigas sumirem da
+    // galeria do perfil (e as privadas sumiam de vez quando as 20 mais novas
+    // eram todas públicas). O app pede o quanto precisa, com teto de segurança.
+    const limitFotos = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
     const rows = await queryAll(
       db,
-      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 20",
-      [req.auth!.userId]
+      "SELECT id, filename, mime_type, is_private, is_main, created_at FROM media WHERE user_id = ? AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT ?",
+      [req.auth!.userId, limitFotos]
     );
     res.json(
       rows.map((r: any) => {
@@ -12211,16 +12215,51 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const page = Math.max(Number(req.query.page) || 1, 1);
     const offset = (page - 1) * limit;
     const videosOnly = req.query.videosOnly === 'true';
+    const filtroProcessando = ownerId === req.auth!.userId ? '' : 'AND (p.processando IS NULL OR p.processando = 0)';
+
+    // Só vídeos: a escolha precisa acontecer ANTES do LIMIT. Antes pegávamos as
+    // N postagens mais recentes e só depois descartávamos as sem vídeo, então
+    // quem postava muita foto via a aba "Vídeos" esvaziar — os vídeos ficavam
+    // fora da janela das mais recentes. Relato de 21/10/2026: conta com 73
+    // vídeos e nenhum entre os 30 posts mais recentes = aba vazia.
+    let idsComVideo: string[] | null = null;
+    if (videosOnly) {
+      const videoMedia = (await queryAll(
+        db,
+        "SELECT id FROM media WHERE user_id = ? AND mime_type LIKE 'video/%' AND is_private = 0",
+        [ownerId]
+      )) as any[];
+      const videoIds = new Set(videoMedia.map((m: any) => String(m.id)));
+      if (videoIds.size === 0) { res.json({ posts: [], hasMore: false }); return; }
+      // Teto de segurança: ninguém tem milhares de posts, e evita varredura sem fim.
+      const candidatos = (await queryAll(
+        db,
+        `SELECT p.id, p.media_ids_json FROM posts p
+          WHERE p.user_id = ? ${filtroProcessando}
+          ORDER BY p.created_at DESC
+          LIMIT 1000`,
+        [ownerId]
+      )) as any[];
+      idsComVideo = candidatos
+        .filter((p: any) => {
+          const ids = safeJsonParse(p.media_ids_json);
+          return Array.isArray(ids) && ids.some((x: any) => typeof x === 'string' && videoIds.has(x));
+        })
+        .map((p: any) => String(p.id));
+      if (idsComVideo.length === 0) { res.json({ posts: [], hasMore: false }); return; }
+    }
+    const filtroVideo = idsComVideo ? `AND p.id IN (${idsComVideo.map(() => '?').join(', ')})` : '';
 
     const rows = await queryAll(
       db,
       `SELECT p.id, p.content, p.created_at, p.media_ids_json, COALESCE(p.processando, 0) AS processando
        FROM posts p
        WHERE p.user_id = ?
-         ${ownerId === req.auth!.userId ? '' : 'AND (p.processando IS NULL OR p.processando = 0)'}
+         ${filtroProcessando}
+         ${filtroVideo}
        ORDER BY p.created_at DESC
        LIMIT ? OFFSET ?`,
-      [ownerId, limit + 1, offset]
+      [ownerId, ...(idsComVideo ?? []), limit + 1, offset]
     ) as any[];
 
     const slice = rows.slice(0, limit);

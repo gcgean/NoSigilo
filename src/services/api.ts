@@ -275,11 +275,11 @@ export const feedService = {
     return response.data;
   },
 
-  getRecentPhotos: async () => {
+  getRecentPhotos: async (params?: { limit?: number }) => {
     if (USE_MOCKS) {
       return [];
     }
-    const response = await apiClient.get('/photos/recent');
+    const response = await apiClient.get('/photos/recent', { params });
     return response.data;
   },
 
