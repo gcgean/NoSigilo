@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #050208; font-family: 'Inter', sans-serif; color: #fff; }
+  .fundo { position: absolute; inset: 0;
+    background: radial-gradient(900px 700px at 15% 8%, rgba(236,72,153,.35), transparent 60%),
+                radial-gradient(800px 800px at 95% 60%, rgba(168,85,247,.3), transparent 60%),
+                linear-gradient(180deg, #0b0410, #160614 60%, #0b0410); }
+  /* Celular */
+  .celular { position: absolute; left: 110px; top: 70px; width: 860px; height: 1480px; border-radius: 70px; background: #09090b;
+    border: 10px solid #1f1f23; box-shadow: 0 0 0 2px #3f3f46, 0 30px 120px rgba(236,72,153,.35); overflow: hidden; }
+  .tela { position: absolute; inset: 0; overflow: hidden; }
+  .camada { position: absolute; inset: 0; opacity: 0; }
+  .foco1, .foco2 { position: absolute; width: 600px; height: 600px; border-radius: 50%; filter: blur(90px); opacity: .35; }
+  .foco1 { background: #c026d3; left: -200px; top: 200px; }
+  .foco2 { background: #e11d48; right: -200px; top: 700px; }
+  .topo { position: absolute; left: 0; right: 0; top: 0; height: 120px; display: flex; align-items: center; gap: 18px; padding: 40px 34px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .topo h3 { font-size: 34px; font-weight: 800; }
+  .topo p { font-size: 22px; color: rgba(255,255,255,.6); }
+  .chip { border: 1px solid rgba(255,255,255,.25); border-radius: 999px; padding: 8px 16px; font-size: 22px; }
+  .av { width: 82px; height: 82px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 34px; position: relative; flex-shrink: 0; }
+  .av i { position: absolute; left: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; border: 4px solid #09090b; }
+  .faixa { position: absolute; left: 0; right: 0; top: 130px; display: flex; gap: 22px; padding: 18px 30px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .faixa div.p { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 18px; color: rgba(255,255,255,.75); }
+  .chat { position: absolute; left: 0; right: 0; top: 280px; bottom: 120px; padding: 20px 28px; display: flex; flex-direction: column; justify-content: flex-end; gap: 16px; }
+  .msg { display: flex; gap: 14px; align-items: flex-start; }
+  .msg .av { width: 54px; height: 54px; font-size: 22px; }
+  .bolha { background: rgba(255,255,255,.1); border-radius: 8px 26px 26px 26px; padding: 14px 20px; max-width: 620px; }
+  .bolha small { display: block; font-size: 18px; color: rgba(255,255,255,.6); font-weight: 700; margin-bottom: 4px; }
+  .bolha p { font-size: 27px; line-height: 1.3; }
+  .lola { background: linear-gradient(135deg, #a21caf, #be123c); border-radius: 8px 26px 26px 26px; padding: 16px 22px; max-width: 700px; box-shadow: 0 0 40px rgba(236,72,153,.35); }
+  .lola small { display: block; font-size: 17px; font-weight: 900; letter-spacing: .1em; color: #fbcfe8; margin-bottom: 6px; }
+  .lola p { font-size: 28px; font-weight: 600; line-height: 1.3; }
+  .sistema { text-align: center; font-size: 21px; color: rgba(255,255,255,.55); }
+  .entrada { position: absolute; left: 0; right: 0; bottom: 0; height: 120px; display: flex; align-items: center; gap: 16px; padding: 0 26px 20px; border-top: 1px solid rgba(255,255,255,.08); }
+  .entrada .cam { width: 70px; height: 70px; border-radius: 50%; background: rgba(255,255,255,.1); display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .entrada .campo { flex: 1; height: 70px; border-radius: 999px; background: rgba(255,255,255,.1); display: flex; align-items: center; padding: 0 28px; font-size: 26px; color: rgba(255,255,255,.4); }
+  .entrada .env { width: 70px; height: 70px; border-radius: 50%; background: #e11d48; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+  .jogo { position: absolute; left: 24px; right: 24px; top: 290px; border-radius: 30px; padding: 22px 26px; background: linear-gradient(135deg, rgba(112,26,117,.95), rgba(136,19,55,.95)); border: 2px solid rgba(240,171,252,.4); box-shadow: 0 10px 40px rgba(0,0,0,.5); z-index: 5; }
+  .jogo .t { display: flex; justify-content: space-between; font-size: 21px; font-weight: 800; color: #f5d0fe; margin-bottom: 8px; }
+  .jogo h4 { font-size: 30px; font-weight: 700; margin-bottom: 14px; line-height: 1.25; }
+  .opcao { position: relative; overflow: hidden; border-radius: 18px; border: 2px solid rgba(255,255,255,.25); padding: 14px 18px; font-size: 26px; margin-top: 10px; display: flex; justify-content: space-between; }
+  .opcao .barra { position: absolute; inset: 0 auto 0 0; background: rgba(217,70,239,.35); }
+  .opcao span { position: relative; }
+  /* Lobby */
+  .lobby { padding: 120px 40px 40px; display: flex; flex-direction: column; gap: 22px; }
+  .hero { border-radius: 40px; padding: 34px; background: linear-gradient(135deg, #18181b, #4a044e, #881337); }
+  .hero small { font-size: 20px; letter-spacing: .2em; color: #f5d0fe; font-weight: 800; }
+  .hero h2 { font-size: 72px; font-weight: 900; margin: 6px 0; }
+  .hero p { font-size: 26px; color: rgba(255,255,255,.85); }
+  .sala { border-radius: 30px; padding: 26px 28px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); }
+  .sala .linha { display: flex; gap: 20px; align-items: center; }
+  .sala .em { font-size: 60px; }
+  .sala b { font-size: 32px; display: block; }
+  .sala span { font-size: 21px; color: rgba(255,255,255,.65); }
+  .sala .nums { display: flex; gap: 20px; margin-top: 10px; font-size: 22px; color: rgba(255,255,255,.75); }
+  .btn { margin-top: 16px; border-radius: 20px; padding: 18px; text-align: center; font-size: 28px; font-weight: 800; background: linear-gradient(90deg, #e11d48, #c026d3); }
+  /* Modal */
+  .veu { position: absolute; inset: 0; background: rgba(0,0,0,.65); }
+  .modal { position: absolute; left: 50px; right: 50px; top: 300px; border-radius: 36px; background: #18181b; border: 1px solid rgba(255,255,255,.15); padding: 34px; }
+  .modal h3 { font-size: 34px; font-weight: 800; margin-bottom: 8px; }
+  .modal .sub { font-size: 22px; color: rgba(255,255,255,.6); margin-bottom: 22px; }
+  .pul { display: flex; align-items: center; gap: 22px; padding: 20px; border-radius: 24px; border: 2px solid rgba(255,255,255,.12); margin-top: 14px; transition: none; }
+  .pul i { width: 90px; height: 30px; border-radius: 999px; flex-shrink: 0; }
+  .pul b { font-size: 30px; display: block; }
+  .pul span { font-size: 21px; color: rgba(255,255,255,.6); }
+  .pul.acesa { border-color: #f472b6; background: rgba(244,114,182,.12); transform: scale(1.03); }
+  /* Mídia de visualização única */
+  .midia { border-radius: 22px; padding: 16px 22px; font-size: 26px; font-weight: 800; background: linear-gradient(90deg, #e11d48, #c026d3); }
+  .viewer { position: absolute; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; }
+  .viewer .img { width: 640px; height: 900px; border-radius: 20px; background: radial-gradient(circle at 50% 40%, #f9a8d4, #9d174d 55%, #1e0617); filter: blur(28px); }
+  .viewer p { position: absolute; bottom: 70px; font-size: 22px; color: rgba(255,255,255,.7); }
+  /* Cabine */
+  .porta-bt { border-radius: 999px; padding: 12px 22px; font-size: 22px; border: 2px solid rgba(255,255,255,.25); }
+  /* Show */
+  .show { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: rgba(0,0,0,.85); }
+  .relogio { font-family: 'Bebas Neue'; font-size: 260px; color: #ffe4f3; text-shadow: 0 0 20px #ff4fc4, 0 0 60px #ff2fb0; }
+  .fogo { position: absolute; border-radius: 50%; }
+  /* Final */
+  .final { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; padding: 60px; text-align: center; }
+  .neon { font-family: 'Bebas Neue'; color: #ffe4f3; text-shadow: 0 0 6px #fff, 0 0 18px #ff4fc4, 0 0 42px #ff2fb0, 0 0 90px #e11d74; letter-spacing: .05em; line-height: .9; }
+  .cta { width: 100%; border-radius: 30px; padding: 30px; font-size: 44px; font-weight: 900; background: #fff; color: #be185d; }
+  .toast { position: absolute; left: 60px; right: 60px; top: 80px; border-radius: 26px; padding: 24px 28px; background: #18181b; border: 1px solid rgba(255,255,255,.2); font-size: 26px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+  .logo { display: flex; align-items: center; gap: 20px; }
+  .cadeado { width: 110px; height: 110px; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6); box-shadow: 0 0 40px rgba(236,72,153,.7); }
+  .cadeado div { width: 100%; height: 100%; border-radius: 50%; background: #0b0618 url(../logo.png) 50% 32% / 185% no-repeat; }
+  .logo b { font-size: 52px; font-weight: 900; background: linear-gradient(90deg, #ff4fb8, #ff7ad9 45%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* Dedo */
+  .dedo { position: absolute; width: 90px; height: 90px; border-radius: 50%; background: rgba(255,255,255,.35); border: 4px solid rgba(255,255,255,.85); box-shadow: 0 0 30px rgba(255,255,255,.5); z-index: 50; transform: translate(-50%, -50%); pointer-events: none; }
+  .onda { position: absolute; width: 90px; height: 90px; border-radius: 50%; border: 4px solid #fff; z-index: 49; transform: translate(-50%, -50%); }
+  /* Legenda (fora do celular) */
+  .legenda { position: absolute; left: 70px; right: 70px; top: 1590px; height: 270px; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 40px; font-weight: 700; line-height: 1.28; }
+  .abertura { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 30px; }
+</style>
+</head>
+<body>
+<div class="fundo"></div>
+
+<!-- Abertura: letreiro acendendo -->
+<div class="abertura camada" id="abertura">
+  <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+  <h1 class="neon" id="letreiro" style="font-size: 320px">A CASA</h1>
+  <p style="font-size: 52px; font-weight: 800;">Psiu… chega mais perto <span style="color:#ff6bd6">😈</span></p>
+</div>
+
+<div class="celular" id="celular" style="opacity:0">
+  <div class="tela">
+    <div class="foco1"></div><div class="foco2"></div>
+
+    <!-- 1. Lobby -->
+    <div class="camada lobby" id="lobby">
+      <div class="hero">
+        <small>BOATE VIRTUAL · SÓ ADULTOS</small>
+        <h2>A Casa 🔥</h2>
+        <p><span style="color:#34d399">●</span> Aberta agora: Sexta Liberal · até 1h</p>
+      </div>
+      <div class="sala"><div class="linha"><span class="em">🍸</span><div><b>Salão Principal</b><span>conhecer, provocar e chamar pra cabine</span></div></div>
+        <div class="nums"><span>👥 <b id="n1" style="display:inline;font-size:22px">0</b></span><span>💑 12</span><span>👩 4</span><span>👨 9</span></div>
+        <div class="btn" id="btnEntrar">Entrar</div></div>
+      <div class="sala"><div class="linha"><span class="em">💑</span><div><b>Sala dos Casais</b><span>só casais e mulheres · muito quente</span></div></div>
+        <div class="nums"><span>👥 <b id="n2" style="display:inline;font-size:22px">0</b></span><span>💑 15</span><span>👩 3</span></div></div>
+      <div class="sala"><div class="linha"><span class="em">🖤</span><div><b>Quarto Escuro</b><span>pra quem veio brincar de verdade</span></div></div>
+        <div class="nums"><span>👥 <b id="n3" style="display:inline;font-size:22px">0</b></span><span>💑 8</span><span>👨 5</span></div></div>
+    </div>
+
+    <!-- 2. Sala -->
+    <div class="camada" id="sala">
+      <div class="topo">
+        <span style="font-size:34px">←</span>
+        <div style="flex:1"><h3 id="nomeSala">🍸 Salão Principal</h3><p id="infoSala">25 na sala · 6 espiando 👀</p></div>
+        <span class="chip">🏆</span><span class="chip" id="minhaPul">⚪</span><span class="chip" style="background:#e11d48;border-color:#e11d48">🔥 Brincando</span>
+      </div>
+      <div class="faixa" id="faixa">
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#f472b6,#a855f7)">J<i style="background:#10b981"></i></div>Ju</div>
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#fb7185,#f59e0b)">C<i style="background:#8b5cf6"></i></div>Casal Fortal</div>
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#60a5fa,#a78bfa)">R<i style="background:#fbbf24"></i></div>Rafa</div>
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#f9a8d4,#e11d48)">M<i style="background:#10b981"></i></div>Mel & Leo</div>
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#a3e635,#14b8a6)">D<i style="background:#e11d48"></i></div>Dani</div>
+        <div class="p"><div class="av" style="background:linear-gradient(135deg,#fde047,#f97316)">K<i style="background:#10b981"></i></div>Kaká</div>
+      </div>
+      <div class="chat" id="chat"></div>
+      <div class="jogo" id="jogo" style="display:none"></div>
+      <div class="entrada"><div class="cam">📷</div><div class="campo">Fale com a sala…</div><div class="env">➤</div></div>
+    </div>
+
+    <!-- 3. Modal das pulseiras -->
+    <div class="camada" id="mPulseira">
+      <div class="veu"></div>
+      <div class="modal">
+        <h3>Escolha sua pulseira da noite</h3>
+        <p class="sub">Todo mundo vê a sua cor e sabe o que você topa hoje.</p>
+        <div class="pul" id="p-verde"><i style="background:#10b981"></i><div><b>🟢 Aberto(a) a tudo</b><span>troca, ménage, o que rolar</span></div></div>
+        <div class="pul" id="p-amarela"><i style="background:#fbbf24"></i><div><b>🟡 Só soft</b><span>beijos, carícias e provocação</span></div></div>
+        <div class="pul" id="p-roxa"><i style="background:#8b5cf6"></i><div><b>🟣 Single é bem-vindo</b><span>casal ou mulher aberta a single</span></div></div>
+        <div class="pul" id="p-vermelha"><i style="background:#e11d48"></i><div><b>🔴 Só olhando hoje</b><span>curtir o clima sem participar</span></div></div>
+      </div>
+    </div>
+
+    <!-- 4. Perfil da Ju + bar -->
+    <div class="camada" id="mPessoa">
+      <div class="veu"></div>
+      <div class="modal" style="top: 420px; text-align:center">
+        <div class="av" style="width:150px;height:150px;font-size:60px;margin:0 auto;background:linear-gradient(135deg,#f472b6,#a855f7)">J<i style="background:#10b981;width:36px;height:36px"></i></div>
+        <h3 style="margin-top:14px">Ju</h3>
+        <p class="sub">Mulher · Fortaleza · 🔥 brincando · 🟢 aberta a tudo</p>
+        <div id="botoesPessoa" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="opcao" style="justify-content:center">👀 Dar uma olhada</div>
+          <div class="opcao" id="btDrink" style="justify-content:center">🍸 Pagar um drink</div>
+          <div class="btn" style="grid-column:span 2">🚪 Chamar pra cabine</div>
+        </div>
+        <div id="bar" style="display:none;grid-template-columns:1fr 1fr;gap:14px;margin-top:6px">
+          <div class="opcao" style="flex-direction:column;align-items:center">🍺<span>Cerveja · 3</span></div>
+          <div class="opcao" id="btCaipi" style="flex-direction:column;align-items:center">🍹<span>Caipirinha · 5</span></div>
+          <div class="opcao" style="flex-direction:column;align-items:center">🍸<span>Gin tônica · 8</span></div>
+          <div class="opcao" style="flex-direction:column;align-items:center">🍾<span>Champanhe · 15</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Olhares cruzados -->
+    <div class="camada" id="mOlhares">
+      <div class="veu"></div>
+      <div class="modal" style="top: 470px; text-align:center">
+        <div class="av" style="width:150px;height:150px;font-size:60px;margin:0 auto;background:linear-gradient(135deg,#f472b6,#a855f7)">J</div>
+        <h3 style="margin-top:14px">💘 Olhares cruzados!</h3>
+        <p class="sub">Você e a Ju se olharam. A Lola acha que isso merece uma cabine 😈</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px"><div class="opcao" style="justify-content:center">Depois</div><div class="btn" id="btChamar" style="margin-top:10px">Chamar 🚪</div></div>
+      </div>
+    </div>
+
+    <!-- 6. Cabine -->
+    <div class="camada" id="cabine" style="background:linear-gradient(180deg,#09090b,#1a0a14,#09090b)">
+      <div class="topo"><span style="font-size:34px">←</span>
+        <div style="flex:1"><h3>🚪 Ju e você</h3><p id="infoCabine">🔒 Porta fechada</p></div></div>
+      <div style="position:absolute;top:150px;left:30px;right:30px;display:flex;gap:14px">
+        <div class="porta-bt" id="btPorta">👀 Abrir a porta (1/2)</div><div class="porta-bt">➕ Convidar</div><div class="porta-bt">💬 Continuar no chat</div>
+      </div>
+      <div class="chat" id="chatCabine" style="top:240px"></div>
+      <div class="entrada"><div class="cam">📷</div><div class="campo">Só quem está na cabine fala…</div><div class="env">➤</div></div>
+    </div>
+
+    <!-- 7. Viewer de visualização única -->
+    <div class="camada viewer" id="viewer"><div class="img"></div><p>Visualização única: ao fechar, não abre de novo.</p></div>
+
+    <!-- 8. Show da meia-noite -->
+    <div class="camada show" id="show">
+      <div id="fogos"></div>
+      <div class="relogio" id="relogio">23:59</div>
+      <div class="neon" style="font-size:96px">SHOW DA <span style="color:#ff6bd6">MEIA-NOITE</span></div>
+      <div class="lola" style="margin-top:20px"><small>💋 LOLA · ANFITRIÃ IA</small><p>🎆 As luzes baixaram… é agora que a Casa esquenta 🔥</p></div>
+    </div>
+
+    <!-- 9. Regras -->
+    <div class="camada final" id="regras">
+      <p style="font-size:120px">🔒</p>
+      <div class="neon" style="font-size:110px">Discrição</div>
+      <div class="neon" style="font-size:110px;color:#ff9be0">Consentimento</div>
+      <div class="sala" style="font-size:34px;font-weight:800">Só maiores de 18 · "Passo" sempre vale</div>
+      <div class="lola"><small>💋 LOLA · ANFITRIÃ IA</small><p>Aqui a regra é respeito. Eu cuido da Casa a noite toda 😉</p></div>
+    </div>
+
+    <!-- 10. Final -->
+    <div class="camada final" id="final">
+      <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+      <div class="neon" style="font-size:220px">A CASA</div>
+      <p style="font-size:30px;color:#fbcfe8">Sexta e sábado · 21h à 1h</p>
+      <div class="cta" id="cta">🎟️ RESERVE SEU LUGAR</div>
+      <p style="font-size:44px;font-weight:900">nosigilo.net/<span style="color:#ff6bd6">acasa</span></p>
+      <div class="toast" id="toast" style="opacity:0">🎟️ <b>Lugar reservado!</b> Quando abrir, a gente avisa no seu celular.</div>
+    </div>
+
+    <div class="onda" id="onda" style="opacity:0"></div>
+    <div class="dedo" id="dedo" style="opacity:0"></div>
+  </div>
+</div>
+
+<div class="legenda" id="legenda"></div>
+
+<script>
+// ─── Linha do tempo (segundos), sincronizada com a narração ───
+const S = [0, 1.95, 11.98, 24.9, 34.65, 46.43, 54.95, 58.95, 63.66, 68.06, 71.24];
+const LEGENDAS = [
+  'Psiu… chega mais perto.',
+  "Toda sexta e sábado, das 21h à 1h, o NoSigilo abre as portas d'A Casa… a boate virtual dos casais liberais.",
+  'Na entrada, você escolhe a sua pulseira. Verde, se topa tudo. Amarela, só no soft. Roxa, se single é bem-vindo. Vermelha… se hoje é só pra olhar.',
+  'Lá dentro tem salas ao vivo. O Salão. A Sala dos Casais. O Quarto Escuro… e uma sala onde ninguém sabe quem é você.',
+  'Eu sou a Lola. E a noite toda, eu puxo o jogo. Eu nunca. Verdade ou desafio. Duelos… e desafios com foto ao vivo, que somem depois de vistos.',
+  'Gostou de alguém? Paga um drink. Os olhares se cruzaram? Chama pra cabine. E se vocês quiserem plateia… é só abrir a porta.',
+  'À meia-noite, as luzes baixam… e começa o show.',
+  'Tudo com discrição e consentimento. Só entre maiores de 18.',
+  'Reserve o seu lugar em nosigilo.net/acasa',
+  'Eu te espero lá dentro. 💋',
+];
+const $ = (id) => document.getElementById(id);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+// opacidade com entrada/saída suaves
+const janela = (t, a, b, f = 0.35) => clamp((t - a) / f) * clamp((b - t) / f);
+function mostra(id, t, a, b, f) { $(id).style.opacity = janela(t, a, b, f); $(id).style.display = (t > a - 0.01 && t < b + 0.01) ? '' : 'none'; }
+
+// Mensagens da sala (entram em sequência)
+const MSGS_SALA = [
+  [25.3, 'p', 'C', 'Casal Fortal', 'Boa noite, sala! Chegamos 🔥', '#fb7185,#f59e0b'],
+  [26.6, 'p', 'J', 'Ju', 'Hoje eu tô de pulseira verde 😏', '#f472b6,#a855f7'],
+  [28.2, 's', '', '', '💑 Mel & Leo entraram na Sala dos Casais', ''],
+  [29.6, 'p', 'R', 'Rafa', 'Alguém no Quarto Escuro? 🖤', '#60a5fa,#a78bfa'],
+  [31.6, 'p', '?', 'Anônimo 7', 'ninguém sabe quem eu sou… ainda 🎭', '#52525b,#18181b'],
+  [33.0, 'p', 'M', 'Mel & Leo', 'Que clima gostoso hoje 😈', '#f9a8d4,#e11d48'],
+  [35.0, 'l', '', '', 'Eu sou a Lola, sua anfitriã 💋 Marquem "Quero brincar" que eu puxo o jogo!', ''],
+  [43.3, 'l', '', '', '📸 DESAFIO DA FOTO! Ju, foto da sua lingerie de hoje, sem rosto 😈', ''],
+  [44.6, 'm', 'J', 'Ju', '📸 Toque para ver (1 vez)', '#f472b6,#a855f7'],
+  [48.4, 's', '', '', '🍹 Você pagou uma caipirinha pra Ju 😏', ''],
+];
+const MSGS_CABINE = [
+  [50.9, 'l', '', '', '🚪 Cabine de Ju e você. A porta está fechada: só vocês veem.', ''],
+  [51.4, 'p', 'J', 'Ju', 'Adorei a caipirinha 😘 e se a gente deixar a porta aberta?', '#f472b6,#a855f7'],
+  [52.7, 's', '', '', 'Ju quer abrir a porta 👀 (1/2)', ''],
+  [53.3, 'l', '', '', '👀 Porta aberta! Agora quem está na sala pode espiar… e pedir para entrar 😈', ''],
+  [54.2, 's', '', '', '🙋 Casal Fortal pediu para participar', ''],
+];
+function htmlMsg(m) {
+  const [, tipo, ini, nome, texto, cor] = m;
+  if (tipo === 's') return `<p class="sistema">${texto}</p>`;
+  if (tipo === 'l') return `<div class="lola"><small>💋 LOLA · ANFITRIÃ IA</small><p>${texto}</p></div>`;
+  const corpo = tipo === 'm' ? `<div class="midia">${texto}</div>` : `<p>${texto}</p>`;
+  return `<div class="msg"><div class="av" style="background:linear-gradient(135deg,${cor})">${ini}</div><div class="bolha"><small>${nome}</small>${corpo}</div></div>`;
+}
+function chat(id, lista, t) {
+  const vis = lista.filter((m) => t >= m[0]);
+  const chave = vis.length + ':' + id;
+  const el = $(id);
+  if (el.dataset.k !== chave) { el.innerHTML = vis.map(htmlMsg).join(''); el.dataset.k = chave; }
+  // a última mensagem entra deslizando
+  const ult = el.lastElementChild;
+  if (ult && vis.length) { const p = clamp((t - vis[vis.length - 1][0]) / 0.35); ult.style.opacity = p; ult.style.transform = `translateY(${(1 - ease(p)) * 30}px)`; }
+}
+
+// Dedo: [t, x, y, toque?] dentro do celular
+const DEDO = [
+  [8.6, 430, 1300, 0], [10.4, 420, 545, 0], [10.9, 420, 545, 1],
+  [14.0, 600, 600, 0], [14.9, 600, 600, 0], [17.0, 600, 735, 0], [19.3, 600, 870, 0], [21.9, 600, 1005, 0], [23.5, 600, 600, 0], [24.1, 600, 600, 1],
+  [45.0, 380, 1180, 0], [45.4, 380, 1180, 1],
+  [46.6, 110, 220, 0], [46.9, 110, 220, 1], [47.6, 560, 950, 0], [47.9, 560, 950, 1], [48.15, 560, 960, 1],
+  [49.8, 560, 940, 0], [50.2, 560, 940, 1],
+  [52.0, 150, 175, 0], [52.3, 150, 175, 1],
+  [65.3, 430, 900, 0], [66.0, 430, 900, 1],
+];
+const TOQUES = DEDO.filter((d) => d[3]).map((d) => d[0]);
+function dedo(t) {
+  let ant = null, prox = null;
+  for (const d of DEDO) { if (d[0] <= t) ant = d; else { prox = d; break; } }
+  const el = $('dedo');
+  const ativo = ant && (t - ant[0] < 1.6 || (prox && prox[0] - t < 1.2));
+  if (!ant || !ativo) { el.style.opacity = 0; } else {
+    let x = ant[1], y = ant[2];
+    if (prox && prox[0] - ant[0] < 2.5) { const p = ease(clamp((t - ant[0]) / (prox[0] - ant[0]))); x += (prox[1] - x) * p; y += (prox[2] - y) * p; }
+    el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.opacity = 0.9;
+    const toque = TOQUES.find((tt) => t >= tt && t - tt < 0.25);
+    el.style.transform = `translate(-50%,-50%) scale(${toque ? 0.8 : 1})`;
+    const onda = $('onda'); const tq = TOQUES.find((tt) => t >= tt && t - tt < 0.5);
+    if (tq) { const p = (t - tq) / 0.5; onda.style.left = x + 'px'; onda.style.top = y + 'px'; onda.style.opacity = 1 - p; onda.style.transform = `translate(-50%,-50%) scale(${1 + p * 1.6})`; } else onda.style.opacity = 0;
+  }
+}
+
+function render(t) {
+  // legenda
+  let i = S.findIndex((s, k) => t >= s && t < S[k + 1]); if (i < 0) i = 9;
+  $('legenda').textContent = LEGENDAS[i];
+  $('legenda').style.opacity = clamp((t - S[i]) / 0.3);
+
+  // abertura com letreiro piscando
+  mostra('abertura', t, 0, 2.1, 0.3);
+  const pisca = t < 1.0 ? ((Math.floor(t * 9) % 3 === 0) ? 0.25 : 1) : 1;
+  $('letreiro').style.opacity = pisca;
+
+  mostra('celular', t, 1.95, 99, 0.4);
+  $('celular').style.transform = `scale(${0.96 + 0.04 * clamp((t - 1.95) / 0.6)})`;
+
+  // lobby e contadores subindo
+  mostra('lobby', t, 1.95, 11.6);
+  const c = (alvo) => Math.round(alvo * ease(clamp((t - 3) / 5)));
+  $('n1').textContent = c(25); $('n2').textContent = c(18); $('n3').textContent = c(13);
+  $('btnEntrar').style.transform = `scale(${t > 10.9 && t < 11.2 ? 0.95 : 1})`;
+
+  // sala por trás de tudo, de 11.6 em diante (exceto cabine/show/final)
+  mostra('sala', t, 11.6, 54.95);
+  chat('chat', MSGS_SALA, t);
+  // nome da sala muda conforme a narração
+  const salas = [[0, '🍸 Salão Principal', '25 na sala · 6 espiando 👀'], [28.2, '💑 Sala dos Casais', '18 na sala · muito quente'], [29.9, '🖤 Quarto Escuro', '13 na sala · muito quente'], [31.4, '🎭 Sala anônima', 'ninguém sabe quem é quem'], [33.6, '🍸 Salão Principal', '25 na sala · 6 espiando 👀']];
+  const s = [...salas].reverse().find((x) => t >= x[0]);
+  $('nomeSala').textContent = s[1]; $('infoSala').textContent = s[2];
+  $('minhaPul').textContent = t >= 24.1 ? '🟢' : '⚪';
+
+  // modal da pulseira
+  mostra('mPulseira', t, 12.2, 24.5);
+  const acesa = t >= 22 ? 'vermelha' : t >= 19.4 ? 'roxa' : t >= 17.1 ? 'amarela' : t >= 15.0 ? 'verde' : '';
+  for (const cor of ['verde', 'amarela', 'roxa', 'vermelha']) $('p-' + cor).classList.toggle('acesa', cor === acesa || (t >= 23.5 && cor === 'verde'));
+  if (t >= 23.5) $('p-vermelha').classList.remove('acesa');
+
+  // cartão do jogo (Lola)
+  let jogo = '';
+  if (t >= 36.8 && t < 39.6) {
+    const v = clamp((t - 37.2) / 2.2);
+    const a = Math.round(64 * ease(v)), b = Math.round(36 * ease(v));
+    jogo = `<div class="t"><span>🍷 Eu nunca</span><span>${Math.max(0, 90 - Math.round((t - 36.8) * 10))}s</span></div><h4>Eu nunca… fiz troca de casais completa.</h4>
+      <div class="opcao"><div class="barra" style="width:${a}%"></div><span>🔥 Já fiz</span><span>${a}%</span></div>
+      <div class="opcao"><div class="barra" style="width:${b}%"></div><span>😇 Nunca fiz</span><span>${b}%</span></div>`;
+  } else if (t >= 39.6 && t < 41.5) {
+    jogo = `<div class="t"><span>🎲 Verdade ou desafio</span><span>75s</span></div><h4>A roleta parou em Casal Fortal… verdade, desafio ou passa? 😈</h4>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"><div class="opcao" style="justify-content:center">Verdade</div><div class="opcao" style="justify-content:center;background:#e11d48">Desafio</div><div class="opcao" style="justify-content:center">Passo</div></div>`;
+  } else if (t >= 41.5 && t < 43.2) {
+    jogo = `<div class="t"><span>🔥 Duelo</span><span>3:00</span></div><h4>Mel & Leo x Casal Fortal — Beijo mais quente do casal 💋</h4><div class="btn">📷 Mandar minha foto do duelo</div>`;
+  } else if (t >= 43.2 && t < 46.3) {
+    jogo = `<div class="t"><span>📸 Desafio da foto</span><span>2:30</span></div><h4>Ju, foto da sua lingerie de hoje, sem rosto 😈</h4><p style="font-size:24px;color:#f5d0fe">${t >= 44.6 ? '🔥 Ju cumpriu o desafio! +5 tokens' : 'Esperando a Ju cumprir… a sala torce 🔥'}</p>`;
+  }
+  const jogoEl = $('jogo');
+  if (jogoEl.dataset.k !== jogo) { jogoEl.innerHTML = jogo; jogoEl.dataset.k = jogo; }
+  jogoEl.style.opacity = jogo ? clamp((t - 36.8) / 0.3) : 0;
+  jogoEl.style.display = jogo ? '' : 'none';
+
+  // foto de visualização única
+  mostra('viewer', t, 45.5, 46.35, 0.15);
+
+  // perfil da Ju e o bar
+  mostra('mPessoa', t, 47.0, 48.35, 0.2);
+  const noBar = t >= 47.9;
+  $('botoesPessoa').style.display = noBar ? 'none' : 'grid';
+  $('bar').style.display = noBar ? 'grid' : 'none';
+
+  // olhares cruzados
+  mostra('mOlhares', t, 48.8, 50.35, 0.2);
+
+  // cabine
+  mostra('cabine', t, 50.4, 54.95);
+  chat('chatCabine', MSGS_CABINE, t);
+  const espiando = t >= 53.3 ? Math.min(3, 1 + Math.floor((t - 53.3) / 0.45)) : 0;
+  $('infoCabine').textContent = t >= 53.3 ? `👀 Porta aberta · ${espiando} espiando` : '🔒 Porta fechada';
+  $('btPorta').textContent = t >= 53.3 ? '🔒 Fechar a porta' : t >= 52.3 ? 'Quero abrir a porta ✓ (2/2)' : '👀 Abrir a porta (1/2)';
+
+  // show da meia-noite
+  mostra('show', t, 54.95, 59.0);
+  $('relogio').textContent = t >= 56.4 ? '00:00' : '23:59';
+  let fogos = '';
+  if (t >= 56.4) {
+    for (let k = 0; k < 7; k++) {
+      const t0 = 56.4 + k * 0.35; if (t < t0) continue;
+      const p = clamp((t - t0) / 1.1); const x = 120 + (k * 97) % 620, y = 180 + (k * 151) % 420;
+      const cor = ['#ff4fc4', '#a855f7', '#fbbf24', '#38bdf8', '#f43f5e', '#34d399', '#f472b6'][k];
+      fogos += `<div class="fogo" style="left:${x - 160 * p}px;top:${y - 160 * p}px;width:${320 * p}px;height:${320 * p}px;border:6px dotted ${cor};opacity:${1 - p};box-shadow:0 0 40px ${cor}"></div>`;
+    }
+  }
+  $('fogos').innerHTML = fogos;
+
+  // regras e final
+  mostra('regras', t, 58.95, 63.7);
+  mostra('final', t, 63.66, 99);
+  $('cta').style.transform = `scale(${t > 66 && t < 66.25 ? 0.95 : 1 + 0.03 * Math.sin(t * 5)})`;
+  mostra('toast', t, 66.3, 70.0, 0.25);
+  $('toast').style.transform = `translateY(${(1 - ease(clamp((t - 66.3) / 0.35))) * -40}px)`;
+
+  dedo(t);
+}
+window.render = render;
+render(Number(new URLSearchParams(location.search).get('t') || 0));
+</script>
+</body>
+</html>

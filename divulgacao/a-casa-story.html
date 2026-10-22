@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Monoton&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #07030a; }
+  body { font-family: 'Inter', sans-serif; color: #fff; position: relative; }
+  .fundo {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(900px 700px at 15% 12%, rgba(236, 72, 153, .55), transparent 60%),
+      radial-gradient(800px 800px at 95% 55%, rgba(168, 85, 247, .45), transparent 60%),
+      radial-gradient(900px 600px at 30% 100%, rgba(225, 29, 72, .55), transparent 60%),
+      linear-gradient(180deg, #0b0410 0%, #1a0718 50%, #0b0410 100%);
+  }
+  /* feixes de luz de boate */
+  .feixe { position: absolute; top: -200px; width: 260px; height: 1500px; filter: blur(30px); opacity: .35; transform-origin: top center; }
+  .f1 { left: 120px; background: linear-gradient(180deg, #ff2fb0, transparent); transform: rotate(18deg); }
+  .f2 { right: 140px; background: linear-gradient(180deg, #a855f7, transparent); transform: rotate(-20deg); }
+  .f3 { left: 440px; background: linear-gradient(180deg, #ff4d6d, transparent); transform: rotate(4deg); opacity: .22; }
+  /* granulado */
+  .grao { position: absolute; inset: 0; opacity: .08; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 4px 4px; }
+  .conteudo { position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; padding: 120px 70px 230px; text-align: center; }
+  .marca { font-weight: 800; letter-spacing: .35em; font-size: 30px; color: #f9a8d4; text-transform: uppercase; }
+  .marca b { color: #fff; }
+  .titulo {
+    margin-top: 6px; font-family: 'Bebas Neue', sans-serif; font-size: 250px; line-height: .9; letter-spacing: .06em; white-space: nowrap;
+    color: #ffe4f3;
+    text-shadow: 0 0 6px #fff, 0 0 18px #ff4fc4, 0 0 42px #ff2fb0, 0 0 90px #e11d74, 0 0 140px #c026d3;
+  }
+  .fogo { font-size: 70px; margin-top: -4px; filter: drop-shadow(0 0 30px rgba(255, 90, 60, .9)); }
+  .sub { margin-top: 14px; font-family: 'Bebas Neue', sans-serif; font-size: 64px; letter-spacing: .04em; line-height: 1; }
+  .sub span { color: #ff6bd6; text-shadow: 0 0 30px rgba(255, 60, 200, .7); }
+  .porta { margin: 22px 0 0; width: 170px; height: 238px; position: relative; }
+  .porta svg { width: 100%; height: 100%; overflow: visible; }
+  .selo {
+    margin-top: 22px; display: inline-block; padding: 20px 46px; border-radius: 999px;
+    background: linear-gradient(90deg, #e11d48, #c026d3); font-weight: 900; font-size: 42px; letter-spacing: .03em;
+    box-shadow: 0 0 60px rgba(236, 72, 153, .75), inset 0 0 0 3px rgba(255, 255, 255, .25);
+  }
+  .selo small { display: block; font-size: 26px; font-weight: 700; letter-spacing: .3em; opacity: .9; margin-bottom: 4px; }
+  .itens { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; width: 100%; }
+  .item {
+    display: flex; align-items: center; gap: 18px; padding: 14px 20px; border-radius: 22px; text-align: left;
+    background: rgba(255, 255, 255, .07); border: 2px solid rgba(255, 120, 210, .28); backdrop-filter: blur(6px);
+    font-size: 28px; font-weight: 700; line-height: 1.1;
+  }
+  .item i { font-style: normal; font-size: 46px; }
+  .item em { display: block; font-style: normal; font-weight: 500; font-size: 20px; color: #f5c2e7; margin-top: 4px; }
+  .cta { margin-top: 34px; width: 100%; }
+  .cta .botao {
+    display: block; padding: 28px; border-radius: 30px; font-size: 50px; font-weight: 900;
+    background: #fff; color: #be185d; box-shadow: 0 0 80px rgba(255, 255, 255, .35), 0 20px 60px rgba(0, 0, 0, .5);
+  }
+  .cta .url { margin-top: 20px; font-size: 38px; font-weight: 800; letter-spacing: .02em; }
+  .cta .url span { color: #ff8ad8; }
+  .rodape { margin-top: 22px; font-size: 24px; color: rgba(255, 255, 255, .6); letter-spacing: .12em; text-transform: uppercase; }
+  .logo { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .marca-linha { display: flex; align-items: center; gap: 22px; }
+  .cadeado { width: 130px; height: 130px; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6);
+    box-shadow: 0 0 40px rgba(236, 72, 153, .7), 0 0 80px rgba(99, 102, 241, .35); }
+  .cadeado div { width: 100%; height: 100%; border-radius: 50%; background: #0b0618 url(logo.png) 50% 32% / 185% no-repeat; }
+  .marca-linha b { font-size: 64px; font-weight: 900; letter-spacing: -.01em;
+    background: linear-gradient(90deg, #ff4fb8, #ff7ad9 45%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(255, 79, 184, .45)); }
+  .logo span { font-weight: 800; letter-spacing: .4em; font-size: 24px; color: #f9a8d4; text-transform: uppercase; }
+</style>
+</head>
+<body>
+  <div class="fundo"></div>
+  <div class="feixe f1"></div><div class="feixe f2"></div><div class="feixe f3"></div>
+  <div class="grao"></div>
+
+  <div class="conteudo">
+    <div class="logo"><div class="marca-linha"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div><span>apresenta</span></div>
+    <h1 class="titulo">A CASA</h1>
+    <div class="fogo">🔥</div>
+    <p class="sub">A boate virtual dos <span>casais liberais</span></p>
+
+    <!-- Porta de cabine entreaberta, com luz vazando -->
+    <div class="porta">
+      <svg viewBox="0 0 300 420">
+        <defs>
+          <filter id="neon" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <linearGradient id="luz" x1="0" x2="1">
+            <stop offset="0" stop-color="#ff3fbf" stop-opacity=".95" /><stop offset="1" stop-color="#ff3fbf" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points="150,20 150,400 300,420 300,0" fill="url(#luz)" opacity=".55" />
+        <rect x="20" y="20" width="200" height="380" rx="10" fill="none" stroke="#ff5fd0" stroke-width="7" filter="url(#neon)" />
+        <polygon points="150,20 210,40 210,380 150,400" fill="#1a0718" stroke="#ff9ae5" stroke-width="5" filter="url(#neon)" />
+        <circle cx="196" cy="215" r="7" fill="#ffd1f1" filter="url(#neon)" />
+        <text x="120" y="12" text-anchor="middle" font-family="Bebas Neue" font-size="34" fill="#ffd1f1" filter="url(#neon)" letter-spacing="4">CABINE</text>
+      </svg>
+    </div>
+
+    <div class="selo"><small>INAUGURAÇÃO</small>SEXTA 23/10 · 21H</div>
+
+    <div class="itens">
+      <div class="item"><i>🟢</i><div>Pulseira da noite<em>todo mundo sabe o que você topa</em></div></div>
+      <div class="item"><i>🍸</i><div>Bar ao vivo<em>pague um drink pra quem te olhou</em></div></div>
+      <div class="item"><i>😈</i><div>Desafios quentes<em>a Lola puxa o jogo a noite toda</em></div></div>
+      <div class="item"><i>🚪</i><div>Cabine a dois<em>porta aberta se vocês quiserem 👀</em></div></div>
+      <div class="item"><i>🎭</i><div>Sala anônima<em>ninguém sabe quem é até você revelar</em></div></div>
+      <div class="item"><i>🎆</i><div>Show da Meia-Noite<em>o momento mais quente</em></div></div>
+    </div>
+
+    <div class="cta">
+      <span class="botao">🎟️ RESERVE SEU LUGAR</span>
+      <p class="url">nosigilo.net/<span>acasa</span> · link na bio</p>
+      <p class="rodape">+18 · discreto · só para a comunidade</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #050208; font-family: 'Inter', sans-serif; color: #fff; }
+  .fundo { position: absolute; inset: 0;
+    background: radial-gradient(900px 700px at 15% 8%, rgba(236,72,153,.38), transparent 60%),
+                radial-gradient(800px 800px at 95% 60%, rgba(168,85,247,.33), transparent 60%),
+                linear-gradient(180deg, #0b0410, #160614 60%, #0b0410); }
+  .cena { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 160px 90px 520px; gap: 44px; opacity: 0; }
+  .neon { font-family: 'Bebas Neue'; color: #ffe4f3; letter-spacing: .04em; line-height: .95; text-shadow: 0 0 6px #fff, 0 0 18px #ff4fc4, 0 0 42px #ff2fb0, 0 0 90px #e11d74; }
+  .rosa { color: #ff6bd6; }
+  .logo { display: flex; align-items: center; gap: 24px; }
+  .cadeado { width: 170px; height: 170px; border-radius: 50%; padding: 6px; background: linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6); box-shadow: 0 0 60px rgba(236,72,153,.7); }
+  .cadeado div { width: 100%; height: 100%; border-radius: 50%; background: #0b0618 url(../logo.png) 50% 32% / 185% no-repeat; }
+  .logo b { font-size: 92px; font-weight: 900; background: linear-gradient(90deg, #ff4fb8, #ff7ad9 45%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .pino { font-size: 170px; filter: drop-shadow(0 0 40px rgba(236,72,153,.8)); }
+  .chips { display: flex; flex-direction: column; gap: 26px; width: 820px; }
+  .chip { display: flex; align-items: center; gap: 26px; padding: 28px 40px; border-radius: 999px; background: rgba(255,255,255,.08); border: 2px solid rgba(255,120,210,.45); font-size: 50px; font-weight: 800; opacity: 0; }
+  .chip span { font-size: 60px; }
+  .casais { display: flex; gap: 30px; font-size: 130px; }
+  .selo { display: flex; align-items: center; gap: 26px; width: 840px; padding: 30px 40px; border-radius: 32px; background: linear-gradient(135deg, rgba(225,29,72,.25), rgba(192,38,211,.25)); border: 2px solid rgba(255,120,210,.5); font-size: 48px; font-weight: 800; text-align: left; opacity: 0; }
+  .selo span { font-size: 64px; }
+  .botao { white-space: nowrap; padding: 40px 60px; border-radius: 30px; background: linear-gradient(90deg, #e11d48, #c026d3); font-size: 62px; font-weight: 900; box-shadow: 0 0 80px rgba(236,72,153,.7); }
+  .busca { width: 860px; height: 120px; border-radius: 999px; background: #fff; color: #111; display: flex; align-items: center; gap: 22px; padding: 0 40px; font-size: 52px; font-weight: 600; box-shadow: 0 10px 50px rgba(255,255,255,.15); }
+  .cursor { display: inline-block; width: 4px; height: 56px; background: #111; margin-left: 2px; }
+  .ou { font-size: 40px; font-weight: 700; color: #fbcfe8; }
+  .legenda { position: absolute; left: 80px; right: 80px; top: 1330px; text-align: center; font-size: 58px; font-weight: 900; line-height: 1.18;
+    color: #fff; -webkit-text-stroke: 3px #000; paint-order: stroke fill; text-shadow: 0 6px 24px rgba(0,0,0,.9); z-index: 20; }
+  .legenda b { color: #ff6bd6; }
+</style>
+</head>
+<body>
+<div class="fundo"></div>
+
+<!-- Gancho -->
+<div class="cena" id="gancho"></div>
+
+<!-- Casais que pensam como vocês -->
+<div class="cena" id="interesses">
+  <div class="casais"><span>💑</span><span>🥂</span><span>💑</span></div>
+  <div class="chips">
+    <div class="chip" id="ch1"><span>💬</span>Conversar sem pressa</div>
+    <div class="chip" id="ch2"><span>🍷</span>Sair e se divertir</div>
+    <div class="chip" id="ch3"><span>🤝</span>Fazer novas amizades</div>
+    <div class="chip" id="ch4"><span>🌙</span>Deixar a noite acontecer</div>
+  </div>
+</div>
+
+<!-- Marca -->
+<div class="cena" id="marca">
+  <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo</b></div>
+  <div class="neon" style="font-size:120px">Isso <span class="rosa">existe</span>.</div>
+</div>
+
+<!-- Confiança -->
+<div class="cena" id="confianca">
+  <div class="selo" id="s1"><span>🔞</span>Comunidade só de adultos</div>
+  <div class="selo" id="s2"><span>✅</span>Perfis verificados</div>
+  <div class="selo" id="s3"><span>🔒</span>Discrição total</div>
+  <div class="selo" id="s4"><span>🤫</span>Ninguém fica sabendo</div>
+</div>
+
+<!-- Chamada final -->
+<div class="cena" id="cta">
+  <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo</b></div>
+  <div class="botao" id="botao">Toque em Saiba mais 👇</div>
+  <div class="ou">ou procure no Google</div>
+  <div class="busca"><span>🔍</span><span id="digitado"></span><span class="cursor" id="cursor"></span></div>
+</div>
+
+<div class="legenda" id="legenda"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const jan = (t, a, b, f = 0.3) => clamp((t - a) / f) * clamp((b - t) / f);
+function cena(id, t, a, b) {
+  const el = $(id);
+  el.style.opacity = jan(t, a, b);
+  el.style.transform = `scale(${0.94 + 0.06 * ease(clamp((t - a) / 0.5))})`;
+}
+function surge(id, t, a) {
+  const p = clamp((t - a) / 0.3);
+  $(id).style.opacity = p;
+  $(id).style.transform = `translateX(${(1 - ease(p)) * -60}px)`;
+}
+
+// Tempos medidos na narração (silêncios do ElevenLabs).
+const VERSOES = {
+  1: {
+    gancho: '<div class="neon" style="font-size:150px">Conhecer outros <span class="rosa">casais</span>…</div><div class="pino" id="pino">📍</div><div class="neon" style="font-size:120px">da sua cidade?</div>',
+    cenas: { gancho: [0, 4.35], interesses: [4.35, 12.45], marca: [12.45, 15.35], confianca: [15.35, 22.85], cta: [22.85, 99] },
+    chips: [6.7, 8.2, 9.4, 10.7],
+    selos: [15.5, 17.4, 18.6, 20.5],
+    digita: 26.1,
+    legendas: [
+      [0.0, 3.0, 'Vocês já pensaram em conhecer outros <b>casais</b>…'],
+      [3.2, 4.15, '…da sua cidade?'],
+      [4.45, 6.4, 'Casais que pensam como vocês.'],
+      [6.65, 10.4, 'Que gostam de conversar, sair, fazer novas amizades…'],
+      [10.65, 12.25, '…e deixar a noite acontecer.'],
+      [12.55, 13.6, 'Isso existe.'],
+      [13.8, 15.2, 'Chama <b>NoSigilo</b>.'],
+      [15.45, 20.25, 'Uma comunidade só de adultos, com perfis verificados e total discrição.'],
+      [20.5, 22.7, 'Ninguém fica sabendo que vocês estão lá.'],
+    ],
+  },
+  2: {
+    gancho: '<div class="neon" style="font-size:210px">Casal,</div><div class="neon" style="font-size:150px">presta <span class="rosa">atenção</span> 👀</div>',
+    cenas: { gancho: [0, 1.8], interesses: [1.8, 7.0], confianca: [7.0, 10.3], marca: [10.3, 11.95], cta: [11.95, 99] },
+    chips: [2.2, 3.2, 4.2, 5.2],
+    selos: [7.1, 8.0, 8.9, 9.6],
+    digita: 14.7,
+    legendas: [
+      [0.0, 1.55, 'Casal, presta atenção.'],
+      [1.9, 5.5, 'Tem uma comunidade só de <b>casais</b> e solteiros adultos…'],
+      [5.7, 6.8, '…perto de vocês.'],
+      [7.0, 10.15, 'Com discrição total e perfis verificados.'],
+      [10.35, 11.75, 'Chama <b>NoSigilo</b>.'],
+    ],
+  },
+};
+const V = VERSOES[new URLSearchParams(location.search).get('v') || '1'];
+$('gancho').innerHTML = V.gancho;
+if (V === VERSOES[2]) { $('ch1').innerHTML = '<span>💑</span>Casais'; $('ch2').innerHTML = '<span>👩</span>Mulheres'; $('ch3').innerHTML = '<span>👨</span>Solteiros adultos'; $('ch4').innerHTML = '<span>📍</span>Perto de vocês'; }
+
+function render(t) {
+  const leg = V.legendas.find((l) => t >= l[0] && t < l[1]);
+  const el = $('legenda');
+  if (leg) {
+    if (el.dataset.k !== leg[2]) { el.innerHTML = leg[2]; el.dataset.k = leg[2]; }
+    const p = clamp((t - leg[0]) / 0.18);
+    el.style.opacity = p; el.style.transform = `scale(${0.9 + 0.1 * ease(p)})`;
+  } else el.style.opacity = 0;
+  for (const [id, [a, b]] of Object.entries(V.cenas)) cena(id, t, a, b);
+  const pino = $('pino');
+  if (pino) pino.style.transform = `translateY(${-Math.abs(Math.sin(t * 4)) * 40}px)`;
+  ['ch1', 'ch2', 'ch3', 'ch4'].forEach((id, i) => surge(id, t, V.chips[i]));
+  ['s1', 's2', 's3', 's4'].forEach((id, i) => surge(id, t, V.selos[i]));
+  $('botao').style.transform = `scale(${1 + Math.sin(t * 6) * 0.04})`;
+  const texto = 'nosigilo.net';
+  $('digitado').textContent = texto.slice(0, Math.round(texto.length * clamp((t - V.digita) / 1.2)));
+  $('cursor').style.opacity = Math.floor(t * 3) % 2 ? 1 : 0;
+}
+window.render = render;
+render(Number(new URLSearchParams(location.search).get('t') || 0));
+</script>
+</body>
+</html>

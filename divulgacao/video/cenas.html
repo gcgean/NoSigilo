@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #07030a; }
+  body { font-family: 'Inter', sans-serif; color: #fff; position: relative; }
+  .fundo { position: absolute; inset: 0;
+    background:
+      radial-gradient(900px 700px at 15% 12%, rgba(236, 72, 153, .5), transparent 60%),
+      radial-gradient(800px 800px at 95% 55%, rgba(168, 85, 247, .4), transparent 60%),
+      radial-gradient(900px 600px at 30% 100%, rgba(225, 29, 72, .5), transparent 60%),
+      linear-gradient(180deg, #0b0410 0%, #1a0718 50%, #0b0410 100%); }
+  .feixe { position: absolute; top: -200px; width: 260px; height: 1500px; filter: blur(30px); opacity: .3; transform-origin: top center; }
+  .f1 { left: 120px; background: linear-gradient(180deg, #ff2fb0, transparent); transform: rotate(18deg); }
+  .f2 { right: 140px; background: linear-gradient(180deg, #a855f7, transparent); transform: rotate(-20deg); }
+  .grao { position: absolute; inset: 0; opacity: .07; background-image: radial-gradient(#fff 1px, transparent 1px); background-size: 4px 4px; }
+  /* área útil: deixa o rodapé livre para a legenda (1450–1700) */
+  .cena { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 160px 70px 520px; text-align: center; gap: 34px; }
+  .cena.ativa { display: flex; }
+  .neon { font-family: 'Bebas Neue', sans-serif; color: #ffe4f3; letter-spacing: .05em; line-height: .9;
+    text-shadow: 0 0 6px #fff, 0 0 18px #ff4fc4, 0 0 42px #ff2fb0, 0 0 90px #e11d74; }
+  .rosa { color: #ff6bd6; }
+  .card { width: 100%; border-radius: 30px; padding: 28px 32px; background: rgba(255, 255, 255, .07); border: 2px solid rgba(255, 120, 210, .3); text-align: left; }
+  .lola { width: 100%; border-radius: 30px 30px 30px 8px; padding: 26px 30px; text-align: left; background: linear-gradient(135deg, #a21caf, #be123c); box-shadow: 0 0 60px rgba(236, 72, 153, .45); }
+  .lola small { display: block; font-size: 22px; font-weight: 800; letter-spacing: .12em; color: #fbcfe8; margin-bottom: 8px; }
+  .lola p { font-size: 38px; font-weight: 700; line-height: 1.2; }
+  .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; }
+  .botao { border-radius: 22px; padding: 22px; font-size: 34px; font-weight: 800; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.25); }
+  .sistema { font-size: 32px; color: rgba(255,255,255,.75); }
+  .logo { display: flex; align-items: center; gap: 22px; }
+  .cadeado { width: 130px; height: 130px; border-radius: 50%; padding: 4px; background: linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6); box-shadow: 0 0 40px rgba(236, 72, 153, .7); }
+  .cadeado div { width: 100%; height: 100%; border-radius: 50%; background: #0b0618 url(../logo.png) 50% 32% / 185% no-repeat; }
+  .logo b { font-size: 64px; font-weight: 900; background: linear-gradient(90deg, #ff4fb8, #ff7ad9 45%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .pulseira { display: flex; align-items: center; gap: 26px; width: 100%; padding: 22px 30px; border-radius: 28px; background: rgba(255,255,255,.06); border: 2px solid rgba(255,255,255,.12); text-align: left; }
+  .pulseira i { width: 120px; height: 34px; border-radius: 999px; flex-shrink: 0; box-shadow: 0 0 30px currentColor; }
+  .pulseira b { font-size: 44px; display: block; }
+  .pulseira span { font-size: 28px; color: rgba(255,255,255,.7); }
+  .sala { display: flex; align-items: center; gap: 24px; }
+  .sala em { font-style: normal; font-size: 80px; }
+  .sala b { font-size: 46px; display: block; }
+  .sala span { font-size: 26px; color: rgba(255,255,255,.7); }
+  .tag { display: inline-block; margin-left: 10px; font-size: 20px; font-weight: 900; padding: 4px 12px; border-radius: 999px; background: rgba(244, 63, 94, .25); color: #fda4af; vertical-align: middle; }
+  .cta { width: 100%; padding: 34px; border-radius: 34px; font-size: 56px; font-weight: 900; background: #fff; color: #be185d; box-shadow: 0 0 80px rgba(255,255,255,.35); }
+  .legenda { position: absolute; left: 60px; right: 60px; top: 1440px; padding: 28px 34px; border-radius: 28px; background: rgba(0,0,0,.55);
+    border: 2px solid rgba(255, 120, 210, .25); font-size: 42px; font-weight: 700; line-height: 1.28; text-align: center; display: none; }
+  .legenda.ativa { display: block; }
+</style>
+</head>
+<body>
+  <div class="fundo"></div><div class="feixe f1"></div><div class="feixe f2"></div><div class="grao"></div>
+
+  <!-- 1. Psiu… chega mais perto -->
+  <section class="cena" data-n="1">
+    <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+    <h1 class="neon" style="font-size: 300px">Psiu…</h1>
+    <p style="font-size: 54px; font-weight: 800;">chega mais perto <span class="rosa">😈</span></p>
+  </section>
+
+  <!-- 2. Sexta e sábado, 21h à 1h — A Casa -->
+  <section class="cena" data-n="2">
+    <p style="font-size: 30px; font-weight: 800; letter-spacing: .4em; color: #f9a8d4;">NOSIGILO APRESENTA</p>
+    <h1 class="neon" style="font-size: 330px">A CASA</h1>
+    <p class="neon" style="font-size: 76px">A boate virtual dos <span class="rosa">casais liberais</span></p>
+    <div class="card" style="text-align:center; font-size: 52px; font-weight: 900;">🗓️ Sexta e sábado · 21h à 1h</div>
+  </section>
+
+  <!-- 3. Pulseiras -->
+  <section class="cena" data-n="3">
+    <p class="neon" style="font-size: 110px">Escolha sua <span class="rosa">pulseira</span></p>
+    <div class="pulseira"><i style="background:#10b981;color:#10b981"></i><div><b>Verde</b><span>topa tudo</span></div></div>
+    <div class="pulseira"><i style="background:#fbbf24;color:#fbbf24"></i><div><b>Amarela</b><span>só no soft</span></div></div>
+    <div class="pulseira"><i style="background:#8b5cf6;color:#8b5cf6"></i><div><b>Roxa</b><span>single é bem-vindo</span></div></div>
+    <div class="pulseira"><i style="background:#e11d48;color:#e11d48"></i><div><b>Vermelha</b><span>hoje é só pra olhar</span></div></div>
+  </section>
+
+  <!-- 4. Salas -->
+  <section class="cena" data-n="4">
+    <p class="neon" style="font-size: 110px">Salas <span class="rosa">ao vivo</span></p>
+    <div class="card sala"><em>🍸</em><div><b>Salão Principal</b><span>conhecer, provocar, chamar pra cabine</span></div></div>
+    <div class="card sala"><em>💑</em><div><b>Sala dos Casais <span class="tag">MUITO QUENTE</span></b><span>só casais e mulheres</span></div></div>
+    <div class="card sala"><em>🖤</em><div><b>Quarto Escuro <span class="tag">MUITO QUENTE</span></b><span>pra quem veio brincar de verdade</span></div></div>
+    <div class="card sala"><em>🎭</em><div><b>Sala anônima</b><span>ninguém sabe quem é você</span></div></div>
+  </section>
+
+  <!-- 5. Lola puxa o jogo -->
+  <section class="cena" data-n="5">
+    <p class="neon" style="font-size: 104px">A Lola <span class="rosa">puxa o jogo</span></p>
+    <div class="lola"><small>💋 LOLA · ANFITRIÃ IA</small><p>🍷 EU NUNCA… fiz troca de casais completa.</p></div>
+    <div class="botoes"><div class="botao">🔥 Já fiz</div><div class="botao">😇 Nunca fiz</div></div>
+    <div class="lola"><small>💋 LOLA · ANFITRIÃ IA</small><p>📸 DESAFIO DA FOTO! Foto da sua lingerie de hoje, sem rosto 😈</p></div>
+    <div class="card" style="text-align:center; font-size: 36px; font-weight: 800;">📸 Visualização única: abriu, sumiu</div>
+  </section>
+
+  <!-- 6. Drink, olhares, cabine -->
+  <section class="cena" data-n="6">
+    <div class="card" style="font-size: 40px; font-weight: 700;">🍹 <b>Casal Fortal</b> pagou uma caipirinha pra <b>Ju</b> 😏</div>
+    <div class="card" style="font-size: 44px; font-weight: 900; text-align:center; border-color: rgba(244,63,94,.6);">💘 Olhares cruzados!<br><span style="font-size: 32px; font-weight: 600; color: #fbcfe8;">Chamar pra cabine?</span></div>
+    <svg viewBox="0 0 300 420" width="240" height="336" style="overflow:visible">
+      <defs><filter id="neon" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <linearGradient id="luz" x1="0" x2="1"><stop offset="0" stop-color="#ff3fbf" stop-opacity=".95"/><stop offset="1" stop-color="#ff3fbf" stop-opacity="0"/></linearGradient></defs>
+      <polygon points="150,20 150,400 300,420 300,0" fill="url(#luz)" opacity=".55"/>
+      <rect x="20" y="20" width="200" height="380" rx="10" fill="none" stroke="#ff5fd0" stroke-width="7" filter="url(#neon)"/>
+      <polygon points="150,20 210,40 210,380 150,400" fill="#1a0718" stroke="#ff9ae5" stroke-width="5" filter="url(#neon)"/>
+      <circle cx="196" cy="215" r="7" fill="#ffd1f1" filter="url(#neon)"/>
+    </svg>
+    <div class="card" style="text-align:center; font-size: 40px; font-weight: 800;">👀 Porta aberta · 3 espiando</div>
+  </section>
+
+  <!-- 7. Show da meia-noite -->
+  <section class="cena" data-n="7">
+    <p style="font-size: 200px;">🎆</p>
+    <h1 class="neon" style="font-size: 200px">00:00</h1>
+    <p class="neon" style="font-size: 110px">Show da <span class="rosa">Meia-Noite</span></p>
+  </section>
+
+  <!-- 8. Discrição e consentimento -->
+  <section class="cena" data-n="8">
+    <p style="font-size: 160px;">🔒</p>
+    <p class="neon" style="font-size: 120px">Discrição</p>
+    <p class="neon rosa" style="font-size: 120px">Consentimento</p>
+    <div class="card" style="text-align:center; font-size: 56px; font-weight: 900;">Só maiores de 18</div>
+  </section>
+
+  <!-- 9. Reserve -->
+  <section class="cena" data-n="9">
+    <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+    <h1 class="neon" style="font-size: 260px">A CASA</h1>
+    <div class="cta">🎟️ RESERVE SEU LUGAR</div>
+    <p style="font-size: 56px; font-weight: 900;">nosigilo.net/<span class="rosa">acasa</span></p>
+    <p style="font-size: 46px; font-weight: 700; color: #fbcfe8;">Eu te espero lá dentro 💋</p>
+  </section>
+
+  <div class="legenda" id="legenda"></div>
+  <script>
+    const q = new URLSearchParams(location.search);
+    const n = q.get('cena') || '1';
+    document.querySelector(`.cena[data-n="${n}"]`).classList.add('ativa');
+    const leg = q.get('legenda');
+    if (leg) { const el = document.getElementById('legenda'); el.textContent = leg; el.classList.add('ativa'); }
+  </script>
+</body>
+</html>

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #050208; font-family: 'Inter', sans-serif; color: #fff; }
+  .fundo { position: absolute; inset: 0;
+    background: radial-gradient(900px 700px at 15% 8%, rgba(236,72,153,.4), transparent 60%),
+                radial-gradient(800px 800px at 95% 60%, rgba(168,85,247,.35), transparent 60%),
+                linear-gradient(180deg, #0b0410, #160614 60%, #0b0410); }
+  .cena { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 120px 80px; gap: 40px; opacity: 0; }
+  .neon { font-family: 'Bebas Neue'; color: #ffe4f3; letter-spacing: .04em; line-height: .95; text-shadow: 0 0 6px #fff, 0 0 18px #ff4fc4, 0 0 42px #ff2fb0, 0 0 90px #e11d74; }
+  .rosa { color: #ff6bd6; }
+  .logo { display: flex; align-items: center; gap: 22px; }
+  .cadeado { width: 150px; height: 150px; border-radius: 50%; padding: 5px; background: linear-gradient(135deg, #ff3fbf, #8b5cf6 55%, #3b82f6); box-shadow: 0 0 50px rgba(236,72,153,.7); }
+  .cadeado div { width: 100%; height: 100%; border-radius: 50%; background: #0b0618 url(../logo.png) 50% 32% / 185% no-repeat; }
+  .logo b { font-size: 76px; font-weight: 900; background: linear-gradient(90deg, #ff4fb8, #ff7ad9 45%, #a78bfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .passo { display: inline-flex; align-items: center; gap: 16px; padding: 16px 30px; border-radius: 999px; background: rgba(255,255,255,.1); border: 2px solid rgba(255,120,210,.4); font-size: 34px; font-weight: 800; }
+  .passo i { font-style: normal; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, #e11d48, #c026d3); display: flex; align-items: center; justify-content: center; }
+  /* Perfil do Instagram (simulado) */
+  .insta { width: 860px; border-radius: 50px; background: #000; border: 2px solid #27272a; padding: 50px 46px; text-align: left; box-shadow: 0 30px 100px rgba(236,72,153,.3); }
+  .insta .linha { display: flex; align-items: center; gap: 40px; }
+  .insta .avatar { width: 190px; height: 190px; border-radius: 50%; padding: 6px; background: linear-gradient(45deg, #f59e0b, #ec4899, #8b5cf6); flex-shrink: 0; }
+  .insta .avatar div { width: 100%; height: 100%; border-radius: 50%; border: 6px solid #000; background: #0b0618 url(../logo.png) 50% 32% / 185% no-repeat; }
+  .insta .nums { display: flex; gap: 46px; font-size: 26px; color: #d4d4d8; }
+  .insta .nums b { display: block; font-size: 38px; color: #fff; }
+  .insta h4 { font-size: 34px; margin-top: 30px; }
+  .insta p { font-size: 28px; color: #d4d4d8; margin-top: 6px; line-height: 1.35; }
+  .insta .link { display: inline-block; margin-top: 12px; font-size: 32px; font-weight: 800; color: #60a5fa; padding: 4px 10px; border-radius: 10px; }
+  .insta .link.realce { background: rgba(96,165,250,.25); box-shadow: 0 0 0 4px rgba(96,165,250,.5); }
+  .insta .botoes { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 30px; }
+  .insta .botoes div { background: #27272a; border-radius: 16px; padding: 18px; text-align: center; font-size: 28px; font-weight: 700; }
+  /* Google (simulado) */
+  .google { width: 900px; display: flex; flex-direction: column; align-items: center; gap: 46px; }
+  .google .marca { font-family: 'Inter'; font-size: 150px; font-weight: 600; letter-spacing: -.04em; }
+  .google .marca span:nth-child(1), .google .marca span:nth-child(4) { color: #4285f4; }
+  .google .marca span:nth-child(2), .google .marca span:nth-child(6) { color: #ea4335; }
+  .google .marca span:nth-child(3) { color: #fbbc05; }
+  .google .marca span:nth-child(5) { color: #34a853; }
+  .busca { width: 100%; height: 130px; border-radius: 999px; background: #fff; color: #111; display: flex; align-items: center; gap: 24px; padding: 0 44px; font-size: 50px; box-shadow: 0 10px 50px rgba(255,255,255,.15); }
+  .busca .lupa { font-size: 46px; }
+  .cursor { display: inline-block; width: 4px; height: 56px; background: #111; margin-left: 4px; vertical-align: middle; }
+  .resultado { width: 100%; text-align: left; background: #fff; color: #111; border-radius: 34px; padding: 34px 40px; }
+  .resultado small { font-size: 24px; color: #4d5156; display: block; }
+  .resultado b { display: block; font-size: 40px; color: #1a0dab; margin: 6px 0; }
+  .resultado p { font-size: 26px; color: #4d5156; line-height: 1.35; }
+  /* Cadastro (simulado) */
+  .cad { width: 860px; border-radius: 50px; background: #18181b; border: 2px solid #3f3f46; padding: 54px; text-align: left; box-shadow: 0 30px 100px rgba(236,72,153,.3); }
+  .cad h3 { font-size: 48px; font-weight: 900; }
+  .cad .sub { font-size: 28px; color: #a1a1aa; margin: 10px 0 34px; }
+  .tipo { display: flex; align-items: center; gap: 24px; padding: 28px; border-radius: 28px; border: 3px solid #3f3f46; margin-top: 18px; font-size: 38px; font-weight: 800; }
+  .tipo span { font-size: 54px; }
+  .tipo.ativo { border-color: #ec4899; background: rgba(236,72,153,.15); }
+  .cad .btn { margin-top: 34px; border-radius: 26px; padding: 30px; text-align: center; font-size: 40px; font-weight: 900; background: linear-gradient(90deg, #e11d48, #c026d3); }
+  .relogio { font-size: 34px; color: #f9a8d4; font-weight: 800; }
+  .selo { padding: 40px 60px; border-radius: 50px; background: linear-gradient(135deg, #e11d48, #c026d3); box-shadow: 0 0 80px rgba(236,72,153,.7); }
+  .selo b { display: block; font-size: 120px; font-weight: 900; line-height: 1; }
+  .selo span { font-size: 40px; font-weight: 800; }
+  /* Dedo */
+  .dedo { position: absolute; width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,.35); border: 5px solid rgba(255,255,255,.9); box-shadow: 0 0 30px rgba(255,255,255,.5); transform: translate(-50%, -50%); opacity: 0; z-index: 10; }
+  .onda { position: absolute; width: 110px; height: 110px; border-radius: 50%; border: 5px solid #fff; transform: translate(-50%, -50%); opacity: 0; z-index: 9; }
+  .rotulo { position: absolute; left: 0; right: 0; top: 150px; text-align: center; }
+  /* Legenda estilo Reels: acima da faixa de botões do Instagram */
+  .legenda { position: absolute; left: 70px; right: 70px; top: 1500px; text-align: center; font-size: 58px; font-weight: 900; line-height: 1.18;
+    color: #fff; -webkit-text-stroke: 3px #000; paint-order: stroke fill; text-shadow: 0 6px 24px rgba(0,0,0,.9); z-index: 20; }
+  .legenda b { color: #ff6bd6; }
+</style>
+</head>
+<body>
+<div class="fundo"></div>
+
+<!-- 0–3.6: gancho -->
+<div class="cena" id="c1">
+  <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+  <div class="neon" style="font-size:150px">A comunidade <span class="rosa">liberal</span></div>
+  <div class="neon" style="font-size:110px">que mais cresce no Brasil 🔥</div>
+</div>
+
+<!-- 3.6–5.0: é fácil -->
+<div class="cena" id="c2">
+  <div class="neon" style="font-size:260px">É FÁCIL</div>
+  <div style="font-size:120px" id="setaBaixo">👇</div>
+</div>
+
+<!-- 5.0–6.9: link da bio -->
+<div class="cena" id="c3">
+  <div class="rotulo"><span class="passo"><i>1</i>Toque no link da bio</span></div>
+  <div class="insta">
+    <div class="linha">
+      <div class="avatar"><div></div></div>
+      <div class="nums" style="font-size:40px;color:#fff;font-weight:800">@nosigilo.net</div>
+    </div>
+    <h4>NoSigilo.net 🔒🔥</h4>
+    <p>A comunidade liberal que mais cresce no Brasil 💑<br>Casais, mulheres e singles · +18 · discrição total</p>
+    <span class="link" id="linkBio">🔗 nosigilo.net</span>
+    <div class="botoes"><div>Seguir</div><div>Mensagem</div></div>
+  </div>
+</div>
+
+<!-- 6.9–10.6: Google -->
+<div class="cena" id="c4">
+  <div class="rotulo"><span class="passo"><i>2</i>ou digite no Google</span></div>
+  <div class="google">
+    <div class="marca"><span>G</span><span>o</span><span>o</span><span>g</span><span>l</span><span>e</span></div>
+    <div class="busca"><span class="lupa">🔍</span><span id="digitado"></span><span class="cursor" id="cursor"></span></div>
+    <div class="resultado" id="resultado">
+      <small>https://nosigilo.net</small>
+      <b>NoSigilo.net — Comunidade liberal de casais</b>
+      <p>A comunidade liberal que mais cresce no Brasil. Casais, mulheres e singles com total discrição.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 10.6–13.0: cadastro -->
+<div class="cena" id="c5">
+  <div class="rotulo"><span class="passo"><i>3</i>Cadastro em 1 minutinho</span></div>
+  <div class="cad">
+    <h3>Criar conta</h3>
+    <p class="sub">Escolha o seu perfil</p>
+    <div class="tipo" id="tCasal"><span>💑</span>Casal</div>
+    <div class="tipo"><span>👩</span>Mulher</div>
+    <div class="tipo"><span>👨</span>Homem</div>
+    <div class="btn">Continuar</div>
+    <p class="relogio" id="relogio" style="margin-top:24px;text-align:center">⏱️ 0:00</p>
+  </div>
+</div>
+
+<!-- 13.0–fim: 15 dias grátis + marca -->
+<div class="cena" id="c6">
+  <div class="logo"><div class="cadeado"><div></div></div><b>NoSigilo.net</b></div>
+  <div class="neon" style="font-size:100px">🔗 Link na bio</div>
+  <div class="neon" style="font-size:100px">🔍 <span class="rosa">nosigilo.net</span></div>
+  <div style="font-size:40px;font-weight:800;color:#fbcfe8;margin-top:-20px">procure no Google</div>
+</div>
+
+<div class="legenda" id="legenda"></div>
+<div class="onda" id="onda"></div>
+<div class="dedo" id="dedo"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const ease = (x) => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const jan = (t, a, b, f = 0.3) => clamp((t - a) / f) * clamp((b - t) / f);
+function cena(id, t, a, b) {
+  const o = jan(t, a, b);
+  const el = $(id);
+  el.style.opacity = o;
+  el.style.transform = `scale(${0.94 + 0.06 * ease(clamp((t - a) / 0.5))})`;
+}
+// [tempo, x, y, toque]
+const DEDO = [[5.3, 760, 1500, 0], [6.0, 300, 1090, 0], [6.25, 300, 1090, 1], [10.9, 760, 1500, 0], [11.6, 480, 763, 0], [11.85, 480, 763, 1]];
+function dedo(t) {
+  const el = $('dedo'), onda = $('onda');
+  let ant = null, prox = null;
+  for (const d of DEDO) { if (d[0] <= t) ant = d; else { prox = d; break; } }
+  const ativo = (t >= 5.3 && t < 6.9) || (t >= 10.9 && t < 12.9);
+  if (!ant || !ativo) { el.style.opacity = 0; onda.style.opacity = 0; return; }
+  let x = ant[1], y = ant[2];
+  if (prox && prox[0] - ant[0] < 1.5) { const p = ease(clamp((t - ant[0]) / (prox[0] - ant[0]))); x += (prox[1] - x) * p; y += (prox[2] - y) * p; }
+  el.style.left = x + 'px'; el.style.top = y + 'px'; el.style.opacity = 0.9;
+  const toque = DEDO.filter((d) => d[3]).map((d) => d[0]).find((tt) => t >= tt && t - tt < 0.5);
+  el.style.transform = `translate(-50%,-50%) scale(${toque !== undefined && t - toque < 0.2 ? 0.8 : 1})`;
+  if (toque !== undefined) { const p = (t - toque) / 0.5; onda.style.left = x + 'px'; onda.style.top = y + 'px'; onda.style.opacity = 1 - p; onda.style.transform = `translate(-50%,-50%) scale(${1 + p * 1.8})`; } else onda.style.opacity = 0;
+}
+const LEGENDAS = [
+  [0.0, 3.62, 'Quer entrar na comunidade <b>liberal</b> que mais cresce no Brasil?'],
+  [4.05, 4.85, 'É fácil.'],
+  [5.2, 6.75, 'Toca no <b>link da nossa bio</b>…'],
+  [7.0, 8.55, 'ou abre o <b>Google</b> e digita:'],
+  [8.7, 10.5, '<b>nosigilo.net</b>'],
+  [10.8, 12.85, 'Faz seu cadastro em um minutinho…'],
+  [13.2, 15.6, 'Eu te espero lá dentro. 💋'],
+];
+function render(t) {
+  const leg = LEGENDAS.find((l) => t >= l[0] && t < l[1]);
+  const el = $('legenda');
+  if (leg) {
+    if (el.dataset.k !== leg[2]) { el.innerHTML = leg[2]; el.dataset.k = leg[2]; }
+    const p = clamp((t - leg[0]) / 0.18);
+    el.style.opacity = p; el.style.transform = `scale(${0.9 + 0.1 * ease(p)})`;
+  } else el.style.opacity = 0;
+  cena('c1', t, 0, 3.75);
+  cena('c2', t, 3.75, 5.1);
+  $('setaBaixo').style.transform = `translateY(${Math.sin(t * 9) * 18}px)`;
+  cena('c3', t, 5.1, 6.95);
+  $('linkBio').classList.toggle('realce', t >= 6.25);
+  cena('c4', t, 6.95, 10.7);
+  // digita "nosigilo.net" acompanhando a fala (8,75 s → 10,3 s)
+  const texto = 'nosigilo.net';
+  const n = Math.round(texto.length * clamp((t - 8.7) / 1.5));
+  $('digitado').textContent = texto.slice(0, n);
+  $('cursor').style.opacity = Math.floor(t * 3) % 2 ? 1 : 0;
+  $('resultado').style.opacity = clamp((t - 10.1) / 0.3);
+  $('resultado').style.transform = `translateY(${(1 - ease(clamp((t - 10.1) / 0.3))) * 30}px)`;
+  cena('c5', t, 10.7, 13.15);
+  $('tCasal').classList.toggle('ativo', t >= 11.85);
+  const seg = Math.min(59, Math.floor(clamp((t - 10.7) / 2.4) * 59));
+  $('relogio').textContent = `⏱️ 0:${String(seg).padStart(2, '0')}`;
+  cena('c6', t, 13.15, 99);
+  dedo(t);
+}
+window.render = render;
+render(Number(new URLSearchParams(location.search).get('t') || 0));
+</script>
+</body>
+</html>
