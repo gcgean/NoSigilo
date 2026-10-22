@@ -4319,4 +4319,62 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'coroa' }).expect(200);
     await request(ctx.app).post(`/api/conversations/${cid}/presente`).set(auth(homem.token)).send({ presente: 'coroa' }).expect(402);
   });
+
+  // Regressão do chamado de 21/10/2026 (casal SalaVermelha): a aba "Vídeos" do
+  // perfil esvaziava para quem postava muita foto. Ela pegava as N postagens
+  // mais recentes e só DEPOIS descartava as sem vídeo — então os vídeos
+  // antigos ficavam fora da janela e a aba aparecia vazia, mesmo com dezenas
+  // de vídeos na conta (e tudo continuava no feed, o que assustou o casal).
+  it('aba Videos do perfil acha videos antigos mesmo com muitas fotos postadas depois', async () => {
+    const autora = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Posta Muito', email: 'posta-muito@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const A = { Authorization: `Bearer ${autora.token}` };
+    const dono = String(autora.user.id);
+    const agora = Date.now();
+    const quando = (minutosAtras: number) => new Date(agora - minutosAtras * 60000).toISOString();
+
+    // 3 vídeos antigos.
+    const idsVideo: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const mid = `v-regress-${i}`;
+      await run(ctx.db,
+        "INSERT INTO media (id, user_id, filename, mime_type, size, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'video/mp4', 10, 0, 0, 'post', ?)",
+        [mid, dono, `${mid}.mp4`, quando(500 - i)]);
+      const pid = `p-video-${i}`;
+      await run(ctx.db,
+        'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)',
+        [pid, dono, '', JSON.stringify([mid]), quando(500 - i)]);
+      idsVideo.push(pid);
+    }
+
+    // 40 fotos DEPOIS: empurram os vídeos para fora das 30 postagens recentes.
+    for (let i = 0; i < 40; i++) {
+      const mid = `f-regress-${i}`;
+      await run(ctx.db,
+        "INSERT INTO media (id, user_id, filename, mime_type, size, is_private, is_main, source, created_at) VALUES (?, ?, ?, 'image/webp', 10, 0, 0, 'post', ?)",
+        [mid, dono, `${mid}.webp`, quando(100 - i)]);
+      await run(ctx.db,
+        'INSERT INTO posts (id, user_id, content, media_ids_json, created_at) VALUES (?, ?, ?, ?, ?)',
+        [`p-foto-${i}`, dono, '', JSON.stringify([mid]), quando(100 - i)]);
+    }
+
+    // Antes da correção isto vinha vazio: nenhum dos 30 posts mais recentes
+    // tinha vídeo, apesar dos 3 vídeos existirem.
+    const videos = await request(ctx.app)
+      .get(`/api/users/${dono}/posts?videosOnly=true&limit=30`).set(A).expect(200);
+    const voltaram = videos.body.posts.map((p: any) => p.id);
+    expect(voltaram).toHaveLength(3);
+    for (const pid of idsVideo) expect(voltaram).toContain(pid);
+
+    // A aba sem filtro continua trazendo as mais recentes (as fotos).
+    const tudo = await request(ctx.app)
+      .get(`/api/users/${dono}/posts?limit=30`).set(A).expect(200);
+    expect(tudo.body.posts).toHaveLength(30);
+    expect(tudo.body.posts[0].id).toBe('p-foto-39');
+
+    // Galeria de fotos: com 40 fotos, o teto fixo de 20 escondia as antigas.
+    const galeria = await request(ctx.app).get('/api/photos/recent?limit=200').set(A).expect(200);
+    expect(galeria.body.length).toBe(40);
+  });
 });
