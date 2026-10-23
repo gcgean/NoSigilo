@@ -10,7 +10,7 @@ import NegocioDaCasa from '@/components/NegocioDaCasa';
 
 /** Admin › A Casa: tudo da boate virtual num lugar só (ao vivo, reservas, moderação, rádio, histórico). */
 type AoVivo = {
-  aberta: boolean; forcada: boolean; tema: { nome: string } | null; abertaAte: string | null;
+  aberta: boolean; forcada: boolean; teste?: boolean; convidadosTeste?: string[]; tema: { nome: string } | null; abertaAte: string | null;
   proximaAbertura: string | null; proximaNoite: string;
   reservas: { id: string; nome: string; cat: string; em: string }[];
   totalReservas?: number;
@@ -48,6 +48,7 @@ export default function AdminCasaTab() {
   const [vivo, setVivo] = useState<AoVivo | null>(null);
   const [recado, setRecado] = useState('');
   const [salaRecado, setSalaRecado] = useState('todas');
+  const [convidados, setConvidados] = useState('');
 
   const carregar = useCallback(async () => {
     try { setVivo((await apiClient.get('/casa/admin/ao-vivo')).data); } catch { /* tenta de novo */ }
@@ -75,7 +76,7 @@ export default function AdminCasaTab() {
             <div className="rounded-xl bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">Status</p>
               <p className="font-bold">{vivo.aberta ? `🟢 Aberta${vivo.tema ? ` · ${vivo.tema.nome}` : ''}` : '🔒 Fechada'}</p>
-              {vivo.forcada && <p className="text-[11px] text-muted-foreground">abertura extra até {quando(vivo.abertaAte)}</p>}
+              {vivo.forcada && <p className="text-[11px] text-muted-foreground">{vivo.teste ? '🧪 teste invisível' : 'abertura extra'} até {quando(vivo.abertaAte)}</p>}
             </div>
             <div className="rounded-xl bg-muted/40 p-3">
               <p className="text-xs text-muted-foreground">{vivo.aberta ? 'Pessoas lá dentro' : 'Próxima abertura'}</p>
@@ -98,12 +99,17 @@ export default function AdminCasaTab() {
         ) : <p className="text-sm text-muted-foreground">Carregando…</p>}
         <div className="flex flex-wrap gap-2">
           {vivo?.forcada
-            ? <Button size="sm" variant="outline" onClick={() => void acao('/casa/abrir-agora', { minutos: 0 }, 'Abertura extra encerrada')}>Fechar abertura extra</Button>
+            ? <Button size="sm" variant="outline" onClick={() => void acao('/casa/abrir-agora', { minutos: 0 }, vivo?.teste ? 'Teste encerrado' : 'Abertura extra encerrada')}>{vivo?.teste ? 'Encerrar teste' : 'Fechar abertura extra'}</Button>
             : !vivo?.aberta && <>
-              <Button size="sm" variant="outline" onClick={() => void acao('/casa/abrir-agora', { minutos: 60 }, 'Casa aberta por 1h')}>Abrir agora por 1h (teste)</Button>
+              <Button size="sm" onClick={() => void acao('/casa/abrir-agora', { minutos: 60, teste: true, convidados }, 'Teste aberto por 1h: só você (e os convidados) veem a Casa')}>🧪 Testar sozinho (1h, invisível)</Button>
+              <Button size="sm" variant="outline" onClick={() => void acao('/casa/abrir-agora', { minutos: 60 }, 'Casa aberta por 1h para todos')}>Abrir para todos por 1h</Button>
               <Button size="sm" variant="outline" onClick={() => void acao('/casa/abrir-agora', { minutos: 240 }, 'Casa aberta por 4h')}>Abrir noite extra (4h)</Button>
             </>}
         </div>
+        {!vivo?.aberta && (
+          <input value={convidados} onChange={(e) => setConvidados(e.target.value)} placeholder="Convidados do teste (e-mails separados por vírgula, opcional)" className="w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+        )}
+        {vivo?.teste && <p className="text-xs font-semibold text-amber-600">🧪 Modo teste: só admins{vivo.convidadosTeste?.length ? ` e ${vivo.convidadosTeste.join(', ')}` : ''} veem a Casa aberta. Ninguém foi avisado.</p>}
         <p className="text-xs text-muted-foreground">
           A Lola abre sozinha sexta e sábado às 21h, avisa todo mundo, puxa as brincadeiras, modera e fecha à 1h. Você recebe no Telegram a abertura, a meia-noite, o resumo, expulsões e denúncias.
         </p>

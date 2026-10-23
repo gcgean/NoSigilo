@@ -3783,6 +3783,15 @@ describe('nosigilo backend', () => {
     expect((await request(ctx.app).get('/api/casa/admin/playlist').set(auth(casal.token)).expect(200)).body.faixas).toEqual([]);
     await request(ctx.app).get('/api/casa/musica/..%2F..%2Fdata.db').expect(404);
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
+
+    // Modo teste: só admin e convidados veem a Casa aberta; a página pública e os outros veem fechada.
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60, teste: true, convidados: 'homem-casa-1@example.com' }).expect(200);
+    expect((await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body.aberta).toBe(true);
+    expect((await request(ctx.app).get('/api/casa').set(auth(homens[1].token)).expect(200)).body.aberta).toBe(true);
+    expect((await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body.aberta).toBe(false);
+    await request(ctx.app).post('/api/casa/quarto/entrar').set(auth(homens[2].token)).expect(403);
+    expect((await request(ctx.app).get('/api/casa/publico').expect(200)).body.aberta).toBe(false);
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
   });
 
   it('vitrine: só uma curtida, na primeira publicação; sem match e sem curtir story', async () => {

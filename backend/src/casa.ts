@@ -360,14 +360,35 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     abertaAteCache = { valor: Date.parse(String(row?.value || '')) || 0, lidoEm: Date.now() };
     return abertaAteCache.valor;
   };
+  // Modo teste: abertura forçada que só admins (e os e-mails convidados) enxergam.
+  // Ninguém mais vê a Casa aberta, não sai aviso e a noite não aceita reserva.
+  let testeCache: { ativo: boolean; convidados: string[]; lidoEm: number } = { ativo: false, convidados: [], lidoEm: 0 };
+  const modoTeste = async () => {
+    if (Date.now() - testeCache.lidoEm < 30_000) return testeCache;
+    const row = (await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_teste' LIMIT 1", [])) as any;
+    let v: any = null;
+    try { v = JSON.parse(String(row?.value || 'null')); } catch { v = null; }
+    testeCache = { ativo: !!v?.ativo, convidados: Array.isArray(v?.convidados) ? v.convidados.map((e: unknown) => String(e).toLowerCase()) : [], lidoEm: Date.now() };
+    return testeCache;
+  };
   const noiteAtual = async () => {
     const pelaHora = noiteDoHorario();
-    if (pelaHora) return { ...pelaHora, forcada: false };
+    if (pelaHora) return { ...pelaHora, forcada: false, teste: false };
     if ((await abertaAte()) > Date.now()) {
       const { dow, data } = agoraBrasilia();
-      return { chave: `extra-${data}`, tema: (dow === 6 ? 'sabado' : 'sexta') as 'sexta' | 'sabado', forcada: true };
+      const teste = (await modoTeste()).ativo;
+      return { chave: `${teste ? 'teste' : 'extra'}-${data}`, tema: (dow === 6 ? 'sabado' : 'sexta') as 'sexta' | 'sabado', forcada: true, teste };
     }
     return null;
+  };
+  /** A noite como a pessoa enxerga: no modo teste, só admin e convidados veem a Casa aberta. */
+  const noitePara = async (userId: string) => {
+    const noite = await noiteAtual();
+    if (!noite?.teste) return noite;
+    const perfil = await carregarPerfil(userId);
+    if (perfil?.admin) return noite;
+    const email = String(((await db.queryOne('SELECT email FROM users WHERE id = ?', [userId])) as any)?.email || '').toLowerCase();
+    return email && (await modoTeste()).convidados.includes(email) ? noite : null;
   };
 
   // ─── Envio em tempo real (para a sala de cada pessoa, sem join de socket) ──
@@ -1029,7 +1050,7 @@ Responda com UMA palavra:
   /** Chave da noite em curso ou da próxima (é nela que a reserva vale). */
   const proximaNoite = async (): Promise<{ chave: string; inicio: string | null }> => {
     const agora = await noiteAtual();
-    if (agora) return { chave: agora.chave, inicio: null };
+    if (agora && !agora.teste) return { chave: agora.chave, inicio: null };
     const base = Math.ceil(Date.now() / 3_600_000) * 3_600_000;
     for (let h = 0; h < 8 * 24; h++) {
       const t = new Date(base + h * 3_600_000);
@@ -1115,7 +1136,8 @@ Responda com UMA palavra:
 
   // Página pública d'A Casa (sem login): só números, nada de nomes ou fotos.
   app.get('/api/casa/publico', async (_req, res) => {
-    const noite = await noiteAtual();
+    const noiteReal = await noiteAtual();
+    const noite = noiteReal?.teste ? null : noiteReal;
     let pessoas = 0;
     for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
     // Próxima abertura: anda de hora em hora até cair dentro do horário.
@@ -1141,7 +1163,7 @@ Responda com UMA palavra:
 
   app.get('/api/casa', deps.requireAuth, async (req, res) => {
     const userId = userDe(req);
-    const noite = await noiteAtual();
+    const noite = await noitePara(userId);
     const perfil = await carregarPerfil(userId);
     const podeFalar = await deps.temPremium(userId);
     const prox = await proximaNoite();
@@ -1179,11 +1201,16 @@ Responda com UMA palavra:
     if (!perfil?.admin) { res.status(403).json({ error: 'forbidden' }); return; }
     const minutos = Math.min(240, Math.max(0, Number((req.body as any)?.minutos ?? 60)));
     const ate = new Date(Date.now() + minutos * 60_000).toISOString();
+    const teste = minutos > 0 && !!(req.body as any)?.teste;
+    const convidados = String((req.body as any)?.convidados || '').split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@')).slice(0, 20);
     await db.run('DELETE FROM system_settings WHERE key = ?', ['casa_aberta_ate']);
     await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', ['casa_aberta_ate', ate, new Date().toISOString()]);
+    await db.run('DELETE FROM system_settings WHERE key = ?', ['casa_teste']);
+    await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', ['casa_teste', JSON.stringify({ ativo: teste, convidados }), new Date().toISOString()]);
     await db.persist();
     abertaAteCache = { valor: Date.parse(ate), lidoEm: Date.now() };
-    res.json({ ok: true, abertaAte: minutos > 0 ? ate : null });
+    testeCache = { ativo: teste, convidados, lidoEm: Date.now() };
+    res.json({ ok: true, abertaAte: minutos > 0 ? ate : null, teste, convidados });
   });
 
   const midiasQueVi = async (sala: Sala, userId: string) => {
@@ -1211,7 +1238,7 @@ Responda com UMA palavra:
     const sala = salaDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
     const userId = userDe(req);
-    const noite = await noiteAtual();
+    const noite = await noitePara(userId);
     if (!noite) { res.status(403).json({ error: 'fechada', message: 'A Casa abre sexta e sábado, das 21h à 1h.' }); return; }
     chaveDaNoite = noite.chave;
     if (estaExpulso(userId)) { res.status(403).json({ error: 'expulso', message: 'Você foi retirado(a) da Casa nesta noite. Na próxima noite você pode voltar.' }); return; }
@@ -1302,7 +1329,7 @@ Responda com UMA palavra:
     const sala = salaDe(req);
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
-    if (!(await noiteAtual())) { res.status(403).json({ error: 'fechada' }); return; }
+    if (!(await noitePara(userId))) { res.status(403).json({ error: 'fechada' }); return; }
     sala.fila = sala.fila.filter((id) => id !== userId);
     if ((req.body as any)?.entrar !== false) sala.fila.push(userId);
     const pos = sala.fila.indexOf(userId);
@@ -1761,6 +1788,8 @@ Responda com UMA palavra:
     res.json({
       aberta: !!noite,
       forcada: !!noite?.forcada,
+      teste: !!noite?.teste,
+      convidadosTeste: noite?.teste ? (await modoTeste()).convidados : [],
       tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
       proximaAbertura: prox.inicio,
@@ -2038,7 +2067,7 @@ Responda com UMA palavra:
   const souAdmin = async (req: express.Request) => !!(await carregarPerfil(userDe(req)))?.admin;
 
   app.get('/api/casa/radio', deps.requireAuth, async (req, res) => {
-    if (!(await noiteAtual()) && !(await souAdmin(req))) { res.json({ tocando: null }); return; }
+    if (!(await noitePara(userDe(req))) && !(await souAdmin(req))) { res.json({ tocando: null }); return; }
     // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
     // A sequência é a mesma para todo mundo na noite, então a sincronia continua.
     const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
