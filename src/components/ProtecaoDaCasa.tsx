@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
  * Proteção contra print nas salas e cabines d'A Casa.
  * Nenhum site consegue bloquear o print do celular de verdade; aqui dificultamos
  * e deixamos rastro:
- * - marca d'água com o nome e o id de quem está vendo (print vazado mostra quem foi);
+ * - marca d'água discreta no canto com o nome e o id de quem está vendo (print vazado mostra quem foi);
  * - a tela escurece quando a janela perde o foco (ferramenta de recorte no PC,
  *   troca de app ou gravação pelo seletor de tarefas no celular) e na tecla PrintScreen;
  * - sem seleção de texto, sem copiar e sem menu do botão direito.
@@ -55,13 +55,13 @@ export default function ProtecaoDaCasa({ nome, id }: { nome: string; id: string 
   const marca = `${nome} · ${id.slice(0, 8)} · NoSigilo`;
   return createPortal(
     <>
-      {/* Marca d'água por cima de tudo, sem atrapalhar os toques. */}
-      <div className="pointer-events-none fixed inset-0 z-[99998] select-none overflow-hidden opacity-[0.07]" aria-hidden>
-        <div className="absolute -inset-1/2 flex rotate-[-25deg] flex-wrap content-start gap-x-16 gap-y-14">
-          {Array.from({ length: 120 }).map((_, i) => (
-            <span key={i} className="whitespace-nowrap text-sm font-bold text-white">{marca}</span>
-          ))}
-        </div>
+      {/* Marca d'água discreta no canto, sem atrapalhar os toques. */}
+      <div
+        className="pointer-events-none fixed bottom-[5.5rem] right-2 z-[99998] select-none text-[9px] font-medium text-white/20"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        aria-hidden
+      >
+        {marca}
       </div>
       {oculto && (
         <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center gap-2 bg-black text-center text-white">
