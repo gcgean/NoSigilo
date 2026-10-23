@@ -1,6 +1,7 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import CasaAbertaBanner from '@/components/CasaAbertaBanner';
+import { useCasaAberta } from '@/utils/useCasaAberta';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { appService } from '@/services/api';
@@ -142,6 +143,8 @@ export default function Layout() {
   const { user, logout, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  // Durante a noite d'A Casa o atalho "Ganhe $" vira "Entrar na Casa".
+  const casaAberta = useCasaAberta();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { socket } = useSocket();
@@ -1544,6 +1547,22 @@ export default function Layout() {
           {/* Atalho para promotor/convites — no desktop fica na sidebar; no mobile
               precisa de uma entrada fixa. Vai ao painel se já for promotor, senão
               à landing de ativação. */}
+          {casaAberta ? (
+            <NavLink
+              to="/casa"
+              className={({ isActive }) => cn(
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 font-bold transition-colors",
+                isActive ? "text-rose-400" : "text-rose-500"
+              )}
+            >
+              <span className="relative flex h-5 w-5 items-center justify-center">
+                <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" />
+                <span className="relative text-base leading-none">🔥</span>
+              </span>
+              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
+              <span className="absolute -top-1 right-1 rounded-full bg-rose-600 px-1 text-[8px] font-bold uppercase text-white">ao vivo</span>
+            </NavLink>
+          ) : (
           <NavLink
             to={user?.isPromoter ? '/promoter' : '/ganhe'}
             className={cn(
@@ -1556,6 +1575,7 @@ export default function Layout() {
             <BadgeDollarSign className="h-4.5 w-4.5" />
             <span className="max-w-full truncate text-xs leading-4">Ganhe $</span>
           </NavLink>
+          )}
         </div>
       </nav>
 
