@@ -2,6 +2,7 @@ import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState }
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import CasaAbertaBanner from '@/components/CasaAbertaBanner';
 import { useCasaAberta } from '@/utils/useCasaAberta';
+import CasaAoVivoConvite from '@/components/CasaAoVivoConvite';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { appService } from '@/services/api';
@@ -719,7 +720,8 @@ export default function Layout() {
   return (
     <div className="min-h-[100svh] bg-background flex flex-col">
       <ViewportDebug /> {/* TEMPORÁRIO: só com ?debugvp=1 na URL */}
-      <LancamentoDaCasa /> {/* campanha de inauguração d'A Casa até 23/10 */}
+      <LancamentoDaCasa /> {/* convite diário para a próxima noite d'A Casa */}
+      <CasaAoVivoConvite /> {/* com a Casa aberta: "está ao vivo, quer entrar?" 1x por noite */}
       <FirstAccessTutorial />
       {/* Header */}
       {!isMobileReelsMaximized && (
