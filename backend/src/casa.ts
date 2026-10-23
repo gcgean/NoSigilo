@@ -2503,6 +2503,11 @@ Responda com UMA palavra:
       if (sala) lola(sala, `🚪👀 A cabine de ${[...c.membros.values()].map((x) => x.nome).join(', ')} está com a porta aberta… quem quiser, vai espiar 😈`);
     } else if (abrir) {
       msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer abrir a porta 👀 (${c.porta.size}/${c.membros.size})` });
+      for (const id of c.membros.keys()) {
+        if (!c.porta.has(id)) emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'porta', nome: m.nome });
+      }
+    } else if (!abrir && !estava) {
+      msgCabine(c, { tipo: 'sistema', texto: `🔒 ${m.nome} prefere manter a porta fechada` });
     }
     avisarCabine(c);
     res.json({ ok: true, aberta: c.aberta });
@@ -2580,7 +2585,10 @@ Responda com UMA palavra:
     if (!c.entradas.has(userId)) {
       c.entradas.set(userId, { tipo: 'pedido', pessoa: membroDe(p), aprovados: new Set(), convidadoAceitou: true, criadoEm: Date.now() });
       msgCabine(c, { tipo: 'sistema', texto: `🙋 ${p.nome} pediu para participar` });
-      for (const id of c.membros.keys()) emitirPara(id, 'casa.cabine.pedido', { cabineId: c.id, nome: p.nome });
+      for (const id of c.membros.keys()) {
+        emitirPara(id, 'casa.cabine.pedido', { cabineId: c.id, nome: p.nome });
+        emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'pedido', nome: p.nome, alvoNome: p.nome, alvoPublico: membroDe(p).idPublico });
+      }
       avisarCabine(c);
     }
     res.json({ ok: true });
@@ -2602,6 +2610,9 @@ Responda com UMA palavra:
     e.aprovados.add(userId);
     c.entradas.set(alvo.id, e);
     msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer convidar ${alvo.nome} (${e.aprovados.size}/${c.membros.size} aprovaram)` });
+    for (const id of c.membros.keys()) {
+      if (!e.aprovados.has(id)) emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'convite', nome: m.nome, alvoNome: alvo.nome, alvoPublico: e.pessoa.idPublico });
+    }
     if ([...c.membros.keys()].every((id) => e.aprovados.has(id)) && !e.convidadoAceitou) {
       emitirPara(alvo.id, 'casa.cabine.convite', { cabineId: c.id, membros: [...c.membros.values()].map((x) => x.nome) });
       avisarSeFora(alvo.id, '🚪 Te chamaram pra uma cabine na Casa!', `${[...c.membros.values()].map((x) => x.nome).join(', ')} querem você lá dentro 😈`);

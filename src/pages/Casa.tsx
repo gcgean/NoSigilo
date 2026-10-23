@@ -295,7 +295,8 @@ export default function Casa() {
   const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
   const [escolhendoMidia, setEscolhendoMidia] = useState(false);
   const galeriaRef = useRef<HTMLInputElement | null>(null);
-  const [vendo, setVendo] = useState<{ url: string; mime: string | null } | null>(null);
+  const [vendo, setVendo] = useState<{ url: string; mime: string | null; msg?: Msg } | null>(null);
+  const [comentarioMidia, setComentarioMidia] = useState('');
   const [params, setParams] = useSearchParams();
   const { user } = useAuth();
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -309,6 +310,9 @@ export default function Casa() {
   const [notifs, setNotifs] = useState<NotifCasa[]>([]);
   const [naoLidas, setNaoLidas] = useState(0);
   const [avisosAbertos, setAvisosAbertos] = useState(false);
+  // Decisão pedida dentro da cabine: abrir a porta, convidar alguém ou aceitar quem pediu para entrar.
+  type DecisaoCabine = { cabineId: string; tipo: 'porta' | 'convite' | 'pedido'; nome: string; alvoNome?: string; alvoPublico?: string };
+  const [decisao, setDecisao] = useState<DecisaoCabine | null>(null);
   const registrarAviso = (n: Omit<NotifCasa, 'id' | 'em'>) => {
     setNotifs((l) => [{ ...n, id: `${Date.now()}-${Math.random()}`, em: Date.now() }, ...l].slice(0, 40));
     setNaoLidas((x) => x + 1);
@@ -484,7 +488,14 @@ export default function Casa() {
       setEstado(null);
       toast({ title: '🚫 Você foi retirado(a) da Casa nesta noite', description: `${d.motivo}. Na próxima noite você pode voltar.`, variant: 'destructive' });
     };
-    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => { tocarAviso(true); registrarAviso({ emoji: '🙋', texto: `${d.nome} quer entrar na sua cabine`, acao: () => setCabineAberta({ id: d.cabineId, modo: 'membro' }), rotuloAcao: 'Abrir cabine' }); toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' }); };
+    // O pedido de entrada agora chega como decisão (casa.cabine.decidir), com som e janela própria.
+    const aoPedidoCabine = (_d: { cabineId: string; nome: string }) => {};
+    const aoDecidir = (d: DecisaoCabine) => {
+      tocarAviso(true);
+      setDecisao(d);
+      const texto = d.tipo === 'porta' ? `${d.nome} quer abrir a porta da cabine` : d.tipo === 'convite' ? `${d.nome} quer convidar ${d.alvoNome} pra cabine` : `${d.nome} quer entrar na sua cabine`;
+      registrarAviso({ emoji: d.tipo === 'porta' ? '🚪' : '🙋', texto, acao: () => setDecisao(d), rotuloAcao: 'Decidir' });
+    };
     const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
       tocarAviso(false);
@@ -495,10 +506,10 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
+    on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
     on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
-      off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
+      off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
       off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
@@ -582,7 +593,8 @@ export default function Casa() {
     if (m.midia?.preco && !window.confirm(`Abrir a revelação de ${m.autor?.nome} por ${m.midia.preco} tokens? Os tokens vão para ${m.autor?.nome}.`)) return;
     try {
       const { data } = await apiClient.post(`/casa/${salaAtual}/midia/${m.id}/ver`);
-      setVendo({ url: data.url, mime: data.mime });
+      setComentarioMidia('');
+      setVendo({ url: data.url, mime: data.mime, msg: m });
     } catch (e) {
       toast({ title: erroDe(e, 'Esta mídia não está mais disponível.') });
       if ((e as any)?.response?.status === 402) return; // sem tokens: pode tentar de novo depois
@@ -1119,6 +1131,38 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!decisao} onOpenChange={(v) => { if (!v) setDecisao(null); }}>
+        <DialogContent className="z-[9996] max-w-xs text-center">
+          <DialogHeader>
+            <DialogTitle>
+              {decisao?.tipo === 'porta' ? '🚪 Abrir a porta da cabine?' : decisao?.tipo === 'convite' ? '🙋 Chamar mais alguém?' : '🙋 Alguém quer entrar'}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {decisao?.tipo === 'porta'
+              ? `${decisao.nome} quer abrir a porta: quem está na sala vai poder espiar e pedir para entrar. A porta só abre se todos concordarem.`
+              : decisao?.tipo === 'convite'
+                ? `${decisao.nome} quer convidar ${decisao.alvoNome} para a cabine. A pessoa só entra se todos aqui dentro concordarem.`
+                : `${decisao?.nome} pediu para entrar na cabine. Só entra se todos aqui dentro concordarem.`}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={() => {
+              const d = decisao;
+              setDecisao(null);
+              if (!d) return;
+              if (d.tipo === 'porta') void apiClient.post(`/casa/cabine/${d.cabineId}/porta`, { abrir: false }).catch(() => {});
+              else if (d.alvoPublico) void apiClient.post(`/casa/cabine/${d.cabineId}/entrada/${encodeURIComponent(d.alvoPublico)}`, { aprovar: false }).catch(() => {});
+            }}>Não</Button>
+            <Button className="bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => {
+              const d = decisao;
+              setDecisao(null);
+              if (!d) return;
+              if (d.tipo === 'porta') void apiClient.post(`/casa/cabine/${d.cabineId}/porta`, { abrir: true }).catch(() => {});
+              else if (d.alvoPublico) void apiClient.post(`/casa/cabine/${d.cabineId}/entrada/${encodeURIComponent(d.alvoPublico)}`, { aprovar: true }).catch(() => {});
+            }}>Concordo 😈</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={avisosAbertos} onOpenChange={setAvisosAbertos}>
         <DialogContent className="z-[9995] max-h-[80vh] max-w-sm overflow-y-auto">
           <DialogHeader><DialogTitle>🔔 Seus avisos na Casa</DialogTitle></DialogHeader>
@@ -1194,9 +1238,41 @@ export default function Casa() {
             <X className="h-5 w-5" />
           </button>
           {vendo.mime?.startsWith('video/')
-            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline controls={false} onEnded={() => setVendo(null)} className="max-h-full max-w-full select-none" />
+            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline controls={false} className="max-h-full max-w-full select-none" />
             : <img src={resolveServerUrl(vendo.url)} alt="" draggable={false} className="max-h-full max-w-full select-none" />}
-          <p className="absolute bottom-4 left-0 right-0 text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
+          {/* Reagir e comentar enquanto vê: o comentário vai para a sala respondendo a mídia. */}
+          <div className="absolute bottom-0 left-0 right-0 space-y-2 bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-8">
+            {vendo.msg && estado?.eu.podeFalar && (
+              <>
+                <div className="flex justify-center gap-1.5">
+                  {REACOES.map((e) => {
+                    const minha = (vendo.msg?.reacoes?.[e] ?? []).includes(meuId);
+                    return (
+                      <button key={e} type="button"
+                        onClick={() => { const m = vendo.msg!; void reagir(m, e); toast({ title: `${e} enviado pra ${m.autor?.nome ?? 'a pessoa'}` }); }}
+                        className={cn('rounded-full px-2.5 py-1.5 text-xl transition hover:scale-110', minha ? 'bg-fuchsia-600/70' : 'bg-white/15')}>{e}</button>
+                    );
+                  })}
+                </div>
+                <form className="flex gap-2" onSubmit={(ev) => {
+                  ev.preventDefault();
+                  const t = comentarioMidia.trim();
+                  const m = vendo.msg;
+                  if (!t || !m || !salaAtual) return;
+                  setComentarioMidia('');
+                  void apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t, respostaA: m.id })
+                    .then(() => toast({ title: 'Comentário enviado na sala 🔥' }))
+                    .catch((e) => toast({ title: erroDe(e, 'Comentário não enviado.'), variant: 'destructive' }));
+                }}>
+                  <input value={comentarioMidia} onChange={(e) => setComentarioMidia(e.target.value)} maxLength={280}
+                    placeholder={`Comente pra ${vendo.msg.autor?.nome ?? 'a pessoa'}… 😏`}
+                    className="min-w-0 flex-1 rounded-full bg-white/15 px-4 py-2 text-base text-white placeholder:text-white/50 focus:outline-none" />
+                  <button type="submit" className="rounded-full bg-gradient-to-r from-rose-600 to-fuchsia-600 px-4 text-sm font-semibold" aria-label="Enviar comentário"><Send className="h-4 w-4" /></button>
+                </form>
+              </>
+            )}
+            <p className="text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
+          </div>
         </div>
       )}
 
