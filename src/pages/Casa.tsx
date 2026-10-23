@@ -20,6 +20,7 @@ import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
 import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
 import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
+import TokenBadge from '@/components/TokenBadge';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -826,6 +827,7 @@ export default function Casa() {
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
+        <TokenBadge semLink />
         <button
           type="button"
           onClick={() => { setAvisosAbertos(true); setNaoLidas(0); }}

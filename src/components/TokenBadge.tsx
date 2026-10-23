@@ -10,8 +10,10 @@ type TokensUpdated = { points: number; gained?: number; action?: string; freeDay
 
 /** Saldo de tokens em destaque no header (celular + desktop). Clicável → /tokens.
  *  Anima discretamente cada token ganho e celebra a cada dia grátis (100 tokens). */
-export default function TokenBadge({ className }: { className?: string }) {
+export default function TokenBadge({ className, semLink = false }: { className?: string; semLink?: boolean }) {
   const [points, setPoints] = useState<number | null>(null);
+  const pointsRef = useRef<number | null>(null);
+  useEffect(() => { pointsRef.current = points; }, [points]);
   const [floatItem, setFloatItem] = useState<{ key: number; amount: number } | null>(null);
   const [pulse, setPulse] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
@@ -32,14 +34,16 @@ export default function TokenBadge({ className }: { className?: string }) {
     // Tempo real via socket: saldo + ganho (delta) + dias grátis concedidos
     const handleSocket = (data: TokensUpdated) => {
       if (cancelled) return;
+      // Sem "gained" (gasto, drink, transferência), a diferença do saldo mostra +N ou -N.
+      const anterior = pointsRef.current;
       setPoints(data.points);
 
-      const gained = Number(data?.gained || 0);
-      if (gained > 0) {
+      const gained = data?.gained != null ? Number(data.gained || 0) : anterior != null ? data.points - anterior : 0;
+      if (gained !== 0) {
         floatKeyRef.current += 1;
         const key = floatKeyRef.current;
         setFloatItem({ key, amount: gained });
-        setPulse(true);
+        setPulse(gained > 0);
         window.setTimeout(() => setPulse(false), 420);
         window.setTimeout(() => setFloatItem((f) => (f && f.key === key ? null : f)), 1100);
       }
@@ -63,11 +67,13 @@ export default function TokenBadge({ className }: { className?: string }) {
   }, [on, off, toast]);
 
   if (points === null) return null;
+  // Na Casa o saldo fica só para olhar (sem sair da sala).
+  const Elemento = (semLink ? 'span' : NavLink) as any;
 
   return (
     <div className={cn('relative shrink-0', className)}>
-      <NavLink
-        to="/tokens"
+      <Elemento
+        {...(semLink ? {} : { to: '/tokens' })}
         title="Seus tokens"
         aria-label={`${points} tokens`}
         className={cn(
@@ -80,16 +86,16 @@ export default function TokenBadge({ className }: { className?: string }) {
       >
         <Coins className="h-3.5 w-3.5" />
         {points}
-      </NavLink>
+      </Elemento>
 
       {/* "+N" discreto subindo a cada token ganho */}
       {floatItem && (
         <span
           key={floatItem.key}
-          className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 text-[11px] font-extrabold text-amber-300 drop-shadow"
+          className={cn('pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 text-[11px] font-extrabold drop-shadow', floatItem.amount > 0 ? 'text-amber-300' : 'text-rose-400')}
           style={{ animation: 'token-float 1s ease-out forwards' }}
         >
-          +{floatItem.amount}
+          {floatItem.amount > 0 ? `+${floatItem.amount}` : floatItem.amount}
         </span>
       )}
 
