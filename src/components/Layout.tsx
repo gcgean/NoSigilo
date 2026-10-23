@@ -1,5 +1,6 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import CasaAbertaBanner from '@/components/CasaAbertaBanner';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
 import { appService } from '@/services/api';
@@ -1432,6 +1433,7 @@ export default function Layout() {
                 </div>
               }
             >
+              <CasaAbertaBanner />
               <Outlet />
             </Suspense>
             <PhotoGateOverlay pathname={location.pathname} />

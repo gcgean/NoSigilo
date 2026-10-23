@@ -17,6 +17,7 @@ import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
 import { profileService } from '@/services/api';
+import PerfilNaCasa from '@/components/PerfilNaCasa';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -68,6 +69,15 @@ const DRINKS = [
   { id: 'gin', emoji: '🍸', nome: 'Gin tônica', tokens: 8 },
   { id: 'champanhe', emoji: '🍾', nome: 'Champanhe', tokens: 15 },
 ];
+
+// Cada sala fica mais quente que a anterior: do roxo do salão ao vermelho-sangue do glory hole.
+const TEMA_DA_SALA: Record<string, { card: string; botao: string; foco1: string; foco2: string; fundo: string; chamas: string; selo: string }> = {
+  salao: { card: 'bg-gradient-to-br from-fuchsia-950/70 to-purple-950/60 ring-fuchsia-500/30', botao: 'bg-gradient-to-r from-fuchsia-600 to-purple-600', foco1: 'bg-fuchsia-600/25', foco2: 'bg-purple-600/20', fundo: 'bg-zinc-950', chamas: '🔥', selo: 'AQUECENDO' },
+  casais: { card: 'bg-gradient-to-br from-rose-950/80 to-pink-950/60 ring-rose-500/40', botao: 'bg-gradient-to-r from-rose-600 to-pink-600', foco1: 'bg-rose-600/30', foco2: 'bg-pink-600/25', fundo: 'bg-zinc-950', chamas: '🔥🔥', selo: 'QUENTE' },
+  quarto: { card: 'bg-gradient-to-br from-red-950/90 to-rose-950/80 ring-red-600/50', botao: 'bg-gradient-to-r from-red-700 to-rose-700', foco1: 'bg-red-700/35', foco2: 'bg-rose-900/40', fundo: 'bg-black', chamas: '🔥🔥🔥', selo: 'MUITO QUENTE' },
+  glory: { card: 'bg-gradient-to-br from-black to-red-950 ring-red-500/70 shadow-[0_0_30px_rgba(220,38,38,0.35)]', botao: 'bg-gradient-to-r from-red-800 to-black ring-1 ring-red-500', foco1: 'bg-red-600/40', foco2: 'bg-red-900/50', fundo: 'bg-black', chamas: '🔥🔥🔥🔥', selo: 'PROIBIDÃO' },
+};
+const temaDaSala = (id: string) => TEMA_DA_SALA[id] ?? TEMA_DA_SALA.salao;
 
 const ROTULO_CAT: Record<Categoria, string> = { casal: 'Casal', mulher: 'Mulher', homem: 'Homem', outros: 'Perfil' };
 const COR_CAT: Record<Categoria, string> = {
@@ -242,8 +252,12 @@ export default function Casa() {
   const [entrando, setEntrando] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [pessoaAberta, setPessoaAberta] = useState<Pessoa | null>(null);
+  const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
   const [convite, setConvite] = useState<Convite | null>(null);
   const [enviandoMidia, setEnviandoMidia] = useState<number | null>(null);
+  const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
+  const [escolhendoMidia, setEscolhendoMidia] = useState(false);
+  const galeriaRef = useRef<HTMLInputElement | null>(null);
   const [vendo, setVendo] = useState<{ url: string; mime: string | null } | null>(null);
   const [params, setParams] = useSearchParams();
   const { user } = useAuth();
@@ -439,9 +453,12 @@ export default function Casa() {
       toast({ title: 'Vídeo grande demais', description: 'Grave um vídeo mais curto (até 1 minuto).', variant: 'destructive' });
       return;
     }
+    setTipoEnviando(arquivo.type.startsWith('video/') ? 'video' : 'foto');
     setEnviandoMidia(0);
     try {
-      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(pct));
+      // Depois de 100% o servidor ainda comprime o vídeo: a barra mostra "processando".
+      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(Math.min(99, pct)));
+      setEnviandoMidia(100);
       const revelacao = modoRevelacao.current;
       const propostaId = propostaDaCamera.current;
       await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, ...(propostaId ? { propostaId } : {}) });
@@ -455,12 +472,18 @@ export default function Casa() {
       modoRevelacao.current = false;
       propostaDaCamera.current = null;
       if (cameraRef.current) cameraRef.current.value = '';
+      if (galeriaRef.current) galeriaRef.current.value = '';
     }
   };
   const abrirCamera = (revelacao = false) => {
     modoRevelacao.current = revelacao;
     propostaDaCamera.current = null;
     cameraRef.current?.click();
+  };
+  const abrirGaleria = () => {
+    modoRevelacao.current = false;
+    propostaDaCamera.current = null;
+    galeriaRef.current?.click();
   };
   const verMidia = async (m: Msg) => {
     if (!salaAtual) return;
@@ -640,7 +663,7 @@ export default function Casa() {
   // ─── Sala ────────────────────────────────────────────────────────────────
   const sala = estado && createPortal(
     <div
-      className="fixed inset-0 z-[9990] flex flex-col overflow-hidden bg-zinc-950 text-white"
+      className={cn('fixed inset-0 z-[9990] flex flex-col overflow-hidden text-white', temaDaSala(estado.sala.id).fundo)}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       {/* Luz de boate: dois focos neon que passeiam devagar pelo fundo. */}
@@ -648,8 +671,8 @@ export default function Casa() {
         @keyframes nsFoco1 { 0%,100% { transform: translate(-30%, -10%); } 50% { transform: translate(40%, 30%); } }
         @keyframes nsFoco2 { 0%,100% { transform: translate(40%, 60%); } 50% { transform: translate(-20%, 10%); } }
       `}</style>
-      <div className="pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full bg-fuchsia-600/25 blur-3xl" style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
-      <div className="pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full bg-rose-600/20 blur-3xl" style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
+      <div className={cn('pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco1)} style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
+      <div className={cn('pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco2)} style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
 
       <div className="relative flex items-center gap-2 border-b border-white/10 px-3 py-2">
         <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da sala">
@@ -799,7 +822,7 @@ export default function Casa() {
       )}
       {estado.eu.podeFalar ? (
         <form
-          className="flex items-center gap-2 border-t border-white/10 px-3 py-2"
+          className="relative flex items-center gap-2 border-t border-white/10 px-3 py-2"
           onSubmit={(e) => { e.preventDefault(); void enviar(); }}
         >
           <input
@@ -810,13 +833,45 @@ export default function Casa() {
             className="hidden"
             onChange={(e) => void enviarMidia(e.target.files?.[0])}
           />
+          <input
+            ref={galeriaRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={(e) => void enviarMidia(e.target.files?.[0])}
+          />
+          {escolhendoMidia && enviandoMidia === null && (
+            <div className="absolute bottom-full left-3 mb-2 flex gap-2 rounded-2xl bg-zinc-900 p-2 shadow-xl ring-1 ring-white/10">
+              <button type="button" className="rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirCamera(false); }}>📷 Câmera</button>
+              <button type="button" className="rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirGaleria(); }}>🖼️ Galeria</button>
+            </div>
+          )}
+          {enviandoMidia !== null && (
+            <div className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl bg-zinc-900/95 p-3 shadow-xl ring-1 ring-fuchsia-500/40">
+              <p className="mb-1.5 flex items-center justify-between text-xs text-white/80">
+                <span>
+                  {enviandoMidia < 100
+                    ? `Enviando ${tipoEnviando === 'video' ? 'vídeo' : 'foto'}…`
+                    : tipoEnviando === 'video' ? 'Processando o vídeo… pode levar alguns segundos' : 'Finalizando…'}
+                </span>
+                <span className="tabular-nums">{enviandoMidia < 100 ? `${enviandoMidia}%` : ''}</span>
+              </p>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={cn('h-full rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-500 transition-all', enviandoMidia >= 100 && 'animate-pulse')}
+                  style={{ width: `${Math.max(4, enviandoMidia)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] text-white/50">Não feche a tela até terminar.</p>
+            </div>
+          )}
           <button
             type="button"
-            onClick={() => abrirCamera(false)}
+            onClick={() => setEscolhendoMidia((v) => !v)}
             disabled={enviandoMidia !== null}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50"
-            aria-label="Tirar foto ou vídeo agora"
-            title="Foto ou vídeo ao vivo (visualização única)"
+            aria-label="Enviar foto ou vídeo"
+            title="Foto ou vídeo (visualização única)"
           >
             {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia}%</span> : <Camera className="h-4 w-4" />}
           </button>
@@ -976,6 +1031,7 @@ export default function Casa() {
         </div>
       )}
 
+      <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
       <Dialog open={!!pessoaAberta} onOpenChange={(v) => { if (!v) { setPessoaAberta(null); setMostrandoBar(false); } }}>
         <DialogContent className="z-[9995] max-w-xs">
           {pessoaAberta && (
@@ -1020,7 +1076,7 @@ export default function Casa() {
                 {estado.sala_anonima ? (
                   estado.eu.podeFalar && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
                 ) : (
-                  <Button variant="outline" onClick={() => navigate(`/users/${pessoaAberta.id}`)}>Ver perfil</Button>
+                  <Button variant="outline" onClick={() => { setPerfilAberto(pessoaAberta.id); setPessoaAberta(null); }}>Ver perfil</Button>
                 )}
               </div>
               )}
@@ -1090,13 +1146,13 @@ export default function Casa() {
           {(info?.salas ?? []).map((s) => {
             const travada = !info?.aberta || s.bloqueadaParaMim || (s.lotadaParaMim && s.posicaoNaFila != null);
             return (
-              <div key={s.id} className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+              <div key={s.id} className={cn('rounded-2xl p-4 ring-1', temaDaSala(s.id).card)}>
                 <div className="flex items-start gap-3">
                   <span className="text-3xl leading-none">{s.emoji}</span>
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">
                       {s.nome}
-                      {s.nivel === 'muito_quente' && <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-300">MUITO QUENTE</span>}
+                      <span className="ml-2 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-200">{temaDaSala(s.id).chamas} {temaDaSala(s.id).selo}</span>
                     </p>
                     <p className="text-sm text-white/70">{s.descricao}</p>
                     {info?.aberta && (
@@ -1110,7 +1166,7 @@ export default function Casa() {
                 </div>
                 {info?.aberta && (
                   <Button
-                    className="mt-3 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600"
+                    className={cn('mt-3 w-full', temaDaSala(s.id).botao)}
                     disabled={travada || entrando !== null}
                     onClick={() => void (s.lotadaParaMim ? entrarNaFila(s.id) : entrar(s.id))}
                   >

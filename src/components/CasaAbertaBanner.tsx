@@ -1,37 +1,64 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
 
-/** Faixa no topo do feed enquanto A Casa está aberta (sex/sáb 21h–1h). */
+/**
+ * Aviso em todas as telas enquanto A Casa está aberta de verdade (sex/sáb 21h–1h
+ * ou noite extra). Usa a rota pública, que esconde o modo teste do admin, e é
+ * leve para consultar a cada minuto. Fechar o aviso vale só para aquela noite.
+ */
+const CHAVE_FECHADO = 'nosigilo:casa-aviso-fechado';
+
 export default function CasaAbertaBanner() {
   const navigate = useNavigate();
-  const [info, setInfo] = useState<{ aberta: boolean; tema: { nome: string } | null; total: number } | null>(null);
+  const { pathname } = useLocation();
+  const [info, setInfo] = useState<{ aberta: boolean; tema: { nome: string } | null; pessoas: number } | null>(null);
+  const [fechadoEm, setFechadoEm] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(CHAVE_FECHADO); } catch { return null; }
+  });
+
   useEffect(() => {
     let vivo = true;
     const carregar = async () => {
       try {
-        const { data } = await apiClient.get('/casa');
-        const total = (data?.salas ?? []).reduce((s: number, x: any) => s + Number(x.total || 0) + Number(x.espiando || 0), 0);
-        if (vivo) setInfo({ aberta: !!data?.aberta, tema: data?.tema ?? null, total });
-      } catch { /* sem faixa */ }
+        const { data } = await apiClient.get('/casa/publico');
+        if (vivo) setInfo({ aberta: !!data?.aberta, tema: data?.tema ?? null, pessoas: Number(data?.pessoas || 0) });
+      } catch { /* sem aviso */ }
     };
     void carregar();
     const t = setInterval(carregar, 60_000);
     return () => { vivo = false; clearInterval(t); };
   }, []);
-  if (!info?.aberta) return null;
+
+  // A noite vai das 21h à 1h: a data "da noite" é a de 3h atrás.
+  const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+  if (!info?.aberta || pathname.startsWith('/casa') || fechadoEm === noite) return null;
+
+  const fechar = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFechadoEm(noite);
+    try { sessionStorage.setItem(CHAVE_FECHADO, noite); } catch { /* modo restrito */ }
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => navigate('/casa')}
-      className="mb-3 flex w-full items-center gap-3 rounded-2xl bg-gradient-to-r from-zinc-950 via-fuchsia-900 to-rose-700 px-4 py-3 text-left text-white shadow-lg active:scale-[0.99]"
+      onKeyDown={(e) => { if (e.key === 'Enter') navigate('/casa'); }}
+      className="relative mb-3 flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-zinc-950 via-fuchsia-900 to-rose-700 px-4 py-3 text-left text-white shadow-lg ring-2 ring-rose-500/60 active:scale-[0.99]"
     >
-      <span className="text-2xl">🔥</span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold">A Casa está aberta{info.tema ? `: ${info.tema.nome}` : ''}</span>
-        <span className="block text-xs text-white/80">{info.total > 0 ? `${info.total} pessoa(s) lá dentro agora` : 'Seja o primeiro a chegar'} · brincadeiras quentes até 1h</span>
+      <span className="pointer-events-none absolute inset-0 animate-pulse bg-rose-500/10" />
+      <span className="relative text-2xl">🔥</span>
+      <span className="relative min-w-0 flex-1">
+        <span className="block text-sm font-bold">A Casa está aberta agora{info.tema ? `: ${info.tema.nome}` : ''}</span>
+        <span className="block text-xs text-white/80">{info.pessoas > 0 ? `${info.pessoas} pessoa(s) lá dentro` : 'Seja o primeiro a chegar'} · brincadeiras quentes até 1h</span>
       </span>
-      <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">Entrar</span>
-    </button>
+      <span className="relative rounded-full bg-white px-3 py-1 text-xs font-bold text-rose-700">Entrar</span>
+      <button type="button" onClick={fechar} className="relative rounded-full p-1 text-white/70 hover:bg-white/10" aria-label="Fechar aviso">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

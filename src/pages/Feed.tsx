@@ -16,7 +16,6 @@ import { cn } from '@/lib/utils';
 import { authService, experienceService, adminContosService, feedService, interactionsService, profileService, radarService, storiesService } from '@/services/api';
 import StoriesBar from '@/components/StoriesBar';
 import FeedGreeting from '@/components/FeedGreeting';
-import CasaAbertaBanner from '@/components/CasaAbertaBanner';
 import TopDayBar from '@/components/TopDayBar';
 import NearbyActivityStrip from '@/components/NearbyActivityStrip';
 import { useToast } from '@/hooks/use-toast';
@@ -2040,7 +2039,6 @@ export default function Feed() {
       {/* Perto de você — radares ativos e eventos compatíveis */}
       {feedFilter !== 'experiences' ? <NearbyActivityStrip /> : null}
 
-      <CasaAbertaBanner />
       {/* Composer */}
       {feedFilter === 'experiences' ? (
         <Card ref={expFormRef} className="mb-4 glass p-3 sm:mb-6 sm:p-4">
