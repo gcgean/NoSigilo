@@ -566,7 +566,9 @@ function StoryViewer({
       if (!porAutor.has(a)) { porAutor.set(a, []); ordem.push(a); }
       porAutor.get(a)!.push(st);
     }
-    return ordem.map((a) => [...porAutor.get(a)!].sort((x, y) => x.createdAt.localeCompare(y.createdAt)));
+    const lista = ordem.map((a) => [...porAutor.get(a)!].sort((x, y) => x.createdAt.localeCompare(y.createdAt)));
+    // Perfis com story ainda não visto vêm primeiro (a ordem da fileira continua dentro de cada bloco).
+    return [...lista.filter((g) => g.some((st) => !st.viewed)), ...lista.filter((g) => g.every((st) => st.viewed))];
   }, [stories]);
   // Vistos nesta abertura (o "viewed" do servidor só atualiza no próximo load).
   const vistosAqui = useRef(new Set<string>());
@@ -663,7 +665,12 @@ function StoryViewer({
     }
   }, [onClose, modoAmostra, navigate, toast]);
   const irParaGrupo = useCallback((d: 1 | -1) => {
-    const ng = pos.gi + d;
+    let ng = pos.gi + d;
+    // Avançando, pula perfis que a pessoa já viu inteiros: não repete stories.
+    if (d > 0) {
+      const jaVisto = (g: FeedStory[]) => g.every((st) => st.viewed || vistosAqui.current.has(st.id));
+      while (ng < grupos.length && jaVisto(grupos[ng])) ng += 1;
+    }
     if (ng >= grupos.length) { fimDaFila(); return; }
     if (ng < 0) { setPos((p) => ({ ...p, si: 0 })); setProgress(0); return; }
     setDirEntrada(d);
@@ -1567,7 +1574,7 @@ export default function Stories() {
       const capa = ordenada.find((x) => !x.st.viewed) ?? ordenada[ordenada.length - 1];
       const novos = lista.filter((x) => !x.st.viewed).length;
       return { story: capa.st, i: capa.i, novos, vistos: lista.length - novos };
-    });
+    }).sort((a, b) => Number(b.novos > 0) - Number(a.novos > 0)); // quem tem story novo primeiro
   }, [feedVisivel]);
   const totalFixados  = feed.filter((s) => s.author.pinnedByMe).length;
   const totalCurtidos = feed.filter((s) => s.author.likedByMe).length;
