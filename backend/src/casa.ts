@@ -136,6 +136,8 @@ type Msg = {
   resposta?: { id: string; nome: string; trecho: string };
   /** Reações: emoji → ids públicos de quem reagiu. */
   reacoes?: Record<string, string[]>;
+  /** Anúncio de brincadeira da Lola: os botões de votar aparecem dentro da própria mensagem. */
+  jogoId?: string;
 };
 
 // Reações da sala (as "safadas").
@@ -486,6 +488,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   const publicarMsg = (sala: Sala, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string | null = null) => {
     const completa: Msg = { ...msg, id: randomUUID(), criadoEm: new Date().toISOString() };
+    if (completa.tipo === 'lola' && sala.iniciando && sala.jogo) completa.jogoId = sala.jogo.id;
     // Tudo que acontece na Casa fica guardado para o admin (histórico por noite).
     if (chaveDaNoite) {
       void db.run('INSERT INTO casa_mensagens (id, noite, sala, tipo, autor_id, texto, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -710,7 +713,7 @@ Responda com UMA palavra:
         if (livres.length === 0) { pode.forEach(({ chave }) => sala.usados.delete(chave)); livres = pode; }
         const { e, chave } = sortear(livres);
         sala.usados.add(chave);
-        sala.jogo = { id: randomUUID(), tipo: 'enquete', texto: e.t, opcoes: e.o, votos: new Map(), fimEm: agora + 120_000 };
+        sala.jogo = { id: randomUUID(), tipo: 'enquete', texto: e.t, opcoes: e.o, votos: new Map(), fimEm: agora + 180_000 };
         lola(sala, `📊 ENQUETE: ${e.t}`);
       } else if (tipo === 'quiz') {
         const livres = QUIZ.map((x, i) => ({ x, chave: `qz${i}` })).filter(({ chave }) => !sala.usados.has(chave));

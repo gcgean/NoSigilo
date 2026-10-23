@@ -38,7 +38,7 @@ type Info = {
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -164,7 +164,8 @@ function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; pode
           {jogo.opcoes.map((o, i) => {
             const votos = jogo.votos?.[i] ?? 0;
             const pct = jogo.total ? Math.round((votos / jogo.total) * 100) : 0;
-            const mostrar = jogo.tipo !== 'quiz' && jogo.meuVoto != null;
+            // Enquete e "eu nunca": o resultado parcial aparece para todos, ao vivo.
+            const mostrar = jogo.tipo !== 'quiz' && (jogo.total ?? 0) > 0;
             const escolhido = jogo.meuVoto === i;
             return (
               <button
@@ -941,6 +942,11 @@ export default function Casa() {
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
+            {m.jogoId && estado.jogo?.id === m.jogoId && (
+              <div className="-mx-3 mt-1">
+                <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
+              </div>
+            )}
             <AcoesDaMsg m={m} />
           </div>
         ) : (
