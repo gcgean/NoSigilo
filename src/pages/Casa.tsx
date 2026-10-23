@@ -21,6 +21,7 @@ import PerfilNaCasa from '@/components/PerfilNaCasa';
 import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
 import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 import TokenBadge from '@/components/TokenBadge';
+import ComprarTokens from '@/components/ComprarTokens';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -314,6 +315,8 @@ export default function Casa() {
   const [notifs, setNotifs] = useState<NotifCasa[]>([]);
   const [naoLidas, setNaoLidas] = useState(0);
   const [avisosAbertos, setAvisosAbertos] = useState(false);
+  // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
+  const [comprarAberto, setComprarAberto] = useState(false);
   // Decisão pedida dentro da cabine: abrir a porta, convidar alguém ou aceitar quem pediu para entrar.
   type DecisaoCabine = { cabineId: string; tipo: 'porta' | 'convite' | 'pedido'; nome: string; alvoNome?: string; alvoPublico?: string };
   const [decisao, setDecisao] = useState<DecisaoCabine | null>(null);
@@ -602,7 +605,7 @@ export default function Casa() {
       setVendo({ url: data.url, mime: data.mime, msg: m });
     } catch (e) {
       toast({ title: erroDe(e, 'Esta mídia não está mais disponível.') });
-      if ((e as any)?.response?.status === 402) return; // sem tokens: pode tentar de novo depois
+      if ((e as any)?.response?.status === 402) { setComprarAberto(true); return; } // sem tokens: compra ali mesmo e tenta de novo
     }
     setEstado((e) => e ? { ...e, midiasVistas: [...e.midiasVistas, m.id] } : e);
   };
@@ -644,8 +647,9 @@ export default function Casa() {
       toast({
         title: erroDe(e, 'Não foi possível pagar o drink.'),
         variant: 'destructive',
-        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => navigate('/tokens?comprar=1')}>Comprar tokens</ToastAction> : undefined,
+        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => setComprarAberto(true)}>Comprar tokens</ToastAction> : undefined,
       });
+      if (semSaldo) setComprarAberto(true);
     }
   };
   const abrirProposta = async (p: Pessoa) => {
@@ -668,8 +672,9 @@ export default function Casa() {
       toast({
         title: erroDe(e, 'Não foi possível enviar o desafio.'),
         variant: 'destructive',
-        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => navigate('/tokens?comprar=1')}>Comprar tokens</ToastAction> : undefined,
+        action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => setComprarAberto(true)}>Comprar tokens</ToastAction> : undefined,
       });
+      if (semSaldo) setComprarAberto(true);
     }
   };
   const responderProposta = async (aceitar: boolean) => {
@@ -1172,6 +1177,13 @@ export default function Casa() {
               else if (d.alvoPublico) void apiClient.post(`/casa/cabine/${d.cabineId}/entrada/${encodeURIComponent(d.alvoPublico)}`, { aprovar: true }).catch(() => {});
             }}>Concordo 😈</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={comprarAberto} onOpenChange={setComprarAberto}>
+        <DialogContent className="z-[9996] max-h-[90vh] max-w-md overflow-y-auto">
+          <DialogHeader><DialogTitle>🪙 Seus tokens acabaram</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Compre aqui mesmo, sem sair da Casa. Pelo Pix, os tokens caem em segundos e o saldo no topo da sala atualiza sozinho.</p>
+          <ComprarTokens novaAba aoCreditar={() => { setComprarAberto(false); toast({ title: '🪙 Tokens na conta!', description: 'Pode voltar pra brincadeira 😈' }); }} />
         </DialogContent>
       </Dialog>
       <Dialog open={avisosAbertos} onOpenChange={setAvisosAbertos}>

@@ -24,7 +24,7 @@ const brl = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'c
  * Comprar tokens (tela de Tokens). Tokens comprados servem para destacar
  * pedidos de contato, destacar o perfil e presentear — não viram dias grátis.
  */
-export default function ComprarTokens({ aoCreditar }: { aoCreditar?: () => void }) {
+export default function ComprarTokens({ aoCreditar, novaAba = false }: { aoCreditar?: () => void; novaAba?: boolean }) {
   const { toast } = useToast();
   const [params, setParams] = useSearchParams();
   const [pacotes, setPacotes] = useState<PacoteTokens[]>([]);
@@ -80,7 +80,9 @@ export default function ComprarTokens({ aoCreditar }: { aoCreditar?: () => void 
         setCompra({ id: r.compraId, pix, qr });
       } else if (r.checkout?.checkoutUrl) {
         setCompra({ id: r.compraId });
-        window.location.href = r.checkout.checkoutUrl;
+        // Dentro d'A Casa o cartão abre em outra aba para a pessoa não sair da sala.
+        if (novaAba) window.open(r.checkout.checkoutUrl, '_blank', 'noopener');
+        else window.location.href = r.checkout.checkoutUrl;
       } else {
         throw new Error('Não foi possível abrir o pagamento.');
       }
