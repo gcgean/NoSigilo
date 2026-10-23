@@ -311,7 +311,7 @@ export default function Casa() {
   const [mostrandoBar, setMostrandoBar] = useState(false);
   const [rankingAberto, setRankingAberto] = useState(false);
   // Central de avisos da Casa (olhadas, drinks, convites, desafios…): sino no topo da sala.
-  type NotifCasa = { id: string; emoji: string; texto: string; em: number; acao?: () => void; rotuloAcao?: string };
+  type NotifCasa = { id: string; emoji: string; texto: string; em: number; acao?: () => void; rotuloAcao?: string; de?: { id: string; nome: string } };
   const [notifs, setNotifs] = useState<NotifCasa[]>([]);
   const [naoLidas, setNaoLidas] = useState(0);
   const [avisosAbertos, setAvisosAbertos] = useState(false);
@@ -325,6 +325,7 @@ export default function Casa() {
     setNaoLidas((x) => x + 1);
   };
   const estadoRef = useRef<typeof estado>(null);
+  const abrirPorIdRef = useRef<(id: string, nome: string) => void>(() => {});
   useEffect(() => { estadoRef.current = estado; }, [estado]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
@@ -426,6 +427,7 @@ export default function Casa() {
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
     const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
+    abrirPorIdRef.current = (id: string, nome: string) => abrirPorId(id, nome);
     const abrirPorId = (id: string, nome: string) => {
       const pessoa = estadoRef.current?.presentes.find((x) => x.id === id);
       if (pessoa) setPessoaAberta(pessoa);
@@ -434,7 +436,7 @@ export default function Casa() {
     const aoConvite = (c: Convite) => {
       tocarAviso(true);
       setConvite(c);
-      registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder' });
+      registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder', de: c.de });
     };
     const aoVaga = (d: { sala: string; nome: string }) => {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
@@ -446,7 +448,7 @@ export default function Casa() {
     };
     const aoOlhar = (d: { de: { id: string; nome: string; pulseira?: Pulseira | null } }) => {
       tocarAviso(false);
-      registrarAviso({ emoji: '👀', texto: `${d.de.nome} te deu uma olhada`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
+      registrarAviso({ emoji: '👀', texto: `${d.de.nome} te deu uma olhada`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
       toast({
         title: `👀 ${d.de.nome} está de olho em você`,
         description: d.de.pulseira ? `Pulseira ${corDaPulseira(d.de.pulseira)?.emoji} ${corDaPulseira(d.de.pulseira)?.titulo}` : 'Olha de volta?',
@@ -456,7 +458,7 @@ export default function Casa() {
     const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setCruzados(d.com);
     const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
       tocarAviso(false);
-      registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
+      registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
       toast({
         title: `${d.de.nome} te pagou ${d.drink} 😏`,
         description: `+${d.tokens} tokens pra você.`,
@@ -464,14 +466,14 @@ export default function Casa() {
       });
     };
     const aoBrinde = (d: { de: { id: string; nome: string } }) => {
-      registrarAviso({ emoji: '🥂', texto: `${d.de.nome} brindou com você`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
+      registrarAviso({ emoji: '🥂', texto: `${d.de.nome} brindou com você`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
       toast({
         title: `🥂 ${d.de.nome} brindou com você`,
         description: 'O clima esquentou… chama pra cabine?',
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true); registrarAviso({ emoji: '😈', texto: `${d.de.nome} te propôs um desafio (${d.tokens} tokens)`, acao: () => setPropostaRecebida(d), rotuloAcao: 'Ver desafio' }); return setPropostaRecebida(d); }
+    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true); registrarAviso({ emoji: '😈', texto: `${d.de.nome} te propôs um desafio (${d.tokens} tokens)`, acao: () => setPropostaRecebida(d), rotuloAcao: 'Ver desafio', de: d.de }); return setPropostaRecebida(d); }
     const aoPropostaAceita = (d: { nome: string }) => toast({ title: `🔥 ${d.nome} aceitou seu desafio!`, description: 'Tem 5 minutos para cumprir.' });
     const aoPropostaFim = (d: { id: string; cumprida: boolean; motivo?: string; nome: string; tokens: number }) => {
       setMeuDesafio((m) => (m?.id === d.id ? null : m));
@@ -507,7 +509,7 @@ export default function Casa() {
     const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
       tocarAviso(false);
-      registrarAviso({ emoji: '🕳️', texto: `${d.de.nome} bateu na parede`, acao: () => void convidarRef.current(d.de), rotuloAcao: 'Chamar pra cabine' });
+      registrarAviso({ emoji: '🕳️', texto: `${d.de.nome} bateu na parede`, acao: () => void convidarRef.current(d.de), rotuloAcao: 'Chamar pra cabine', de: d.de });
       toast({
         title: `🕳️ ${d.de.nome} bateu na parede…`,
         description: `É ${ROTULO_CAT[d.de.cat].toLowerCase()}. Quer chamar pra cabine?`,
@@ -1197,7 +1199,13 @@ export default function Casa() {
                 <li key={n.id} className="flex items-center gap-3 py-2">
                   <span className="text-xl">{n.emoji}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm">{n.texto}</p>
+                    {n.de ? (
+                      <p className="text-sm">
+                        <button type="button" className="font-semibold text-fuchsia-600 underline-offset-2 hover:underline dark:text-fuchsia-300"
+                          onClick={() => { setAvisosAbertos(false); abrirPorIdRef.current(n.de!.id, n.de!.nome); }}>{n.de.nome}</button>
+                        {n.texto.startsWith(n.de.nome) ? n.texto.slice(n.de.nome.length) : ` · ${n.texto}`}
+                      </p>
+                    ) : <p className="text-sm">{n.texto}</p>}
                     <p className="text-[11px] text-muted-foreground">{new Date(n.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                   {n.acao && (
