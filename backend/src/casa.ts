@@ -1247,6 +1247,12 @@ Responda com UMA palavra:
           bloqueadaParaMim: s.semHomens && souHomem,
           lotadaParaMim: !s.semHomens && souHomem && podeFalar && c.homem >= limiteDeHomens(s) && s.convocado?.userId !== userId,
           posicaoNaFila: s.fila.indexOf(userId) >= 0 ? s.fila.indexOf(userId) + 1 : null,
+          // Para o mapa da Casa: só o tipo de cada pessoa (sem nome) e as cabines da sala.
+          pessoas: [...s.presentes.values()].map((x) => x.cat),
+          cabines: [...cabines.values()].filter((c) => c.salaId === s.id).map((c) => ({
+            id: c.id, aberta: c.aberta, pessoas: c.membros.size, espiando: c.espectadores.size,
+            tipos: c.aberta ? [...c.membros.values()].map((m) => m.cat) : [],
+          })),
         };
       }),
     });

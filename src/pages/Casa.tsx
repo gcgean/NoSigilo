@@ -19,6 +19,7 @@ import CabineDaCasa from '@/components/CabineDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
 import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
+import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -31,6 +32,7 @@ type SalaResumo = {
   id: string; nome: string; emoji: string; descricao: string; nivel: 'quente' | 'muito_quente';
   total: number; espiando: number; contagem: Record<Categoria, number>;
   bloqueadaParaMim: boolean; lotadaParaMim: boolean; posicaoNaFila: number | null;
+  pessoas?: Categoria[]; cabines?: CabineDoMapa[];
 };
 type Info = {
   aberta: boolean; tema: { nome: string; descricao: string } | null; horario: string;
@@ -344,7 +346,8 @@ export default function Casa() {
   }, []);
   useEffect(() => {
     void carregar();
-    const t = setInterval(() => { if (!salaAtual) void carregar(); }, 20_000);
+    // No saguão, o mapa da Casa se atualiza a cada 8 s.
+    const t = setInterval(() => { if (!salaAtual) void carregar(); }, 8_000);
     return () => clearInterval(t);
   }, [carregar, salaAtual]);
 
@@ -1397,7 +1400,20 @@ export default function Casa() {
             {info.reservas > 0 && <p className="text-sm text-fuchsia-200">🎟️ {info.reservas} pessoa(s) já reservaram lugar para a próxima noite</p>}
           </div>
         )}
-        {info?.aberta && <p className="text-center text-sm font-semibold text-fuchsia-200">Escolha sua sala e entre 👇</p>}
+        {info?.aberta && info.salas?.length > 0 && (
+          <MapaDaCasa
+            salas={info.salas}
+            onEntrar={(id) => {
+              const s = info.salas.find((x) => x.id === id);
+              if (s?.lotadaParaMim) void entrarNaFila(id); else void entrar(id);
+            }}
+            onEspiar={async (salaId, cabineId) => {
+              await entrar(salaId);
+              setCabineAberta({ id: cabineId, modo: 'espiar' });
+            }}
+          />
+        )}
+        {info?.aberta && <p className="text-center text-sm font-semibold text-fuchsia-200">Ou escolha pela lista 👇</p>}
 
         {info?.souAdmin && (
           <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 p-3 text-xs text-white/80">

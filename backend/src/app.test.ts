@@ -3642,6 +3642,7 @@ describe('nosigilo backend', () => {
     const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
     expect(info.aberta).toBe(true);
     expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto', 'glory']);
+    expect(info.salas[0]).toMatchObject({ pessoas: [], cabines: [] });
 
     const entrouCasal = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
     expect(entrouCasal.eu.podeFalar).toBe(true);
