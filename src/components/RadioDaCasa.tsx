@@ -6,8 +6,9 @@ import { cn } from '@/lib/utils';
 
 /**
  * Rádio d'A Casa: todo mundo ouve a mesma faixa no mesmo ponto (o servidor diz
- * qual faixa e em que segundo). Começa sem som porque o celular só deixa tocar
- * depois de um toque; o volume e o "mudo" de cada pessoa ficam guardados.
+ * qual faixa e em que segundo). Começa tocando ao entrar (o clique em "Entrar"
+ * já libera o som); se o celular barrar, o primeiro toque na tela liga. O volume
+ * e o "mudo" de cada pessoa ficam guardados.
  */
 type Tocando = { id: string; titulo: string; artista: string; url: string; duracao: number; offset: number };
 
@@ -24,7 +25,8 @@ function gravar(chave: string, valor: string) {
 export default function RadioDaCasa() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [tocando, setTocando] = useState<Tocando | null>(null);
-  const [ligado, setLigado] = useState(() => ler(CHAVE_LIGADO, '0') === '1');
+  // Som ligado por padrão ao entrar na Casa; só fica mudo para quem silenciou antes.
+  const [ligado, setLigado] = useState(() => ler(CHAVE_LIGADO, '1') === '1');
   const [volume, setVolume] = useState(() => Number(ler(CHAVE_VOLUME, '0.6')) || 0.6);
   const [bloqueado, setBloqueado] = useState(false);
   const [mostrarVolume, setMostrarVolume] = useState(false);
@@ -75,6 +77,15 @@ export default function RadioDaCasa() {
     return () => document.removeEventListener('visibilitychange', aoVoltar);
   }, [sintonizar]);
   useEffect(() => () => { audio.current?.pause(); }, []);
+  // O navegador barrou o som (iPhone, por exemplo): o primeiro toque em qualquer
+  // lugar da tela libera, sem precisar achar o botão.
+  useEffect(() => {
+    if (!ligado || !bloqueado) return;
+    const liberar = () => { audio.current?.play().then(() => setBloqueado(false)).catch(() => {}); };
+    const eventos = ['pointerdown', 'touchend', 'keydown'] as const;
+    eventos.forEach((e) => document.addEventListener(e, liberar, { once: true }));
+    return () => eventos.forEach((e) => document.removeEventListener(e, liberar));
+  }, [ligado, bloqueado]);
 
   const alternar = () => {
     const novo = !(ligado && !bloqueado);
