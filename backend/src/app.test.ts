@@ -3793,6 +3793,18 @@ describe('nosigilo backend', () => {
     const depois = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
     expect(depois.mensagens.find((m: any) => m.texto === 'eu topo')?.resposta).toMatchObject({ id: original.id, nome: 'Casal Casa' });
 
+    // Cabine: convite aceito; a porta só abre quando os dois concordam; o mapa mostra a cabine.
+    const homemPublico = String(homens[0].user.id);
+    const conviteMapa = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: homemPublico }).expect(200)).body;
+    const cabMapa = (await request(ctx.app).post(`/api/casa/convite/${conviteMapa.id}/responder`).set(auth(homens[0].token)).send({ aceitar: true }).expect(200)).body;
+    expect(cabMapa.cabineId).toBeTruthy();
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(casal.token)).send({ abrir: true }).expect(200)).body.aberta).toBe(false);
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(homens[0].token)).send({ abrir: true }).expect(200)).body.aberta).toBe(true);
+    const mapa = (await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body;
+    expect(mapa.salas.find((s: any) => s.id === 'salao').cabines.find((c: any) => c.id === cabMapa.cabineId)).toMatchObject({ aberta: true, pessoas: 2 });
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(casal.token)).send({ abrir: false }).expect(200);
+    expect((await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body.salas.find((s: any) => s.id === 'salao').cabines.find((c: any) => c.id === cabMapa.cabineId)).toMatchObject({ aberta: false, tipos: [] });
+
     // Rádio: sem playlist não toca; playlist é só do admin.
     expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();
     await request(ctx.app).get('/api/casa/admin/playlist').set(auth(homens[0].token)).expect(403);

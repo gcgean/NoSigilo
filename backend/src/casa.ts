@@ -1196,7 +1196,8 @@ Responda com UMA palavra:
     const noiteReal = await noiteAtual();
     const noite = noiteReal?.teste ? null : noiteReal;
     let pessoas = 0;
-    for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
+    // No modo teste a contagem fica zerada (ninguém de fora sabe que tem gente testando).
+    if (!noiteReal?.teste) for (const s of salas.values()) pessoas += s.presentes.size + s.espiando.size;
     // Próxima abertura: anda de hora em hora até cair dentro do horário.
     let proxima: string | null = null;
     if (!noite) {
