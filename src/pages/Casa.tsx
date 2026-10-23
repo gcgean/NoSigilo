@@ -22,6 +22,7 @@ import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
 import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 import TokenBadge from '@/components/TokenBadge';
 import ComprarTokens from '@/components/ComprarTokens';
+import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -317,6 +318,7 @@ export default function Casa() {
   const [avisosAbertos, setAvisosAbertos] = useState(false);
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
+  const [feedbackAberto, setFeedbackAberto] = useState(false);
   // Decisão pedida dentro da cabine: abrir a porta, convidar alguém ou aceitar quem pediu para entrar.
   type DecisaoCabine = { cabineId: string; tipo: 'porta' | 'convite' | 'pedido'; nome: string; alvoNome?: string; alvoPublico?: string };
   const [decisao, setDecisao] = useState<DecisaoCabine | null>(null);
@@ -835,6 +837,7 @@ export default function Casa() {
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
         <TokenBadge semLink />
+        <button type="button" onClick={() => setFeedbackAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Sugestões" title="Feedback e sugestões">💬</button>
         <button
           type="button"
           onClick={() => { setAvisosAbertos(true); setNaoLidas(0); }}
@@ -1514,11 +1517,17 @@ export default function Casa() {
           <RankingDaCasa />
         </div>
 
+        <button type="button" onClick={() => setFeedbackAberto(true)}
+          className="w-full rounded-2xl bg-white/5 px-4 py-3 text-sm font-semibold text-fuchsia-100 ring-1 ring-white/10 hover:bg-white/10">
+          💬 Dar feedback ou sugestão sobre A Casa
+        </button>
+
         <p className="px-2 text-center text-[11px] text-white/50">
           Regra da Casa: consentimento sempre. "Passo" é respeitado, ninguém é exposto e quem desrespeitar é removido. Só maiores de 18.
         </p>
 
       {sala}
+      <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
 
       <Dialog open={!!convite} onOpenChange={(v) => !v && void responderConvite(false)}>
         <DialogContent className="z-[9999] max-w-xs">
