@@ -88,11 +88,17 @@ const COR_CAT: Record<Categoria, string> = {
 const erroDe = (e: unknown, padrao: string) => (e as any)?.response?.data?.message || padrao;
 
 function Avatar({ p, tamanho = 'h-10 w-10' }: { p: { nome: string; avatar: string | null; cat: Categoria }; tamanho?: string }) {
+  // Mulher em destaque: moldura dourada brilhando e um 💋 no canto (é quem mais atrai a sala).
+  const destaque = p.cat === 'mulher';
   return (
-    <div className={cn('shrink-0 overflow-hidden rounded-full ring-2 ring-offset-2 ring-offset-background', COR_CAT[p.cat], tamanho)}>
-      {p.avatar
-        ? <img src={resolveServerUrl(p.avatar)} alt={p.nome} className="h-full w-full object-cover" />
-        : <div className="flex h-full w-full items-center justify-center bg-secondary text-xs font-bold">{p.nome.charAt(0)}</div>}
+    <div className={cn('relative shrink-0', tamanho)}>
+      <div className={cn('h-full w-full overflow-hidden rounded-full ring-2 ring-offset-2 ring-offset-background',
+        destaque ? 'ring-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.75)]' : COR_CAT[p.cat])}>
+        {p.avatar
+          ? <img src={resolveServerUrl(p.avatar)} alt={p.nome} className="h-full w-full object-cover" />
+          : <div className="flex h-full w-full items-center justify-center bg-secondary text-xs font-bold">{p.nome.charAt(0)}</div>}
+      </div>
+      {destaque && <span className="absolute -right-1 -top-1 text-[0.7em] leading-none drop-shadow">💋</span>}
     </div>
   );
 }

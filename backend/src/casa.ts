@@ -51,6 +51,49 @@ const CHEGADAS = [
   '{nome} entrou e já está olhando a sala toda 😏',
   'Boa noite, {nome}! Pega um drink no bar e fica à vontade 🍸',
 ];
+// Lola chamando alguém quieto pelo nome.
+const PROVOCA_QUIETO: Record<'casal' | 'mulher' | 'homem' | 'outros', string[]> = {
+  casal: [
+    '{nome}, vocês estão quietos demais… qual a fantasia que vocês nunca contaram pra ninguém? 😈',
+    '{nome}, conta pra sala: quem de vocês dois é o mais safado? 🔥',
+    '{nome}, se pudessem escolher alguém dessa sala pra cabine, quem seria? 👀',
+    '{nome}, qual foi a coisa mais ousada que vocês já fizeram juntos? A sala quer saber 😏',
+    '{nome}, ela gosta de ser olhada ou ele gosta de olhar? Contem 💋',
+  ],
+  mulher: [
+    '{nome}, tá só olhando ou vai provocar alguém hoje? 😈',
+    '{nome}, conta pra gente: casal ou solteiro, qual te deixa mais curiosa? 👀',
+    '{nome}, qual o seu ponto fraco? A sala promete usar com carinho 😏',
+    '{nome}, se tivesse que escolher alguém da sala pra um drink agora, quem seria? 🍸',
+  ],
+  homem: [
+    '{nome}, chegou calado… manda uma cantada pra sala, vamos ver se você é bom de papo 😏',
+    '{nome}, qual o seu talento escondido? Os casais querem saber 😈',
+    '{nome}, se um casal te chamasse pra cabine agora, o que você faria primeiro? 🔥',
+    '{nome}, paga um drink pra alguém e mostra que veio pra brincar 🍸',
+  ],
+  outros: [
+    '{nome}, tá muito quietinho(a)… conta o que te trouxe pra Casa hoje 😈',
+    '{nome}, qual a sua fantasia favorita? A sala tá curiosa 👀',
+  ],
+};
+// Lola comentando a mensagem que pegou fogo.
+const COMENTA_QUENTE = [
+  'Eita, a mensagem de {nome} pegou fogo 🔥 alguém vai responder à altura?',
+  '{nome} incendiou a sala 😈 quem tem coragem de responder?',
+  'Olha as reações na mensagem de {nome}… vocês estão animados, hein? 💦',
+  '{nome} sabe provocar 🔥 quem vai ser o próximo a aquecer essa conversa?',
+];
+// Lola recebendo quem chegou, para puxar os outros a interagir.
+const RECEBE_CASAL = [
+  'Chegou casal novo na pista: {nome} 😈 quem vai ser o primeiro a pagar um drink pra eles?',
+  '{nome} acabou de chegar 🔥 casal bonito assim não pode ficar sozinho, hein?',
+  'Atenção, sala: {nome} chegou 💋 quem vai puxar assunto primeiro?',
+];
+const RECEBE_MULHER = [
+  'Chegou {nome} 💋 a sala ficou mais bonita… quem vai ser educado e oferecer um drink?',
+  '{nome} entrou na pista 🔥 meninos e casais, comportem-se… ou não 😈',
+];
 type SalaId = 'salao' | 'casais' | 'quarto' | 'glory';
 
 type Presente = {
@@ -69,6 +112,8 @@ type Presente = {
   podeFalar: boolean;
   querBrincar: boolean;
   ultimoPing: number;
+  /** Quando entrou na sala (a Lola só provoca quem já está há uns minutos). */
+  entrouEm: number;
   ultimaMsg: number;
   ultimaMidia: number;
   ultimoConvite: number;
@@ -889,7 +934,9 @@ Responda com UMA palavra:
       }
       if (sala.jogo && agora >= sala.jogo.fimEm) await encerrarJogo(sala, 'tempo');
       if (!sala.jogo && agora >= sala.proximoJogoEm && falantes(sala).length >= 2) await iniciarJogo(sala);
+      if (!sala.jogo) provocarQuieto(sala, agora);
     }
+    if (noite) anunciarRanking(noite.chave);
 
     // Abriu a noite: aviso no celular de quem usou o site nos últimos 7 dias (uma vez por noite).
     if (noite && !noite.forcada && noite.chave !== noiteAnterior) {
@@ -1297,13 +1344,19 @@ Responda com UMA palavra:
       nome: apelido ?? perfil.nome, avatar: sala.anonima ? null : perfil.avatar, genero: perfil.genero, cat: perfil.cat, procura: perfil.procura,
       cidade: perfil.cidade, uf: perfil.uf,
       podeFalar: true, querBrincar: false, ultimoPing: Date.now(), ultimaMsg: 0, ultimaMidia: 0, ultimoConvite: 0, revelarAte: 0,
-      pulseira: null, olhares: new Map(),
+      pulseira: null, olhares: new Map(), entrouEm: Date.now(),
     };
     p.ultimoPing = Date.now();
     sala.presentes.set(userId, p);
     if (!jaEstava) {
       if (falantes(sala).length === 1 || sala.mensagens.length === 0) lola(sala, sortear(BOAS_VINDAS));
       publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
+      // Mulher sempre é anunciada (é quem mais atrai a sala); casal, no máximo 1 a cada 2 min.
+      const intervaloRecepcao = p.cat === 'mulher' ? 30_000 : 120_000;
+      if ((p.cat === 'casal' || p.cat === 'mulher') && falantes(sala).length >= 2 && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
+        ultimaRecepcao.set(sala.id, Date.now());
+        lola(sala, sortear(p.cat === 'casal' ? RECEBE_CASAL : RECEBE_MULHER).replace('{nome}', p.nome));
+      }
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
@@ -1585,6 +1638,12 @@ Responda com UMA palavra:
     msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
     if (msg.reacoes[emoji].length === 0) delete msg.reacoes[emoji];
     emitirParaSala(sala, 'casa.reacao', { sala: sala.id, mensagemId: msg.id, reacoes: msg.reacoes });
+    const total = Object.values(msg.reacoes).reduce((n, ids) => n + ids.length, 0);
+    if (total >= 3 && msg.tipo === 'pessoa' && msg.autor && !comentadas.has(msg.id) && Date.now() - (ultimoComentario.get(sala.id) ?? 0) > 60_000) {
+      comentadas.add(msg.id);
+      ultimoComentario.set(sala.id, Date.now());
+      lola(sala, sortear(COMENTA_QUENTE).replace('{nome}', msg.autor.nome));
+    }
     res.json({ ok: true, reacoes: msg.reacoes });
   });
 
@@ -2075,6 +2134,54 @@ Responda com UMA palavra:
     emitirPara(paraId, 'casa.convite', { id, de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: sala.nome });
     res.json({ ok: true, id });
   });
+
+  // ─── Lola mais provocadora: memória da noite ────────────────────────────────
+  const ultimaRecepcao = new Map<string, number>();
+  const ultimoComentario = new Map<string, number>();
+  const ultimaProvocacao = new Map<string, number>();
+  const comentadas = new Set<string>();
+  const rankingsAnunciados = new Set<string>();
+  const provocarQuieto = (sala: Sala, agora: number) => {
+    if (sala.anonima || falantes(sala).length < 2) return;
+    if (agora - (ultimaProvocacao.get(sala.id) ?? 0) < 7 * 60_000) return;
+    // Quieto: está há mais de 3 min na sala e não fala há mais de 8 min.
+    const quietos = [...sala.presentes.values()].filter((x) => x.podeFalar && agora - x.ultimaMsg > 8 * 60_000 && agora - x.entrouEm > 3 * 60_000);
+    if (quietos.length === 0) return;
+    const alvo = sortear(quietos);
+    ultimaProvocacao.set(sala.id, agora);
+    lola(sala, sortear(PROVOCA_QUIETO[alvo.cat]).replace('{nome}', alvo.nome));
+  };
+  // 4) Ranking da noite a cada 30 min: casal mais desejado e mensagem mais quente (pelas reações).
+  const anunciarRanking = (chaveNoite: string) => {
+    const agoraMin = Math.floor(Date.now() / 60_000);
+    const slot = Math.floor(agoraMin / 30);
+    if (agoraMin % 30 > 2) return;
+    const chave = `${chaveNoite}:${slot}`;
+    if (rankingsAnunciados.has(chave)) return;
+    rankingsAnunciados.add(chave);
+    let maisQuente: { nome: string; texto: string; n: number } | null = null;
+    const desejo = new Map<string, { nome: string; n: number }>();
+    for (const sl of salas.values()) {
+      if (sl.anonima) continue;
+      for (const m of sl.mensagens) {
+        const n = Object.values(m.reacoes ?? {}).reduce((a, ids) => a + ids.length, 0);
+        if (!n || !m.autor) continue;
+        if (m.tipo === 'pessoa' && (!maisQuente || n > maisQuente.n)) maisQuente = { nome: m.autor.nome, texto: m.texto.slice(0, 60), n };
+        if (m.autor.cat === 'casal') {
+          const d = desejo.get(m.autor.id) ?? { nome: m.autor.nome, n: 0 };
+          d.n += n;
+          desejo.set(m.autor.id, d);
+        }
+      }
+    }
+    const casal = [...desejo.values()].sort((a, b) => b.n - a.n)[0];
+    if (!maisQuente && !casal) return;
+    const linhas = ['🏆 RANKING DA NOITE (pelas reações de vocês)'];
+    if (casal) linhas.push(`💑 Casal mais desejado: ${casal.nome} (${casal.n} reações) 🔥`);
+    if (maisQuente) linhas.push(`💬 Mensagem mais quente: ${maisQuente.nome} — "${maisQuente.texto}" (${maisQuente.n} reações)`);
+    linhas.push('Reajam com 🔥😈💦 no que mexer com vocês: daqui a 30 min tem mais 😏');
+    for (const sl of salas.values()) if (!sl.anonima && falantes(sl).length >= 2) lola(sl, linhas.join('\n'));
+  };
 
   // ─── Rádio da Casa: todo mundo ouve a mesma faixa no mesmo ponto ─────────
   // A posição sai do relógio: (agora - início fixo) módulo a duração total da
