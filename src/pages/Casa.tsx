@@ -304,6 +304,17 @@ export default function Casa() {
   const [pulseiraDispensada, setPulseiraDispensada] = useState(false);
   const [mostrandoBar, setMostrandoBar] = useState(false);
   const [rankingAberto, setRankingAberto] = useState(false);
+  // Central de avisos da Casa (olhadas, drinks, convites, desafios…): sino no topo da sala.
+  type NotifCasa = { id: string; emoji: string; texto: string; em: number; acao?: () => void; rotuloAcao?: string };
+  const [notifs, setNotifs] = useState<NotifCasa[]>([]);
+  const [naoLidas, setNaoLidas] = useState(0);
+  const [avisosAbertos, setAvisosAbertos] = useState(false);
+  const registrarAviso = (n: Omit<NotifCasa, 'id' | 'em'>) => {
+    setNotifs((l) => [{ ...n, id: `${Date.now()}-${Math.random()}`, em: Date.now() }, ...l].slice(0, 40));
+    setNaoLidas((x) => x + 1);
+  };
+  const estadoRef = useRef<typeof estado>(null);
+  useEffect(() => { estadoRef.current = estado; }, [estado]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
   const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
@@ -403,7 +414,16 @@ export default function Casa() {
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
     const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
-    const aoConvite = (c: Convite) => { tocarAviso(true); setConvite(c); };
+    const abrirPorId = (id: string, nome: string) => {
+      const pessoa = estadoRef.current?.presentes.find((x) => x.id === id);
+      if (pessoa) setPessoaAberta(pessoa);
+      else toast({ title: `${nome} não está mais nesta sala` });
+    };
+    const aoConvite = (c: Convite) => {
+      tocarAviso(true);
+      setConvite(c);
+      registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder' });
+    };
     const aoVaga = (d: { sala: string; nome: string }) => {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
@@ -414,6 +434,7 @@ export default function Casa() {
     };
     const aoOlhar = (d: { de: { id: string; nome: string; pulseira?: Pulseira | null } }) => {
       tocarAviso(false);
+      registrarAviso({ emoji: '👀', texto: `${d.de.nome} te deu uma olhada`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
       toast({
         title: `👀 ${d.de.nome} está de olho em você`,
         description: d.de.pulseira ? `Pulseira ${corDaPulseira(d.de.pulseira)?.emoji} ${corDaPulseira(d.de.pulseira)?.titulo}` : 'Olha de volta?',
@@ -423,6 +444,7 @@ export default function Casa() {
     const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setCruzados(d.com);
     const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
       tocarAviso(false);
+      registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
       toast({
         title: `${d.de.nome} te pagou ${d.drink} 😏`,
         description: `+${d.tokens} tokens pra você.`,
@@ -430,13 +452,14 @@ export default function Casa() {
       });
     };
     const aoBrinde = (d: { de: { id: string; nome: string } }) => {
+      registrarAviso({ emoji: '🥂', texto: `${d.de.nome} brindou com você`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver' });
       toast({
         title: `🥂 ${d.de.nome} brindou com você`,
         description: 'O clima esquentou… chama pra cabine?',
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true); return setPropostaRecebida(d); }
+    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true); registrarAviso({ emoji: '😈', texto: `${d.de.nome} te propôs um desafio (${d.tokens} tokens)`, acao: () => setPropostaRecebida(d), rotuloAcao: 'Ver desafio' }); return setPropostaRecebida(d); }
     const aoPropostaAceita = (d: { nome: string }) => toast({ title: `🔥 ${d.nome} aceitou seu desafio!`, description: 'Tem 5 minutos para cumprir.' });
     const aoPropostaFim = (d: { id: string; cumprida: boolean; motivo?: string; nome: string; tokens: number }) => {
       setMeuDesafio((m) => (m?.id === d.id ? null : m));
@@ -449,7 +472,11 @@ export default function Casa() {
       setMinhasCabines((l) => (l.includes(d.cabineId) ? l : [...l, d.cabineId]));
       setCabineAberta({ id: d.cabineId, modo: 'membro' });
     };
-    const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => { tocarAviso(true); setConviteCabine(d); };
+    const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => {
+      tocarAviso(true);
+      setConviteCabine(d);
+      registrarAviso({ emoji: '🚪', texto: `${d.membros.join(', ')} te chamaram pra cabine deles`, acao: () => setConviteCabine(d), rotuloAcao: 'Responder' });
+    };
     const aoAvisoLola = (d: { texto: string }) => toast({ title: d.texto });
     const aoRemovida = (d: { sala: string; id: string }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: e.mensagens.filter((m) => m.id !== d.id) } : e);
     const aoExpulso = (d: { motivo: string }) => {
@@ -457,9 +484,11 @@ export default function Casa() {
       setEstado(null);
       toast({ title: '🚫 Você foi retirado(a) da Casa nesta noite', description: `${d.motivo}. Na próxima noite você pode voltar.`, variant: 'destructive' });
     };
-    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => { tocarAviso(true); toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' }); };
+    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => { tocarAviso(true); registrarAviso({ emoji: '🙋', texto: `${d.nome} quer entrar na sua cabine`, acao: () => setCabineAberta({ id: d.cabineId, modo: 'membro' }), rotuloAcao: 'Abrir cabine' }); toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' }); };
     const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
+      tocarAviso(false);
+      registrarAviso({ emoji: '🕳️', texto: `${d.de.nome} bateu na parede`, acao: () => void convidarRef.current(d.de), rotuloAcao: 'Chamar pra cabine' });
       toast({
         title: `🕳️ ${d.de.nome} bateu na parede…`,
         description: `É ${ROTULO_CAT[d.de.cat].toLowerCase()}. Quer chamar pra cabine?`,
@@ -781,6 +810,15 @@ export default function Casa() {
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
+        <button
+          type="button"
+          onClick={() => { setAvisosAbertos(true); setNaoLidas(0); }}
+          className={cn('relative rounded-full border px-2 py-1.5 text-xs', naoLidas > 0 ? 'border-rose-400 bg-rose-500/20' : 'border-white/20')}
+          aria-label="Avisos da Casa" title="Seus avisos na Casa"
+        >
+          🔔
+          {naoLidas > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold">{naoLidas > 9 ? '9+' : naoLidas}</span>}
+        </button>
         <button type="button" onClick={() => setRankingAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Ranking" title="Ranking da Casa">🏆</button>
         {estado.eu.podeFalar && (
           <button
@@ -1081,6 +1119,29 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={avisosAbertos} onOpenChange={setAvisosAbertos}>
+        <DialogContent className="z-[9995] max-h-[80vh] max-w-sm overflow-y-auto">
+          <DialogHeader><DialogTitle>🔔 Seus avisos na Casa</DialogTitle></DialogHeader>
+          {notifs.length === 0 ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Nada por aqui ainda. Dê uma olhada em alguém ou pague um drink pra esquentar 😏</p>
+          ) : (
+            <ul className="divide-y">
+              {notifs.map((n) => (
+                <li key={n.id} className="flex items-center gap-3 py-2">
+                  <span className="text-xl">{n.emoji}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm">{n.texto}</p>
+                    <p className="text-[11px] text-muted-foreground">{new Date(n.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  {n.acao && (
+                    <Button size="sm" variant="outline" onClick={() => { setAvisosAbertos(false); n.acao?.(); }}>{n.rotuloAcao ?? 'Abrir'}</Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
       <Dialog open={rankingAberto} onOpenChange={setRankingAberto}>
         <DialogContent className="z-[9995] max-h-[85vh] max-w-sm overflow-y-auto">
           <DialogHeader><DialogTitle>🏆 Ranking da Casa</DialogTitle></DialogHeader>
