@@ -3777,6 +3777,21 @@ describe('nosigilo backend', () => {
     expect(pub.aberta).toBe(true);
     expect(pub.pessoas).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(pub)).not.toContain('Casal Casa');
+    // Responder e reagir a uma mensagem da sala.
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'quem topa uma dança?' }).expect(200);
+    const naSala = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200)).body;
+    const original = naSala.mensagens.find((m: any) => m.texto === 'quem topa uma dança?');
+    expect(original).toBeTruthy();
+    const reagiu = (await request(ctx.app).post('/api/casa/salao/reagir').set(auth(homens[0].token)).send({ mensagemId: original.id, emoji: '🔥' }).expect(200)).body;
+    expect(reagiu.reacoes['🔥']).toHaveLength(1);
+    await request(ctx.app).post('/api/casa/salao/reagir').set(auth(homens[0].token)).send({ mensagemId: original.id, emoji: '💩' }).expect(400);
+    const tirou = (await request(ctx.app).post('/api/casa/salao/reagir').set(auth(homens[0].token)).send({ mensagemId: original.id, emoji: '🔥' }).expect(200)).body;
+    expect(tirou.reacoes['🔥']).toBeUndefined();
+    await new Promise((r) => setTimeout(r, 1300));
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'eu topo', respostaA: original.id }).expect(200);
+    const depois = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    expect(depois.mensagens.find((m: any) => m.texto === 'eu topo')?.resposta).toMatchObject({ id: original.id, nome: 'Casal Casa' });
+
     // Rádio: sem playlist não toca; playlist é só do admin.
     expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();
     await request(ctx.app).get('/api/casa/admin/playlist').set(auth(homens[0].token)).expect(403);

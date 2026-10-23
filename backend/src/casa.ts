@@ -87,7 +87,14 @@ type Msg = {
   criadoEm: string;
   /** Foto ou vídeo de visualização única: o link só sai pelo /ver, uma vez por pessoa. */
   midia?: { tipo: 'foto' | 'video'; preco?: number };
+  /** Mensagem respondida (citação curta). */
+  resposta?: { id: string; nome: string; trecho: string };
+  /** Reações: emoji → ids públicos de quem reagiu. */
+  reacoes?: Record<string, string[]>;
 };
+
+// Reações da sala (as "safadas").
+const REACOES_DA_CASA = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 
 type Jogo =
   | { id: string; tipo: 'enquete' | 'eu_nunca'; texto: string; opcoes: string[]; votos: Map<string, number>; fimEm: number }
@@ -1556,9 +1563,29 @@ Responda com UMA palavra:
     p.ultimoPing = Date.now();
     const barrada = await bloqueioRapido(p.id, p.nome, texto, sala.nome);
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
-    const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto });
+    const respondida = sala.mensagens.find((m) => m.id === String((req.body as any)?.respostaA || ''));
+    const resposta = respondida && respondida.tipo !== 'sistema'
+      ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
+      : undefined;
+    const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id));
     res.json({ ok: true });
+  });
+
+  // Reação na mensagem: tocar de novo no mesmo emoji tira a reação.
+  app.post('/api/casa/:sala/reagir', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const p = sala?.presentes.get(userDe(req));
+    if (!sala || !p) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    const emoji = String((req.body as any)?.emoji || '');
+    const msg = sala.mensagens.find((m) => m.id === String((req.body as any)?.mensagemId || ''));
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
+    msg.reacoes ??= {};
+    const lista = msg.reacoes[emoji] ?? [];
+    msg.reacoes[emoji] = lista.includes(p.idPublico) ? lista.filter((x) => x !== p.idPublico) : [...lista, p.idPublico];
+    if (msg.reacoes[emoji].length === 0) delete msg.reacoes[emoji];
+    emitirParaSala(sala, 'casa.reacao', { sala: sala.id, mensagemId: msg.id, reacoes: msg.reacoes });
+    res.json({ ok: true, reacoes: msg.reacoes });
   });
 
   app.post('/api/casa/:sala/jogo', deps.requireAuth, async (req, res) => {

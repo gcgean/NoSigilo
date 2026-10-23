@@ -37,7 +37,8 @@ type Info = {
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number } };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
+const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
   fase?: 'fotos' | 'votacao'; jaEnviei?: boolean; vencedorNome?: string | null; cumpriram?: number; quem?: 'todos' | 'casal';
@@ -253,6 +254,9 @@ export default function Casa() {
   const [texto, setTexto] = useState('');
   const [pessoaAberta, setPessoaAberta] = useState<Pessoa | null>(null);
   const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
+  const [respondendo, setRespondendo] = useState<Msg | null>(null);
+  const [perguntaBrincar, setPerguntaBrincar] = useState<string | null>(null);
+  const [reagindoEm, setReagindoEm] = useState<string | null>(null);
   const [convite, setConvite] = useState<Convite | null>(null);
   const [enviandoMidia, setEnviandoMidia] = useState<number | null>(null);
   const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
@@ -300,6 +304,8 @@ export default function Casa() {
     try {
       const { data } = await apiClient.post(`/casa/${salaId}/entrar`);
       setEstado(data);
+      // Logo ao entrar, a Lola pergunta se a pessoa quer participar das brincadeiras.
+      if (!silencioso && data?.eu?.podeFalar && !data?.eu?.querBrincar) setPerguntaBrincar(salaId);
     } catch (e) {
       if ((e as any)?.response?.data?.error === 'lotada_homens') {
         if (!silencioso) toast({ title: 'Cota de homens cheia nesta sala', description: 'Toque em "Entrar na fila" e a gente te chama quando abrir vaga.' });
@@ -356,6 +362,8 @@ export default function Casa() {
   // Tempo real.
   useEffect(() => {
     const aoMsg = (d: { sala: string; msg: Msg }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-150), d.msg] } : e);
+    const aoReacao = (d: { sala: string; mensagemId: string; reacoes: Record<string, string[]> }) => setEstado((e) => e && e.sala.id === d.sala
+      ? { ...e, mensagens: e.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : e);
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
     const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
@@ -420,10 +428,10 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    on('casa.mensagem', aoMsg); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
+    on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
     on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
-      off('casa.mensagem', aoMsg); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
+      off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
       off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
@@ -443,8 +451,16 @@ export default function Casa() {
     const t = texto.trim();
     if (!t || !salaAtual) return;
     setTexto('');
-    try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t }); }
-    catch (e) { setTexto(t); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
+    const resp = respondendo;
+    setRespondendo(null);
+    try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t, ...(resp ? { respostaA: resp.id } : {}) }); }
+    catch (e) { setTexto(t); setRespondendo(resp); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
+  };
+  const reagir = async (m: Msg, emoji: string) => {
+    setReagindoEm(null);
+    if (!salaAtual) return;
+    try { await apiClient.post(`/casa/${salaAtual}/reagir`, { mensagemId: m.id, emoji }); }
+    catch (e) { toast({ title: erroDe(e, 'Não deu para reagir.'), variant: 'destructive' }); }
   };
   // Foto/vídeo tirado na hora (abre a câmera no celular), sempre visualização única.
   const enviarMidia = async (arquivo: File | undefined) => {
@@ -453,11 +469,13 @@ export default function Casa() {
       toast({ title: 'Vídeo grande demais', description: 'Grave um vídeo mais curto (até 1 minuto).', variant: 'destructive' });
       return;
     }
-    setTipoEnviando(arquivo.type.startsWith('video/') ? 'video' : 'foto');
+    // Tipo pelo arquivo escolhido (alguns celulares mandam o tipo vazio: aí vale a extensão).
+    const ehVideo = arquivo.type ? arquivo.type.startsWith('video/') : /\.(mp4|mov|m4v|webm|3gp|mkv|avi)$/i.test(arquivo.name);
+    setTipoEnviando(ehVideo ? 'video' : 'foto');
     setEnviandoMidia(0);
     try {
       // Depois de 100% o servidor ainda comprime o vídeo: a barra mostra "processando".
-      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(Math.min(99, pct)));
+      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (pct) => setEnviandoMidia(Math.min(100, pct)));
       setEnviandoMidia(100);
       const revelacao = modoRevelacao.current;
       const propostaId = propostaDaCamera.current;
@@ -660,6 +678,37 @@ export default function Casa() {
     catch (e) { toast({ title: erroDe(e, 'Falhou.'), variant: 'destructive' }); }
   };
 
+  // Reações safadas + responder, embaixo de cada mensagem.
+  const meuId = estado?.eu.idPublico ?? user?.id ?? '';
+  const AcoesDaMsg = ({ m }: { m: Msg }) => {
+    const reacoes = Object.entries(m.reacoes ?? {}).filter(([, ids]) => ids.length > 0);
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {reacoes.map(([emoji, ids]) => (
+          <button key={emoji} type="button" onClick={() => void reagir(m, emoji)}
+            className={cn('rounded-full px-1.5 py-0.5 text-[11px]', ids.includes(meuId) ? 'bg-fuchsia-600/60 ring-1 ring-fuchsia-300' : 'bg-black/30')}>
+            {emoji} {ids.length}
+          </button>
+        ))}
+        {estado?.eu.podeFalar && (
+          <>
+            <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
+            {m.tipo !== 'lola' && (
+              <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">↩️ Responder</button>
+            )}
+          </>
+        )}
+        {reagindoEm === m.id && (
+          <div className="flex w-full gap-1 pt-1">
+            {REACOES.map((e) => (
+              <button key={e} type="button" onClick={() => void reagir(m, e)} className="rounded-full bg-white/10 px-2 py-1 text-base hover:scale-110">{e}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── Sala ────────────────────────────────────────────────────────────────
   const sala = estado && createPortal(
     <div
@@ -787,6 +836,7 @@ export default function Casa() {
                     {m.midia?.tipo === 'video' ? '🎥' : '📸'}
                     {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : !estado.eu.podeFalar ? 'Assine para ver' : m.midia?.preco ? `Abrir por ${m.midia.preco} tokens` : 'Toque para ver (1 vez)'}
                   </button>
+                  <AcoesDaMsg m={m} />
                   </>
                 );
               })()}
@@ -796,13 +846,20 @@ export default function Casa() {
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
+            <AcoesDaMsg m={m} />
           </div>
         ) : (
           <div key={m.id} className="flex items-start gap-2">
             {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome} <span className="font-normal text-white/40">· {m.autor ? ROTULO_CAT[m.autor.cat] : ''}</span></p>
+              {m.resposta && (
+                <div className="mb-1 rounded-lg border-l-2 border-fuchsia-400 bg-black/30 px-2 py-1 text-[11px] text-white/60">
+                  <b className="text-fuchsia-300">{m.resposta.nome}</b> · {m.resposta.trecho}
+                </div>
+              )}
               <p className="break-words text-sm">{m.texto}</p>
+              <AcoesDaMsg m={m} />
             </div>
           </div>
         ))}
@@ -840,6 +897,12 @@ export default function Casa() {
             className="hidden"
             onChange={(e) => void enviarMidia(e.target.files?.[0])}
           />
+          {respondendo && enviandoMidia === null && !escolhendoMidia && (
+            <div className="absolute bottom-full left-3 right-3 mb-2 flex items-center gap-2 rounded-xl bg-zinc-900/95 px-3 py-2 text-xs ring-1 ring-fuchsia-500/40">
+              <span className="min-w-0 flex-1 truncate">↩️ Respondendo <b className="text-fuchsia-300">{respondendo.autor?.nome ?? 'Lola'}</b>: {respondendo.tipo === 'midia' ? 'mídia' : respondendo.texto}</span>
+              <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta"><X className="h-4 w-4" /></button>
+            </div>
+          )}
           {escolhendoMidia && enviandoMidia === null && (
             <div className="absolute bottom-full left-3 mb-2 flex gap-2 rounded-2xl bg-zinc-900 p-2 shadow-xl ring-1 ring-white/10">
               <button type="button" className="rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirCamera(false); }}>📷 Câmera</button>
@@ -850,15 +913,15 @@ export default function Casa() {
             <div className="absolute bottom-full left-3 right-3 mb-2 rounded-2xl bg-zinc-900/95 p-3 shadow-xl ring-1 ring-fuchsia-500/40">
               <p className="mb-1.5 flex items-center justify-between text-xs text-white/80">
                 <span>
-                  {enviandoMidia < 100
+                  {enviandoMidia < 99
                     ? `Enviando ${tipoEnviando === 'video' ? 'vídeo' : 'foto'}…`
-                    : tipoEnviando === 'video' ? 'Processando o vídeo… pode levar alguns segundos' : 'Finalizando…'}
+                    : tipoEnviando === 'video' ? 'Processando o vídeo… pode levar até 1 minuto' : 'Processando a foto…'}
                 </span>
-                <span className="tabular-nums">{enviandoMidia < 100 ? `${enviandoMidia}%` : ''}</span>
+                <span className="tabular-nums">{enviandoMidia < 99 ? `${enviandoMidia}%` : '⏳'}</span>
               </p>
               <div className="h-2 overflow-hidden rounded-full bg-white/10">
                 <div
-                  className={cn('h-full rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-500 transition-all', enviandoMidia >= 100 && 'animate-pulse')}
+                  className={cn('h-full rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-500 transition-all', enviandoMidia >= 99 && 'animate-pulse')}
                   style={{ width: `${Math.max(4, enviandoMidia)}%` }}
                 />
               </div>
@@ -873,7 +936,7 @@ export default function Casa() {
             aria-label="Enviar foto ou vídeo"
             title="Foto ou vídeo (visualização única)"
           >
-            {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia}%</span> : <Camera className="h-4 w-4" />}
+            {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia < 99 ? `${enviandoMidia}%` : "⏳"}</span> : <Camera className="h-4 w-4" />}
           </button>
           <input
             value={texto}
@@ -1032,6 +1095,21 @@ export default function Casa() {
       )}
 
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
+      <Dialog open={!!perguntaBrincar} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
+        <DialogContent className="z-[9995] max-w-xs text-center">
+          <DialogHeader><DialogTitle>💋 A Lola quer saber…</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">Você quer entrar nas brincadeiras quentes da noite? A Lola só sorteia quem topar. Dá para mudar a qualquer hora no botão "Quero brincar".</p>
+          <div className="grid gap-2">
+            <Button className="bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => {
+              const salaId = perguntaBrincar;
+              setPerguntaBrincar(null);
+              setEstado((e) => e ? { ...e, eu: { ...e.eu, querBrincar: true } } : e);
+              if (salaId) void apiClient.post(`/casa/${salaId}/brincar`, { quer: true }).catch(() => {});
+            }}>🔥 Quero brincar</Button>
+            <Button variant="outline" onClick={() => setPerguntaBrincar(null)}>Só curtir por enquanto</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={!!pessoaAberta} onOpenChange={(v) => { if (!v) { setPessoaAberta(null); setMostrandoBar(false); } }}>
         <DialogContent className="z-[9995] max-w-xs">
           {pessoaAberta && (
