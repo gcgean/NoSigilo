@@ -40,7 +40,7 @@ export default function ACasaPublica() {
   const convite = params.get('invite')?.trim() || '';
 
   useEffect(() => {
-    document.title = 'A Casa — boate virtual liberal | NoSigilo';
+    document.title = 'A Casa: casa liberal online e boate liberal virtual | NoSigilo';
     const carregar = () => apiClient.get('/casa/publico').then((r) => setInfo(r.data)).catch(() => {});
     void carregar();
     const t1 = setInterval(carregar, 60_000);

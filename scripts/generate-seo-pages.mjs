@@ -1219,11 +1219,11 @@ function statePage(st) {
   // site que ninguem ainda procura pelo nome, "NoSigilo" no titulo vale
   // menos que "menage" — a marca ja esta na URL, na descricao e no H1.
   const title = melhorTitle([
-    `Swing, Troca de Casais e Ménage em ${st.name} (${st.uf}) | NoSigilo`,
-    `Swing, Troca de Casais e Ménage em ${st.name} (${st.uf})`,
-    `Swing, Troca de Casais e Ménage em ${st.name}`,
-    `Swing e Troca de Casais em ${st.name} (${st.uf})`,
-    `Swing e Troca de Casais em ${st.name}`,
+    `Troca de Casais em ${st.name} (${st.uf}) · Swing e Ménage | NoSigilo`,
+    `Troca de Casais em ${st.name} (${st.uf}) · Swing e Ménage`,
+    `Troca de Casais em ${st.name} · Swing e Ménage`,
+    `Troca de Casais e Swing em ${st.name} (${st.uf})`,
+    `Troca de Casais e Swing em ${st.name}`,
   ]);
   const nEstado = numeroEstado(st);
   const desc = melhorDesc(nEstado
@@ -1407,21 +1407,25 @@ function cityPage(city) {
   // primeiro cai a marca, depois a UF, e os tres termos so no fim. Para um
   // site que ninguem ainda procura pelo nome, "NoSigilo" no titulo vale
   // menos que "menage" — a marca ja esta na URL, na descricao e no H1.
+  // Search Console (out/2026): "troca de casais em <cidade>" tem bem mais busca
+  // que "swing em <cidade>". O termo mais procurado vai na frente.
   const title = melhorTitle([
-    `Swing, Troca de Casais e Ménage em ${city.name} (${st.uf}) | NoSigilo`,
-    `Swing, Troca de Casais e Ménage em ${city.name} (${st.uf})`,
-    `Swing, Troca de Casais e Ménage em ${city.name}`,
-    `Swing e Troca de Casais em ${city.name} (${st.uf})`,
-    `Swing e Troca de Casais em ${city.name}`,
+    `Troca de Casais em ${city.name} (${st.uf}) · Swing e Ménage | NoSigilo`,
+    `Troca de Casais em ${city.name} (${st.uf}) · Swing e Ménage`,
+    `Troca de Casais em ${city.name} · Swing e Ménage`,
+    `Troca de Casais e Swing em ${city.name} (${st.uf})`,
+    `Troca de Casais e Swing em ${city.name}`,
   ]);
   const nCidade = numeroCidade(city, st);
   const desc = melhorDesc(nCidade
     ? [
+        `Troca de casais em ${city.name}: mais de ${fmt(nCidade)} perfis de casais liberais e singles. Swing, ménage e encontros casuais com sigilo. Cadastro grátis.`,
         `Mais de ${fmt(nCidade)} perfis em ${city.name}. Rede adulta discreta de swing, troca de casais e ménage — casais e singles do meio liberal, com sigilo. Cadastro grátis.`,
         `Mais de ${fmt(nCidade)} perfis em ${city.name}. Swing, troca de casais e ménage numa rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
         `Mais de ${fmt(nCidade)} perfis em ${city.name}. Swing e troca de casais com sigilo. Cadastro grátis.`,
       ]
     : [
+        `Troca de casais em ${city.name}: casais liberais e singles para swing, ménage e encontros casuais, com sigilo. Cadastro grátis.`,
         `Rede adulta discreta de swing, troca de casais e ménage em ${city.name}, ${st.name}. Casais e singles do meio liberal, com sigilo. Cadastro grátis.`,
         `Swing, troca de casais e ménage em ${city.name}. Rede adulta discreta, com sigilo de verdade. Cadastro grátis.`,
       ]);
@@ -1457,13 +1461,15 @@ function cityPage(city) {
     <section class="cl-hero">
       <div class="cl-hero-copy">
         <p class="cl-crumb"><a href="/swing/">Swing por estado</a> › <a href="/swing/${st.slug}/">${esc(st.name)}</a> › ${esc(city.name)}</p>
-        <h1>Swing e Troca de Casais em <em>${esc(city.name)}</em></h1>
+        <h1>Troca de Casais e Swing em <em>${esc(city.name)}</em></h1>
         <p class="cl-intro">
           Procurando <strong>swing em ${esc(city.name)}</strong> ou <strong>troca de casais em ${esc(city.name)}</strong>?
           O NoSigilo.net reúne o meio liberal de ${esc(city.name)} e região num só lugar, longe da exposição das
           redes sociais comuns — casais liberais, mulheres solteiras e homens solteiros com os mesmos interesses
           para swing, ménage e encontros liberais, com total discrição. Também é o lugar para quem busca
           <strong>encontro casual em ${esc(city.name)}</strong> entre adultos, sem expor nada nas redes.
+          Aqui você encontra <strong>casais liberais em ${esc(city.name)}</strong> e <strong>encontros casuais em ${esc(city.name)}</strong>
+          com quem pensa igual, conversando primeiro e decidindo juntos.
         </p>
         ${prova ? `<p class="cl-prova">${prova}</p>` : ''}
         <a class="cl-cta" href="${cadastroUrl(`swing/${st.slug}/${city.slug}`)}">Criar conta grátis ${icon('arrow')}</a>
@@ -1537,8 +1543,10 @@ function cityPage(city) {
       <h2>Veja também</h2>
       <p>Perfis do meio liberal em todo o estado${outrasDoEstado.length ? `, incluindo ${esc(list(outrasDoEstado))}` : ''}.</p>
       <div class="cl-chips">
-        <a href="/swing/${st.slug}/">Swing em ${esc(st.name)}</a>
+        <a href="/swing/${st.slug}/">Troca de casais em ${esc(st.name)}</a>
+        ${SELECTED_CITIES.filter((c) => c.state.slug === st.slug && c.slug !== city.slug).map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Troca de casais em ${esc(c.name)}</a>`).join('')}
         ${vizinhas.map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}
+        <a href="/acasa">A Casa: boate liberal online</a>
       </div>
     </section>
 
@@ -1852,6 +1860,8 @@ function sitemap() {
   const base = [
     { loc: `${SITE}/`, freq: 'weekly', pri: '1.0' },
     { loc: `${REGIONAL}/swing/`, freq: 'weekly', pri: '0.9' },
+    // A Casa: título/descrição/canonical próprios aplicados pelo app (seoDaRota.ts).
+    { loc: `${SITE}/acasa`, freq: 'weekly', pri: '0.8' },
   ];
   const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8', chave: `/swing/${s.slug}/` }));
   const cityUrls = SELECTED_CITIES
