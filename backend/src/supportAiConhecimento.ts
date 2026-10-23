@@ -47,7 +47,7 @@ A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa �
 - Bar: pagar um drink (3 a 15 tokens, vão para quem recebe). Olhar discreto; olhares cruzados sugerem cabine. Desafio sugerido: oferece tokens; se a pessoa aceitar e cumprir em 5 min recebe; se não, os tokens voltam.
 - Cabine: a dois ou em grupo; a porta só abre se todos de dentro quiserem; com a porta aberta, outros espiam e podem pedir para entrar (todos de dentro aprovam). "Continuar no chat" leva a conversa para o chat normal. Na cabine dá para "Esquentar": quando todos de dentro topam, a Lola guia o sexo virtual com provocações que sobem de nível (flerte, nudez, explícito) e o "dado do prazer"; qualquer um toca em "Esfriar" e para na hora.
 - Fotos e vídeos são de visualização única (não impede print). Ranking dos casais da noite e do mês. +5 tokens por noite só por entrar.
-- Regras: só maiores de 18, consentimento, sem Pix/dinheiro, sem contato de fora na sala, sem mídia de terceiros. A Lola modera e pode retirar a pessoa da noite; dá para denunciar alguém tocando na foto dele na sala.
+- Regras: só maiores de 18, consentimento, sem Pix/dinheiro, sem contato de fora na sala, sem mídia de terceiros. Print e gravação de tela são proibidos na Casa (a tela tem marca d'água com a identificação de quem vê); quem vazar conteúdo é banido. A Lola modera e pode retirar a pessoa da noite; dá para denunciar alguém tocando na foto dele na sala.
 
 Tokens (menu Tokens)
 - Ganha pontos usando o app: curtir (1, até 20 por dia), comentar (3, até 10 por dia), foto nova (10, até 3 por dia), story (8, até 3 por dia), postagem (5, até 3 por dia; pontos por postagem só para perfis de mulher e casal) e check-in diário (5, 1 por dia).

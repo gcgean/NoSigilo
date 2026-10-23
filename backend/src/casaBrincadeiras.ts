@@ -228,7 +228,8 @@ export const BOAS_VINDAS: string[] = [
   'Boa noite, gente bonita! 🍸 Eu sou a Lola, anfitriã IA d\'A Casa. Marquem "Quero brincar" pra entrar nas brincadeiras. Aqui vale tudo que for combinado 😈',
   'A Casa está aberta! 🔥 Regra única: consentimento sempre. O resto é diversão. Quem marcar "Quero brincar" pode ser sorteado(a) 😏',
   'Luzes baixas, música alta e muita gente com vontade 🖤 Sou a Lola, IA da Casa. Toquem num perfil pra chamar pra cabine.',
-];
+].map((f) => `${f}
+🔒 O que acontece na Casa fica na Casa: print e gravação são proibidos, e quem vazar é banido.`);
 
 export const COMENTARIOS_RESULTADO: string[] = [
   'Essa sala não me engana 😏',

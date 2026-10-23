@@ -494,6 +494,13 @@ export default function Casa() {
     try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t, ...(resp ? { respostaA: resp.id } : {}) }); }
     catch (e) { setTexto(t); setRespondendo(resp); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
   };
+  // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
+  const abrirAutor = (autor: Msg['autor']) => {
+    if (!autor || !estado) return;
+    const pessoa = estado.presentes.find((x) => x.id === autor.id);
+    if (pessoa) setPessoaAberta(pessoa);
+    else toast({ title: `${autor.nome} não está mais nesta sala` });
+  };
   const reagir = async (m: Msg, emoji: string) => {
     setReagindoEm(null);
     if (!salaAtual) return;
@@ -855,9 +862,9 @@ export default function Casa() {
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
           <div key={m.id} className="flex items-start gap-2">
-            {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
+            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" /></button>}
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome}</button>
               {(() => {
                 const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);
@@ -888,9 +895,9 @@ export default function Casa() {
           </div>
         ) : (
           <div key={m.id} className="flex items-start gap-2">
-            {m.autor && <Avatar p={m.autor} tamanho="h-7 w-7" />}
+            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" /></button>}
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
-              <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome} <span className="font-normal text-white/40">· {m.autor ? ROTULO_CAT[m.autor.cat] : ''}</span></p>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">· {m.autor ? ROTULO_CAT[m.autor.cat] : ''}</span></button>
               {m.resposta && (
                 <div className="mb-1 rounded-lg border-l-2 border-fuchsia-400 bg-black/30 px-2 py-1 text-[11px] text-white/60">
                   <b className="text-fuchsia-300">{m.resposta.nome}</b> · {m.resposta.trecho}
