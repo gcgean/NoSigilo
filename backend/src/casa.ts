@@ -1349,7 +1349,10 @@ Responda com UMA palavra:
     p.ultimoPing = Date.now();
     sala.presentes.set(userId, p);
     if (!jaEstava) {
-      if (falantes(sala).length === 1 || sala.mensagens.length === 0) lola(sala, sortear(BOAS_VINDAS));
+      if ((falantes(sala).length === 1 || sala.mensagens.length === 0) && Date.now() - (ultimaSaudacao.get(sala.id) ?? 0) > 30 * 60_000) {
+        ultimaSaudacao.set(sala.id, Date.now());
+        lola(sala, sortear(BOAS_VINDAS));
+      }
       publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
       // Mulher sempre é anunciada (é quem mais atrai a sala); casal, no máximo 1 a cada 2 min.
       const intervaloRecepcao = p.cat === 'mulher' ? 30_000 : 120_000;
@@ -1756,6 +1759,7 @@ Responda com UMA palavra:
     };
     propostas.set(id, pr);
     registrarEvento(sala.id, 'proposta', userId, alvo.id);
+    avisarSeFora(alvo.id, `😈 ${p.nome} te propôs um desafio na Casa!`, 'Vale tokens. Toque para ver e responder.');
     emitirPara(alvo.id, 'casa.proposta', {
       id, texto, tokens, privado: pr.privado, de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat },
     });
@@ -2103,6 +2107,7 @@ Responda com UMA palavra:
     registrarEvento(sala.id, 'drink', userId, paraId);
     pontuar(paraId, 2, 'drink_recebido');
     emitirPara(paraId, 'casa.drink', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens });
+    avisarSeFora(paraId, `${drink.emoji} ${p.nome} te pagou ${drink.nome} na Casa!`, `+${drink.tokens} tokens pra você. Vai agradecer? 😏`);
     res.json({ ok: true });
   });
 
@@ -2132,8 +2137,23 @@ Responda com UMA palavra:
     const id = randomUUID();
     convites.set(id, { de: userId, para: paraId, sala: sala.id, criadoEm: Date.now() });
     emitirPara(paraId, 'casa.convite', { id, de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: sala.nome });
+    avisarSeFora(paraId, `🚪 ${p.nome} te chamou pra cabine na Casa!`, 'Toque para abrir a Casa e responder.');
     res.json({ ok: true, id });
   });
+
+  // Push quando a pessoa recebe algo da Casa mas não está com ela aberta (fora de todas as salas).
+  // Só chega para quem ligou as notificações no perfil (inscrição de push).
+  const avisarSeFora = (userId: string, title: string, body: string) => {
+    const agora = Date.now();
+    for (const sl of salas.values()) {
+      const p = sl.presentes.get(userId);
+      if (p && agora - p.ultimoPing < 45_000) return;
+      const e = sl.espiando.get(userId);
+      if (e && agora - e < 45_000) return;
+    }
+    void deps.push(userId, { title, body, url: '/casa', tag: `casa-${userId}` }).catch(() => {});
+  };
+  const ultimaSaudacao = new Map<string, number>();
 
   // ─── Lola mais provocadora: memória da noite ────────────────────────────────
   const ultimaRecepcao = new Map<string, number>();
@@ -2584,6 +2604,7 @@ Responda com UMA palavra:
     msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer convidar ${alvo.nome} (${e.aprovados.size}/${c.membros.size} aprovaram)` });
     if ([...c.membros.keys()].every((id) => e.aprovados.has(id)) && !e.convidadoAceitou) {
       emitirPara(alvo.id, 'casa.cabine.convite', { cabineId: c.id, membros: [...c.membros.values()].map((x) => x.nome) });
+      avisarSeFora(alvo.id, '🚪 Te chamaram pra uma cabine na Casa!', `${[...c.membros.values()].map((x) => x.nome).join(', ')} querem você lá dentro 😈`);
     }
     tentarEntrar(c, alvo.id);
     avisarCabine(c);

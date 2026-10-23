@@ -18,6 +18,7 @@ import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
+import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
 
 /**
  * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
@@ -101,6 +102,32 @@ function Avatar({ p, tamanho = 'h-10 w-10' }: { p: { nome: string; avatar: strin
       {destaque && <span className="absolute -right-1 -top-1 text-[0.7em] leading-none drop-shadow">💋</span>}
     </div>
   );
+}
+
+// Som curto + vibração para avisos da Casa. Só toca para quem permitiu notificações.
+function tocarAviso(forte: boolean) {
+  try {
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') return;
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    if (Ctx) {
+      const ctx = new Ctx();
+      const notas = forte ? [880, 1175, 1568] : [988];
+      notas.forEach((f, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = f;
+        const t0 = ctx.currentTime + i * 0.12;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(forte ? 0.25 : 0.12, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t0); o.stop(t0 + 0.2);
+      });
+      setTimeout(() => { void ctx.close().catch(() => {}); }, 1000);
+    }
+    navigator.vibrate?.(forte ? [120, 60, 120, 60, 200] : 80);
+  } catch { /* sem som */ }
 }
 
 function useSegundosAte(iso?: string) {
@@ -311,7 +338,10 @@ export default function Casa() {
       const { data } = await apiClient.post(`/casa/${salaId}/entrar`);
       setEstado(data);
       // Logo ao entrar, a Lola pergunta se a pessoa quer participar das brincadeiras.
-      if (!silencioso && data?.eu?.podeFalar && !data?.eu?.querBrincar) setPerguntaBrincar(salaId);
+      const chavePergunta = `nosigilo:casa-brincar:${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}:${salaId}`;
+      let jaPerguntou = false;
+      try { jaPerguntou = localStorage.getItem(chavePergunta) === '1'; localStorage.setItem(chavePergunta, '1'); } catch { /* modo restrito */ }
+      if (!silencioso && !jaPerguntou && data?.eu?.podeFalar && !data?.eu?.querBrincar) setPerguntaBrincar(salaId);
     } catch (e) {
       if ((e as any)?.response?.data?.error === 'lotada_homens') {
         if (!silencioso) toast({ title: 'Cota de homens cheia nesta sala', description: 'Toque em "Entrar na fila" e a gente te chama quando abrir vaga.' });
@@ -373,7 +403,7 @@ export default function Casa() {
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
     const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
-    const aoConvite = (c: Convite) => setConvite(c);
+    const aoConvite = (c: Convite) => { tocarAviso(true); setConvite(c); };
     const aoVaga = (d: { sala: string; nome: string }) => {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
@@ -383,6 +413,7 @@ export default function Casa() {
       toast({ title: '👀 Revelação liberada!', description: `Por 5 minutos, mande uma foto extra: quem quiser abrir paga ${d.preco} tokens para você.` });
     };
     const aoOlhar = (d: { de: { id: string; nome: string; pulseira?: Pulseira | null } }) => {
+      tocarAviso(false);
       toast({
         title: `👀 ${d.de.nome} está de olho em você`,
         description: d.de.pulseira ? `Pulseira ${corDaPulseira(d.de.pulseira)?.emoji} ${corDaPulseira(d.de.pulseira)?.titulo}` : 'Olha de volta?',
@@ -391,6 +422,7 @@ export default function Casa() {
     };
     const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setCruzados(d.com);
     const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
+      tocarAviso(false);
       toast({
         title: `${d.de.nome} te pagou ${d.drink} 😏`,
         description: `+${d.tokens} tokens pra você.`,
@@ -404,7 +436,7 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
-    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setPropostaRecebida(d);
+    const aoProposta = (d: { id: string; texto: string; tokens: number; privado: boolean; de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => { tocarAviso(true); return setPropostaRecebida(d); }
     const aoPropostaAceita = (d: { nome: string }) => toast({ title: `🔥 ${d.nome} aceitou seu desafio!`, description: 'Tem 5 minutos para cumprir.' });
     const aoPropostaFim = (d: { id: string; cumprida: boolean; motivo?: string; nome: string; tokens: number }) => {
       setMeuDesafio((m) => (m?.id === d.id ? null : m));
@@ -417,7 +449,7 @@ export default function Casa() {
       setMinhasCabines((l) => (l.includes(d.cabineId) ? l : [...l, d.cabineId]));
       setCabineAberta({ id: d.cabineId, modo: 'membro' });
     };
-    const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => setConviteCabine(d);
+    const aoConviteCabine = (d: { cabineId: string; membros: string[] }) => { tocarAviso(true); setConviteCabine(d); };
     const aoAvisoLola = (d: { texto: string }) => toast({ title: d.texto });
     const aoRemovida = (d: { sala: string; id: string }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: e.mensagens.filter((m) => m.id !== d.id) } : e);
     const aoExpulso = (d: { motivo: string }) => {
@@ -425,7 +457,7 @@ export default function Casa() {
       setEstado(null);
       toast({ title: '🚫 Você foi retirado(a) da Casa nesta noite', description: `${d.motivo}. Na próxima noite você pode voltar.`, variant: 'destructive' });
     };
-    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' });
+    const aoPedidoCabine = (d: { cabineId: string; nome: string }) => { tocarAviso(true); toast({ title: `🙋 ${d.nome} quer entrar na sua cabine`, description: 'Abra a cabine para aprovar ou não.' }); };
     const aoRecusadoCabine = () => toast({ title: 'Não rolou entrar na cabine desta vez 😉' });
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
       toast({
@@ -1100,6 +1132,7 @@ export default function Casa() {
         </div>
       )}
 
+      <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
       <Dialog open={!!perguntaBrincar} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
         <DialogContent className="z-[9995] max-w-xs text-center">
