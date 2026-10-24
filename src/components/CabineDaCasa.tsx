@@ -30,6 +30,8 @@ const ACOES: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2 }[] =
   { id: 'colo', emoji: '🍑', rotulo: 'Sentar no colo', etapa: 1 },
   { id: 'tocar', emoji: '🤤', rotulo: 'Tocar', etapa: 1 },
   { id: 'chupar', emoji: '👅', rotulo: 'Cair de boca', etapa: 1 },
+  { id: 'chupar_buceta', emoji: '👅', rotulo: 'Chupar buceta', etapa: 1 },
+  { id: 'chupar_pica', emoji: '🍆', rotulo: 'Chupar pica', etapa: 1 },
   { id: 'cavalgar', emoji: '🔥', rotulo: 'Cavalgar', etapa: 2 },
   { id: 'quatro', emoji: '🍑', rotulo: 'De quatro', etapa: 2 },
   { id: 'papai', emoji: '🛏️', rotulo: 'Papai e mamãe', etapa: 2 },

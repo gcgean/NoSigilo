@@ -2695,6 +2695,8 @@ Responda com UMA palavra:
     colo: { etapa: 1, calor: 10, texto: '🍑 {eu} sentou no colo de {alvo} e rebolou devagar' },
     tocar: { etapa: 1, calor: 11, texto: '🤤 {eu} tocou {alvo} bem onde mais gosta, até arrepiar' },
     chupar: { etapa: 1, calor: 13, texto: '👅 {eu} caiu de boca em {alvo} e não parou mais' },
+    chupar_buceta: { etapa: 1, calor: 14, texto: '👅 {eu} chupou a buceta de {alvo} devagar, até as pernas tremerem' },
+    chupar_pica: { etapa: 1, calor: 14, texto: '🍆 {eu} chupou a pica de {alvo} bem gostoso, olhando nos olhos' },
     cavalgar: { etapa: 2, calor: 15, texto: '🔥 {eu} subiu em {alvo} e cavalgou gostoso' },
     quatro: { etapa: 2, calor: 15, texto: '🍑 {eu} e {alvo} foram de quatro, com força' },
     papai: { etapa: 2, calor: 14, texto: '🛏️ {eu} deitou {alvo} na cama e foram no papai e mamãe, olho no olho' },

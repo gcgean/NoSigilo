@@ -379,6 +379,9 @@ export const PROVOCACOES_CABINE: Record<1 | 2 | 3, string[]> = {
     'Foto de lingerie (ou só de cueca) na pose que mais provoca.',
     'Cada um pede ao outro uma foto específica. O outro tem 1 minuto pra cumprir.',
     'Strip lento: mandem um vídeo tirando a próxima peça, bem devagar 🖤',
+    'Contem em detalhes como vocês chupariam uma buceta agora… devagar, com a língua 👅',
+    'Descrevam como vocês chupariam uma pica bem gostoso, do jeitinho que vocês curtem 🍆',
+    'Quem aqui prefere chupar buceta ou chupar pica? Respondam e expliquem por quê 😈',
   ],
   3: [
     'Agora sem roupa nenhuma: mandem a foto que vocês nunca mandaram pra ninguém 😈',
@@ -388,6 +391,9 @@ export const PROVOCACOES_CABINE: Record<1 | 2 | 3, string[]> = {
     'Um comanda, o outro obedece: o primeiro manda o que o segundo deve fazer na câmera.',
     'Mostrem como vocês gozam… em vídeo ou em palavras. Quem tem coragem? 💦',
     'Casais: transem pensando em quem está na cabine e mandem um vídeo de 10 segundos.',
+    'Casais: ele chupa a buceta dela em vídeo de 10 segundos pra cabine ver 👅',
+    'Casais: ela chupa a pica dele em vídeo de 10 segundos, olhando pra câmera 🍆',
+    'Escrevam o que vocês fariam se tivessem uma buceta e uma pica na frente de vocês agora 😈',
   ],
 };
 

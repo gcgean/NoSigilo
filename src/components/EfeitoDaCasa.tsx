@@ -19,6 +19,8 @@ const EFEITOS: Record<string, { principal: string; particulas: string[]; movimen
   roupa: { principal: '👙', particulas: ['👗', '👔', '🩲', '👠'], movimento: 'explodir', cor: 'rgba(217,70,239,' },
   colo: { principal: '🍑', particulas: ['🔥', '💕', '🍑'], movimento: 'quicar', cor: 'rgba(249,115,22,' },
   chupar: { principal: '👅', particulas: ['💦', '💦', '🔥'], movimento: 'tremer', cor: 'rgba(236,72,153,' },
+  chupar_buceta: { principal: '👅', particulas: ['💦', '🌸', '💦', '🔥'], movimento: 'tremer', cor: 'rgba(244,63,94,' },
+  chupar_pica: { principal: '🍆', particulas: ['👅', '💦', '💦'], movimento: 'quicar', cor: 'rgba(168,85,247,' },
   tocar: { principal: '🤤', particulas: ['💦', '✨', '🔥'], movimento: 'tremer', cor: 'rgba(236,72,153,' },
   cavalgar: { principal: '🔥', particulas: ['🍑', '💦', '🔥'], movimento: 'quicar', cor: 'rgba(239,68,68,' },
   quatro: { principal: '🍑', particulas: ['💥', '💦', '🔥'], movimento: 'tremer', cor: 'rgba(220,38,38,' },
