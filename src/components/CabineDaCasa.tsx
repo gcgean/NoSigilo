@@ -17,7 +17,9 @@ import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
  * para entrar — todos de dentro precisam aprovar. Mídia sempre de visualização única.
  */
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: string };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' }; efeito?: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' }; efeito?: string;
+  resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
+const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 
 // Ações da cabine (o backend confere etapa e tesão). Etapa 1 pede a cabine esquentada; etapa 2, tesão ≥ 40.
 const ACOES: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2 }[] = [
@@ -70,7 +72,10 @@ export default function CabineDaCasa({
   const [cab, setCab] = useState<Cabine | null>(null);
   const [texto, setTexto] = useState('');
   const [vistas, setVistas] = useState<string[]>([]);
-  const [vendo, setVendo] = useState<{ url: string; mime: string | null } | null>(null);
+  const [vendo, setVendo] = useState<{ url: string; mime: string | null; msg: Msg } | null>(null);
+  const [comentario, setComentario] = useState('');
+  const [respondendo, setRespondendo] = useState<Msg | null>(null);
+  const [reagindoEm, setReagindoEm] = useState<string | null>(null);
   const [convidando, setConvidando] = useState(false);
   const [enviando, setEnviando] = useState<number | null>(null);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
@@ -112,8 +117,12 @@ export default function CabineDaCasa({
     const aoRemovida = (d: { cabineId: string; id: string }) => {
       if (d.cabineId === cabineId) setCab((c) => c ? { ...c, mensagens: c.mensagens.filter((m) => m.id !== d.id) } : c);
     };
+    const aoReacao = (d: { cabineId: string; mensagemId: string; reacoes: Record<string, string[]> }) => {
+      if (d.cabineId === cabineId) setCab((c) => c ? { ...c, mensagens: c.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : c);
+    };
+    on('casa.cabine.reacao', aoReacao);
     on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou); on('casa.cabine.mensagem.removida', aoRemovida);
-    return () => { off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
+    return () => { off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu]);
   useEffect(() => { fim.current?.scrollIntoView({ block: 'end' }); }, [cab?.mensagens.length]);
 
@@ -124,8 +133,50 @@ export default function CabineDaCasa({
   const enviar = async () => {
     const t = texto.trim();
     if (!t) return;
+    const resp = respondendo;
     setTexto('');
-    if (!(await post('mensagem', { texto: t }))) setTexto(t);
+    setRespondendo(null);
+    if (!(await post('mensagem', { texto: t, ...(resp ? { respostaA: resp.id } : {}) }))) { setTexto(t); setRespondendo(resp); }
+  };
+  const reagir = async (m: Msg, emoji: string) => {
+    setReagindoEm(null);
+    const r = await post('reagir', { mensagemId: m.id, emoji });
+    if (r?.reacoes) setCab((c) => c ? { ...c, mensagens: c.mensagens.map((x) => x.id === m.id ? { ...x, reacoes: r.reacoes } : x) } : c);
+  };
+  // Comentário feito com a foto/vídeo aberto: vai para a cabine respondendo a mídia.
+  const comentarMidia = async () => {
+    const t = comentario.trim();
+    if (!t || !vendo) return;
+    setComentario('');
+    if (await post('mensagem', { texto: t, respostaA: vendo.msg.id })) toast({ title: 'Comentário enviado 😏' });
+    else setComentario(t);
+  };
+  const Acoes = ({ m }: { m: Msg }) => {
+    const reacoes = Object.entries(m.reacoes ?? {}).filter(([, ids]) => ids.length > 0);
+    if (!cab?.souMembro && reacoes.length === 0) return null;
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-1">
+        {reacoes.map(([emoji, ids]) => (
+          <button key={emoji} type="button" disabled={!cab?.souMembro} onClick={() => void reagir(m, emoji)}
+            className={cn('rounded-full px-1.5 py-0.5 text-[11px]', meuIdPublico && ids.includes(meuIdPublico) ? 'bg-rose-600/60 ring-1 ring-rose-300' : 'bg-black/30')}>
+            {emoji} {ids.length}
+          </button>
+        ))}
+        {cab?.souMembro && (
+          <>
+            <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
+            <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">↩️ Responder</button>
+          </>
+        )}
+        {reagindoEm === m.id && (
+          <div className="flex w-full gap-1 pt-1">
+            {REACOES.map((e) => (
+              <button key={e} type="button" onClick={() => void reagir(m, e)} className="rounded-full bg-white/10 px-2 py-1 text-base hover:scale-110">{e}</button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
   const enviarMidia = async (arquivo?: File) => {
     if (!arquivo) return;
@@ -143,7 +194,8 @@ export default function CabineDaCasa({
   const ver = async (m: Msg) => {
     try {
       const { data } = await apiClient.post(`/casa/cabine/${cabineId}/midia/${m.id}/ver`);
-      setVendo({ url: data.url, mime: data.mime });
+      setComentario('');
+      setVendo({ url: data.url, mime: data.mime, msg: m });
     } catch (e) { toast({ title: erroDe(e, 'Essa mídia não está mais disponível.') }); }
     setVistas((v) => [...v, m.id]);
   };
@@ -275,6 +327,11 @@ export default function CabineDaCasa({
             {m.autor && <Foto p={m.autor} tamanho="h-7 w-7" />}
             <div className={cn('min-w-0 max-w-[85%] rounded-2xl px-3 py-1.5', m.autor?.id === meuIdPublico ? 'rounded-tr-sm bg-rose-700/60' : 'rounded-tl-sm bg-white/10')}>
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
+              {m.resposta && (
+                <p className="mb-1 truncate rounded-lg border-l-2 border-rose-400 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+                  <b className="text-rose-300">{m.resposta.nome}</b> · {m.resposta.trecho}
+                </p>
+              )}
               {m.tipo === 'midia' ? (() => {
                 const minha = m.autor?.id === meuIdPublico;
                 const vista = vistas.includes(m.id);
@@ -285,6 +342,7 @@ export default function CabineDaCasa({
                   </button>
                 );
               })() : <p className="break-words text-sm">{m.texto}</p>}
+              <Acoes m={m} />
             </div>
           </div>
         ))}
@@ -343,6 +401,12 @@ export default function CabineDaCasa({
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10" aria-label="Foto ou vídeo ao vivo">
             {enviando !== null ? <span className="text-[10px]">{enviando}%</span> : <Camera className="h-4 w-4" />}
           </button>
+          {respondendo && (
+            <div className="absolute bottom-full left-0 right-0 flex items-center gap-2 border-t border-rose-500/30 bg-black/80 px-3 py-1.5 text-xs">
+              <span className="min-w-0 flex-1 truncate">↩️ Respondendo <b className="text-rose-300">{respondendo.autor?.nome ?? 'Lola'}</b>: {respondendo.tipo === 'midia' ? (respondendo.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondendo.texto}</span>
+              <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta"><X className="h-4 w-4" /></button>
+            </div>
+          )}
           <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Só quem está na cabine fala…"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none" />
           <button type="submit" disabled={!texto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar">
@@ -362,9 +426,33 @@ export default function CabineDaCasa({
         <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
           <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar"><X className="h-5 w-5" /></button>
           {vendo.mime?.startsWith('video/')
-            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline onEnded={() => setVendo(null)} className="max-h-full max-w-full" />
+            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline className="max-h-full max-w-full" />
             : <img src={resolveServerUrl(vendo.url)} alt="" draggable={false} className="max-h-full max-w-full select-none" />}
-          <p className="absolute bottom-4 left-0 right-0 text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
+          <div className="absolute bottom-0 left-0 right-0 space-y-2 bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-3 pt-8"
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+            {cab.souMembro && (
+              <>
+                <div className="flex justify-center gap-1.5">
+                  {REACOES.map((e) => {
+                    const atual = cab.mensagens.find((x) => x.id === vendo.msg.id)?.reacoes?.[e] ?? [];
+                    const minha = !!meuIdPublico && atual.includes(meuIdPublico);
+                    return (
+                      <button key={e} type="button" onClick={() => void reagir(vendo.msg, e)}
+                        className={cn('rounded-full px-2 py-1 text-xl transition active:scale-125', minha ? 'bg-rose-600/70 ring-1 ring-rose-300' : 'bg-white/10')}>{e}</button>
+                    );
+                  })}
+                </div>
+                <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void comentarMidia(); }}>
+                  <input value={comentario} onChange={(e) => setComentario(e.target.value)} maxLength={280} placeholder={`Comentar ${vendo.msg.midia?.tipo === 'video' ? 'o vídeo' : 'a foto'}…`}
+                    className="min-w-0 flex-1 rounded-full bg-white/15 px-4 py-2.5 text-[16px] text-white placeholder:text-white/50 outline-none" />
+                  <button type="submit" disabled={!comentario.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar comentário">
+                    <Send className="h-4 w-4" />
+                  </button>
+                </form>
+              </>
+            )}
+            <p className="text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
+          </div>
         </div>
       )}
     </div>

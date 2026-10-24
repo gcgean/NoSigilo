@@ -3817,6 +3817,14 @@ describe('nosigilo backend', () => {
     expect(estadoAcoes.calor).toBe(19);
     expect(estadoAcoes.mensagens.filter((m: any) => m.tipo === 'acao').map((m: any) => m.efeito)).toEqual(['beijo', 'chupar']);
 
+    // Reagir e responder mensagens dentro da cabine.
+    const beijoMsg = estadoAcoes.mensagens.find((m: any) => m.tipo === 'acao');
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/reagir`).set(auth(homens[0].token)).send({ mensagemId: beijoMsg.id, emoji: '💦' }).expect(200)).body.reacoes['💦']).toHaveLength(1);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/reagir`).set(auth(homens[2].token)).send({ mensagemId: beijoMsg.id, emoji: '💦' }).expect(403);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/mensagem`).set(auth(homens[0].token)).send({ texto: 'que delícia', respostaA: beijoMsg.id }).expect(200);
+    const comResposta = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(comResposta.mensagens.find((m: any) => m.texto === 'que delícia')?.resposta?.id).toBe(beijoMsg.id);
+
     // Mídia "para todos": abre quantas vezes quiser, inclusive quem enviou.
     const midiaLivre = `m-livre-${Date.now()}`;
     await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'livre.webp', 'image/webp', 0, 0, 'chat', ?)", [midiaLivre, String(casal.user.id), new Date().toISOString()]);

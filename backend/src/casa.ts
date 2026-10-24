@@ -2539,7 +2539,12 @@ Responda com UMA palavra:
     if (/https?:\/\/|www\.|wa\.me|t\.me/i.test(texto)) { res.status(400).json({ error: 'link', message: 'Sem links na cabine.' }); return; }
     const barrada = await bloqueioRapido(userId, m.nome, texto, 'cabine');
     if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
-    const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto });
+    // Responder/comentar uma mensagem ou mídia da cabine (como no WhatsApp).
+    const respondida = c.mensagens.find((x) => x.id === String((req.body as any)?.respostaA || ''));
+    const resposta = respondida && respondida.tipo !== 'sistema'
+      ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
+      : undefined;
+    const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(userId, m.nome, texto, 'cabine', () => {
       c.mensagens = c.mensagens.filter((x) => x.id !== publicada.id);
       for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: publicada.id });
@@ -2561,6 +2566,22 @@ Responda com UMA palavra:
       texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única', midia: { tipo },
     }, String(med.id));
     res.json({ ok: true });
+  });
+
+  // Reação em mensagem ou mídia da cabine: tocar de novo no mesmo emoji tira.
+  app.post('/api/casa/cabine/:id/reagir', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const m = c?.membros.get(userDe(req));
+    if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    const emoji = String((req.body as any)?.emoji || '');
+    const msg = c.mensagens.find((x) => x.id === String((req.body as any)?.mensagemId || ''));
+    if (!REACOES_DA_CASA.includes(emoji) || !msg || msg.tipo === 'sistema') { res.status(400).json({ error: 'reacao' }); return; }
+    msg.reacoes ??= {};
+    const lista = msg.reacoes[emoji] ?? [];
+    msg.reacoes[emoji] = lista.includes(m.idPublico) ? lista.filter((x) => x !== m.idPublico) : [...lista, m.idPublico];
+    if (msg.reacoes[emoji].length === 0) delete msg.reacoes[emoji];
+    for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.reacao', { cabineId: c.id, mensagemId: msg.id, reacoes: msg.reacoes });
+    res.json({ ok: true, reacoes: msg.reacoes });
   });
 
   app.post('/api/casa/cabine/:id/midia/:msgId/ver', deps.requireAuth, async (req, res) => {
