@@ -135,6 +135,8 @@ function tocarAviso(forte: boolean) {
   } catch { /* sem som */ }
 }
 
+const chavePulseira = () => `nosigilo:casa-pulseira:${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}`;
+
 function useSegundosAte(iso?: string) {
   const [agora, setAgora] = useState(Date.now());
   useEffect(() => {
@@ -319,6 +321,8 @@ export default function Casa() {
   // Comprar tokens sem sair da Casa (abre sozinho quando o saldo não dá).
   const [comprarAberto, setComprarAberto] = useState(false);
   const [feedbackAberto, setFeedbackAberto] = useState(false);
+  // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
+  const [jogosDispensados, setJogosDispensados] = useState<string[]>([]);
   // Decisão pedida dentro da cabine: abrir a porta, convidar alguém ou aceitar quem pediu para entrar.
   type DecisaoCabine = { cabineId: string; tipo: 'porta' | 'convite' | 'pedido'; nome: string; alvoNome?: string; alvoPublico?: string };
   const [decisao, setDecisao] = useState<DecisaoCabine | null>(null);
@@ -533,8 +537,17 @@ export default function Casa() {
 
   useEffect(() => { fimDaLista.current?.scrollIntoView({ block: 'end' }); }, [estado?.mensagens.length]);
   // Recepção: quem entra escolhe a pulseira da noite (como na casa de verdade).
+  // A pulseira vale a noite toda: trocando de sala, a mesma cor é recolocada sozinha.
   useEffect(() => {
-    if (estado?.eu.podeFalar && !estado.eu.pulseira && !pulseiraDispensada) setEscolhendoPulseira(true);
+    if (!estado?.eu.podeFalar || estado.eu.pulseira || pulseiraDispensada || !salaAtual) return;
+    let guardada: string | null = null;
+    try { guardada = localStorage.getItem(chavePulseira()); } catch { /* sem storage */ }
+    if (guardada) {
+      setEstado((e) => e ? { ...e, eu: { ...e.eu, pulseira: guardada as Pulseira } } : e);
+      void apiClient.post(`/casa/${salaAtual}/pulseira`, { cor: guardada }).catch(() => {});
+      return;
+    }
+    setEscolhendoPulseira(true);
   }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
   const enviar = async () => {
@@ -630,6 +643,7 @@ export default function Casa() {
   };
   const escolherPulseira = async (cor: Pulseira) => {
     setEscolhendoPulseira(false);
+    try { localStorage.setItem(chavePulseira(), cor); } catch { /* sem storage */ }
     if (!salaAtual) return;
     setEstado((e) => e ? { ...e, eu: { ...e.eu, pulseira: cor, querBrincar: cor === 'vermelha' ? false : e.eu.querBrincar } } : e);
     try { await apiClient.post(`/casa/${salaAtual}/pulseira`, { cor }); } catch { /* volta no próximo estado */ }
@@ -908,7 +922,15 @@ export default function Casa() {
       )}
 
       {/* Desafio do momento: fica fixo no topo enquanto a conversa corre embaixo. */}
-      {estado.jogo && <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />}
+      {estado.jogo && !jogosDispensados.includes(estado.jogo.id)
+        && !((estado.jogo.tipo === 'enquete' || estado.jogo.tipo === 'eu_nunca' || estado.jogo.tipo === 'quiz') && estado.jogo.meuVoto != null) && (
+        <div className="relative">
+          <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
+          <button type="button" aria-label="Dispensar"
+            onClick={() => { const id = estado.jogo?.id; if (id) setJogosDispensados((l) => [...l, id]); }}
+            className="absolute right-5 top-4 rounded-full bg-black/40 px-2 py-0.5 text-[11px] text-white/80 hover:bg-black/60">Dispensar ✕</button>
+        </div>
+      )}
 
       {meuDesafio && segundosMeuDesafio > 0 && (
         <div className="relative mx-3 mb-2 rounded-2xl border border-amber-400/50 bg-amber-500/15 p-3">
