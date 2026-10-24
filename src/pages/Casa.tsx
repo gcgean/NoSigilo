@@ -792,6 +792,31 @@ export default function Casa() {
     catch (e) { toast({ title: erroDe(e, 'Falhou.'), variant: 'destructive' }); }
   };
 
+  // "Fulano e Beltrano foram pra cabine": atalhos para espiar ou pedir para entrar.
+  // Só funciona com a porta aberta (é o combinado da cabine); fechada, avisa.
+  const AcoesDaCabineAnunciada = ({ texto }: { texto: string }) => {
+    // Nome de casal pode ter " e " ("Danny e Gutty"): procura a cabine cujos membros aparecem todos no aviso.
+    const acharCabine = () => cabinesAbertas.find((c) => !c.souMembro && c.membros.length > 0 && c.membros.every((mb) => texto.includes(mb.nome)));
+    const fechada = () => toast({ title: 'A porta dessa cabine está fechada 🔒', description: 'Quando eles abrirem, a cabine aparece no topo da sala e no mapa para espiar e pedir para entrar.' });
+    return (
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <button type="button" className="rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-black/50"
+          onClick={() => { const c = acharCabine(); if (c) setCabineAberta({ id: c.id, modo: 'espiar' }); else fechada(); }}>👀 Espiar</button>
+        <button type="button" className="rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-black/50"
+          onClick={async () => {
+            const c = acharCabine();
+            if (!c) { fechada(); return; }
+            try {
+              await apiClient.post(`/casa/cabine/${c.id}/espiar`);
+              await apiClient.post(`/casa/cabine/${c.id}/pedir`);
+              toast({ title: '🙋 Pedido enviado', description: 'Você entra se todos lá dentro concordarem.' });
+              setCabineAberta({ id: c.id, modo: 'espiar' });
+            } catch (e) { toast({ title: erroDe(e, 'Não deu para pedir agora.'), variant: 'destructive' }); }
+          }}>🙋 Pedir pra entrar</button>
+      </div>
+    );
+  };
+
   // Reações safadas + responder, embaixo de cada mensagem.
   const meuId = estado?.eu.idPublico ?? user?.id ?? '';
   const AcoesDaMsg = ({ m }: { m: Msg }) => {
@@ -979,6 +1004,7 @@ export default function Casa() {
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
+            {estado.eu.podeFalar && /foram pra cabine/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
             {m.jogoId && estado.jogo?.id === m.jogoId && (
               <div className="-mx-3 mt-1">
                 <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
