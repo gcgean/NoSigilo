@@ -111,7 +111,7 @@ export default function AdminCasaTab() {
         )}
         {vivo?.teste && <p className="text-xs font-semibold text-amber-600">🧪 Modo teste: só admins{vivo.convidadosTeste?.length ? ` e ${vivo.convidadosTeste.join(', ')}` : ''} veem a Casa aberta. Ninguém foi avisado.</p>}
         <p className="text-xs text-muted-foreground">
-          A Lola abre sozinha sexta e sábado às 21h, avisa todo mundo, puxa as brincadeiras, modera e fecha à 1h. Você recebe no Telegram a abertura, a meia-noite, o resumo, expulsões e denúncias.
+          A Lola abre sozinha sexta às 21h e sábado às 22h, avisa todo mundo, puxa as brincadeiras, modera e fecha à 1h. Você recebe no Telegram a abertura, a meia-noite, o resumo, expulsões e denúncias.
         </p>
       </Bloco>
 

@@ -26,7 +26,7 @@ import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 
 /**
- * A Casa — boate virtual de sexta e sábado, 21h à 1h (backend: casa.ts).
+ * A Casa — boate virtual de sexta (21h) e sábado (22h), até 1h (backend: casa.ts).
  * Lobby com as salas; dentro da sala: chat ao vivo, quem está lá, brincadeiras
  * da Lola (anfitriã IA) e convite para a cabine (conversa a dois com aceite).
  */
@@ -36,6 +36,7 @@ type SalaResumo = {
   id: string; nome: string; emoji: string; descricao: string; nivel: 'quente' | 'muito_quente';
   total: number; espiando: number; contagem: Record<Categoria, number>;
   bloqueadaParaMim: boolean; lotadaParaMim: boolean; posicaoNaFila: number | null;
+  trancada?: boolean; faltamParaAbrir?: number;
   pessoas?: Categoria[]; cabines?: CabineDoMapa[];
 };
 type Info = {
@@ -269,7 +270,7 @@ function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; pode
 function ContagemRegressiva({ alvo }: { alvo: string | null }) {
   const [agora, setAgora] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
-  if (!alvo) return <p className="text-sm text-white/70">Sexta e sábado, 21h.</p>;
+  if (!alvo) return <p className="text-sm text-white/70">Sexta às 21h e sábado às 22h.</p>;
   const seg = Math.max(0, Math.floor((Date.parse(alvo) - agora) / 1000));
   const partes: [string, number][] = [['dias', Math.floor(seg / 86400)], ['h', Math.floor((seg % 86400) / 3600)], ['min', Math.floor((seg % 3600) / 60)], ['seg', seg % 60]];
   return (
@@ -298,6 +299,9 @@ export default function Casa() {
   const [pessoaAberta, setPessoaAberta] = useState<Pessoa | null>(null);
   const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
   const [respondendo, setRespondendo] = useState<Msg | null>(null);
+  const [motivoCruzado, setMotivoCruzado] = useState<'olhar' | 'brinde'>('olhar');
+  // Quem só espia: depois de 90 s vê o convite para assinar (uma vez por noite).
+  const [convitePremium, setConvitePremium] = useState(false);
   // Efeito animado da sala (drink, brinde).
   const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
   const fimDoEfeito = useCallback(() => setEfeito(null), []);
@@ -423,6 +427,17 @@ export default function Casa() {
     void carregar();
   }, [salaAtual, carregar]);
 
+  useEffect(() => {
+    if (!estado || estado.eu.podeFalar) return;
+    const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
+    try { if (localStorage.getItem('nosigilo:casa-convite-premium') === noite) return; } catch { /* segue */ }
+    const t = setTimeout(() => {
+      setConvitePremium(true);
+      try { localStorage.setItem('nosigilo:casa-convite-premium', noite); } catch { /* ok */ }
+    }, 90_000);
+    return () => clearTimeout(t);
+  }, [estado?.sala.id, estado?.eu.podeFalar]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Presença: ping a cada 25s; se o servidor esqueceu (reinício), entra de novo.
   useEffect(() => {
     if (!salaAtual) return;
@@ -446,7 +461,7 @@ export default function Casa() {
       ? { ...e, mensagens: e.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : e);
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
-    const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado, 21h, tem mais.' }); void carregar(); };
+    const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta às 21h e sábado às 22h tem mais.' }); void carregar(); };
     abrirPorIdRef.current = (id: string, nome: string) => abrirPorId(id, nome);
     const abrirPorId = (id: string, nome: string) => {
       const pessoa = estadoRef.current?.presentes.find((x) => x.id === id);
@@ -475,7 +490,7 @@ export default function Casa() {
         action: <ToastAction altText="Olhar de volta" onClick={() => void olharRef.current(d.de)}>Olhar de volta</ToastAction>,
       });
     };
-    const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => setCruzados(d.com);
+    const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria }; motivo?: 'brinde' }) => { setMotivoCruzado(d.motivo ?? 'olhar'); setCruzados(d.com); };
     const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
       tocarAviso(false);
       registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
@@ -1164,12 +1179,30 @@ export default function Casa() {
         </form>
       ) : (
         <div className="border-t border-white/10 px-3 py-3">
-          <Button className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => navigate('/subscriptions')}>
-            <Crown className="mr-2 h-4 w-4" /> Assine para falar, brincar e ir pra cabine
+          {estado.presentes.length >= 2 && <p className="mb-1.5 text-center text-xs font-semibold text-rose-200">🔥 {estado.presentes.length} pessoas conversando nesta sala agora</p>}
+          <Button className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => navigate('/subscriptions?origem=casa')}>
+            <Crown className="mr-2 h-4 w-4" /> Assine agora e entre na conversa
           </Button>
           <p className="mt-1 text-center text-[11px] text-white/50">Você está espiando: ninguém vê que você está aqui.</p>
         </div>
       )}
+
+      <Dialog open={convitePremium} onOpenChange={setConvitePremium}>
+        <DialogContent className="z-[9995] max-w-sm overflow-hidden border-rose-500/50 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 text-white">
+          <div className="space-y-3 text-center">
+            <p className="text-4xl">👀🔥</p>
+            <DialogTitle className="text-2xl font-black">Você está perdendo a festa</DialogTitle>
+            <p className="text-sm text-white/85">
+              {estado && estado.presentes.length >= 2 ? `${estado.presentes.length} pessoas estão conversando nesta sala agora. ` : ''}
+              Assinando, você fala, brinca com a Lola, paga drinks, vê as fotos e vai pra cabine hoje mesmo.
+            </p>
+            <Button size="lg" className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 font-bold" onClick={() => { setConvitePremium(false); navigate('/subscriptions?origem=casa'); }}>
+              <Crown className="mr-2 h-4 w-4" /> Assinar e entrar na conversa
+            </Button>
+            <Button variant="ghost" className="w-full text-white/60 hover:bg-white/10 hover:text-white" onClick={() => setConvitePremium(false)}>Continuar espiando</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={escolhendoPulseira} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
         <DialogContent className="z-[9995] max-w-sm">
@@ -1329,8 +1362,10 @@ export default function Casa() {
           {cruzados && (
             <div className="flex flex-col items-center gap-3 text-center">
               <Avatar p={cruzados} tamanho="h-20 w-20" />
-              <p className="text-lg font-bold">💘 Olhares cruzados!</p>
-              <p className="text-sm text-muted-foreground">Você e <b>{cruzados.nome}</b> se olharam. A Lola acha que isso merece uma cabine 😈</p>
+              <p className="text-lg font-bold">{motivoCruzado === 'brinde' ? '🥂 Vocês brindaram!' : '💘 Olhares cruzados!'}</p>
+              <p className="text-sm text-muted-foreground">
+                {motivoCruzado === 'brinde' ? <>Drink pago e brinde de volta com <b>{cruzados.nome}</b>…</> : <>Você e <b>{cruzados.nome}</b> se olharam.</>} A Lola acha que isso merece uma cabine 😈
+              </p>
               <div className="grid w-full grid-cols-2 gap-2">
                 <Button variant="outline" onClick={() => setCruzados(null)}>Depois</Button>
                 <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => { const c = cruzados; setCruzados(null); void convidar(c); }}>Chamar 🚪</Button>
@@ -1347,6 +1382,12 @@ export default function Casa() {
           modo={cabineAberta.modo}
           meuIdPublico={estado.eu.idPublico ?? user?.id ?? null}
           convidaveis={estado.presentes}
+          outrasCabines={cabinesAbertas.filter((c) => c.souMembro && c.id !== cabineAberta.id).map((c) => ({
+            id: c.id, nomes: c.membros.filter((m) => m.id !== estado.eu.idPublico).map((m) => m.nome).join(', ') || 'cabine',
+          }))}
+          onTrocar={(id) => setCabineAberta({ id, modo: 'membro' })}
+          onVerPerfil={(id) => setPerfilAberto(id)}
+          onChamarParaOutra={(p) => void convidar(p)}
           onVoltar={() => setCabineAberta(null)}
           onSaiu={() => { setMinhasCabines((l) => l.filter((x) => x !== cabineAberta.id)); setCabineAberta(null); }}
         />
@@ -1491,7 +1532,7 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo. Toda <b>sexta e sábado, das 21h à 1h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo. Toda <b>sexta às 21h e sábado às 22h, até 1h</b>: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>
@@ -1550,7 +1591,7 @@ export default function Casa() {
 
         <div className="grid gap-3">
           {(info?.salas ?? []).map((s) => {
-            const travada = !info?.aberta || s.bloqueadaParaMim || (s.lotadaParaMim && s.posicaoNaFila != null);
+            const travada = !info?.aberta || s.bloqueadaParaMim || !!s.trancada || (s.lotadaParaMim && s.posicaoNaFila != null);
             return (
               <div key={s.id} className={cn('rounded-2xl p-4 ring-1', temaDaSala(s.id).card)}>
                 <div className="flex items-start gap-3">
@@ -1576,13 +1617,14 @@ export default function Casa() {
                     disabled={travada || entrando !== null}
                     onClick={() => void (s.lotadaParaMim ? entrarNaFila(s.id) : entrar(s.id))}
                   >
-                    {s.bloqueadaParaMim ? 'Só casais e mulheres'
+                    {s.trancada ? `🔒 Abre com mais ${s.faltamParaAbrir ?? ''} pessoa(s) na Casa`
+                      : s.bloqueadaParaMim ? 'Só casais e mulheres'
                       : s.lotadaParaMim ? (s.posicaoNaFila ? `Na fila: você é o ${s.posicaoNaFila}º` : 'Sala cheia para homens · Entrar na fila')
                       : entrando === s.id ? 'Entrando…'
                       : info.podeFalar ? 'Entrar' : 'Espiar'}
                   </Button>
                 )}
-                {!info?.aberta && <p className="mt-2 flex items-center gap-1 text-xs text-white/50"><Lock className="h-3 w-3" />Abre sexta e sábado às 21h</p>}
+                {!info?.aberta && <p className="mt-2 flex items-center gap-1 text-xs text-white/50"><Lock className="h-3 w-3" />Abre sexta às 21h e sábado às 22h</p>}
               </div>
             );
           })}

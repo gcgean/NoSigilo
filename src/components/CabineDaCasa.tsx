@@ -41,6 +41,7 @@ const ETAPAS = ['😏 Esquentando', '🔥 Preliminares', '💦 Transa'];
 type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovados: number; convidadoAceitou: boolean };
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
+  espiandoLista?: Pessoa[]; anonima?: boolean;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
   quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number; calor?: number;
 };
@@ -58,8 +59,14 @@ function Foto({ p, tamanho = 'h-8 w-8' }: { p: Pessoa; tamanho?: string }) {
 }
 
 export default function CabineDaCasa({
-  cabineId, modo, meuIdPublico, convidaveis, onVoltar, onSaiu,
+  cabineId, modo, meuIdPublico, convidaveis, onVoltar, onSaiu, outrasCabines = [], onTrocar, onVerPerfil, onChamarParaOutra,
 }: {
+  /** Outras cabines em que estou (para alternar). */
+  outrasCabines?: { id: string; nomes: string }[];
+  onTrocar?: (id: string) => void;
+  onVerPerfil?: (id: string) => void;
+  /** Chamar quem está espiando para uma conversa privada nova (outra cabine). */
+  onChamarParaOutra?: (p: Pessoa) => void;
   cabineId: string;
   modo: 'membro' | 'espiar';
   meuIdPublico: string | null;
@@ -81,6 +88,11 @@ export default function CabineDaCasa({
   const [convidando, setConvidando] = useState(false);
   const [enviando, setEnviando] = useState<number | null>(null);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
+  const [espiaoAberto, setEspiaoAberto] = useState<Pessoa | null>(null);
+  // Escolher a provocação da lista ou escrever a sua.
+  const [escolhendoProvocacao, setEscolhendoProvocacao] = useState(false);
+  const [provocacoes, setProvocacoes] = useState<{ nivel: number; itens: { id: string; texto: string; usada: boolean }[] }[]>([]);
+  const [provocacaoEscrita, setProvocacaoEscrita] = useState('');
   const [alvo, setAlvo] = useState<string | null>(null);
   const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
   const fimDoEfeito = useCallback(() => setEfeito(null), []);
@@ -201,6 +213,13 @@ export default function CabineDaCasa({
     } catch (e) { toast({ title: erroDe(e, 'Essa mídia não está mais disponível.') }); }
     setVistas((v) => [...v, m.id]);
   };
+  const abrirProvocacoes = async () => {
+    setEscolhendoProvocacao(true);
+    try { setProvocacoes((await apiClient.get(`/casa/cabine/${cabineId}/provocacoes`)).data.niveis ?? []); } catch { /* lista vazia: dá para sortear ou escrever */ }
+  };
+  const mandarProvocacao = async (corpo: { escolha?: string; texto?: string; dado?: boolean }) => {
+    if (await post('provocacao', corpo)) { setEscolhendoProvocacao(false); setProvocacaoEscrita(''); }
+  };
   const agir = async (acao: string) => {
     const outros = (cab?.membros ?? []).filter((m) => m.id !== meuIdPublico);
     const com = outros.length === 1 ? outros[0].id : alvo;
@@ -246,6 +265,25 @@ export default function CabineDaCasa({
         )}
       </div>
 
+      {outrasCabines.length > 0 && onTrocar && (
+        <div className="relative flex gap-1.5 overflow-x-auto border-b border-rose-500/20 bg-black/30 px-3 py-1.5">
+          <span className="shrink-0 py-1 text-[11px] text-white/60">Suas cabines:</span>
+          <span className="shrink-0 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-bold">Esta</span>
+          {outrasCabines.map((o) => (
+            <button key={o.id} type="button" onClick={() => onTrocar(o.id)} className="max-w-[10rem] shrink-0 truncate rounded-full bg-white/10 px-2.5 py-1 text-[11px] hover:bg-white/20">🚪 {o.nomes}</button>
+          ))}
+        </div>
+      )}
+      {cab.souMembro && (cab.espiandoLista?.length ?? 0) > 0 && (
+        <div className="relative flex items-center gap-1.5 overflow-x-auto border-b border-rose-500/20 bg-black/20 px-3 py-1.5">
+          <span className="shrink-0 text-[11px] text-white/60">👀 Espiando:</span>
+          {cab.espiandoLista!.map((p) => (
+            <button key={p.id} type="button" onClick={() => setEspiaoAberto(p)} className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 py-0.5 pl-0.5 pr-2 text-[11px] hover:bg-white/20">
+              <Foto p={p} tamanho="h-5 w-5" /> {p.nome}
+            </button>
+          ))}
+        </div>
+      )}
       {cab.souMembro && (
         <div className="space-y-2 border-b border-white/10 px-3 py-2">
           <div className="flex flex-wrap gap-2">
@@ -271,7 +309,7 @@ export default function CabineDaCasa({
           {cab.membros.length >= 2 && (cab.quente ? (
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-rose-600/20 p-2">
               <span className="text-xs font-bold text-rose-200">{'🔥'.repeat(Math.max(1, cab.nivel))} Cabine quente</span>
-              <Button size="sm" className="h-8 bg-rose-600 text-xs hover:bg-rose-500" onClick={() => void post('provocacao', { dado: false })}>🎲 Nova provocação</Button>
+              <Button size="sm" className="h-8 bg-rose-600 text-xs hover:bg-rose-500" onClick={() => void abrirProvocacoes()}>😈 Nova provocação</Button>
               <Button size="sm" className="h-8 bg-fuchsia-600 text-xs hover:bg-fuchsia-500" onClick={() => void post('provocacao', { dado: true })}>🎲 Dado do prazer</Button>
               <Button size="sm" variant="outline" className="h-8 border-white/30 bg-transparent text-xs text-white" onClick={() => void post('esquentar', { quer: false })}>🧊 Esfriar</Button>
             </div>
@@ -424,6 +462,61 @@ export default function CabineDaCasa({
         </div>
       )}
 
+      {espiaoAberto && (
+        <div className="fixed inset-0 z-[9995] flex items-end justify-center bg-black/70 sm:items-center" onClick={() => setEspiaoAberto(null)}>
+          <div className="w-full max-w-sm space-y-2 rounded-t-3xl bg-gradient-to-b from-[#2a0010] to-black p-4 ring-1 ring-rose-500/40 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <Foto p={espiaoAberto} tamanho="h-12 w-12" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-bold">{espiaoAberto.nome}</p>
+                <p className="text-xs text-white/60">está espiando a sua cabine 👀</p>
+              </div>
+              <button type="button" onClick={() => setEspiaoAberto(null)} aria-label="Fechar"><X className="h-5 w-5" /></button>
+            </div>
+            {!cab.anonima && onVerPerfil && (
+              <Button variant="outline" className="w-full border-white/20 bg-transparent text-white" onClick={() => { onVerPerfil(espiaoAberto.id); setEspiaoAberto(null); }}>Ver perfil</Button>
+            )}
+            <Button className="w-full bg-rose-600 hover:bg-rose-500" onClick={() => { void post('convidar', { para: espiaoAberto.id }); setEspiaoAberto(null); }}>
+              🚪 Chamar para esta cabine
+            </Button>
+            {onChamarParaOutra && (
+              <Button variant="outline" className="w-full border-rose-400/50 bg-transparent text-white" onClick={() => { onChamarParaOutra(espiaoAberto); setEspiaoAberto(null); }}>
+                💬 Chamar para outra conversa privada
+              </Button>
+            )}
+            <p className="text-center text-[11px] text-white/50">Para entrar nesta cabine, todos aqui dentro precisam aprovar.</p>
+          </div>
+        </div>
+      )}
+      {escolhendoProvocacao && (
+        <div className="fixed inset-0 z-[9995] flex items-end justify-center bg-black/70 sm:items-center" onClick={() => setEscolhendoProvocacao(false)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-gradient-to-b from-[#2a0010] to-black p-4 ring-1 ring-rose-500/40 sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-lg font-black">😈 Escolha a provocação</p>
+              <button type="button" onClick={() => setEscolhendoProvocacao(false)} aria-label="Fechar"><X className="h-5 w-5" /></button>
+            </div>
+            <form className="mb-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); if (provocacaoEscrita.trim()) void mandarProvocacao({ texto: provocacaoEscrita }); }}>
+              <input value={provocacaoEscrita} onChange={(e) => setProvocacaoEscrita(e.target.value)} maxLength={240} placeholder="Escreva a sua provocação…"
+                className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none" />
+              <button type="submit" disabled={!provocacaoEscrita.trim()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Mandar provocação"><Send className="h-4 w-4" /></button>
+            </form>
+            <button type="button" onClick={() => void mandarProvocacao({ dado: false })} className="mb-3 w-full rounded-xl bg-white/10 px-3 py-2 text-sm font-semibold">🎲 Deixa a Lola sortear</button>
+            {provocacoes.map((n) => (
+              <div key={n.nivel} className="mb-3">
+                <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-rose-200">{'🔥'.repeat(n.nivel)} {n.nivel === 1 ? 'Esquentando' : n.nivel === 2 ? 'Quente' : 'Pegando fogo'}</p>
+                <div className="space-y-1.5">
+                  {n.itens.map((it) => (
+                    <button key={it.id} type="button" onClick={() => void mandarProvocacao({ escolha: it.id })}
+                      className={cn('w-full rounded-xl px-3 py-2 text-left text-sm', it.usada ? 'bg-white/5 text-white/45' : 'bg-rose-900/40 hover:bg-rose-800/60')}>
+                      {it.texto}{it.usada ? ' · já foi' : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {vendo && (
         <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
           <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar"><X className="h-5 w-5" /></button>

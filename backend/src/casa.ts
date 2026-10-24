@@ -245,10 +245,16 @@ function agoraBrasilia(d = new Date()) {
   return { dow: dias[p('weekday')] ?? 0, hora: Number(p('hour')) % 24, data: `${p('year')}-${p('month')}-${p('day')}` };
 }
 
-/** Noite em curso pelo horário fixo (sex/sáb 21h–1h) ou null. */
+/** Abertura de cada noite (Brasília). Sábado às 22h desde 24/10/2026 (teste contra a sexta às 21h). */
+const HORA_DE_ABRIR = { sexta: 21, sabado: 22 } as const;
+const HORARIO_DA_CASA = 'Sexta às 21h e sábado às 22h, até 1h';
+const inicioDaNoite = (chave: string, tema: 'sexta' | 'sabado') => Date.parse(`${chave}T${HORA_DE_ABRIR[tema]}:00:00-03:00`);
+
+/** Noite em curso pelo horário fixo (sex 21h–1h, sáb 22h–1h) ou null. */
 function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
   const { dow, hora, data } = agoraBrasilia(d);
-  if ((dow === 5 || dow === 6) && hora >= 21) return { chave: data, tema: dow === 5 ? 'sexta' : 'sabado' };
+  if (dow === 5 && hora >= HORA_DE_ABRIR.sexta) return { chave: data, tema: 'sexta' };
+  if (dow === 6 && hora >= HORA_DE_ABRIR.sabado) return { chave: data, tema: 'sabado' };
   if ((dow === 6 || dow === 0) && hora < 1) {
     const ontem = agoraBrasilia(new Date(d.getTime() - 3 * 3600_000));
     return { chave: ontem.data, tema: dow === 6 ? 'sexta' : 'sabado' };
@@ -340,6 +346,12 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       votosPorta: c.porta.size,
       voteiPorta: c.porta.has(userId),
       espectadores: c.espectadores.size,
+      // Quem está espiando (só quem está dentro vê os nomes; quem só espia sem assinar não aparece).
+      espiandoLista: souMembro
+        ? [...c.espectadores.keys()].map((id) => salas.get(c.salaId)?.presentes.get(id)).filter((p): p is Presente => !!p)
+          .map((p) => ({ id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }))
+        : [],
+      anonima: !!salas.get(c.salaId)?.anonima,
       souMembro,
       souEspectador: c.espectadores.has(userId),
       entradas: souMembro
@@ -603,6 +615,28 @@ Responda com UMA palavra:
     const c = { homem: 0, mulher: 0, casal: 0, outros: 0 };
     for (const p of sala.presentes.values()) if (p.podeFalar) c[p.cat] += 1;
     return c;
+  };
+  // Com pouca gente, só Salão e Sala dos Casais (senão cada sala fica com 3 e parece vazia).
+  // As outras destravam com 25 pessoas na Casa e ficam abertas até o fim da noite.
+  const SALAS_EXTRAS: SalaId[] = ['quarto', 'cuckold', 'glory'];
+  const MINIMO_PARA_DESTRAVAR = 25;
+  const liberadas = new Set<string>();
+  const naCasaAgora = () => [...salas.values()].reduce((n, s) => n + s.presentes.size + s.espiando.size, 0);
+  const trancada = (sala: Sala, noite: { chave: string; forcada: boolean } | null) =>
+    !!noite && !noite.forcada && SALAS_EXTRAS.includes(sala.id) && !liberadas.has(`${noite.chave}:${sala.id}`);
+  const destravarSeEncheu = (noite: { chave: string; forcada: boolean }) => {
+    if (noite.forcada) return;
+    const n = naCasaAgora();
+    if (n < MINIMO_PARA_DESTRAVAR) return;
+    for (const id of SALAS_EXTRAS) {
+      const chave = `${noite.chave}:${id}`;
+      if (liberadas.has(chave)) continue;
+      liberadas.add(chave);
+      const s = salas.get(id)!;
+      for (const outra of salas.values()) {
+        if (outra.presentes.size > 0) lola(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu (${n} pessoas)… quem tem coragem entra primeiro 😈`);
+      }
+    }
   };
   const limiteDeHomens = (sala: Sala) => {
     if (sala.homensLivres) return Number.POSITIVE_INFINITY;
@@ -969,7 +1003,7 @@ Responda com UMA palavra:
       if (mudou) avisarPresentes(sala);
       if (!noite) {
         if (sala.presentes.size > 0 || sala.espiando.size > 0) {
-          lola(sala, 'A Casa fechou por hoje 🌙 Obrigada pela noite! Sexta e sábado, 21h, tem mais.');
+          lola(sala, `A Casa fechou por hoje 🌙 Obrigada pela noite! ${HORARIO_DA_CASA}, tem mais.`);
           emitirParaSala(sala, 'casa.fechou', { sala: sala.id });
           sala.presentes.clear();
           sala.espiando.clear();
@@ -1004,10 +1038,17 @@ Responda com UMA palavra:
         await iniciarJogo(sala, brincantes(sala).length >= 2 && falantes(sala).length >= 3 ? 'duelo' : 'relampago');
       }
       if (sala.jogo && agora >= sala.jogo.fimEm) await encerrarJogo(sala, 'tempo');
-      if (!sala.jogo && agora >= sala.proximoJogoEm && falantes(sala).length >= 2) await iniciarJogo(sala);
+      if (!sala.jogo && agora >= sala.proximoJogoEm && falantes(sala).length >= 2) {
+        // Lola fala menos quando ninguém está conversando: sem fala de gente em 6 min, adia a brincadeira.
+        const ultimaFalaDeGente = Math.max(0, ...[...sala.presentes.values()].map((x) => x.ultimaMsg));
+        if (agora - ultimaFalaDeGente > 6 * 60_000) sala.proximoJogoEm = agora + 3 * 60_000;
+        else await iniciarJogo(sala);
+      }
       if (!sala.jogo) provocarQuieto(sala, agora);
     }
     if (noite) anunciarRanking(noite.chave);
+    if (noite && !noite.teste) destravarSeEncheu(noite);
+    void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
 
     // Abriu a noite: aviso no celular de quem usou o site nos últimos 7 dias (uma vez por noite).
     if (noite && !noite.forcada && noite.chave !== noiteAnterior) {
@@ -1098,6 +1139,45 @@ Responda com UMA palavra:
         await db.run('DELETE FROM casa_eventos WHERE created_at < ?', [limite]);
         await db.run('DELETE FROM casa_reservas WHERE created_at < ?', [limite]);
       })().catch((e) => console.error('[casa] limpeza do histórico', e));
+    }
+  };
+
+  // Quem reservou: lembrete 15 min antes de abrir e, 20 min depois, convite com a Casa já cheia.
+  const umaVez = async (chave: string) => {
+    if (avisosEnviados.has(chave)) return false;
+    avisosEnviados.add(chave);
+    if (await db.queryOne('SELECT 1 AS x FROM system_settings WHERE key = ? LIMIT 1', [chave])) return false;
+    await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave, 'enviado', new Date().toISOString()]);
+    return true;
+  };
+  const lembrarReservas = async (noite: { chave: string; tema: 'sexta' | 'sabado'; forcada: boolean; teste: boolean } | null) => {
+    if (!noite) {
+      const daqui15 = noiteDoHorario(new Date(Date.now() + 15 * 60_000));
+      if (!daqui15 || !(await umaVez(`casa_lembrete15:${daqui15.chave}`))) return;
+      const t = TEMAS_DA_NOITE[daqui15.tema];
+      const ids = ((await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [daqui15.chave])) as any[]).map((r) => String(r.user_id));
+      for (const id of ids) {
+        await deps.push(id, { title: '⏰ Faltam 15 minutos para A Casa!', body: `${t.nome} começa às ${HORA_DE_ABRIR[daqui15.tema]}h. Seu lugar está reservado: chega cedo pra pegar a sala cheia 😈`, url: '/casa', tag: 'casa-15min' }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      return;
+    }
+    if (noite.forcada || noite.teste) return;
+    const passou = Date.now() - inicioDaNoite(noite.chave, noite.tema);
+    if (passou < 20 * 60_000 || passou > 40 * 60_000) return;
+    if (!(await umaVez(`casa_lembrete20:${noite.chave}`))) return;
+    const pessoas = naCasaAgora();
+    const nCabines = cabines.size;
+    const faltam = (await db.queryAll(
+      "SELECT r.user_id FROM casa_reservas r WHERE r.noite = ? AND NOT EXISTS (SELECT 1 FROM casa_eventos e WHERE e.noite = r.noite AND e.user_id = r.user_id AND e.tipo IN ('entrou', 'espiou'))",
+      [noite.chave],
+    )) as any[];
+    const corpo = pessoas >= 5
+      ? `Já tem ${pessoas} pessoas${nCabines > 0 ? ` e ${nCabines} cabine(s) rolando` : ''} 🔥 Seu lugar está te esperando, entra!`
+      : 'A Lola já está puxando as brincadeiras 🔥 Seu lugar está te esperando, entra!';
+    for (const r of faltam) {
+      await deps.push(String(r.user_id), { title: '🔥 A Casa está pegando fogo', body: corpo, url: '/casa', tag: 'casa-20min' }).catch(() => {});
+      await new Promise((res) => setTimeout(res, 60));
     }
   };
 
@@ -1256,6 +1336,8 @@ Responda com UMA palavra:
 
   const acharPublico = (sala: Sala, idPublico: string) => [...sala.presentes.values()].find((x) => x.idPublico === idPublico);
 
+  // Mulher entra grátis com tudo liberado (é quem segura a sala); o resto precisa assinar.
+  const podeFalarNaCasa = async (userId: string, cat: Categoria | undefined) => cat === 'mulher' || (await deps.temPremium(userId));
   const salaDe = (req: express.Request) => salas.get(String(req.params.sala) as SalaId) ?? null;
   const userDe = (req: express.Request) => String((req as any).auth?.userId || '');
 
@@ -1291,13 +1373,13 @@ Responda com UMA palavra:
     const userId = userDe(req);
     const noite = await noitePara(userId);
     const perfil = await carregarPerfil(userId);
-    const podeFalar = await deps.temPremium(userId);
+    const podeFalar = await podeFalarNaCasa(userId, perfil?.cat);
     const prox = await proximaNoite();
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
     res.json({
       aberta: !!noite,
       tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
-      horario: 'Sexta e sábado, das 21h à 1h',
+      horario: HORARIO_DA_CASA,
       reservado,
       contaCriadaEm: perfil?.criadoEm ?? null,
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
@@ -1314,6 +1396,8 @@ Responda com UMA palavra:
           espiando: s.espiando.size,
           contagem: c,
           bloqueadaParaMim: s.semHomens && souHomem,
+          trancada: trancada(s, noite) && !perfil?.admin,
+          faltamParaAbrir: trancada(s, noite) ? Math.max(0, MINIMO_PARA_DESTRAVAR - naCasaAgora()) : 0,
           lotadaParaMim: !s.semHomens && souHomem && podeFalar && c.homem >= limiteDeHomens(s) && s.convocado?.userId !== userId,
           posicaoNaFila: s.fila.indexOf(userId) >= 0 ? s.fila.indexOf(userId) + 1 : null,
           // Para o mapa da Casa: só o tipo de cada pessoa (sem nome) e as cabines da sala.
@@ -1371,16 +1455,21 @@ Responda com UMA palavra:
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
     const userId = userDe(req);
     const noite = await noitePara(userId);
-    if (!noite) { res.status(403).json({ error: 'fechada', message: 'A Casa abre sexta e sábado, das 21h à 1h.' }); return; }
+    if (!noite) { res.status(403).json({ error: 'fechada', message: `A Casa abre ${HORARIO_DA_CASA.toLowerCase()}.` }); return; }
     chaveDaNoite = noite.chave;
     if (estaExpulso(userId)) { res.status(403).json({ error: 'expulso', message: 'Você foi retirado(a) da Casa nesta noite. Na próxima noite você pode voltar.' }); return; }
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
+    if (trancada(sala, noite) && !perfil.admin && !sala.presentes.has(userId)) {
+      const n = naCasaAgora();
+      res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa tiver ${MINIMO_PARA_DESTRAVAR} pessoas (agora ${n}). Chama mais gente! 😈` });
+      return;
+    }
     if (sala.semHomens && perfil.cat === 'homem') {
       res.status(403).json({ error: 'so_casais', message: 'A Sala dos Casais é só para casais e mulheres. Que tal o Salão Principal?' });
       return;
     }
-    const podeFalar = await deps.temPremium(userId);
+    const podeFalar = await podeFalarNaCasa(userId, perfil.cat);
     ufDeQuemVe.set(userId, perfil.uf);
 
     // Uma sala por vez.
@@ -2216,6 +2305,8 @@ Responda com UMA palavra:
     if (!sala || !p || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     publicarMsg(sala, { tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥`, efeito: 'brinde' });
     emitirPara(alvo.id, 'casa.brinde', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat } });
+    // Drink + brinde de volta: a Lola sugere a cabine a quem brindou.
+    emitirPara(userId, 'casa.olhares', { com: { id: alvo.idPublico, nome: alvo.nome, avatar: alvo.avatar, cat: alvo.cat }, motivo: 'brinde' });
     res.json({ ok: true });
   });
 
@@ -2263,7 +2354,7 @@ Responda com UMA palavra:
   const rankingsAnunciados = new Set<string>();
   const provocarQuieto = (sala: Sala, agora: number) => {
     if (sala.anonima || falantes(sala).length < 2) return;
-    if (agora - (ultimaProvocacao.get(sala.id) ?? 0) < 7 * 60_000) return;
+    if (agora - (ultimaProvocacao.get(sala.id) ?? 0) < 10 * 60_000) return;
     // Quieto: está há mais de 3 min na sala e não fala há mais de 8 min.
     const quietos = [...sala.presentes.values()].filter((x) => x.podeFalar && agora - x.ultimaMsg > 8 * 60_000 && agora - x.entrouEm > 3 * 60_000);
     if (quietos.length === 0) return;
@@ -2333,8 +2424,8 @@ Responda com UMA palavra:
       proxima: null,
     });
     if (noiteAgora) {
-      const inicioNoite = noiteAgora.forcada ? null : Date.parse(`${noiteAgora.chave}T21:00:00-03:00`);
-      const fimNoite = noiteAgora.forcada ? await abertaAte() : (inicioNoite as number) + 4 * 3_600_000;
+      const inicioNoite = noiteAgora.forcada ? null : inicioDaNoite(noiteAgora.chave, noiteAgora.tema);
+      const fimNoite = noiteAgora.forcada ? await abertaAte() : (inicioNoite as number) + (noiteAgora.tema === 'sabado' ? 3 : 4) * 3_600_000;
       const abertura = todas.find((f) => f.tipo === 'abertura');
       const fechamento = todas.find((f) => f.tipo === 'fechamento');
       if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
@@ -2359,7 +2450,7 @@ Responda com UMA palavra:
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
     // Na noite normal a rádio começa do 1º item logo depois da abertura das 21h.
-    const inicioNormal = noiteAgora && !noiteAgora.forcada ? Date.parse(`${noiteAgora.chave}T21:00:00-03:00`) + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
+    const inicioNormal = noiteAgora && !noiteAgora.forcada ? inicioDaNoite(noiteAgora.chave, noiteAgora.tema) + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
     const zero = inicioNormal && agoraMs >= inicioNormal ? inicioNormal : INICIO_DA_RADIO;
     let pos = ((agoraMs - zero) / 1000) % total;
     let i = 0;
@@ -2741,9 +2832,34 @@ Responda com UMA palavra:
     if (!c || !c.membros.has(userId)) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
     if (!c.quente) { res.status(409).json({ error: 'fria', message: 'Esquentem a cabine primeiro (todos precisam topar).' }); return; }
     if (Date.now() - c.ultimaProvocacao < 15_000) { res.status(429).json({ error: 'devagar', message: 'Calma… cumpram essa primeiro 😏' }); return; }
-    provocar(c, (req.body as any)?.dado === true);
+    const quem = c.membros.get(userId)!;
+    const escrita = String((req.body as any)?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+    const escolha = String((req.body as any)?.escolha || '');
+    if (escrita) {
+      if (/https?:\/\/|www\.|wa\.me|t\.me/i.test(escrita)) { res.status(400).json({ error: 'link', message: 'Sem links na cabine.' }); return; }
+      const barrada = await bloqueioRapido(userId, quem.nome, escrita, 'cabine');
+      if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
+      c.ultimaProvocacao = Date.now();
+      msgCabine(c, { tipo: 'lola', texto: `😈 Provocação de ${quem.nome}: ${escrita}` });
+    } else if (/^[123]-\d+$/.test(escolha)) {
+      const [nivel, i] = escolha.split('-').map(Number) as [1 | 2 | 3, number];
+      const texto = PROVOCACOES_CABINE[nivel]?.[i];
+      if (!texto) { res.status(400).json({ error: 'escolha' }); return; }
+      c.ultimaProvocacao = Date.now();
+      c.usadas.add(escolha);
+      msgCabine(c, { tipo: 'lola', texto: `${'🔥'.repeat(nivel)} ${quem.nome} escolheu: ${texto}` });
+    } else {
+      provocar(c, (req.body as any)?.dado === true);
+    }
     avisarCabine(c);
     res.json({ ok: true });
+  });
+
+  // Lista de provocações para escolher (todas as de nível 1 a 3).
+  app.get('/api/casa/cabine/:id/provocacoes', deps.requireAuth, (req, res) => {
+    const c = cabineDe(req);
+    if (!c || !c.membros.has(userDe(req))) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    res.json({ niveis: ([1, 2, 3] as const).map((n) => ({ nivel: n, itens: PROVOCACOES_CABINE[n].map((t, i) => ({ id: `${n}-${i}`, texto: t, usada: c.usadas.has(`${n}-${i}`) })) })) });
   });
 
   // Quem espia pede para participar: todos de dentro precisam aprovar.

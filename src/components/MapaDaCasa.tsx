@@ -12,7 +12,7 @@ export type CabineDoMapa = { id: string; aberta: boolean; pessoas: number; espia
 export type SalaDoMapa = {
   id: string; nome: string; emoji: string; total: number; espiando: number;
   pessoas?: Cat[]; cabines?: CabineDoMapa[];
-  bloqueadaParaMim?: boolean; lotadaParaMim?: boolean;
+  bloqueadaParaMim?: boolean; lotadaParaMim?: boolean; trancada?: boolean; faltamParaAbrir?: number;
 };
 
 const EMOJI: Record<Cat, string> = { casal: '💑', mulher: '👩', homem: '👨', outros: '🧑' };
@@ -49,7 +49,7 @@ export default function MapaDaCasa({ salas, onEntrar, onEspiar }: {
           const tema = ORDEM[s.id] ?? ORDEM.salao;
           const naCabine = (s.cabines ?? []).reduce((n, c) => n + c.pessoas, 0);
           const calor = (s.total + naCabine) / maior; // 0..1
-          const travada = s.bloqueadaParaMim;
+          const travada = s.bloqueadaParaMim || s.trancada;
           const pessoas = (s.pessoas ?? []).slice(0, 18);
           return (
             <div
@@ -68,6 +68,12 @@ export default function MapaDaCasa({ salas, onEntrar, onEspiar }: {
               <div className="absolute left-2 top-1.5 z-10 flex items-center gap-1 text-[11px] font-bold text-white drop-shadow">
                 <span>{s.emoji}</span><span className="truncate">{s.nome}</span>
               </div>
+              {s.trancada && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/60 text-center text-[11px] font-bold text-white">
+                  <span className="text-xl">🔒</span>
+                  Abre com mais {s.faltamParaAbrir} na Casa
+                </div>
+              )}
               <div className="absolute right-2 top-1.5 z-10 rounded-full bg-black/50 px-1.5 text-[10px] text-white/80">
                 {s.total}{s.espiando > 0 ? ` · 👀${s.espiando}` : ''}
               </div>

@@ -3817,6 +3817,12 @@ describe('nosigilo backend', () => {
     expect(estadoAcoes.calor).toBe(19);
     expect(estadoAcoes.mensagens.filter((m: any) => m.tipo === 'acao').map((m: any) => m.efeito)).toEqual(['beijo', 'chupar']);
 
+    // Provocações para escolher: só quem está dentro vê a lista.
+    const listaProv = (await request(ctx.app).get(`/api/casa/cabine/${cabMapa.cabineId}/provocacoes`).set(auth(casal.token)).expect(200)).body;
+    expect(listaProv.niveis.map((n: any) => n.nivel)).toEqual([1, 2, 3]);
+    await request(ctx.app).get(`/api/casa/cabine/${cabMapa.cabineId}/provocacoes`).set(auth(homens[2].token)).expect(403);
+    expect(Array.isArray(estadoAcoes.espiandoLista)).toBe(true);
+
     // Reagir e responder mensagens dentro da cabine.
     const beijoMsg = estadoAcoes.mensagens.find((m: any) => m.tipo === 'acao');
     expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/reagir`).set(auth(homens[0].token)).send({ mensagemId: beijoMsg.id, emoji: '💦' }).expect(200)).body.reacoes['💦']).toHaveLength(1);
