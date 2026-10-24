@@ -1396,6 +1396,8 @@ Responda com UMA palavra:
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: prox.inicio,
       souAdmin: !!perfil?.admin,
+      // Modo teste: sem proteção de print (para mandar prints das melhorias).
+      teste: !!noite?.teste,
       podeFalar,
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
       salas: [...salas.values()].map((s) => {

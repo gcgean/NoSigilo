@@ -41,7 +41,7 @@ type SalaResumo = {
 };
 type Info = {
   aberta: boolean; tema: { nome: string; descricao: string } | null; horario: string;
-  souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
+  souAdmin: boolean; podeFalar: boolean; teste?: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
@@ -1466,7 +1466,7 @@ export default function Casa() {
       )}
 
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
-      <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />
+      {!info?.teste && <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />}
       <Dialog open={!!drinkRecebido} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
         <DialogContent className="z-[9995] max-w-xs">
           {drinkRecebido && (
