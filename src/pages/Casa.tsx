@@ -586,7 +586,7 @@ export default function Casa() {
   salaRef.current = salaAtual;
   useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`).catch(() => {}); }, []);
 
-  useEffect(() => { fimDaLista.current?.scrollIntoView({ block: 'end' }); }, [estado?.mensagens.length]);
+  useEffect(() => { fimDaLista.current?.scrollIntoView({ block: 'end' }); }, [estado?.mensagens.length, respondendo]);
   // Recepção: quem entra escolhe a pulseira da noite (como na casa de verdade).
   // A pulseira vale a noite toda: trocando de sala, a mesma cor é recolocada sozinha.
   useEffect(() => {
@@ -1049,7 +1049,8 @@ export default function Casa() {
         </div>
       )}
 
-      <div className="relative flex-1 space-y-2 overflow-y-auto px-3 py-3">
+      {/* Com a faixa "Respondendo" aberta, sobra espaço embaixo para ela não cobrir a última mensagem. */}
+      <div className={cn('relative flex-1 space-y-2 overflow-y-auto px-3 py-3', respondendo && 'pb-16')}>
         {estado.mensagens.map((m) => m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (

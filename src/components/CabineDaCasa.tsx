@@ -297,7 +297,7 @@ export default function CabineDaCasa({
             ))}
           </p>
           {cab.membros.some((m) => m.naCasa === false && m.id !== meuIdPublico) && (
-            <p className="text-[11px] font-semibold text-amber-300">📴 {cab.membros.filter((m) => m.naCasa === false && m.id !== meuIdPublico).map((m) => m.nome).join(', ')} saiu da Casa · volta em até 5 min ou sai da cabine</p>
+            <p className="text-[11px] font-semibold text-amber-300">📴 {cab.membros.filter((m) => m.naCasa === false && m.id !== meuIdPublico).map((m) => m.nome).join(', ')} saiu da Casa por enquanto</p>
           )}
           <p className="text-[11px] text-white/60">
             {cab.aberta ? `👀 Porta aberta · ${cab.espectadores} espiando` : '🔒 Porta fechada'}

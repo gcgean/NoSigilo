@@ -332,8 +332,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
     /** Tesão da cabine (0–100): sobe com as ações e libera a transa a partir de 40. */
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
-    /** Quem saiu da Casa (fechou o app) e desde quando: volta em 5 min ou sai da cabine. */
-    ausentes: Map<string, number>;
+    /** Quem saiu da Casa (fechou o app) e desde quando; avisado = a Lola já comentou na cabine. */
+    ausentes: Map<string, { desde: number; avisado: boolean }>;
   };
   const cabines = new Map<string, Cabine>();
   const MAX_NA_CABINE = 6;
@@ -433,7 +433,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   };
   // Na Casa = presente em alguma sala (o ping do app chega a cada 25 s).
   const estaNaCasa = (userId: string) => [...salas.values()].some((s) => s.presentes.has(userId));
-  const AUSENCIA_MAX_MS = 5 * 60_000;
+  // Sair do app por um instante (trocar de app no celular) é comum: o 📴 aparece em silêncio,
+  // a Lola só comenta depois de 10 min fora e a pessoa sai da cabine depois de 20.
+  const AUSENCIA_AVISO_MS = 10 * 60_000;
+  const AUSENCIA_MAX_MS = 20 * 60_000;
   const tirarDaCabine = (c: Cabine, userId: string, texto: string) => {
     c.membros.delete(userId);
     c.porta.delete(userId);
@@ -450,19 +453,26 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     for (const [id, m] of [...c.membros]) {
       const fora = c.ausentes.get(id);
       if (estaNaCasa(id)) {
-        if (fora) { c.ausentes.delete(id); msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} voltou pra Casa` }); mudou = true; }
+        if (fora) {
+          c.ausentes.delete(id);
+          if (fora.avisado) msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} voltou pra Casa` });
+          mudou = true;
+        }
         continue;
       }
       if (!fora) {
-        c.ausentes.set(id, agora);
+        c.ausentes.set(id, { desde: agora, avisado: false });
+        mudou = true; // só o 📴 no topo, sem mensagem
+      } else if (!fora.avisado && agora - fora.desde > AUSENCIA_AVISO_MS) {
+        fora.avisado = true;
         msgCabine(c, {
           tipo: 'lola',
           texto: c.membros.size === 2
-            ? `📴 ${m.nome} saiu da Casa. Se voltar em 5 minutos, continua aqui… Pra não perder o clima, toquem em "Continuar no chat" e sigam no chat do NoSigilo 😉`
-            : `📴 ${m.nome} saiu da Casa. Se voltar em 5 minutos, continua aqui; senão, sai da cabine.`,
+            ? `📴 ${m.nome} saiu da Casa faz 10 minutos. Pra não perder o clima, toquem em "Continuar no chat" e sigam no chat do NoSigilo 😉`
+            : `📴 ${m.nome} saiu da Casa faz 10 minutos. Se não voltar, sai da cabine daqui a pouco.`,
         });
         mudou = true;
-      } else if (agora - fora > AUSENCIA_MAX_MS) {
+      } else if (agora - fora.desde > AUSENCIA_MAX_MS) {
         tirarDaCabine(c, id, `${m.nome} não voltou e saiu da cabine`);
         if (!cabines.has(c.id)) return;
         mudou = false;
@@ -2305,7 +2315,12 @@ Responda com UMA palavra:
     const antes = p.pulseira;
     p.pulseira = cor;
     if (cor === 'vermelha') p.querBrincar = false;
-    if (antes !== cor) publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} colocou a pulseira ${PULSEIRAS[cor]}` });
+    // Anuncia só quando a cor muda na noite (trocar de sala ou recarregar não repete o aviso).
+    const chavePulseira = `${chaveDaNoite}:${sala.id}:${p.id}`;
+    if (antes !== cor && pulseiraAnunciada.get(chavePulseira) !== cor) {
+      pulseiraAnunciada.set(chavePulseira, cor);
+      publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} colocou a pulseira ${PULSEIRAS[cor]}` });
+    }
     avisarPresentes(sala);
     res.json({ ok: true, pulseira: cor });
   });
@@ -2430,6 +2445,7 @@ Responda com UMA palavra:
   // A Lola anuncia cada casal/mulher só na primeira entrada da noite (não a cada troca de sala).
   const recebidosNaNoite = new Set<string>();
   const ultimaChegada = new Map<string, number>();
+  const pulseiraAnunciada = new Map<string, string>();
 
   // ─── Lola mais provocadora: memória da noite ────────────────────────────────
   const ultimaRecepcao = new Map<string, number>();
