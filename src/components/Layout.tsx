@@ -1,7 +1,7 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import CasaAbertaBanner from '@/components/CasaAbertaBanner';
-import { useCasaAberta } from '@/utils/useCasaAberta';
+import { useCasaStatus } from '@/utils/useCasaAberta';
 import CasaAoVivoConvite from '@/components/CasaAoVivoConvite';
 import { useAuth } from '@/contexts/AuthContext';
 import { ehAppInstalado, jaEngajou, registrarVisitaDoDia } from '@/utils/modoDeUso';
@@ -145,7 +145,14 @@ export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   // Durante a noite d'A Casa o atalho "Ganhe $" vira "Entrar na Casa".
-  const casaAberta = useCasaAberta();
+  const { aberta: casaAberta, proxima: proximaCasa } = useCasaStatus();
+  // Dia de Casa: nas 8 h antes de abrir, o "Ganhe $" vira contagem regressiva (traz reservas).
+  const [agoraNav, setAgoraNav] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setAgoraNav(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  const faltaCasa = !casaAberta && proximaCasa ? proximaCasa - agoraNav : null;
+  const contagemCasa = faltaCasa !== null && faltaCasa > 0 && faltaCasa <= 8 * 3_600_000
+    ? (faltaCasa >= 3_600_000 ? `${Math.floor(faltaCasa / 3_600_000)}h${String(Math.floor((faltaCasa % 3_600_000) / 60_000)).padStart(2, '0')}` : `${Math.max(1, Math.ceil(faltaCasa / 60_000))}min`)
+    : null;
   const navigate = useNavigate();
   const { toast } = useToast();
   const { socket } = useSocket();
@@ -1482,7 +1489,7 @@ export default function Layout() {
       <DailyAvailabilityModal />
       <OnboardingModal />
       <CityRequiredModal />
-      <nav className={cn(
+      <nav data-menu-baixo className={cn(
         // fixed (e não sticky): o sticky depende da altura do container bater
         // com a área visível, e no iOS essa altura muda sozinha conforme a barra
         // do Safari aparece/some — quando não bate, a barra de navegação fica
@@ -1563,6 +1570,18 @@ export default function Layout() {
               </span>
               <span className="max-w-full truncate text-xs leading-4">A Casa</span>
               <span className="absolute -top-1 right-1 rounded-full bg-rose-600 px-1 text-[8px] font-bold uppercase text-white">ao vivo</span>
+            </NavLink>
+          ) : contagemCasa ? (
+            <NavLink
+              to="/casa"
+              className={({ isActive }) => cn(
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 font-bold transition-colors",
+                isActive ? "text-fuchsia-400" : "text-fuchsia-500"
+              )}
+            >
+              <span className="relative text-base leading-none">🔥</span>
+              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
+              <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 animate-pulse whitespace-nowrap rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-600 px-1.5 text-[9px] font-black text-white shadow">⏳ {contagemCasa}</span>
             </NavLink>
           ) : (
           <NavLink

@@ -82,6 +82,31 @@ export default function Match() {
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHoveringPass, setIsHoveringPass] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Altura do card no celular medida na tela de verdade: o svh do Safari/Chrome do
+  // iPhone às vezes vem bem menor que o espaço visível e sobrava um vão embaixo.
+  // Mede o que sobra até o menu de baixo; só refaz em mudanças grandes (girar a
+  // tela), para o card não "pular" quando a barra do navegador some e aparece.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dicaRef = useRef<HTMLParagraphElement>(null);
+  const [alturaCard, setAlturaCard] = useState<number | null>(null);
+  useEffect(() => {
+    const medir = () => {
+      if (window.innerWidth >= 640 || !cardRef.current || !dicaRef.current) { setAlturaCard(null); return; }
+      const card = cardRef.current.getBoundingClientRect();
+      const dica = dicaRef.current.getBoundingClientRect();
+      const menu = document.querySelector('[data-menu-baixo]')?.getBoundingClientRect();
+      const limite = (menu && menu.height > 0 ? menu.top : window.innerHeight) - 10;
+      const abaixo = dica.bottom - card.bottom; // botões + dica
+      const topo = card.top + window.scrollY;
+      const alvo = Math.round(Math.min(600, Math.max(240, limite - topo - abaixo)));
+      setAlturaCard((atual) => (atual === null || Math.abs(atual - alvo) > 110 ? alvo : atual));
+    };
+    medir();
+    const t = setTimeout(medir, 500);
+    window.addEventListener('resize', medir);
+    window.addEventListener('orientationchange', medir);
+    return () => { clearTimeout(t); window.removeEventListener('resize', medir); window.removeEventListener('orientationchange', medir); };
+  }, [isLoading]);
   const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);
   const [isLoadingLikedProfiles, setIsLoadingLikedProfiles] = useState(false);
   const [hasSwipedAny, setHasSwipedAny] = useState(() => sessionStorage.getItem('nosigilo_match_swiped') === '1');
@@ -482,7 +507,7 @@ export default function Match() {
           A altura desconta o que fica em volta (cabeçalho, botões, menu de
           baixo; medido no iPhone em 17/10/2026 ~270px, 300 deixa folga): com 58svh fixo, em celular baixo o card empurrava os
           botões para fora da tela. */}
-      <div className="relative h-[clamp(240px,calc(100svh-300px),520px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
+      <div ref={cardRef} style={alturaCard ? { height: alturaCard } : undefined} className="relative h-[clamp(240px,calc(100svh-300px),520px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
         {isLoading && (
           <div className="absolute inset-0">
             <MobileState
@@ -846,7 +871,7 @@ export default function Match() {
 
       </div>
 
-      <p className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
+      <p ref={dicaRef} className="mt-3 px-4 text-center text-[0.92rem] text-muted-foreground/90 sm:mt-4 sm:text-[0.98rem]">Arraste para os lados ou use os botões</p>
 
       <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
       <SemTokensDialog open={semTokensSuper} onOpenChange={setSemTokensSuper} custo={5} recurso="A Super Curtida" />
