@@ -3827,6 +3827,11 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'beijo' }).expect(200);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(409);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(casal.token)).send({ quer: true }).expect(200);
+    // O outro recusa o convite pra transar: fica o aviso delicado e nada libera.
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: false }).expect(200);
+    const recusou = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(recusou.quente).toBe(false);
+    expect(recusou.mensagens.some((m: any) => /prefere ir com calma/.test(m.texto))).toBe(true);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(200);
     // Cena de troca de casais não vale entre casal e solteiro.

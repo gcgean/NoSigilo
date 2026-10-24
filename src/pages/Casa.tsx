@@ -352,6 +352,8 @@ export default function Casa() {
   const abrirPorIdRef = useRef<(id: string, nome: string) => void>(() => {});
   useEffect(() => { estadoRef.current = estado; }, [estado]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
+  const cabineAbertaRef = useRef(cabineAberta);
+  cabineAbertaRef.current = cabineAberta;
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
   const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; aberta?: boolean; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
   const [conviteCabine, setConviteCabine] = useState<{ cabineId: string; membros: string[] } | null>(null);
@@ -485,6 +487,17 @@ export default function Casa() {
         action: <ToastAction altText="Entrar agora" onClick={() => void entrar(d.sala)}>Entrar</ToastAction>,
       });
     };
+    // Fora da cabine (na sala): quem está lá dentro quer esquentar.
+    const aoEsquentarCabine = (d: { cabineId: string; nome: string }) => {
+      if (cabineAbertaRef.current?.id === d.cabineId) return;
+      tocarAviso(true);
+      registrarAviso({ emoji: '🔥', texto: `${d.nome} quer esquentar a cabine de vocês`, acao: () => setCabineAberta({ id: d.cabineId, modo: 'membro' }), rotuloAcao: 'Abrir' });
+      toast({
+        title: `🔥 ${d.nome} quer esquentar a cabine!`,
+        description: 'Liberar preliminares e transa: topa?',
+        action: <ToastAction altText="Abrir a cabine" onClick={() => setCabineAberta({ id: d.cabineId, modo: 'membro' })}>Abrir</ToastAction>,
+      });
+    };
     const aoVaga = (d: { sala: string; nome: string }) => {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
@@ -561,10 +574,10 @@ export default function Casa() {
       });
     };
     on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.cabine.esquentar', aoEsquentarCabine); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.cabine.esquentar', aoEsquentarCabine); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 

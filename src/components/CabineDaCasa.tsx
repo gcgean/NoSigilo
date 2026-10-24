@@ -115,6 +115,8 @@ export default function CabineDaCasa({
   const [convidando, setConvidando] = useState(false);
   const [enviando, setEnviando] = useState<number | null>(null);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
+  // Alguém de dentro quer liberar: pergunta na hora para quem ainda não topou.
+  const [pedidoEsquentar, setPedidoEsquentar] = useState<string | null>(null);
   const [espiaoAberto, setEspiaoAberto] = useState<Pessoa | null>(null);
   // Escolher a provocação da lista ou escrever a sua.
   const [escolhendoProvocacao, setEscolhendoProvocacao] = useState(false);
@@ -149,7 +151,15 @@ export default function CabineDaCasa({
       if (d.cabineId !== cabineId) return;
       setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+      // O outro fez uma ação: o painel abre sozinho para responder na mesma moeda.
+      if (d.msg.tipo === 'acao' && d.msg.autor?.id !== meuIdPublico) setAcoesAbertas(true);
     };
+    const aoEsquentar = (d: { cabineId: string; nome: string }) => {
+      if (d.cabineId !== cabineId) return;
+      setAcoesAbertas(true);
+      setPedidoEsquentar(d.nome);
+    };
+    on('casa.cabine.esquentar', aoEsquentar);
     const aoFechou = (d: { cabineId: string; porta?: boolean }) => {
       if (d.cabineId !== cabineId) return;
       toast({ title: d.porta ? '🔒 Fecharam a porta da cabine' : 'A cabine fechou' });
@@ -163,8 +173,8 @@ export default function CabineDaCasa({
     };
     on('casa.cabine.reacao', aoReacao);
     on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou); on('casa.cabine.mensagem.removida', aoRemovida);
-    return () => { off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
-  }, [on, off, cabineId, toast, onSaiu]);
+    return () => { off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
+  }, [on, off, cabineId, toast, onSaiu, meuIdPublico]);
   useEffect(() => { fim.current?.scrollIntoView({ block: 'end' }); }, [cab?.mensagens.length]);
 
   const post = async (rota: string, corpo?: unknown) => {
@@ -435,6 +445,15 @@ export default function CabineDaCasa({
                   <button key={o.id} type="button" onClick={() => setAlvo(o.id)}
                     className={cn('shrink-0 rounded-full px-2 py-1 text-[11px]', alvo === o.id ? 'bg-rose-600 font-bold' : 'bg-white/10')}>{o.nome}</button>
                 ))}
+              </div>
+            )}
+            {pedidoEsquentar && !cab.quente && !cab.voteiQuente && (
+              <div className="space-y-2 rounded-xl bg-amber-500/20 p-3 ring-2 ring-amber-400/70 shadow-[0_0_24px_rgba(245,158,11,0.45)]">
+                <p className="text-sm font-bold">🔥 {pedidoEsquentar} está te chamando pra transar: liberar as preliminares e a transa. Aceita?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => { setPedidoEsquentar(null); void post('esquentar', { quer: false }); }} className="rounded-lg bg-white/10 px-3 py-2 text-sm">Agora não</button>
+                  <button type="button" onClick={() => { setPedidoEsquentar(null); void post('esquentar', { quer: true }); }} className="rounded-lg bg-gradient-to-r from-amber-500 to-rose-600 px-3 py-2 text-sm font-bold">Aceito 🔥</button>
+                </div>
               </div>
             )}
             {!cab.quente && (

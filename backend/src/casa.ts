@@ -2797,6 +2797,9 @@ Responda com UMA palavra:
       if (c.quente) {
         c.quente = false;
         msgCabine(c, { tipo: 'sistema', texto: `🧊 ${m.nome} esfriou a cabine. Tudo bem, aqui o limite de cada um manda.` });
+      } else if (c.topamEsquentar.size > 0) {
+        // Recusou o convite pra transar: avisa com delicadeza quem chamou.
+        msgCabine(c, { tipo: 'sistema', texto: `🧊 ${m.nome} prefere ir com calma por enquanto. Continuem no clima 😉` });
       }
       avisarCabine(c);
       res.json({ ok: true, quente: false });
@@ -2812,6 +2815,10 @@ Responda com UMA palavra:
     } else if (!todos) {
       const n = [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length;
       msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} quer esquentar a cabine (${n}/${c.membros.size})` });
+      // Quem ainda não topou recebe o convite na hora (dentro da cabine abre o painel; fora, aviso).
+      for (const id of c.membros.keys()) {
+        if (!c.topamEsquentar.has(id)) emitirPara(id, 'casa.cabine.esquentar', { cabineId: c.id, nome: m.nome });
+      }
     }
     avisarCabine(c);
     res.json({ ok: true, quente: c.quente });
