@@ -38,6 +38,33 @@ const ACOES: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2 }[] =
   { id: 'gozar', emoji: '💦', rotulo: 'Gozar', etapa: 2 },
 ];
 const ETAPAS = ['😏 Esquentando', '🔥 Preliminares', '💦 Transa'];
+// Cenas de casa de swing conforme quem está na cabine (o backend confere as categorias).
+type Cat = 'casal' | 'mulher' | 'homem' | 'outros';
+const CENAS: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2; quem: Cat; alvo: Cat }[] = [
+  { id: 'cc_esposas_beijo', emoji: '💋', rotulo: 'Esposas se beijam', etapa: 0, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_esposas_peitos', emoji: '🍒', rotulo: 'Esposas se pegam', etapa: 1, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_marido_pega', emoji: '🤚', rotulo: 'Marido pega a outra', etapa: 1, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_troca', emoji: '🔄', rotulo: 'Trocar de casal', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_esposa_da', emoji: '💦', rotulo: 'Esposa dá pro outro', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_lado_a_lado', emoji: '🛏️', rotulo: 'Lado a lado', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'ch_marido_libera', emoji: '😈', rotulo: 'Marido libera a esposa', etapa: 0, quem: 'casal', alvo: 'homem' },
+  { id: 'hc_toca_esposa', emoji: '🤚', rotulo: 'Tocar a esposa', etapa: 0, quem: 'homem', alvo: 'casal' },
+  { id: 'ch_esposa_chupa', emoji: '🍆', rotulo: 'Esposa chupa ele', etapa: 1, quem: 'casal', alvo: 'homem' },
+  { id: 'hc_esposa_chupa', emoji: '🍆', rotulo: 'Pôr pra fora', etapa: 1, quem: 'homem', alvo: 'casal' },
+  { id: 'ch_dupla', emoji: '🔥', rotulo: 'Os dois nela', etapa: 2, quem: 'casal', alvo: 'homem' },
+  { id: 'ch_esposa_provoca', emoji: '😈', rotulo: 'Ela provoca o marido', etapa: 2, quem: 'casal', alvo: 'homem' },
+  { id: 'hc_come_esposa', emoji: '💦', rotulo: 'Comer a esposa', etapa: 2, quem: 'homem', alvo: 'casal' },
+  { id: 'mc_beija_esposa', emoji: '💋', rotulo: 'Beijar a esposa', etapa: 0, quem: 'mulher', alvo: 'casal' },
+  { id: 'mc_beijo_triplo', emoji: '💋', rotulo: 'Beijo triplo', etapa: 0, quem: 'mulher', alvo: 'casal' },
+  { id: 'cm_beija_solteira', emoji: '💋', rotulo: 'Esposa beija ela', etapa: 0, quem: 'casal', alvo: 'mulher' },
+  { id: 'cm_beijo_triplo', emoji: '💋', rotulo: 'Beijo triplo', etapa: 0, quem: 'casal', alvo: 'mulher' },
+  { id: 'mc_chupa_esposa', emoji: '👅', rotulo: 'Chupar a esposa', etapa: 1, quem: 'mulher', alvo: 'casal' },
+  { id: 'cm_esposa_chupa', emoji: '👅', rotulo: 'Esposa chupa ela', etapa: 1, quem: 'casal', alvo: 'mulher' },
+  { id: 'mc_da_pro_marido', emoji: '🔥', rotulo: 'Dar pro marido', etapa: 2, quem: 'mulher', alvo: 'casal' },
+  { id: 'cm_marido_come', emoji: '🔥', rotulo: 'Marido come ela', etapa: 2, quem: 'casal', alvo: 'mulher' },
+  { id: 'cm_vice_versa', emoji: '🔄', rotulo: 'Vice-versa', etapa: 2, quem: 'casal', alvo: 'mulher' },
+];
+const TITULO_CENA: Record<string, string> = { 'casal-casal': 'Troca de casais', 'casal-homem': 'Casal + solteiro', 'homem-casal': 'Casal + solteiro', 'casal-mulher': 'Casal + solteira', 'mulher-casal': 'Casal + solteira' };
 type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovados: number; convidadoAceitou: boolean };
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
@@ -410,13 +437,35 @@ export default function CabineDaCasa({
                 ))}
               </div>
             )}
+            {!cab.quente && (
+              <button type="button" disabled={cab.voteiQuente} onClick={() => void post('esquentar', { quer: true })}
+                className={cn('w-full rounded-xl px-3 py-2 text-sm font-bold', cab.voteiQuente ? 'bg-rose-900/60 text-white/70' : 'bg-gradient-to-r from-amber-500 via-rose-600 to-red-700 shadow-[0_0_18px_rgba(225,29,72,0.5)]')}>
+                {cab.voteiQuente
+                  ? `⏳ Você topou · esperando os outros (${cab.votosQuente}/${cab.membros.length})`
+                  : `🔓 Liberar preliminares e transa (${cab.votosQuente}/${cab.membros.length} toparam)`}
+              </button>
+            )}
             {ETAPAS.map((nome, etapa) => {
-              const travada = etapa === 1 ? !cab.quente : etapa === 2 ? !cab.quente || calor < 40 : false;
+              const travada = etapa >= 1 && !cab.quente;
+              const eu = cab.membros.find((m) => m.id === meuIdPublico);
+              const com = outros.length === 1 ? outros[0] : outros.find((o) => o.id === alvo);
+              const cenas = eu && com ? CENAS.filter((x) => x.etapa === etapa && x.quem === eu.cat && x.alvo === com.cat) : [];
               return (
                 <div key={nome}>
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
-                    {nome}{travada && (etapa === 1 || !cab.quente ? ' · 🔒 esquentem a cabine (todos topam)' : ' · 🔒 tesão em 40%')}
+                    {nome}{travada && ' · 🔒 todos tocam em "Liberar"'}
                   </p>
+                  {cenas.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-amber-200">🎭 {TITULO_CENA[`${eu!.cat}-${com!.cat}`]}:</span>
+                      {cenas.map((a) => (
+                        <button key={a.id} type="button" disabled={travada} onClick={() => void agir(a.id)}
+                          className={cn('rounded-full px-2.5 py-1.5 text-xs font-semibold', travada ? 'bg-white/5 text-white/30' : 'bg-gradient-to-r from-amber-600 to-rose-700 ring-1 ring-amber-300/50 active:scale-95')}>
+                          {a.emoji} {a.rotulo}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-1.5">
                     {ACOES.filter((a) => a.etapa === etapa).map((a) => (
                       <button key={a.id} type="button" disabled={travada} onClick={() => void agir(a.id)}

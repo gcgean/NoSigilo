@@ -3829,7 +3829,8 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(casal.token)).send({ quer: true }).expect(200);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(200);
-    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'cavalgar' }).expect(409)).body.error).toBe('cedo');
+    // Cena de troca de casais não vale entre casal e solteiro.
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'cc_troca' }).expect(400)).body.error).toBe('cena');
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'inventada' }).expect(400);
     const estadoAcoes = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
     expect(estadoAcoes.calor).toBe(19);

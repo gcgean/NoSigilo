@@ -2835,30 +2835,67 @@ Responda com UMA palavra:
     papai: { etapa: 2, calor: 14, texto: '🛏️ {eu} deitou {alvo} na cama e foram no papai e mamãe, olho no olho' },
     gozar: { etapa: 2, calor: 20, texto: '💦 {eu} gozou gostoso com {alvo}' },
   };
+  // Cenas de casa de swing, conforme quem está na cabine (um perfil de casal é o casal todo).
+  // quem = categoria de quem age; alvo = categoria do outro; efeito = animação.
+  type Cena = { etapa: 0 | 1 | 2; calor: number; quem: Categoria; alvo: Categoria; efeito: string; texto: string };
+  const CENAS: Record<string, Cena> = {
+    // Casal com casal: as esposas começam, depois os maridos, depois a troca.
+    cc_esposas_beijo: { etapa: 0, calor: 8, quem: 'casal', alvo: 'casal', efeito: 'beijo', texto: '💋 A esposa de {eu} e a esposa de {alvo} começaram a se beijar, devagar, com os maridos olhando' },
+    cc_esposas_peitos: { etapa: 1, calor: 11, quem: 'casal', alvo: 'casal', efeito: 'mao', texto: '🍒 As esposas de {eu} e {alvo} estão se pegando: mão nos peitos uma da outra, beijo de língua' },
+    cc_marido_pega: { etapa: 1, calor: 12, quem: 'casal', alvo: 'casal', efeito: 'mao', texto: '🔥 O marido de {eu} puxou a esposa de {alvo} pela cintura e já está com a mão nela' },
+    cc_troca: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'champanhe', texto: '🔄 TROCA! {eu} e {alvo} trocaram de casal: cada esposa nos braços do marido da outra 😈' },
+    cc_esposa_da: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'quatro', texto: '💦 A esposa de {eu} está dando gostoso pro marido de {alvo}, olhando pro próprio marido' },
+    cc_lado_a_lado: { etapa: 2, calor: 15, quem: 'casal', alvo: 'casal', efeito: 'papai', texto: '🛏️ {eu} e {alvo} transando lado a lado, um olhando o outro' },
+    // Casal com solteiro: o marido libera, o single chega, os dois comem a esposa.
+    ch_marido_libera: { etapa: 0, calor: 8, quem: 'casal', alvo: 'homem', efeito: 'pescoco', texto: '😈 O marido de {eu} chamou {alvo} pra perto e liberou a esposa pra ele' },
+    hc_toca_esposa: { etapa: 0, calor: 8, quem: 'homem', alvo: 'casal', efeito: 'mao', texto: '🤚 {eu} chegou devagar e começou a tocar a esposa de {alvo}, e o marido deixando 😏' },
+    ch_esposa_chupa: { etapa: 1, calor: 13, quem: 'casal', alvo: 'homem', efeito: 'chupar_pica', texto: '🍆 A esposa de {eu} colocou o pau de {alvo} pra fora e caiu de boca, olhando pro marido' },
+    hc_esposa_chupa: { etapa: 1, calor: 13, quem: 'homem', alvo: 'casal', efeito: 'chupar_pica', texto: '🍆 {eu} colocou pra fora e a esposa de {alvo} caiu de boca, com o marido incentivando' },
+    ch_dupla: { etapa: 2, calor: 17, quem: 'casal', alvo: 'homem', efeito: 'gozar', texto: '🔥 O marido de {eu} e {alvo} estão comendo a esposa juntos' },
+    hc_come_esposa: { etapa: 2, calor: 16, quem: 'homem', alvo: 'casal', efeito: 'quatro', texto: '💦 {eu} está comendo a esposa de {alvo} enquanto o marido olha e incentiva' },
+    ch_esposa_provoca: { etapa: 2, calor: 16, quem: 'casal', alvo: 'homem', efeito: 'cavalgar', texto: '😈 A esposa de {eu} está dando pra {alvo} e provocando o marido: "olha, amor…"' },
+    // Casal com solteira: as mulheres se beijam, beijo triplo, oral entre elas, ela com o marido.
+    mc_beija_esposa: { etapa: 0, calor: 8, quem: 'mulher', alvo: 'casal', efeito: 'beijo', texto: '💋 {eu} foi direto na esposa de {alvo} e as duas se beijaram' },
+    cm_beija_solteira: { etapa: 0, calor: 8, quem: 'casal', alvo: 'mulher', efeito: 'beijo', texto: '💋 A esposa de {eu} puxou {alvo} e as duas se beijaram' },
+    mc_beijo_triplo: { etapa: 0, calor: 9, quem: 'mulher', alvo: 'casal', efeito: 'beijo', texto: '💋💋 {eu} puxou o marido também: beijo triplo com {alvo}' },
+    cm_beijo_triplo: { etapa: 0, calor: 9, quem: 'casal', alvo: 'mulher', efeito: 'beijo', texto: '💋💋 Beijo triplo: {eu} e {alvo}, os três juntos' },
+    mc_chupa_esposa: { etapa: 1, calor: 13, quem: 'mulher', alvo: 'casal', efeito: 'chupar_buceta', texto: '👅 {eu} está chupando a esposa de {alvo}, com o marido assistindo' },
+    cm_esposa_chupa: { etapa: 1, calor: 13, quem: 'casal', alvo: 'mulher', efeito: 'chupar_buceta', texto: '👅 A esposa de {eu} está chupando {alvo}' },
+    mc_da_pro_marido: { etapa: 2, calor: 16, quem: 'mulher', alvo: 'casal', efeito: 'cavalgar', texto: '🔥 {eu} está dando pro marido de {alvo} e beijando a esposa' },
+    cm_marido_come: { etapa: 2, calor: 16, quem: 'casal', alvo: 'mulher', efeito: 'quatro', texto: '🔥 O marido de {eu} está comendo {alvo} enquanto ela beija a esposa' },
+    cm_vice_versa: { etapa: 2, calor: 16, quem: 'casal', alvo: 'mulher', efeito: 'chupar_buceta', texto: '🔄 Agora é a esposa de {eu} por cima de {alvo}, e o marido assistindo 😈' },
+  };
   app.post('/api/casa/cabine/:id/acao', deps.requireAuth, async (req, res) => {
     const c = cabineDe(req);
     const userId = userDe(req);
     const eu = c?.membros.get(userId);
     if (!c || !eu) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
     const id = String((req.body as any)?.acao || '');
-    const acao = Object.prototype.hasOwnProperty.call(ACOES_CABINE, id) ? ACOES_CABINE[id] : undefined;
+    const cena = Object.prototype.hasOwnProperty.call(CENAS, id) ? CENAS[id] : undefined;
+    const acao = cena ?? (Object.prototype.hasOwnProperty.call(ACOES_CABINE, id) ? ACOES_CABINE[id] : undefined);
     if (!acao) { res.status(400).json({ error: 'acao' }); return; }
     const outros = [...c.membros.values()].filter((m) => m.id !== userId);
     const alvo = outros.find((m) => m.idPublico === String((req.body as any)?.alvo || '')) ?? (outros.length === 1 ? outros[0] : undefined);
     if (!alvo) { res.status(400).json({ error: 'alvo', message: 'Escolha com quem.' }); return; }
-    if (acao.etapa >= 1 && !c.quente) { res.status(409).json({ error: 'fria', message: 'Primeiro esquentem a cabine: todos precisam topar 🔥' }); return; }
-    if (acao.etapa === 2 && c.calor < 40) { res.status(409).json({ error: 'cedo', message: 'Calma… capricha nas preliminares primeiro 😈' }); return; }
+    if (cena && (cena.quem !== eu.cat || cena.alvo !== alvo.cat)) { res.status(400).json({ error: 'cena', message: 'Essa cena não combina com quem está na cabine.' }); return; }
+    // Preliminares e transa: liberam quando todos de dentro toparam (sem esperar a barra de tesão).
+    if (acao.etapa >= 1 && !c.quente) { res.status(409).json({ error: 'fria', message: 'Para liberar, todos aqui dentro tocam em "Liberar" 🔥' }); return; }
     if (Date.now() - (c.ultimaAcao.get(userId) ?? 0) < 2500) { res.status(429).json({ error: 'devagar' }); return; }
     c.ultimaAcao.set(userId, Date.now());
     c.calor = Math.min(100, c.calor + acao.calor);
     msgCabine(c, {
-      tipo: 'acao', efeito: id,
+      tipo: 'acao', efeito: cena ? cena.efeito : id,
       autor: { id: eu.idPublico, nome: eu.nome, avatar: eu.avatar, cat: eu.cat },
       texto: acao.texto.replace('{eu}', eu.nome).replace('{alvo}', alvo.nome),
     });
     if (!c.liberouTransa && c.calor >= 40) {
       c.liberouTransa = true;
-      msgCabine(c, { tipo: 'lola', texto: '🔥 Essa cabine já está pegando fogo… liberado: agora é pra transar de verdade 😈' });
+      msgCabine(c, {
+        tipo: 'lola',
+        texto: c.quente
+          ? '🔥 Essa cabine já está pegando fogo… agora é pra transar de verdade 😈'
+          : '🔥 Tá pegando fogo aqui! Pra liberar as preliminares e a transa, todos tocam em "Liberar" no painel 🔥',
+      });
     }
     if (id === 'gozar' && c.calor >= 100) {
       c.calor = 55;
