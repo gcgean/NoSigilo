@@ -90,11 +90,24 @@ const RECEBE_CASAL = [
   '{nome} acabou de chegar 🔥 casal bonito assim não pode ficar sozinho, hein?',
   'Atenção, sala: {nome} chegou 💋 quem vai puxar assunto primeiro?',
 ];
+const RECEBE_CUCKOLD = [
+  '{nome} chegou no Quarto Cuckold 😈 ele adora ver a esposa sendo desejada… homens, capricha no elogio (com respeito)',
+  'Olha quem veio se exibir: {nome} 🔥 aqui quem escolhe é ela, e o marido assiste de camarote',
+  '{nome} entrou 👀 quem vai fazer essa esposa se sentir a mulher mais gostosa da Casa? Ela decide quem chega perto 💋',
+];
+// Lola respondendo quem respondeu a ela (sem IA disponível).
+const RESPOSTAS_DA_LOLA = [
+  'Gostei, {nome} 😏 continua assim que a noite é sua',
+  '{nome}, você sabe provocar… agora quero ver coragem na próxima brincadeira 🔥',
+  'Anotado, {nome} 😈 a sala inteira leu isso',
+  'Hmm, {nome}… assim você me deixa curiosa 💋',
+  'Isso, {nome}! É desse clima que A Casa gosta 🔥',
+];
 const RECEBE_MULHER = [
   'Chegou {nome} 💋 a sala ficou mais bonita… quem vai ser educado e oferecer um drink?',
   '{nome} entrou na pista 🔥 meninos e casais, comportem-se… ou não 😈',
 ];
-type SalaId = 'salao' | 'casais' | 'quarto' | 'glory';
+type SalaId = 'salao' | 'casais' | 'quarto' | 'cuckold' | 'glory';
 
 type Presente = {
   id: string;
@@ -126,12 +139,14 @@ type Presente = {
 
 type Msg = {
   id: string;
-  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia';
+  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao';
+  /** Efeito animado que toca na tela de quem está na sala/cabine (drink, brinde, ação da cabine). */
+  efeito?: string;
   autor?: { id: string; nome: string; avatar: string | null; cat: Categoria };
   texto: string;
   criadoEm: string;
   /** Foto ou vídeo de visualização única: o link só sai pelo /ver, uma vez por pessoa. */
-  midia?: { tipo: 'foto' | 'video'; preco?: number };
+  midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean };
   /** Mensagem respondida (citação curta). */
   resposta?: { id: string; nome: string; trecho: string };
   /** Reações: emoji → ids públicos de quem reagiu. */
@@ -159,6 +174,8 @@ type Sala = {
   descricao: string;
   nivel: Nivel;
   semHomens: boolean;
+  /** Quarto Cuckold: homens entram à vontade, sem cota nem fila. */
+  homensLivres?: boolean;
   /** Glory Hole: ninguém vê nome nem foto de ninguém. */
   anonima: boolean;
   contadorAnonimo: number;
@@ -278,8 +295,8 @@ function procuraAceita(p: Presente, outro: Presente) {
 export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const { db } = deps;
 
-  const novaSala = (id: SalaId, nome: string, emoji: string, descricao: string, nivel: Nivel, semHomens: boolean, anonima = false): Sala => ({
-    id, nome, emoji, descricao, nivel, semHomens, anonima, contadorAnonimo: 0,
+  const novaSala = (id: SalaId, nome: string, emoji: string, descricao: string, nivel: Nivel, semHomens: boolean, anonima = false, homensLivres = false): Sala => ({
+    id, nome, emoji, descricao, nivel, semHomens, anonima, homensLivres, contadorAnonimo: 0,
     presentes: new Map(), espiando: new Map(), mensagens: [], jogo: null,
     proximoJogoEm: Date.now() + 2 * 60_000, usados: new Set(), iniciando: false,
     fila: [], convocado: null,
@@ -288,6 +305,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     ['salao', novaSala('salao', 'Salão Principal', '🍸', 'A pista de todo mundo: conhecer, provocar e chamar pra cabine.', 'quente', false)],
     ['casais', novaSala('casais', 'Sala dos Casais', '💑', 'Só casais e mulheres. Brincadeiras muito quentes.', 'muito_quente', true)],
     ['quarto', novaSala('quarto', 'Quarto Escuro', '🖤', 'Para quem veio brincar de verdade. Sem filtro (com respeito).', 'muito_quente', false)],
+    ['cuckold', novaSala('cuckold', 'Quarto Cuckold', '😈', 'Casais exibem a esposa para os homens: o marido gosta de ver os outros desejando, e até transando com ela. Homens entram à vontade, sem fila. Quem escolhe é ela.', 'muito_quente', false, false, true)],
     ['glory', novaSala('glory', 'Glory Hole', '🕳️', 'Anônimo: ninguém sabe quem está do outro lado. Fotos e vídeos de visualização única; revela quem quiser.', 'muito_quente', false, true)],
   ]);
   const convites = new Map<string, { de: string; para: string; sala: SalaId; criadoEm: number }>();
@@ -306,6 +324,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     espectadores: Map<string, number>; entradas: Map<string, Entrada>; mensagens: Msg[]; criadaEm: number;
     /** Esquentar: só liga quando TODOS de dentro topam; qualquer um esfria. */
     topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
+    /** Tesão da cabine (0–100): sobe com as ações e libera a transa a partir de 40. */
+    calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
   };
   const cabines = new Map<string, Cabine>();
   const MAX_NA_CABINE = 6;
@@ -333,6 +353,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       votosQuente: [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length,
       voteiQuente: c.topamEsquentar.has(userId),
       nivel: c.quente ? nivelDaCabine(c) : 0,
+      calor: c.calor,
       mensagens: c.mensagens.slice(-60),
     };
   };
@@ -342,7 +363,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const msgCabine = (c: Cabine, msg: Omit<Msg, 'id' | 'criadoEm'>, mediaId: string | null = null) => {
     const completa: Msg = { ...msg, id: randomUUID(), criadoEm: new Date().toISOString() };
     c.mensagens.push(completa);
-    if (msg.tipo === 'pessoa' || msg.tipo === 'midia') c.ultimaFala = Date.now();
+    if (msg.tipo === 'pessoa' || msg.tipo === 'midia' || msg.tipo === 'acao') c.ultimaFala = Date.now();
     if (c.mensagens.length > MAX_MENSAGENS) c.mensagens.splice(0, c.mensagens.length - MAX_MENSAGENS);
     if (chaveDaNoite) {
       void db.run('INSERT INTO casa_mensagens (id, noite, sala, tipo, autor_id, texto, media_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
@@ -387,6 +408,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
       topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
+      calor: 0, liberouTransa: false, ultimaAcao: new Map(),
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -583,6 +605,7 @@ Responda com UMA palavra:
     return c;
   };
   const limiteDeHomens = (sala: Sala) => {
+    if (sala.homensLivres) return Number.POSITIVE_INFINITY;
     const c = contagem(sala);
     return Math.max(c.mulher + c.casal + c.outros, 2);
   };
@@ -668,6 +691,51 @@ Responda com UMA palavra:
     } finally {
       clearTimeout(timer);
     }
+  };
+
+  // Lola responde quem respondeu a ela (no máximo 1 a cada 8 s na sala e 1 a cada 40 s por pessoa).
+  const ultimaRespostaLola = new Map<string, number>();
+  const falaDaIa = async (sala: Sala, falaDaLola: string, nome: string, texto: string): Promise<string | null> => {
+    if (!deps.deepseekKey) return null;
+    const controle = new AbortController();
+    const timer = setTimeout(() => controle.abort(), 10_000);
+    try {
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          temperature: 1,
+          max_tokens: 120,
+          messages: [
+            {
+              role: 'system',
+              content: `Você é a Lola, anfitriã IA de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Você está no ${sala.nome}. Responda a quem respondeu você: provocante, divertida, ${sala.nivel === 'muito_quente' ? 'bem safada' : 'sensual'}, puxando a pessoa e a sala para interagir. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro, links, contatos ou dados pessoais; não peça fotos íntimas na sala aberta; nunca diga que é humana. Chame a pessoa pelo nome. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
+            },
+            { role: 'user', content: `Você disse na sala: "${falaDaLola.slice(0, 200)}"\n${nome} respondeu: "${texto.slice(0, 200)}"` },
+          ],
+        }),
+        signal: controle.signal,
+      });
+      if (!r.ok) return null;
+      const json = await r.json() as any;
+      const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').trim();
+      return t.length >= 4 && t.length <= 200 ? t : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const responderComoLola = async (sala: Sala, p: Presente, texto: string, falaDaLola: string, msgId: string) => {
+    const agora = Date.now();
+    if (agora - (ultimaRespostaLola.get(sala.id) ?? 0) < 8_000 || agora - (ultimaRespostaLola.get(p.id) ?? 0) < 40_000) return;
+    ultimaRespostaLola.set(sala.id, agora);
+    ultimaRespostaLola.set(p.id, agora);
+    const dita = (await falaDaIa(sala, falaDaLola, p.nome, texto)) ?? sortear(RESPOSTAS_DA_LOLA).replace('{nome}', p.nome);
+    await new Promise((r) => setTimeout(r, 1200));
+    if (!sala.presentes.has(p.id)) return;
+    publicarMsg(sala, { tipo: 'lola', texto: dita, resposta: { id: msgId, nome: p.nome, trecho: texto.slice(0, 80) } });
   };
 
   // Pulseira vermelha = "só olhando": nunca é sorteada para desafio, duelo ou match.
@@ -1363,12 +1431,19 @@ Responda com UMA palavra:
         ultimaSaudacao.set(sala.id, Date.now());
         lola(sala, sortear(BOAS_VINDAS));
       }
-      publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
+      // Quem cai e volta (celular em segundo plano) não gera "chegou" de novo a cada minuto.
+      const chaveChegada = `${sala.id}:${userId}`;
+      if (Date.now() - (ultimaChegada.get(chaveChegada) ?? 0) > 15 * 60_000) {
+        publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
+      }
+      ultimaChegada.set(chaveChegada, Date.now());
       // Mulher sempre é anunciada (é quem mais atrai a sala); casal, no máximo 1 a cada 2 min.
       const intervaloRecepcao = p.cat === 'mulher' ? 30_000 : 120_000;
-      if ((p.cat === 'casal' || p.cat === 'mulher') && falantes(sala).length >= 2 && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
+      const jaRecebido = recebidosNaNoite.has(`${noite.chave}:${userId}`);
+      if ((p.cat === 'casal' || p.cat === 'mulher') && !jaRecebido && falantes(sala).length >= 2 && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
+        recebidosNaNoite.add(`${noite.chave}:${userId}`);
         ultimaRecepcao.set(sala.id, Date.now());
-        lola(sala, sortear(p.cat === 'casal' ? RECEBE_CASAL : RECEBE_MULHER).replace('{nome}', p.nome));
+        lola(sala, sortear(sala.homensLivres ? RECEBE_CUCKOLD : p.cat === 'casal' ? RECEBE_CASAL : RECEBE_MULHER).replace('{nome}', p.nome));
       }
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
@@ -1466,7 +1541,13 @@ Responda com UMA palavra:
     p.ultimaMidia = Date.now();
     p.ultimoPing = Date.now();
     const j = sala.jogo;
-    let rotulo = tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única';
+    // "Para todos verem": fica aberta na sala (quem assina vê quantas vezes quiser).
+    // Desafios, duelos, relâmpago e revelação continuam de visualização única.
+    const emJogo = (j?.tipo === 'foto' && j.alvoId === userId) || (j?.tipo === 'duelo' && (j.aId === userId || j.bId === userId) && j.fase === 'fotos') || j?.tipo === 'relampago';
+    const livre = !!(req.body as any)?.livre && !revelacao && !emJogo;
+    let rotulo = livre
+      ? (tipo === 'video' ? '🎥 Vídeo para todos' : '📸 Foto para todos')
+      : (tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única');
     if (revelacao) {
       rotulo = `👀 Revelação de ${p.nome}: ${PRECO_REVELACAO} tokens para abrir (vão para ${p.nome})`;
       p.revelarAte = 0;
@@ -1477,7 +1558,7 @@ Responda com UMA palavra:
       tipo: 'midia',
       autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat },
       texto: rotulo,
-      midia: { tipo, ...(revelacao ? { preco: PRECO_REVELACAO } : {}) },
+      midia: { tipo, ...(revelacao ? { preco: PRECO_REVELACAO } : {}), ...(livre ? { livre: true } : {}) },
     }, String(m.id));
 
     // Conta para o desafio da vez.
@@ -1526,6 +1607,10 @@ Responda com UMA palavra:
       [String(req.params.msgId), sala.id],
     )) as any;
     if (!row || (row.destino_id && String(row.destino_id) !== userId)) { res.status(404).json({ error: 'not_found' }); return; }
+    if (sala.mensagens.find((x) => x.id === String(row.id))?.midia?.livre) {
+      res.json({ url: `/uploads/${String(row.filename)}`, mime: row.mime_type ? String(row.mime_type) : null, livre: true });
+      return;
+    }
     if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
     const ja = await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId]);
     if (ja) { res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' }); return; }
@@ -1635,6 +1720,7 @@ Responda com UMA palavra:
       : undefined;
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id));
+    if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
     res.json({ ok: true });
   });
 
@@ -2106,14 +2192,15 @@ Responda com UMA palavra:
     const p = sala?.presentes.get(userId);
     const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
     const paraId = alvo?.id ?? '';
-    const drink = DRINKS[String((req.body as any)?.drink || '')];
+    const drinkId = String((req.body as any)?.drink || '');
+    const drink = Object.prototype.hasOwnProperty.call(DRINKS, drinkId) ? DRINKS[drinkId] : undefined;
     if (!sala || !p || !alvo || paraId === userId) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
     if (!drink) { res.status(400).json({ error: 'drink' }); return; }
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
     if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     const pagou = await deps.transferirTokens(userId, paraId, drink.tokens, `casa-drink-${randomUUID()}`);
     if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
-    publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏` });
+    publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏`, efeito: drinkId });
     registrarEvento(sala.id, 'drink', userId, paraId);
     pontuar(paraId, 2, 'drink_recebido');
     emitirPara(paraId, 'casa.drink', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens });
@@ -2127,7 +2214,7 @@ Responda com UMA palavra:
     const p = sala?.presentes.get(userId);
     const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
     if (!sala || !p || !alvo) { res.status(404).json({ error: 'fora_da_sala' }); return; }
-    publicarMsg(sala, { tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥` });
+    publicarMsg(sala, { tipo: 'sistema', texto: `🥂 ${p.nome} brindou com ${alvo.nome}… esses dois vão longe 🔥`, efeito: 'brinde' });
     emitirPara(alvo.id, 'casa.brinde', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat } });
     res.json({ ok: true });
   });
@@ -2164,6 +2251,9 @@ Responda com UMA palavra:
     void deps.push(userId, { title, body, url: '/casa', tag: `casa-${userId}` }).catch(() => {});
   };
   const ultimaSaudacao = new Map<string, number>();
+  // A Lola anuncia cada casal/mulher só na primeira entrada da noite (não a cada troca de sala).
+  const recebidosNaNoite = new Set<string>();
+  const ultimaChegada = new Map<string, number>();
 
   // ─── Lola mais provocadora: memória da noite ────────────────────────────────
   const ultimaRecepcao = new Map<string, number>();
@@ -2405,7 +2495,7 @@ Responda com UMA palavra:
     const sala = salaDe(req);
     const userId = userDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
-    const lista = [...cabines.values()].filter((c) => c.salaId === sala.id && (c.aberta || c.membros.has(userId)));
+    const lista = [...cabines.values()].filter((c) => c.salaId === sala.id);
     res.json({
       cabines: lista.map((c) => ({
         id: c.id, aberta: c.aberta, souMembro: c.membros.has(userId), espectadores: c.espectadores.size,
@@ -2573,6 +2663,55 @@ Responda com UMA palavra:
     res.json({ ok: true, quente: c.quente });
   });
 
+  // Ações da cabine: como numa casa de swing de verdade, do beijo à transa.
+  // Etapa 0 sempre; preliminares só com a cabine esquentada (todos toparam);
+  // transa quando o tesão da cabine passa de 40.
+  const ACOES_CABINE: Record<string, { etapa: 0 | 1 | 2; calor: number; texto: string }> = {
+    beijo: { etapa: 0, calor: 6, texto: '💋 {eu} puxou {alvo} e deu um beijo molhado, demorado' },
+    pescoco: { etapa: 0, calor: 6, texto: '😮‍💨 {eu} mordeu o pescoço de {alvo} e sussurrou uma safadeza no ouvido' },
+    mao: { etapa: 0, calor: 7, texto: '🤚 {eu} passou a mão no corpo inteiro de {alvo}, sem pressa' },
+    roupa: { etapa: 0, calor: 9, texto: '👙 {eu} tirou a roupa de {alvo} peça por peça' },
+    colo: { etapa: 1, calor: 10, texto: '🍑 {eu} sentou no colo de {alvo} e rebolou devagar' },
+    tocar: { etapa: 1, calor: 11, texto: '🤤 {eu} tocou {alvo} bem onde mais gosta, até arrepiar' },
+    chupar: { etapa: 1, calor: 13, texto: '👅 {eu} caiu de boca em {alvo} e não parou mais' },
+    cavalgar: { etapa: 2, calor: 15, texto: '🔥 {eu} subiu em {alvo} e cavalgou gostoso' },
+    quatro: { etapa: 2, calor: 15, texto: '🍑 {eu} e {alvo} foram de quatro, com força' },
+    papai: { etapa: 2, calor: 14, texto: '🛏️ {eu} deitou {alvo} na cama e foram no papai e mamãe, olho no olho' },
+    gozar: { etapa: 2, calor: 20, texto: '💦 {eu} gozou gostoso com {alvo}' },
+  };
+  app.post('/api/casa/cabine/:id/acao', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    const eu = c?.membros.get(userId);
+    if (!c || !eu) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    const id = String((req.body as any)?.acao || '');
+    const acao = Object.prototype.hasOwnProperty.call(ACOES_CABINE, id) ? ACOES_CABINE[id] : undefined;
+    if (!acao) { res.status(400).json({ error: 'acao' }); return; }
+    const outros = [...c.membros.values()].filter((m) => m.id !== userId);
+    const alvo = outros.find((m) => m.idPublico === String((req.body as any)?.alvo || '')) ?? (outros.length === 1 ? outros[0] : undefined);
+    if (!alvo) { res.status(400).json({ error: 'alvo', message: 'Escolha com quem.' }); return; }
+    if (acao.etapa >= 1 && !c.quente) { res.status(409).json({ error: 'fria', message: 'Primeiro esquentem a cabine: todos precisam topar 🔥' }); return; }
+    if (acao.etapa === 2 && c.calor < 40) { res.status(409).json({ error: 'cedo', message: 'Calma… capricha nas preliminares primeiro 😈' }); return; }
+    if (Date.now() - (c.ultimaAcao.get(userId) ?? 0) < 2500) { res.status(429).json({ error: 'devagar' }); return; }
+    c.ultimaAcao.set(userId, Date.now());
+    c.calor = Math.min(100, c.calor + acao.calor);
+    msgCabine(c, {
+      tipo: 'acao', efeito: id,
+      autor: { id: eu.idPublico, nome: eu.nome, avatar: eu.avatar, cat: eu.cat },
+      texto: acao.texto.replace('{eu}', eu.nome).replace('{alvo}', alvo.nome),
+    });
+    if (!c.liberouTransa && c.calor >= 40) {
+      c.liberouTransa = true;
+      msgCabine(c, { tipo: 'lola', texto: '🔥 Essa cabine já está pegando fogo… liberado: agora é pra transar de verdade 😈' });
+    }
+    if (id === 'gozar' && c.calor >= 100) {
+      c.calor = 55;
+      msgCabine(c, { tipo: 'lola', texto: '💦 Que cabine! Respira, bebe uma água… e se quiserem, tem segundo round 😏' });
+    }
+    avisarCabine(c);
+    res.json({ ok: true, calor: c.calor });
+  });
+
   app.post('/api/casa/cabine/:id/provocacao', deps.requireAuth, async (req, res) => {
     const c = cabineDe(req);
     const userId = userDe(req);
@@ -2590,11 +2729,12 @@ Responda com UMA palavra:
     const userId = userDe(req);
     const sala = c ? salas.get(c.salaId) : null;
     const p = sala?.presentes.get(userId);
-    if (!c || !p || !c.espectadores.has(userId)) { res.status(404).json({ error: 'fora' }); return; }
+    if (!c || !p || c.membros.has(userId)) { res.status(404).json({ error: 'fora' }); return; }
+    for (const id of c.membros.keys()) if (await bloqueados(userId, id)) { res.status(404).json({ error: 'fora' }); return; }
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
     if (!c.entradas.has(userId)) {
       c.entradas.set(userId, { tipo: 'pedido', pessoa: membroDe(p), aprovados: new Set(), convidadoAceitou: true, criadoEm: Date.now() });
-      msgCabine(c, { tipo: 'sistema', texto: `🙋 ${p.nome} pediu para participar` });
+      msgCabine(c, { tipo: 'sistema', texto: c.aberta ? `🙋 ${p.nome} pediu para participar` : `🚪 ${p.nome} bateu na porta e quer entrar` });
       for (const id of c.membros.keys()) {
         emitirPara(id, 'casa.cabine.pedido', { cabineId: c.id, nome: p.nome });
         emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'pedido', nome: p.nome, alvoNome: p.nome, alvoPublico: membroDe(p).idPublico });

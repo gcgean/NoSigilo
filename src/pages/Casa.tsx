@@ -16,6 +16,7 @@ import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
+import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
 import ProtecaoDaCasa from '@/components/ProtecaoDaCasa';
@@ -43,7 +44,7 @@ type Info = {
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -82,6 +83,7 @@ const TEMA_DA_SALA: Record<string, { card: string; botao: string; foco1: string;
   salao: { card: 'bg-gradient-to-br from-fuchsia-950/70 to-purple-950/60 ring-fuchsia-500/30', botao: 'bg-gradient-to-r from-fuchsia-600 to-purple-600', foco1: 'bg-fuchsia-600/25', foco2: 'bg-purple-600/20', fundo: 'bg-zinc-950', chamas: '🔥', selo: 'AQUECENDO' },
   casais: { card: 'bg-gradient-to-br from-rose-950/80 to-pink-950/60 ring-rose-500/40', botao: 'bg-gradient-to-r from-rose-600 to-pink-600', foco1: 'bg-rose-600/30', foco2: 'bg-pink-600/25', fundo: 'bg-zinc-950', chamas: '🔥🔥', selo: 'QUENTE' },
   quarto: { card: 'bg-gradient-to-br from-red-950/90 to-rose-950/80 ring-red-600/50', botao: 'bg-gradient-to-r from-red-700 to-rose-700', foco1: 'bg-red-700/35', foco2: 'bg-rose-900/40', fundo: 'bg-black', chamas: '🔥🔥🔥', selo: 'MUITO QUENTE' },
+  cuckold: { card: 'bg-gradient-to-br from-amber-950/80 to-red-950/90 ring-amber-500/50 shadow-[0_0_24px_rgba(245,158,11,0.25)]', botao: 'bg-gradient-to-r from-amber-600 to-red-700', foco1: 'bg-amber-600/30', foco2: 'bg-red-800/40', fundo: 'bg-black', chamas: '🔥🔥🔥', selo: 'HOMENS LIBERADOS' },
   glory: { card: 'bg-gradient-to-br from-black to-red-950 ring-red-500/70 shadow-[0_0_30px_rgba(220,38,38,0.35)]', botao: 'bg-gradient-to-r from-red-800 to-black ring-1 ring-red-500', foco1: 'bg-red-600/40', foco2: 'bg-red-900/50', fundo: 'bg-black', chamas: '🔥🔥🔥🔥', selo: 'PROIBIDÃO' },
 };
 const temaDaSala = (id: string) => TEMA_DA_SALA[id] ?? TEMA_DA_SALA.salao;
@@ -296,12 +298,21 @@ export default function Casa() {
   const [pessoaAberta, setPessoaAberta] = useState<Pessoa | null>(null);
   const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
   const [respondendo, setRespondendo] = useState<Msg | null>(null);
+  // Efeito animado da sala (drink, brinde).
+  const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
+  const fimDoEfeito = useCallback(() => setEfeito(null), []);
   const [perguntaBrincar, setPerguntaBrincar] = useState<string | null>(null);
   const [reagindoEm, setReagindoEm] = useState<string | null>(null);
   const [convite, setConvite] = useState<Convite | null>(null);
   const [enviandoMidia, setEnviandoMidia] = useState<number | null>(null);
   const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
   const [escolhendoMidia, setEscolhendoMidia] = useState(false);
+  // Envio da sala: visualização única (padrão) ou para todos verem.
+  const [midiaUnica, setMidiaUnica] = useState(true);
+  const midiaUnicaRef = useRef(true);
+  midiaUnicaRef.current = midiaUnica;
+  // Mídias "para todos": endereço carregado para mostrar a miniatura na conversa.
+  const [urlsLivres, setUrlsLivres] = useState<Record<string, { url: string; mime: string | null }>>({});
   const galeriaRef = useRef<HTMLInputElement | null>(null);
   const [vendo, setVendo] = useState<{ url: string; mime: string | null; msg?: Msg } | null>(null);
   const [comentarioMidia, setComentarioMidia] = useState('');
@@ -335,7 +346,7 @@ export default function Casa() {
   useEffect(() => { estadoRef.current = estado; }, [estado]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   const [minhasCabines, setMinhasCabines] = useState<string[]>([]);
-  const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
+  const [cabinesAbertas, setCabinesAbertas] = useState<{ id: string; aberta?: boolean; espectadores: number; souMembro: boolean; membros: { id: string; nome: string; avatar: string | null; cat: Categoria }[] }[]>([]);
   const [conviteCabine, setConviteCabine] = useState<{ cabineId: string; membros: string[] } | null>(null);
   const [propondoPara, setPropondoPara] = useState<Pessoa | null>(null);
   const [sugestoes, setSugestoes] = useState<{ texto: string; nivel: string }[]>([]);
@@ -427,7 +438,10 @@ export default function Casa() {
 
   // Tempo real.
   useEffect(() => {
-    const aoMsg = (d: { sala: string; msg: Msg }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-150), d.msg] } : e);
+    const aoMsg = (d: { sala: string; msg: Msg }) => {
+      setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-150), d.msg] } : e);
+      if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+    };
     const aoReacao = (d: { sala: string; mensagemId: string; reacoes: Record<string, string[]> }) => setEstado((e) => e && e.sala.id === d.sala
       ? { ...e, mensagens: e.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : e);
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
@@ -589,10 +603,11 @@ export default function Casa() {
       setEnviandoMidia(100);
       const revelacao = modoRevelacao.current;
       const propostaId = propostaDaCamera.current;
-      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, ...(propostaId ? { propostaId } : {}) });
+      const livre = !revelacao && !propostaId && !midiaUnicaRef.current;
+      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, livre, ...(propostaId ? { propostaId } : {}) });
       if (propostaId) setMeuDesafio(null);
       if (revelacao) setRevelarAte(0);
-      toast({ title: revelacao ? 'Revelação enviada 👀' : 'Enviado para a sala 🔥', description: 'Cada pessoa abre só 1 vez.' });
+      toast({ title: revelacao ? 'Revelação enviada 👀' : 'Enviado para a sala 🔥', description: livre ? 'Fica aberto para todos da sala verem.' : 'Cada pessoa abre só 1 vez.' });
     } catch (e) {
       toast({ title: (e as Error)?.message || erroDe(e, 'Não foi possível enviar.'), variant: 'destructive' });
     } finally {
@@ -613,6 +628,19 @@ export default function Casa() {
     propostaDaCamera.current = null;
     galeriaRef.current?.click();
   };
+  const carregarLivre = async (m: Msg) => {
+    if (!salaAtual || urlsLivres[m.id]) return;
+    try {
+      const { data } = await apiClient.post(`/casa/${salaAtual}/midia/${m.id}/ver`);
+      setUrlsLivres((u) => ({ ...u, [m.id]: { url: data.url, mime: data.mime ?? null } }));
+    } catch (e) { toast({ title: erroDe(e, 'Esta mídia não está mais disponível.') }); }
+  };
+  // Mídia "para todos": carrega a miniatura sozinha para quem pode ver.
+  useEffect(() => {
+    if (!estado?.eu.podeFalar) return;
+    for (const m of estado.mensagens) if (m.tipo === 'midia' && m.midia?.livre && !urlsLivres[m.id]) void carregarLivre(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estado?.mensagens.length, estado?.eu.podeFalar]);
   const verMidia = async (m: Msg) => {
     if (!salaAtual) return;
     if (m.midia?.preco && !window.confirm(`Abrir a revelação de ${m.autor?.nome} por ${m.midia.preco} tokens? Os tokens vão para ${m.autor?.nome}.`)) return;
@@ -797,20 +825,21 @@ export default function Casa() {
   const AcoesDaCabineAnunciada = ({ texto }: { texto: string }) => {
     // Nome de casal pode ter " e " ("Danny e Gutty"): procura a cabine cujos membros aparecem todos no aviso.
     const acharCabine = () => cabinesAbertas.find((c) => !c.souMembro && c.membros.length > 0 && c.membros.every((mb) => texto.includes(mb.nome)));
-    const fechada = () => toast({ title: 'A porta dessa cabine está fechada 🔒', description: 'Quando eles abrirem, a cabine aparece no topo da sala e no mapa para espiar e pedir para entrar.' });
+    const fechada = () => toast({ title: 'A porta dessa cabine está fechada 🔒', description: 'Dá para bater na porta (pedir pra entrar). Espiar, só quando eles abrirem.' });
     return (
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         <button type="button" className="rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-black/50"
-          onClick={() => { const c = acharCabine(); if (c) setCabineAberta({ id: c.id, modo: 'espiar' }); else fechada(); }}>👀 Espiar</button>
+          onClick={() => { const c = acharCabine(); if (c && c.aberta !== false) setCabineAberta({ id: c.id, modo: 'espiar' }); else if (c) fechada(); else toast({ title: 'Essa cabine já fechou 🌙' }); }}>👀 Espiar</button>
         <button type="button" className="rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-semibold hover:bg-black/50"
           onClick={async () => {
             const c = acharCabine();
-            if (!c) { fechada(); return; }
+            if (!c) { toast({ title: 'Essa cabine já fechou 🌙' }); return; }
             try {
-              await apiClient.post(`/casa/cabine/${c.id}/espiar`);
+              const aberta = c.aberta !== false;
+              if (aberta) await apiClient.post(`/casa/cabine/${c.id}/espiar`);
               await apiClient.post(`/casa/cabine/${c.id}/pedir`);
-              toast({ title: '🙋 Pedido enviado', description: 'Você entra se todos lá dentro concordarem.' });
-              setCabineAberta({ id: c.id, modo: 'espiar' });
+              toast({ title: aberta ? '🙋 Pedido enviado' : '🚪 Você bateu na porta', description: 'Você entra se todos lá dentro concordarem.' });
+              if (aberta) setCabineAberta({ id: c.id, modo: 'espiar' });
             } catch (e) { toast({ title: erroDe(e, 'Não deu para pedir agora.'), variant: 'destructive' }); }
           }}>🙋 Pedir pra entrar</button>
       </div>
@@ -832,9 +861,9 @@ export default function Casa() {
         {estado?.eu.podeFalar && (
           <>
             <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
-            {m.tipo !== 'lola' && (
-              <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">↩️ Responder</button>
-            )}
+            <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">
+              ↩️ {m.tipo === 'lola' ? 'Responder a Lola' : 'Responder'}
+            </button>
           </>
         )}
         {reagindoEm === m.id && (
@@ -929,9 +958,9 @@ export default function Casa() {
         ))}
       </div>
 
-      {cabinesAbertas.length > 0 && (
+      {cabinesAbertas.some((c) => c.aberta !== false || c.souMembro) && (
         <div className="relative flex gap-2 overflow-x-auto border-b border-white/10 px-3 py-2 [scrollbar-width:none]">
-          {cabinesAbertas.map((c) => (
+          {cabinesAbertas.filter((c) => c.aberta !== false || c.souMembro).map((c) => (
             <button
               key={c.id}
               type="button"
@@ -984,6 +1013,19 @@ export default function Casa() {
                 return (
                   <>
                   <p className="text-[11px] text-white/60">{m.texto}</p>
+                  {m.midia?.livre ? (
+                    !estado.eu.podeFalar ? (
+                      <p className="mt-0.5 rounded-2xl bg-white/5 px-3 py-2 text-sm text-white/50">🔒 Assine para ver</p>
+                    ) : urlsLivres[m.id] ? (
+                      <button type="button" onClick={() => { setComentarioMidia(''); setVendo({ ...urlsLivres[m.id], msg: m }); }} className="mt-1 block overflow-hidden rounded-2xl">
+                        {urlsLivres[m.id].mime?.startsWith('video/')
+                          ? <video src={resolveServerUrl(urlsLivres[m.id].url)} muted playsInline preload="metadata" className="max-h-56 max-w-[220px] object-cover" />
+                          : <img src={resolveServerUrl(urlsLivres[m.id].url)} alt="" draggable={false} className="max-h-56 max-w-[220px] object-cover" />}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => void carregarLivre(m)} className="mt-0.5 rounded-2xl bg-white/10 px-3 py-2 text-sm">{m.midia.tipo === 'video' ? '🎥' : '📸'} Ver</button>
+                    )
+                  ) : (
                   <button
                     type="button"
                     disabled={minha || vista || !estado.eu.podeFalar}
@@ -994,6 +1036,7 @@ export default function Casa() {
                     {m.midia?.tipo === 'video' ? '🎥' : '📸'}
                     {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : !estado.eu.podeFalar ? 'Assine para ver' : m.midia?.preco ? `Abrir por ${m.midia.preco} tokens` : 'Toque para ver (1 vez)'}
                   </button>
+                  )}
                   <AcoesDaMsg m={m} />
                   </>
                 );
@@ -1068,9 +1111,15 @@ export default function Casa() {
             </div>
           )}
           {escolhendoMidia && enviandoMidia === null && (
-            <div className="absolute bottom-full left-3 mb-2 flex gap-2 rounded-2xl bg-zinc-900 p-2 shadow-xl ring-1 ring-white/10">
-              <button type="button" className="rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirCamera(false); }}>📷 Câmera</button>
-              <button type="button" className="rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirGaleria(); }}>🖼️ Galeria</button>
+            <div className="absolute bottom-full left-3 mb-2 w-[min(20rem,calc(100vw-1.5rem))] space-y-2 rounded-2xl bg-zinc-900 p-2 shadow-xl ring-1 ring-white/10">
+              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/40 p-1 text-xs">
+                <button type="button" onClick={() => setMidiaUnica(true)} className={cn('rounded-lg px-2 py-1.5', midiaUnica ? 'bg-rose-600 font-semibold' : 'text-white/70')}>👁️ Visualização única</button>
+                <button type="button" onClick={() => setMidiaUnica(false)} className={cn('rounded-lg px-2 py-1.5', !midiaUnica ? 'bg-rose-600 font-semibold' : 'text-white/70')}>🌍 Para todos verem</button>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirCamera(false); }}>📷 Câmera</button>
+                <button type="button" className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirGaleria(); }}>🖼️ Galeria</button>
+              </div>
             </div>
           )}
           {enviandoMidia !== null && (
@@ -1358,6 +1407,7 @@ export default function Casa() {
         </div>
       )}
 
+      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
       <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
       <Dialog open={!!perguntaBrincar} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>

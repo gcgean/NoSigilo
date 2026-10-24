@@ -20,6 +20,7 @@ const ORDEM: Record<string, { area: string; fundo: string; brilho: string; borda
   salao: { area: '1 / 1 / 2 / 4', fundo: 'from-fuchsia-950 to-purple-950', brilho: 'rgba(217,70,239,', borda: 'border-fuchsia-500/50' },
   casais: { area: '2 / 1 / 3 / 2', fundo: 'from-rose-950 to-pink-950', brilho: 'rgba(244,63,94,', borda: 'border-rose-500/60' },
   quarto: { area: '2 / 2 / 3 / 3', fundo: 'from-red-950 to-black', brilho: 'rgba(220,38,38,', borda: 'border-red-600/70' },
+  cuckold: { area: '3 / 1 / 4 / 4', fundo: 'from-amber-950 to-red-950', brilho: 'rgba(245,158,11,', borda: 'border-amber-500/70' },
   glory: { area: '2 / 3 / 3 / 4', fundo: 'from-black to-red-950', brilho: 'rgba(185,28,28,', borda: 'border-red-500/80' },
 };
 
@@ -43,7 +44,7 @@ export default function MapaDaCasa({ salas, onEntrar, onEspiar }: {
         @keyframes nsPulso { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
       `}</style>
       <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🗺️ Mapa da Casa · toque para entrar</p>
-      <div className="grid aspect-[4/3] w-full gap-2" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: '1.1fr 1fr' }}>
+      <div className="grid aspect-[1/1] w-full gap-2 sm:aspect-[4/3]" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: '1.1fr 1fr 0.8fr' }}>
         {salas.map((s) => {
           const tema = ORDEM[s.id] ?? ORDEM.salao;
           const naCabine = (s.cabines ?? []).reduce((n, c) => n + c.pessoas, 0);

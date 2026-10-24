@@ -3641,7 +3641,7 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60 }).expect(200);
     const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
     expect(info.aberta).toBe(true);
-    expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto', 'glory']);
+    expect(info.salas.map((s: any) => s.id)).toEqual(['salao', 'casais', 'quarto', 'cuckold', 'glory']);
     expect(info.salas[0]).toMatchObject({ pessoas: [], cabines: [] });
 
     const entrouCasal = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
@@ -3805,11 +3805,37 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/porta`).set(auth(casal.token)).send({ abrir: false }).expect(200);
     expect((await request(ctx.app).get('/api/casa').set(auth(homens[2].token)).expect(200)).body.salas.find((s: any) => s.id === 'salao').cabines.find((c: any) => c.id === cabMapa.cabineId)).toMatchObject({ aberta: false, tipos: [] });
 
+    // Ações da cabine: beijo sempre; preliminares só esquentada; transa só com tesão ≥ 40.
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'beijo' }).expect(200);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(409);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(casal.token)).send({ quer: true }).expect(200);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200);
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(200);
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'cavalgar' }).expect(409)).body.error).toBe('cedo');
+    await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'inventada' }).expect(400);
+    const estadoAcoes = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(estadoAcoes.calor).toBe(19);
+    expect(estadoAcoes.mensagens.filter((m: any) => m.tipo === 'acao').map((m: any) => m.efeito)).toEqual(['beijo', 'chupar']);
+
+    // Mídia "para todos": abre quantas vezes quiser, inclusive quem enviou.
+    const midiaLivre = `m-livre-${Date.now()}`;
+    await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'livre.webp', 'image/webp', 0, 0, 'chat', ?)", [midiaLivre, String(casal.user.id), new Date().toISOString()]);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/midia').set(auth(casal.token)).send({ mediaId: midiaLivre, livre: true }).expect(200);
+    const comLivre = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    const msgLivre = comLivre.mensagens.find((m: any) => m.tipo === 'midia' && m.midia?.livre);
+    expect(msgLivre?.texto).toBe('📸 Foto para todos');
+    await request(ctx.app).post(`/api/casa/salao/midia/${msgLivre.id}/ver`).set(auth(casal.token)).expect(200);
+    await request(ctx.app).post(`/api/casa/salao/midia/${msgLivre.id}/ver`).set(auth(casal.token)).expect(200);
+
     // Rádio: sem playlist não toca; playlist é só do admin.
     expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();
     await request(ctx.app).get('/api/casa/admin/playlist').set(auth(homens[0].token)).expect(403);
     expect((await request(ctx.app).get('/api/casa/admin/playlist').set(auth(casal.token)).expect(200)).body.faixas).toEqual([]);
     await request(ctx.app).get('/api/casa/musica/..%2F..%2Fdata.db').expect(404);
+    // Quarto Cuckold: homens entram à vontade, sem cota.
+    for (const h of homens) await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(h.token)).expect(200);
+    for (const h of homens) await request(ctx.app).post('/api/casa/cuckold/sair').set(auth(h.token)).expect(200);
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
 
     // Modo teste: só admin e convidados veem a Casa aberta; a página pública e os outros veem fechada.

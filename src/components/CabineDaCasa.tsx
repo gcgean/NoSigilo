@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { profileService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 
 /**
  * Cabine d'A Casa (backend: rotas /api/casa/cabine/*).
@@ -16,12 +17,28 @@ import { cn } from '@/lib/utils';
  * para entrar — todos de dentro precisam aprovar. Mídia sempre de visualização única.
  */
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: string };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' } };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' }; efeito?: string };
+
+// Ações da cabine (o backend confere etapa e tesão). Etapa 1 pede a cabine esquentada; etapa 2, tesão ≥ 40.
+const ACOES: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2 }[] = [
+  { id: 'beijo', emoji: '💋', rotulo: 'Beijar', etapa: 0 },
+  { id: 'pescoco', emoji: '😮‍💨', rotulo: 'Pescoço', etapa: 0 },
+  { id: 'mao', emoji: '🤚', rotulo: 'Passar a mão', etapa: 0 },
+  { id: 'roupa', emoji: '👙', rotulo: 'Tirar a roupa', etapa: 0 },
+  { id: 'colo', emoji: '🍑', rotulo: 'Sentar no colo', etapa: 1 },
+  { id: 'tocar', emoji: '🤤', rotulo: 'Tocar', etapa: 1 },
+  { id: 'chupar', emoji: '👅', rotulo: 'Cair de boca', etapa: 1 },
+  { id: 'cavalgar', emoji: '🔥', rotulo: 'Cavalgar', etapa: 2 },
+  { id: 'quatro', emoji: '🍑', rotulo: 'De quatro', etapa: 2 },
+  { id: 'papai', emoji: '🛏️', rotulo: 'Papai e mamãe', etapa: 2 },
+  { id: 'gozar', emoji: '💦', rotulo: 'Gozar', etapa: 2 },
+];
+const ETAPAS = ['😏 Esquentando', '🔥 Preliminares', '💦 Transa'];
 type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovados: number; convidadoAceitou: boolean };
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
-  quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number;
+  quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number; calor?: number;
 };
 
 const erroDe = (e: unknown, padrao: string) => (e as any)?.response?.data?.message || padrao;
@@ -56,6 +73,10 @@ export default function CabineDaCasa({
   const [vendo, setVendo] = useState<{ url: string; mime: string | null } | null>(null);
   const [convidando, setConvidando] = useState(false);
   const [enviando, setEnviando] = useState<number | null>(null);
+  const [acoesAbertas, setAcoesAbertas] = useState(false);
+  const [alvo, setAlvo] = useState<string | null>(null);
+  const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
+  const fimDoEfeito = useCallback(() => setEfeito(null), []);
   const camera = useRef<HTMLInputElement>(null);
   const fim = useRef<HTMLDivElement>(null);
 
@@ -79,7 +100,9 @@ export default function CabineDaCasa({
   useEffect(() => {
     const aoEstado = (d: { cabine: Cabine }) => { if (d.cabine.id === cabineId) setCab(d.cabine); };
     const aoMsg = (d: { cabineId: string; msg: Msg }) => {
-      if (d.cabineId === cabineId) setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
+      if (d.cabineId !== cabineId) return;
+      setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
+      if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
     };
     const aoFechou = (d: { cabineId: string; porta?: boolean }) => {
       if (d.cabineId !== cabineId) return;
@@ -124,6 +147,12 @@ export default function CabineDaCasa({
     } catch (e) { toast({ title: erroDe(e, 'Essa mídia não está mais disponível.') }); }
     setVistas((v) => [...v, m.id]);
   };
+  const agir = async (acao: string) => {
+    const outros = (cab?.membros ?? []).filter((m) => m.id !== meuIdPublico);
+    const com = outros.length === 1 ? outros[0].id : alvo;
+    if (!com) { toast({ title: 'Escolha com quem primeiro 😏' }); return; }
+    await post('acao', { acao, alvo: com });
+  };
   const sair = async () => {
     await post('sair');
     onSaiu();
@@ -138,9 +167,15 @@ export default function CabineDaCasa({
   }
   const idsDentro = new Set(cab.membros.map((m) => m.id));
   return (
-    <div className="fixed inset-0 z-[9993] flex flex-col bg-gradient-to-b from-zinc-950 via-[#1a0a14] to-zinc-950 text-white"
+    <div className="fixed inset-0 z-[9993] flex flex-col bg-gradient-to-b from-[#2a0010] via-[#160008] to-black text-white"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+      {/* Luz vermelha de cabine: deixa claro que aqui não é a sala. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(225,29,72,0.35),transparent_70%)]" />
+      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
+      <div className="relative bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 py-1 text-center text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_0_20px_rgba(225,29,72,0.6)]">
+        🔒 Cabine privada {cab.aberta ? '· porta aberta 👀' : '· só vocês'}
+      </div>
+      <div className="relative flex items-center gap-2 border-b border-rose-500/30 px-3 py-2">
         <button type="button" onClick={onVoltar} className="rounded-full p-2 hover:bg-white/10" aria-label="Voltar à sala"><ArrowLeft className="h-5 w-5" /></button>
         <div className="flex -space-x-2">{cab.membros.slice(0, 4).map((m) => <Foto key={m.id} p={m} />)}</div>
         <div className="min-w-0 flex-1">
@@ -228,15 +263,17 @@ export default function CabineDaCasa({
       <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
         {cab.mensagens.map((m) => m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
+        ) : m.tipo === 'acao' ? (
+          <p key={m.id} className="mx-auto w-fit max-w-[92%] rounded-full bg-gradient-to-r from-rose-700/70 to-red-800/70 px-3 py-1.5 text-center text-sm font-semibold italic shadow-[0_0_14px_rgba(225,29,72,0.45)]">{m.texto}</p>
         ) : m.tipo === 'lola' ? (
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             <p className="whitespace-pre-line text-sm">{m.texto}</p>
           </div>
         ) : (
-          <div key={m.id} className="flex items-start gap-2">
+          <div key={m.id} className={cn('flex items-start gap-2', m.autor?.id === meuIdPublico && 'flex-row-reverse')}>
             {m.autor && <Foto p={m.autor} tamanho="h-7 w-7" />}
-            <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
+            <div className={cn('min-w-0 max-w-[85%] rounded-2xl px-3 py-1.5', m.autor?.id === meuIdPublico ? 'rounded-tr-sm bg-rose-700/60' : 'rounded-tl-sm bg-white/10')}>
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
               {m.tipo === 'midia' ? (() => {
                 const minha = m.autor?.id === meuIdPublico;
@@ -254,8 +291,53 @@ export default function CabineDaCasa({
         <div ref={fim} />
       </div>
 
+      {cab.souMembro && acoesAbertas && (() => {
+        const calor = cab.calor ?? 0;
+        const outros = cab.membros.filter((m) => m.id !== meuIdPublico);
+        return (
+          <div className="relative space-y-2 border-t border-rose-500/30 bg-black/50 px-3 py-2">
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="font-bold text-rose-200">Tesão da cabine</span>
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-gradient-to-r from-amber-400 via-rose-500 to-red-600 transition-all" style={{ width: `${calor}%` }} />
+              </div>
+              <span className="w-8 text-right">{calor}%</span>
+            </div>
+            {outros.length > 1 && (
+              <div className="flex gap-1 overflow-x-auto">
+                <span className="shrink-0 py-1 text-[11px] text-white/60">Com:</span>
+                {outros.map((o) => (
+                  <button key={o.id} type="button" onClick={() => setAlvo(o.id)}
+                    className={cn('shrink-0 rounded-full px-2 py-1 text-[11px]', alvo === o.id ? 'bg-rose-600 font-bold' : 'bg-white/10')}>{o.nome}</button>
+                ))}
+              </div>
+            )}
+            {ETAPAS.map((nome, etapa) => {
+              const travada = etapa === 1 ? !cab.quente : etapa === 2 ? !cab.quente || calor < 40 : false;
+              return (
+                <div key={nome}>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
+                    {nome}{travada && (etapa === 1 || !cab.quente ? ' · 🔒 esquentem a cabine (todos topam)' : ' · 🔒 tesão em 40%')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ACOES.filter((a) => a.etapa === etapa).map((a) => (
+                      <button key={a.id} type="button" disabled={travada} onClick={() => void agir(a.id)}
+                        className={cn('rounded-full px-2.5 py-1.5 text-xs font-semibold', travada ? 'bg-white/5 text-white/30' : 'bg-gradient-to-r from-rose-600 to-red-700 active:scale-95')}>
+                        {a.emoji} {a.rotulo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
       {cab.souMembro ? (
-        <form className="flex items-center gap-2 border-t border-white/10 px-3 py-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+        <form className="relative flex items-center gap-2 border-t border-rose-500/30 px-3 py-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+          <button type="button" onClick={() => setAcoesAbertas((v) => !v)}
+            className={cn('flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold', acoesAbertas ? 'bg-rose-600' : 'bg-gradient-to-r from-rose-700 to-red-700')}
+            aria-label="Ações na cabine">🔥</button>
           <input ref={camera} type="file" accept="image/*,video/*" capture="user" className="hidden" onChange={(e) => void enviarMidia(e.target.files?.[0])} />
           <button type="button" onClick={() => camera.current?.click()} disabled={enviando !== null}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10" aria-label="Foto ou vídeo ao vivo">
