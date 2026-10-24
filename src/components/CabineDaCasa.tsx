@@ -16,7 +16,7 @@ import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
  * aberta, quem está na sala espia (lê e vê as mídias, sem falar) e pode pedir
  * para entrar — todos de dentro precisam aprovar. Mídia sempre de visualização única.
  */
-type Pessoa = { id: string; nome: string; avatar: string | null; cat: string };
+type Pessoa = { id: string; nome: string; avatar: string | null; cat: string; naCasa?: boolean };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' }; efeito?: string;
   resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
@@ -289,7 +289,16 @@ export default function CabineDaCasa({
         <button type="button" onClick={onVoltar} className="rounded-full p-2 hover:bg-white/10" aria-label="Voltar à sala"><ArrowLeft className="h-5 w-5" /></button>
         <div className="flex -space-x-2">{cab.membros.slice(0, 4).map((m) => <Foto key={m.id} p={m} />)}</div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">🚪 {cab.membros.map((m) => m.nome).join(', ')}</p>
+          <p className="truncate text-sm font-semibold">
+            🚪 {cab.membros.map((m, i) => (
+              <span key={m.id} className={cn(m.naCasa === false && 'text-white/45')}>
+                {i > 0 && ', '}{m.nome}{m.naCasa === false && ' 📴'}
+              </span>
+            ))}
+          </p>
+          {cab.membros.some((m) => m.naCasa === false && m.id !== meuIdPublico) && (
+            <p className="text-[11px] font-semibold text-amber-300">📴 {cab.membros.filter((m) => m.naCasa === false && m.id !== meuIdPublico).map((m) => m.nome).join(', ')} saiu da Casa · volta em até 5 min ou sai da cabine</p>
+          )}
           <p className="text-[11px] text-white/60">
             {cab.aberta ? `👀 Porta aberta · ${cab.espectadores} espiando` : '🔒 Porta fechada'}
             {cab.souEspectador ? ' · você está espiando' : ''}

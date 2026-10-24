@@ -332,6 +332,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
     /** Tesão da cabine (0–100): sobe com as ações e libera a transa a partir de 40. */
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
+    /** Quem saiu da Casa (fechou o app) e desde quando: volta em 5 min ou sai da cabine. */
+    ausentes: Map<string, number>;
   };
   const cabines = new Map<string, Cabine>();
   const MAX_NA_CABINE = 6;
@@ -341,7 +343,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     return {
       id: c.id,
       salaId: c.salaId,
-      membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat })),
+      membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat, naCasa: estaNaCasa(m.id) })),
       aberta: c.aberta,
       votosPorta: c.porta.size,
       voteiPorta: c.porta.has(userId),
@@ -420,7 +422,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
       topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
-      calor: 0, liberouTransa: false, ultimaAcao: new Map(),
+      calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(),
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -428,6 +430,45 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     emitirPara(a.id, 'casa.cabine', { cabineId: c.id, com: b.nome });
     emitirPara(b.id, 'casa.cabine', { cabineId: c.id, com: a.nome });
     return c;
+  };
+  // Na Casa = presente em alguma sala (o ping do app chega a cada 25 s).
+  const estaNaCasa = (userId: string) => [...salas.values()].some((s) => s.presentes.has(userId));
+  const AUSENCIA_MAX_MS = 5 * 60_000;
+  const tirarDaCabine = (c: Cabine, userId: string, texto: string) => {
+    c.membros.delete(userId);
+    c.porta.delete(userId);
+    c.topamEsquentar.delete(userId);
+    c.ausentes.delete(userId);
+    if (c.membros.size === 0) { fecharCabine(c); return; }
+    conferirQuente(c);
+    c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
+    msgCabine(c, { tipo: 'sistema', texto });
+    avisarCabine(c);
+  };
+  const conferirAusentes = (c: Cabine, agora: number) => {
+    let mudou = false;
+    for (const [id, m] of [...c.membros]) {
+      const fora = c.ausentes.get(id);
+      if (estaNaCasa(id)) {
+        if (fora) { c.ausentes.delete(id); msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} voltou pra Casa` }); mudou = true; }
+        continue;
+      }
+      if (!fora) {
+        c.ausentes.set(id, agora);
+        msgCabine(c, {
+          tipo: 'lola',
+          texto: c.membros.size === 2
+            ? `📴 ${m.nome} saiu da Casa. Se voltar em 5 minutos, continua aqui… Pra não perder o clima, toquem em "Continuar no chat" e sigam no chat do NoSigilo 😉`
+            : `📴 ${m.nome} saiu da Casa. Se voltar em 5 minutos, continua aqui; senão, sai da cabine.`,
+        });
+        mudou = true;
+      } else if (agora - fora > AUSENCIA_MAX_MS) {
+        tirarDaCabine(c, id, `${m.nome} não voltou e saiu da cabine`);
+        if (!cabines.has(c.id)) return;
+        mudou = false;
+      }
+    }
+    if (mudou) avisarCabine(c);
   };
   const fecharCabine = (c: Cabine) => {
     for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.fechou', { cabineId: c.id });
@@ -1120,6 +1161,8 @@ Responda com UMA palavra:
     for (const [id, c] of convites) if (agora - c.criadoEm > 120_000) convites.delete(id);
     for (const c of [...cabines.values()]) {
       if (!noite) { fecharCabine(c); continue; }
+      conferirAusentes(c, agora);
+      if (!cabines.has(c.id)) continue;
       if (c.quente && agora - c.ultimaProvocacao > 3 * 60_000 && agora - c.ultimaFala > 45_000) provocar(c, Math.random() < 0.3);
       let mudou = false;
       for (const [id, t] of c.espectadores) if (agora - t > PING_EXPIRA_MS) { c.espectadores.delete(id); mudou = true; }
@@ -3048,14 +3091,7 @@ Responda com UMA palavra:
     if (c.espectadores.delete(userId)) { avisarCabine(c); res.json({ ok: true }); return; }
     const m = c.membros.get(userId);
     if (!m) { res.json({ ok: true }); return; }
-    c.membros.delete(userId);
-    c.porta.delete(userId);
-    c.topamEsquentar.delete(userId);
-    if (c.membros.size === 0) { fecharCabine(c); res.json({ ok: true }); return; }
-    conferirQuente(c);
-    c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
-    msgCabine(c, { tipo: 'sistema', texto: `${m.nome} saiu da cabine` });
-    avisarCabine(c);
+    tirarDaCabine(c, userId, `${m.nome} saiu da cabine`);
     res.json({ ok: true });
   });
 

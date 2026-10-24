@@ -3855,6 +3855,14 @@ describe('nosigilo backend', () => {
     const comResposta = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
     expect(comResposta.mensagens.find((m: any) => m.texto === 'que delícia')?.resposta?.id).toBe(beijoMsg.id);
 
+    // Quem sai da Casa aparece como fora na cabine (e volta ao entrar de novo).
+    await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[0].token)).expect(200);
+    const comAusente = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(comAusente.membros.find((m: any) => m.id === String(homens[0].user.id))?.naCasa).toBe(false);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
+    const voltou = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+    expect(voltou.membros.find((m: any) => m.id === String(homens[0].user.id))?.naCasa).toBe(true);
+
     // Mídia "para todos": abre quantas vezes quiser, inclusive quem enviou.
     const midiaLivre = `m-livre-${Date.now()}`;
     await run(ctx.db, "INSERT INTO media (id, user_id, filename, mime_type, is_private, is_main, source, created_at) VALUES (?, ?, 'livre.webp', 'image/webp', 0, 0, 'chat', ?)", [midiaLivre, String(casal.user.id), new Date().toISOString()]);
