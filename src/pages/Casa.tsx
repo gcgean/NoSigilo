@@ -723,6 +723,8 @@ export default function Casa() {
       if (semSaldo) setComprarAberto(true);
     }
   };
+  // Desafio que esbarrou na falta de tokens: reabre sozinho (com o texto) depois da compra.
+  const desafioPendente = useRef<Pessoa | null>(null);
   const abrirProposta = async (p: Pessoa) => {
     setPessoaAberta(null);
     setPropondoPara(p);
@@ -740,8 +742,11 @@ export default function Casa() {
       toast({ title: `😈 Desafio enviado para ${alvo.nome}`, description: `${tokensDesafio} tokens guardados: só saem se cumprir; se não, voltam pra você.` });
     } catch (e) {
       const semSaldo = (e as any)?.response?.status === 402;
+      // Sem tokens: fecha o desafio (o texto fica guardado) e abre a compra por cima.
+      if (semSaldo) { desafioPendente.current = alvo; setPropondoPara(null); }
       toast({
-        title: erroDe(e, 'Não foi possível enviar o desafio.'),
+        title: semSaldo ? `Faltam tokens: o desafio vale ${tokensDesafio} 🪙` : erroDe(e, 'Não foi possível enviar o desafio.'),
+        description: semSaldo ? 'Compre aqui mesmo e mande o desafio de novo (o texto fica guardado).' : undefined,
         variant: 'destructive',
         action: semSaldo ? <ToastAction altText="Comprar tokens" onClick={() => setComprarAberto(true)}>Comprar tokens</ToastAction> : undefined,
       });
@@ -1335,7 +1340,11 @@ export default function Casa() {
         <DialogContent className="z-[9996] max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader><DialogTitle>🪙 Seus tokens acabaram</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">Compre aqui mesmo, sem sair da Casa. Pelo Pix, os tokens caem em segundos e o saldo no topo da sala atualiza sozinho.</p>
-          <ComprarTokens novaAba aoCreditar={() => { setComprarAberto(false); toast({ title: '🪙 Tokens na conta!', description: 'Pode voltar pra brincadeira 😈' }); }} />
+          <ComprarTokens novaAba aoCreditar={() => {
+            setComprarAberto(false);
+            toast({ title: '🪙 Tokens na conta!', description: 'Pode voltar pra brincadeira 😈' });
+            if (desafioPendente.current) { setPropondoPara(desafioPendente.current); desafioPendente.current = null; }
+          }} />
         </DialogContent>
       </Dialog>
       <Dialog open={avisosAbertos} onOpenChange={setAvisosAbertos}>
