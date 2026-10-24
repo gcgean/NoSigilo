@@ -367,6 +367,10 @@ export default function Casa() {
   const propostaDaCamera = useRef<string | null>(null);
   const segundosMeuDesafio = useSegundosAte(meuDesafio?.prazo);
   const [cruzados, setCruzados] = useState<{ id: string; nome: string; avatar: string | null; cat: Categoria } | null>(null);
+  // Uma janela por vez: o que chegou de alguém (convite, decisão, desafio, drink, olhares) vem antes;
+  // pulseira, "Quero brincar" e o convite de assinatura esperam a vez.
+  const recebidoAgora: 'convite' | 'conviteCabine' | 'decisao' | 'proposta' | 'drink' | 'cruzados' | null =
+    convite ? 'convite' : conviteCabine ? 'conviteCabine' : decisao ? 'decisao' : propostaRecebida ? 'proposta' : drinkRecebido ? 'drink' : cruzados ? 'cruzados' : null;
   const modoRevelacao = useRef(false);
   const segundosRevelacao = useSegundosAte(revelarAte > Date.now() ? new Date(revelarAte).toISOString() : undefined);
   const fimDaLista = useRef<HTMLDivElement>(null);
@@ -1231,7 +1235,7 @@ export default function Casa() {
         </div>
       )}
 
-      <Dialog open={convitePremium} onOpenChange={setConvitePremium}>
+      <Dialog open={convitePremium && !recebidoAgora && !escolhendoPulseira && !perguntaBrincar} onOpenChange={setConvitePremium}>
         <DialogContent className="z-[9995] max-w-sm overflow-hidden border-rose-500/50 bg-gradient-to-br from-zinc-950 via-fuchsia-950 to-rose-900 text-white">
           <div className="space-y-3 text-center">
             <p className="text-4xl">👀🔥</p>
@@ -1248,7 +1252,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={escolhendoPulseira && !cabineAberta} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
+      <Dialog open={escolhendoPulseira && !cabineAberta && !recebidoAgora} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
         <DialogContent className="z-[9995] max-w-sm">
           <DialogHeader><DialogTitle>Escolha sua pulseira da noite</DialogTitle></DialogHeader>
           <p className="-mt-2 text-xs text-muted-foreground">Como numa casa de verdade: todo mundo vê a sua cor e sabe o que você topa hoje. Dá para trocar quando quiser.</p>
@@ -1309,7 +1313,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!propostaRecebida} onOpenChange={(v) => !v && void responderProposta(false)}>
+      <Dialog open={recebidoAgora === 'proposta'} onOpenChange={(v) => !v && void responderProposta(false)}>
         <DialogContent className="z-[9995] max-w-xs">
           {propostaRecebida && (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -1326,7 +1330,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!decisao} onOpenChange={(v) => { if (!v) setDecisao(null); }}>
+      <Dialog open={recebidoAgora === 'decisao'} onOpenChange={(v) => { if (!v) setDecisao(null); }}>
         <DialogContent className="z-[9996] max-w-xs text-center">
           <DialogHeader>
             <DialogTitle>
@@ -1405,7 +1409,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!cruzados} onOpenChange={(v) => !v && setCruzados(null)}>
+      <Dialog open={recebidoAgora === 'cruzados'} onOpenChange={(v) => !v && setCruzados(null)}>
         <DialogContent className="z-[9995] max-w-xs">
           {cruzados && (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -1441,7 +1445,7 @@ export default function Casa() {
         />
       )}
 
-      <Dialog open={!!conviteCabine} onOpenChange={(v) => !v && void responderConviteCabine(false)}>
+      <Dialog open={recebidoAgora === 'conviteCabine'} onOpenChange={(v) => !v && void responderConviteCabine(false)}>
         <DialogContent className="z-[9995] max-w-xs">
           <DialogHeader><DialogTitle>🚪 Convite para a cabine</DialogTitle></DialogHeader>
           <p className="text-sm"><b>{conviteCabine?.membros.join(', ')}</b> te chamaram para entrar na cabine deles 😈</p>
@@ -1498,7 +1502,7 @@ export default function Casa() {
 
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
       {!info?.teste && <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />}
-      <Dialog open={!!drinkRecebido} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
+      <Dialog open={recebidoAgora === 'drink'} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
         <DialogContent className="z-[9995] max-w-xs">
           {drinkRecebido && (
             <div className="flex flex-col items-center gap-3 text-center">
@@ -1521,7 +1525,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
-      <Dialog open={!!perguntaBrincar} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
+      <Dialog open={!!perguntaBrincar && !recebidoAgora && !escolhendoPulseira && !cabineAberta} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
         <DialogContent className="z-[9995] max-w-xs text-center">
           <DialogHeader><DialogTitle>💋 A Lola quer saber…</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground">Você quer entrar nas brincadeiras quentes da noite? A Lola só sorteia quem topar. Dá para mudar a qualquer hora no botão "Quero brincar".</p>
@@ -1758,7 +1762,7 @@ export default function Casa() {
       {sala}
       <FeedbackDaCasa aberto={feedbackAberto} onFechar={() => setFeedbackAberto(false)} />
 
-      <Dialog open={!!convite} onOpenChange={(v) => !v && void responderConvite(false)}>
+      <Dialog open={recebidoAgora === 'convite'} onOpenChange={(v) => !v && void responderConvite(false)}>
         <DialogContent className="z-[9999] max-w-xs">
           <DialogHeader><DialogTitle>🚪 Convite pra cabine</DialogTitle></DialogHeader>
           {convite && (
