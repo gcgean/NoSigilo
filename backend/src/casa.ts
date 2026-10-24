@@ -537,15 +537,21 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   // ─── Moderação da Lola ─────────────────────────────────────────────────────
   // Conversa sexual explícita entre adultos é PERMITIDA. A Lola só age em:
-  // menor de idade e coerção (expulsa na hora), Pix/dinheiro e contato de fora
-  // (bloqueia a mensagem; na 2ª vez expulsa) e ofensa (avisa; na 2ª expulsa).
+  // menor de idade e coerção (expulsa na hora), Pix/dinheiro (bloqueia; na 2ª vez
+  // expulsa), contato de fora (pedir ou mandar: só bloqueia e avisa, nunca expulsa)
+  // e ofensa (avisa; na 2ª expulsa).
   const avisosDaNoite = new Map<string, number>(); // userId -> avisos
   const expulsos = new Map<string, string>(); // userId -> chave da noite
   const contadoresDaNoite = { expulsoes: 0, avisos: 0, denuncias: 0 };
   const estaExpulso = (userId: string) => !!chaveDaNoite && expulsos.get(userId) === chaveDaNoite;
   const BLOQUEIO_RAPIDO: Array<{ cat: 'dinheiro' | 'contato'; re: RegExp; aviso: string }> = [
     { cat: 'dinheiro', re: /\bpix\b|chave pix|transfer[eê]ncia|\bcobro\b|\bcach[eê]\b|r\$\s*\d|\bprograma\s+(completo|com\s+valor)/i, aviso: 'Aqui não rola Pix, cachê nem programa: A Casa é só entre liberais 😉' },
-    { cat: 'contato', re: /(\d[\s().-]?){9,}|\b(whats(app)?|zap|wpp|telegram|insta(gram)?|onlyfans|privacy)\b/i, aviso: 'Contato de fora não vale na sala: chame a pessoa pra cabine e, se rolar, continuem no chat do NoSigilo 😉' },
+    {
+      cat: 'contato',
+      // Mandar contato (número, @, redes) ou pedir ("me passa seu número", "qual seu insta"…).
+      re: /(\d[\s().-]?){9,}|\b(whats(app)?|zap|zapzap|wpp|telegram|insta(gram)?|onlyfans|privacy|kik|signal|discord|skype|tiktok|facebook|face)\b|(^|\s)@[a-z0-9_.]{3,}|\b(passa|passe|manda|mande|me d[aáê]|qual|tem|deixa|add)\b[^.!?]{0,25}\b(n[uú]mero|contato|cel(ular)?|telefone|fone|arroba|e-?mail)\b/i,
+      aviso: 'Pedir ou mandar contato não é permitido na Casa: sua mensagem não foi enviada. Chame a pessoa pra cabine e, se rolar, continuem no chat do NoSigilo 😉',
+    },
   ];
   const SUSPEITA_MENOR = /\bmenor de idade\b|\b1[0-7]\s*anos\b|\bcrian[çc]as?\b|\badolescente|\bninfet|\bpedo|\bcolegial\b/i;
 
@@ -1298,11 +1304,13 @@ Responda com UMA palavra:
   const bloqueioRapido = async (userId: string, nome: string, texto: string, salaId: string): Promise<string | null> => {
     const achou = BLOQUEIO_RAPIDO.find((b) => b.re.test(texto));
     if (!achou) return null;
+    // Contato: só bloqueia a mensagem e avisa (sem contar aviso nem expulsar).
+    if (achou.cat === 'contato') return `💋 Lola: ${achou.aviso}`;
     const n = (avisosDaNoite.get(userId) ?? 0) + 1;
     avisosDaNoite.set(userId, n);
     contadoresDaNoite.avisos++;
     if (n >= 2) {
-      await expulsar(userId, nome, achou.cat === 'dinheiro' ? 'Pix/dinheiro na sala (2º aviso)' : 'Contato de fora na sala (2º aviso)', texto, salaId);
+      await expulsar(userId, nome, 'Pix/dinheiro na sala (2º aviso)', texto, salaId);
       return 'Você foi retirado(a) da Casa nesta noite por repetir o que a Lola pediu para não fazer.';
     }
     return `💋 Lola: ${achou.aviso} (1º aviso; no próximo você sai da Casa)`;

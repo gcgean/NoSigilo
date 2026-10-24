@@ -3663,6 +3663,13 @@ describe('nosigilo backend', () => {
 
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'Boa noite, sala!' }).expect(200);
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'me chama em wa.me/5585' }).expect(400);
+    // Pedir ou mandar contato: a mensagem é barrada e a Lola avisa, mas ninguém sai da Casa.
+    for (const texto of ['me passa seu número', 'qual seu insta?', 'me chama no zap', 'segue lá @casalquente', '85 9 9999-8888']) {
+      await new Promise((r) => setTimeout(r, 1300));
+      const barrada = (await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto }).expect(400)).body;
+      expect(barrada.message).toMatch(/contato não é permitido/);
+    }
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
 
     const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200)).body;
     // Cabine da Casa: porta fecha por padrão; abre só quando os dois querem; quem espia pede para entrar.
@@ -3871,7 +3878,7 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/quarto/entrar').set(auth(homens[2].token)).expect(403);
     expect((await request(ctx.app).get('/api/casa/publico').expect(200)).body.aberta).toBe(false);
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
-  });
+  }, 30_000);
 
   it('vitrine: só uma curtida, na primeira publicação; sem match e sem curtir story', async () => {
     const { runShowcaseFeedLikes, runShowcaseProfileLikes, runShowcaseStoryEngagement } = await import('./showcase.js');
