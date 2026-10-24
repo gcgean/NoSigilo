@@ -3651,6 +3651,15 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[1].token)).expect(200);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(409);
     await request(ctx.app).post('/api/casa/casais/entrar').set(auth(homens[2].token)).expect(403);
+    // No Cuckold o solteiro entra sem fila; de lá, o casal chama ele para o Salão e ele passa na frente.
+    await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(homens[2].token)).expect(200);
+    await request(ctx.app).post('/api/casa/cuckold/entrar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/cuckold/chamar-pra-sala').set(auth(homens[2].token)).send({ para: String(casal.user.id), destino: 'salao' }).expect(403);
+    await request(ctx.app).post('/api/casa/cuckold/chamar-pra-sala').set(auth(casal.token)).send({ para: String(homens[2].user.id), destino: 'casais' }).expect(400);
+    await request(ctx.app).post('/api/casa/cuckold/chamar-pra-sala').set(auth(casal.token)).send({ para: String(homens[2].user.id), destino: 'salao' }).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[2].token)).expect(200);
 
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(casal.token)).send({ texto: 'Boa noite, sala!' }).expect(200);
     await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: 'me chama em wa.me/5585' }).expect(400);
@@ -3745,6 +3754,8 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(402);
     await run(ctx.db, 'UPDATE users SET token_points = 20 WHERE id = ?', [String(homens[0].user.id)]);
     await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'champanhe' }).expect(200);
+    await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'cerveja', mensagem: 'me chama em wa.me/55' }).expect(400);
+    await request(ctx.app).post('/api/casa/salao/drink').set(auth(homens[0].token)).send({ para: String(casal.user.id), drink: 'constructor' }).expect(400);
     const saldoCasal = (await ctx.db.queryOne('SELECT token_points FROM users WHERE id = ?', [String(casal.user.id)])) as any;
     expect(Number(saldoCasal.token_points)).toBeGreaterThanOrEqual(15);
 

@@ -44,6 +44,7 @@ type Info = {
   souAdmin: boolean; podeFalar: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
+type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
@@ -327,6 +328,8 @@ export default function Casa() {
   const [escolhendoPulseira, setEscolhendoPulseira] = useState(false);
   const [pulseiraDispensada, setPulseiraDispensada] = useState(false);
   const [mostrandoBar, setMostrandoBar] = useState(false);
+  const [recadoDrink, setRecadoDrink] = useState('');
+  const [drinkRecebido, setDrinkRecebido] = useState<DrinkRecebido | null>(null);
   const [rankingAberto, setRankingAberto] = useState(false);
   // Central de avisos da Casa (olhadas, drinks, convites, desafios…): sino no topo da sala.
   type NotifCasa = { id: string; emoji: string; texto: string; em: number; acao?: () => void; rotuloAcao?: string; de?: { id: string; nome: string } };
@@ -473,6 +476,15 @@ export default function Casa() {
       setConvite(c);
       registrarAviso({ emoji: '🚪', texto: `${c.de.nome} te chamou pra cabine`, acao: () => setConvite(c), rotuloAcao: 'Responder', de: c.de });
     };
+    const aoConviteSala = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; sala: string; nome: string }) => {
+      tocarAviso(true);
+      registrarAviso({ emoji: '🎟️', texto: `${d.de.nome} te chamou para o ${d.nome} (sem fila)`, acao: () => void entrar(d.sala), rotuloAcao: 'Entrar', de: d.de });
+      toast({
+        title: `🎟️ ${d.de.nome} te chamou para o ${d.nome}!`,
+        description: 'Você entra sem fila nos próximos 5 minutos 😈',
+        action: <ToastAction altText="Entrar agora" onClick={() => void entrar(d.sala)}>Entrar</ToastAction>,
+      });
+    };
     const aoVaga = (d: { sala: string; nome: string }) => {
       toast({ title: `🔥 Abriu vaga no ${d.nome}!`, description: 'Você tem 3 minutos: entrando agora…' });
       void entrar(d.sala);
@@ -491,14 +503,11 @@ export default function Casa() {
       });
     };
     const aoCruzados = (d: { com: { id: string; nome: string; avatar: string | null; cat: Categoria }; motivo?: 'brinde' }) => { setMotivoCruzado(d.motivo ?? 'olhar'); setCruzados(d.com); };
-    const aoDrink = (d: { de: { id: string; nome: string }; drink: string; tokens: number }) => {
+    // Drink recebido: quem recebe vê o perfil, lê o recado e escolhe se brinda ou não.
+    const aoDrink = (d: DrinkRecebido) => {
       tocarAviso(false);
-      registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
-      toast({
-        title: `${d.de.nome} te pagou ${d.drink} 😏`,
-        description: `+${d.tokens} tokens pra você.`,
-        action: <ToastAction altText="Brindar de volta" onClick={() => void brindarRef.current(d.de)}>Brindar 🥂</ToastAction>,
-      });
+      registrarAviso({ emoji: '🍸', texto: `${d.de.nome} te pagou ${d.drink} (+${d.tokens} tokens)`, acao: () => setDrinkRecebido(d), rotuloAcao: 'Ver', de: d.de });
+      setDrinkRecebido(d);
     };
     const aoBrinde = (d: { de: { id: string; nome: string } }) => {
       registrarAviso({ emoji: '🥂', texto: `${d.de.nome} brindou com você`, acao: () => abrirPorId(d.de.id, d.de.nome), rotuloAcao: 'Ver', de: d.de });
@@ -552,10 +561,10 @@ export default function Casa() {
       });
     };
     on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
-    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
+    on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
       off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
-      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
+      off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
   }, [on, off, toast, navigate, carregar, entrar]);
 
@@ -702,7 +711,8 @@ export default function Casa() {
     setMostrandoBar(false);
     setPessoaAberta(null);
     try {
-      await apiClient.post(`/casa/${salaAtual}/drink`, { para: p.id, drink });
+      await apiClient.post(`/casa/${salaAtual}/drink`, { para: p.id, drink, ...(recadoDrink.trim() ? { mensagem: recadoDrink.trim() } : {}) });
+      setRecadoDrink('');
     } catch (e) {
       const semSaldo = (e as any)?.response?.status === 402;
       toast({
@@ -758,6 +768,13 @@ export default function Casa() {
     try { await apiClient.post(`/casa/${salaAtual}/brindar`, { para: de.id }); } catch { /* ok */ }
   };
 
+  const chamarPraSala = async (p: { id: string; nome: string }, destino: string) => {
+    setPessoaAberta(null);
+    try {
+      await apiClient.post(`/casa/${salaAtual}/chamar-pra-sala`, { para: p.id, destino });
+      toast({ title: `🎟️ Convite enviado para ${p.nome}`, description: 'Ele entra sem fila nos próximos 5 minutos.' });
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível chamar agora.') }); }
+  };
   const convidar = async (p: { id: string; nome: string }) => {
     setPessoaAberta(null);
     try {
@@ -1450,6 +1467,28 @@ export default function Casa() {
 
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
       <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />
+      <Dialog open={!!drinkRecebido} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
+        <DialogContent className="z-[9995] max-w-xs">
+          {drinkRecebido && (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <Avatar p={{ ...drinkRecebido.de }} tamanho="h-20 w-20" />
+              <p className="text-lg font-bold">{drinkRecebido.de.nome} te pagou {drinkRecebido.drink} 😏</p>
+              <p className="text-xs text-muted-foreground">+{drinkRecebido.tokens} tokens pra você</p>
+              {drinkRecebido.mensagem && (
+                <p className="w-full rounded-2xl bg-rose-500/10 px-3 py-2 text-sm italic">“{drinkRecebido.mensagem}”</p>
+              )}
+              {!estado?.sala_anonima && (
+                <Button variant="outline" className="w-full" onClick={() => setPerfilAberto(drinkRecebido.de.id)}>Ver perfil antes</Button>
+              )}
+              <div className="grid w-full grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => setDrinkRecebido(null)}>Agora não</Button>
+                <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => { const d = drinkRecebido; setDrinkRecebido(null); void brindarRef.current(d.de); }}>🥂 Brindar</Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Brindar avisa {drinkRecebido.de.nome} e pode virar cabine. Recusar é discreto: ninguém fica sabendo.</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
       <Dialog open={!!perguntaBrincar} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
         <DialogContent className="z-[9995] max-w-xs text-center">
@@ -1480,6 +1519,9 @@ export default function Casa() {
               </div>
               {mostrandoBar ? (
                 <div className="grid w-full grid-cols-2 gap-2">
+                  <input value={recadoDrink} onChange={(e) => setRecadoDrink(e.target.value)} maxLength={140}
+                    placeholder="Mensagem junto com o drink (opcional)…"
+                    className="col-span-2 rounded-xl border bg-background px-3 py-2 text-[16px]" />
                   {DRINKS.map((d) => (
                     <Button key={d.id} variant="outline" className="h-auto flex-col py-2" onClick={() => void pagarDrink(pessoaAberta, d.id)}>
                       <span className="text-2xl">{d.emoji}</span>
@@ -1501,6 +1543,22 @@ export default function Casa() {
                       <Button variant="outline" className="border-amber-400/60" onClick={() => void abrirProposta(pessoaAberta)}>😈 Propor um desafio (vale tokens)</Button>
                     )}
                     <Button className="bg-rose-600 hover:bg-rose-500" onClick={() => void convidar(pessoaAberta)}>🚪 Chamar pra cabine</Button>
+                    {pessoaAberta.cat === 'homem' && !estado.sala_anonima && (() => {
+                      const eu = estado.presentes.find((x) => x.id === estado.eu.idPublico);
+                      if (eu?.cat !== 'casal' && eu?.cat !== 'mulher') return null;
+                      const destinos = (info?.salas ?? []).filter((s) => s.id !== estado.sala.id && s.id !== 'glory' && s.id !== 'casais' && !s.trancada);
+                      if (destinos.length === 0) return null;
+                      return (
+                        <div className="rounded-xl border border-amber-400/40 p-2">
+                          <p className="mb-1.5 text-xs font-semibold">🎟️ Chamar para outra sala (ele entra sem fila)</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {destinos.map((s) => (
+                              <Button key={s.id} size="sm" variant="outline" className="h-8 text-xs" onClick={() => void chamarPraSala(pessoaAberta, s.id)}>{s.emoji} {s.nome}</Button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </>
                 )}
                 <div className="flex gap-2">

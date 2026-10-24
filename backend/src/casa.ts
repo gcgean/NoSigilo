@@ -311,7 +311,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     ['salao', novaSala('salao', 'Salão Principal', '🍸', 'A pista de todo mundo: conhecer, provocar e chamar pra cabine.', 'quente', false)],
     ['casais', novaSala('casais', 'Sala dos Casais', '💑', 'Só casais e mulheres. Brincadeiras muito quentes.', 'muito_quente', true)],
     ['quarto', novaSala('quarto', 'Quarto Escuro', '🖤', 'Para quem veio brincar de verdade. Sem filtro (com respeito).', 'muito_quente', false)],
-    ['cuckold', novaSala('cuckold', 'Quarto Cuckold', '😈', 'Casais exibem a esposa para os homens: o marido gosta de ver os outros desejando, e até transando com ela. Homens entram à vontade, sem fila. Quem escolhe é ela.', 'muito_quente', false, false, true)],
+    ['cuckold', novaSala('cuckold', 'Quarto Cuckold', '😈', 'Casais exibem a esposa para os homens: o marido gosta de ver os outros desejando, e até transando com ela. Sempre aberto: solteiros entram à vontade, sem fila. Quem escolhe é ela, e o casal pode chamar o solteiro para as outras salas.', 'muito_quente', false, false, true)],
     ['glory', novaSala('glory', 'Glory Hole', '🕳️', 'Anônimo: ninguém sabe quem está do outro lado. Fotos e vídeos de visualização única; revela quem quiser.', 'muito_quente', false, true)],
   ]);
   const convites = new Map<string, { de: string; para: string; sala: SalaId; criadoEm: number }>();
@@ -618,7 +618,8 @@ Responda com UMA palavra:
   };
   // Com pouca gente, só Salão e Sala dos Casais (senão cada sala fica com 3 e parece vazia).
   // As outras destravam com 25 pessoas na Casa e ficam abertas até o fim da noite.
-  const SALAS_EXTRAS: SalaId[] = ['quarto', 'cuckold', 'glory'];
+  // O Quarto Cuckold fica sempre aberto: é onde os solteiros entram sem fila.
+  const SALAS_EXTRAS: SalaId[] = ['quarto', 'glory'];
   const MINIMO_PARA_DESTRAVAR = 25;
   const liberadas = new Set<string>();
   const naCasaAgora = () => [...salas.values()].reduce((n, s) => n + s.presentes.size + s.espiando.size, 0);
@@ -1335,6 +1336,8 @@ Responda com UMA palavra:
   };
 
   const acharPublico = (sala: Sala, idPublico: string) => [...sala.presentes.values()].find((x) => x.idPublico === idPublico);
+  // Casal ou mulher chama um solteiro para outra sala: ele entra sem fila (vale 5 min, uma entrada).
+  const convitesDeSala = new Map<string, { sala: SalaId; ate: number }>();
 
   // Mulher entra grátis com tudo liberado (é quem segura a sala); o resto precisa assinar.
   const podeFalarNaCasa = async (userId: string, cat: Categoria | undefined) => cat === 'mulher' || (await deps.temPremium(userId));
@@ -1492,7 +1495,10 @@ Responda com UMA palavra:
       const convocadoAtivo = sala.convocado && sala.convocado.ate > Date.now() ? sala.convocado : null;
       const souConvocado = convocadoAtivo?.userId === userId;
       const vagaGuardada = convocadoAtivo && !souConvocado ? 1 : 0;
-      if (contagem(sala).homem + vagaGuardada >= limiteDeHomens(sala)) {
+      const convidado = convitesDeSala.get(userId);
+      const temConvite = !!convidado && convidado.sala === sala.id && convidado.ate > Date.now();
+      if (temConvite) convitesDeSala.delete(userId);
+      else if (contagem(sala).homem + vagaGuardada >= limiteDeHomens(sala)) {
         const pos = sala.fila.indexOf(userId);
         res.status(409).json({
           error: 'lotada_homens',
@@ -2252,6 +2258,25 @@ Responda com UMA palavra:
   });
 
   // Olhar discreto: só a pessoa olhada fica sabendo. Olhares cruzados = sugestão de cabine.
+  app.post('/api/casa/:sala/chamar-pra-sala', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    const p = sala?.presentes.get(userId);
+    const alvo = sala ? acharPublico(sala, String((req.body as any)?.para || '')) : undefined;
+    const destino = salas.get(String((req.body as any)?.destino || '') as SalaId);
+    const noite = await noitePara(userId);
+    if (!sala || !p || !alvo || !destino || !noite) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
+    if (!p.podeFalar || (p.cat !== 'casal' && p.cat !== 'mulher')) { res.status(403).json({ error: 'so_casal_ou_mulher', message: 'Só casais e mulheres chamam solteiros para outra sala.' }); return; }
+    if (alvo.cat !== 'homem') { res.status(400).json({ error: 'so_solteiro', message: 'Casais e mulheres entram nas salas sem fila.' }); return; }
+    if (sala.anonima || destino.anonima || destino.semHomens) { res.status(400).json({ error: 'destino', message: 'Essa sala não aceita convite.' }); return; }
+    if (trancada(destino, noite)) { res.status(409).json({ error: 'trancada', message: `O ${destino.nome} ainda não abriu.` }); return; }
+    if (await bloqueados(userId, alvo.id)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
+    convitesDeSala.set(alvo.id, { sala: destino.id, ate: Date.now() + 5 * 60_000 });
+    emitirPara(alvo.id, 'casa.convite.sala', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, sala: destino.id, nome: `${destino.emoji} ${destino.nome}` });
+    avisarSeFora(alvo.id, `🎟️ ${p.nome} te chamou para o ${destino.nome}!`, 'Você entra sem fila nos próximos 5 minutos 😈');
+    res.json({ ok: true });
+  });
+
   app.post('/api/casa/:sala/olhar', deps.requireAuth, async (req, res) => {
     const sala = salaDe(req);
     const userId = userDe(req);
@@ -2286,13 +2311,20 @@ Responda com UMA palavra:
     if (!sala || !p || !alvo || paraId === userId) { res.status(404).json({ error: 'fora_da_sala', message: 'Essa pessoa não está mais na sala.' }); return; }
     if (!drink) { res.status(400).json({ error: 'drink' }); return; }
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
+    // Recado opcional junto com o drink: só quem recebe lê.
+    const recado = String((req.body as any)?.mensagem || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    if (recado && /https?:\/\/|www\.|\.com\b|\.net\b|wa\.me|t\.me/i.test(recado)) { res.status(400).json({ error: 'link', message: 'Sem links no recado do drink.' }); return; }
+    if (recado) {
+      const barrada = await bloqueioRapido(userId, p.nome, recado, sala.nome);
+      if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
+    }
     if (await bloqueados(userId, paraId)) { res.status(404).json({ error: 'fora_da_sala' }); return; }
     const pagou = await deps.transferirTokens(userId, paraId, drink.tokens, `casa-drink-${randomUUID()}`);
     if (!pagou) { res.status(402).json({ error: 'insufficient_tokens', message: `${drink.nome[0].toUpperCase()}${drink.nome.slice(1)} custa ${drink.tokens} tokens.` }); return; }
     publicarMsg(sala, { tipo: 'sistema', texto: `${drink.emoji} ${p.nome} pagou ${drink.nome} pra ${alvo.nome} 😏`, efeito: drinkId });
     registrarEvento(sala.id, 'drink', userId, paraId);
     pontuar(paraId, 2, 'drink_recebido');
-    emitirPara(paraId, 'casa.drink', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens });
+    emitirPara(paraId, 'casa.drink', { de: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, drink: `${drink.emoji} ${drink.nome}`, tokens: drink.tokens, ...(recado ? { mensagem: recado } : {}) });
     avisarSeFora(paraId, `${drink.emoji} ${p.nome} te pagou ${drink.nome} na Casa!`, `+${drink.tokens} tokens pra você. Vai agradecer? 😏`);
     res.json({ ok: true });
   });
