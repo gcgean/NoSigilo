@@ -3833,12 +3833,19 @@ describe('nosigilo backend', () => {
     expect(recusou.quente).toBe(false);
     expect(recusou.mensagens.some((m: any) => /prefere ir com calma/.test(m.texto))).toBe(true);
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200);
+    // Liberado pelos dois, mas a Lola só abre as preliminares quando a conversa esquenta.
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(409)).body.error).toBe('cedo');
+    for (const texto of ['que tesão', 'tô molhada', 'quero chupar', 'vem foder']) {
+      await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/mensagem`).set(auth(casal.token)).send({ texto }).expect(200);
+    }
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(homens[0].token)).send({ acao: 'chupar' }).expect(200);
     // Cena de troca de casais não vale entre casal e solteiro.
     expect((await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'cc_troca' }).expect(400)).body.error).toBe('cena');
     await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/acao`).set(auth(casal.token)).send({ acao: 'inventada' }).expect(400);
     const estadoAcoes = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
-    expect(estadoAcoes.calor).toBe(19);
+    expect(estadoAcoes.calor).toBe(39);
+    expect(estadoAcoes.nivelLiberado).toBe(1);
+    expect(estadoAcoes.mensagens.some((m: any) => /liberei as PRELIMINARES/.test(m.texto))).toBe(true);
     expect(estadoAcoes.mensagens.filter((m: any) => m.tipo === 'acao').map((m: any) => m.efeito)).toEqual(['beijo', 'chupar']);
 
     // Provocações para escolher: só quem está dentro vê a lista.

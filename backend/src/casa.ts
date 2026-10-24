@@ -334,6 +334,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
     /** Quem saiu da Casa (fechou o app) e desde quando; avisado = a Lola já comentou na cabine. */
     ausentes: Map<string, { desde: number; avisado: boolean }>;
+    /** Último nível que a Lola anunciou (0 esquentando, 1 preliminares, 2 transa). */
+    nivelAnunciado: number;
   };
   const cabines = new Map<string, Cabine>();
   const MAX_NA_CABINE = 6;
@@ -368,6 +370,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       voteiQuente: c.topamEsquentar.has(userId),
       nivel: c.quente ? nivelDaCabine(c) : 0,
       calor: c.calor,
+      nivelLiberado: nivelPeloCalor(c),
       mensagens: c.mensagens.slice(-60),
     };
   };
@@ -422,7 +425,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       id: randomUUID(), salaId: sala.id, membros: new Map([[a.id, membroDe(a)], [b.id, membroDe(b)]]), porta: new Set(), aberta: false,
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
       topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
-      calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(),
+      calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -479,6 +482,24 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       }
     }
     if (mudou) avisarCabine(c);
+  };
+  // A Lola libera os níveis da cabine conforme o clima: ações e conversa quente sobem o tesão.
+  // 25% abre as preliminares; 55%, a transa (e todos de dentro ainda precisam topar).
+  const nivelPeloCalor = (c: Cabine) => (c.calor >= 55 ? 2 : c.calor >= 25 ? 1 : 0);
+  const PALAVRAS_QUENTES = /tes[aã]o|gostos|molhad|dur[oa]\b|\bpau\b|pica|buceta|xota|chup|fode|foder|transar|goz|meter|mete\b|peit|bunda|rabo|safad|del[ií]cia|gem[ei]|cavalg|quatro|lamb/i;
+  const aquecer = (c: Cabine, pontos: number) => {
+    c.calor = Math.min(100, c.calor + pontos);
+    const nivel = nivelPeloCalor(c);
+    if (nivel > c.nivelAnunciado) {
+      c.nivelAnunciado = nivel;
+      const falta = c.quente ? '' : ' Pra valer, todos aqui dentro tocam em "Liberar" 🔥';
+      msgCabine(c, {
+        tipo: 'lola',
+        texto: nivel === 1
+          ? `🔥 A conversa esquentou… liberei as PRELIMINARES! Abram o 🔥 e vejam o que tem lá 😈${falta}`
+          : `💦 Vocês estão pegando fogo: liberei a TRANSA 😈${falta}`,
+      });
+    }
   };
   const fecharCabine = (c: Cabine) => {
     for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.fechou', { cabineId: c.id });
@@ -2737,6 +2758,10 @@ Responda com UMA palavra:
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
+    // Conversa quente sobe o tesão da cabine (é o que a Lola usa para liberar os níveis).
+    const antesDoCalor = c.calor;
+    aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 2);
+    if (c.calor !== antesDoCalor) avisarCabine(c);
     moderarDepois(userId, m.nome, texto, 'cabine', () => {
       c.mensagens = c.mensagens.filter((x) => x.id !== publicada.id);
       for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: publicada.id });
@@ -2944,25 +2969,17 @@ Responda com UMA palavra:
     const alvo = outros.find((m) => m.idPublico === String((req.body as any)?.alvo || '')) ?? (outros.length === 1 ? outros[0] : undefined);
     if (!alvo) { res.status(400).json({ error: 'alvo', message: 'Escolha com quem.' }); return; }
     if (cena && (cena.quem !== eu.cat || cena.alvo !== alvo.cat)) { res.status(400).json({ error: 'cena', message: 'Essa cena não combina com quem está na cabine.' }); return; }
-    // Preliminares e transa: liberam quando todos de dentro toparam (sem esperar a barra de tesão).
+    // Nível: a Lola libera conforme o clima; e preliminares/transa pedem que todos topem.
+    if (acao.etapa > nivelPeloCalor(c)) { res.status(409).json({ error: 'cedo', message: 'A Lola ainda não liberou esse nível: esquentem a conversa 😈' }); return; }
     if (acao.etapa >= 1 && !c.quente) { res.status(409).json({ error: 'fria', message: 'Para liberar, todos aqui dentro tocam em "Liberar" 🔥' }); return; }
     if (Date.now() - (c.ultimaAcao.get(userId) ?? 0) < 2500) { res.status(429).json({ error: 'devagar' }); return; }
     c.ultimaAcao.set(userId, Date.now());
-    c.calor = Math.min(100, c.calor + acao.calor);
     msgCabine(c, {
       tipo: 'acao', efeito: cena ? cena.efeito : id,
       autor: { id: eu.idPublico, nome: eu.nome, avatar: eu.avatar, cat: eu.cat },
       texto: acao.texto.replace('{eu}', eu.nome).replace('{alvo}', alvo.nome),
     });
-    if (!c.liberouTransa && c.calor >= 40) {
-      c.liberouTransa = true;
-      msgCabine(c, {
-        tipo: 'lola',
-        texto: c.quente
-          ? '🔥 Essa cabine já está pegando fogo… agora é pra transar de verdade 😈'
-          : '🔥 Tá pegando fogo aqui! Pra liberar as preliminares e a transa, todos tocam em "Liberar" no painel 🔥',
-      });
-    }
+    aquecer(c, acao.calor);
     if (id === 'gozar' && c.calor >= 100) {
       c.calor = 55;
       msgCabine(c, { tipo: 'lola', texto: '💦 Que cabine! Respira, bebe uma água… e se quiserem, tem segundo round 😏' });

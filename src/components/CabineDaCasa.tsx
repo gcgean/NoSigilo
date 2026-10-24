@@ -70,7 +70,7 @@ type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
   espiandoLista?: Pessoa[]; anonima?: boolean;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
-  quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number; calor?: number;
+  quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number; calor?: number; nivelLiberado?: number;
 };
 
 const erroDe = (e: unknown, padrao: string) => (e as any)?.response?.data?.message || padrao;
@@ -117,6 +117,11 @@ export default function CabineDaCasa({
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   // Alguém de dentro quer liberar: pergunta na hora para quem ainda não topou.
   const [pedidoEsquentar, setPedidoEsquentar] = useState<string | null>(null);
+  // Aba do painel de ações; quando a Lola libera um nível novo, a aba pula para ele.
+  const [aba, setAba] = useState(0);
+  const [fogoPiscando, setFogoPiscando] = useState(false);
+  const nivelLiberado = cab?.nivelLiberado ?? 0;
+  useEffect(() => { setAba(nivelLiberado); }, [nivelLiberado]);
   const [espiaoAberto, setEspiaoAberto] = useState<Pessoa | null>(null);
   // Escolher a provocação da lista ou escrever a sua.
   const [escolhendoProvocacao, setEscolhendoProvocacao] = useState(false);
@@ -151,8 +156,8 @@ export default function CabineDaCasa({
       if (d.cabineId !== cabineId) return;
       setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
-      // O outro fez uma ação: o painel abre sozinho para responder na mesma moeda.
-      if (d.msg.tipo === 'acao' && d.msg.autor?.id !== meuIdPublico) setAcoesAbertas(true);
+      // O outro fez uma ação ou a Lola liberou nível: o 🔥 pisca (sem abrir o painel por cima do chat).
+      if ((d.msg.tipo === 'acao' && d.msg.autor?.id !== meuIdPublico) || (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto))) setFogoPiscando(true);
     };
     const aoEsquentar = (d: { cabineId: string; nome: string }) => {
       if (d.cabineId !== cabineId) return;
@@ -331,43 +336,26 @@ export default function CabineDaCasa({
         </div>
       )}
       {cab.souMembro && (
-        <div className="space-y-2 border-b border-white/10 px-3 py-2">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className={cn('h-8 border-white/20 bg-transparent text-xs text-white', cab.voteiPorta && 'border-amber-400 text-amber-200')}
+        <div className="space-y-2 border-b border-white/10 px-3 py-1.5">
+          {/* Uma linha só (rola para o lado no celular) para sobrar tela para a conversa. */}
+          <div className="flex gap-1.5 overflow-x-auto">
+            <button type="button" title="A porta só abre quando todos aqui dentro querem. Qualquer um pode fechar."
               onClick={() => void post('porta', { abrir: !cab.voteiPorta })}
-            >
-              {cab.aberta ? '🔒 Fechar a porta' : cab.voteiPorta ? `Quero abrir a porta ✓ (${cab.votosPorta}/${cab.membros.length})` : `👀 Abrir a porta (${cab.votosPorta}/${cab.membros.length})`}
-            </Button>
-            <Button size="sm" variant="outline" className="h-8 border-white/20 bg-transparent text-xs text-white" onClick={() => setConvidando((v) => !v)}>
-              ➕ Convidar alguém
-            </Button>
+              className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]', cab.voteiPorta ? 'border-amber-400 text-amber-200' : 'border-white/20')}>
+              {cab.aberta ? '🔒 Fechar porta' : cab.voteiPorta ? `👀 Porta ✓ ${cab.votosPorta}/${cab.membros.length}` : `👀 Abrir porta ${cab.votosPorta}/${cab.membros.length}`}
+            </button>
+            <button type="button" onClick={() => setConvidando((v) => !v)} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1 text-[11px]">➕ Convidar</button>
             {cab.membros.length === 2 && (
-              <Button size="sm" variant="outline" className="h-8 border-white/20 bg-transparent text-xs text-white" onClick={() => void continuarNoChat()}>
-                💬 Continuar no chat
-              </Button>
+              <button type="button" onClick={() => void continuarNoChat()} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1 text-[11px]">💬 Ir pro chat</button>
+            )}
+            {cab.quente && (
+              <>
+                <button type="button" onClick={() => void abrirProvocacoes()} className="shrink-0 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-semibold">😈 Provocação</button>
+                <button type="button" onClick={() => void post('provocacao', { dado: true })} className="shrink-0 rounded-full bg-fuchsia-600 px-2.5 py-1 text-[11px] font-semibold">🎲 Dado</button>
+                <button type="button" onClick={() => void post('esquentar', { quer: false })} className="shrink-0 rounded-full border border-white/30 px-2.5 py-1 text-[11px]">🧊 Esfriar</button>
+              </>
             )}
           </div>
-          <p className="text-[11px] text-white/50">A porta só abre quando todos aqui dentro querem. Qualquer um pode fechar.</p>
-          {/* Esquentar: a Lola guia o sexo virtual, com o nível subindo com o tempo. Só liga com todos topando. */}
-          {cab.membros.length >= 2 && (cab.quente ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-rose-600/20 p-2">
-              <span className="text-xs font-bold text-rose-200">{'🔥'.repeat(Math.max(1, cab.nivel))} Cabine quente</span>
-              <Button size="sm" className="h-8 bg-rose-600 text-xs hover:bg-rose-500" onClick={() => void abrirProvocacoes()}>😈 Nova provocação</Button>
-              <Button size="sm" className="h-8 bg-fuchsia-600 text-xs hover:bg-fuchsia-500" onClick={() => void post('provocacao', { dado: true })}>🎲 Dado do prazer</Button>
-              <Button size="sm" variant="outline" className="h-8 border-white/30 bg-transparent text-xs text-white" onClick={() => void post('esquentar', { quer: false })}>🧊 Esfriar</Button>
-            </div>
-          ) : (
-            <Button
-              size="sm"
-              className={cn('h-9 w-full text-xs', cab.voteiQuente ? 'bg-rose-900/60' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600')}
-              onClick={() => void post('esquentar', { quer: !cab.voteiQuente })}
-            >
-              {cab.voteiQuente ? `Você topou ✓ esperando os outros (${cab.votosQuente}/${cab.membros.length}) · tocar pra desistir` : `🔥 Esquentar a cabine: a Lola guia vocês (${cab.votosQuente}/${cab.membros.length})`}
-            </Button>
-          ))}
           {convidando && (
             <div className="flex gap-2 overflow-x-auto pb-1">
               {convidaveis.filter((p) => !idsDentro.has(p.id) && p.id !== meuIdPublico).map((p) => (
@@ -439,9 +427,9 @@ export default function CabineDaCasa({
         const calor = cab.calor ?? 0;
         const outros = cab.membros.filter((m) => m.id !== meuIdPublico);
         return (
-          <div className="relative space-y-2 border-t border-rose-500/30 bg-black/50 px-3 py-2">
+          <div className="relative max-h-[38vh] space-y-2 overflow-y-auto border-t border-rose-500/30 bg-black/50 px-3 py-2">
             <div className="flex items-center gap-2 text-[11px]">
-              <span className="font-bold text-rose-200">Tesão da cabine</span>
+              <span className="font-bold text-rose-200">Tesão</span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                 <div className="h-full rounded-full bg-gradient-to-r from-amber-400 via-rose-500 to-red-600 transition-all" style={{ width: `${calor}%` }} />
               </div>
@@ -465,7 +453,20 @@ export default function CabineDaCasa({
                 </div>
               </div>
             )}
-            {!cab.quente && (
+            <div className="flex gap-1.5">
+              {ETAPAS.slice(0, nivelLiberado + 1).map((nome, i) => (
+                <button key={nome} type="button" onClick={() => setAba(i)}
+                  className={cn('flex-1 rounded-xl px-2 py-2 text-xs font-bold', aba === i ? 'bg-gradient-to-r from-rose-600 to-red-700 shadow-[0_0_14px_rgba(225,29,72,0.5)]' : 'bg-white/10 text-white/70')}>
+                  {nome}
+                </button>
+              ))}
+              {nivelLiberado < 2 && (
+                <span className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/20 px-2 text-center text-[10px] text-white/45">
+                  🔒 a Lola libera o próximo quando esquentar
+                </span>
+              )}
+            </div>
+            {aba >= 1 && !cab.quente && (
               <button type="button" disabled={cab.voteiQuente} onClick={() => void post('esquentar', { quer: true })}
                 className={cn('w-full rounded-xl px-3 py-2 text-sm font-bold', cab.voteiQuente ? 'bg-rose-900/60 text-white/70' : 'bg-gradient-to-r from-amber-500 via-rose-600 to-red-700 shadow-[0_0_18px_rgba(225,29,72,0.5)]')}>
                 {cab.voteiQuente
@@ -474,15 +475,14 @@ export default function CabineDaCasa({
               </button>
             )}
             {ETAPAS.map((nome, etapa) => {
+              if (etapa !== aba) return null;
               const travada = etapa >= 1 && !cab.quente;
               const eu = cab.membros.find((m) => m.id === meuIdPublico);
               const com = outros.length === 1 ? outros[0] : outros.find((o) => o.id === alvo);
               const cenas = eu && com ? CENAS.filter((x) => x.etapa === etapa && x.quem === eu.cat && x.alvo === com.cat) : [];
               return (
                 <div key={nome}>
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/60">
-                    {nome}{travada && ' · 🔒 todos tocam em "Liberar"'}
-                  </p>
+                  {travada && <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/60">🔒 todos tocam em "Liberar"</p>}
                   {cenas.length > 0 && (
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                       <span className="text-[10px] font-bold text-amber-200">🎭 {TITULO_CENA[`${eu!.cat}-${com!.cat}`]}:</span>
@@ -510,8 +510,8 @@ export default function CabineDaCasa({
       })()}
       {cab.souMembro ? (
         <form className="relative flex items-center gap-2 border-t border-rose-500/30 px-3 py-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-          <button type="button" onClick={() => setAcoesAbertas((v) => !v)}
-            className={cn('flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold', acoesAbertas ? 'bg-rose-600' : 'bg-gradient-to-r from-rose-700 to-red-700')}
+          <button type="button" onClick={() => { setAcoesAbertas((v) => !v); setFogoPiscando(false); }}
+            className={cn('flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold', acoesAbertas ? 'bg-rose-600' : 'bg-gradient-to-r from-rose-700 to-red-700', fogoPiscando && !acoesAbertas && 'animate-pulse ring-2 ring-amber-300')}
             aria-label="Ações na cabine">🔥</button>
           <input ref={camera} type="file" accept="image/*,video/*" capture="user" className="hidden" onChange={(e) => void enviarMidia(e.target.files?.[0])} />
           <button type="button" onClick={() => camera.current?.click()} disabled={enviando !== null}
