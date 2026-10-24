@@ -2894,7 +2894,7 @@ Responda com UMA palavra:
     if (todos && !c.quente) {
       c.quente = true;
       c.quenteDesde = Date.now();
-      msgCabine(c, { tipo: 'lola', texto: '🔥 Todos toparam: a cabine esquentou! Eu vou provocando vocês, e o nível sobe com o tempo… Qualquer um pode tocar em "Esfriar" quando quiser. Começando 😈' });
+      msgCabine(c, { tipo: 'lola', texto: '🔥 Todos toparam: a cabine esquentou! Conforme a conversa esquentar, eu vou liberando mais coisa no 🔥. Qualquer um pode tocar em "Esfriar" quando quiser 😈' });
       provocar(c);
     } else if (!todos) {
       const n = [...c.membros.keys()].filter((id) => c.topamEsquentar.has(id)).length;

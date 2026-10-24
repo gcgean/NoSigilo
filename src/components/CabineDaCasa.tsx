@@ -286,7 +286,7 @@ export default function CabineDaCasa({
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       {/* Luz vermelha de cabine: deixa claro que aqui não é a sala. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(225,29,72,0.35),transparent_70%)]" />
-      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
+      {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} onFim={fimDoEfeito} />}
       <div className="relative bg-gradient-to-r from-rose-700 via-red-600 to-rose-700 py-1 text-center text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_0_20px_rgba(225,29,72,0.6)]">
         🔒 Cabine privada {cab.aberta ? '· porta aberta 👀' : '· só vocês'}
       </div>

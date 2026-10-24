@@ -941,7 +941,7 @@ export default function Casa() {
       <div className={cn('pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco1)} style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
       <div className={cn('pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco2)} style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
 
-      <div className="relative flex items-center gap-2 border-b border-white/10 px-3 py-2">
+      <div className="relative flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-white/10 px-3 py-2">
         <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da sala">
           <ArrowLeft className="h-5 w-5" />
         </button>
@@ -951,6 +951,8 @@ export default function Casa() {
             {estado.presentes.length} na sala{estado.espiando > 0 ? ` · ${estado.espiando} espiando 👀` : ''}
           </p>
         </div>
+        {/* Ícones: no celular descem para uma 2ª linha, para o nome da sala não sumir. */}
+        <div className="order-last flex w-full items-center justify-end gap-1.5 sm:order-none sm:w-auto">
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
@@ -977,6 +979,7 @@ export default function Casa() {
             {corDaPulseira(estado.eu.pulseira)?.emoji ?? '⚪'}
           </button>
         )}
+        </div>
         {estado.eu.podeFalar && estado.eu.pulseira !== 'vermelha' && (
           <button
             type="button"
@@ -1097,6 +1100,11 @@ export default function Casa() {
         ) : m.tipo === 'lola' ? (
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
+            {m.resposta && (
+              <p className="mb-1 truncate rounded-lg border-l-2 border-white/60 bg-black/20 px-2 py-1 text-[11px] text-white/80">
+                <b>{m.resposta.nome}</b> · {m.resposta.trecho}
+              </p>
+            )}
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
             {estado.eu.podeFalar && /foram pra cabine/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
             {m.jogoId && estado.jogo?.id === m.jogoId && (
@@ -1240,7 +1248,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={escolhendoPulseira} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
+      <Dialog open={escolhendoPulseira && !cabineAberta} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
         <DialogContent className="z-[9995] max-w-sm">
           <DialogHeader><DialogTitle>Escolha sua pulseira da noite</DialogTitle></DialogHeader>
           <p className="-mt-2 text-xs text-muted-foreground">Como numa casa de verdade: todo mundo vê a sua cor e sabe o que você topa hoje. Dá para trocar quando quiser.</p>
