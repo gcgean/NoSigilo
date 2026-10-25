@@ -1110,7 +1110,7 @@ export default function Casa() {
               </p>
             )}
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
-            {estado.eu.podeFalar && /foram pra cabine/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
+            {estado.eu.podeFalar && /foram pra cabine|com a porta aberta/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
             {m.jogoId && estado.jogo?.id === m.jogoId && (
               <div className="-mx-3 mt-1">
                 <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
@@ -1636,8 +1636,8 @@ export default function Casa() {
               <p className="flex items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" /> ABERTA AGORA{info.tema ? ` · ${info.tema.nome}` : ''}
               </p>
-              <p className="mt-2 text-4xl font-black">{total > 0 ? total : '…'}</p>
-              <p className="text-sm text-white/70">{total > 0 ? 'pessoas lá dentro neste momento' : 'a festa está começando'}</p>
+              <p className="mt-2 text-4xl font-black">🔥</p>
+              <p className="text-sm text-white/70">{total > 0 ? 'várias pessoas lá dentro neste momento' : 'a festa está começando'}</p>
             </>
           ) : <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />}
         </div>

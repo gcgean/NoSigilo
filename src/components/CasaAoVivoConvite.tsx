@@ -48,7 +48,7 @@ export default function CasaAoVivoConvite() {
           <p className="text-sm text-white/85">
             {info?.tema ? `${info.tema}: ` : ''}salas ao vivo com casais, mulheres e singles, a Lola puxando as brincadeiras e cabines a dois até 1h.
           </p>
-          {info && info.pessoas > 0 && <p className="text-sm font-semibold text-rose-200">{info.pessoas} pessoa(s) lá dentro agora 👀</p>}
+          {info && info.pessoas > 0 && <p className="text-sm font-semibold text-rose-200">Várias pessoas lá dentro agora 👀</p>}
           <Button size="lg" className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={() => { setAberto(false); navigate('/casa'); }}>
             🔥 Entrar na Casa agora
           </Button>

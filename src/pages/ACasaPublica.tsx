@@ -80,8 +80,8 @@ export default function ACasaPublica() {
               <p className="flex items-center justify-center gap-2 text-sm font-semibold text-emerald-300">
                 <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-400" /> ABERTA AGORA{info.tema ? ` · ${info.tema.nome}` : ''}
               </p>
-              <p className="mt-2 text-4xl font-black">{info.pessoas > 0 ? info.pessoas : '…'}</p>
-              <p className="text-sm text-white/70">{info.pessoas > 0 ? 'pessoas lá dentro neste momento' : 'a festa está começando'}</p>
+              <p className="mt-2 text-4xl font-black">🔥</p>
+              <p className="text-sm text-white/70">{info.pessoas > 0 ? 'várias pessoas lá dentro neste momento' : 'a festa está começando'}</p>
             </>
           ) : c ? (
             <>

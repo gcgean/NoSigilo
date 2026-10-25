@@ -53,7 +53,7 @@ export default function CasaAbertaBanner() {
       <span className="relative text-2xl">🔥</span>
       <span className="relative min-w-0 flex-1">
         <span className="block text-sm font-bold">A Casa está aberta agora{info.tema ? `: ${info.tema.nome}` : ''}</span>
-        <span className="block text-xs text-white/80">{info.pessoas > 0 ? `${info.pessoas} pessoa(s) lá dentro` : 'Seja o primeiro a chegar'} · brincadeiras quentes até 1h</span>
+        <span className="block text-xs text-white/80">{info.pessoas > 0 ? 'Várias pessoas lá dentro' : 'A festa está começando'} · brincadeiras quentes até 1h</span>
       </span>
       <span className="relative rounded-full bg-white px-3 py-1 text-xs font-bold text-rose-700">Entrar</span>
       <button type="button" onClick={fechar} className="relative rounded-full p-1 text-white/70 hover:bg-white/10" aria-label="Fechar aviso">
