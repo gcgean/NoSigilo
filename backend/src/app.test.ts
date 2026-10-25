@@ -3905,6 +3905,27 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 0 }).expect(200);
   }, 30_000);
 
+  it('nota do app: histórico de comentários paginado, com filtro por faixa e busca', async () => {
+    const admin = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Notas', email: 'admin-notas@example.com', password: 'senha123', gender: 'Homem' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.user.id]);
+    const agora = Date.now();
+    for (let i = 0; i < 35; i++) {
+      await run(ctx.db, 'INSERT INTO app_ratings (id, user_id, nota, sugestao, created_at) VALUES (?, ?, ?, ?, ?)',
+        [`nota-hist-${i}`, String(admin.user.id), i % 11, i === 3 ? 'quero filtro por cidade' : `comentario ${i}`, new Date(agora - i * 60_000).toISOString()]);
+    }
+    await run(ctx.db, 'INSERT INTO app_ratings (id, user_id, nota, sugestao, created_at) VALUES (?, ?, ?, ?, ?)', ['nota-hist-vazia', String(admin.user.id), 10, null, new Date(agora).toISOString()]);
+    const p1 = (await request(ctx.app).get('/api/admin/analytics/notas/comentarios?dias=30&pagina=1').set('Authorization', `Bearer ${admin.token}`).expect(200)).body;
+    expect(p1.total).toBeGreaterThanOrEqual(35);
+    expect(p1.itens).toHaveLength(30);
+    const p2 = (await request(ctx.app).get('/api/admin/analytics/notas/comentarios?dias=30&pagina=2').set('Authorization', `Bearer ${admin.token}`).expect(200)).body;
+    expect(p2.itens.length).toBeGreaterThanOrEqual(5);
+    const ruins = (await request(ctx.app).get('/api/admin/analytics/notas/comentarios?dias=30&faixa=insatisfeitos').set('Authorization', `Bearer ${admin.token}`).expect(200)).body;
+    expect(ruins.itens.every((r: any) => r.nota <= 6)).toBe(true);
+    const achou = (await request(ctx.app).get('/api/admin/analytics/notas/comentarios?dias=30&busca=cidade').set('Authorization', `Bearer ${admin.token}`).expect(200)).body;
+    expect(achou.itens.map((r: any) => r.sugestao)).toEqual(['quero filtro por cidade']);
+    await request(ctx.app).get('/api/admin/analytics/notas/comentarios').set('Authorization', `Bearer ${sponsorToken}`).expect(403);
+  });
+
   it('vitrine: só uma curtida, na primeira publicação; sem match e sem curtir story', async () => {
     const { runShowcaseFeedLikes, runShowcaseProfileLikes, runShowcaseStoryEngagement } = await import('./showcase.js');
     const vit = await registerInvitedUser(ctx, sponsorToken, { name: 'Vitrine Teste', email: 'vitrine-teste@example.com', password: 'senha123', gender: 'Mulher' });

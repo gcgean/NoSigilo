@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Star } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Search, Star } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { adminNotasService, type RelatorioNotas } from '@/services/api';
+import { adminNotasService, type ComentarioNota, type RelatorioNotas } from '@/services/api';
 
 const PERIODOS = [
   { dias: 7, rotulo: '7 dias' },
@@ -115,29 +115,89 @@ export default function AdminNotas() {
             </p>
           </Card>
 
-          <Card className="p-4 space-y-3">
-            <h4 className="font-semibold">O que escreveram</h4>
-            <div className="space-y-2">
-              {dados.respostas.filter((r) => r.sugestao).length === 0 && (
-                <p className="text-sm text-muted-foreground">Ninguém escreveu sugestão ainda neste período.</p>
-              )}
-              {dados.respostas.filter((r) => r.sugestao).map((r, i) => (
-                <div key={`${r.em}-${i}`} className="rounded-lg border border-border/60 p-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className={cn('text-sm font-bold', corDaNota(r.nota))}>Nota {r.nota}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {r.nome || 'Usuário'}{r.local ? ` · ${r.local}` : ''}
-                      {r.assinante && <span className="ml-2 rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-bold text-gold-text">assinante</span>}
-                      <span className="ml-2">{new Date(r.em).toLocaleDateString('pt-BR')}</span>
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm italic text-muted-foreground">“{r.sugestao}”</p>
-                </div>
-              ))}
-            </div>
-          </Card>
+          <ComentariosDasNotas dias={dias} />
         </>
       )}
     </div>
+  );
+}
+
+const FAIXAS = [
+  { id: 'todos', rotulo: 'Todos' },
+  { id: 'insatisfeitos', rotulo: 'Insatisfeitos (0–6)' },
+  { id: 'neutros', rotulo: 'Neutros (7–8)' },
+  { id: 'indicariam', rotulo: 'Indicariam (9–10)' },
+];
+
+/** Histórico completo do que escreveram, 30 por página, com filtro por faixa de nota e busca. */
+function ComentariosDasNotas({ dias }: { dias: number }) {
+  const [faixa, setFaixa] = useState('todos');
+  const [pagina, setPagina] = useState(1);
+  const [busca, setBusca] = useState('');
+  const [buscaAplicada, setBuscaAplicada] = useState('');
+  const [dados, setDados] = useState<{ total: number; paginas: number; itens: ComentarioNota[] } | null>(null);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => { setPagina(1); }, [dias, faixa, buscaAplicada]);
+  useEffect(() => {
+    let vivo = true;
+    setCarregando(true);
+    adminNotasService.comentarios({ dias, faixa, pagina, busca: buscaAplicada || undefined })
+      .then((d) => { if (vivo) setDados(d); })
+      .catch(() => { if (vivo) setDados(null); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+  }, [dias, faixa, pagina, buscaAplicada]);
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-semibold">O que escreveram {dados ? <span className="text-sm font-normal text-muted-foreground">· {dados.total} comentário(s)</span> : null}</h4>
+        <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); setBuscaAplicada(busca.trim()); }}>
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar no texto…" className="h-8 w-44 rounded-full border bg-background px-3 text-xs" />
+          <button type="submit" className="flex h-8 w-8 items-center justify-center rounded-full border" aria-label="Buscar"><Search className="h-3.5 w-3.5" /></button>
+        </form>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {FAIXAS.map((f) => (
+          <button key={f.id} type="button" onClick={() => setFaixa(f.id)}
+            className={cn('rounded-full px-3 py-1 text-xs', faixa === f.id ? 'bg-primary font-bold text-primary-foreground' : 'border border-border text-muted-foreground hover:text-foreground')}>
+            {f.rotulo}
+          </button>
+        ))}
+      </div>
+      {carregando ? (
+        <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+      ) : !dados || dados.itens.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhum comentário com esse filtro neste período.</p>
+      ) : (
+        <div className="space-y-2">
+          {dados.itens.map((r, i) => (
+            <div key={`${r.em}-${i}`} className="rounded-lg border border-border/60 p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className={cn('text-sm font-bold', corDaNota(r.nota))}>Nota {r.nota}</span>
+                <span className="text-xs text-muted-foreground">
+                  {r.nome || 'Usuário'}{r.local ? ` · ${r.local}` : ''}
+                  {r.assinante && <span className="ml-2 rounded-full bg-gold/20 px-2 py-0.5 text-[10px] font-bold text-gold-text">assinante</span>}
+                  <span className="ml-2">{new Date(r.em).toLocaleDateString('pt-BR')}</span>
+                </span>
+              </div>
+              <p className="mt-1 text-sm italic text-muted-foreground">“{r.sugestao}”</p>
+            </div>
+          ))}
+        </div>
+      )}
+      {dados && dados.paginas > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-1 text-sm">
+          <button type="button" disabled={pagina <= 1} onClick={() => setPagina((p) => p - 1)} className="flex items-center gap-1 rounded-full border px-3 py-1 disabled:opacity-40">
+            <ChevronLeft className="h-4 w-4" /> Anterior
+          </button>
+          <span className="text-muted-foreground">Página {pagina} de {dados.paginas}</span>
+          <button type="button" disabled={pagina >= dados.paginas} onClick={() => setPagina((p) => p + 1)} className="flex items-center gap-1 rounded-full border px-3 py-1 disabled:opacity-40">
+            Próxima <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </Card>
   );
 }

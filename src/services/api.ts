@@ -1232,9 +1232,14 @@ export type RelatorioNotas = {
   }>;
 };
 
+export type ComentarioNota = { nota: number; sugestao: string; em: string; nome: string | null; local: string | null; tipo: string | null; assinante: boolean };
 export const adminNotasService = {
   relatorio: async (dias: number): Promise<RelatorioNotas> => {
     const response = await apiClient.get('/admin/analytics/notas', { params: { dias } });
+    return response.data;
+  },
+  comentarios: async (p: { dias: number; faixa: string; pagina: number; busca?: string }): Promise<{ total: number; pagina: number; paginas: number; itens: ComentarioNota[] }> => {
+    const response = await apiClient.get('/admin/analytics/notas/comentarios', { params: p });
     return response.data;
   },
 };

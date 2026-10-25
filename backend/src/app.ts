@@ -19647,6 +19647,49 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Histórico completo do que escreveram na nota do app, paginado e filtrável por faixa de nota.
+  app.get('/api/admin/analytics/notas/comentarios', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    try {
+      const pedido = Number(req.query.dias || 90);
+      const dias = [7, 30, 90, 365, 0].includes(pedido) ? pedido : 90;
+      const faixa = String(req.query.faixa || 'todos');
+      const busca = String(req.query.busca || '').trim().slice(0, 80);
+      const porPagina = 30;
+      const pagina = Math.max(1, Math.floor(Number(req.query.pagina || 1)));
+      const filtros: string[] = ["r.sugestao IS NOT NULL", "TRIM(r.sugestao) <> ''"];
+      const params: unknown[] = [];
+      if (dias > 0) { filtros.push('r.created_at >= ?'); params.push(new Date(Date.now() - dias * 86_400_000).toISOString()); }
+      if (faixa === 'insatisfeitos') filtros.push('r.nota <= 6');
+      else if (faixa === 'neutros') filtros.push('r.nota BETWEEN 7 AND 8');
+      else if (faixa === 'indicariam') filtros.push('r.nota >= 9');
+      if (busca) { filtros.push('LOWER(r.sugestao) LIKE ?'); params.push(`%${busca.toLowerCase()}%`); }
+      const where = filtros.join(' AND ');
+      const total = Number(((await queryOne(db, `SELECT COUNT(*) AS c FROM app_ratings r WHERE ${where}`, params)) as any)?.c || 0);
+      const linhas = (await queryAll(
+        db,
+        `SELECT r.nota, r.sugestao, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
+           FROM app_ratings r LEFT JOIN users u ON u.id = r.user_id
+          WHERE ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
+        [...params, porPagina, (pagina - 1) * porPagina]
+      )) as any[];
+      res.json({
+        total, pagina, porPagina, paginas: Math.max(1, Math.ceil(total / porPagina)),
+        itens: linhas.map((l) => ({
+          nota: Number(l.nota),
+          sugestao: String(l.sugestao),
+          em: l.created_at,
+          nome: l.name ?? null,
+          local: [l.city, l.state].filter(Boolean).join('/') || null,
+          tipo: l.gender ?? null,
+          assinante: Number(l.is_premium || 0) === 1,
+        })),
+      });
+    } catch (error) {
+      console.error('[admin/analytics/notas/comentarios]', error);
+      res.status(500).json({ error: 'notas_indisponivel' });
+    }
+  });
+
   app.get('/api/admin/analytics/notas', requireAuth(env, db), requireAdmin(), async (req, res) => {
     try {
       const pedido = Number(req.query.dias || 90);
