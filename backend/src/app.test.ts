@@ -3880,6 +3880,10 @@ describe('nosigilo backend', () => {
     expect(msgLivre?.texto).toBe('📸 Foto para todos');
     await request(ctx.app).post(`/api/casa/salao/midia/${msgLivre.id}/ver`).set(auth(casal.token)).expect(200);
     await request(ctx.app).post(`/api/casa/salao/midia/${msgLivre.id}/ver`).set(auth(casal.token)).expect(200);
+    // Apagar: só quem mandou; depois some e o link não abre mais.
+    await request(ctx.app).post(`/api/casa/salao/mensagem/${msgLivre.id}/apagar`).set(auth(homens[0].token)).expect(403);
+    await request(ctx.app).post(`/api/casa/salao/mensagem/${msgLivre.id}/apagar`).set(auth(casal.token)).expect(200);
+    await request(ctx.app).post(`/api/casa/salao/midia/${msgLivre.id}/ver`).set(auth(casal.token)).expect(404);
 
     // Rádio: sem playlist não toca; playlist é só do admin.
     expect((await request(ctx.app).get('/api/casa/radio').set(auth(homens[0].token)).expect(200)).body.tocando).toBeNull();

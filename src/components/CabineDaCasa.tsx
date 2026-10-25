@@ -222,6 +222,13 @@ export default function CabineDaCasa({
           <>
             <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
             <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">↩️ Responder</button>
+            {m.autor?.id === meuIdPublico && (m.tipo === 'pessoa' || m.tipo === 'midia') && (
+              <button type="button" className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-rose-300"
+                onClick={() => {
+                  if (!window.confirm('Apagar para todos da cabine?')) return;
+                  void post(`mensagem/${m.id}/apagar`).then((r) => { if (r) setCab((c) => c ? { ...c, mensagens: c.mensagens.filter((x) => x.id !== m.id) } : c); });
+                }}>🗑️ Apagar</button>
+            )}
           </>
         )}
         {reagindoEm === m.id && (

@@ -621,6 +621,14 @@ export default function Casa() {
     if (pessoa) setPessoaAberta(pessoa);
     else toast({ title: `${autor.nome} não está mais nesta sala` });
   };
+  const apagarMinha = async (m: Msg) => {
+    if (!salaAtual || !window.confirm(m.tipo === 'midia' ? 'Apagar essa foto/vídeo para todos?' : 'Apagar essa mensagem para todos?')) return;
+    try {
+      await apiClient.post(`/casa/${salaAtual}/mensagem/${m.id}/apagar`);
+      setEstado((e) => e ? { ...e, mensagens: e.mensagens.filter((x) => x.id !== m.id) } : e);
+      toast({ title: 'Apagado 🗑️' });
+    } catch (e) { toast({ title: erroDe(e, 'Não foi possível apagar.') }); }
+  };
   const reagir = async (m: Msg, emoji: string) => {
     setReagindoEm(null);
     if (!salaAtual) return;
@@ -918,6 +926,9 @@ export default function Casa() {
             <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">
               ↩️ {m.tipo === 'lola' ? 'Responder a Lola' : 'Responder'}
             </button>
+            {(m.tipo === 'pessoa' || m.tipo === 'midia') && m.autor?.id === meuId && (
+              <button type="button" onClick={() => void apagarMinha(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-rose-300">🗑️ Apagar</button>
+            )}
           </>
         )}
         {reagindoEm === m.id && (

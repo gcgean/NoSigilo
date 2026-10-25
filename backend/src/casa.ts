@@ -629,7 +629,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   type Veredito = 'ok' | 'ofensa' | 'menor' | 'coercao';
   let moderacoesRodando = 0;
-  const julgarComIa = async (texto: string): Promise<Veredito | null> => {
+  const julgarComIa = async (texto: string, contexto = ''): Promise<Veredito | null> => {
     if (!deps.deepseekKey || moderacoesRodando >= 6) return null;
     moderacoesRodando++;
     const controle = new AbortController();
@@ -650,9 +650,10 @@ Responda com UMA palavra:
 - menor: fala sexual envolvendo menor de idade, criança ou adolescente, ou alguém dizendo ter menos de 18 anos.
 - coercao: ameaça, forçar alguém sem consentimento, chantagem, expor/vazar foto de alguém, violência real.
 - ofensa: xingamento ou humilhação dirigida a alguém da sala, racismo, homofobia, gordofobia.
-- ok: todo o resto.`,
+- ok: todo o resto.
+Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números como "6 anos" respondendo há quanto tempo o casal está junto, casado ou pratica swing NÃO são idade de pessoa: são "ok". Só é "menor" se a idade for de uma pessoa abaixo de 18 anos.`,
             },
-            { role: 'user', content: texto.slice(0, 400) },
+            { role: 'user', content: contexto ? `Conversa antes (só contexto, não julgue):\n${contexto.slice(-800)}\n\nMensagem a julgar: ${texto.slice(0, 400)}` : texto.slice(0, 400) },
           ],
         }),
         signal: controle.signal,
@@ -1390,17 +1391,32 @@ Responda com UMA palavra:
     return `💋 Lola: ${achou.aviso} (1º aviso; no próximo você sai da Casa)`;
   };
 
+  // Últimas falas antes da mensagem (para a IA entender, por ex., a pergunta que ela responde).
+  const contextoDe = (mensagens: Msg[], ateId: string) => {
+    const i = mensagens.findIndex((x) => x.id === ateId);
+    return mensagens.slice(Math.max(0, (i < 0 ? mensagens.length : i) - 6), i < 0 ? undefined : i)
+      .filter((x) => x.tipo === 'pessoa' || x.tipo === 'lola')
+      .map((x) => `${x.autor?.nome ?? 'Lola'}: ${x.texto.slice(0, 140)}`).join('\n');
+  };
   /** Depois de publicar: a IA olha menor de idade, coerção e ofensa. */
-  const moderarDepois = (userId: string, nome: string, texto: string, salaId: string, remover: () => void) => {
+  const moderarDepois = (userId: string, nome: string, texto: string, salaId: string, remover: () => void, contexto = '') => {
     if (texto.length < 6) return;
     void (async () => {
-      const veredito = await julgarComIa(texto);
+      const veredito = await julgarComIa(texto, contexto);
       if (veredito === null) {
         if (SUSPEITA_MENOR.test(texto)) void deps.alertar(`⚠️ A Casa: possível menção a menor de idade (IA indisponível, confira).\n${nome}: "${texto.slice(0, 200)}"\nSala: ${salaId}`).catch(() => {});
         return;
       }
       if (veredito === 'ok') return;
       remover();
+      // Mensagem curta sem sinal claro de menor (ex.: "6 anos" = tempo de casados): não expulsa
+      // sozinha; tira a mensagem e pede para o admin conferir.
+      if (veredito === 'menor' && texto.length < 30 && !SUSPEITA_MENOR.test(texto)) {
+        void deps.alertar(`⚠️ A Casa: a IA viu possível menção a menor, mas a mensagem é curta e ambígua (ninguém foi retirado; confira).
+${nome}: "${texto.slice(0, 200)}"
+Sala: ${salaId}`).catch(() => {});
+        return;
+      }
       if (veredito === 'menor') { await expulsar(userId, nome, 'Menção a menor de idade', texto, salaId); return; }
       if (veredito === 'coercao') { await expulsar(userId, nome, 'Ameaça / falta de consentimento', texto, salaId); return; }
       const n = (avisosDaNoite.get(userId) ?? 0) + 1;
@@ -1782,7 +1798,7 @@ Responda com UMA palavra:
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required', message: 'Assine para ver as fotos e vídeos da Casa.' }); return; }
     const row = (await db.queryOne(
       `SELECT cm.id, cm.autor_id, cm.destino_id, med.filename, med.mime_type FROM casa_mensagens cm
-         JOIN media med ON med.id = cm.media_id WHERE cm.id = ? AND cm.sala = ? LIMIT 1`,
+         JOIN media med ON med.id = cm.media_id WHERE cm.id = ? AND cm.sala = ? AND cm.tipo <> 'removida' LIMIT 1`,
       [String(req.params.msgId), sala.id],
     )) as any;
     if (!row || (row.destino_id && String(row.destino_id) !== userId)) { res.status(404).json({ error: 'not_found' }); return; }
@@ -1898,12 +1914,24 @@ Responda com UMA palavra:
       ? { id: respondida.id, nome: respondida.autor?.nome ?? 'Lola', trecho: respondida.tipo === 'midia' ? (respondida.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondida.texto.slice(0, 80) }
       : undefined;
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
-    moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id));
+    moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
     res.json({ ok: true });
   });
 
   // Reação na mensagem: tocar de novo no mesmo emoji tira a reação.
+  // Apagar a própria mensagem/foto/vídeo da sala (some para todos e o link deixa de abrir).
+  app.post('/api/casa/:sala/mensagem/:msgId/apagar', deps.requireAuth, async (req, res) => {
+    const sala = salaDe(req);
+    const userId = userDe(req);
+    if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
+    const msgId = String(req.params.msgId);
+    const row = (await db.queryOne('SELECT autor_id FROM casa_mensagens WHERE id = ? AND sala = ? LIMIT 1', [msgId, sala.id])) as any;
+    if (!row || String(row.autor_id) !== userId) { res.status(403).json({ error: 'nao_e_sua', message: 'Só dá para apagar o que você mandou.' }); return; }
+    removerMsgDaSala(sala, msgId);
+    res.json({ ok: true });
+  });
+
   app.post('/api/casa/:sala/reagir', deps.requireAuth, async (req, res) => {
     const sala = salaDe(req);
     const p = sala?.presentes.get(userDe(req));
@@ -2760,12 +2788,12 @@ Responda com UMA palavra:
     const publicada = msgCabine(c, { tipo: 'pessoa', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat }, texto, ...(resposta ? { resposta } : {}) });
     // Conversa quente sobe o tesão da cabine (é o que a Lola usa para liberar os níveis).
     const antesDoCalor = c.calor;
-    aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 2);
+    aquecer(c, PALAVRAS_QUENTES.test(texto) ? 5 : 1);
     if (c.calor !== antesDoCalor) avisarCabine(c);
     moderarDepois(userId, m.nome, texto, 'cabine', () => {
       c.mensagens = c.mensagens.filter((x) => x.id !== publicada.id);
       for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: publicada.id });
-    });
+    }, contextoDe(c.mensagens, publicada.id));
     res.json({ ok: true });
   });
 
@@ -2786,6 +2814,20 @@ Responda com UMA palavra:
   });
 
   // Reação em mensagem ou mídia da cabine: tocar de novo no mesmo emoji tira.
+  app.post('/api/casa/cabine/:id/mensagem/:msgId/apagar', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    const m = c?.membros.get(userId);
+    if (!c || !m) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    const msgId = String(req.params.msgId);
+    const msg = c.mensagens.find((x) => x.id === msgId);
+    if (!msg || msg.autor?.id !== m.idPublico || (msg.tipo !== 'pessoa' && msg.tipo !== 'midia')) { res.status(403).json({ error: 'nao_e_sua', message: 'Só dá para apagar o que você mandou.' }); return; }
+    c.mensagens = c.mensagens.filter((x) => x.id !== msgId);
+    void db.run("UPDATE casa_mensagens SET tipo = 'removida' WHERE id = ?", [msgId]).catch(() => {});
+    for (const id of [...c.membros.keys(), ...c.espectadores.keys()]) emitirPara(id, 'casa.cabine.mensagem.removida', { cabineId: c.id, id: msgId });
+    res.json({ ok: true });
+  });
+
   app.post('/api/casa/cabine/:id/reagir', deps.requireAuth, async (req, res) => {
     const c = cabineDe(req);
     const m = c?.membros.get(userDe(req));
@@ -2807,7 +2849,7 @@ Responda com UMA palavra:
     if (!c || (!c.membros.has(userId) && !c.espectadores.has(userId))) { res.status(404).json({ error: 'fora' }); return; }
     const row = (await db.queryOne(
       `SELECT cm.id, cm.autor_id, med.filename, med.mime_type FROM casa_mensagens cm JOIN media med ON med.id = cm.media_id
-        WHERE cm.id = ? AND cm.sala = ? LIMIT 1`,
+        WHERE cm.id = ? AND cm.sala = ? AND cm.tipo <> 'removida' LIMIT 1`,
       [String(req.params.msgId), `cab:${c.id}`],
     )) as any;
     if (!row) { res.status(404).json({ error: 'not_found' }); return; }

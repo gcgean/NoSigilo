@@ -167,7 +167,7 @@ export const PERGUNTAS_QUENTES: Item[] = [
   q('Se A Casa fosse de verdade, em qual canto vocês estariam agora?'),
   mq('Sala toda: qual foi a sua primeira experiência liberal e como começou?'),
   mq('Quem aqui já foi pra cama com um casal que conheceu online? Contem como foi.'),
-  mq('Preferência da sala: soft swap ou troca completa? Expliquem por quê 😏'),
+  mq('Preferência da sala: só beijos e carícias com o outro casal, ou troca completa (transar com o outro)? Expliquem por quê 😏'),
   mq('Qual é o limite que vocês nunca vão passar… e qual já passaram e adoraram?'),
   mq('Quem aqui curte ser assistido? E quem curte assistir? 👀'),
   mq('Qual foi a noite mais louca de vocês numa casa de swing ou festa liberal?'),
@@ -192,7 +192,7 @@ export const ENQUETES: Enquete[] = [
   { t: 'Qual o melhor dia pra transar?', o: ['Sexta 🍻', 'Sábado 🔥', 'Domingo de manhã ☀️', 'Qualquer dia 😏'], n: 'quente' },
   { t: 'Luz na hora H:', o: ['Acesa 💡', 'Meia-luz 🕯️', 'Apagada 🌑', 'Luz vermelha 🔴'], n: 'quente' },
   { t: 'Beijo em público:', o: ['Adoro 😍', 'Só escondido 🤫', 'Com plateia 👀', 'Nunca 🙈'], n: 'quente' },
-  { t: 'Vocês preferem:', o: ['Soft swap 💋', 'Troca completa 🔄', 'Mesmo ambiente sem troca 👀', 'Ménage 3️⃣'], n: 'muito_quente' },
+  { t: 'Vocês preferem:', o: ['Só beijos e carícias com outro casal 💋', 'Trocar de casal e transar 🔄', 'Transar perto de outro casal, sem trocar 👀', 'Sexo a três 3️⃣'], n: 'muito_quente' },
   { t: 'Ménage dos sonhos:', o: ['Casal + mulher 👩', 'Casal + homem 👨', 'Duas mulheres e um homem', 'Dois casais 💑💑'], n: 'muito_quente' },
   { t: 'No Quarto Escuro você…', o: ['Fica no cantinho olhando 👀', 'Se deixa tocar 🤲', 'Toma a iniciativa 😈', 'Some com alguém 🚪'], n: 'muito_quente' },
   { t: 'Assistir o parceiro(a) com outra pessoa:', o: ['Me excita muito 🔥', 'Toparia uma vez 🤔', 'Só se eu participar 😈', 'Nunca 🚫'], n: 'muito_quente' },
@@ -201,7 +201,7 @@ export const ENQUETES: Enquete[] = [
   { t: 'O mais quente numa festa liberal:', o: ['O beijo entre mulheres 👩‍❤️‍👩', 'Ver casais se pegando 👀', 'O convite inesperado 💌', 'O banheiro 🚿'], n: 'muito_quente' },
   { t: 'Barulho na hora H:', o: ['Silencioso(a) 🤫', 'Gemidos baixinhos 😮‍💨', 'Escandaloso(a) 📢', 'Depende de quem tá 😏'], n: 'muito_quente' },
   { t: 'Hoje à noite você toparia:', o: ['Chamada de vídeo quente 📱', 'Encontro amanhã 📍', 'Troca de fotos na cabine 📸', 'Só provocar aqui 😈'], n: 'muito_quente' },
-  { t: 'Fetiche que mais desperta curiosidade:', o: ['Venda nos olhos 🙈', 'Algemas ⛓️', 'Cuckold 🦌', 'Exibicionismo 👀'], n: 'muito_quente' },
+  { t: 'Fetiche que mais desperta curiosidade:', o: ['Venda nos olhos 🙈', 'Algemas ⛓️', 'Ver a esposa com outro 🦌', 'Transar sendo olhado 👀'], n: 'muito_quente' },
 ];
 
 export const QUIZ: Quiz[] = [
