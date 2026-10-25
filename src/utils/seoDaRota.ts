@@ -26,6 +26,6 @@ export function aplicarSeoDaRota(pathname: string) {
   else if (pathname === '/acasa' || pathname === '/a-casa') {
     canonical(`${origem}/acasa`);
     document.title = 'A Casa: casa liberal online e boate liberal virtual | NoSigilo';
-    meta('description', 'A primeira casa liberal online do Brasil: boate virtual para casais liberais e singles, toda sexta às 21h e sábado às 22h, até 1h. Salas ao vivo, brincadeiras, cabines e discrição total.');
+    meta('description', 'A primeira casa liberal online do Brasil: boate virtual para casais liberais e singles, toda sexta e sábado às 22h, até 1h. Salas ao vivo, brincadeiras, cabines e discrição total.');
   }
 }

@@ -9,7 +9,7 @@ import { enablePushNotifications } from '@/utils/pushNotifications';
 /**
  * Convite para reservar lugar n'A Casa, no primeiro acesso de cada dia, para
  * quem ainda não reservou a próxima noite nem está na fila.
- * - Sexta e sábado: "é hoje, às 21h".
+ * - Sexta e sábado: "é hoje, às 22h".
  * - Segunda a quinta: chama para a sexta que vem.
  * - Domingo: não pergunta.
  * - Até a inauguração (sexta, 23/10/2026, 21h) o texto fala da inauguração.
@@ -24,7 +24,7 @@ function hojeEmBrasilia() {
 }
 
 function diaDaNoite(iso: string | null) {
-  if (!iso) return 'sexta, às 21h';
+  if (!iso) return 'sexta, às 22h';
   const d = new Date(iso);
   const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', hour12: false, timeZone: 'America/Sao_Paulo' }).slice(0, 2);
   return `${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' })}, ${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })}, às ${Number(hora)}h`;
@@ -39,8 +39,8 @@ export default function LancamentoDaCasa() {
   const [lancamento, setLancamento] = useState(true);
   const [quando, setQuando] = useState<string>('sexta 23/10 · 21h');
   const [ehHoje, setEhHoje] = useState(false);
-  // Sexta abre às 21h; sábado, às 22h.
-  const horaHoje = hojeEmBrasilia().semana === 'Sat' ? '22h' : '21h';
+  // Sexta e sábado abrem às 22h.
+  const horaHoje = '22h';
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
@@ -87,8 +87,8 @@ export default function LancamentoDaCasa() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · às ${horaHoje}` : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>
           <p className="text-sm text-white/85">
-            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? `Hoje tem A Casa, das ${horaHoje} à 1h: a casa de swing virtual do NoSigilo. Vai participar?` : 'Toda sexta às 21h e sábado às 22h, até 1h, acontece A Casa: a casa de swing virtual do NoSigilo.'} Salas ao vivo com casais, mulheres e singles,
-            pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e Glory Hole.
+            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? `Hoje tem A Casa, das ${horaHoje} à 1h: a casa de swing virtual do NoSigilo. Vai participar?` : 'Toda sexta e sábado às 22h, até 1h, acontece A Casa: a casa de swing virtual do NoSigilo.'} Salas ao vivo com casais, mulheres e singles,
+            pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e o Quarto Cuckold.
           </p>
           <ul className="space-y-1 text-left text-xs text-white/75">
             <li>🎟️ Reserve e seja avisado no celular assim que abrir</li>

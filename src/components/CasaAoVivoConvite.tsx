@@ -19,7 +19,7 @@ export default function CasaAoVivoConvite() {
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
-    // A noite vai das 21h à 1h: a "data da noite" é a de 3h atrás.
+    // A noite vai das 22h à 1h: a "data da noite" é a de 3h atrás.
     const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
     try { if (localStorage.getItem(CHAVE) === noite) return; } catch { /* sem storage: segue */ }
     const t = setTimeout(async () => {

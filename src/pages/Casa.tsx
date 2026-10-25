@@ -26,7 +26,7 @@ import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 
 /**
- * A Casa — boate virtual de sexta (21h) e sábado (22h), até 1h (backend: casa.ts).
+ * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
  * Lobby com as salas; dentro da sala: chat ao vivo, quem está lá, brincadeiras
  * da Lola (anfitriã IA) e convite para a cabine (conversa a dois com aceite).
  */
@@ -271,7 +271,7 @@ function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; pode
 function ContagemRegressiva({ alvo }: { alvo: string | null }) {
   const [agora, setAgora] = useState(Date.now());
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
-  if (!alvo) return <p className="text-sm text-white/70">Sexta às 21h e sábado às 22h.</p>;
+  if (!alvo) return <p className="text-sm text-white/70">Sexta e sábado às 22h.</p>;
   const seg = Math.max(0, Math.floor((Date.parse(alvo) - agora) / 1000));
   const partes: [string, number][] = [['dias', Math.floor(seg / 86400)], ['h', Math.floor((seg % 86400) / 3600)], ['min', Math.floor((seg % 3600) / 60)], ['seg', seg % 60]];
   return (
@@ -470,7 +470,7 @@ export default function Casa() {
       ? { ...e, mensagens: e.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : e);
     const aoPresentes = (d: { sala: string; presentes: Pessoa[]; espiando: number }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, presentes: d.presentes, espiando: d.espiando } : e);
     const aoJogo = (d: { sala: string; jogo: Jogo | null }) => setEstado((e) => e && e.sala.id === d.sala ? { ...e, jogo: d.jogo } : e);
-    const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta às 21h e sábado às 22h tem mais.' }); void carregar(); };
+    const aoFechar = () => { setEstado(null); toast({ title: 'A Casa fechou por hoje 🌙', description: 'Sexta e sábado às 22h tem mais.' }); void carregar(); };
     abrirPorIdRef.current = (id: string, nome: string) => abrirPorId(id, nome);
     const abrirPorId = (id: string, nome: string) => {
       const pessoa = estadoRef.current?.presentes.find((x) => x.id === id);
@@ -1636,7 +1636,7 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo. Toda <b>sexta às 21h e sábado às 22h, até 1h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo. Toda <b>sexta e sábado às 22h, até 1h</b>: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>
@@ -1728,7 +1728,7 @@ export default function Casa() {
                       : info.podeFalar ? 'Entrar' : 'Espiar'}
                   </Button>
                 )}
-                {!info?.aberta && <p className="mt-2 flex items-center gap-1 text-xs text-white/50"><Lock className="h-3 w-3" />Abre sexta às 21h e sábado às 22h</p>}
+                {!info?.aberta && <p className="mt-2 flex items-center gap-1 text-xs text-white/50"><Lock className="h-3 w-3" />Abre sexta e sábado às 22h</p>}
               </div>
             );
           })}
@@ -1750,7 +1750,6 @@ export default function Casa() {
             <li>🍸 Bar: pague um drink pra quem te chamou atenção</li>
             <li>👀 Olhares cruzados viram cabine, de porta fechada ou aberta</li>
             <li>😈 Desafios valendo tokens entre casais</li>
-            <li>🕳️ Glory Hole: sala anônima, revela quem quiser</li>
             <li>🎆 Show da Meia-Noite e 🏆 ranking dos casais</li>
             <li>🎁 +5 tokens por noite só por entrar</li>
           </ul>

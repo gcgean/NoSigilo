@@ -72,17 +72,17 @@ export default function PlaylistDaCasa() {
       </div>
       <p className="text-xs text-muted-foreground">
         Use só músicas livres para uso comercial (ex.: Pixabay Music). Música com direito autoral tocada para o público exige ECAD.
-        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo. A ordem das músicas e das vinhetas é embaralhada a cada noite (sexta e sábado tocam sequências diferentes); a abertura toca às 21h e o fechamento termina à 1h.
+        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo. A ordem das músicas e das vinhetas é embaralhada a cada noite (sexta e sábado tocam sequências diferentes); a abertura toca às 22h e o fechamento termina à 1h.
       </p>
 
       <div className="grid gap-2 rounded-xl border border-dashed p-3">
         <div className="flex gap-2">
           <Button size="sm" variant={tipo === 'musica' ? 'default' : 'outline'} onClick={() => setTipo('musica')}>🎵 Música</Button>
           <Button size="sm" variant={tipo === 'vinheta' ? 'default' : 'outline'} onClick={() => setTipo('vinheta')}>💋 Vinheta da Lola</Button>
-          <Button size="sm" variant={tipo === 'abertura' ? 'default' : 'outline'} onClick={() => setTipo('abertura')}>🌙 Abertura (21h)</Button>
+          <Button size="sm" variant={tipo === 'abertura' ? 'default' : 'outline'} onClick={() => setTipo('abertura')}>🌙 Abertura (22h)</Button>
           <Button size="sm" variant={tipo === 'fechamento' ? 'default' : 'outline'} onClick={() => setTipo('fechamento')}>🌅 Fechamento (1h)</Button>
         </div>
-        {tipo === 'abertura' && <p className="text-[11px] text-muted-foreground">Toca uma vez, assim que a Casa abre às 21h. Se houver mais de uma, vale a primeira da lista.</p>}
+        {tipo === 'abertura' && <p className="text-[11px] text-muted-foreground">Toca uma vez, assim que a Casa abre às 22h. Se houver mais de uma, vale a primeira da lista.</p>}
         {tipo === 'fechamento' && <p className="text-[11px] text-muted-foreground">Toca no fim da noite, terminando exatamente à 1h.</p>}
         {tipo === 'vinheta' && <p className="text-[11px] text-muted-foreground">Vinhetas tocam entre as músicas: uma a cada 2 músicas, revezando entre as que você subir.</p>}
         <input type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} className="text-xs" />
@@ -101,14 +101,14 @@ export default function PlaylistDaCasa() {
           <li key={f.id} className="flex items-center gap-2 rounded-xl border p-2">
             <span className="w-5 text-center text-xs text-muted-foreground">{i + 1}</span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{f.tipo === 'vinheta' ? '💋 ' : f.tipo === 'abertura' ? '🌙 ' : f.tipo === 'fechamento' ? '🌅 ' : ''}{f.titulo}{f.tipo && f.tipo !== 'musica' && <span className="ml-1 rounded-full bg-fuchsia-500/15 px-1.5 text-[10px] text-fuchsia-500">{f.tipo === 'vinheta' ? 'vinheta' : f.tipo === 'abertura' ? 'abertura 21h' : 'fechamento 1h'}</span>}</p>
+              <p className="truncate text-sm font-medium">{f.tipo === 'vinheta' ? '💋 ' : f.tipo === 'abertura' ? '🌙 ' : f.tipo === 'fechamento' ? '🌅 ' : ''}{f.titulo}{f.tipo && f.tipo !== 'musica' && <span className="ml-1 rounded-full bg-fuchsia-500/15 px-1.5 text-[10px] text-fuchsia-500">{f.tipo === 'vinheta' ? 'vinheta' : f.tipo === 'abertura' ? 'abertura 22h' : 'fechamento 1h'}</span>}</p>
               <p className="truncate text-[11px] text-muted-foreground">{f.artista || 'sem artista'} · {mmss(f.duracao)}{f.fonte ? ` · ${f.fonte}` : ''}</p>
               <div className="mt-1 flex items-center gap-2">
                 <audio src={resolveServerUrl(f.url)} controls preload="none" className="h-8 min-w-0 flex-1" />
                 <select value={f.tipo ?? 'musica'} onChange={(e) => void trocarTipo(f, e.target.value)} className="rounded-md border bg-background px-1 py-1 text-[11px]" aria-label="Tipo do áudio">
                   <option value="musica">🎵 Música</option>
                   <option value="vinheta">💋 Vinheta</option>
-                  <option value="abertura">🌙 Abertura 21h</option>
+                  <option value="abertura">🌙 Abertura 22h</option>
                   <option value="fechamento">🌅 Fechamento 1h</option>
                 </select>
               </div>

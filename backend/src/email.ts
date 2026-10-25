@@ -317,41 +317,41 @@ export async function sendWeekendEngagementEmail(
   const safeName = escapeHtml((payload.userName || 'você').split(' ')[0] || payload.userName || 'você');
 
   type Variant = { subject: string; emoji: string; headline: string; body: string; ctaLabel: string; ctaPath: string; second?: { label: string; path: string } };
-  // Sai sexta às 20h para quem sumiu: chama para A Casa, que abre às 21h
+  // Sai sexta às 20h para quem sumiu: chama para A Casa, que abre às 22h
   // (evento com hora marcada puxa mais do que convite genérico — 18/10/2026).
   const variants: Variant[] = [
     {
-      subject: `🔥 ${safeName}, hoje às 21h tem A Casa no ${appName}`,
+      subject: `🔥 ${safeName}, hoje às 22h tem A Casa no ${appName}`,
       emoji: '🔥',
-      headline: 'Hoje às 21h a Casa abre 😈',
+      headline: 'Hoje às 22h a Casa abre 😈',
       body: 'A Casa: a boate virtual dos casais liberais do NoSigilo, ao vivo e só para a comunidade. Salas com casais, mulheres e singles, a Lola puxando brincadeiras bem quentes, música e cabine a dois. Até 1h da manhã. Chama seu par!',
       ctaLabel: 'Reservar meu lugar →',
       ctaPath: '/acasa?reservar=1',
       second: { label: 'Ver quem está perto', path: '/search' },
     },
     {
-      subject: `🍸 ${safeName}, a festa de sexta é na Casa (21h)`,
+      subject: `🍸 ${safeName}, a festa de sexta é na Casa (22h)`,
       emoji: '🍸',
-      headline: 'Sexta Liberal começa às 21h',
+      headline: 'Sexta Liberal começa às 22h',
       body: 'Na Casa, a boate virtual dos casais liberais do NoSigilo, tem eu nunca, verdade ou desafio e match às cegas com gente da comunidade, tudo ao vivo. Quem curtir a vibe vai pra cabine a dois. Discreto e só com quem você aceitar.',
-      ctaLabel: 'Entrar na Casa às 21h →',
+      ctaLabel: 'Entrar na Casa às 22h →',
       ctaPath: '/acasa?reservar=1',
       second: { label: 'Abrir o Match', path: '/match' },
     },
     {
-      subject: `💋 ${safeName}, sentimos sua falta: hoje tem Casa às 21h`,
+      subject: `💋 ${safeName}, sentimos sua falta: hoje tem Casa às 22h`,
       emoji: '💋',
       headline: 'Volta pra noite de hoje?',
-      body: 'Enquanto você esteve fora, a comunidade ganhou A Casa: a boate virtual dos casais liberais do NoSigilo, que abre sexta e sábado, das 21h à 1h. Entra, dá uma espiada e sinta o clima 🔥',
+      body: 'Enquanto você esteve fora, a comunidade ganhou A Casa: a boate virtual dos casais liberais do NoSigilo, que abre sexta e sábado, das 22h à 1h. Entra, dá uma espiada e sinta o clima 🔥',
       ctaLabel: 'Espiar A Casa →',
       ctaPath: '/acasa?reservar=1',
       second: { label: 'Ver as novidades do feed', path: '/feed' },
     },
     {
-      subject: `🖤 ${safeName}, o Quarto Escuro abre às 21h`,
-      emoji: '🖤',
+      subject: `😈 ${safeName}, o Quarto Cuckold abre às 22h`,
+      emoji: '😈',
       headline: 'Tem sala muito quente hoje',
-      body: 'Na Casa, a boate virtual dos casais liberais do NoSigilo, tem Salão Principal, Sala dos Casais e Quarto Escuro: escolha a sua, entre nas brincadeiras e chame quem você quiser pra cabine. Hoje, das 21h à 1h.',
+      body: 'Na Casa, a boate virtual dos casais liberais do NoSigilo, tem Salão Principal, Sala dos Casais e Quarto Cuckold: escolha a sua, entre nas brincadeiras e chame quem você quiser pra cabine. Hoje, das 22h à 1h.',
       ctaLabel: 'Ver as salas da Casa →',
       ctaPath: '/acasa?reservar=1',
       second: { label: 'Abrir o Chat', path: '/chat' },

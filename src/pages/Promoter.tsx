@@ -551,7 +551,7 @@ export default function Promoter() {
             {(() => {
               const tokenDoConvite = inviteUrl.split('/invite/')[1] || '';
               const linkCasa = `${getSiteUrl()}/acasa?invite=${tokenDoConvite}`;
-              const textoCasa = `🔥 Sexta às 21h e sábado às 22h tem A Casa: a boate virtual dos liberais, ao vivo. Entra comigo: ${linkCasa}`;
+              const textoCasa = `🔥 Sexta e sábado às 22h tem A Casa: a boate virtual dos liberais, ao vivo. Entra comigo: ${linkCasa}`;
               return (
                 <div className="mt-2 space-y-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3">
                   <p className="text-sm font-semibold">🔥 Link d'A Casa (boate virtual)</p>

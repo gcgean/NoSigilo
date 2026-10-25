@@ -1,5 +1,5 @@
 /**
- * "A Casa" — boate virtual de sexta e sábado, das 21h à 1h (horário de Brasília).
+ * "A Casa" — boate virtual de sexta e sábado, das 22h à 1h (horário de Brasília).
  *
  * Salas com chat ao vivo, quem está dentro, cabine privada (conversa a dois que
  * só abre com aceite) e uma anfitriã IA (Lola) que puxa brincadeiras quentes a
@@ -102,6 +102,12 @@ const RESPOSTAS_DA_LOLA = [
   'Anotado, {nome} 😈 a sala inteira leu isso',
   'Hmm, {nome}… assim você me deixa curiosa 💋',
   'Isso, {nome}! É desse clima que A Casa gosta 🔥',
+];
+// Lola no Cuckold puxando casais para a Sala dos Casais (quando o Cuckold lota e a dos casais está morna).
+const CHAMA_PRA_SALA_DOS_CASAIS = [
+  'Casais, um recado 💑 a Sala dos Casais tá mais tranquila agora: só casal e mulher, perfeita pra trocar ideia com outro casal 😈',
+  'Psiu, casais… aqui no Cuckold os homens tão animados, mas na Sala dos Casais tem casal querendo conversar com vocês 💋',
+  'Quem é casal e quer conversar com outro casal: Sala dos Casais, agora 🔥 depois volta aqui pra se exibir 😏',
 ];
 const RECEBE_MULHER = [
   'Chegou {nome} 💋 a sala ficou mais bonita… quem vai ser educado e oferecer um drink?',
@@ -245,12 +251,12 @@ function agoraBrasilia(d = new Date()) {
   return { dow: dias[p('weekday')] ?? 0, hora: Number(p('hour')) % 24, data: `${p('year')}-${p('month')}-${p('day')}` };
 }
 
-/** Abertura de cada noite (Brasília). Sábado às 22h desde 24/10/2026 (teste contra a sexta às 21h). */
-const HORA_DE_ABRIR = { sexta: 21, sabado: 22 } as const;
-const HORARIO_DA_CASA = 'Sexta às 21h e sábado às 22h, até 1h';
+/** Abertura de cada noite (Brasília). Desde 25/10/2026 as duas às 22h: o sábado às 22h segurou mais gente até 1h. */
+const HORA_DE_ABRIR = { sexta: 22, sabado: 22 } as const;
+const HORARIO_DA_CASA = 'Sexta e sábado às 22h, até 1h';
 const inicioDaNoite = (chave: string, tema: 'sexta' | 'sabado') => Date.parse(`${chave}T${HORA_DE_ABRIR[tema]}:00:00-03:00`);
 
-/** Noite em curso pelo horário fixo (sex 21h–1h, sáb 22h–1h) ou null. */
+/** Noite em curso pelo horário fixo (sex e sáb, 22h–1h) ou null. */
 function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
   const { dow, hora, data } = agoraBrasilia(d);
   if (dow === 5 && hora >= HORA_DE_ABRIR.sexta) return { chave: data, tema: 'sexta' };
@@ -698,7 +704,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // Com pouca gente, só Salão e Sala dos Casais (senão cada sala fica com 3 e parece vazia).
   // As outras destravam com 25 pessoas na Casa e ficam abertas até o fim da noite.
   // O Quarto Cuckold fica sempre aberto: é onde os solteiros entram sem fila.
-  const SALAS_EXTRAS: SalaId[] = ['quarto', 'glory'];
+  // Quarto Escuro e Glory Hole estão guardados (SALAS_GUARDADAS) até a Casa crescer.
+  const SALAS_EXTRAS: SalaId[] = [];
+  const SALAS_GUARDADAS: SalaId[] = ['quarto', 'glory'];
+  const guardada = (sala: Sala) => SALAS_GUARDADAS.includes(sala.id);
   const MINIMO_PARA_DESTRAVAR = 25;
   const liberadas = new Set<string>();
   const naCasaAgora = () => [...salas.values()].reduce((n, s) => n + s.presentes.size + s.espiando.size, 0);
@@ -716,6 +725,20 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       for (const outra of salas.values()) {
         if (outra.presentes.size > 0) lola(outra, `🔓 O ${s.emoji} ${s.nome} ABRIU! A Casa encheu (${n} pessoas)… quem tem coragem entra primeiro 😈`);
       }
+    }
+  };
+  // A cada 20 min: se o Cuckold tem casais e a Sala dos Casais está mais vazia, a Lola chama.
+  let ultimoEquilibrio = 0;
+  const equilibrarSalas = (agora: number) => {
+    if (agora - ultimoEquilibrio < 20 * 60_000) return;
+    const cuckold = salas.get('cuckold');
+    const casais = salas.get('casais');
+    if (!cuckold || !casais) return;
+    const casaisNoCuckold = [...cuckold.presentes.values()].filter((p) => p.podeFalar && p.cat === 'casal').length;
+    const naSalaDosCasais = [...casais.presentes.values()].filter((p) => p.podeFalar).length;
+    if (casaisNoCuckold >= 2 && naSalaDosCasais < casaisNoCuckold) {
+      ultimoEquilibrio = agora;
+      lola(cuckold, sortear(CHAMA_PRA_SALA_DOS_CASAIS));
     }
   };
   const limiteDeHomens = (sala: Sala) => {
@@ -1047,7 +1070,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     return String(conv.id);
   };
 
-  // ─── Relógio da Casa: presença, jogos, fechamento e aviso das 21h ─────────
+  // ─── Relógio da Casa: presença, jogos, fechamento e aviso da abertura ─────────
   const avisosEnviados = new Set<string>();
   let noiteAnterior: string | null = null;
   let ultimaLimpeza = '';
@@ -1128,6 +1151,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
     if (noite) anunciarRanking(noite.chave);
     if (noite && !noite.teste) destravarSeEncheu(noite);
+    if (noite) equilibrarSalas(agora);
     void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
 
     // Abriu a noite: aviso no celular de quem usou o site nos últimos 7 dias (uma vez por noite).
@@ -1171,7 +1195,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       })().catch(() => {});
     }
 
-    // Sexta, 18h: "Hoje tem Casa às 21h, chama seu par" (uma vez por sexta).
+    // Sexta, 18h: "Hoje tem Casa às 22h, chama seu par" (uma vez por sexta).
     const relogioBr = agoraBrasilia();
     if (relogioBr.dow === 5 && relogioBr.hora === 18) {
       const chave18 = `casa_aviso18:${relogioBr.data}`;
@@ -1181,7 +1205,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         if (!ja) {
           await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave18, 'enviando', new Date().toISOString()]);
           void avisarParaAtivos({
-            title: '🔥 Hoje tem A Casa às 21h!',
+            title: '🔥 Hoje tem A Casa às 22h!',
             body: 'Sexta Liberal ao vivo até 1h: brincadeiras quentes, música e cabine a dois. Chama seu par 😈',
             url: '/casa',
             tag: 'casa-hoje',
@@ -1466,7 +1490,7 @@ Sala: ${salaId}`).catch(() => {});
       pessoas,
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: proxima,
-      salas: [...salas.values()].map((s) => ({ nome: s.nome, emoji: s.emoji, descricao: s.descricao, nivel: s.nivel })),
+      salas: [...salas.values()].filter((s) => !guardada(s)).map((s) => ({ nome: s.nome, emoji: s.emoji, descricao: s.descricao, nivel: s.nivel })),
     });
   });
 
@@ -1490,7 +1514,7 @@ Sala: ${salaId}`).catch(() => {});
       teste: !!noite?.teste,
       podeFalar,
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
-      salas: [...salas.values()].map((s) => {
+      salas: [...salas.values()].filter((s) => !guardada(s) || perfil?.admin).map((s) => {
         const c = contagem(s);
         const souHomem = perfil?.cat === 'homem';
         return {
@@ -1563,6 +1587,10 @@ Sala: ${salaId}`).catch(() => {});
     if (estaExpulso(userId)) { res.status(403).json({ error: 'expulso', message: 'Você foi retirado(a) da Casa nesta noite. Na próxima noite você pode voltar.' }); return; }
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
+    if (guardada(sala) && !perfil.admin) {
+      res.status(404).json({ error: 'guardada', message: 'Essa sala está fechada por enquanto. Que tal o Quarto Cuckold ou a Sala dos Casais? 😈' });
+      return;
+    }
     if (trancada(sala, noite) && !perfil.admin && !sala.presentes.has(userId)) {
       const n = naCasaAgora();
       res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa tiver ${MINIMO_PARA_DESTRAVAR} pessoas (agora ${n}). Chama mais gente! 😈` });
@@ -2566,7 +2594,7 @@ Sala: ${salaId}`).catch(() => {});
     // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
     // A sequência é a mesma para todo mundo na noite, então a sincronia continua.
     const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
-    // Abertura (21h) e fechamento (terminando à 1h) tocam só no horário certo.
+    // Abertura (22h) e fechamento (terminando à 1h) tocam só no horário certo.
     const noiteAgora = await noiteAtual();
     const agoraMs = Date.now();
     const vinhetaNaHora = (f: Faixa, inicioMs: number) => res.json({
@@ -2599,7 +2627,7 @@ Sala: ${salaId}`).catch(() => {});
     }
     const total = lista.reduce((s, f) => s + f.duracao, 0);
     if (total <= 0) { res.json({ tocando: null }); return; }
-    // Na noite normal a rádio começa do 1º item logo depois da abertura das 21h.
+    // Na noite normal a rádio começa do 1º item logo depois da abertura das 22h.
     const inicioNormal = noiteAgora && !noiteAgora.forcada ? inicioDaNoite(noiteAgora.chave, noiteAgora.tema) + (todas.find((f) => f.tipo === 'abertura')?.duracao ?? 0) * 1000 : null;
     const zero = inicioNormal && agoraMs >= inicioNormal ? inicioNormal : INICIO_DA_RADIO;
     let pos = ((agoraMs - zero) / 1000) % total;

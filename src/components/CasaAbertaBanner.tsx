@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
 
 /**
- * Aviso em todas as telas enquanto A Casa está aberta de verdade (sex/sáb 21h–1h
+ * Aviso em todas as telas enquanto A Casa está aberta de verdade (sex/sáb 22h–1h
  * ou noite extra). Usa a rota pública, que esconde o modo teste do admin, e é
  * leve para consultar a cada minuto. Fechar o aviso vale só para aquela noite.
  */
@@ -31,7 +31,7 @@ export default function CasaAbertaBanner() {
     return () => { vivo = false; clearInterval(t); };
   }, []);
 
-  // A noite vai das 21h à 1h: a data "da noite" é a de 3h atrás.
+  // A noite vai das 22h à 1h: a data "da noite" é a de 3h atrás.
   const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
   if (!info?.aberta || pathname.startsWith('/casa') || fechadoEm === noite) return null;
 
