@@ -82,7 +82,7 @@ export default function HistoricoDaCasa() {
                 {visiveis.map((l) => (
                   <div key={l.id} className={cn('rounded-lg px-2 py-1 text-xs', l.tipo === 'lola' ? 'bg-fuchsia-500/10' : l.tipo === 'sistema' ? 'text-muted-foreground' : 'bg-muted/40')}>
                     <span className="text-muted-foreground">{hora(l.criadoEm)} · {nomeDaSala(l.sala)} · </span>
-                    <b>{l.tipo === 'lola' ? 'Lola (IA)' : l.autor ? `${l.autor.nome} (${l.autor.genero || '?'})` : ''}</b>{' '}
+                    <b>{l.tipo === 'lola' ? 'Lola (IA)' : l.tipo === 'anfitriao' ? 'Léo & Bia (IA)' : l.autor ? `${l.autor.nome} (${l.autor.genero || '?'})` : ''}</b>{' '}
                     <span className="whitespace-pre-line">{l.texto}</span>
                     {l.midia && (
                       <div className="mt-1">

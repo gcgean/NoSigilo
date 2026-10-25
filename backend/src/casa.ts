@@ -109,6 +109,21 @@ const CHAMA_PRA_SALA_DOS_CASAIS = [
   'Psiu, casais… aqui no Cuckold os homens tão animados, mas na Sala dos Casais tem casal querendo conversar com vocês 💋',
   'Quem é casal e quer conversar com outro casal: Sala dos Casais, agora 🔥 depois volta aqui pra se exibir 😏',
 ];
+// Léo & Bia, o casal anfitrião (IA, sempre identificado como IA): puxa conversa quando a sala esfria.
+const ANFITRIOES = { id: 'anfitrioes', nome: 'Léo & Bia', avatar: null, cat: 'casal' as const };
+const ANFITRIOES_PUXAM = [
+  '{nome}, a gente reparou em vocês… é a primeira vez na Casa? Conta pra gente 😏',
+  'Sala tá tímida hoje, hein? Bora: quem aqui já fez troca e quem ainda tá só na vontade? 🔥',
+  '{nome}, a Bia quer saber: vocês preferem olhar ou ser olhados? 👀',
+  'O Léo apostou que {nome} é o mais safado da sala… alguém discorda? 😈',
+  'Pergunta da casa: qual foi o lugar mais ousado que vocês já transaram? A gente começa: elevador 😳',
+  '{nome}, paga um drink pra alguém daqui… a gente garante que esquenta 🍸',
+];
+const ANFITRIOES_RESPONDEM = [
+  'Adoramos, {nome}! Agora passa a bola: pergunta alguma coisa pra alguém da sala 😏',
+  'Ai, {nome}… a Bia ficou vermelha aqui 🔥 conta mais!',
+  'Isso, {nome}! É desse clima que a gente gosta 😈',
+];
 const RECEBE_MULHER = [
   'Chegou {nome} 💋 a sala ficou mais bonita… quem vai ser educado e oferecer um drink?',
   '{nome} entrou na pista 🔥 meninos e casais, comportem-se… ou não 😈',
@@ -145,7 +160,7 @@ type Presente = {
 
 type Msg = {
   id: string;
-  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao';
+  tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao' | 'anfitriao';
   /** Efeito animado que toca na tela de quem está na sala/cabine (drink, brinde, ação da cabine). */
   efeito?: string;
   autor?: { id: string; nome: string; avatar: string | null; cat: Categoria };
@@ -875,6 +890,106 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     publicarMsg(sala, { tipo: 'lola', texto: dita, resposta: { id: msgId, nome: p.nome, trecho: texto.slice(0, 80) } });
   };
 
+  // ─── Léo & Bia (casal anfitrião IA) ───────────────────────────────────────
+  const falaDosAnfitrioes = async (sala: Sala, pedido: string): Promise<string | null> => {
+    if (!deps.deepseekKey) return null;
+    const controle = new AbortController();
+    const timer = setTimeout(() => controle.abort(), 10_000);
+    try {
+      const quem = [...sala.presentes.values()].filter((p) => p.podeFalar).slice(0, 12)
+        .map((p) => `${p.nome} (${p.cat}${p.cidade ? `, ${p.cidade}` : ''})`).join(', ');
+      const conversa = sala.mensagens.slice(-6).filter((m) => m.tipo === 'pessoa' || m.tipo === 'lola' || m.tipo === 'anfitriao')
+        .map((m) => `${m.tipo === 'lola' ? 'Lola' : m.autor?.nome ?? '?'}: ${m.texto.slice(0, 120)}`).join('\n');
+      const r = await fetch('https://api.deepseek.com/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deps.deepseekKey}` },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          temperature: 1,
+          max_tokens: 120,
+          messages: [
+            {
+              role: 'system',
+              content: `Vocês são Léo & Bia, o casal anfitrião VIRTUAL (uma IA) de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Vocês estão no ${sala.nome}. Falam como um casal liberal animado, simpático e ${sala.nivel === 'muito_quente' ? 'bem safado' : 'provocante'}, em geral no plural ("a gente"). Objetivo: fazer as PESSOAS da sala conversarem entre si: pergunta leve e safada, elogio, apresentar um ao outro, sugerir drink ou cabine. Nunca finjam ser pessoas reais (se perguntarem, vocês são a IA da Casa); nunca combinem encontro, nunca peçam contato nem fotos. Tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou links. Chame alguém pelo nome quando fizer sentido. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 170 caracteres, no máximo um emoji.`,
+            },
+            { role: 'user', content: `Quem está na sala: ${quem || 'pouca gente'}\nÚltimas mensagens:\n${conversa || '(silêncio)'}\n\n${pedido}` },
+          ],
+        }),
+        signal: controle.signal,
+      });
+      if (!r.ok) return null;
+      const json = await r.json() as any;
+      const t = String(json?.choices?.[0]?.message?.content || '').trim().replace(/^["“”'\-\s]+|["“”']+$/g, '').trim();
+      return t.length >= 4 && t.length <= 220 ? t : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const anfitrioes = (sala: Sala, texto: string, resposta?: Msg['resposta']) =>
+    publicarMsg(sala, { tipo: 'anfitriao', autor: ANFITRIOES, texto, ...(resposta ? { resposta } : {}) });
+  // Puxam conversa quando a sala está quieta (3 min sem gente falando), no máximo 1 vez a cada 7 min.
+  const ultimoAnfitriao = new Map<string, number>();
+  const puxarConversa = (sala: Sala, agora: number) => {
+    if (sala.anonima || sala.jogo) return;
+    const fal = falantes(sala);
+    if (fal.length === 0) return;
+    if (agora - (ultimoAnfitriao.get(sala.id) ?? 0) < 7 * 60_000) return;
+    if (agora - Math.max(0, ...fal.map((p) => p.ultimaMsg)) < 3 * 60_000) return;
+    const ultima = sala.mensagens[sala.mensagens.length - 1];
+    if (ultima && (ultima.tipo === 'lola' || ultima.tipo === 'anfitriao') && agora - Date.parse(ultima.criadoEm) < 90_000) return;
+    ultimoAnfitriao.set(sala.id, agora);
+    const alvo = sortear(fal);
+    void (async () => {
+      const dita = (await falaDosAnfitrioes(sala, `Puxe a conversa agora${fal.length > 1 ? ', de preferência apresentando ou provocando alguém pelo nome' : ''}.`))
+        ?? sortear(ANFITRIOES_PUXAM).replace('{nome}', alvo.nome);
+      anfitrioes(sala, dita);
+    })();
+  };
+  const ultimaRespostaAnfitrioes = new Map<string, number>();
+  const responderComoAnfitrioes = async (sala: Sala, p: Presente, texto: string, msgId: string) => {
+    const agora = Date.now();
+    if (agora - (ultimaRespostaAnfitrioes.get(sala.id) ?? 0) < 8_000 || agora - (ultimaRespostaAnfitrioes.get(p.id) ?? 0) < 40_000) return;
+    ultimaRespostaAnfitrioes.set(sala.id, agora);
+    ultimaRespostaAnfitrioes.set(p.id, agora);
+    const dita = (await falaDosAnfitrioes(sala, `${p.nome} respondeu a vocês: "${texto.slice(0, 200)}". Respondam a ${p.nome} e puxem mais alguém da sala para a conversa.`))
+      ?? sortear(ANFITRIOES_RESPONDEM).replace('{nome}', p.nome);
+    await new Promise((r) => setTimeout(r, 1500));
+    if (!sala.presentes.has(p.id)) return;
+    anfitrioes(sala, dita, { id: msgId, nome: p.nome, trecho: texto.slice(0, 80) });
+  };
+
+  // ─── Lola casamenteira: apresenta casais (e mulheres) que combinam ────────
+  const apresentados = new Set<string>();
+  const ultimaApresentacao = new Map<string, number>();
+  const apresentarPar = (sala: Sala, agora: number, chaveNoite: string) => {
+    if (sala.anonima || agora - (ultimaApresentacao.get(sala.id) ?? 0) < 9 * 60_000) return;
+    const cand = [...sala.presentes.values()].filter((p) => p.podeFalar && p.pulseira !== 'vermelha'
+      && (p.cat === 'casal' || p.cat === 'mulher') && agora - p.entrouEm > 2 * 60_000);
+    let melhor: { a: Presente; b: Presente; pontos: number } | null = null;
+    for (let i = 0; i < cand.length; i++) {
+      for (let j = i + 1; j < cand.length; j++) {
+        const a = cand[i]; const b = cand[j];
+        if (!procuraAceita(a, b) || !procuraAceita(b, a)) continue;
+        if (apresentados.has([chaveNoite, ...[a.id, b.id].sort()].join(':'))) continue;
+        const pontos = (a.cidade && a.cidade === b.cidade ? 3 : 0) + (a.uf && a.uf === b.uf ? 2 : 0)
+          + (a.pulseira && a.pulseira === b.pulseira ? 1 : 0) + Math.random();
+        if (!melhor || pontos > melhor.pontos) melhor = { a, b, pontos };
+      }
+    }
+    if (!melhor) return;
+    const { a, b } = melhor;
+    apresentados.add([chaveNoite, ...[a.id, b.id].sort()].join(':'));
+    ultimaApresentacao.set(sala.id, agora);
+    const motivo = a.cidade && a.cidade === b.cidade ? `vocês são de ${a.cidade}`
+      : a.uf && a.uf === b.uf ? `os dois são de ${a.uf}`
+      : a.pulseira && a.pulseira === b.pulseira ? `os dois estão de pulseira ${PULSEIRAS[a.pulseira]}`
+      : b.cat === 'mulher' || a.cat === 'mulher' ? 'tô sentindo uma química aqui'
+      : 'casal com casal combina 😏';
+    lola(sala, `💘 ${a.nome}, já conhece ${b.nome}? ${motivo}… dá uma olhada, paga um drink ou chama pra cabine 😈`);
+  };
+
   // Pulseira vermelha = "só olhando": nunca é sorteada para desafio, duelo ou match.
   const brincantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar && p.querBrincar && p.pulseira !== 'vermelha');
   const falantes = (sala: Sala) => [...sala.presentes.values()].filter((p) => p.podeFalar);
@@ -1148,6 +1263,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         else await iniciarJogo(sala);
       }
       if (!sala.jogo) provocarQuieto(sala, agora);
+      if (noite && !sala.jogo) { apresentarPar(sala, agora, noite.chave); puxarConversa(sala, agora); }
     }
     if (noite) anunciarRanking(noite.chave);
     if (noite && !noite.teste) destravarSeEncheu(noite);
@@ -1944,6 +2060,7 @@ Sala: ${salaId}`).catch(() => {});
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
+    if (respondida?.tipo === 'anfitriao') void responderComoAnfitrioes(sala, p, texto, publicada.id);
     res.json({ ok: true });
   });
 
@@ -2554,7 +2671,7 @@ Sala: ${salaId}`).catch(() => {});
       if (sl.anonima) continue;
       for (const m of sl.mensagens) {
         const n = Object.values(m.reacoes ?? {}).reduce((a, ids) => a + ids.length, 0);
-        if (!n || !m.autor) continue;
+        if (!n || !m.autor || m.tipo === 'anfitriao') continue; // Léo & Bia (IA) não entram no ranking
         if (m.tipo === 'pessoa' && (!maisQuente || n > maisQuente.n)) maisQuente = { nome: m.autor.nome, texto: m.texto.slice(0, 60), n };
         if (m.autor.cat === 'casal') {
           const d = desejo.get(m.autor.id) ?? { nome: m.autor.nome, n: 0 };

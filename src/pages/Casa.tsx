@@ -46,7 +46,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -924,7 +924,7 @@ export default function Casa() {
           <>
             <button type="button" onClick={() => setReagindoEm(reagindoEm === m.id ? null : m.id)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white" aria-label="Reagir">😈+</button>
             <button type="button" onClick={() => setRespondendo(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-white">
-              ↩️ {m.tipo === 'lola' ? 'Responder a Lola' : 'Responder'}
+              ↩️ {m.tipo === 'lola' ? 'Responder a Lola' : m.tipo === 'anfitriao' ? 'Responder ao casal' : 'Responder'}
             </button>
             {(m.tipo === 'pessoa' || m.tipo === 'midia') && m.autor?.id === meuId && (
               <button type="button" onClick={() => void apagarMinha(m)} className="rounded-full bg-black/20 px-1.5 py-0.5 text-[11px] text-white/60 hover:text-rose-300">🗑️ Apagar</button>
@@ -1111,6 +1111,17 @@ export default function Casa() {
                 );
               })()}
             </div>
+          </div>
+        ) : m.tipo === 'anfitriao' ? (
+          <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-amber-600 to-orange-700 px-3 py-2 shadow">
+            <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100">💑 Léo & Bia · casal anfitrião (IA)</p>
+            {m.resposta && (
+              <p className="mb-1 truncate rounded-lg border-l-2 border-white/60 bg-black/20 px-2 py-1 text-[11px] text-white/80">
+                <b>{m.resposta.nome}</b> · {m.resposta.trecho}
+              </p>
+            )}
+            <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
+            <AcoesDaMsg m={m} />
           </div>
         ) : m.tipo === 'lola' ? (
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
