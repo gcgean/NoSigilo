@@ -90,7 +90,9 @@ export default function Match() {
   const dicaRef = useRef<HTMLParagraphElement>(null);
   const [alturaCard, setAlturaCard] = useState<number | null>(null);
   useEffect(() => {
-    const medir = () => {
+    // forcar: medição da acomodação da tela (carregou, aviso de cima sumiu) — sempre vale.
+    // Sem forcar (resize): só muda se for grande, para a barra do navegador não fazer o card pular.
+    const medir = (forcar: boolean) => {
       if (window.innerWidth >= 640 || !cardRef.current || !dicaRef.current) { setAlturaCard(null); return; }
       const card = cardRef.current.getBoundingClientRect();
       const dica = dicaRef.current.getBoundingClientRect();
@@ -99,13 +101,26 @@ export default function Match() {
       const abaixo = dica.bottom - card.bottom; // botões + dica
       const topo = card.top + window.scrollY;
       const alvo = Math.round(Math.min(600, Math.max(240, limite - topo - abaixo)));
-      setAlturaCard((atual) => (atual === null || Math.abs(atual - alvo) > 110 ? alvo : atual));
+      setAlturaCard((atual) => (atual === null || (forcar ? Math.abs(atual - alvo) > 2 : Math.abs(atual - alvo) > 110) ? alvo : atual));
     };
-    medir();
-    const t = setTimeout(medir, 500);
-    window.addEventListener('resize', medir);
-    window.addEventListener('orientationchange', medir);
-    return () => { clearTimeout(t); window.removeEventListener('resize', medir); window.removeEventListener('orientationchange', medir); };
+    const tempos = [0, 300, 800, 1500, 2500].map((ms) => setTimeout(() => medir(true), ms));
+    const aoRedimensionar = () => medir(false);
+    window.addEventListener('resize', aoRedimensionar);
+    window.addEventListener('orientationchange', aoRedimensionar);
+    // Aviso de cima fechado (GPS, assinatura…): o card sobe e precisa crescer.
+    const conteudo = document.body;
+    let topoAntes = cardRef.current?.getBoundingClientRect().top ?? 0;
+    const observador = conteudo && 'ResizeObserver' in window ? new ResizeObserver(() => {
+      const topo = cardRef.current?.getBoundingClientRect().top ?? 0;
+      if (Math.abs(topo - topoAntes) > 4) { topoAntes = topo; medir(true); }
+    }) : null;
+    if (observador && conteudo) observador.observe(conteudo);
+    return () => {
+      tempos.forEach(clearTimeout);
+      window.removeEventListener('resize', aoRedimensionar);
+      window.removeEventListener('orientationchange', aoRedimensionar);
+      observador?.disconnect();
+    };
   }, [isLoading]);
   const [likedProfiles, setLikedProfiles] = useState<LikedProfile[]>([]);
   const [isLoadingLikedProfiles, setIsLoadingLikedProfiles] = useState(false);
