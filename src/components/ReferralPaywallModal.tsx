@@ -14,7 +14,7 @@ interface Props {
    * gente saía achando que "tudo é pago" sem saber que comentar e ver perfis
    * são livres, e quem acha que nada funciona não assina.
    */
-  contexto?: 'chat';
+  contexto?: 'chat' | 'stories';
 }
 
 // Steps 1→10d, 2→20d, 3→30d (each tier grants +10d, accumulates)
@@ -55,6 +55,20 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
   // Which step the user is currently on (0-based index)
   const currentStepIdx = INVITE_STEPS.findIndex((s) => progress < s.invites);
   const nextStep = currentStepIdx >= 0 ? INVITE_STEPS[currentStepIdx] : null;
+  // Cada indicação validada já vale +10 dias: o que falta é até o PRÓXIMO prêmio,
+  // não até a meta de 3 (dizia "faltam 3 para +10 dias", e 1 já bastava).
+  const faltaProProximo = nextStep ? Math.max(1, nextStep.invites - progress) : 0;
+
+  // Benefícios na ordem do que mais atrai; o motivo de ter aberto vem primeiro.
+  const beneficios = [
+    ...(contexto === 'stories' ? ['Ver os stories de todo mundo, sem limite'] : []),
+    'Conversar com quem quiser (mensagens ilimitadas)',
+    ...(contexto === 'stories' ? [] : ['Ver os stories de todo mundo']),
+    'Ver quem visitou seu perfil',
+    'Radar "Estou Aqui" para achar quem está perto',
+    'Fotos e vídeos exclusivos',
+    'Criar e participar de eventos',
+  ];
 
   return (
     <>
@@ -72,13 +86,17 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
             </button>
             <div className="flex items-center gap-2 mb-3">
               <Crown className="w-5 h-5 text-yellow-300" />
-              <span className="text-sm font-semibold text-white/90 uppercase tracking-wide">Premium bloqueado</span>
+              <span className="text-sm font-semibold text-white/90 uppercase tracking-wide">NoSigilo Premium</span>
             </div>
             <h2 className="text-2xl font-bold mb-1">
-              {contexto === 'chat' ? 'A conversa é para assinantes' : 'Desbloqueie o acesso'}
+              {contexto === 'chat' ? 'A conversa é para assinantes'
+                : contexto === 'stories' ? 'Veja os stories de quem está perto'
+                : 'Libere tudo no NoSigilo'}
             </h2>
             <p className="text-white/80 text-sm">
-              Indique amigos e ganhe dias grátis — ou assine um plano Premium.
+              {contexto === 'stories'
+                ? 'Os stories somem em 24h. Assine e veja agora, antes que saiam do ar.'
+                : 'Assine o Premium ou ganhe dias grátis indicando amigos.'}
             </p>
             {contexto === 'chat' && (
               <p className="mt-3 rounded-xl bg-white/15 px-3 py-2 text-sm text-white">
@@ -106,17 +124,12 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
                 <div className="text-right">
                   <span className="text-2xl font-extrabold">R$ 9,90</span>
                   <span className="text-xs text-muted-foreground">/mês</span>
+                  <p className="text-[11px] font-medium text-emerald-600">menos de R$ 0,33 por dia</p>
                 </div>
               </div>
 
               <ul className="space-y-1.5 text-sm">
-                {[
-                  'Mensagens ilimitadas',
-                  'Radar "Estou Aqui"',
-                  'Ver quem visitou seu perfil',
-                  'Fotos e vídeos exclusivos',
-                  'Criar e participar de eventos',
-                ].map((f) => (
+                {beneficios.map((f) => (
                   <li key={f} className="flex items-center gap-2">
                     <CheckCircle2 className="w-3.5 h-3.5 text-primary shrink-0" />
                     <span className="text-foreground">{f}</span>
@@ -129,7 +142,7 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
                 onClick={handleGoPlans}
               >
                 <Crown className="w-5 h-5" />
-                Assinar agora — R$ 9,90/mês
+                Quero o Premium — R$ 9,90/mês
               </Button>
 
               <p className="text-[11px] text-muted-foreground text-center">
@@ -168,10 +181,11 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
                   </div>
                   {nextStep && (
                     <p className="text-xs text-muted-foreground">
-                      Falta{remaining > 1 ? 'm' : ''}{' '}
-                      <span className="font-semibold text-foreground">{remaining}</span>{' '}
-                      indicaç{remaining > 1 ? 'ões' : 'ão'} para ganhar{' '}
-                      <span className="font-semibold text-emerald-600">+{nextStep.totalDays} dias grátis</span>
+                      Falta{faltaProProximo > 1 ? 'm' : ''}{' '}
+                      <span className="font-semibold text-foreground">{faltaProProximo}</span>{' '}
+                      indicaç{faltaProProximo > 1 ? 'ões' : 'ão'} para ganhar{' '}
+                      <span className="font-semibold text-emerald-600">+10 dias grátis</span>
+                      {' '}(até {INVITE_STEPS[INVITE_STEPS.length - 1].totalDays} dias com {target})
                     </p>
                   )}
                 </div>
@@ -188,7 +202,7 @@ export default function ReferralPaywallModal({ open, onClose, contexto }: Props)
                 onClick={handleGoInvites}
               >
                 <UserPlus className="w-4 h-4" />
-                {remaining > 0 ? `Convidar amigos (faltam ${remaining})` : 'Ver meus convites'}
+                {remaining > 0 ? 'Convidar amigos' : 'Ver meus convites'}
               </Button>
             </div>
           </div>

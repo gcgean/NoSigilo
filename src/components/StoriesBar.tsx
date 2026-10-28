@@ -8,6 +8,7 @@ import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 type BarFeedStory = {
   id: string;
@@ -51,6 +52,8 @@ export default function StoriesBar() {
   const [groups, setGroups] = useState<AuthorGroup[]>([]);
   const [myCount, setMyCount] = useState(0);
   const [uploading, setUploading] = useState(false);
+  // Sem assinatura: a oferta abre aqui mesmo e, ao fechar, a pessoa segue no feed.
+  const [paywall, setPaywall] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -186,8 +189,7 @@ export default function StoriesBar() {
             onClick={() =>
               unlocked
                 ? navigate(`/stories?open=${encodeURIComponent(g.firstStoryId)}&from=feed`)
-                // Bloqueado: abre a amostra dos mais curtidos (sem revelar este perfil).
-                : navigate('/stories?amostra=1&from=feed')
+                : setPaywall(true)
             }
             className="flex w-16 shrink-0 flex-col items-center gap-1"
           >
@@ -249,6 +251,7 @@ export default function StoriesBar() {
         })}
       </div>
 
+      <ReferralPaywallModal open={paywall} onClose={() => setPaywall(false)} contexto="stories" />
       <input
         ref={fileRef}
         type="file"

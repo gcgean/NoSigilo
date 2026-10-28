@@ -1684,7 +1684,7 @@ export default function Chat() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-9 w-9 shrink-0 rounded-full md:hidden"
+                className="h-11 w-11 shrink-0 rounded-full bg-primary/10 text-primary hover:bg-primary/20 md:hidden"
                 aria-label="Voltar para a lista de conversas"
                 onClick={() => {
                   // Dismiss the keyboard BEFORE clearing selectedChat so iOS
@@ -1693,11 +1693,16 @@ export default function Chat() {
                   if (document.activeElement instanceof HTMLElement) {
                     document.activeElement.blur();
                   }
-                  // Mesmo caminho do gesto de deslizar da borda no iOS.
-                  navigate(-1);
+                  // Mesmo caminho do gesto de deslizar da borda no iOS. Mas no
+                  // PWA do iPhone a conversa aberta por notificação/link não tem
+                  // página anterior e o "voltar" não fazia nada (28/10/2026):
+                  // sem histórico do app, vai direto para a lista.
+                  const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+                  if (idx > 0) navigate(-1);
+                  else navigate('/chat', { replace: true });
                 }}
               >
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-6 w-6" strokeWidth={2.5} />
               </Button>
               <div className="shrink-0">
                 <UserAvatar user={activeConversation?.user} className="h-9 w-9 sm:h-10 sm:w-10" />

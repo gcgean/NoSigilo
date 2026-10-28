@@ -7,6 +7,7 @@ import { storiesService } from '@/services/api';
 import { resolveServerUrl, urlMiniatura } from '@/utils/serverUrl';
 import { hasPremiumAccess } from '@/utils/premium';
 import { cn } from '@/lib/utils';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 
 type StoryDoFeed = {
   id: string;
@@ -34,6 +35,7 @@ export default function StoriesNaoVistos() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const premium = hasPremiumAccess(user);
+  const [paywall, setPaywall] = useState(false);
   // Um card por perfil: abre no story mais antigo que falta ver; `novos` vai no selo.
   const [lista, setLista] = useState<Array<StoryDoFeed & { novos: number }>>([]);
 
@@ -75,7 +77,7 @@ export default function StoriesNaoVistos() {
             <button
               key={s.id}
               type="button"
-              onClick={() => navigate(liberado ? `/stories?open=${encodeURIComponent(s.id)}&from=feed` : '/stories?amostra=1&from=feed')}
+              onClick={() => (liberado ? navigate(`/stories?open=${encodeURIComponent(s.id)}&from=feed`) : setPaywall(true))}
               className="relative w-28 shrink-0 overflow-hidden rounded-xl border bg-card text-left"
             >
               <div className="relative aspect-[9/16] w-full bg-muted">
@@ -105,6 +107,7 @@ export default function StoriesNaoVistos() {
           );
         })}
       </div>
+      <ReferralPaywallModal open={paywall} onClose={() => setPaywall(false)} contexto="stories" />
     </Card>
   );
 }

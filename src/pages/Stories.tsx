@@ -2498,7 +2498,8 @@ export default function Stories() {
         salvando={favSalvando}
       />
 
-      <ReferralPaywallModal open={paywallOpen} onClose={() => setPaywallOpen(false)} />
+      {/* Fechou sem assinar: volta para onde estava (ex.: o feed), não fica perdido aqui. */}
+      <ReferralPaywallModal open={paywallOpen} contexto="stories" onClose={() => { setPaywallOpen(false); if (returnTo) navigate(returnTo); }} />
 
       <BackToTop />
     </div>
