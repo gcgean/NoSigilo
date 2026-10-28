@@ -212,16 +212,31 @@ export default function Layout() {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
+    // Área visível encolhida só conta com um campo de texto em foco (teclado
+    // aberto): no PWA do iPhone o Safari às vezes segue informando a altura
+    // menor depois que o teclado fecha, e a barra sumia de vez (relato de
+    // 28/10/2026). Ao rolar ou tirar o foco do campo, confere de novo.
+    const digitando = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
     const conferir = () => {
-      const comZoom = vv.scale > 1.05 || vv.height < window.innerHeight * 0.72;
+      const comZoom = vv.scale > 1.05 || (vv.height < window.innerHeight * 0.72 && digitando());
       setTelaComZoom((atual) => (atual === comZoom ? atual : comZoom));
     };
+    const depoisDoFoco = () => window.setTimeout(conferir, 350);
     conferir();
     vv.addEventListener('resize', conferir);
     vv.addEventListener('scroll', conferir);
+    window.addEventListener('scroll', conferir, { passive: true });
+    document.addEventListener('focusout', depoisDoFoco);
+    document.addEventListener('focusin', depoisDoFoco);
     return () => {
       vv.removeEventListener('resize', conferir);
       vv.removeEventListener('scroll', conferir);
+      window.removeEventListener('scroll', conferir);
+      document.removeEventListener('focusout', depoisDoFoco);
+      document.removeEventListener('focusin', depoisDoFoco);
     };
   }, []);
   const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileGroupChatRoute || isMobileReelsMaximized || telaComZoom;
