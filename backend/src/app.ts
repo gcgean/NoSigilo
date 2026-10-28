@@ -7063,6 +7063,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // janela que rendeu meia página faria o scroll infinito parar achando
     // que o feed acabou, com milhares de posts ainda por mostrar.
     let moreUnseenInDb = false;
+    // Quando os não-vistos acabam, os já vistos voltam: o feed não tem fim.
+    let voltaramVistos = 0;
     if (includeReelsOnly) {
       // Reels pagina por OFFSET no SQL e o player precisa percorrer todos os
       // posts para achar os vídeos — não filtra por visto.
@@ -7092,6 +7094,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           [...baseParams, req.auth!.userId, ...seenIdsList, fetchLimit - unseen.length]
         )) as any[];
         rows = [...unseen, ...seenAgain];
+        voltaramVistos = seenAgain.length;
       }
     }
 
@@ -7515,7 +7518,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Continua havendo o que mostrar se o banco ainda tem não-vistos fora
       // desta janela, mesmo que o corte por autor tenha deixado esta página
       // curta — a próxima chamada monta uma janela nova.
-      feedHasMore = moreUnseenInDb || orderedByTheme.length > limit;
+      // O feed não termina (28/10/2026): enquanto houver já-vistos para repetir,
+      // a rolagem continua.
+      feedHasMore = moreUnseenInDb || orderedByTheme.length > limit || voltaramVistos > 0;
     }
     const postIds = slice.map((r: any) => String(r.id));
 

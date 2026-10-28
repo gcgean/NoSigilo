@@ -343,6 +343,10 @@ export default function Feed() {
   const pageRef = useRef(1);
   const hasMoreRef = useRef(true);
   const isLoadingMoreRef = useRef(false);
+  // Páginas seguidas sem post novo (ver loadMore) e atalhos para o próprio loadMore/lista.
+  const paginasVaziasRef = useRef(0);
+  const carregarMaisRef = useRef<(() => Promise<void>) | null>(null);
+  const allPostsRef = useRef<FeedPost[]>([]);
   const trackedFeedPostIdsRef = useRef<Set<string>>(readFeedSeenIds());
   const feedSessionAuthorCountsRef = useRef<Record<string, number>>(readFeedSessionAuthorCounts());
   const radarHighlightsCacheRef = useRef<{ fetchedAt: number; items: RadarHighlight[] } | null>(null);
@@ -708,6 +712,15 @@ export default function Feed() {
   }, [isLoadingMore]);
 
   useEffect(() => {
+    allPostsRef.current = allPosts;
+  }, [allPosts]);
+
+  // Feed recarregado do zero: zera a contagem de páginas vazias.
+  useEffect(() => {
+    if (page === 1) paginasVaziasRef.current = 0;
+  }, [page]);
+
+  useEffect(() => {
     currentTopPostIdRef.current = allPosts[0]?.id ? String(allPosts[0].id) : null;
   }, [allPosts]);
 
@@ -1047,29 +1060,29 @@ export default function Feed() {
       setFeedSessionBaseline({ ...feedSessionAuthorCountsRef.current });
       const nextPosts = Array.isArray(feed?.posts) ? (feed.posts as FeedPost[]) : [];
       if (nextPage === 1) setFeedInsights(feed?.insights ?? null);
+      const jaTem = new Set(allPostsRef.current.map((p) => String(p.id)));
+      const novos = nextPosts.filter((p) => { const id = String((p as any)?.id || ''); return !!id && !jaTem.has(id); });
       setAllPosts((prev) => {
-        if (nextPosts.length === 0) return prev;
+        if (novos.length === 0) return prev;
         const seen = new Set(prev.map((p) => String(p.id)));
-        const merged = [...prev];
-        for (const p of nextPosts) {
-          const id = String((p as any)?.id || '');
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          merged.push(p);
-        }
-        return merged;
+        return [...prev, ...novos.filter((p) => !seen.has(String(p.id)))];
       });
       setPage(nextPage);
-      // Página vazia encerra a rolagem: com filtro de região o servidor pode
-      // dizer hasMore=true sem ter nada que passe no filtro, e o "Carregando..."
-      // ficava girando para sempre.
-      setHasMore(!!feed?.hasMore && nextPosts.length > 0);
+      // Página sem nada novo não encerra o feed (o servidor corta posts do
+      // mesmo autor e a página pode vir curta ou vazia). Só para depois de
+      // várias seguidas — antes disso o "Carregando..." girava para sempre com
+      // filtro de região, e parar na primeira fazia o feed "acabar" (28/10/2026).
+      paginasVaziasRef.current = novos.length > 0 ? 0 : paginasVaziasRef.current + 1;
+      const continua = !!feed?.hasMore && paginasVaziasRef.current < 4;
+      setHasMore(continua);
+      if (continua && novos.length === 0) window.setTimeout(() => { void carregarMaisRef.current?.(); }, 400);
     } catch {
       toast({ title: 'Erro ao carregar mais', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsLoadingMore(false);
     }
   };
+  carregarMaisRef.current = loadMore;
 
   const focusParams = useMemo(() => {
     const sp = new URLSearchParams(location.search);
