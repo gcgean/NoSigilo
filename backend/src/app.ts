@@ -1071,7 +1071,14 @@ export async function syncHubAccessForUser(
   result: HubResolveAccessResult & { customerId: string; productId: string },
   ctx?: { io?: SocketIOServer; env?: Env }
 ) {
-  const antes = (await queryOne(db, 'SELECT hub_license_end_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const antes = (await queryOne(db, 'SELECT hub_license_end_at, trial_ends_at FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  // trial_ends_at também guarda dias ganhos AQUI (convite, tokens, acesso sem
+  // prazo das mulheres). O Hub não sabe deles e devolve o trial dele (em geral
+  // vazio): sobrescrever apagava os prêmios (relato do Eduardobsb, 28/10/2026).
+  // Fica a data mais longe entre as duas.
+  const trialLocal = antes?.trial_ends_at ? new Date(String(antes.trial_ends_at)).getTime() : 0;
+  const trialHub = result.trialEndAt ? new Date(String(result.trialEndAt)).getTime() : 0;
+  const trialFinal = trialLocal > trialHub ? String(antes.trial_ends_at) : (result.trialEndAt ?? null);
   const fimAntes = antes?.hub_license_end_at ? new Date(String(antes.hub_license_end_at)).getTime() : 0;
   const fimDepois = result.licenseEndAt ? new Date(String(result.licenseEndAt)).getTime() : 0;
   // Licença nova ou estendida = entrou um pagamento.
@@ -1099,7 +1106,7 @@ export async function syncHubAccessForUser(
       result.licenseEndAt ?? null,
       result.banner ?? null,
       result.trialStartedAt ?? null,
-      result.trialEndAt ?? null,
+      trialFinal,
       result.accessStatus === 'licensed' ? 1 : 0,
       userId,
     ]
@@ -4352,6 +4359,17 @@ export function createApp(options: { db: DbHandle; env: Env }) {
         registrationIpHash &&
         inviterRow?.registration_ip_hash &&
         registrationIpHash === String(inviterRow.registration_ip_hash);
+      // Vários convidados saindo da mesma conexão: só o primeiro conta. Em
+      // 28/10/2026 um convidante criou 12 contas falsas pelo mesmo IP em 2h.
+      const ipDeOutroConvidado = !sameIpAsInviter && registrationIpHash
+        ? await queryOne(
+            db,
+            `SELECT 1 AS x FROM invite_link_entries e JOIN invite_links l ON l.id = e.invite_link_id
+             WHERE l.inviter_user_id = ? AND e.invitee_ip_hash = ? LIMIT 1`,
+            [String(invite.inviter_user_id), registrationIpHash]
+          )
+        : null;
+      const motivoFalha = sameIpAsInviter ? 'same_ip_as_inviter' : ipDeOutroConvidado ? 'same_ip_as_other_invitee' : null;
 
       await run(
         db,
@@ -4365,11 +4383,11 @@ export function createApp(options: { db: DbHandle; env: Env }) {
           id,
           email,
           createdAt,
-          sameIpAsInviter ? 'failed' : 'pending',
+          motivoFalha ? 'failed' : 'pending',
           registrationIpHash,
-          sameIpAsInviter ? null : validationDeadline,
+          motivoFalha ? null : validationDeadline,
           0,
-          sameIpAsInviter ? 'same_ip_as_inviter' : null,
+          motivoFalha,
         ]
       );
       // Multi-uso: NÃO mudamos o status para 'approved' (isso tornava o link de
