@@ -61,9 +61,9 @@ const PRIVACY_ITEMS = [
     description: 'Compartilhe momentos que desaparecem depois de vistos.',
   },
   {
-    icon: ShieldCheck,
-    title: 'Print com marca d’água',
-    description: 'Dentro da plataforma, toda tela leva o nome de quem está vendo.',
+    icon: LockKeyhole,
+    title: 'O que acontece aqui, fica aqui',
+    description: 'Perfis, fotos e conversas só aparecem para membros. Nada vai para o Google.',
   },
   {
     icon: BadgeCheck,
