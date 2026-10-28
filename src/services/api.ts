@@ -1355,6 +1355,7 @@ export type PedidoVerificacao = {
   enviadoEm: string | null;
   selfie: string | null;
   fotosDoPerfil: string[];
+  fotosPrivadas?: string[];
 };
 export const verificacaoService = {
   situacao: async (): Promise<SituacaoVerificacao> => (await apiClient.get('/verificacao')).data,

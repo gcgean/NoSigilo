@@ -10932,9 +10932,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         `SELECT filename FROM media WHERE user_id = ? AND is_private = 0 AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 6`,
         [String(r.user_id)]
       )) as any[];
+      // Fotos privadas também (só o admin vê, por link assinado): muita gente não tem foto pública.
+      const privadas = (await queryAll(
+        db,
+        `SELECT id FROM media WHERE user_id = ? AND is_private = 1 AND mime_type LIKE 'image/%' AND (source IS NULL OR source != 'chat') ORDER BY created_at DESC LIMIT 8`,
+        [String(r.user_id)]
+      )) as any[];
       lista.push({
         id: String(r.id),
         userId: String(r.user_id),
+        fotosPrivadas: privadas.map((f) => `/private-uploads/${String(f.id)}?token=${encodeURIComponent(jwt.sign({ mediaId: String(f.id) }, env.JWT_SECRET, { expiresIn: '2h' }))}`),
         nome: String(r.name || ''),
         email: r.email ? String(r.email) : null,
         genero: r.gender ? String(r.gender) : null,
@@ -21513,9 +21520,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const status = String(req.query.status || '').trim() || 'pending';
       const rows = await queryAll(
         db,
-        `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email
+        `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email, p.user_id AS post_author_id
          FROM reports r
          LEFT JOIN users u ON u.id = r.reporter_user_id
+         LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
          WHERE r.status = ?
          ORDER BY COALESCE(r.ia_gravidade, 0) DESC, r.created_at DESC
          LIMIT 100`,
@@ -21529,6 +21537,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           targetType: String(r.target_type),
           targetId: String(r.target_id),
           targetName: r.target_name ? String(r.target_name) : null,
+          // Perfil a abrir: o denunciado (user) ou o autor do post denunciado.
+          perfilId: r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : null,
           reason: String(r.reason),
           details: r.details ? String(r.details) : null,
           status: String(r.status),

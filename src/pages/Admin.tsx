@@ -41,6 +41,7 @@ import AdminRitmo from '@/components/AdminRitmo';
 import AdminNotas from '@/components/AdminNotas';
 import { usePublicarPainel } from '@/utils/paineisParaIa';
 import AdminVerificacoes from '@/components/AdminVerificacoes';
+import PerfilNaCasa from '@/components/PerfilNaCasa';
 
 type AdminPhoto = {
   id: string;
@@ -156,6 +157,7 @@ type AdminReport = {
   targetType: string;
   targetId: string;
   targetName: string | null;
+  perfilId?: string | null;
   reason: string;
   details: string | null;
   status: string;
@@ -474,6 +476,8 @@ export default function Admin() {
   const [resourcesStatus, setResourcesStatus] = useState<AdminResourcesStatus | null>(null);
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [busyReportId, setBusyReportId] = useState<string | null>(null);
+  // Perfil do denunciado aberto por cima da lista (inclusive banido: admin vê).
+  const [perfilDenunciado, setPerfilDenunciado] = useState<string | null>(null);
   const [visitAnalytics, setVisitAnalytics] = useState<VisitAnalytics>(DEFAULT_VISIT_ANALYTICS);
   const [visitAnalyticsLoading, setVisitAnalyticsLoading] = useState(false);
   const [visitAnalyticsError, setVisitAnalyticsError] = useState(false);
@@ -659,6 +663,7 @@ export default function Admin() {
                   targetType: String(item.targetType || 'user'),
                   targetId: String(item.targetId || ''),
                   targetName: item.targetName ? String(item.targetName) : null,
+                  perfilId: item.perfilId ? String(item.perfilId) : null,
                   reason: String(item.reason || ''),
                   details: item.details ? String(item.details) : null,
                   status: String(item.status || 'pending'),
@@ -1186,6 +1191,7 @@ export default function Admin() {
           targetType: String(item.targetType || 'user'),
           targetId: String(item.targetId || ''),
           targetName: item.targetName ? String(item.targetName) : null,
+          perfilId: item.perfilId ? String(item.perfilId) : null,
           reason: String(item.reason || ''),
           details: item.details ? String(item.details) : null,
           status: String(item.status || 'pending'),
@@ -1295,6 +1301,7 @@ export default function Admin() {
 
   return (
     <div className="max-w-6xl mx-auto w-full">
+      <PerfilNaCasa userId={perfilDenunciado} onFechar={() => setPerfilDenunciado(null)} />
       <div className="flex items-center gap-3 mb-6">
         <div className="w-12 h-12 rounded-xl bg-gradient-primary flex items-center justify-center">
           <Shield className="w-6 h-6 text-primary-foreground" />
@@ -2108,22 +2115,20 @@ export default function Admin() {
                         ) : null}
                         <p className="font-medium">
                           Denunciado:{' '}
-                          {report.targetId && (report.targetType === 'user' || report.targetType === 'post') ? (
-                            <a
-                              href={
-                                report.targetType === 'user'
-                                  ? `/users/${encodeURIComponent(report.targetId)}`
-                                  : `/feed?postId=${encodeURIComponent(report.targetId)}`
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-brand-pink hover:underline inline-flex items-center gap-1"
-                            >
+                          {report.perfilId ? (
+                            <button type="button" onClick={() => setPerfilDenunciado(report.perfilId!)} className="text-brand-pink hover:underline">
                               {report.targetName || report.targetId}
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
+                            </button>
                           ) : (
                             <span>{report.targetName || report.targetId}</span>
+                          )}
+                          {report.perfilId && (
+                            <a href={`/users/${encodeURIComponent(report.perfilId)}`} target="_blank" rel="noopener noreferrer" className="ml-1 inline-flex items-center text-muted-foreground hover:text-brand-pink" title="Abrir o perfil completo em outra aba">
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                          {report.targetType === 'post' && report.targetId && (
+                            <a href={`/feed?postId=${encodeURIComponent(report.targetId)}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-muted-foreground hover:text-brand-pink hover:underline">ver o post</a>
                           )}
                         </p>
                         <p className="text-sm text-muted-foreground">
