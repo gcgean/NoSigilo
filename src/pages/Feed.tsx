@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SugestoesPerfis from '@/components/SugestoesPerfis';
+import StoriesNaoVistos from '@/components/StoriesNaoVistos';
 import { textoDistancia } from '@/utils/distancia';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check } from 'lucide-react';
@@ -628,7 +629,9 @@ export default function Feed() {
 
   // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
   const feedItensComSugestoes = useMemo(() => {
-    const itens: Array<(typeof feedDisplayItems)[number] | { type: 'sugestoes'; id: string }> = [...feedDisplayItems];
+    const itens: Array<(typeof feedDisplayItems)[number] | { type: 'sugestoes'; id: string } | { type: 'stories'; id: string }> = [...feedDisplayItems];
+    // Stories não vistos entram depois do 10º (antes das sugestões, para o índice não andar).
+    if (feedFilter === 'all' && itens.length > 10) itens.splice(10, 0, { type: 'stories', id: 'feed-stories-nao-vistos' });
     if (feedFilter === 'all' && itens.length > 4) itens.splice(4, 0, { type: 'sugestoes', id: 'feed-sugestoes-perfis' });
     return itens;
   }, [feedDisplayItems, feedFilter]);
@@ -3016,6 +3019,8 @@ export default function Feed() {
           {feedFilter !== 'experiences' && !isLoading && feedItensComSugestoes.map((item) => (
             item.type === 'sugestoes' ? (
               <SugestoesPerfis key={item.id} />
+            ) : item.type === 'stories' ? (
+              <StoriesNaoVistos key={item.id} />
             ) : item.type === 'section' ? (
               <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
