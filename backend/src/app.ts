@@ -6768,6 +6768,20 @@ function limiteDoEvento(payload: any): number | null {
 
 // Faixas usadas no "Minha região" para ordenar posts de outros estados por proximidade.
 const FAIXAS_DE_DISTANCIA_KM = [150, 300, 600, 1000, 1600];
+// Capital de cada UF: referência de posição para quem não tem lat/lon (25% dos
+// ativos em 28/10/2026). Sem isso, fora do estado o feed dessas pessoas virava
+// "mais recentes do Brasil inteiro" em vez de abrir o raio aos poucos.
+const CAPITAL_DA_UF: Record<string, [number, number]> = {
+  AC: [-9.97, -67.81], AL: [-9.65, -35.73], AP: [0.03, -51.07], AM: [-3.12, -60.02], BA: [-12.97, -38.5],
+  CE: [-3.73, -38.52], DF: [-15.79, -47.88], ES: [-20.32, -40.34], GO: [-16.68, -49.25], MA: [-2.53, -44.3],
+  MT: [-15.6, -56.1], MS: [-20.47, -54.62], MG: [-19.92, -43.94], PA: [-1.46, -48.5], PB: [-7.12, -34.86],
+  PR: [-25.43, -49.27], PE: [-8.05, -34.88], PI: [-5.09, -42.8], RJ: [-22.91, -43.17], RN: [-5.79, -35.21],
+  RS: [-30.03, -51.23], RO: [-8.76, -63.9], RR: [2.82, -60.67], SC: [-27.6, -48.55], SP: [-23.55, -46.63],
+  SE: [-10.91, -37.07], TO: [-10.18, -48.33],
+};
+const sqlCoordDoAutor = (eixo: 0 | 1) =>
+  `COALESCE(u.${eixo === 0 ? 'lat' : 'lon'}, CASE UPPER(TRIM(u.state)) ${Object.entries(CAPITAL_DA_UF)
+    .map(([uf, c]) => `WHEN '${uf}' THEN ${c[eixo]}`).join(' ')} END)`;
 function faixaDeDistancia(km: number) {
   if (!Number.isFinite(km)) return FAIXAS_DE_DISTANCIA_KM.length + 1;
   const i = FAIXAS_DE_DISTANCIA_KM.findIndex((limite) => km <= limite);
@@ -6967,11 +6981,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerStateRaw = String((viewerRow as any)?.state || '').trim().toUpperCase();
     const escapedViewerCity = viewerCityRaw.replace(/'/g, "''");
     const escapedViewerState = viewerStateRaw.replace(/'/g, "''");
-    const regionalDistanceOrder = viewerLat !== null && viewerLon !== null
-      ? `CASE WHEN u.lat IS NOT NULL AND u.lon IS NOT NULL THEN 0 ELSE 1 END ASC,
-         ((u.lat - ${viewerLat}) * (u.lat - ${viewerLat})) +
-         (((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)}) *
-          ((u.lon - ${viewerLon}) * ${Math.cos((viewerLat * Math.PI) / 180)})) ASC,`
+    // Sem lat/lon (de quem vê ou de quem postou), vale a capital do estado.
+    const capitalDoViewer = CAPITAL_DA_UF[viewerStateRaw];
+    const latRef = viewerLat ?? capitalDoViewer?.[0] ?? null;
+    const lonRef = viewerLon ?? capitalDoViewer?.[1] ?? null;
+    const latAutor = sqlCoordDoAutor(0);
+    const lonAutor = sqlCoordDoAutor(1);
+    const regionalDistanceOrder = latRef !== null && lonRef !== null
+      ? `CASE WHEN ${latAutor} IS NOT NULL AND ${lonAutor} IS NOT NULL THEN 0 ELSE 1 END ASC,
+         ((${latAutor} - ${latRef}) * (${latAutor} - ${latRef})) +
+         (((${lonAutor} - ${lonRef}) * ${Math.cos((latRef * Math.PI) / 180)}) *
+          ((${lonAutor} - ${lonRef}) * ${Math.cos((latRef * Math.PI) / 180)})) ASC,`
       : '';
     // Faixas de recência, aplicadas ANTES da distância.
     //
@@ -7002,14 +7022,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // para quem é de Maceió. Faixas (não distância pura) para que, dentro de uma
     // mesma vizinhança, o post novo continue vindo antes do antigo.
     // Comparação em graus ao quadrado (sem sqrt, que o SQLite não tem); 1° ≈ 111 km.
-    const cosViewerLat = viewerLat !== null ? Math.cos((viewerLat * Math.PI) / 180) : 1;
-    const distanciaGrau2 = viewerLat !== null && viewerLon !== null
-      ? `(((u.lat - ${viewerLat}) * (u.lat - ${viewerLat})) + (((u.lon - ${viewerLon}) * ${cosViewerLat}) * ((u.lon - ${viewerLon}) * ${cosViewerLat})))`
+    const cosViewerLat = latRef !== null ? Math.cos((latRef * Math.PI) / 180) : 1;
+    const distanciaGrau2 = latRef !== null && lonRef !== null
+      ? `(((${latAutor} - ${latRef}) * (${latAutor} - ${latRef})) + (((${lonAutor} - ${lonRef}) * ${cosViewerLat}) * ((${lonAutor} - ${lonRef}) * ${cosViewerLat})))`
       : '';
     const faixaForaDoEstadoOrder = cityOnly && viewerStateRaw && distanciaGrau2
       ? `CASE
             WHEN u.state IS NOT NULL AND UPPER(TRIM(u.state)) = '${escapedViewerState}' THEN 0
-            WHEN u.lat IS NULL OR u.lon IS NULL THEN ${FAIXAS_DE_DISTANCIA_KM.length + 1}
+            WHEN ${latAutor} IS NULL OR ${lonAutor} IS NULL THEN ${FAIXAS_DE_DISTANCIA_KM.length + 1}
             ${FAIXAS_DE_DISTANCIA_KM.map((km, i) => `WHEN ${distanciaGrau2} <= ${((km / 111) ** 2).toFixed(4)} THEN ${i}`).join(' ')}
             ELSE ${FAIXAS_DE_DISTANCIA_KM.length} END ASC,`
       : '';

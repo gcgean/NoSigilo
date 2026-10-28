@@ -561,13 +561,13 @@ export default function Feed() {
               type: 'section',
               id: 'feed-section-fim-regiao',
               title: '📍 Sem novidades da sua região agora',
-              description: 'Você já viu as publicações recentes de quem está perto. Abaixo, posts de outras cidades e estados.',
+              description: 'Você já viu as publicações recentes de quem está perto. Abaixo, dos estados mais próximos para os mais longe.',
             }
             : {
               type: 'section',
               id: 'feed-section-fim-regiao',
               title: '✅ Você já viu as novidades da sua região',
-              description: 'Abaixo, posts de outras cidades e estados.',
+              description: 'Abaixo, dos estados mais próximos para os mais longe.',
             });
         }
         itens.push({ type: 'post', id: `post-${post.id}`, post });
