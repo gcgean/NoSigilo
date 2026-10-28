@@ -5188,6 +5188,20 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
   // Alvo mínimo do chat — atende tanto PromoterRow quanto um usuário comum de suporte.
   type ChatTarget = { userId: string; fullName: string; pixKey: string; userEmail: string };
   const [selectedChat, setSelectedChat] = useState<ChatTarget | null>(null);
+  const [perfilDoChat, setPerfilDoChat] = useState<string | null>(null);
+  const [banindoDoChat, setBanindoDoChat] = useState(false);
+  const banirDoChat = async (alvo: ChatTarget) => {
+    if (!window.confirm(`Banir ${alvo.fullName}? A pessoa perde o acesso à plataforma.`)) return;
+    setBanindoDoChat(true);
+    try {
+      await adminService.banUser(alvo.userId);
+      toast({ title: `${alvo.fullName} foi banido(a)` });
+    } catch {
+      toast({ title: 'Erro ao banir usuário', variant: 'destructive' });
+    } finally {
+      setBanindoDoChat(false);
+    }
+  };
   const [chatMessages, setChatMessages] = useState<SupportMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   // Print/foto anexada à resposta do suporte (botão ou Ctrl+V no campo).
@@ -5447,13 +5461,23 @@ function AdminPromotersTab({ modo = 'promotores' }: { modo?: 'promotores' | 'sup
           <button onClick={() => setSelectedChat(null)} className="rounded-full p-1.5 hover:bg-secondary">
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <p className="font-semibold">{selectedChat.fullName}</p>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">
+              <button type="button" onClick={() => setPerfilDoChat(selectedChat.userId)} className="hover:text-primary hover:underline" title="Ver o perfil">
+                {selectedChat.fullName}
+              </button>
+              <a href={`/users/${selectedChat.userId}`} target="_blank" rel="noopener noreferrer" className="ml-1 text-xs text-muted-foreground hover:text-primary" title="Abrir o perfil em outra aba">↗</a>
+            </p>
             <p className="text-xs text-muted-foreground">
               {selectedChat.userEmail}{selectedChat.pixKey ? ` · Pix: ${selectedChat.pixKey}` : ''}
             </p>
           </div>
+          <button type="button" disabled={banindoDoChat} onClick={() => void banirDoChat(selectedChat)}
+            className="rounded-full border border-destructive/40 px-3 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50">
+            🚫 Banir
+          </button>
         </div>
+        <PerfilNaCasa userId={perfilDoChat} onFechar={() => setPerfilDoChat(null)} />
 
         {/* Messages */}
         <div className="space-y-2 h-96 overflow-y-auto border rounded-xl p-3 bg-secondary/20 pr-2">
