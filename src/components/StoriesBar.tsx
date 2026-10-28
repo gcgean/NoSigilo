@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FOTO_NAO_ABRE } from '@/utils/mediaCompression';
-import { Plus, Eye, Crown, Pin } from 'lucide-react';
+import { Plus, Crown, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { storiesService, profileService } from '@/services/api';
@@ -12,6 +12,7 @@ import { hasPremiumAccess } from '@/utils/premium';
 type BarFeedStory = {
   id: string;
   viewed: boolean;
+  createdAt: string;
   audience?: 'all' | 'favorites';
   author: { id: string; name: string; avatar: string | null; pinnedByMe?: boolean; onlineRecente?: boolean };
 };
@@ -22,6 +23,10 @@ type AuthorGroup = {
   avatar: string | null;
   firstStoryId: string;
   allViewed: boolean;
+  // Quantos stories a pessoa tem no ar e quantos eu ainda não vi (selo no anel).
+  total: number;
+  novos: number;
+  capaEm: string;
   // Fixado por mim: vem antes de todo o resto, igual à ordem da tela /stories.
   pinned: boolean;
   // Algum story do autor é restrito aos favoritos dele. Só chega aqui story
@@ -66,7 +71,13 @@ export default function StoriesBar() {
         const a = s.author;
         const existing = byAuthor.get(a.id);
         if (existing) {
-          if (!s.viewed) existing.allViewed = false;
+          existing.total += 1;
+          if (!s.viewed) {
+            existing.novos += 1;
+            // Abre no primeiro que falta ver, como a aba Stories.
+            if (existing.allViewed || s.createdAt < existing.capaEm) { existing.firstStoryId = s.id; existing.capaEm = s.createdAt; }
+            existing.allViewed = false;
+          }
           if (s.audience === 'favorites') existing.paraFavoritos = true;
           if (a.onlineRecente) existing.online = true;
         } else {
@@ -76,14 +87,17 @@ export default function StoriesBar() {
             avatar: a.avatar,
             firstStoryId: s.id,
             allViewed: s.viewed,
+            total: 1,
+            novos: s.viewed ? 0 : 1,
+            capaEm: s.createdAt,
             pinned: !!a.pinnedByMe,
             paraFavoritos: s.audience === 'favorites',
             online: !!a.onlineRecente,
           });
         }
       }
-      // Fixados primeiro (é o que "acompanhar como fã" promete), e dentro de
-      // cada bloco os não-vistos antes dos vistos.
+      // Mesma ordem da aba Stories: a do servidor (fixados, curtidos, região…)
+      // com quem tem story novo na frente.
       const arr = Array.from(byAuthor.values()).sort(
         (x, y) => Number(y.pinned) - Number(x.pinned) || Number(x.allViewed) - Number(y.allViewed),
       );
@@ -198,7 +212,7 @@ export default function StoriesBar() {
               )}
               <div className="relative h-full w-full overflow-hidden rounded-full bg-background p-[2px]">
                 {/* Avatar — borrado p/ bloqueado (Premium) ou não-vistos (curiosidade) */}
-                <div className={cn('h-full w-full overflow-hidden rounded-full', (!unlocked || !g.allViewed) && 'scale-110 blur-[5px] brightness-90')}>
+                <div className="h-full w-full overflow-hidden rounded-full">
                   {g.avatar ? (
                     <img src={urlMiniatura(resolveServerUrl(g.avatar), 120)} alt={unlocked ? g.name : 'Premium'} loading="lazy" decoding="async" className="h-full w-full rounded-full object-cover" />
                   ) : (
@@ -207,21 +221,28 @@ export default function StoriesBar() {
                     </div>
                   )}
                 </div>
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                  {!unlocked ? (
-                    <Crown className="h-4 w-4 text-yellow-400 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]" />
-                  ) : !g.allViewed ? (
-                    <Eye className="h-4 w-4 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]" />
-                  ) : null}
-                </div>
               </div>
+              {/* Quantos stories: os novos (colorido) ou o total, se já viu todos. */}
+              {(g.novos > 0 || g.total > 1) && (
+                <span className={cn(
+                  'absolute -bottom-0.5 -right-0.5 z-10 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-background px-1 text-[10px] font-bold',
+                  g.novos > 0 ? 'bg-brand-pink text-white' : 'bg-muted text-muted-foreground',
+                )}>
+                  {g.novos > 0 ? g.novos : g.total}
+                </span>
+              )}
+              {!unlocked && (
+                <span className="absolute -left-0.5 -top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-amber-500" title="Premium">
+                  <Crown className="h-2.5 w-2.5 text-white" />
+                </span>
+              )}
             </div>
             {unlocked && g.online && (
               <span className="absolute -bottom-1.5 left-1/2 z-10 -translate-x-1/2 rounded-full border border-background bg-[#22c55e] px-1.5 text-[8px] font-bold uppercase leading-[14px] text-white">online</span>
             )}
             </div>
             <span className={cn('w-full truncate text-center text-[11px]', !unlocked ? 'font-semibold text-yellow-500' : 'text-muted-foreground')}>
-              {unlocked ? g.name : 'Premium'}
+              {g.name}
             </span>
           </button>
           );

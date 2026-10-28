@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 type StoryDoFeed = {
   id: string;
   viewed: boolean;
+  createdAt: string;
   mediaUrl: string | null;
   mimeType: string;
   expiresAt: string;
@@ -33,19 +34,24 @@ export default function StoriesNaoVistos() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const premium = hasPremiumAccess(user);
-  const [lista, setLista] = useState<StoryDoFeed[]>([]);
+  // Um card por perfil: abre no story mais antigo que falta ver; `novos` vai no selo.
+  const [lista, setLista] = useState<Array<StoryDoFeed & { novos: number }>>([]);
 
   useEffect(() => {
     storiesService.getFeed()
       .then((r) => {
-        const vistos = new Set<string>();
-        const porAutor: StoryDoFeed[] = [];
+        // Mesma ordem da barra do topo e da aba Stories (a do servidor).
+        const porAutor = new Map<string, StoryDoFeed & { novos: number }>();
         for (const s of (r.stories as unknown as StoryDoFeed[])) {
-          if (s.viewed || vistos.has(s.author.id)) continue;
-          vistos.add(s.author.id);
-          porAutor.push(s);
+          if (s.viewed) continue;
+          const atual = porAutor.get(s.author.id);
+          if (!atual) porAutor.set(s.author.id, { ...s, novos: 1 });
+          else {
+            const novos = atual.novos + 1;
+            porAutor.set(s.author.id, s.createdAt < atual.createdAt ? { ...s, novos } : { ...atual, novos });
+          }
         }
-        setLista(porAutor.slice(0, 15));
+        setLista([...porAutor.values()].slice(0, 15));
       })
       .catch(() => setLista([]));
   }, []);
@@ -62,7 +68,8 @@ export default function StoriesNaoVistos() {
         {lista.map((s, i) => {
           const liberado = premium || i === 0;
           const video = s.mimeType.startsWith('video/');
-          const capa = !video && s.mediaUrl ? s.mediaUrl : s.author.avatar;
+          // A capa é a foto do perfil (como a barra do topo); sem foto, o próprio story.
+          const capa = s.author.avatar || (!video ? s.mediaUrl : null);
           const falta = faltaPara(s.expiresAt);
           return (
             <button
@@ -74,24 +81,23 @@ export default function StoriesNaoVistos() {
               <div className="relative aspect-[9/16] w-full bg-muted">
                 {capa ? (
                   <img src={urlMiniatura(resolveServerUrl(capa), 240)} alt="" loading="lazy" decoding="async"
-                    className={cn('h-full w-full object-cover', !liberado && 'scale-110 blur-md brightness-75')} />
+                    className="h-full w-full object-cover" />
                 ) : null}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
-                {/* Avatar do autor com o anel de "não visto" */}
-                <div className="absolute left-1.5 top-1.5 h-8 w-8 rounded-full bg-gradient-to-tr from-primary via-fuchsia-500 to-violet-600 p-[2px]">
-                  <div className="h-full w-full overflow-hidden rounded-full bg-background">
-                    {s.author.avatar && liberado ? (
-                      <img src={urlMiniatura(resolveServerUrl(s.author.avatar), 120)} alt="" className="h-full w-full object-cover" />
-                    ) : null}
-                  </div>
-                </div>
+                {/* Anel colorido de "tem story" e o selo com quantos são novos. */}
+                <div className="pointer-events-none absolute inset-0 rounded-xl ring-2 ring-inset ring-fuchsia-500/80" />
+                <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-pink px-1.5 text-[10px] font-bold text-white shadow">
+                  {s.novos} {s.novos === 1 ? 'story' : 'stories'}
+                </span>
                 {!liberado ? (
-                  <Crown className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-yellow-400 drop-shadow" />
+                  <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 shadow" title="Premium">
+                    <Crown className="h-3 w-3 text-white" />
+                  </span>
                 ) : video ? (
-                  <Play className="absolute left-1/2 top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 fill-white text-white drop-shadow" />
+                  <Play className="absolute left-1.5 top-1.5 h-4 w-4 fill-white text-white drop-shadow" />
                 ) : null}
                 <div className="absolute inset-x-1.5 bottom-1.5">
-                  <p className={cn('truncate text-xs font-semibold text-white', !liberado && 'text-yellow-300')}>{liberado ? s.author.name : 'Premium'}</p>
+                  <p className={cn('truncate text-xs font-semibold text-white', !liberado && 'text-yellow-300')}>{s.author.name}</p>
                   {falta && <p className="text-[10px] text-white/80">⏳ {falta}</p>}
                 </div>
               </div>

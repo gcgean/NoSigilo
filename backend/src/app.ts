@@ -7824,9 +7824,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 -- Story em destaque (pago em tokens) vai na frente para quem
                 -- ainda não viu e é do mesmo estado do autor.
                 (CASE WHEN s.destaque_ate IS NOT NULL AND s.destaque_ate > ? ${myStateRaw ? `AND UPPER(TRIM(u.state)) = '${myStateRaw}'` : ''} THEN 0 ELSE 1 END) ASC,
+                -- Quem eu curti vem antes (barra do feed e aba Stories usam esta ordem).
+                (CASE WHEN EXISTS (SELECT 1 FROM likes lk WHERE lk.user_id = ? AND lk.target_type = 'user' AND lk.target_id = s.user_id) THEN 0 ELSE 1 END) ASC,
                 ${storyRegionOrder}
                 s.created_at DESC`,
-      [userId, userId, now, userId, userId, now]
+      [userId, userId, now, userId, userId, now, userId]
     )) as any[];
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
