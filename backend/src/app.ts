@@ -7939,14 +7939,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const minhaReacao = minhaReacaoPorStory.get(sid) ?? null;
       const isVideoStory = String(r.mime_type || '').startsWith('video/');
       const videoLocked = isVideoStory && !viewerHasPremiumStories;
+      // Stories são só para assinante ou trial (28/10/2026): sem isso, o
+      // conteúdo não sai do servidor — só quem postou (perfil e quantidade).
+      const conteudoLiberado = viewerHasPremiumStories;
       return {
         id: String(r.id),
-        mediaUrl: r.filename && !videoLocked ? `/uploads/${r.filename}` : null,
+        mediaUrl: r.filename && conteudoLiberado ? `/uploads/${r.filename}` : null,
         mimeType: String(r.mime_type || ''),
         isVideoLocked: videoLocked || undefined,
-        text: r.text ? String(r.text) : null,
+        text: r.text && conteudoLiberado ? String(r.text) : null,
         background: r.background ? String(r.background) : null,
-        textOverlay: r.text_overlay ? (safeJsonParse(r.text_overlay) as any) : null,
+        textOverlay: r.text_overlay && conteudoLiberado ? (safeJsonParse(r.text_overlay) as any) : null,
         // Chega aqui so o que o viewer pode ver; o campo serve para a estrela
         // verde, que diz "voce esta nos favoritos de quem postou".
         audience: storyAudience(r.audience),

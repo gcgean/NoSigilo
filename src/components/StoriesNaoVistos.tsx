@@ -66,7 +66,7 @@ export default function StoriesNaoVistos() {
       </div>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {lista.map((s, i) => {
-          const liberado = premium || i === 0;
+          const liberado = premium;
           const video = s.mimeType.startsWith('video/');
           // A capa é a foto do perfil (como a barra do topo); sem foto, o próprio story.
           const capa = s.author.avatar || (!video ? s.mediaUrl : null);

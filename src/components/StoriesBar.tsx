@@ -177,8 +177,8 @@ export default function StoriesBar() {
 
         {/* Stories de outros autores */}
         {groups.map((g, i) => {
-          // Gostinho grátis: o 1º story fica liberado mesmo para não-assinante; o resto bloqueia.
-          const unlocked = premium || i === 0;
+          // Stories só para assinante ou trial: sem assinatura, toca e vai para a assinatura.
+          const unlocked = premium;
           return (
           <button
             key={g.authorId}

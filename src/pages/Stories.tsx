@@ -1643,12 +1643,8 @@ export default function Stories() {
   }, [feed]);
 
   const handleOpenStory = useCallback(async (idx: number) => {
-    if (!isPremium) {
-      const selecao = montarAmostra(feedVisivel[idx]);
-      if (selecao.length === 0) { setPaywallOpen(true); return; }
-      setAmostra(selecao);
-      return;
-    }
+    // Stories são só para assinante ou trial: sem amostra grátis.
+    if (!isPremium) { setPaywallOpen(true); return; }
     const ok = await requireFields(['photo', 'birthDate']);
     if (!ok) return;
     setViewerIdx(idx);
@@ -1674,9 +1670,7 @@ export default function Stories() {
       if (ownIdx >= 0) { setPreviewIdx(ownIdx); return; }
     }
     if (pedeAmostra) {
-      if (isPremium) return;
-      const selecao = montarAmostra();
-      if (selecao.length > 0) setAmostra(selecao); else setPaywallOpen(true);
+      if (!isPremium) setPaywallOpen(true);
       return;
     }
     if (openId) {
@@ -2146,8 +2140,15 @@ export default function Stories() {
                   </div>
                 )}
                 {/* Mídia — borrada só nos NÃO-vistos, p/ gerar curiosidade */}
-                <div className={cn('absolute inset-0', !story.viewed && 'scale-110 blur-xl brightness-[0.8]')}>
-                  <StoryContent story={story} thumb />
+                <div className={cn('absolute inset-0', !story.viewed && isPremium && 'scale-110 blur-xl brightness-[0.8]')}>
+                  {isPremium ? (
+                    <StoryContent story={story} thumb />
+                  ) : story.author.avatar ? (
+                    // Sem assinatura o conteúdo nem chega: a capa é a foto do perfil.
+                    <img src={resolveServerUrl(story.author.avatar)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-br from-primary/40 to-violet-700/50" />
+                  )}
                 </div>
 
                 {/* Gradient */}
