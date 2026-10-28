@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  BadgeCheck,
   ChevronDown,
   EyeOff,
   Image as ImageIcon,
@@ -12,6 +13,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
   Users,
   X,
@@ -59,9 +61,19 @@ const PRIVACY_ITEMS = [
     description: 'Compartilhe momentos que desaparecem depois de vistos.',
   },
   {
-    icon: Users,
-    title: 'Ambiente adulto e respeitoso',
-    description: 'Consentimento, moderação e discrição fazem parte da experiência.',
+    icon: ShieldCheck,
+    title: 'Print com marca d’água',
+    description: 'Dentro da plataforma, toda tela leva o nome de quem está vendo.',
+  },
+  {
+    icon: BadgeCheck,
+    title: 'Perfis verificados',
+    description: 'Selo para quem confirma com selfie, vista só pela nossa equipe.',
+  },
+  {
+    icon: Trash2,
+    title: 'Saia quando quiser',
+    description: 'Excluir a conta apaga suas fotos e mensagens.',
   },
 ];
 
@@ -350,7 +362,7 @@ export default function Landing() {
               </p>
               <p className="landing-quick-register-note">
                 <ShieldCheck aria-hidden="true" />
-                Você controla o que exibe.
+                Grátis para começar · seu e-mail nunca aparece.
               </p>
             </form>
           </div>
