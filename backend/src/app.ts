@@ -8647,6 +8647,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             [msgId, conversationId, commenterId, text.trim(), storyId, 1, now]
           );
           await persist();
+          // Responder story também é mandar mensagem (conta para validar convite).
+          void markInviteeAction(db, io, commenterId, 0b010, env).catch(() => {});
           const storyMedia = (await queryOne(
             db,
             'SELECT m.filename, m.mime_type FROM stories s JOIN media m ON m.id = s.media_id WHERE s.id = ?',
@@ -10416,6 +10418,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       [mensagemId, conversationId, eu, texto, 1, agora, chave]
     );
     await db.persist();
+    void markInviteeAction(db, io, eu, 0b010, env).catch(() => {});
     const payload = {
       id: mensagemId, conversationId, senderId: eu, content: texto, mediaId: null, mediaUrl: null, mediaMimeType: null,
       clientId: null, isViewOnce: false, isDelivered: true, createdAt: agora, presente: chave,
@@ -13352,6 +13355,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         nowIso(),
       ]);
       await persist();
+      // Curtida no Match conta como "curtir um perfil" para validar convite.
+      void markInviteeAction(db, io, myId, 0b100, env).catch(() => {});
 
       // Send notification
       const actor = (await queryOne(db, 'SELECT name FROM users WHERE id = ? LIMIT 1', [myId])) as any;
@@ -13816,6 +13821,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         'INSERT INTO messages (id, conversation_id, sender_id, content, media_id, is_view_once, is_delivered, via_radar, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
         [messageId, String(conversation.id), req.auth!.userId, radarMessage, null, 0, 1, 1, messageCreatedAt]
       );
+      void markInviteeAction(db, io, req.auth!.userId, 0b010, env).catch(() => {});
       io?.to(String(conversation.id)).emit('message.created', {
         id: messageId,
         conversationId: String(conversation.id),
@@ -23157,6 +23163,29 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
   // ─── Background job: expire pending invite entries past their validation deadline ──
   const sweepExpiredInvites = async () => {
+    // Antes de expirar: confere a atividade real de quem ainda está "aguardando".
+    // Pega quem já fez as ações por um caminho que não marcava (resposta de story,
+    // curtida no Match… — caso do convite do Eduardobsb em 28/10/2026).
+    try {
+      const io = app.get('io') as SocketIOServer | undefined;
+      const pendentes = (await queryAll(
+        db,
+        `SELECT invitee_user_id, created_at FROM invite_link_entries
+         WHERE validation_status = 'pending' AND (validation_deadline IS NULL OR validation_deadline >= ?)`,
+        [nowIso()]
+      )) as any[];
+      for (const p of pendentes) {
+        const uid = String(p.invitee_user_id);
+        const desde = String(p.created_at);
+        const mandou = await queryOne(db, 'SELECT 1 AS x FROM messages WHERE sender_id = ? AND created_at >= ? LIMIT 1', [uid, desde]);
+        if (mandou) await markInviteeAction(db, io, uid, 0b010, env);
+        const curtiu = await queryOne(db, "SELECT 1 AS x FROM likes WHERE user_id = ? AND target_type = 'user' AND created_at >= ? LIMIT 1", [uid, desde]);
+        if (curtiu) await markInviteeAction(db, io, uid, 0b100, env);
+      }
+      if (pendentes.length > 0) await persist();
+    } catch (err) {
+      console.error('[sweep] conferir convites pendentes:', err);
+    }
     try {
       // Find all pending entries whose deadline has passed
       const expired = (await queryAll(
