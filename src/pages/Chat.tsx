@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
-import { authService, chatService, groupsService, profileService, matchService, usersService, usosTokensService, type GroupSummary } from '@/services/api';
+import { authService, chatService, groupsService, profileService, matchService, storiesService, usersService, usosTokensService, type GroupSummary } from '@/services/api';
 import SemTokensDialog from '@/components/SemTokensDialog';
 import { useSocket } from '@/contexts/SocketContext';
 import { useToast } from '@/hooks/use-toast';
@@ -33,6 +33,7 @@ import { PHOTO_REACTIONS, REACTION_EMOJI, type PhotoReaction } from '@/lib/react
 // Emojis "safados" de acesso rápido no topo do seletor de emoji do chat.
 const SPICY_EMOJIS = ['😈','🔥','💦','🍆','🍑','👅','💋','😏','🥵','🤤','😍','👄','🫦','🍒','🌶️','❤️‍🔥','😉','🙈','🛏️','👙','🩲','🔞','🍌','🥴','😜','🫣','👀','🤭','😻','💐','🤙','💥'];
 import { hasPremiumAccess } from '@/utils/premium';
+import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
@@ -375,6 +376,24 @@ export default function Chat() {
   // de abas do iOS, onde as 12 rotas apareciam com o mesmo nome.
   useDocumentTitle(activeConversation?.user?.name ? `Conversa com ${activeConversation.user.name}` : 'Conversas');
   const premiumAccess = hasPremiumAccess(user);
+  // Contatos com story no ar: anel na foto da lista (colorido = tem novo) e
+  // tocar na foto abre o story. Sem assinatura, a oferta abre aqui mesmo.
+  const [storiesDosContatos, setStoriesDosContatos] = useState<Map<string, { storyId: string; novo: boolean }>>(new Map());
+  const [paywallStories, setPaywallStories] = useState(false);
+  useEffect(() => {
+    storiesService.getFeed()
+      .then((r) => {
+        const mapa = new Map<string, { storyId: string; novo: boolean; em: string }>();
+        for (const st of r.stories as unknown as Array<{ id: string; viewed: boolean; createdAt: string; author: { id: string } }>) {
+          const atual = mapa.get(st.author.id);
+          const novo = !st.viewed;
+          // Abre no story mais antigo que falta ver (igual à barra do feed).
+          if (!atual || (novo && (!atual.novo || st.createdAt < atual.em))) mapa.set(st.author.id, { storyId: st.id, novo, em: st.createdAt });
+        }
+        setStoriesDosContatos(new Map([...mapa].map(([k, v]) => [k, { storyId: v.storyId, novo: v.novo }])));
+      })
+      .catch(() => {});
+  }, []);
   // Casal sem assinatura lê o que recebe e responde quem puxou conversa
   // (o servidor confere de novo). Iniciar conversa continua sendo pago.
   const ehCasal = String((user as any)?.gender || '').trim().toLowerCase().startsWith('casal');
@@ -1589,9 +1608,37 @@ export default function Chat() {
               )}
               style={conversation.isHighlighted ? { borderLeft: `3px solid ${highlightMeta.borderColor}` } : undefined}
             >
-              <div className="relative">
-                <UserAvatar user={conversation.user} className="h-11 w-11 sm:h-10 sm:w-10" />
-              </div>
+              {(() => {
+                const st = storiesDosContatos.get(String(conversation.user.id));
+                if (!st) return (
+                  <div className="relative">
+                    <UserAvatar user={conversation.user} className="h-11 w-11 sm:h-10 sm:w-10" />
+                  </div>
+                );
+                return (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver o story de ${conversation.user.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (premiumAccess) navigate(`/stories?open=${encodeURIComponent(st.storyId)}&from=chat`);
+                      else setPaywallStories(true);
+                    }}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className={cn(
+                      'relative shrink-0 rounded-full p-[2px]',
+                      st.novo ? 'bg-gradient-to-tr from-primary via-fuchsia-500 to-violet-600' : 'bg-muted-foreground/30'
+                    )}
+                  >
+                    <span className="block rounded-full bg-background p-[2px]">
+                      <UserAvatar user={conversation.user} className="h-10 w-10 sm:h-9 sm:w-9" />
+                    </span>
+                  </span>
+                );
+              })()}
               <div className="min-w-0 flex-1 text-left">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -2824,6 +2871,7 @@ export default function Chat() {
       )}
 
       <SemTokensDialog open={!!semTokensPresente} onOpenChange={(v) => { if (!v) setSemTokensPresente(null); }} custo={semTokensPresente?.custo || 0} recurso="Esse presente" />
+      <ReferralPaywallModal open={paywallStories} onClose={() => setPaywallStories(false)} contexto="stories" />
     </div>
   );
 }

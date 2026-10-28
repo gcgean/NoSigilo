@@ -1664,6 +1664,7 @@ export default function Stories() {
     autoOpenedRef.current = true;
     // Aberto a partir do feed → ao fechar o story, volta pro feed (não fica em /stories)
     if (params.get('from') === 'feed') setReturnTo('/feed');
+    if (params.get('from') === 'chat') setReturnTo('/chat');
     window.history.replaceState({}, '', '/stories');
     if (ownId) {
       const ownIdx = myStories.findIndex((s) => s.id === ownId);
