@@ -1626,7 +1626,10 @@ export default function Stories() {
   // posta bem. Vídeo de story é só para assinante, então fica de fora.
   const montarAmostra = useCallback((tocado?: FeedStory) => {
     const fotos = feed.filter((st) => !st.isVideoLocked && !st.mimeType.startsWith('video/') && (st.mediaUrl || st.text));
-    const maisCurtidos = [...fotos].sort((a, b) => (b.likeCount ?? 0) - (a.likeCount ?? 0));
+    // Os que a pessoa ainda não viu vêm antes; só depois repete os já vistos.
+    // Sem isso a amostra abria sempre os mesmos campeões de curtida.
+    const maisCurtidos = [...fotos].sort((a, b) =>
+      Number(a.viewed) - Number(b.viewed) || (b.likeCount ?? 0) - (a.likeCount ?? 0));
     const escolhidos: FeedStory[] = [];
     const autores = new Set<string>();
     const primeiro = tocado && fotos.some((st) => st.id === tocado.id) ? [tocado] : [];
@@ -2305,7 +2308,14 @@ export default function Stories() {
           startIndex={0}
           myUserId={user?.id || ''}
           modoAmostra
-          onClose={() => { setAmostra(null); if (returnTo) navigate(returnTo); }}
+          onClose={() => {
+            // O "viewed" do servidor só volta no próximo load; marca já aqui
+            // para a próxima amostra nesta tela não repetir os mesmos.
+            const vistos = new Set(amostra.map((st) => st.id));
+            setFeed((antes) => antes.map((st) => (vistos.has(st.id) ? { ...st, viewed: true } : st)));
+            setAmostra(null);
+            if (returnTo) navigate(returnTo);
+          }}
           onTogglePin={alternaPin}
         />
       )}
