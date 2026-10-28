@@ -13,7 +13,6 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-  Trash2,
   UserRound,
   Users,
   X,
@@ -68,12 +67,7 @@ const PRIVACY_ITEMS = [
   {
     icon: BadgeCheck,
     title: 'Perfis verificados',
-    description: 'Selo para quem confirma com selfie, vista só pela nossa equipe.',
-  },
-  {
-    icon: Trash2,
-    title: 'Saia quando quiser',
-    description: 'Excluir a conta apaga suas fotos e mensagens.',
+    description: 'Aqui você encontra perfis com selo de verificado.',
   },
 ];
 
