@@ -713,6 +713,12 @@ export default function SearchPage() {
     return parts.join(' · ') || null;
   })();
 
+  const chip = 'inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors';
+  const chipOn = 'border-primary bg-primary text-white';
+  const chipOff = 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground';
+  // Selo no botão de Filtros: o que está ligado lá dentro e não aparece nos atalhos.
+  const filtrosNoPainel = [!!orientacao, !!city, !!selectedIntention, sort === 'active' || sort === 'new'].filter(Boolean).length;
+
   return (
     <div className="mx-auto w-full max-w-4xl lg:max-w-6xl min-w-0">
 
@@ -887,284 +893,141 @@ export default function SearchPage() {
       )}
 
       {/* Header */}
-      <div className="mb-4 sm:mb-5">
-        <h1 className="mb-1 text-[1.8rem] font-bold sm:mb-1.5 sm:text-2xl">Buscar</h1>
-        <p className="text-[0.98rem] leading-6 text-muted-foreground sm:text-base">Encontre casais e singles compatíveis com o seu interesse</p>
+      <div className="mb-3 sm:mb-5">
+        <h1 className="text-[1.8rem] font-bold sm:mb-1.5 sm:text-2xl">Buscar</h1>
+        <p className="hidden text-base text-muted-foreground sm:block">Encontre casais e singles compatíveis com o seu interesse</p>
       </div>
 
       {/* Ativos agora — descoberta de perfis ativos nas últimas 2h */}
       {!showWizard && <ActiveNowBar />}
 
-      {/* ── "Mostrando:" active defaults bar ──────────────────────────────── */}
-      {hasActiveDefaults && defaultsLabel && !showWizard && (
-        <div className="mb-3 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
-          <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-          <p className="text-xs text-foreground/80 flex-1 min-w-0 truncate">
-            <span className="text-muted-foreground">Mostrando: </span>
-            <span className="font-medium">{defaultsLabel}</span>
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              setWizardStep(1);
-              setWizardData({
-                profileTypes: savedPrefs?.profileTypes ?? [],
-                maxDistance: savedPrefs?.maxDistance ?? null,
-                intentions: savedPrefs?.intentions ?? [],
-              });
-              setShowWizard(true);
-            }}
-            className="-my-2 flex min-h-[40px] shrink-0 items-center gap-1 px-1 text-xs font-medium text-brand-pink hover:underline"
-          >
-            <Pencil className="h-3 w-3" /> Editar padrão
-          </button>
-        </div>
-      )}
-
-      {/* ⚡ Encontro Hoje mode banner */}
-      <button
-        type="button"
-        onClick={() => {
-          setAvailableOnly((v) => !v);
-          if (!availableOnly) setSort('available');
-          else setSort('nearby');
-        }}
-        className={cn(
-          'mb-4 w-full flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition-all',
-          availableOnly
-            ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-500'
-            : 'border-border bg-background/50 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-        )}
-      >
-        <div className="flex items-center gap-2.5">
-          <Zap className={cn('h-5 w-5 shrink-0', availableOnly && 'animate-pulse')} />
-          <div>
-            <p className="text-sm font-bold leading-tight">
-              {availableOnly ? '⚡ Modo Encontro Hoje ativo' : '⚡ Modo Encontro Hoje'}
-            </p>
-            <p className="text-xs opacity-70 leading-tight mt-0.5">
-              {availableOnly
-                ? 'Exibindo apenas perfis com disponibilidade ativa (hoje, semana, mês ou online)'
-                : 'Ver apenas quem está disponível para um encontro real'}
-            </p>
-          </div>
-        </div>
-        <div className={cn(
-          'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors',
-          availableOnly ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
-        )}>
-          {availableOnly ? 'Ativo' : 'Ativar'}
-        </div>
-      </button>
-
-      {/* Search & Filters */}
-      <div className="mb-4 flex flex-col gap-3 sm:mb-5">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome ou cidade..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setShowSuggestions(false);
-                  if (debounceRef.current) clearTimeout(debounceRef.current);
-                  void fetchFirstPage();
-                }
-              }}
-              className="h-12 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
-            />
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
-                <p className="px-3 pt-2 text-sm font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
-                {suggestions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
-                  >
-                    <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{s.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleUseDeviceRadar()}
-            disabled={isLocating}
-            title="Buscar pessoas próximas por GPS (raio de 50 km)"
-            aria-label="Buscar pessoas próximas por GPS"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border-2 border-primary/15 bg-background text-primary transition-colors hover:bg-primary/10 disabled:opacity-60 sm:h-10 sm:w-10 sm:rounded-md sm:border-input"
-          >
-            {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <MapPin className="h-5 w-5" />}
-          </button>
-        </div>
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:flex sm:flex-row">
-          <Button
-            type="button"
-            variant={onlyLiked ? 'default' : 'outline'}
-            onClick={() => setOnlyLiked((prev) => !prev)}
-            className={
-              onlyLiked
-                ? 'animate-liked-filter h-11 w-full justify-center rounded-xl gap-2 border-0 bg-gradient-primary px-4 text-sm font-medium text-white hover:opacity-95 motion-reduce:animate-none'
-                : 'h-11 w-full justify-center rounded-xl gap-2 border-primary/50 bg-primary/5 px-4 text-sm font-medium text-brand-pink hover:bg-primary/10'
-            }
-          >
-            <Heart className={onlyLiked ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
-            Somente curtidos
-            <span
-              className={
-                onlyLiked
-                  ? 'rounded-full bg-pink-300/30 px-2 py-0.5 text-xs font-semibold text-white'
-                  : 'rounded-full bg-pink-500/15 px-2 py-0.5 text-xs font-semibold text-pink-600'
+      {/* Busca enxuta (28/10/2026): só a busca e uma linha de atalhos à vista;
+          ordenar, "busca por", orientação, cidade e perfis ficam em Filtros. */}
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por nome ou cidade..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setShowSuggestions(false);
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                void fetchFirstPage();
               }
-            >
-              {likedProfiles.length}
-            </span>
-          </Button>
-          <Button
-            ref={filtersButtonRef}
-            variant={showFilters ? 'default' : 'outline'}
-            onClick={() => setShowFilters(!showFilters)}
-            className="h-11 w-full justify-center rounded-xl gap-2 px-4 text-sm font-medium sm:self-auto"
-          >
-            <Filter className="w-4 h-4" />
-            Filtros
-          </Button>
+            }}
+            className="h-11 rounded-xl border-2 border-primary/15 bg-background pl-11 pr-4 text-base focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:rounded-md sm:border-input sm:pl-10 sm:text-sm"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover shadow-lg">
+              <p className="px-3 pt-2 text-sm font-medium uppercase tracking-wide text-muted-foreground">Perfis encontrados</p>
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => { setShowSuggestions(false); navigate(getUserProfileHref(s.id, undefined, '/search')); }}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted"
+                >
+                  <UserAvatar user={{ name: s.name, avatar: s.avatar }} className="h-9 w-9 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{s.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+        <button
+          type="button"
+          onClick={() => void handleUseDeviceRadar()}
+          disabled={isLocating}
+          title="Buscar pessoas próximas por GPS (raio de 50 km)"
+          aria-label="Buscar pessoas próximas por GPS"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 border-primary/15 bg-background text-primary transition-colors hover:bg-primary/10 disabled:opacity-60 sm:h-10 sm:w-10 sm:rounded-md sm:border-input"
+        >
+          {isLocating ? <Loader2 className="h-5 w-5 animate-spin" /> : <MapPin className="h-5 w-5" />}
+        </button>
+        <button
+          ref={filtersButtonRef as any}
+          type="button"
+          onClick={() => setShowFilters(!showFilters)}
+          aria-label="Filtros"
+          className={cn(
+            'relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-2 transition-colors sm:h-10 sm:w-10 sm:rounded-md',
+            showFilters ? 'border-primary bg-primary text-white' : 'border-primary/15 bg-background text-foreground hover:bg-primary/10 sm:border-input'
+          )}
+        >
+          <SlidersHorizontal className="h-5 w-5" />
+          {filtrosNoPainel > 0 && (
+            <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-pink px-1 text-[10px] font-bold text-white">{filtrosNoPainel}</span>
+          )}
+        </button>
       </div>
 
-      {/* Quick distance + sort bar */}
-      {!onlyLiked && (
-        <div className="mb-4 flex flex-col gap-2 sm:mb-5">
-
-          {/* Idade à vista: antes ficava escondida dentro de "Filtros". */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setIdadeAberta((v) => !v)}
-              aria-expanded={idadeAberta}
-              className={cn(
-                'flex min-h-[40px] w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition-colors',
-                faixaAtiva(faixaIdade)
-                  ? 'border-primary/50 bg-primary/10 font-semibold text-brand-pink'
-                  : 'border-border bg-background/50 text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <span aria-hidden>🎂</span>
-              <span className="flex-1">
-                Idade: <strong className={faixaAtiva(faixaIdade) ? '' : 'font-medium text-foreground'}>{rotuloFaixa(faixaIdade)}</strong>
-                {faixaAtiva(faixaIdade) && faixaIdade.ambos ? <span className="text-xs font-normal"> · casal: os dois</span> : null}
-              </span>
-              <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', idadeAberta && 'rotate-180')} />
-            </button>
-            {idadeAberta && (
-              <div className="mt-2 rounded-xl border border-border bg-background/60 p-3">
-                <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
-              </div>
-            )}
-          </div>
-
-          {/* Distance quick buttons */}
-          <div className="relative">
-            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
-              <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              {([['all','Qualquer'],['10','10 km'],['25','25 km'],['50','50 km'],['100','100 km'],['500','500 km']] as const).map(([v, l]) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setRadar(v)}
-                  className={`min-h-[36px] shrink-0 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                    radar === v
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                  }`}
-                >
-                  {l}
-                </button>
-              ))}
-              {/* right-side spacer so last chip clears the fade */}
-              <span className="shrink-0 w-8" aria-hidden />
-            </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
-          </div>
-
-          {/* Sort buttons */}
-          <div className="relative">
-            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
-              <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              {([
-                ['nearby',    'Próximos'],
-                ['active',    'Ativos'],
-                ['new',       'Novos'],
-                ['available', '⚡ Disponíveis'],
-              ] as const).map(([v, l]) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setSort(v)}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                    sort === v
-                      ? v === 'available'
-                        ? 'border-emerald-500 bg-emerald-500 text-white'
-                        : 'border-primary bg-primary text-white'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                  }`}
-                >
-                  {l}
-                </button>
-              ))}
-              <span className="shrink-0 w-8" aria-hidden />
-            </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
-          </div>
-
-          {/* Intention filter pills */}
-          <div className="relative">
-            <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-0.5">
-              <span className="text-sm shrink-0 text-muted-foreground">Busca por:</span>
+      {/* Uma linha só de atalhos (rola de lado) */}
+      <div className="relative mb-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [&::-webkit-scrollbar]:hidden">
+          <button
+            type="button"
+            onClick={() => setOnlyLiked((prev) => !prev)}
+            className={cn(chip, onlyLiked ? 'border-transparent bg-gradient-primary text-white' : chipOff)}
+          >
+            <Heart className={cn('h-3.5 w-3.5', onlyLiked && 'fill-current')} /> Curtidos
+            <span className={cn('rounded-full px-1.5 text-[10px] font-bold', onlyLiked ? 'bg-white/25' : 'bg-pink-500/15 text-pink-600')}>{likedProfiles.length}</span>
+          </button>
+          {!onlyLiked && (
+            <>
               <button
                 type="button"
-                onClick={() => setSelectedIntention('')}
-                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  selectedIntention === ''
-                    ? 'border-primary bg-primary text-white'
-                    : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                }`}
+                onClick={() => {
+                  setAvailableOnly((v) => !v);
+                  if (!availableOnly) setSort('available');
+                  else setSort('nearby');
+                }}
+                title="Ver apenas quem está disponível para um encontro real"
+                className={cn(chip, availableOnly ? 'border-emerald-500 bg-emerald-500 text-white' : chipOff)}
               >
-                Tudo
+                <Zap className="h-3.5 w-3.5" /> Encontro hoje
               </button>
-              {INTENTION_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setSelectedIntention((v) => v === opt.value ? '' : opt.value)}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors gap-1 inline-flex items-center ${
-                    selectedIntention === opt.value
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                  }`}
-                >
-                  {opt.emoji} {opt.label}
-                </button>
-              ))}
-              <span className="shrink-0 w-8" aria-hidden />
-            </div>
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
-          </div>
-
+              <button
+                type="button"
+                onClick={() => setIdadeAberta((v) => !v)}
+                aria-expanded={idadeAberta}
+                className={cn(chip, faixaAtiva(faixaIdade) ? chipOn : chipOff)}
+              >
+                🎂 {faixaAtiva(faixaIdade) ? rotuloFaixa(faixaIdade) : 'Idade'}
+                <ChevronDown className={cn('h-3 w-3 transition-transform', idadeAberta && 'rotate-180')} />
+              </button>
+              <Select value={radar} onValueChange={setRadar}>
+                <SelectTrigger className={cn(chip, 'h-auto w-auto gap-1 [&>svg]:h-3 [&>svg]:w-3', radar !== 'all' ? chipOn : chipOff)} aria-label="Distância">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Qualquer distância</SelectItem>
+                  <SelectItem value="10">Até 10 km</SelectItem>
+                  <SelectItem value="25">Até 25 km</SelectItem>
+                  <SelectItem value="50">Até 50 km</SelectItem>
+                  <SelectItem value="100">Até 100 km</SelectItem>
+                  <SelectItem value="500">Até 500 km</SelectItem>
+                </SelectContent>
+              </Select>
+            </>
+          )}
+          <span className="w-8 shrink-0" aria-hidden />
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
+      </div>
+      {idadeAberta && !onlyLiked && (
+        <div className="mb-3 rounded-xl border border-border bg-background/60 p-3">
+          <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
         </div>
       )}
 
@@ -1173,6 +1036,49 @@ export default function SearchPage() {
       {/* Filters Panel */}
       {showFilters && (
         <div ref={filtersPanelRef} className="glass mb-4 animate-slide-up space-y-5 rounded-xl p-4 sm:mb-6 sm:p-6 sm:space-y-6">
+          {hasActiveDefaults && defaultsLabel && (
+            <div className="flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+              <p className="min-w-0 flex-1 truncate text-xs text-foreground/80">
+                <span className="text-muted-foreground">Seu padrão: </span>
+                <span className="font-medium">{defaultsLabel}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setWizardStep(1);
+                  setWizardData({
+                    profileTypes: savedPrefs?.profileTypes ?? [],
+                    maxDistance: savedPrefs?.maxDistance ?? null,
+                    intentions: savedPrefs?.intentions ?? [],
+                  });
+                  setShowWizard(true);
+                }}
+                className="flex min-h-[36px] shrink-0 items-center gap-1 px-1 text-xs font-medium text-brand-pink hover:underline"
+              >
+                <Pencil className="h-3 w-3" /> Editar padrão
+              </button>
+            </div>
+          )}
+          <div>
+            <label className="mb-2 block text-sm font-medium">Ordenar por</label>
+            <div className="flex flex-wrap gap-1.5">
+              {([['nearby', 'Próximos'], ['active', 'Ativos'], ['new', 'Novos']] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setSort(v)} className={cn(chip, sort === v ? chipOn : chipOff)}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium">Busca por</label>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setSelectedIntention('')} className={cn(chip, selectedIntention === '' ? chipOn : chipOff)}>Tudo</button>
+              {INTENTION_OPTIONS.map((opt) => (
+                <button key={opt.value} type="button" onClick={() => setSelectedIntention((v) => (v === opt.value ? '' : opt.value))}
+                  className={cn(chip, selectedIntention === opt.value ? chipOn : chipOff)}>
+                  {opt.emoji} {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
             <div>
               <FiltroIdade valor={faixaIdade} onChange={aplicarFaixaIdade} />
