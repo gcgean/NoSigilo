@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { BadgeCheck, Camera, Clock, Loader2, RefreshCw } from 'lucide-react';
+import { BadgeCheck, Camera, Clock, Image as ImageIcon, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { profileService, verificacaoService, type SituacaoVerificacao } from '@/services/api';
@@ -18,6 +18,9 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
   const [foto, setFoto] = useState<{ file: File; preview: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const arquivo = useRef<HTMLInputElement>(null);
+  // Galeria: em celular com pouca memória, abrir a câmera pelo site faz o Android fechar o navegador
+  // ("insuficiência de memória"). Tirando a selfie pela câmera do celular e escolhendo aqui, não acontece.
+  const galeria = useRef<HTMLInputElement>(null);
 
   const carregar = () => verificacaoService.situacao().then((s) => {
     setSit(s);
@@ -126,32 +129,43 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
             <li>{casal ? 'Tirem uma selfie segurando o papel, de preferência os dois aparecendo.' : 'Tire uma selfie segurando o papel, com o rosto aparecendo.'}</li>
             <li>Envie aqui. Só a equipe vê essa foto: ela não aparece no perfil.</li>
           </ol>
-          <input
-            ref={arquivo}
-            type="file"
-            accept="image/*"
-            capture="user"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) setFoto({ file: f, preview: URL.createObjectURL(f) });
-              e.target.value = '';
-            }}
-          />
+          {[arquivo, galeria].map((ref, i) => (
+            <input
+              key={i}
+              ref={ref}
+              type="file"
+              accept="image/*"
+              {...(i === 0 ? { capture: 'user' as const } : {})}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) setFoto({ file: f, preview: URL.createObjectURL(f) });
+                e.target.value = '';
+              }}
+            />
+          ))}
           {foto ? (
             <div className="space-y-2">
               <img src={foto.preview} alt="Sua selfie" className="mx-auto max-h-64 rounded-xl object-contain" />
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" disabled={ocupado} onClick={() => arquivo.current?.click()} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Trocar foto</Button>
+                <Button variant="outline" disabled={ocupado} onClick={() => galeria.current?.click()} className="gap-1.5"><RefreshCw className="h-4 w-4" /> Trocar foto</Button>
                 <Button className="bg-gradient-primary" disabled={ocupado} onClick={() => void enviar()}>
                   {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Enviar para análise'}
                 </Button>
               </div>
             </div>
           ) : (
-            <Button className="w-full gap-2 bg-gradient-primary" onClick={() => arquivo.current?.click()}>
-              <Camera className="h-4 w-4" /> Tirar a selfie com o código
-            </Button>
+            <div className="space-y-2">
+              <Button className="w-full gap-2 bg-gradient-primary" onClick={() => arquivo.current?.click()}>
+                <Camera className="h-4 w-4" /> Tirar a selfie com o código
+              </Button>
+              <Button variant="outline" className="w-full gap-2" onClick={() => galeria.current?.click()}>
+                <ImageIcon className="h-4 w-4" /> Escolher a foto da galeria
+              </Button>
+              <p className="text-center text-[11px] text-muted-foreground">
+                Se o site fechar ao abrir a câmera (aviso de pouca memória), tire a selfie com a câmera do celular e use “Escolher a foto da galeria”. O código continua o mesmo.
+              </p>
+            </div>
           )}
         </>
       )}
