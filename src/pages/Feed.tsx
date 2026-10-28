@@ -1060,7 +1060,10 @@ export default function Feed() {
         return merged;
       });
       setPage(nextPage);
-      setHasMore(!!feed?.hasMore);
+      // Página vazia encerra a rolagem: com filtro de região o servidor pode
+      // dizer hasMore=true sem ter nada que passe no filtro, e o "Carregando..."
+      // ficava girando para sempre.
+      setHasMore(!!feed?.hasMore && nextPosts.length > 0);
     } catch {
       toast({ title: 'Erro ao carregar mais', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
@@ -3486,13 +3489,15 @@ export default function Feed() {
             </Card>
             )
           ))}
-          {feedFilter !== 'experiences' && !isLoading && visiblePosts.length === 0 && feedFilter === 'all' ? (
+          {/* Com filtro de região já aparece o aviso "Ninguém da sua região" acima. */}
+          {feedFilter !== 'experiences' && !isLoading && visiblePosts.length === 0 && feedFilter === 'all'
+            && !((nearbyRadius !== null || cityOnly) && allPosts.length === 0) ? (
             <MobileState
               title="Sem publicações por enquanto"
               description="Assim que alguém postar no feed, você já vê por aqui."
             />
           ) : null}
-          {feedFilter !== 'experiences' && !isLoading && hasMore ? (
+          {feedFilter !== 'experiences' && !isLoading && hasMore && allPosts.length > 0 ? (
             <Card className="p-4 glass flex items-center justify-center">
               <Button type="button" variant="secondary" disabled={isLoadingMore} onClick={() => void loadMore()}>
                 {isLoadingMore ? 'Carregando...' : 'Carregar mais'}
