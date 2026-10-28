@@ -239,6 +239,23 @@ export default function Layout() {
       document.removeEventListener('focusin', depoisDoFoco);
     };
   }, []);
+  // Menu de baixo estilo Instagram: encolhe (só ícones, mais estreito) ao rolar
+  // para baixo e volta ao rolar para cima ou no topo da página.
+  const [menuCompacto, setMenuCompacto] = useState(false);
+  useEffect(() => {
+    let ultimoY = window.scrollY;
+    const aoRolar = () => {
+      const y = window.scrollY;
+      const delta = y - ultimoY;
+      if (y < 80) setMenuCompacto(false);
+      else if (delta > 8) setMenuCompacto(true);
+      else if (delta < -8) setMenuCompacto(false);
+      if (Math.abs(delta) > 8 || y < 80) ultimoY = y;
+    };
+    window.addEventListener('scroll', aoRolar, { passive: true });
+    return () => window.removeEventListener('scroll', aoRolar);
+  }, []);
+  useEffect(() => { setMenuCompacto(false); }, [location.pathname]);
   const shouldHideMobileNav = (isMobileChatRoute && isChatConvOpen) || isMobileGroupChatRoute || isMobileReelsMaximized || telaComZoom;
 
   // Track when Chat.tsx sets data-chat-open on body (conversation selected on mobile)
@@ -1504,7 +1521,7 @@ export default function Layout() {
       <DailyAvailabilityModal />
       <OnboardingModal />
       <CityRequiredModal />
-      <nav data-menu-baixo className={cn(
+      <nav data-menu-baixo data-compacto={menuCompacto ? '' : undefined} className={cn(
         // fixed (e não sticky): o sticky depende da altura do container bater
         // com a área visível, e no iOS essa altura muda sozinha conforme a barra
         // do Safari aparece/some — quando não bate, a barra de navegação fica
@@ -1521,12 +1538,13 @@ export default function Layout() {
         // Sem backdrop-blur de propósito: desfocar um elemento fixo sobre
         // conteúdo em movimento faz o Safari recalcular o embaçado a cada quadro
         // e falhar durante a rolagem.
-        "fixed inset-x-3 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl border bg-background shadow-lg md:hidden",
+        "fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-40 rounded-2xl border bg-background shadow-lg transition-[left,right,border-radius] duration-300 ease-out md:hidden",
+        menuCompacto ? "inset-x-10 rounded-full" : "inset-x-3",
         shouldHideMobileNav && "hidden"
       )}>
         {/* px-2 (era px-1): com os cantos arredondados da barra flutuante, os
             itens das pontas encostariam na curva. */}
-        <div className="flex items-center justify-around h-14 px-2">
+        <div className={cn("flex items-center justify-around px-2 transition-[height] duration-300 ease-out", menuCompacto ? "h-11" : "h-14")}>
           {mobileNavItems.map((item) => {
             const isActive = location.pathname === item.path;
             return (
