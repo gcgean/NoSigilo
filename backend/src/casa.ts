@@ -2951,11 +2951,17 @@ Sala: ${salaId}`).catch(() => {});
     const med = (await db.queryOne('SELECT id, user_id, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
     if (!med || String(med.user_id) !== userId) { res.status(404).json({ error: 'midia' }); return; }
     const tipo: 'foto' | 'video' = String(med.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    // Quem envia escolhe: visualização única (padrão) ou aberta para a cabine
+    // e quem estiver espiando verem quantas vezes quiserem.
+    const livre = !!(req.body as any)?.livre;
     // Foto/vídeo de agora é o que mais esquenta a cabine (transa virtual).
     aquecer(c, tipo === 'video' ? 20 : 12);
     msgCabine(c, {
       tipo: 'midia', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat },
-      texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única', midia: { tipo },
+      texto: livre
+        ? (tipo === 'video' ? '🎥 Vídeo' : '📸 Foto')
+        : (tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única'),
+      midia: { tipo, ...(livre ? { livre: true } : {}) },
     }, String(med.id));
     res.json({ ok: true });
   });
@@ -3000,6 +3006,10 @@ Sala: ${salaId}`).catch(() => {});
       [String(req.params.msgId), `cab:${c.id}`],
     )) as any;
     if (!row) { res.status(404).json({ error: 'not_found' }); return; }
+    if (c.mensagens.find((x) => x.id === String(row.id))?.midia?.livre) {
+      res.json({ url: `/uploads/${String(row.filename)}`, mime: row.mime_type ? String(row.mime_type) : null, livre: true });
+      return;
+    }
     if (String(row.autor_id) === userId) { res.status(400).json({ error: 'propria', message: 'É de visualização única: nem quem enviou abre de novo.' }); return; }
     if (await db.queryOne('SELECT 1 AS x FROM casa_midia_vistas WHERE mensagem_id = ? AND user_id = ?', [String(row.id), userId])) {
       res.status(410).json({ error: 'ja_vista', message: 'Você já abriu esta mídia.' });

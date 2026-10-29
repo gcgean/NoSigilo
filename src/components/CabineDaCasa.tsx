@@ -15,10 +15,10 @@ import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
  * Cabine d'A Casa (backend: rotas /api/casa/cabine/*).
  * A dois ou em grupo. A porta só abre quando TODOS de dentro querem; com a porta
  * aberta, quem está na sala espia (lê e vê as mídias, sem falar) e pode pedir
- * para entrar — todos de dentro precisam aprovar. Mídia sempre de visualização única.
+ * para entrar — todos de dentro precisam aprovar. Mídia de visualização única ou aberta, quem envia escolhe.
  */
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: string; naCasa?: boolean };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video' }; efeito?: string;
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; livre?: boolean }; efeito?: string;
   resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 
@@ -117,6 +117,7 @@ export default function CabineDaCasa({
   const [enviando, setEnviando] = useState<number | null>(null);
   const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
   const [cameraAberta, setCameraAberta] = useState(false);
+  const [midiaUnica, setMidiaUnica] = useState(true);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   // Alguém de dentro quer liberar: pergunta na hora para quem ainda não topou.
   const [pedidoEsquentar, setPedidoEsquentar] = useState<string | null>(null);
@@ -266,7 +267,7 @@ export default function CabineDaCasa({
     try {
       const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (p) => setEnviando(Math.min(100, p)));
       setEnviando(100);
-      await post('midia', { mediaId: up.id });
+      await post('midia', { mediaId: up.id, livre: !midiaUnica });
     } catch (e) {
       toast({ title: (e as Error)?.message || 'Não foi possível enviar.', variant: 'destructive' });
     } finally {
@@ -280,7 +281,7 @@ export default function CabineDaCasa({
       setComentario('');
       setVendo({ url: data.url, mime: data.mime, msg: m });
     } catch (e) { toast({ title: erroDe(e, 'Essa mídia não está mais disponível.') }); }
-    setVistas((v) => [...v, m.id]);
+    if (!m.midia?.livre) setVistas((v) => [...v, m.id]);
   };
   const abrirProvocacoes = async () => {
     setEscolhendoProvocacao(true);
@@ -436,6 +437,12 @@ export default function CabineDaCasa({
               {m.tipo === 'midia' ? (() => {
                 const minha = m.autor?.id === meuIdPublico;
                 const vista = vistas.includes(m.id);
+                if (m.midia?.livre) return (
+                  <button type="button" onClick={() => void ver(m)}
+                    className="mt-0.5 rounded-xl bg-white/15 px-3 py-1.5 text-sm font-semibold">
+                    {m.midia.tipo === 'video' ? '🎥' : '📸'} {minha ? 'Você enviou · ver' : 'Ver'}
+                  </button>
+                );
                 return (
                   <button type="button" disabled={minha || vista} onClick={() => void ver(m)}
                     className={cn('mt-0.5 rounded-xl px-3 py-1.5 text-sm', minha || vista ? 'text-white/50' : 'bg-gradient-to-r from-rose-600 to-fuchsia-600 font-semibold')}>
@@ -569,6 +576,8 @@ export default function CabineDaCasa({
             onClose={() => setCameraAberta(false)}
             onPronto={(arquivo) => void enviarMidia(arquivo)}
             onSemCamera={() => camera.current?.click()}
+            unica={midiaUnica}
+            onUnica={setMidiaUnica}
           />
           {respondendo && enviando === null && (
             <div className="absolute bottom-full left-0 right-0 flex items-center gap-2 border-t border-rose-500/30 bg-black/80 px-3 py-1.5 text-xs">
@@ -675,7 +684,7 @@ export default function CabineDaCasa({
                 </form>
               </>
             )}
-            <p className="text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>
+            {!vendo.msg.midia?.livre && <p className="text-center text-[11px] text-white/60">Visualização única: ao fechar, não abre de novo.</p>}
           </div>
         </div>
       )}

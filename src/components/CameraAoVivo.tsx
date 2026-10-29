@@ -13,11 +13,14 @@ function tipoDoGravador() {
   return opcoes.find((t) => MediaRecorder.isTypeSupported?.(t)) ?? '';
 }
 
-export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera }: {
+export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera, unica, onUnica }: {
   open: boolean;
   onClose: () => void;
   onPronto: (arquivo: File) => void;
   onSemCamera: () => void;
+  /** Visualização única (padrão) ou aberta para todos da cabine verem. */
+  unica: boolean;
+  onUnica: (v: boolean) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -165,16 +168,25 @@ export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera }: {
 
       <div className="space-y-3 px-4 py-4" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
         {pronto ? (
-          <div className="flex gap-3">
-            <button type="button" onClick={refazer} className="flex-1 rounded-full bg-white/10 py-3 text-sm font-semibold">Refazer</button>
-            <button
-              type="button"
-              onClick={() => { onPronto(pronto.arquivo); onClose(); }}
-              className="flex-1 rounded-full bg-gradient-to-r from-rose-600 to-fuchsia-600 py-3 text-sm font-bold"
-            >
-              Enviar (visualização única)
-            </button>
-          </div>
+          <>
+            <div className="mx-auto grid max-w-sm grid-cols-2 gap-1 rounded-full bg-white/10 p-1 text-xs">
+              <button type="button" onClick={() => onUnica(true)} className={cn('rounded-full py-2', unica && 'bg-rose-600 font-semibold')}>👁️ Visualização única</button>
+              <button type="button" onClick={() => onUnica(false)} className={cn('rounded-full py-2', !unica && 'bg-rose-600 font-semibold')}>🌍 Para todos verem</button>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={refazer} className="flex-1 rounded-full bg-white/10 py-3 text-sm font-semibold">Refazer</button>
+              <button
+                type="button"
+                onClick={() => { onPronto(pronto.arquivo); onClose(); }}
+                className="flex-1 rounded-full bg-gradient-to-r from-rose-600 to-fuchsia-600 py-3 text-sm font-bold"
+              >
+                Enviar
+              </button>
+            </div>
+            <p className="text-center text-[11px] text-white/50">
+              {unica ? 'Cada pessoa abre só 1 vez.' : 'Quem está na cabine e quem está espiando vê quantas vezes quiser.'}
+            </p>
+          </>
         ) : (
           <>
             {!gravando && (
@@ -197,7 +209,7 @@ export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera }: {
               </button>
             </div>
             <p className="text-center text-[11px] text-white/50">
-              {modo === 'video' ? `Vídeo de até ${MAX_VIDEO_SEG} segundos. ` : ''}Quem está na cabine abre 1 vez.
+              {modo === 'video' ? `Vídeo de até ${MAX_VIDEO_SEG} segundos.` : 'Foto de agora, direto da câmera.'}
             </p>
           </>
         )}
