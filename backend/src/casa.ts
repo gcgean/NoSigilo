@@ -518,7 +518,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         tipo: 'lola',
         texto: nivel === 1
           ? `🔥 A conversa esquentou… liberei as PRELIMINARES! Abram o 🔥 e vejam o que tem lá 😈${falta}`
-          : `💦 Vocês estão pegando fogo: liberei a TRANSA 😈${falta}`,
+          : `💦 Vocês estão pegando fogo: liberei a TRANSA 😈 Quer de verdade? Toquem no 📷 e mandem foto ou vídeo de agora (até 60s), só a cabine vê.${falta}`,
       });
     }
   };
@@ -2951,6 +2951,8 @@ Sala: ${salaId}`).catch(() => {});
     const med = (await db.queryOne('SELECT id, user_id, mime_type FROM media WHERE id = ? LIMIT 1', [mediaId])) as any;
     if (!med || String(med.user_id) !== userId) { res.status(404).json({ error: 'midia' }); return; }
     const tipo: 'foto' | 'video' = String(med.mime_type || '').startsWith('video/') ? 'video' : 'foto';
+    // Foto/vídeo de agora é o que mais esquenta a cabine (transa virtual).
+    aquecer(c, tipo === 'video' ? 20 : 12);
     msgCabine(c, {
       tipo: 'midia', autor: { id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat },
       texto: tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única', midia: { tipo },

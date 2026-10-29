@@ -9,6 +9,7 @@ import { profileService } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
+import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
 
 /**
  * Cabine d'A Casa (backend: rotas /api/casa/cabine/*).
@@ -114,6 +115,8 @@ export default function CabineDaCasa({
   const [reagindoEm, setReagindoEm] = useState<string | null>(null);
   const [convidando, setConvidando] = useState(false);
   const [enviando, setEnviando] = useState<number | null>(null);
+  const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
+  const [cameraAberta, setCameraAberta] = useState(false);
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   // Alguém de dentro quer liberar: pergunta na hora para quem ainda não topou.
   const [pedidoEsquentar, setPedidoEsquentar] = useState<string | null>(null);
@@ -241,11 +244,28 @@ export default function CabineDaCasa({
       </div>
     );
   };
+  // Duração de um vídeo escolhido pelo seletor nativo (quando a câmera do navegador não abre).
+  const duracaoDoVideo = (arquivo: File) => new Promise<number>((resolve) => {
+    const v = document.createElement('video');
+    const url = URL.createObjectURL(arquivo);
+    v.preload = 'metadata';
+    v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Number.isFinite(v.duration) ? v.duration : 0); };
+    v.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+    v.src = url;
+  });
   const enviarMidia = async (arquivo?: File) => {
     if (!arquivo) return;
+    const ehVideo = arquivo.type ? arquivo.type.startsWith('video/') : /\.(mp4|mov|m4v|webm|3gp)$/i.test(arquivo.name);
+    if (ehVideo && (await duracaoDoVideo(arquivo)) > MAX_VIDEO_SEG + 1) {
+      toast({ title: 'Vídeo longo demais', description: `Na cabine o vídeo vai até ${MAX_VIDEO_SEG} segundos.`, variant: 'destructive' });
+      if (camera.current) camera.current.value = '';
+      return;
+    }
+    setTipoEnviando(ehVideo ? 'video' : 'foto');
     setEnviando(0);
     try {
-      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (p) => setEnviando(p));
+      const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (p) => setEnviando(Math.min(100, p)));
+      setEnviando(100);
       await post('midia', { mediaId: up.id });
     } catch (e) {
       toast({ title: (e as Error)?.message || 'Não foi possível enviar.', variant: 'destructive' });
@@ -521,11 +541,36 @@ export default function CabineDaCasa({
             className={cn('flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold', acoesAbertas ? 'bg-rose-600' : 'bg-gradient-to-r from-rose-700 to-red-700', fogoPiscando && !acoesAbertas && 'animate-pulse ring-2 ring-amber-300')}
             aria-label="Ações na cabine">🔥</button>
           <input ref={camera} type="file" accept="image/*,video/*" capture="user" className="hidden" onChange={(e) => void enviarMidia(e.target.files?.[0])} />
-          <button type="button" onClick={() => camera.current?.click()} disabled={enviando !== null}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10" aria-label="Foto ou vídeo ao vivo">
-            {enviando !== null ? <span className="text-[10px]">{enviando}%</span> : <Camera className="h-4 w-4" />}
+          <button type="button" onClick={() => setCameraAberta(true)} disabled={enviando !== null}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50" aria-label="Foto ou vídeo de agora">
+            {enviando !== null ? <span className="text-[10px] tabular-nums">{enviando < 99 ? `${enviando}%` : '⏳'}</span> : <Camera className="h-4 w-4" />}
           </button>
-          {respondendo && (
+          {enviando !== null && (
+            <div className="absolute bottom-full left-3 right-3 z-10 mb-2 rounded-2xl bg-zinc-900/95 p-3 shadow-xl ring-1 ring-rose-500/40">
+              <p className="mb-1.5 flex items-center justify-between text-xs text-white/80">
+                <span>
+                  {enviando < 99
+                    ? `Enviando ${tipoEnviando === 'video' ? 'vídeo' : 'foto'}…`
+                    : tipoEnviando === 'video' ? 'Processando o vídeo… pode levar até 1 minuto' : 'Processando a foto…'}
+                </span>
+                <span className="tabular-nums">{enviando < 99 ? `${enviando}%` : '⏳'}</span>
+              </p>
+              <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className={cn('h-full rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-500 transition-all', enviando >= 99 && 'animate-pulse')}
+                  style={{ width: `${Math.max(4, enviando)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] text-white/50">Não feche a tela até terminar.</p>
+            </div>
+          )}
+          <CameraAoVivo
+            open={cameraAberta}
+            onClose={() => setCameraAberta(false)}
+            onPronto={(arquivo) => void enviarMidia(arquivo)}
+            onSemCamera={() => camera.current?.click()}
+          />
+          {respondendo && enviando === null && (
             <div className="absolute bottom-full left-0 right-0 flex items-center gap-2 border-t border-rose-500/30 bg-black/80 px-3 py-1.5 text-xs">
               <span className="min-w-0 flex-1 truncate">↩️ Respondendo <b className="text-rose-300">{respondendo.autor?.nome ?? 'Lola'}</b>: {respondendo.tipo === 'midia' ? (respondendo.midia?.tipo === 'video' ? '🎥 vídeo' : '📸 foto') : respondendo.texto}</span>
               <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta"><X className="h-4 w-4" /></button>
