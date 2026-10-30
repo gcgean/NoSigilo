@@ -172,12 +172,14 @@ export default function CabineDaCasa({
     };
     const aoEsquentar = (d: { cabineId: string; nome: string }) => {
       if (d.cabineId !== cabineId) return;
+      void tocarSomDaCasa('fogo');
       setAcoesAbertas(true);
       setPedidoEsquentar(d.nome);
     };
     on('casa.cabine.esquentar', aoEsquentar);
     const aoFechou = (d: { cabineId: string; porta?: boolean }) => {
       if (d.cabineId !== cabineId) return;
+      void tocarSomDaCasa('porta_fechar');
       toast({ title: d.porta ? '🔒 Fecharam a porta da cabine' : 'A cabine fechou' });
       onSaiu();
     };
@@ -192,6 +194,17 @@ export default function CabineDaCasa({
     return () => { off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu, meuIdPublico]);
   useEffect(() => { fim.current?.scrollIntoView({ block: 'end' }); }, [cab?.mensagens.length]);
+  // Porta abrindo/fechando e gente entrando: som (não na primeira carga).
+  const antes = useRef<{ aberta: boolean; membros: number } | null>(null);
+  useEffect(() => {
+    if (!cab) return;
+    const agora = { aberta: !!cab.aberta, membros: cab.membros?.length ?? 0 };
+    const a = antes.current;
+    antes.current = agora;
+    if (!a) return;
+    if (agora.aberta !== a.aberta) void tocarSomDaCasa(agora.aberta ? 'porta_abrir' : 'porta_fechar');
+    else if (agora.membros > a.membros) void tocarSomDaCasa('porta_abrir');
+  }, [cab?.aberta, cab?.membros?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const post = async (rota: string, corpo?: unknown) => {
     try { return (await apiClient.post(`/casa/cabine/${cabineId}/${rota}`, corpo)).data; }

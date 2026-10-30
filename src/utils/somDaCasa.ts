@@ -136,6 +136,19 @@ const RECEITAS: Record<string, (n: No, t: number) => void> = {
   dado: (n, t) => { for (let i = 0; i < 6; i++) chiado(n, t + i * 0.07 + Math.random() * 0.02, 0.03, 'bandpass', 1800 + Math.random() * 1500, 0.3 - i * 0.03, 0.001, undefined, 3); },
   porta: (n, t) => { tom(n, t, 140, 0.7, 0.08, 'sawtooth', 210); batida(n, t + 0.7, 0.5); },
   chegou: (n, t) => { tom(n, t, 1319, 0.35, 0.08); tom(n, t + 0.12, 1760, 0.45, 0.07); },
+  // Eventos da Casa
+  bater: (n, t) => { for (let i = 0; i < 3; i++) { tom(n, t + i * 0.16, 160, 0.09, 0.45, 'sine', 90); chiado(n, t + i * 0.16, 0.03, 'bandpass', 900, 0.2, 0.002); } },
+  porta_abrir: (n, t) => { tom(n, t, 120, 0.8, 0.07, 'sawtooth', 260); chiado(n, t, 0.8, 'bandpass', 500, 0.06, 0.2, 900, 2); },
+  porta_fechar: (n, t) => { chiado(n, t, 0.25, 'bandpass', 800, 0.06, 0.15, 400, 2); tom(n, t + 0.25, 80, 0.25, 0.6, 'sine', 45); chiado(n, t + 0.25, 0.06, 'lowpass', 600, 0.3, 0.002); },
+  nao: (n, t) => { tom(n, t, 520, 0.18, 0.1, 'triangle'); tom(n, t + 0.18, 390, 0.3, 0.1, 'triangle'); },
+  olhar: (n, t) => { chiado(n, t, 0.4, 'bandpass', 600, 0.12, 0.15, 2400, 2); tom(n, t + 0.3, 1568, 0.3, 0.06); },
+  match: (n, t) => [784, 988, 1175, 1568].forEach((f, i) => tom(n, t + i * 0.08, f, 0.5, 0.09, 'triangle')),
+  desafio: (n, t) => { tom(n, t, 110, 0.6, 0.35, 'sawtooth', 80); [440, 466, 523].forEach((f, i) => tom(n, t + 0.15 + i * 0.12, f, 0.3, 0.07, 'square')); },
+  moedas: (n, t) => { for (let i = 0; i < 5; i++) tom(n, t + i * 0.07, 2400 + i * 180, 0.18, 0.08, 'square'); },
+  fogo: (n, t) => { chiado(n, t, 1.0, 'lowpass', 300, 0.35, 0.5, 2500); tom(n, t, 70, 1.0, 0.25, 'sine', 50); },
+  expulso: (n, t) => { tom(n, t, 140, 0.6, 0.25, 'square', 90); },
+  jogo: (n, t) => [523, 659, 784].forEach((f, i) => tom(n, t + i * 0.1, f, 0.35, 0.09, 'triangle')),
+  fechou: (n, t) => [784, 659, 523, 392].forEach((f, i) => tom(n, t + i * 0.14, f, 0.45, 0.08, 'triangle')),
 };
 
 const buffers = new Map<string, AudioBuffer | null>();
