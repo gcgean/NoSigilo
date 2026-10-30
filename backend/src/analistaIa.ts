@@ -135,3 +135,27 @@ export async function analisarPaineis(params: {
   if (!direto.texto) throw new Error(`DeepSeek não devolveu resposta (${direto.motivo || pensado.motivo || 'sem motivo'})`);
   return { resposta: direto.texto, modelo: 'deepseek-chat' };
 }
+
+// ─── Pré-análise do resumo diário do Telegram ───────────────────────────────
+// Recebe só números agregados (nenhum dado de pessoa) e devolve poucas linhas
+// para o dono ler no celular. Vai no deepseek-chat: é curto e roda às 8h.
+const PROMPT_RESUMO_DIARIO = `Você é o analista financeiro do NoSigilo, rede social adulta liberal (swing). Receita: assinatura mensal (~R$ 9,90; a maioria paga por Pix, que NÃO renova sozinho, então renovação depende de lembrete) e compra avulsa de tokens. Há teste grátis; "vieram do teste grátis" são assinantes novos que estavam em teste.
+
+Você recebe em JSON os números do dia fechado, comparações (dia anterior, mesmo dia da semana passada), o mês até esse dia, o mês anterior até o mesmo dia e a projeção de fechamento do mês.
+
+Escreva em português do Brasil, para ler no Telegram:
+- no máximo 6 linhas, cada uma começando com "• ";
+- texto puro, sem markdown, sem asteriscos, sem títulos;
+- cite números e variações em % quando ajudar;
+- cubra: como foi o dia frente às comparações, o ritmo do mês e a projeção, conversão de cadastro em assinante e do teste grátis, renovações, tokens;
+- termine com 1 recomendação prática e específica para hoje;
+- não invente dado que não está no JSON; se algo for zero ou faltar, diga só se for relevante.`;
+
+export async function analisarResumoDiario(apiKey: string, dados: unknown): Promise<string> {
+  const { texto } = await chamarDeepSeek(apiKey, 'deepseek-chat', [
+    { role: 'system', content: PROMPT_RESUMO_DIARIO },
+    { role: 'user', content: JSON.stringify(dados) },
+  ]);
+  if (!texto) throw new Error('DeepSeek não devolveu a análise do resumo');
+  return texto.replace(/\*\*/g, '').trim();
+}

@@ -16,7 +16,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import { contextoAdmin, queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, responderSugestaoComIa, SENDER_ID_IA, suporteEstaDigitando, textoDaSugestaoNoChat, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
-import { analisarPaineis } from './analistaIa.js';
+import { analisarPaineis, analisarResumoDiario } from './analistaIa.js';
 import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido, TEMAS_VIDEOS, SLUGS_TEMAS_VIDEOS, normalizarTemasVideo } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
 import { melhorarMotivoRecusa } from './verificacaoIa.js';
@@ -39,7 +39,6 @@ import {
   getHubPaymentMethods,
   getHubPaymentsLedger,
   type HubLedgerItem,
-  getHubDailySummary,
   getHubSubscriptionsByCustomer,
   isHubBillingEnabled,
   listHubPaymentMethods,
@@ -2955,19 +2954,168 @@ export function startWeekendEngagementScheduler(db: DbHandle, env: Env) {
 }
 
 // ─── Agendador: resumo diário pro admin no Telegram (todo dia às 8h, BRT) ──────
-// Cobre sempre o dia ANTERIOR completo (cadastros, novos assinantes,
-// faturamento do dia e acumulado do mês).
+// Cobre sempre o dia ANTERIOR completo e o mês até ele: cadastros, assinaturas
+// (novos, vindos do teste grátis, renovações, ticket médio), tokens e total,
+// mais uma pré-análise da IA. Os pagamentos vêm do extrato completo do Hub
+// (cada cobrança paga), o que permite separar 1º pagamento de renovação.
 let adminDailySummaryRunning = false;
+
+type BlocoFinanceiro = {
+  pagamentos: number; assinaturasCents: number;
+  novos: number; novosCents: number;
+  doTeste: number; doTesteCents: number;
+  renovacoes: number; renovacoesCents: number;
+  tokens: number; tokensCents: number;
+};
+
+// 'YYYY-MM-DD' no fuso de Brasília (UTC-3, sem horário de verão).
+const diaEmBrasilia = (iso: string) => new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+const somarDias = (dia: string, n: number) => {
+  const t = new Date(`${dia}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+};
+
+async function apuracaoFinanceira(db: DbHandle, env: Env) {
+  const espera = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Hub demorou para responder')), 30000));
+  const ledger = await Promise.race([getHubPaymentsLedger(getHubConfig(env)), espera]);
+
+  // Mesmo critério de "teste grátis" do painel (conversaoDeTriais).
+  const emTeste = (await queryAll(
+    db,
+    `SELECT id, LOWER(TRIM(COALESCE(email, ''))) AS email, TRIM(COALESCE(hub_customer_id, '')) AS hub
+       FROM users
+      WHERE trial_ends_at IS NOT NULL AND trial_ends_at > created_at AND trial_ends_at < '2090-01-01'
+        AND COALESCE(gender, '') NOT LIKE 'Homem%'`
+  )) as any[];
+  const testeHub = new Set(emTeste.filter((u) => u.hub).map((u) => String(u.hub)));
+  const testeEmail = new Set(emTeste.filter((u) => u.email).map((u) => String(u.email)));
+
+  // 1º pagamento de cada cliente = assinante novo; os seguintes = renovação.
+  const pagamentos = [...ledger.itens].filter((p) => p.pagoEm).sort((a, b) => a.pagoEm.localeCompare(b.pagoEm));
+  const jaPagou = new Set<string>();
+  const classificados = pagamentos.map((p) => {
+    const email = String(p.email || '').toLowerCase().trim();
+    const chave = p.customerId || email || `${p.pagoEm}-${p.valorCents}`;
+    const novo = !jaPagou.has(chave);
+    jaPagou.add(chave);
+    const doTeste = novo && ((!!p.customerId && testeHub.has(p.customerId)) || (!!email && testeEmail.has(email)));
+    return { dia: diaEmBrasilia(p.pagoEm), valor: Number(p.valorCents || 0), novo, doTeste };
+  });
+
+  const desdeTokens = new Date(Date.now() - 70 * 86_400_000).toISOString();
+  const compras = ((await queryAll(
+    db,
+    "SELECT valor_cents, pago_em FROM compras_tokens WHERE status = 'paga' AND pago_em IS NOT NULL AND pago_em >= ?",
+    [desdeTokens]
+  )) as any[]).map((c) => ({ dia: diaEmBrasilia(String(c.pago_em)), valor: Number(c.valor_cents || 0) }));
+
+  // Soma de um intervalo de dias (inclusive).
+  return (de: string, ate: string): BlocoFinanceiro => {
+    const b: BlocoFinanceiro = { pagamentos: 0, assinaturasCents: 0, novos: 0, novosCents: 0, doTeste: 0, doTesteCents: 0, renovacoes: 0, renovacoesCents: 0, tokens: 0, tokensCents: 0 };
+    for (const p of classificados) {
+      if (p.dia < de || p.dia > ate) continue;
+      b.pagamentos++; b.assinaturasCents += p.valor;
+      if (p.novo) { b.novos++; b.novosCents += p.valor; } else { b.renovacoes++; b.renovacoesCents += p.valor; }
+      if (p.doTeste) { b.doTeste++; b.doTesteCents += p.valor; }
+    }
+    for (const c of compras) {
+      if (c.dia < de || c.dia > ate) continue;
+      b.tokens++; b.tokensCents += c.valor;
+    }
+    return b;
+  };
+}
+
+async function contarCadastros(db: DbHandle, de: string, ate: string) {
+  // Dias de Brasília → janela UTC (00:00 BRT = 03:00 UTC).
+  const inicio = `${de}T03:00:00.000Z`;
+  const fimUtc = `${somarDias(ate, 1)}T03:00:00.000Z`;
+  const r = (await queryOne(db, 'SELECT COUNT(*) as c FROM users WHERE created_at >= ? AND created_at < ?', [inicio, fimUtc])) as any;
+  return Number(r?.c || 0);
+}
+
+/** Monta o texto do resumo do dia `dia` (YYYY-MM-DD, Brasília). */
+async function montarResumoDiario(db: DbHandle, env: Env, dia: string) {
+  const [y, m, d] = dia.split('-').map(Number);
+  const inicioMes = dia.slice(0, 8) + '01';
+  const diasNoMes = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  // Mês anterior até o mesmo dia (limitado ao tamanho dele).
+  const ultimoMesAnt = new Date(Date.UTC(y, m - 1, 0));
+  const mesAnt = ultimoMesAnt.toISOString().slice(0, 7);
+  const diaMesAnt = `${mesAnt}-${String(Math.min(d, ultimoMesAnt.getUTCDate())).padStart(2, '0')}`;
+
+  const brl = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const num = (n: number) => n.toLocaleString('pt-BR');
+  const ticket = (b: BlocoFinanceiro) => (b.pagamentos > 0 ? brl(b.assinaturasCents / b.pagamentos) : '—');
+  const semana = new Date(`${dia}T12:00:00Z`).toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+
+  const [cadDia, cadMes] = await Promise.all([contarCadastros(db, dia, dia), contarCadastros(db, inicioMes, dia)]);
+  const cabecalho =
+    `📅 <b>Resumo de ${dia.slice(8)}/${dia.slice(5, 7)}/${y} (${semana})</b>\n\n` +
+    `🆕 Novos cadastros: <b>${num(cadDia)}</b> · no mês: <b>${num(cadMes)}</b>`;
+
+  let somar: Awaited<ReturnType<typeof apuracaoFinanceira>>;
+  try {
+    if (!shouldUseHubBilling(env)) throw new Error('Hub Billing desligado');
+    somar = await apuracaoFinanceira(db, env);
+  } catch (err) {
+    console.error('[admin-daily-summary] apuracao:', err);
+    return `${cabecalho}\n\n⚠️ Não foi possível obter os pagamentos do Hub agora.`;
+  }
+
+  const bloco = (titulo: string, b: BlocoFinanceiro) =>
+    `<b>${titulo}</b>\n` +
+    `💰 Total: <b>${brl(b.assinaturasCents + b.tokensCents)}</b> (assinaturas ${brl(b.assinaturasCents)} + tokens ${brl(b.tokensCents)})\n` +
+    `👤 Novos assinantes: <b>${num(b.novos)}</b> · ${brl(b.novosCents)}\n` +
+    `   ↳ vieram do teste grátis: <b>${num(b.doTeste)}</b> · ${brl(b.doTesteCents)}\n` +
+    `🔁 Renovações: <b>${num(b.renovacoes)}</b> · ${brl(b.renovacoesCents)}\n` +
+    `🎯 Ticket médio: <b>${ticket(b)}</b> (${num(b.pagamentos)} pagamento${b.pagamentos === 1 ? '' : 's'} de assinatura)\n` +
+    `🪙 Tokens: <b>${num(b.tokens)}</b> compra${b.tokens === 1 ? '' : 's'} · ${brl(b.tokensCents)}`;
+
+  const hoje = somar(dia, dia);
+  const mes = somar(inicioMes, dia);
+  const projecaoCents = Math.round(((mes.assinaturasCents + mes.tokensCents) / d) * diasNoMes);
+
+  let texto =
+    `${cabecalho}\n\n` +
+    `${bloco('💳 DIA', hoje)}\n\n` +
+    `${bloco(`📊 MÊS (01 a ${dia.slice(8)}/${dia.slice(5, 7)})`, mes)}\n` +
+    `📈 Previsão de fechamento do mês: <b>${brl(projecaoCents)}</b>`;
+
+  if (env.DEEPSEEK_API_KEY) {
+    try {
+      const centavosEmReais = (b: BlocoFinanceiro) => Object.fromEntries(
+        Object.entries(b).map(([k, v]) => [k.replace(/Cents$/, 'Reais'), k.endsWith('Cents') ? v / 100 : v])
+      );
+      const mesAntInteiro = somar(`${mesAnt}-01`, ultimoMesAnt.toISOString().slice(0, 10));
+      const analise = await analisarResumoDiario(env.DEEPSEEK_API_KEY, {
+        dia, diaDaSemana: semana, diaDoMes: d, diasNoMes,
+        cadastros: { dia: cadDia, mesAteODia: cadMes, mesmoDiaSemanaPassada: await contarCadastros(db, somarDias(dia, -7), somarDias(dia, -7)) },
+        dia_fechado: centavosEmReais(hoje),
+        dia_anterior: centavosEmReais(somar(somarDias(dia, -1), somarDias(dia, -1))),
+        mesmo_dia_semana_passada: centavosEmReais(somar(somarDias(dia, -7), somarDias(dia, -7))),
+        mes_ate_o_dia: centavosEmReais(mes),
+        mes_anterior_ate_o_mesmo_dia: centavosEmReais(somar(`${mesAnt}-01`, diaMesAnt)),
+        mes_anterior_inteiro: centavosEmReais(mesAntInteiro),
+        projecao_fechamento_mes_reais: projecaoCents / 100,
+      });
+      const seguro = analise.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      texto += `\n\n🤖 <b>Análise da IA</b>\n${seguro}`;
+    } catch (err) {
+      console.error('[admin-daily-summary] ia:', err);
+      texto += '\n\n🤖 Análise da IA indisponível hoje.';
+    }
+  }
+  return texto;
+}
 
 async function runAdminDailySummary(db: DbHandle, env: Env) {
   if (adminDailySummaryRunning) return;
   if (!env.TELEGRAM_BOT_TOKEN) return;
 
   // "Ontem" em Brasília, como 'YYYY-MM-DD'.
-  const brNow = new Date(Date.now() - 3 * 60 * 60 * 1000);
-  const brYesterday = new Date(brNow);
-  brYesterday.setUTCDate(brYesterday.getUTCDate() - 1);
-  const yesterdayStr = brYesterday.toISOString().slice(0, 10);
+  const yesterdayStr = somarDias(diaEmBrasilia(new Date().toISOString()), -1);
 
   const dedupKey = 'admin_daily_summary_last_date';
   const alreadySent = await getSystemSetting(db, dedupKey);
@@ -2975,38 +3123,7 @@ async function runAdminDailySummary(db: DbHandle, env: Env) {
 
   adminDailySummaryRunning = true;
   try {
-    // Janela do dia anterior em Brasília, convertida pra UTC (00:00 BRT = 03:00 UTC).
-    const [y, m, d] = yesterdayStr.split('-').map(Number);
-    const startUtc = new Date(Date.UTC(y, m - 1, d, 3, 0, 0)).toISOString();
-    const endUtc = new Date(Date.UTC(y, m - 1, d + 1, 3, 0, 0)).toISOString();
-
-    const newSignupsRow = (await queryOne(
-      db,
-      'SELECT COUNT(*) as c FROM users WHERE created_at >= ? AND created_at < ?',
-      [startUtc, endUtc]
-    )) as any;
-    const newSignups = Number(newSignupsRow?.c || 0);
-
-    let hubLines = '⚠️ Não foi possível obter os dados de faturamento do Hub Billing agora.';
-    if (shouldUseHubBilling(env)) {
-      try {
-        const summary = await getHubDailySummary(getHubConfig(env), yesterdayStr);
-        const fmt = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        hubLines =
-          `👤 Novos assinantes: <b>${summary.newSubscribers}</b>\n` +
-          `💰 Faturamento do dia: <b>${fmt(summary.revenueTodayCents)}</b>\n` +
-          `📊 Acumulado do mês: <b>${fmt(summary.revenueMonthToDateCents)}</b>`;
-      } catch (err) {
-        console.error('[admin-daily-summary] hub billing error:', err);
-      }
-    }
-
-    const [dd, mm, yyyy] = [String(d).padStart(2, '0'), String(m).padStart(2, '0'), y];
-    const text =
-      `📅 <b>Resumo de ${dd}/${mm}/${yyyy}</b>\n\n` +
-      `🆕 Novos cadastros: <b>${newSignups}</b>\n` +
-      hubLines;
-
+    const text = await montarResumoDiario(db, env, yesterdayStr);
     void notifyAdminsTelegram({ db, env }, text, 'resumo');
     await setSystemSetting(db, dedupKey, yesterdayStr);
   } catch (err) {
@@ -19372,6 +19489,21 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
     return { total12mCents, compras12m, compradores12m: compradores.size, porDia, porMes };
   }
+
+  // Manda agora o resumo diário (do dia pedido ou de ontem) aos admins no
+  // Telegram, sem mexer no controle do envio automático das 8h.
+  app.post('/api/admin/resumo-diario/enviar', requireAuth(env, db), requireAdmin(), async (req, res) => {
+    const pedido = String(req.body?.dia || '');
+    const dia = /^\d{4}-\d{2}-\d{2}$/.test(pedido) ? pedido : somarDias(diaEmBrasilia(new Date().toISOString()), -1);
+    try {
+      const texto = await montarResumoDiario(db, env, dia);
+      await notifyAdminsTelegram({ db, env }, texto, 'resumo');
+      res.json({ ok: true, dia, texto });
+    } catch (err) {
+      console.error('[admin/resumo-diario/enviar]', (err as Error).message);
+      res.status(500).json({ error: 'resumo_falhou' });
+    }
+  });
 
   // Analytics completo de assinaturas (faturamento 12m, novos, churn, retenção,
   // projeção). Os dados reais vivem no Hub (billing); aqui só repassamos.
