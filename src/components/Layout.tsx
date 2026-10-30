@@ -939,6 +939,12 @@ export default function Layout() {
                   <Martini className="mr-2 h-4 w-4 text-fuchsia-500" />
                   A Casa 🔥
                 </DropdownMenuItem>
+                {/* No mobile o "Ganhe $" da barra de baixo dá lugar à Casa durante a
+                    contagem/noite; aqui o painel do promotor fica sempre acessível. */}
+                <DropdownMenuItem onClick={() => navigate(user?.isPromoter ? '/promoter' : '/ganhe')}>
+                  <BadgeDollarSign className="mr-2 h-4 w-4 text-amber-500" />
+                  Ganhe dinheiro 💰
+                </DropdownMenuItem>
                 {subscriptionsEnabled ? (
                   <DropdownMenuItem onClick={() => navigate('/subscriptions')}>
                     <Crown className="mr-2 h-4 w-4 text-gold" />
