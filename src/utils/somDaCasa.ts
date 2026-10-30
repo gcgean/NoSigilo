@@ -8,10 +8,19 @@
  */
 
 const CHAVE = 'nosigilo:casa-efeitos-som';
-const VOLUME = 0.35;
+const VOLUME = 0.5;
 
-// Efeito → arquivo em public/sons/casa (preenchido conforme os sons forem aprovados).
-const ARQUIVOS: Record<string, string> = {};
+// Efeito → arquivo em public/sons/casa (Pixabay, licença livre). "vezes" repete
+// o som no ritmo da ação (tapas do colo/de quatro/cavalgar).
+type Arquivo = { arq: string; vezes?: number; intervalo?: number };
+const A = (arq: string, vezes = 1, intervalo = 0): Arquivo => ({ arq: `/sons/casa/${arq}.mp3`, vezes, intervalo });
+const ARQUIVOS: Record<string, Arquivo> = {
+  cerveja: A('cerveja'), caipirinha: A('caipirinha'), gin: A('gin'), champanhe: A('champanhe'), brinde: A('brinde'),
+  beijo: A('beijo'), pescoco: A('pescoco'), mao: A('mao'), roupa: A('roupa'),
+  chupar: A('chupar', 2, 0.45), chupar_buceta: A('chupar', 2, 0.45), chupar_pica: A('chupar', 2, 0.45),
+  colo: A('colo', 3, 0.42), quatro: A('colo', 4, 0.3), cavalgar: A('colo', 4, 0.34),
+  papai: A('papai'), gozar: A('gozar'), dado: A('dado'), nivel: A('nivel'), chegou: A('chegou'),
+};
 
 const ouvintes = new Set<(v: boolean) => void>();
 
@@ -131,17 +140,17 @@ const RECEITAS: Record<string, (n: No, t: number) => void> = {
 
 const buffers = new Map<string, AudioBuffer | null>();
 async function arquivo(c: AudioContext, id: string): Promise<AudioBuffer | null> {
-  const url = ARQUIVOS[id];
+  const url = ARQUIVOS[id]?.arq;
   if (!url) return null;
-  if (buffers.has(id)) return buffers.get(id) ?? null;
+  if (buffers.has(url)) return buffers.get(url) ?? null;
   try {
     const r = await fetch(url);
     if (!r.ok) throw new Error(String(r.status));
     const buf = await c.decodeAudioData(await r.arrayBuffer());
-    buffers.set(id, buf);
+    buffers.set(url, buf);
     return buf;
   } catch {
-    buffers.set(id, null);
+    buffers.set(url, null);
     return null;
   }
 }
@@ -158,10 +167,13 @@ export async function tocarSomDaCasa(id: string) {
     setTimeout(() => master.disconnect(), 4000);
     const buf = await arquivo(c, id);
     if (buf) {
-      const s = c.createBufferSource();
-      s.buffer = buf;
-      s.connect(master);
-      s.start();
+      const { vezes = 1, intervalo = 0 } = ARQUIVOS[id];
+      for (let i = 0; i < vezes; i++) {
+        const s = c.createBufferSource();
+        s.buffer = buf;
+        s.connect(master);
+        s.start(c.currentTime + 0.02 + i * intervalo);
+      }
       return;
     }
     const receita = RECEITAS[id];
