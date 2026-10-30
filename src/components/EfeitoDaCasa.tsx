@@ -5,7 +5,7 @@ import { tocarSomDaCasa } from '@/utils/somDaCasa';
  * Efeito animado por cima da tela (drinks, brinde e ações da cabine).
  * Não bloqueia toques e some sozinho em ~2,4 s.
  */
-type Movimento = 'pop' | 'tremer' | 'quicar' | 'brinde' | 'deslizar' | 'explodir';
+type Movimento = 'pop' | 'tremer' | 'quicar' | 'brinde' | 'deslizar' | 'explodir' | 'trocar' | 'dupla';
 const EFEITOS: Record<string, { principal: string; particulas: string[]; movimento: Movimento; cor: string }> = {
   // Bar
   cerveja: { principal: '🍺', particulas: ['🫧', '🫧', '🍺'], movimento: 'brinde', cor: 'rgba(245,158,11,' },
@@ -26,6 +26,13 @@ const EFEITOS: Record<string, { principal: string; particulas: string[]; movimen
   cavalgar: { principal: '🔥', particulas: ['🍑', '💦', '🔥'], movimento: 'quicar', cor: 'rgba(239,68,68,' },
   quatro: { principal: '🍑', particulas: ['💥', '💦', '🔥'], movimento: 'tremer', cor: 'rgba(220,38,38,' },
   papai: { principal: '🛏️', particulas: ['💕', '💦', '🔥'], movimento: 'tremer', cor: 'rgba(225,29,72,' },
+  // Troca de casais: cada opção com a sua cena.
+  esposas_beijo: { principal: '👩‍❤️‍💋‍👩', particulas: ['💋', '💕', '✨'], movimento: 'pop', cor: 'rgba(244,63,94,' },
+  esposas_pegam: { principal: '👭', particulas: ['🍒', '🔥', '💕'], movimento: 'tremer', cor: 'rgba(236,72,153,' },
+  marido_pega: { principal: '🕺', particulas: ['💃', '🤚', '🔥'], movimento: 'deslizar', cor: 'rgba(249,115,22,' },
+  troca: { principal: '🔄', particulas: ['💋', '🔥', '😈', '✨'], movimento: 'trocar', cor: 'rgba(251,146,60,' },
+  esposa_da: { principal: '💃', particulas: ['👀', '💦', '🔥', '🍑'], movimento: 'quicar', cor: 'rgba(220,38,38,' },
+  lado_a_lado: { principal: '🛏️', particulas: ['💦', '🔥', '💕', '👀'], movimento: 'dupla', cor: 'rgba(225,29,72,' },
   gozar: { principal: '💦', particulas: ['💦', '💦', '💦', '🤤', '🔥'], movimento: 'explodir', cor: 'rgba(56,189,248,' },
 };
 
@@ -57,6 +64,10 @@ export default function EfeitoDaCasa({ efeito, texto, onFim }: { efeito: string;
         @keyframes efExplodir { 0% { transform: scale(.2); opacity: 0 } 18% { transform: scale(1.5); opacity: 1 } 30% { transform: scale(1.1) } 85% { opacity: 1 } 100% { transform: scale(1.6); opacity: 0 } }
         @keyframes efCopoA { 0% { transform: translateX(-140px) rotate(-25deg); opacity: 0 } 30% { opacity: 1 } 45% { transform: translateX(-28px) rotate(12deg) } 55% { transform: translateX(-40px) rotate(0) } 90% { opacity: 1 } 100% { opacity: 0 } }
         @keyframes efCopoB { 0% { transform: translateX(140px) scaleX(-1) rotate(-25deg); opacity: 0 } 30% { opacity: 1 } 45% { transform: translateX(28px) scaleX(-1) rotate(12deg) } 55% { transform: translateX(40px) scaleX(-1) rotate(0) } 90% { opacity: 1 } 100% { opacity: 0 } }
+        @keyframes efTrocaA { 0% { transform: translate(-55px,0); opacity: 0 } 15% { opacity: 1; transform: translate(-55px,0) } 55% { transform: translate(0,-55px) } 80% { transform: translate(55px,0) } 92% { opacity: 1 } 100% { transform: translate(55px,0); opacity: 0 } }
+        @keyframes efTrocaB { 0% { transform: translate(55px,0) scaleX(-1); opacity: 0 } 15% { opacity: 1; transform: translate(55px,0) scaleX(-1) } 55% { transform: translate(0,55px) scaleX(-1) } 80% { transform: translate(-55px,0) scaleX(-1) } 92% { opacity: 1 } 100% { transform: translate(-55px,0) scaleX(-1); opacity: 0 } }
+        @keyframes efFica { 0% { opacity: 0 } 15% { opacity: 1 } 90% { opacity: 1 } 100% { opacity: 0 } }
+        @keyframes efGira { 0% { opacity: 0; transform: rotate(0) scale(.5) } 30% { opacity: .5 } 85% { opacity: .5 } 100% { opacity: 0; transform: rotate(360deg) scale(1.2) } }
         @keyframes efParticula { 0% { transform: translate(0,0) scale(.4); opacity: 0 } 15% { opacity: 1 } 100% { transform: translate(var(--x), var(--y)) scale(1.1) rotate(25deg); opacity: 0 } }
         @keyframes efTexto { 0%,10% { opacity: 0; transform: translateY(10px) } 25% { opacity: 1; transform: translateY(0) } 85% { opacity: 1 } 100% { opacity: 0 } }
       `}</style>
@@ -67,7 +78,21 @@ export default function EfeitoDaCasa({ efeito, texto, onFim }: { efeito: string;
           {p.emoji}
         </span>
       ))}
-      {e.movimento === 'brinde' ? (
+      {e.movimento === 'trocar' ? (
+        // Dois casais: os maridos ficam, as esposas atravessam para o outro lado.
+        <div className="relative flex h-40 w-80 items-center justify-center">
+          <span className="absolute text-[9rem] opacity-0" style={{ animation: 'efGira 2.4s ease forwards' }}>{e.principal}</span>
+          <span className="absolute left-0 text-6xl" style={{ animation: 'efFica 2.4s ease forwards' }}>🕺</span>
+          <span className="absolute right-0 text-6xl" style={{ animation: 'efFica 2.4s ease forwards', transform: 'scaleX(-1)' }}>🕺</span>
+          <span className="absolute text-6xl" style={{ animation: 'efTrocaA 2.4s ease-in-out forwards' }}>💃</span>
+          <span className="absolute text-6xl" style={{ animation: 'efTrocaB 2.4s ease-in-out forwards' }}>💃</span>
+        </div>
+      ) : e.movimento === 'dupla' ? (
+        <div className="relative flex items-center gap-6">
+          <span className="text-7xl" style={{ animation: 'efTremer 2.4s ease forwards' }}>{e.principal}</span>
+          <span className="text-7xl" style={{ animation: 'efTremer 2.4s ease 120ms forwards' }}>{e.principal}</span>
+        </div>
+      ) : e.movimento === 'brinde' ? (
         <div className="relative flex items-center">
           <span className="absolute text-7xl" style={{ animation: 'efCopoA 2.4s ease forwards' }}>{e.principal}</span>
           <span className="absolute text-7xl" style={{ animation: 'efCopoB 2.4s ease forwards' }}>{e.principal}</span>

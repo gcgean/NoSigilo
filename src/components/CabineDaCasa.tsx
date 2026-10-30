@@ -44,12 +44,12 @@ const ETAPAS = ['😏 Esquentando', '🔥 Preliminares', '💦 Transa'];
 // Cenas de casa de swing conforme quem está na cabine (o backend confere as categorias).
 type Cat = 'casal' | 'mulher' | 'homem' | 'outros';
 const CENAS: { id: string; emoji: string; rotulo: string; etapa: 0 | 1 | 2; quem: Cat; alvo: Cat }[] = [
-  { id: 'cc_esposas_beijo', emoji: '💋', rotulo: 'Esposas se beijam', etapa: 0, quem: 'casal', alvo: 'casal' },
-  { id: 'cc_esposas_peitos', emoji: '🍒', rotulo: 'Esposas se pegam', etapa: 1, quem: 'casal', alvo: 'casal' },
-  { id: 'cc_marido_pega', emoji: '🤚', rotulo: 'Marido pega a outra', etapa: 1, quem: 'casal', alvo: 'casal' },
-  { id: 'cc_troca', emoji: '🔄', rotulo: 'Trocar de casal', etapa: 2, quem: 'casal', alvo: 'casal' },
-  { id: 'cc_esposa_da', emoji: '💦', rotulo: 'Esposa dá pro outro', etapa: 2, quem: 'casal', alvo: 'casal' },
-  { id: 'cc_lado_a_lado', emoji: '🛏️', rotulo: 'Lado a lado', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_esposas_beijo', emoji: '👩‍❤️‍💋‍👩', rotulo: 'Esposas se beijam', etapa: 0, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_esposas_peitos', emoji: '👭', rotulo: 'Esposas se pegam', etapa: 1, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_marido_pega', emoji: '🕺', rotulo: 'Marido pega a outra', etapa: 1, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_troca', emoji: '💑🔄', rotulo: 'Trocar de casal', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_esposa_da', emoji: '💃', rotulo: 'Esposa dá pro outro', etapa: 2, quem: 'casal', alvo: 'casal' },
+  { id: 'cc_lado_a_lado', emoji: '🛏️🛏️', rotulo: 'Lado a lado', etapa: 2, quem: 'casal', alvo: 'casal' },
   { id: 'ch_marido_libera', emoji: '😈', rotulo: 'Marido libera a esposa', etapa: 0, quem: 'casal', alvo: 'homem' },
   { id: 'hc_toca_esposa', emoji: '🤚', rotulo: 'Tocar a esposa', etapa: 0, quem: 'homem', alvo: 'casal' },
   { id: 'ch_esposa_chupa', emoji: '🍆', rotulo: 'Esposa chupa ele', etapa: 1, quem: 'casal', alvo: 'homem' },

@@ -3130,12 +3130,12 @@ Sala: ${salaId}`).catch(() => {});
   type Cena = { etapa: 0 | 1 | 2; calor: number; quem: Categoria; alvo: Categoria; efeito: string; texto: string };
   const CENAS: Record<string, Cena> = {
     // Casal com casal: as esposas começam, depois os maridos, depois a troca.
-    cc_esposas_beijo: { etapa: 0, calor: 8, quem: 'casal', alvo: 'casal', efeito: 'beijo', texto: '💋 A esposa de {eu} e a esposa de {alvo} começaram a se beijar, devagar, com os maridos olhando' },
-    cc_esposas_peitos: { etapa: 1, calor: 11, quem: 'casal', alvo: 'casal', efeito: 'mao', texto: '🍒 As esposas de {eu} e {alvo} estão se pegando: mão nos peitos uma da outra, beijo de língua' },
-    cc_marido_pega: { etapa: 1, calor: 12, quem: 'casal', alvo: 'casal', efeito: 'mao', texto: '🔥 O marido de {eu} puxou a esposa de {alvo} pela cintura e já está com a mão nela' },
-    cc_troca: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'champanhe', texto: '🔄 TROCA! {eu} e {alvo} trocaram de casal: cada esposa nos braços do marido da outra 😈' },
-    cc_esposa_da: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'quatro', texto: '💦 A esposa de {eu} está dando gostoso pro marido de {alvo}, olhando pro próprio marido' },
-    cc_lado_a_lado: { etapa: 2, calor: 15, quem: 'casal', alvo: 'casal', efeito: 'papai', texto: '🛏️ {eu} e {alvo} transando lado a lado, um olhando o outro' },
+    cc_esposas_beijo: { etapa: 0, calor: 8, quem: 'casal', alvo: 'casal', efeito: 'esposas_beijo', texto: '💋 A esposa de {eu} e a esposa de {alvo} começaram a se beijar, devagar, com os maridos olhando' },
+    cc_esposas_peitos: { etapa: 1, calor: 11, quem: 'casal', alvo: 'casal', efeito: 'esposas_pegam', texto: '🍒 As esposas de {eu} e {alvo} estão se pegando: mão nos peitos uma da outra, beijo de língua' },
+    cc_marido_pega: { etapa: 1, calor: 12, quem: 'casal', alvo: 'casal', efeito: 'marido_pega', texto: '🔥 O marido de {eu} puxou a esposa de {alvo} pela cintura e já está com a mão nela' },
+    cc_troca: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'troca', texto: '🔄 TROCA! {eu} e {alvo} trocaram de casal: cada esposa nos braços do marido da outra 😈' },
+    cc_esposa_da: { etapa: 2, calor: 16, quem: 'casal', alvo: 'casal', efeito: 'esposa_da', texto: '💦 A esposa de {eu} está dando gostoso pro marido de {alvo}, olhando pro próprio marido' },
+    cc_lado_a_lado: { etapa: 2, calor: 15, quem: 'casal', alvo: 'casal', efeito: 'lado_a_lado', texto: '🛏️ {eu} e {alvo} transando lado a lado, um olhando o outro' },
     // Casal com solteiro: o marido libera, o single chega, os dois comem a esposa.
     ch_marido_libera: { etapa: 0, calor: 8, quem: 'casal', alvo: 'homem', efeito: 'pescoco', texto: '😈 O marido de {eu} chamou {alvo} pra perto e liberou a esposa pra ele' },
     hc_toca_esposa: { etapa: 0, calor: 8, quem: 'homem', alvo: 'casal', efeito: 'mao', texto: '🤚 {eu} chegou devagar e começou a tocar a esposa de {alvo}, e o marido deixando 😏' },
