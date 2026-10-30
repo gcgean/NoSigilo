@@ -118,6 +118,8 @@ export default function CabineDaCasa({
   const [tipoEnviando, setTipoEnviando] = useState<'foto' | 'video'>('foto');
   const [cameraAberta, setCameraAberta] = useState(false);
   const [midiaUnica, setMidiaUnica] = useState(true);
+  // Mídia "para todos": a miniatura aparece direto na conversa.
+  const [urlsLivres, setUrlsLivres] = useState<Record<string, { url: string; mime: string | null }>>({});
   const [acoesAbertas, setAcoesAbertas] = useState(false);
   // Alguém de dentro quer liberar: pergunta na hora para quem ainda não topou.
   const [pedidoEsquentar, setPedidoEsquentar] = useState<string | null>(null);
@@ -275,6 +277,17 @@ export default function CabineDaCasa({
       if (camera.current) camera.current.value = '';
     }
   };
+  const carregarLivre = async (m: Msg) => {
+    try {
+      const { data } = await apiClient.post(`/casa/cabine/${cabineId}/midia/${m.id}/ver`);
+      setUrlsLivres((u) => ({ ...u, [m.id]: { url: data.url, mime: data.mime ?? null } }));
+    } catch { /* fica o botão "Ver" */ }
+  };
+  const qtdMensagens = cab?.mensagens.length ?? 0;
+  useEffect(() => {
+    for (const m of cab?.mensagens ?? []) if (m.tipo === 'midia' && m.midia?.livre && !urlsLivres[m.id]) void carregarLivre(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtdMensagens, cabineId]);
   const ver = async (m: Msg) => {
     try {
       const { data } = await apiClient.post(`/casa/cabine/${cabineId}/midia/${m.id}/ver`);
@@ -437,8 +450,24 @@ export default function CabineDaCasa({
               {m.tipo === 'midia' ? (() => {
                 const minha = m.autor?.id === meuIdPublico;
                 const vista = vistas.includes(m.id);
+                const livre = m.midia?.livre ? urlsLivres[m.id] : null;
+                if (livre) return (
+                  <button type="button" onClick={() => { setComentario(''); setVendo({ url: livre.url, mime: livre.mime, msg: m }); }}
+                    className="relative mt-1 block overflow-hidden rounded-2xl" aria-label={livre.mime?.startsWith('video/') ? 'Ver vídeo' : 'Ver foto'}>
+                    {livre.mime?.startsWith('video/') ? (
+                      <>
+                        <video src={`${resolveServerUrl(livre.url)}#t=0.1`} muted playsInline preload="metadata" className="max-h-56 max-w-[220px] object-cover" />
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 pl-1 text-xl">▶</span>
+                        </span>
+                      </>
+                    ) : (
+                      <img src={resolveServerUrl(livre.url)} alt="" draggable={false} className="max-h-56 max-w-[220px] object-cover" />
+                    )}
+                  </button>
+                );
                 if (m.midia?.livre) return (
-                  <button type="button" onClick={() => void ver(m)}
+                  <button type="button" onClick={() => void carregarLivre(m)}
                     className="mt-0.5 rounded-xl bg-white/15 px-3 py-1.5 text-sm font-semibold">
                     {m.midia.tipo === 'video' ? '🎥' : '📸'} {minha ? 'Você enviou · ver' : 'Ver'}
                   </button>
