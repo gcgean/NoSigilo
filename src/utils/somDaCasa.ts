@@ -20,6 +20,9 @@ const ARQUIVOS: Record<string, Arquivo> = {
   chupar: A('chupar', 2, 0.45), chupar_buceta: A('chupar', 2, 0.45), chupar_pica: A('chupar', 2, 0.45),
   colo: A('colo', 3, 0.42), quatro: A('colo', 4, 0.3), cavalgar: A('colo', 4, 0.34),
   papai: A('papai'), gozar: A('gozar'), dado: A('dado'), nivel: A('nivel'), chegou: A('chegou'),
+  bater: A('bater'), porta_abrir: A('porta_abrir'), porta_fechar: A('porta_fechar'), porta: A('porta_abrir'),
+  olhar: A('olhar'), match: A('match'), fogo: A('fogo'), desafio: A('desafio'), moedas: A('moedas'),
+  nao: A('nao'), expulso: A('expulso'), jogo: A('jogo'),
 };
 
 const ouvintes = new Set<(v: boolean) => void>();
