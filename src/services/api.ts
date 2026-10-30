@@ -1789,6 +1789,11 @@ export type SubscriptionAnalytics = {
     total: number; emAndamento: number; encerrados: number; convertidos: number; taxaPct: number;
     porDia: Record<string, number>; porMes: Record<string, number>;
   } | null;
+  /** Compras de tokens pagas (centavos). Somam no faturamento, não em MRR/churn/ARPU. */
+  tokens?: {
+    total12mCents: number; compras12m: number; compradores12m: number;
+    porDia: Record<string, number>; porMes: Record<string, number>;
+  } | null;
 };
 
 export type MetodoPagamento = 'pix' | 'credit_card' | 'boleto';

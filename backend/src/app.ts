@@ -19340,6 +19340,39 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     };
   }
 
+  // Compras de tokens pagas (produto separado no Hub, mas registradas aqui em
+  // compras_tokens). Entram no faturamento do painel, nunca em MRR/churn/ARPU,
+  // que são métricas de assinatura. Dia no fuso de Brasília, como os triais.
+  async function faturamentoDeTokens() {
+    const desde = new Date(Date.now() - 400 * 86_400_000).toISOString();
+    const linhas = (await queryAll(
+      db,
+      "SELECT user_id, valor_cents, pago_em FROM compras_tokens WHERE status = 'paga' AND pago_em IS NOT NULL AND pago_em >= ?",
+      [desde]
+    )) as any[];
+    const porDia: Record<string, number> = {};
+    const porMes: Record<string, number> = {};
+    const limite12m = new Date(Date.now() - 3 * 3600_000);
+    limite12m.setUTCDate(1);
+    limite12m.setUTCMonth(limite12m.getUTCMonth() - 11);
+    const mesInicial = limite12m.toISOString().slice(0, 7);
+    let total12mCents = 0;
+    let compras12m = 0;
+    const compradores = new Set<string>();
+    for (const l of linhas) {
+      const dia = new Date(new Date(String(l.pago_em)).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+      const valor = Number(l.valor_cents || 0);
+      porDia[dia] = (porDia[dia] ?? 0) + valor;
+      porMes[dia.slice(0, 7)] = (porMes[dia.slice(0, 7)] ?? 0) + valor;
+      if (dia.slice(0, 7) >= mesInicial) {
+        total12mCents += valor;
+        compras12m++;
+        compradores.add(String(l.user_id));
+      }
+    }
+    return { total12mCents, compras12m, compradores12m: compradores.size, porDia, porMes };
+  }
+
   // Analytics completo de assinaturas (faturamento 12m, novos, churn, retenção,
   // projeção). Os dados reais vivem no Hub (billing); aqui só repassamos.
   app.get('/api/admin/finance/subscription-analytics', requireAuth(env, db), requireAdmin(), async (_req, res) => {
@@ -19352,11 +19385,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('HubBilling timeout')), 15000)
       );
-      const [analytics, triais] = await Promise.all([
+      const [analytics, triais, tokens] = await Promise.all([
         Promise.race([getHubSubscriptionAnalytics(hubConfig), timeout]),
         conversaoDeTriais().catch((err) => { console.warn('[subscription-analytics] triais', (err as Error).message); return null; }),
+        faturamentoDeTokens().catch((err) => { console.warn('[subscription-analytics] tokens', (err as Error).message); return null; }),
       ]);
-      res.json({ ...(analytics as object), triais });
+      res.json({ ...(analytics as object), triais, tokens });
     } catch (error) {
       console.error('[admin/finance/subscription-analytics]', (error as Error).message);
       res.status(502).json({ error: 'analytics_unavailable', message: (error as Error).message });

@@ -2200,7 +2200,7 @@ export default function Admin() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-muted-foreground mb-4">Faturamento, churn, retenção e projeção — com valores reais de pagamentos.</p>
+            <p className="text-xs text-muted-foreground mb-4">Faturamento, churn, retenção e projeção — com valores reais de pagamentos. Compra de tokens soma no faturamento; MRR, churn e ticket médio são só de assinaturas.</p>
 
             {subAnalyticsLoading ? (
               <div className="flex justify-center py-10">
@@ -2213,13 +2213,20 @@ export default function Admin() {
             ) : (() => {
               const a = subAnalytics;
               const brl = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-              const maxRev = Math.max(1, ...a.monthly.map((m) => m.revenueCents));
+              // Tokens: produto à parte, soma no faturamento (não em MRR/churn/ARPU).
+              const tkMes = (mes: string) => a.tokens?.porMes[mes] ?? 0;
+              const tkDia = (dia: string) => a.tokens?.porDia[dia] ?? 0;
+              const maxRev = Math.max(1, ...a.monthly.map((m) => m.revenueCents + tkMes(m.month)));
               const maxProj = Math.max(1, ...a.projection.map((m) => m.projectedRevenueCents));
               const fmtMonth = (m: string) => { const [y, mo] = m.split('-'); return `${mo}/${y.slice(2)}`; };
               const kpis = [
                 { label: 'Assinantes ativos', value: String(a.summary.activeSubscribers), tone: 'text-foreground' },
                 { label: 'MRR (receita mensal)', value: brl(a.summary.mrrCents), tone: 'text-success' },
-                { label: 'Faturamento 12 meses', value: brl(a.summary.revenueLast12moCents), tone: 'text-success' },
+                { label: 'Faturamento 12 meses (assinaturas)', value: brl(a.summary.revenueLast12moCents), tone: 'text-success' },
+                ...(a.tokens ? [
+                  { label: `Tokens 12 meses (${a.tokens.compras12m} compras · ${a.tokens.compradores12m} compradores)`, value: brl(a.tokens.total12mCents), tone: 'text-amber-500' },
+                  { label: 'Faturamento total 12m (assinaturas + tokens)', value: brl(a.summary.revenueLast12moCents + a.tokens.total12mCents), tone: 'text-success' },
+                ] : []),
                 { label: 'Projeção próximos 12m', value: brl(a.summary.projectedNext12moCents), tone: 'text-brand-pink' },
                 { label: 'Novos (12m)', value: `+${a.summary.newLast12mo}`, tone: 'text-brand-pink' },
                 { label: 'Não renovaram (12m)', value: String(a.summary.churnedLast12mo), tone: 'text-destructive' },
@@ -2252,20 +2259,26 @@ export default function Admin() {
                       if (now.getFullYear() !== cy || now.getMonth() + 1 !== cm) return null; // só mostra p/ o mês corrente
                       const daysInMonth = new Date(cy, cm, 0).getDate();
                       const daysElapsed = Math.min(now.getDate(), daysInMonth);
-                      const dailyAvgCents = daysElapsed > 0 ? current.revenueCents / daysElapsed : 0;
+                      const tokensMesCents = tkMes(current.month);
+                      const realizadoCents = current.revenueCents + tokensMesCents;
+                      const dailyAvgCents = daysElapsed > 0 ? realizadoCents / daysElapsed : 0;
                       const projectedCents = dailyAvgCents * daysInMonth;
                       // Crescimento projetado vs mês anterior — compara mês completo com mês
                       // completo (previsto de fim de mês vs. total já fechado do mês passado),
                       // já que o mês atual ainda está em andamento.
                       const previous = a.monthly[a.monthly.length - 2];
-                      const growthPct = previous && previous.revenueCents > 0
-                        ? ((projectedCents - previous.revenueCents) / previous.revenueCents) * 100
+                      const anteriorCents = previous ? previous.revenueCents + tkMes(previous.month) : 0;
+                      const growthPct = previous && anteriorCents > 0
+                        ? ((projectedCents - anteriorCents) / anteriorCents) * 100
                         : null;
                       return (
                         <div className="mb-3 flex flex-wrap gap-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
                           <div>
                             <p className="text-[11px] text-muted-foreground">Realizado até agora ({daysElapsed}/{daysInMonth} dias)</p>
-                            <p className="text-sm font-bold text-success">{brl(current.revenueCents)}</p>
+                            <p className="text-sm font-bold text-success">{brl(realizadoCents)}</p>
+                            {a.tokens && (
+                              <p className="text-[10px] text-muted-foreground">{brl(current.revenueCents)} assinaturas + <span className="text-amber-500">{brl(tokensMesCents)} tokens</span></p>
+                            )}
                           </div>
                           <div className="border-l border-border/40 pl-4">
                             <p className="text-[11px] text-muted-foreground">Média de faturamento por dia</p>
@@ -2288,8 +2301,11 @@ export default function Admin() {
                     })()}
                     <div className="flex h-40 items-end gap-1.5">
                       {a.monthly.map((m) => (
-                        <div key={m.month} className="flex flex-1 flex-col items-center gap-1" title={`${fmtMonth(m.month)}: ${brl(m.revenueCents)}`}>
-                          <div className="w-full rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400" style={{ height: `${Math.max(2, (m.revenueCents / maxRev) * 100)}%` }} />
+                        <div key={m.month} className="flex h-full flex-1 flex-col items-center justify-end gap-1" title={`${fmtMonth(m.month)}: ${brl(m.revenueCents)} assinaturas + ${brl(tkMes(m.month))} tokens`}>
+                          {tkMes(m.month) > 0 && (
+                            <div className="w-full rounded-t bg-gradient-to-t from-amber-500 to-amber-300" style={{ height: `${(tkMes(m.month) / maxRev) * 100}%` }} />
+                          )}
+                          <div className={`w-full bg-gradient-to-t from-emerald-600 to-emerald-400 ${tkMes(m.month) > 0 ? '' : 'rounded-t'}`} style={{ height: `${Math.max(2, (m.revenueCents / maxRev) * 100)}%` }} />
                           <span className="text-[9px] text-muted-foreground">{fmtMonth(m.month)}</span>
                         </div>
                       ))}
@@ -2328,7 +2344,9 @@ export default function Admin() {
                             <thead>
                               <tr className="border-b border-border/50 text-left text-xs text-muted-foreground">
                                 <th className="py-2 pr-3">{porDia ? 'Dia' : 'Mês'}</th>
-                                <th className="px-3 py-2 text-right">Faturamento</th>
+                                <th className="px-3 py-2 text-right">Assinaturas</th>
+                                {a.tokens && <th className="px-3 py-2 text-right">Tokens</th>}
+                                {a.tokens && <th className="px-3 py-2 text-right">Total</th>}
                                 <th className="px-3 py-2 text-right">Novos</th>
                                 <th className="px-3 py-2 text-right" title="Quem estava no teste grátis e fez o 1º pagamento nesse período">Triais convertidos</th>
                                 <th className="px-3 py-2 text-right">Renovações</th>
@@ -2340,6 +2358,8 @@ export default function Admin() {
                                 <tr key={m.chave} className="border-b border-border/30">
                                   <td className="py-1.5 pr-3 whitespace-nowrap">{m.rotulo}</td>
                                   <td className="px-3 py-1.5 text-right font-medium text-success">{brl(m.revenueCents)}</td>
+                                  {a.tokens && <td className="px-3 py-1.5 text-right text-amber-500">{brl(porDia ? tkDia(m.chave) : tkMes(m.chave))}</td>}
+                                  {a.tokens && <td className="px-3 py-1.5 text-right font-semibold">{brl(m.revenueCents + (porDia ? tkDia(m.chave) : tkMes(m.chave)))}</td>}
                                   <td className="px-3 py-1.5 text-right text-brand-pink">+{m.newCustomers}</td>
                                   <td className="px-3 py-1.5 text-right text-success">{a.triais ? ((porDia ? a.triais.porDia : a.triais.porMes)[m.chave] ?? 0) : '—'}</td>
                                   <td className="px-3 py-1.5 text-right">{m.renewals}</td>
