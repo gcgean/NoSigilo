@@ -1871,6 +1871,14 @@ function hammingHex(a: string, b: string): number {
   return dist;
 }
 
+// Hash quase todo 0 ou quase todo 1 vem de imagem escura/lisa: não identifica
+// nada, e comparar com ele bloqueava qualquer foto com pouca luz (29/10/2026).
+function phashTemConteudo(hex: string): boolean {
+  let bits = 0;
+  for (const ch of hex) { let x = parseInt(ch, 16) & 0xf; while (x) { bits += x & 1; x >>= 1; } }
+  return bits >= 16 && bits <= 48;
+}
+
 async function compressUploadedImage(file: Express.Multer.File, marca?: string) {
   const currentPath = file.path;
   const tempOutputPath = `${currentPath}.compressed.webp`;
@@ -3814,10 +3822,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
 
   // Verdadeiro se o pHash informado bate com alguma mídia bloqueada (tolerância).
   const isHashBlocked = async (phash: string | null): Promise<boolean> => {
-    if (!phash) return false;
+    if (!phash || !phashTemConteudo(phash)) return false;
     const rows = (await queryAll(db, 'SELECT phash FROM blocked_media_hashes', [])) as any[];
     for (const r of rows) {
-      if (hammingHex(phash, String(r.phash || '')) <= PHASH_MATCH_THRESHOLD) return true;
+      const bloqueado = String(r.phash || '');
+      if (!phashTemConteudo(bloqueado)) continue;
+      if (hammingHex(phash, bloqueado) <= PHASH_MATCH_THRESHOLD) return true;
     }
     return false;
   };

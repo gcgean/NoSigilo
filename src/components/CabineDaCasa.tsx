@@ -269,7 +269,7 @@ export default function CabineDaCasa({
       setEnviando(100);
       await post('midia', { mediaId: up.id, livre: !midiaUnica });
     } catch (e) {
-      toast({ title: (e as Error)?.message || 'Não foi possível enviar.', variant: 'destructive' });
+      toast({ title: erroDe(e, (e as Error)?.message || 'Não foi possível enviar.'), variant: 'destructive' });
     } finally {
       setEnviando(null);
       if (camera.current) camera.current.value = '';
