@@ -17,7 +17,7 @@ import type { DbHandle } from './db.js';
 import { contextoAdmin, queryAll, queryOne, run } from './db.js';
 import { agendarRespostaDaIa, chaveTransferido, CHAVE_ATIVA, CHAVE_INSTRUCOES, conversaComEquipe, iaAtendendo, pedirAtendenteHumano, responderSugestaoComIa, SENDER_ID_IA, suporteEstaDigitando, textoDaSugestaoNoChat, type Dependencias as DependenciasSuporteIa } from './supportAi.js';
 import { analisarPaineis } from './analistaIa.js';
-import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido } from './contos.js';
+import { CATEGORIAS_CONTOS, SLUGS_CATEGORIAS, sinaisDeConteudoProibido, TEMAS_VIDEOS, SLUGS_TEMAS_VIDEOS, normalizarTemasVideo } from './contos.js';
 import { analisarDenuncia, textoDoAlvo, type AcaoIa } from './denunciasIa.js';
 import { melhorarMotivoRecusa } from './verificacaoIa.js';
 import { melhorarRespostaSuporte } from './respostaSuporteIa.js';
@@ -6978,7 +6978,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
          ${genderFilter}
          ${friendsAuthorFilter}
          ${reelsOnlyFilter}`;
-    const feedSelect = `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only,
+    const feedSelect = `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.is_reels_only, p.video_temas,
         u.id as author_id,
         CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
         CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -7626,6 +7626,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         id: r.id,
         content: r.content,
         createdAt: r.created_at,
+        temas: r.video_temas ? String(r.video_temas).split(',') : [],
         author: {
           id: r.author_id,
           name: r.author_name,
@@ -8954,6 +8955,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           likesCount: likesCountByPostId.get(String(r.post_id)) ?? 0,
           commentsCount: commentsCountByPostId.get(String(r.post_id)) ?? 0,
           viewsCount: viewsCountByPostId.get(String(r.post_id)) ?? 0,
+          temas: r.video_temas ? String(r.video_temas).split(',') : [],
           distanceKm,
           author: {
             id: String(r.author_id),
@@ -8985,7 +8987,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerRow = (await queryOne(db, 'SELECT lat, lon FROM users WHERE id = ? LIMIT 1', [myId])) as any;
     const rows = (await queryAll(
       db,
-      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json, p.video_temas,
               u.id as author_id,
               CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
               CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -9032,7 +9034,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // media_ids_json, restrito aos posts do mesmo dono para não varrer tudo.
     const rows = (await queryAll(
       db,
-      `SELECT DISTINCT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+      `SELECT DISTINCT p.id as post_id, p.content, p.created_at, p.media_ids_json, p.video_temas,
               u.id as author_id,
               CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
               CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -9086,9 +9088,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const filterCity   = typeof req.query.city === 'string'   ? req.query.city.trim().toLowerCase()   : '';
     const filterMaxKm  = req.query.maxDistanceKm ? Number(req.query.maxDistanceKm) : null;
     const sortParam    = ['recent', 'liked', 'commented', 'random'].includes(String(req.query.sort || '')) ? String(req.query.sort) : 'recent';
+    const filterTema   = typeof req.query.tema === 'string' ? req.query.tema.trim() : '';
 
     const params: (string | number)[] = [myId, myId];
     let whereExtra = '';
+
+    if (filterTema === 'sem') {
+      whereExtra += ' AND p.video_temas IS NULL';
+    } else if (SLUGS_TEMAS_VIDEOS.includes(filterTema)) {
+      whereExtra += " AND (',' || p.video_temas || ',') LIKE ?";
+      params.push(`%,${filterTema},%`);
+    }
 
     if (filterGender) {
       if (filterGender.toLowerCase().startsWith('casal') || filterGender.toLowerCase() === 'couple') {
@@ -9134,7 +9144,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const rows = await queryAll(
       db,
-      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json,
+      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json, p.video_temas,
               u.id as author_id,
               CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
               CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
@@ -9246,6 +9256,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       content: z.string().max(5000).optional(),
       mediaIds: z.array(z.string()).max(10).optional(),
       reelsOnly: z.boolean().optional(),
+      temas: z.array(z.string()).max(2).optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -9269,7 +9280,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           [req.auth!.userId, ...mediaIds]
         )) as any)?.c || 0)
       : 0;
-    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, processando, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+    // Tema só vale para post com vídeo (foto não aparece em Buscar Vídeos).
+    let videoTemas = mediaIds.length > 0 ? normalizarTemasVideo(parsed.data.temas) : null;
+    if (videoTemas) {
+      const temVideo = (await queryOne(
+        db,
+        `SELECT COUNT(*) AS c FROM media WHERE user_id = ? AND mime_type LIKE 'video/%' AND id IN (${mediaIds.map(() => '?').join(',')})`,
+        [req.auth!.userId, ...mediaIds]
+      )) as any;
+      if (!Number(temVideo?.c || 0)) videoTemas = null;
+    }
+    await run(db, 'INSERT INTO posts (id, user_id, content, media_ids_json, is_reels_only, processando, created_at, video_temas) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
       id,
       req.auth!.userId,
       content,
@@ -9277,6 +9298,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       isReelsOnly,
       midiasProcessando > 0 ? 1 : 0,
       nowIso(),
+      videoTemas,
     ]);
     await persist();
     let postProcessando = midiasProcessando > 0;
@@ -9312,6 +9334,42 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
 
     res.json({ id, processando: postProcessando });
+  });
+
+  // PATCH /api/posts/:postId/temas — o dono marca/troca o tema do vídeo
+  // (vídeos antigos nasceram "sem tema").
+  app.patch('/api/posts/:postId/temas', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ temas: z.array(z.string()).max(2) }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const postId = String(req.params.postId || '');
+    const post = (await queryOne(db, 'SELECT user_id FROM posts WHERE id = ? LIMIT 1', [postId])) as any;
+    if (!post) { res.status(404).json({ error: 'not_found' }); return; }
+    if (String(post.user_id) !== req.auth!.userId) { res.status(403).json({ error: 'forbidden' }); return; }
+    const temas = normalizarTemasVideo(parsed.data.temas);
+    await run(db, 'UPDATE posts SET video_temas = ? WHERE id = ?', [temas, postId]);
+    await persist();
+    res.json({ ok: true, temas: temas ? temas.split(',') : [] });
+  });
+
+  // Temas dos vídeos com quantos vídeos há em cada um. "Sem tema" fica sem
+  // contador: contar exigiria abrir a mídia de todos os posts.
+  app.get('/api/videos/temas', requireAuth(env, db), async (_req, res) => {
+    const linhas = (await queryAll(
+      db,
+      `SELECT p.video_temas AS temas, COUNT(*) AS total
+         FROM posts p
+         JOIN users u ON u.id = p.user_id
+        WHERE p.video_temas IS NOT NULL
+          AND (p.processando IS NULL OR p.processando = 0)
+          AND (u.is_banned = 0 OR u.is_banned IS NULL)
+          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+        GROUP BY p.video_temas`
+    )) as any[];
+    const total = new Map<string, number>();
+    for (const l of linhas) for (const t of String(l.temas).split(',')) total.set(t, (total.get(t) ?? 0) + Number(l.total || 0));
+    res.json({
+      temas: SLUGS_TEMAS_VIDEOS.map((slug) => ({ slug, nome: TEMAS_VIDEOS[slug], total: total.get(slug) ?? 0 })),
+    });
   });
 
   // PATCH /api/posts/:postId — editar o texto da própria publicação.
@@ -12320,7 +12378,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     const rows = await queryAll(
       db,
-      `SELECT p.id, p.content, p.created_at, p.media_ids_json, COALESCE(p.processando, 0) AS processando
+      `SELECT p.id, p.content, p.created_at, p.media_ids_json, p.video_temas, COALESCE(p.processando, 0) AS processando
        FROM posts p
        WHERE p.user_id = ?
          ${filtroProcessando}
@@ -12410,6 +12468,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           content: r.content,
           createdAt: r.created_at,
           processando: Number(r.processando || 0) === 1,
+          temas: r.video_temas ? String(r.video_temas).split(',') : [],
           media,
           likesCount: likesByPost.get(pid) ?? 0,
           commentsCount: commentsByPost.get(pid) ?? 0,

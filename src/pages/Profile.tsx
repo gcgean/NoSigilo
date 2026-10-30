@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { INTENTION_OPTIONS } from '@/pages/Search';
-import { BadgeCheck, Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck } from 'lucide-react';
+import { BadgeCheck, Camera, Edit2, MapPin, Heart, Eye, Settings, Plus, Image, Lock, Sparkles, Trash2, Crown, X, Maximize2, Users, CheckCircle2, Circle, Link2, ExternalLink, Video, Loader2, LifeBuoy, UserPlus, Star, MessageSquareQuote, ShieldCheck, Tag } from 'lucide-react';
+import { DialogoTemaVideo, nomeDoTema, useTemasVideo } from '@/components/TemasVideo';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -474,7 +475,11 @@ export default function Profile() {
     if (searchParams.get('aba') === 'mural') setActiveTab('mural');
   }, [searchParams]);
   const [isLoadingPhotos, setIsLoadingPhotos] = useState(false);
-  const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string }>>([]);
+  const [myVideos, setMyVideos] = useState<Array<{ id: string; postId: string; url: string; temas: string[] }>>([]);
+  // Vídeos escolhidos esperando o tema (pergunta antes de publicar) e o vídeo cujo tema está sendo trocado.
+  const [videosSemTema, setVideosSemTema] = useState<File[] | null>(null);
+  const [temaDoVideo, setTemaDoVideo] = useState<{ postId: string; temas: string[] } | null>(null);
+  const listaTemasVideo = useTemasVideo();
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [deletingVideoId, setDeletingVideoId] = useState<string | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
@@ -503,10 +508,16 @@ export default function Profile() {
   const privateFileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Publica um ou VÁRIOS vídeos de uma vez (cada vídeo vira um post).
+  // Escolheu vídeo(s): antes de publicar, pergunta o tema (vale para todos do lote).
   const handleAddVideoFromProfile = async (input: File | File[] | null) => {
     const files = (input == null ? [] : Array.isArray(input) ? input : [input]).filter((f) => f.type.startsWith('video/'));
+    if (videoInputRef.current) videoInputRef.current.value = '';
     if (files.length === 0) { toast({ title: 'Selecione um vídeo', variant: 'destructive' }); return; }
+    setVideosSemTema(files);
+  };
+
+  // Publica um ou VÁRIOS vídeos de uma vez (cada vídeo vira um post).
+  const publicarVideos = async (files: File[], temas: string[]) => {
     setIsUploading(true);
     let ok = 0;
     let fail = 0;
@@ -514,7 +525,7 @@ export default function Profile() {
       try {
         const uploaded = await profileService.uploadMedia(file, { isPrivate: false, source: 'post' });
         if (uploaded?.id) {
-          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)] });
+          await feedService.createPost({ content: '', mediaIds: [String(uploaded.id)], temas });
           ok++;
         } else {
           fail++;
@@ -669,7 +680,7 @@ export default function Profile() {
       const vids = posts.flatMap((post: any) =>
         (post.media || [])
           .filter((m: any) => String(m.mimeType || '').startsWith('video/') && m.url)
-          .map((m: any) => ({ id: String(m.id), postId: String(post.id), url: resolveMediaUrl(String(m.url || '')) }))
+          .map((m: any) => ({ id: String(m.id), postId: String(post.id), url: resolveMediaUrl(String(m.url || '')), temas: Array.isArray(post.temas) ? post.temas.map(String) : [] }))
       );
       setMyVideos(vids);
     } catch {
@@ -2138,6 +2149,17 @@ export default function Profile() {
                   />
                   <button
                     type="button"
+                    onClick={(e) => { e.stopPropagation(); setTemaDoVideo({ postId: v.postId, temas: v.temas }); }}
+                    className={cn(
+                      'absolute bottom-2 left-2 right-2 z-10 flex items-center justify-center gap-1 truncate rounded-full px-2 py-1 text-[11px] font-semibold backdrop-blur-sm transition',
+                      v.temas.length ? 'bg-black/60 text-white hover:bg-black/80' : 'bg-primary/90 text-primary-foreground hover:bg-primary'
+                    )}
+                  >
+                    <Tag className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{v.temas.length ? v.temas.map((t) => nomeDoTema(listaTemasVideo, t)).join(' · ') : 'Marcar tema'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={(e) => { e.stopPropagation(); void handleDeleteVideo(v.id); }}
                     disabled={deletingVideoId === v.id}
                     aria-label="Remover vídeo"
@@ -2151,6 +2173,36 @@ export default function Profile() {
           )}
         </TabsContent>
       </Tabs>
+
+      <DialogoTemaVideo
+        open={!!videosSemTema}
+        confirmar={videosSemTema && videosSemTema.length > 1 ? `Publicar ${videosSemTema.length} vídeos` : 'Publicar vídeo'}
+        onFechar={() => setVideosSemTema(null)}
+        onConfirmar={(temas) => {
+          const files = videosSemTema;
+          setVideosSemTema(null);
+          if (files?.length) void publicarVideos(files, temas);
+        }}
+      />
+      <DialogoTemaVideo
+        open={!!temaDoVideo}
+        inicial={temaDoVideo?.temas ?? []}
+        titulo="Tema do vídeo"
+        confirmar="Salvar"
+        onFechar={() => setTemaDoVideo(null)}
+        onConfirmar={async (temas) => {
+          const alvo = temaDoVideo;
+          setTemaDoVideo(null);
+          if (!alvo) return;
+          try {
+            const r = await feedService.setTemasVideo(alvo.postId, temas);
+            setMyVideos((prev) => prev.map((v) => (v.postId === alvo.postId ? { ...v, temas: r.temas } : v)));
+            toast({ title: 'Tema do vídeo salvo' });
+          } catch {
+            toast({ title: 'Não foi possível salvar o tema', variant: 'destructive' });
+          }
+        }}
+      />
 
       <input
         ref={avatarFileInputRef}

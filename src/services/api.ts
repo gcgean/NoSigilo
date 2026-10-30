@@ -173,6 +173,7 @@ export const videoSearchService = {
     maxDistanceKm?: number;
     sort?: string;
     all?: boolean;
+    tema?: string;
   }): Promise<{
     videos: Array<{
       mediaId: string;
@@ -183,6 +184,7 @@ export const videoSearchService = {
       likesCount: number;
       commentsCount: number;
       viewsCount: number;
+      temas?: string[];
       distanceKm: number | null;
       author: {
         id: string;
@@ -196,6 +198,11 @@ export const videoSearchService = {
     hasMore: boolean;
   }> => {
     const response = await apiClient.get('/videos/search', { params, timeout: 30000 });
+    return response.data;
+  },
+  /** Temas dos vídeos (os mesmos dos contos) com quantos vídeos há em cada. */
+  temas: async (): Promise<{ temas: Array<{ slug: string; nome: string; total: number }> }> => {
+    const response = await apiClient.get('/videos/temas');
     return response.data;
   },
 };
@@ -253,8 +260,14 @@ export const feedService = {
     return response.data;
   },
 
-  createPost: async (data: { content: string; mediaIds?: string[]; reelsOnly?: boolean }) => {
+  createPost: async (data: { content: string; mediaIds?: string[]; reelsOnly?: boolean; temas?: string[] }) => {
     const response = await apiClient.post('/posts', data);
+    return response.data;
+  },
+
+  /** Marca/troca o tema do vídeo da própria publicação (até 2). */
+  setTemasVideo: async (postId: string, temas: string[]): Promise<{ temas: string[] }> => {
+    const response = await apiClient.patch(`/posts/${encodeURIComponent(postId)}/temas`, { temas });
     return response.data;
   },
 

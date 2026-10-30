@@ -15,6 +15,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import MobileState from '@/components/MobileState';
 import { cn } from '@/lib/utils';
 import { readVideoFilters, writeVideoFilters } from '@/lib/videoFilters';
+import { carregarTemasVideo, type TemaVideo } from '@/components/TemasVideo';
 import { readSeenVideoIds, addSeenVideoId } from '@/lib/videoSeen';
 
 const genderOptions = [
@@ -272,6 +273,10 @@ export default function SearchVideos() {
   const [sortFilter,     setSortFilter]     = useState<SortOption>(savedFilters.sort);
   const [showFilters,    setShowFilters]    = useState(false);
   const [onlyUnseen,     setOnlyUnseen]     = useState(savedFilters.onlyUnseen);
+  const [temaFilter,     setTemaFilter]     = useState(savedFilters.tema);
+  const [temasVideo,     setTemasVideo]     = useState<TemaVideo[]>([]);
+  // Contador fresco a cada visita (o cache do módulo serve ao envio, não à busca).
+  useEffect(() => { carregarTemasVideo(true).then(setTemasVideo).catch(() => {}); }, []);
   const [seenIds,        setSeenIds]        = useState<Set<string>>(() => readSeenVideoIds(user?.id));
   // Coleções da pessoa: vídeos que ela já viu, curtiu ou comentou. Não são
   // filtros sobre o que a busca carregou (ela vem em ordem aleatória e quase
@@ -306,8 +311,8 @@ export default function SearchVideos() {
 
   // Persiste os filtros sempre que mudarem.
   useEffect(() => {
-    writeVideoFilters({ gender: genderFilter, city: cityFilter, distance: distanceFilter, sort: sortFilter, onlyUnseen });
-  }, [genderFilter, cityFilter, distanceFilter, sortFilter, onlyUnseen]);
+    writeVideoFilters({ gender: genderFilter, city: cityFilter, distance: distanceFilter, sort: sortFilter, onlyUnseen, tema: temaFilter });
+  }, [genderFilter, cityFilter, distanceFilter, sortFilter, onlyUnseen, temaFilter]);
 
   const [videos,         setVideos]         = useState<VideoItem[]>([]);
   const [page,           setPage]           = useState(1);
@@ -344,7 +349,8 @@ export default function SearchVideos() {
     city:           cityFilter.trim() || undefined,
     maxDistanceKm:  distanceFilter !== 'all' ? Number(distanceFilter) : undefined,
     sort:           sortFilter !== 'recent' ? sortFilter : undefined,
-  }), [genderFilter, cityFilter, distanceFilter, sortFilter]);
+    tema:           temaFilter || undefined,
+  }), [genderFilter, cityFilter, distanceFilter, sortFilter, temaFilter]);
 
   const fetchFirstPage = useCallback(async () => {
     setIsLoading(true);
@@ -583,6 +589,42 @@ export default function SearchVideos() {
               })}
             </div>
           </div>
+
+          {temasVideo.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Tema</span>
+              <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+                {[
+                  { slug: '', nome: 'Todos', total: null as number | null },
+                  // Temas com vídeo primeiro; os vazios continuam visíveis, só apagados.
+                  ...[...temasVideo].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome)),
+                  { slug: 'sem', nome: 'Sem tema', total: null as number | null },
+                ].map((t) => {
+                  const ativo = temaFilter === t.slug;
+                  const vazio = t.total === 0;
+                  return (
+                    <button
+                      key={t.slug || 'todos'}
+                      type="button"
+                      aria-pressed={ativo}
+                      onClick={() => setTemaFilter(t.slug)}
+                      className={cn(
+                        'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition-all',
+                        ativo
+                          ? 'bg-fuchsia-600 font-bold text-white shadow-[0_2px_10px_rgba(192,38,211,0.35)]'
+                          : 'border border-dashed border-border font-medium text-muted-foreground hover:border-fuchsia-500/50 hover:text-foreground',
+                        vazio && !ativo && 'opacity-50'
+                      )}
+                    >
+                      {ativo && <Check className="h-3.5 w-3.5" />}
+                      {t.nome}
+                      {t.total !== null && <span className={cn('text-[10px]', ativo ? 'text-white/80' : 'text-muted-foreground/80')}>{t.total}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {(onlyUnseen || colecao !== null) && (
             <p className="flex flex-wrap items-center gap-1 pl-16 text-xs text-muted-foreground">

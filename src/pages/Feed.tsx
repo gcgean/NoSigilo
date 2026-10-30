@@ -3,7 +3,7 @@ import SugestoesPerfis from '@/components/SugestoesPerfis';
 import StoriesNaoVistos from '@/components/StoriesNaoVistos';
 import { textoDistancia } from '@/utils/distancia';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check } from 'lucide-react';
+import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -59,6 +59,7 @@ import {
   COMMENT_SAVE_BUTTON_CLASS,
 } from '@/components/comments/commentStyles';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { ChipsTemasVideo, DialogoTemaVideo, MAX_TEMAS_VIDEO, useTemasVideo } from '@/components/TemasVideo';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedContext = { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string };
@@ -101,6 +102,7 @@ type FeedPost = {
   reactions?: { type: string; count: number }[];
   feedContext?: FeedContext | null;
   distanceKm?: number | null;
+  temas?: string[];
 };
 
 type FeedExperience = {
@@ -313,6 +315,10 @@ export default function Feed() {
   const [experienceDescription, setExperienceDescription] = useState('');
   const [expTemplatesOpen, setExpTemplatesOpen] = useState(false);
   const [reelsOnly, setReelsOnly] = useState(false);
+  // Tema do vídeo anexado (obrigatório quando há vídeo) e o post cujo tema o dono está trocando.
+  const [temasVideo, setTemasVideo] = useState<string[]>([]);
+  const [temaDoPost, setTemaDoPost] = useState<FeedPost | null>(null);
+  const listaTemasVideo = useTemasVideo();
   const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -1294,6 +1300,7 @@ export default function Feed() {
       // Reset reels toggle if no more videos
       if (!next.some((a) => a.file.type.startsWith('video/'))) {
         setReelsOnly(false);
+        setTemasVideo([]);
       }
       return next;
     });
@@ -1302,6 +1309,10 @@ export default function Feed() {
   const handlePublish = async () => {
     const content = postContent.trim();
     if (!content && attachments.length === 0) return;
+    if (attachments.some((a) => a.file.type.startsWith('video/')) && temasVideo.length === 0) {
+      toast({ title: 'Escolha o tema do vídeo', description: 'Toque em um ou dois temas logo abaixo do vídeo.' });
+      return;
+    }
     if (publishGuardRef.current) return; // bloqueia 2ª execução por toque duplo
     publishGuardRef.current = true;
     setIsPublishing(true);
@@ -1325,11 +1336,17 @@ export default function Feed() {
       if (totalFiles > 0) setUploadProgress(100);
       const hasVideo = attachments.some((a) => a.file.type.startsWith('video/'));
       const wasReelsOnly = hasVideo && reelsOnly;
-      const created = await feedService.createPost({ content, mediaIds: mediaIds.length ? mediaIds : undefined, reelsOnly: wasReelsOnly });
+      const created = await feedService.createPost({
+        content,
+        mediaIds: mediaIds.length ? mediaIds : undefined,
+        reelsOnly: wasReelsOnly,
+        temas: hasVideo ? temasVideo : undefined,
+      });
       const newPostId = created?.id ? String(created.id) : null;
       registerActivity('post');
       setPostContent('');
       setReelsOnly(false);
+      setTemasVideo([]);
       for (const a of attachmentsRef.current) URL.revokeObjectURL(a.url);
       setAttachments([]);
       setActivePicker(null);
@@ -2363,6 +2380,16 @@ export default function Feed() {
                 />
               </div>
             )}
+            {attachments.some((a) => a.file.type.startsWith('video/')) && (
+              <div className={cn(
+                'mt-3 rounded-xl border px-4 py-3',
+                temasVideo.length ? 'border-border/50 bg-secondary/20' : 'border-primary/40 bg-primary/5'
+              )}>
+                <p className="text-sm font-medium">Qual o tema do vídeo? <span className="text-xs font-normal text-muted-foreground">(até {MAX_TEMAS_VIDEO})</span></p>
+                <p className="mb-2 text-xs text-muted-foreground">Quem curte esse tema encontra seu vídeo em Buscar Vídeos.</p>
+                <ChipsTemasVideo temas={listaTemasVideo} valor={temasVideo} onChange={setTemasVideo} />
+              </div>
+            )}
 
             {/* Regras aparecem assim que o composer entra em uso — o aviso
                 precede a publicação sem ocupar a dobra do feed quando ocioso. */}
@@ -2411,7 +2438,9 @@ export default function Feed() {
                 <Send className="w-4 h-4" />
                 {isPublishing
                   ? (uploadProgress !== null && uploadProgress < 100 ? `Enviando ${uploadProgress}%` : 'Publicando...')
-                  : 'Publicar'}
+                  : attachments.some((a) => a.file.type.startsWith('video/')) && temasVideo.length === 0
+                    ? 'Escolha o tema'
+                    : 'Publicar'}
               </Button>
             </div>
 
@@ -3144,6 +3173,12 @@ export default function Feed() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      {item.post.author.id === user?.id && item.post.media?.some((m) => String(m.mimeType || '').startsWith('video/')) ? (
+                        <DropdownMenuItem onClick={() => setTemaDoPost(item.post)}>
+                          <Tag className="w-4 h-4" />
+                          {item.post.temas?.length ? 'Trocar tema do vídeo' : 'Marcar tema do vídeo'}
+                        </DropdownMenuItem>
+                      ) : null}
                       {item.post.author.id === user?.id ? (
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
@@ -3919,6 +3954,26 @@ export default function Feed() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DialogoTemaVideo
+        open={!!temaDoPost}
+        inicial={temaDoPost?.temas ?? []}
+        titulo="Tema do vídeo"
+        confirmar="Salvar"
+        onFechar={() => setTemaDoPost(null)}
+        onConfirmar={async (temas) => {
+          const post = temaDoPost;
+          setTemaDoPost(null);
+          if (!post) return;
+          try {
+            const r = await feedService.setTemasVideo(post.id, temas);
+            setAllPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, temas: r.temas } : p)));
+            toast({ title: 'Tema do vídeo salvo' });
+          } catch {
+            toast({ title: 'Não foi possível salvar o tema', variant: 'destructive' });
+          }
+        }}
+      />
 
       {reportTarget ? (
         <ReportDialog

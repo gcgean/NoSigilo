@@ -9,6 +9,7 @@ export type VideoFilters = {
   distance: string; // 'all' | '10' | '25' | '50' | '100' | '250'
   sort: VideoSort;
   onlyUnseen: boolean;
+  tema: string;     // '' (todos) | slug do tema | 'sem'
 };
 
 export const DEFAULT_VIDEO_FILTERS: VideoFilters = {
@@ -17,6 +18,7 @@ export const DEFAULT_VIDEO_FILTERS: VideoFilters = {
   distance: 'all',
   sort: 'random', // ordem aleatória por padrão (mistura novos, antigos, curtidos…)
   onlyUnseen: true, // "não vistos" marcado por padrão: mostra vídeos ainda não assistidos
+  tema: '',
 };
 
 const STORAGE_KEY = 'nosigilo:video-filters';
@@ -39,6 +41,7 @@ export function readVideoFilters(): VideoFilters {
         distance: typeof p.distance === 'string' ? p.distance : DEFAULT_VIDEO_FILTERS.distance,
         sort: 'random',
         onlyUnseen: true,
+        tema: '',
       };
       writeVideoFilters(migrated);
       return migrated;
@@ -53,6 +56,7 @@ export function readVideoFilters(): VideoFilters {
       distance: typeof p.distance === 'string' ? p.distance : DEFAULT_VIDEO_FILTERS.distance,
       sort,
       onlyUnseen: typeof p.onlyUnseen === 'boolean' ? p.onlyUnseen : DEFAULT_VIDEO_FILTERS.onlyUnseen,
+      tema: typeof p.tema === 'string' ? p.tema : DEFAULT_VIDEO_FILTERS.tema,
     };
   } catch {
     return { ...DEFAULT_VIDEO_FILTERS };
@@ -75,5 +79,6 @@ export function videoFiltersToSearchParams(f: VideoFilters, page: number, limit:
     city: f.city.trim() || undefined,
     maxDistanceKm: f.distance !== 'all' ? Number(f.distance) : undefined,
     sort: f.sort !== 'recent' ? f.sort : undefined,
+    tema: f.tema || undefined,
   };
 }

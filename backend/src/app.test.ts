@@ -2946,6 +2946,47 @@ describe('nosigilo backend', () => {
     expect(depois.embaixador_oficial_em).toBeNull();
     expect(String(depois.trial_ends_at || '')).not.toContain('2099');
   });
+  // ── Vídeos: tema no envio, troca pelo dono, filtro e contador ───────────────
+  it('videos: tema ao publicar, troca pelo dono, filtro e contador', async () => {
+    const autor = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Autor Temas', email: 'autor-temas@example.com', password: 'senha123', gender: 'Mulher',
+    });
+    const outro = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Outro Temas', email: 'outro-temas@example.com', password: 'senha123', gender: 'Homem',
+    });
+    const A = { Authorization: `Bearer ${autor.token}` };
+    const O = { Authorization: `Bearer ${outro.token}` };
+    const subir = async (nome: string, tipo: string) => (await request(ctx.app).post('/api/media/upload').set(A)
+      .attach('file', Buffer.from(nome), { filename: nome, contentType: tipo }).expect(200)).body.id as string;
+
+    const video = await subir('tema.mp4', 'video/mp4');
+    // Slug inválido e terceiro tema são descartados.
+    const post = await request(ctx.app).post('/api/posts').set(A)
+      .send({ content: '', mediaIds: [video], temas: ['cuckold', 'inexistente'] }).expect(200);
+    const foto = await subir('tema.png', 'image/png');
+    const postFoto = await request(ctx.app).post('/api/posts').set(A)
+      .send({ content: '', mediaIds: [foto], temas: ['swing'] }).expect(200);
+    // Foto não guarda tema.
+    expect((await ctx.db.queryOne('SELECT video_temas FROM posts WHERE id = ?', [postFoto.body.id]) as any).video_temas).toBeNull();
+    expect((await ctx.db.queryOne('SELECT video_temas FROM posts WHERE id = ?', [post.body.id]) as any).video_temas).toBe('cuckold');
+
+    const temas = await request(ctx.app).get('/api/videos/temas').set(O).expect(200);
+    expect(temas.body.temas.find((t: any) => t.slug === 'cuckold').total).toBeGreaterThanOrEqual(1);
+    expect(temas.body.temas.some((t: any) => t.slug === 'poesias')).toBe(false);
+    expect(temas.body.temas.some((t: any) => t.slug === 'outros')).toBe(true);
+
+    // Só o dono troca.
+    await request(ctx.app).patch(`/api/posts/${post.body.id}/temas`).set(O).send({ temas: ['swing'] }).expect(403);
+    const troca = await request(ctx.app).patch(`/api/posts/${post.body.id}/temas`).set(A).send({ temas: ['swing', 'exibicionismo'] }).expect(200);
+    expect(troca.body.temas).toEqual(['swing', 'exibicionismo']);
+
+    const soSwing = await request(ctx.app).get('/api/videos/search?all=true&tema=swing').set(O).expect(200);
+    expect(soSwing.body.videos.some((v: any) => v.postId === post.body.id)).toBe(true);
+    expect(soSwing.body.videos.every((v: any) => v.temas.includes('swing'))).toBe(true);
+    const soCuckold = await request(ctx.app).get('/api/videos/search?all=true&tema=cuckold').set(O).expect(200);
+    expect(soCuckold.body.videos.some((v: any) => v.postId === post.body.id)).toBe(false);
+  });
+
   // ── Contos: categoria, trava, lidos e admin ─────────────────────────────────
   it('contos: categoria obrigatoria, trava de conteudo proibido, lidos e moderacao', async () => {
     const autor = await registerInvitedUser(ctx, sponsorToken, {

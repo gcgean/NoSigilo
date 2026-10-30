@@ -33,6 +33,18 @@ export const CATEGORIAS_CONTOS = {
 export type CategoriaConto = keyof typeof CATEGORIAS_CONTOS;
 export const SLUGS_CATEGORIAS = Object.keys(CATEGORIAS_CONTOS) as [CategoriaConto, ...CategoriaConto[]];
 
+// Temas dos vídeos (30/10/2026): os mesmos dos contos, sem "Poesias" (não
+// existe vídeo de poema) e com "Outros", para ninguém travar no envio.
+const { poesias: _semPoesia, ...temasDosContos } = CATEGORIAS_CONTOS;
+export const TEMAS_VIDEOS: Record<string, string> = { ...temasDosContos, outros: 'Outros' };
+export const SLUGS_TEMAS_VIDEOS = Object.keys(TEMAS_VIDEOS);
+/** Normaliza o que veio do cliente: só slugs válidos, sem repetir, no máximo 2. */
+export function normalizarTemasVideo(temas: unknown): string | null {
+  if (!Array.isArray(temas)) return null;
+  const validos = [...new Set(temas.map((t) => String(t)).filter((t) => SLUGS_TEMAS_VIDEOS.includes(t)))].slice(0, 2);
+  return validos.length ? validos.join(',') : null;
+}
+
 const semAcentos = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 // Sinais de conteúdo que não pode existir na plataforma. Não apaga nada: o
