@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Music2, Volume1, Volume2, VolumeX } from 'lucide-react';
+import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { cn } from '@/lib/utils';
@@ -121,6 +122,7 @@ export default function RadioDaCasa() {
             <IconeVolume className="h-4 w-4" />
           </button>
           <button type="button" onClick={alternar} className="rounded-full px-2 py-1 text-[11px] text-white/70 hover:bg-white/10">Silenciar</button>
+          <BotaoSomDaCasa />
         </>
       ) : (
         <button type="button" onClick={alternar} className="rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-semibold text-white">

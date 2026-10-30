@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { tocarSomDaCasa } from '@/utils/somDaCasa';
 
 /**
  * Efeito animado por cima da tela (drinks, brinde e ações da cabine).
@@ -32,6 +33,7 @@ export const temEfeito = (id?: string | null) => !!id && id in EFEITOS;
 
 export default function EfeitoDaCasa({ efeito, texto, onFim }: { efeito: string; texto?: string; onFim: () => void }) {
   const e = EFEITOS[efeito];
+  useEffect(() => { void tocarSomDaCasa(efeito); }, [efeito]);
   useEffect(() => {
     const t = setTimeout(onFim, 2400);
     return () => clearTimeout(t);

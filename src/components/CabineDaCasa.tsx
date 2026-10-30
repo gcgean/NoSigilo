@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
+import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
+import { tocarSomDaCasa } from '@/utils/somDaCasa';
 
 /**
  * Cabine d'A Casa (backend: rotas /api/casa/cabine/*).
@@ -162,6 +164,9 @@ export default function CabineDaCasa({
       if (d.cabineId !== cabineId) return;
       setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+      else if (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto)) void tocarSomDaCasa('nivel');
+      else if (d.msg.tipo === 'lola' && /DADO/.test(d.msg.texto)) void tocarSomDaCasa('dado');
+      else if (d.msg.tipo === 'midia' && d.msg.autor?.id !== meuIdPublico) void tocarSomDaCasa('chegou');
       // O outro fez uma ação ou a Lola liberou nível: o 🔥 pisca (sem abrir o painel por cima do chat).
       if ((d.msg.tipo === 'acao' && d.msg.autor?.id !== meuIdPublico) || (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto))) setFogoPiscando(true);
     };
@@ -350,6 +355,7 @@ export default function CabineDaCasa({
             {cab.souEspectador ? ' · você está espiando' : ''}
           </p>
         </div>
+        <BotaoSomDaCasa />
         {cab.souMembro && (
           <button type="button" onClick={() => void sair()} className="rounded-full p-2 hover:bg-white/10" aria-label="Sair da cabine" title="Sair da cabine">
             <LogOut className="h-4 w-4" />
