@@ -13,7 +13,10 @@ function tipoDoGravador() {
   return opcoes.find((t) => MediaRecorder.isTypeSupported?.(t)) ?? '';
 }
 
-export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera, unica, onUnica }: {
+export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera, unica, onUnica, legenda, onLegenda }: {
+  /** Observação que vai junto da foto/vídeo (opcional). */
+  legenda?: string;
+  onLegenda?: (v: string) => void;
   open: boolean;
   onClose: () => void;
   onPronto: (arquivo: File) => void;
@@ -173,6 +176,11 @@ export default function CameraAoVivo({ open, onClose, onPronto, onSemCamera, uni
               <button type="button" onClick={() => onUnica(true)} className={cn('rounded-full py-2', unica && 'bg-rose-600 font-semibold')}>👁️ Visualização única</button>
               <button type="button" onClick={() => onUnica(false)} className={cn('rounded-full py-2', !unica && 'bg-rose-600 font-semibold')}>🌍 Para todos verem</button>
             </div>
+            {onLegenda && (
+              <input value={legenda ?? ''} onChange={(e) => onLegenda(e.target.value)} maxLength={200}
+                placeholder="Escreva uma observação (opcional)"
+                className="mx-auto block w-full max-w-sm rounded-full bg-white/10 px-4 py-2 text-sm outline-none placeholder:text-white/40" />
+            )}
             <div className="flex gap-3">
               <button type="button" onClick={refazer} className="flex-1 rounded-full bg-white/10 py-3 text-sm font-semibold">Refazer</button>
               <button

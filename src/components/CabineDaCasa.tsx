@@ -23,7 +23,7 @@ import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
  */
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: string; naCasa?: boolean };
 type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'acao'; autor?: Pessoa; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; livre?: boolean }; efeito?: string;
-  resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]> };
+  resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; legenda?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 
 // Ações da cabine (o backend confere etapa e tesão). Etapa 1 pede a cabine esquentada; etapa 2, tesão ≥ 40.
@@ -74,6 +74,8 @@ type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovado
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
   espiandoLista?: Pessoa[]; anonima?: boolean;
+  /** Meu id nesta cabine; decido = sou um dos dois que abriram (aprovo entradas); precisam = quantos aprovam. */
+  eu?: string | null; decido?: boolean; precisam?: number;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
   quente: boolean; votosQuente: number; voteiQuente: boolean; nivel: number; calor?: number; nivelLiberado?: number;
 };
@@ -91,7 +93,7 @@ function Foto({ p, tamanho = 'h-8 w-8' }: { p: Pessoa; tamanho?: string }) {
 }
 
 export default function CabineDaCasa({
-  cabineId, modo, meuIdPublico, convidaveis, onVoltar, onSaiu, outrasCabines = [], onTrocar, onVerPerfil, onChamarParaOutra,
+  cabineId, modo, meuIdPublico: meuIdDaSala, convidaveis, onVoltar, onSaiu, outrasCabines = [], onTrocar, onVerPerfil, onChamarParaOutra,
 }: {
   /** Outras cabines em que estou (para alternar). */
   outrasCabines?: { id: string; nomes: string }[];
@@ -111,6 +113,11 @@ export default function CabineDaCasa({
   const { toast } = useToast();
   const { on, off } = useSocket();
   const [cab, setCab] = useState<Cabine | null>(null);
+  // O servidor diz quem sou eu nesta cabine: na sala anônima o id da sala muda quando a
+  // pessoa cai e volta, e aí ela aparecia como "outro" e não conseguia escolher com quem agir.
+  const meuIdPublico = cab?.eu ?? meuIdDaSala;
+  const [escolhendoPara, setEscolhendoPara] = useState<string | null>(null);
+  const [entradaAberta, setEntradaAberta] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [vistas, setVistas] = useState<string[]>([]);
   const [vendo, setVendo] = useState<{ url: string; mime: string | null; msg: Msg } | null>(null);
@@ -293,7 +300,9 @@ export default function CabineDaCasa({
     try {
       const up = await profileService.uploadMedia(arquivo, { source: 'chat' }, (p) => setEnviando(Math.min(100, p)));
       setEnviando(100);
-      await post('midia', { mediaId: up.id, livre: !midiaUnica });
+      // O que estiver escrito na caixa vai junto como observação (como no WhatsApp).
+      const legenda = texto.trim();
+      if (await post('midia', { mediaId: up.id, livre: !midiaUnica, ...(legenda ? { legenda } : {}) }) && legenda) setTexto('');
     } catch (e) {
       toast({ title: erroDe(e, (e as Error)?.message || 'Não foi possível enviar.'), variant: 'destructive' });
     } finally {
@@ -329,8 +338,9 @@ export default function CabineDaCasa({
   };
   const agir = async (acao: string) => {
     const outros = (cab?.membros ?? []).filter((m) => m.id !== meuIdPublico);
-    const com = outros.length === 1 ? outros[0].id : alvo;
-    if (!com) { toast({ title: 'Escolha com quem primeiro 😏' }); return; }
+    const com = outros.length === 1 ? outros[0].id : outros.some((o) => o.id === alvo) ? alvo : null;
+    // Mais de uma pessoa e ninguém escolhido: pergunta com quem, já com as fotos.
+    if (!com) { setEscolhendoPara(acao); return; }
     await post('acao', { acao, alvo: com });
   };
   const sair = async () => {
@@ -357,12 +367,23 @@ export default function CabineDaCasa({
       </div>
       <div className="relative flex items-center gap-2 border-b border-rose-500/30 px-3 py-2">
         <button type="button" onClick={onVoltar} className="rounded-full p-2 hover:bg-white/10" aria-label="Voltar à sala"><ArrowLeft className="h-5 w-5" /></button>
-        <div className="flex -space-x-2">{cab.membros.slice(0, 4).map((m) => <Foto key={m.id} p={m} />)}</div>
+        <div className="flex -space-x-2">
+          {cab.membros.slice(0, 4).map((m) => (
+            <button key={m.id} type="button" disabled={!!cab.anonima || !onVerPerfil || m.id === meuIdPublico}
+              onClick={() => onVerPerfil?.(m.id)} aria-label={`Ver perfil de ${m.nome}`} className="rounded-full">
+              <Foto p={m} />
+            </button>
+          ))}
+        </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
             🚪 {cab.membros.map((m, i) => (
               <span key={m.id} className={cn(m.naCasa === false && 'text-white/45')}>
-                {i > 0 && ', '}{m.nome}{m.naCasa === false && ' 📴'}
+                {i > 0 && ', '}
+                {!cab.anonima && onVerPerfil && m.id !== meuIdPublico
+                  ? <button type="button" onClick={() => onVerPerfil(m.id)} className="hover:underline">{m.nome}</button>
+                  : m.nome}
+                {m.naCasa === false && ' 📴'}
               </span>
             ))}
           </p>
@@ -410,6 +431,16 @@ export default function CabineDaCasa({
               className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]', cab.voteiPorta ? 'border-amber-400 text-amber-200' : 'border-white/20')}>
               {cab.aberta ? '🔒 Fechar porta' : cab.voteiPorta ? `👀 Porta ✓ ${cab.votosPorta}/${cab.membros.length}` : `👀 Abrir porta ${cab.votosPorta}/${cab.membros.length}`}
             </button>
+            {/* Quem pediu para entrar: só a foto, junto da porta (toque para decidir). */}
+            {cab.entradas.map((e) => (
+              <button key={e.id} type="button" onClick={() => setEntradaAberta(entradaAberta === e.id ? null : e.id)}
+                aria-label={`${e.nome} quer entrar`} title={`${e.nome} quer entrar`}
+                className={cn('relative shrink-0 rounded-full', entradaAberta === e.id && 'ring-2 ring-amber-400')}>
+                <Foto p={e} tamanho="h-7 w-7" />
+                <span className="absolute -bottom-1 -right-1 text-[10px]">{e.tipo === 'pedido' ? '🙋' : '✉️'}</span>
+                {cab.decido && !e.aprovei && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-zinc-950" />}
+              </button>
+            ))}
             <button type="button" onClick={() => setConvidando((v) => !v)} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1 text-[11px]">➕ Convidar</button>
             {cab.membros.length === 2 && (
               <button type="button" onClick={() => void continuarNoChat()} className="shrink-0 rounded-full border border-white/20 px-2.5 py-1 text-[11px]">💬 Ir pro chat</button>
@@ -434,17 +465,18 @@ export default function CabineDaCasa({
               {convidaveis.filter((p) => !idsDentro.has(p.id) && p.id !== meuIdPublico).length === 0 && <p className="text-xs text-white/60">Ninguém mais na sala agora.</p>}
             </div>
           )}
-          {cab.entradas.map((e) => (
+          {cab.entradas.filter((e) => e.id === entradaAberta).map((e) => (
             <div key={e.id} className="flex items-center gap-2 rounded-xl bg-white/5 p-2">
               <Foto p={e} />
               <p className="min-w-0 flex-1 text-xs">
                 <b>{e.nome}</b> {e.tipo === 'pedido' ? 'quer participar 🙋' : e.convidadoAceitou ? 'aceitou o convite' : 'foi convidado(a)'}
-                <span className="text-white/50"> · {e.aprovados}/{cab.membros.length} aprovaram</span>
+                <span className="text-white/50"> · {e.aprovados}/{cab.precisam ?? cab.membros.length} aprovaram</span>
+                {!cab.decido && <span className="block text-white/50">Quem decide são os dois que abriram a cabine.</span>}
               </p>
-              {!e.aprovei && (
+              {cab.decido && !e.aprovei && (
                 <>
-                  <Button size="sm" className="h-7 bg-emerald-600 px-2 text-xs hover:bg-emerald-500" onClick={() => void post(`entrada/${e.id}`, { aprovar: true })}>Aprovar</Button>
-                  <Button size="sm" variant="outline" className="h-7 border-white/20 bg-transparent px-2 text-xs text-white" onClick={() => void post(`entrada/${e.id}`, { aprovar: false })}>Não</Button>
+                  <Button size="sm" className="h-7 bg-emerald-600 px-2 text-xs hover:bg-emerald-500" onClick={() => { setEntradaAberta(null); void post(`entrada/${e.id}`, { aprovar: true }); }}>Aprovar</Button>
+                  <Button size="sm" variant="outline" className="h-7 border-white/20 bg-transparent px-2 text-xs text-white" onClick={() => { setEntradaAberta(null); void post(`entrada/${e.id}`, { aprovar: false }); }}>Não</Button>
                 </>
               )}
             </div>
@@ -507,6 +539,7 @@ export default function CabineDaCasa({
                   </button>
                 );
               })() : <p className="break-words text-sm">{m.texto}</p>}
+              {m.tipo === 'midia' && m.legenda && <p className="mt-1 break-words text-sm">{m.legenda}</p>}
               <Acoes m={m} />
             </div>
           </div>
@@ -535,6 +568,22 @@ export default function CabineDaCasa({
               </div>
               <span className="w-8 text-right">{calor}%</span>
             </div>
+            {escolhendoPara && outros.length > 1 && (
+              <div className="space-y-1.5 rounded-xl bg-amber-500/15 p-2 ring-1 ring-amber-400/60">
+                <p className="text-xs font-bold">Com quem? 😏</p>
+                <div className="flex gap-2 overflow-x-auto">
+                  {outros.map((o) => (
+                    <button key={o.id} type="button"
+                      onClick={() => { const acao = escolhendoPara; setEscolhendoPara(null); setAlvo(o.id); void post('acao', { acao, alvo: o.id }); }}
+                      className="flex w-16 shrink-0 flex-col items-center gap-1">
+                      <Foto p={o} tamanho="h-10 w-10" />
+                      <span className="w-full truncate text-center text-[10px]">{o.nome}</span>
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setEscolhendoPara(null)} className="shrink-0 self-center rounded-full bg-white/10 px-2 py-1 text-[11px]">Cancelar</button>
+                </div>
+              </div>
+            )}
             {outros.length > 1 && (
               <div className="flex gap-1 overflow-x-auto">
                 <span className="shrink-0 py-1 text-[11px] text-white/60">Com:</span>
@@ -644,6 +693,8 @@ export default function CabineDaCasa({
             onSemCamera={() => camera.current?.click()}
             unica={midiaUnica}
             onUnica={setMidiaUnica}
+            legenda={texto}
+            onLegenda={setTexto}
           />
           {respondendo && enviando === null && (
             <div className="absolute bottom-full left-0 right-0 flex items-center gap-2 border-t border-rose-500/30 bg-black/80 px-3 py-1.5 text-xs">

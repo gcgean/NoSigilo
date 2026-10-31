@@ -49,7 +49,7 @@ type Info = {
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
-type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string };
+type Msg = { id: string; tipo: 'pessoa' | 'lola' | 'sistema' | 'midia' | 'anfitriao'; autor?: { id: string; nome: string; avatar: string | null; cat: Categoria }; texto: string; criadoEm: string; midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean }; resposta?: { id: string; nome: string; trecho: string }; reacoes?: Record<string, string[]>; jogoId?: string; efeito?: string; legenda?: string };
 const REACOES = ['🔥', '😈', '💦', '🍑', '🍆', '😍', '👀', '💋'];
 type Jogo = {
   id: string; tipo: 'enquete' | 'eu_nunca' | 'quiz' | 'vd' | 'match' | 'foto' | 'duelo' | 'relampago'; fimEm: string;
@@ -652,7 +652,10 @@ export default function Casa() {
       const revelacao = modoRevelacao.current;
       const propostaId = propostaDaCamera.current;
       const livre = !revelacao && !propostaId && !midiaUnicaRef.current;
-      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, livre, ...(propostaId ? { propostaId } : {}) });
+      // O que estiver escrito na caixa vai junto como observação (como no WhatsApp).
+      const legenda = propostaId ? '' : texto.trim();
+      await apiClient.post(`/casa/${salaAtual}/midia`, { mediaId: up.id, revelacao, livre, ...(propostaId ? { propostaId } : {}), ...(legenda ? { legenda } : {}) });
+      if (legenda) setTexto('');
       if (propostaId) setMeuDesafio(null);
       if (revelacao) setRevelarAte(0);
       toast({ title: revelacao ? 'Revelação enviada 👀' : 'Enviado para a sala 🔥', description: livre ? 'Fica aberto para todos da sala verem.' : 'Cada pessoa abre só 1 vez.' });
@@ -1086,6 +1089,7 @@ export default function Casa() {
                 return (
                   <>
                   <p className="text-[11px] text-white/60">{m.texto}</p>
+                  {m.legenda && <p className="break-words text-sm">{m.legenda}</p>}
                   {m.midia?.livre ? (
                     !estado.eu.podeFalar ? (
                       <p className="mt-0.5 rounded-2xl bg-white/5 px-3 py-2 text-sm text-white/50">🔒 Assine para ver</p>
@@ -1208,6 +1212,8 @@ export default function Casa() {
                 <button type="button" onClick={() => setMidiaUnica(true)} className={cn('rounded-lg px-2 py-1.5', midiaUnica ? 'bg-rose-600 font-semibold' : 'text-white/70')}>👁️ Visualização única</button>
                 <button type="button" onClick={() => setMidiaUnica(false)} className={cn('rounded-lg px-2 py-1.5', !midiaUnica ? 'bg-rose-600 font-semibold' : 'text-white/70')}>🌍 Para todos verem</button>
               </div>
+              <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={200} placeholder="Observação (opcional)"
+                className="w-full rounded-xl bg-black/40 px-3 py-2 text-sm outline-none placeholder:text-white/40" />
               <div className="flex gap-2">
                 <button type="button" className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirCamera(false); }}>📷 Câmera</button>
                 <button type="button" className="flex-1 rounded-xl bg-white/10 px-3 py-2 text-sm" onClick={() => { setEscolhendoMidia(false); abrirGaleria(); }}>🖼️ Galeria</button>

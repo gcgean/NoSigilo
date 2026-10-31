@@ -3771,6 +3771,13 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/entrada/${String(homens[1].user.id)}`).set(auth(homens[0].token)).send({ aprovar: true }).expect(200);
     estadoCab = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
     expect(estadoCab.membros.length).toBe(3);
+    // O servidor diz quem sou eu na cabine; só os dois que abriram decidem quem entra.
+    expect(estadoCab.eu).toBe(String(casal.user.id));
+    expect(estadoCab.decido).toBe(true);
+    expect(estadoCab.precisam).toBe(2);
+    const doTerceiro = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/estado`).set(auth(homens[1].token)).expect(200)).body.cabine;
+    expect(doTerceiro.decido).toBe(false);
+    await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/entrada/qualquer`).set(auth(homens[1].token)).send({ aprovar: true }).expect(403);
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/sair`).set(auth(homens[1].token)).expect(200);
     // O convite vai por socket; aqui pegamos o id pelo mapa interno respondendo com um id inválido primeiro.
     await request(ctx.app).post('/api/casa/convite/inexistente/responder').set(auth(homens[0].token)).send({ aceitar: true }).expect(410);
@@ -3940,10 +3947,12 @@ describe('nosigilo backend', () => {
     const comResposta = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
     expect(comResposta.mensagens.find((m: any) => m.texto === 'que delícia')?.resposta?.id).toBe(beijoMsg.id);
 
-    // Quem sai da Casa aparece como fora na cabine (e volta ao entrar de novo).
+    // Quem saiu da sala mas acabou de usar a cabine continua presente: sem 📴 nem aviso
+    // da Lola (antes ela dizia "saiu da Casa faz 10 minutos" de quem estava agindo na cabine).
     await request(ctx.app).post('/api/casa/salao/sair').set(auth(homens[0].token)).expect(200);
     const comAusente = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
-    expect(comAusente.membros.find((m: any) => m.id === String(homens[0].user.id))?.naCasa).toBe(false);
+    expect(comAusente.membros.find((m: any) => m.id === String(homens[0].user.id))?.naCasa).toBe(true);
+    expect(comAusente.mensagens.some((m: any) => /saiu da Casa faz/.test(m.texto))).toBe(false);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
     const voltou = (await request(ctx.app).post(`/api/casa/cabine/${cabMapa.cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
     expect(voltou.membros.find((m: any) => m.id === String(homens[0].user.id))?.naCasa).toBe(true);

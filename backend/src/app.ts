@@ -2867,6 +2867,16 @@ const uploadRateLimiter = isTest ? noop : createRateLimiter(30, 60_000); // 30 u
 // ─── Agendador: e-mail de engajamento (sexta e sábado às 20h, horário de Brasília) ──
 let weekendBlastRunning = false;
 
+// Aviso de cota no Telegram no máximo uma vez por dia (por tipo). Sem isso, com a
+// cota do mês já usada, o disparo desistia sem registrar e avisava a cada ciclo.
+async function avisarCotaUmaVezPorDia(db: DbHandle, env: Env, tipo: string, texto: string) {
+  const hoje = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const chave = `aviso_cota_email:${tipo}`;
+  if ((await getSystemSetting(db, chave)) === hoje) return;
+  await setSystemSetting(db, chave, hoje);
+  void notifyAdminsTelegram({ db, env }, texto, 'servidor');
+}
+
 async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
   if (weekendBlastRunning) return;
   if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return; // sem provedor de e-mail
@@ -2919,13 +2929,13 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
     )) as any)?.c || 0);
     const orcamento = Math.floor(cotaMensal * 0.8) - jaNoMes;
     if (orcamento <= 0) {
-      void notifyAdminsTelegram({ db, env }, `ℹ️ E-mail de fim de semana NÃO enviado: o mês já usou ${jaNoMes} e-mails (limite de 80% de ${cotaMensal}). Cota guardada para senha, 2FA e suporte.`, 'servidor');
+      await avisarCotaUmaVezPorDia(db, env, 'fds_nao_enviado', `ℹ️ E-mail de fim de semana NÃO enviado: o mês já usou ${jaNoMes} e-mails (limite de 80% de ${cotaMensal}). Cota guardada para senha, 2FA e suporte.`);
       return;
     }
     if (users.length > orcamento) {
       users.sort((a: any, b: any) => String(b.last_seen_at || '').localeCompare(String(a.last_seen_at || '')));
       users.length = orcamento;
-      void notifyAdminsTelegram({ db, env }, `ℹ️ E-mail de fim de semana limitado a ${orcamento} pessoas (as que sumiram há menos tempo) para guardar cota do Resend (${jaNoMes} já enviados no mês, limite 80% de ${cotaMensal}).`, 'servidor');
+      await avisarCotaUmaVezPorDia(db, env, 'fds_limitado', `ℹ️ E-mail de fim de semana limitado a ${orcamento} pessoas (as que sumiram há menos tempo) para guardar cota do Resend (${jaNoMes} já enviados no mês, limite 80% de ${cotaMensal}).`);
     }
 
     let sent = 0; let errors = 0;
@@ -2935,7 +2945,7 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
       // dos e-mails importantes nem gravar milhares de falhas.
       if (cotaSeguidas >= 5) {
         console.warn(`[weekend-engagement] cota do Resend esgotada — envio interrompido (${sent} enviados)`);
-        void notifyAdminsTelegram({ db, env }, `⚠️ E-mail de fim de semana interrompido: a cota mensal do Resend acabou (${sent} enviados antes). E-mails de senha, 2FA e suporte também param até a cota renovar.`, 'servidor');
+        await avisarCotaUmaVezPorDia(db, env, 'fds_interrompido', `⚠️ E-mail de fim de semana interrompido: a cota mensal do Resend acabou (${sent} enviados antes). E-mails de senha, 2FA e suporte também param até a cota renovar.`);
         break;
       }
       let status: 'sent' | 'skipped' | 'error' = 'error';

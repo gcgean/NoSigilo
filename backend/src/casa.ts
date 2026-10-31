@@ -170,6 +170,8 @@ type Msg = {
   midia?: { tipo: 'foto' | 'video'; preco?: number; livre?: boolean };
   /** Mensagem respondida (citação curta). */
   resposta?: { id: string; nome: string; trecho: string };
+  /** Observação que quem enviou a foto/vídeo escreveu junto. */
+  legenda?: string;
   /** Reações: emoji → ids públicos de quem reagiu. */
   reacoes?: Record<string, string[]>;
   /** Anúncio de brincadeira da Lola: os botões de votar aparecem dentro da própria mensagem. */
@@ -253,6 +255,7 @@ function duracaoDoAudio(arquivo: string): Promise<number> {
 const MAX_MENSAGENS = 300; // histórico em memória por sala/cabine (era 120)
 const PRECO_REVELACAO = 5;
 const PING_EXPIRA_MS = 75_000;
+const LINK_PROIBIDO = /https?:\/\/|www\.|\.com\b|\.net\b|wa\.me|t\.me/i;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
 const TZ = 'America/Sao_Paulo';
 
@@ -353,20 +356,35 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     topamEsquentar: Set<string>; quente: boolean; quenteDesde: number; ultimaProvocacao: number; ultimaFala: number; usadas: Set<string>;
     /** Tesão da cabine (0–100): sobe com as ações e libera a transa a partir de 40. */
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
-    /** Quem saiu da Casa (fechou o app) e desde quando; avisado = a Lola já comentou na cabine. */
+    /** Quem saiu da Casa (fechou o app) e desde quando (só o 📴 no topo, sem aviso da Lola). */
     ausentes: Map<string, { desde: number; avisado: boolean }>;
+    /** Última vez que cada membro usou a cabine (tela aberta avisa a cada 25 s, falar, agir). */
+    vistoEm: Map<string, number>;
+    /** Os dois que abriram a cabine: só eles aprovam quem entra (31/10/2026). */
+    fundadores: Set<string>;
     /** Último nível que a Lola anunciou (0 esquentando, 1 preliminares, 2 transa). */
     nivelAnunciado: number;
   };
   const cabines = new Map<string, Cabine>();
+  // Quem aprova entradas: os fundadores que ainda estão dentro (se os dois saíram, todos de dentro).
+  const quemDecide = (c: Cabine) => {
+    const f = [...c.fundadores].filter((id) => c.membros.has(id));
+    return f.length > 0 ? f : [...c.membros.keys()];
+  };
+  const todosQueDecidemAprovaram = (c: Cabine, e: { aprovados: Set<string> }) => quemDecide(c).every((id) => e.aprovados.has(id));
   const MAX_NA_CABINE = 6;
   const membroDe = (p: Presente): Membro => ({ id: p.id, idPublico: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat });
   const cabinePublica = (c: Cabine, userId: string) => {
     const souMembro = c.membros.has(userId);
+    const decidem = quemDecide(c);
     return {
       id: c.id,
+      // Meu id nesta cabine (na sala anônima, o da sala muda quando a pessoa cai e volta).
+      eu: c.membros.get(userId)?.idPublico ?? null,
+      decido: decidem.includes(userId),
+      precisam: decidem.length,
       salaId: c.salaId,
-      membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat, naCasa: estaNaCasa(m.id) })),
+      membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat, naCasa: presenteNaCabine(c, m.id) })),
       aberta: c.aberta,
       votosPorta: c.porta.size,
       voteiPorta: c.porta.has(userId),
@@ -382,7 +400,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       entradas: souMembro
         ? [...c.entradas.values()].map((e) => ({
           id: e.pessoa.idPublico, nome: e.pessoa.nome, avatar: e.pessoa.avatar, cat: e.pessoa.cat, tipo: e.tipo,
-          aprovei: e.aprovados.has(userId), aprovados: e.aprovados.size, convidadoAceitou: e.convidadoAceitou,
+          aprovei: e.aprovados.has(userId), aprovados: decidem.filter((id) => e.aprovados.has(id)).length, convidadoAceitou: e.convidadoAceitou,
         }))
         : [],
       pedi: c.entradas.has(userId),
@@ -447,6 +465,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       espectadores: new Map(), entradas: new Map(), mensagens: [], criadaEm: Date.now(),
       topamEsquentar: new Set(), quente: false, quenteDesde: 0, ultimaProvocacao: 0, ultimaFala: Date.now(), usadas: new Set(),
       calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
+      vistoEm: new Map([[a.id, Date.now()], [b.id, Date.now()]]),
+      fundadores: new Set([a.id, b.id]),
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -457,15 +477,23 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   };
   // Na Casa = presente em alguma sala (o ping do app chega a cada 25 s).
   const estaNaCasa = (userId: string) => [...salas.values()].some((s) => s.presentes.has(userId));
+  // Quem está usando a cabine conta como presente, mesmo que o ping da sala tenha caído
+  // (antes a Lola dizia "saiu da Casa faz 10 minutos" de quem estava agindo na cabine).
+  const presenteNaCabine = (c: Cabine, userId: string) =>
+    estaNaCasa(userId) || Date.now() - (c.vistoEm.get(userId) ?? 0) < PING_EXPIRA_MS;
+  // Cabine desfeita sozinha: todos fora da Casa há 3 min, ou ninguém com a cabine
+  // aberta nem falando há 5 min (os dois voltaram para a sala pela seta).
+  const CABINE_TODOS_FORA_MS = 3 * 60_000;
+  const CABINE_ABANDONADA_MS = 5 * 60_000;
   // Sair do app por um instante (trocar de app no celular) é comum: o 📴 aparece em silêncio,
-  // a Lola só comenta depois de 10 min fora e a pessoa sai da cabine depois de 20.
-  const AUSENCIA_AVISO_MS = 10 * 60_000;
+  // a Lola não comenta nada e a pessoa sai da cabine depois de 20 min.
   const AUSENCIA_MAX_MS = 20 * 60_000;
   const tirarDaCabine = (c: Cabine, userId: string, texto: string) => {
     c.membros.delete(userId);
     c.porta.delete(userId);
     c.topamEsquentar.delete(userId);
     c.ausentes.delete(userId);
+    c.vistoEm.delete(userId);
     if (c.membros.size === 0) { fecharCabine(c); return; }
     conferirQuente(c);
     c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
@@ -476,25 +504,13 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     let mudou = false;
     for (const [id, m] of [...c.membros]) {
       const fora = c.ausentes.get(id);
-      if (estaNaCasa(id)) {
-        if (fora) {
-          c.ausentes.delete(id);
-          if (fora.avisado) msgCabine(c, { tipo: 'sistema', texto: `🔥 ${m.nome} voltou pra Casa` });
-          mudou = true;
-        }
+      if (presenteNaCabine(c, id)) {
+        if (fora) { c.ausentes.delete(id); mudou = true; }
         continue;
       }
+      // Fora da Casa: só o 📴 no topo, em silêncio (sem aviso da Lola); sai da cabine depois de 20 min.
       if (!fora) {
         c.ausentes.set(id, { desde: agora, avisado: false });
-        mudou = true; // só o 📴 no topo, sem mensagem
-      } else if (!fora.avisado && agora - fora.desde > AUSENCIA_AVISO_MS) {
-        fora.avisado = true;
-        msgCabine(c, {
-          tipo: 'lola',
-          texto: c.membros.size === 2
-            ? `📴 ${m.nome} saiu da Casa faz 10 minutos. Pra não perder o clima, toquem em "Continuar no chat" e sigam no chat do NoSigilo 😉`
-            : `📴 ${m.nome} saiu da Casa faz 10 minutos. Se não voltar, sai da cabine daqui a pouco.`,
-        });
         mudou = true;
       } else if (agora - fora.desde > AUSENCIA_MAX_MS) {
         tirarDaCabine(c, id, `${m.nome} não voltou e saiu da cabine`);
@@ -502,6 +518,14 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
         mudou = false;
       }
     }
+    const membros = [...c.membros.keys()];
+    const todosFora = membros.length > 0 && membros.every((id) => {
+      const fora = c.ausentes.get(id);
+      return !!fora && agora - fora.desde > CABINE_TODOS_FORA_MS;
+    });
+    const abandonada = membros.length > 0 && agora - c.ultimaFala > CABINE_ABANDONADA_MS
+      && membros.every((id) => agora - (c.vistoEm.get(id) ?? 0) > CABINE_ABANDONADA_MS);
+    if (todosFora || abandonada) { fecharCabine(c); return; }
     if (mudou) avisarCabine(c);
   };
   // A Lola libera os níveis da cabine conforme o clima: ações e conversa quente sobem o tesão.
@@ -1873,6 +1897,16 @@ Sala: ${salaId}`).catch(() => {});
       res.json({ ok: true });
       return;
     }
+    // Observação junto da foto/vídeo: mesmas regras do chat (sem link, moderação).
+    const legenda = String((req.body as any)?.legenda || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (legenda && LINK_PROIBIDO.test(legenda)) {
+      res.status(400).json({ error: 'link', message: 'Links não são permitidos na sala. Chame a pessoa pra cabine 😉' });
+      return;
+    }
+    if (legenda) {
+      const barrada = await bloqueioRapido(p.id, p.nome, legenda, sala.nome);
+      if (barrada) { res.status(400).json({ error: 'moderacao', message: barrada }); return; }
+    }
     if (revelacao && p.revelarAte < Date.now()) {
       res.status(403).json({ error: 'sem_revelacao', message: 'A revelação fica liberada por 5 minutos depois de cumprir um desafio.' });
       return;
@@ -1898,6 +1932,7 @@ Sala: ${salaId}`).catch(() => {});
       autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat },
       texto: rotulo,
       midia: { tipo, ...(revelacao ? { preco: PRECO_REVELACAO } : {}), ...(livre ? { livre: true } : {}) },
+      ...(legenda ? { legenda } : {}),
     }, String(m.id));
 
     // Conta para o desafio da vez.
@@ -2044,7 +2079,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required' }); return; }
     const texto = String((req.body as any)?.texto || '').replace(/\s+/g, ' ').trim().slice(0, 280);
     if (!texto) { res.status(400).json({ error: 'texto_vazio' }); return; }
-    if (/https?:\/\/|www\.|\.com\b|\.net\b|wa\.me|t\.me/i.test(texto)) {
+    if (LINK_PROIBIDO.test(texto)) {
       res.status(400).json({ error: 'link', message: 'Links não são permitidos na sala. Chame a pessoa pra cabine 😉' });
       return;
     }
@@ -2874,7 +2909,13 @@ Sala: ${salaId}`).catch(() => {});
   });
 
   // ─── Rotas das cabines ─────────────────────────────────────────────────────
-  const cabineDe = (req: express.Request) => cabines.get(String(req.params.id)) ?? null;
+  const cabineDe = (req: express.Request) => {
+    const c = cabines.get(String(req.params.id)) ?? null;
+    // Qualquer uso da cabine por um membro (tela aberta, falar, agir) conta como presença.
+    const userId = userDe(req);
+    if (c && c.membros.has(userId)) c.vistoEm.set(userId, Date.now());
+    return c;
+  };
 
   // Cabines com porta aberta na sala (para espiar) e as minhas.
   app.get('/api/casa/:sala/cabines', deps.requireAuth, async (req, res) => {
@@ -2954,6 +2995,8 @@ Sala: ${salaId}`).catch(() => {});
     // Quem envia escolhe: visualização única (padrão) ou aberta para a cabine
     // e quem estiver espiando verem quantas vezes quiserem.
     const livre = !!(req.body as any)?.livre;
+    const legenda = String((req.body as any)?.legenda || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    if (legenda && LINK_PROIBIDO.test(legenda)) { res.status(400).json({ error: 'link', message: 'Links não são permitidos aqui.' }); return; }
     // Foto/vídeo de agora é o que mais esquenta a cabine (transa virtual).
     aquecer(c, tipo === 'video' ? 20 : 12);
     msgCabine(c, {
@@ -2962,6 +3005,7 @@ Sala: ${salaId}`).catch(() => {});
         ? (tipo === 'video' ? '🎥 Vídeo' : '📸 Foto')
         : (tipo === 'video' ? '🎥 Vídeo de visualização única' : '📸 Foto de visualização única'),
       midia: { tipo, ...(livre ? { livre: true } : {}) },
+      ...(legenda ? { legenda } : {}),
     }, String(med.id));
     res.json({ ok: true });
   });
@@ -3053,12 +3097,13 @@ Sala: ${salaId}`).catch(() => {});
   const tentarEntrar = (c: Cabine, idReal: string) => {
     const e = c.entradas.get(idReal);
     if (!e) return;
-    const todosAprovaram = [...c.membros.keys()].every((id) => e.aprovados.has(id));
+    const todosAprovaram = todosQueDecidemAprovaram(c, e);
     if (!todosAprovaram || !e.convidadoAceitou) return;
     if (c.membros.size >= MAX_NA_CABINE) { c.entradas.delete(idReal); return; }
     c.entradas.delete(idReal);
     c.espectadores.delete(idReal);
     c.membros.set(idReal, e.pessoa);
+    c.vistoEm.set(idReal, Date.now());
     c.porta.delete(idReal);
     conferirQuente(c);
     c.aberta = c.aberta && [...c.membros.keys()].every((id) => c.porta.has(id));
@@ -3234,8 +3279,8 @@ Sala: ${salaId}`).catch(() => {});
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
     if (!c.entradas.has(userId)) {
       c.entradas.set(userId, { tipo: 'pedido', pessoa: membroDe(p), aprovados: new Set(), convidadoAceitou: true, criadoEm: Date.now() });
-      msgCabine(c, { tipo: 'sistema', texto: c.aberta ? `🙋 ${p.nome} pediu para participar` : `🚪 ${p.nome} bateu na porta e quer entrar` });
-      for (const id of c.membros.keys()) {
+      // Sem mensagem no chat: o pedido aparece só como foto junto da porta, no topo da cabine.
+      for (const id of quemDecide(c)) {
         emitirPara(id, 'casa.cabine.pedido', { cabineId: c.id, nome: p.nome });
         emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'pedido', nome: p.nome, alvoNome: p.nome, alvoPublico: membroDe(p).idPublico });
       }
@@ -3257,13 +3302,14 @@ Sala: ${salaId}`).catch(() => {});
     for (const id of c.membros.keys()) if (await bloqueados(alvo.id, id)) { res.status(404).json({ error: 'fora' }); return; }
     const existente = c.entradas.get(alvo.id);
     const e: Entrada = existente ?? { tipo: 'convite', pessoa: membroDe(alvo), aprovados: new Set(), convidadoAceitou: false, criadoEm: Date.now() };
-    e.aprovados.add(userId);
+    if (quemDecide(c).includes(userId)) e.aprovados.add(userId);
     c.entradas.set(alvo.id, e);
-    msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer convidar ${alvo.nome} (${e.aprovados.size}/${c.membros.size} aprovaram)` });
-    for (const id of c.membros.keys()) {
+    const decidem = quemDecide(c);
+    msgCabine(c, { tipo: 'sistema', texto: `${m.nome} quer convidar ${alvo.nome} (${decidem.filter((id) => e.aprovados.has(id)).length}/${decidem.length} aprovaram)` });
+    for (const id of decidem) {
       if (!e.aprovados.has(id)) emitirPara(id, 'casa.cabine.decidir', { cabineId: c.id, tipo: 'convite', nome: m.nome, alvoNome: alvo.nome, alvoPublico: e.pessoa.idPublico });
     }
-    if ([...c.membros.keys()].every((id) => e.aprovados.has(id)) && !e.convidadoAceitou) {
+    if (todosQueDecidemAprovaram(c, e) && !e.convidadoAceitou) {
       emitirPara(alvo.id, 'casa.cabine.convite', { cabineId: c.id, membros: [...c.membros.values()].map((x) => x.nome) });
       avisarSeFora(alvo.id, '🚪 Te chamaram pra uma cabine na Casa!', `${[...c.membros.values()].map((x) => x.nome).join(', ')} querem você lá dentro 😈`);
     }
@@ -3277,6 +3323,7 @@ Sala: ${salaId}`).catch(() => {});
     const c = cabineDe(req);
     const userId = userDe(req);
     if (!c || !c.membros.has(userId)) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    if (!quemDecide(c).includes(userId)) { res.status(403).json({ error: 'so_quem_abriu', message: 'Quem decide a entrada são os dois que abriram a cabine.' }); return; }
     const alvoId = [...c.entradas.entries()].find(([, e]) => e.pessoa.idPublico === String(req.params.pessoa))?.[0];
     const e = alvoId ? c.entradas.get(alvoId) : undefined;
     if (!alvoId || !e) { res.status(410).json({ error: 'expirou' }); return; }
@@ -3289,7 +3336,7 @@ Sala: ${salaId}`).catch(() => {});
       return;
     }
     e.aprovados.add(userId);
-    if (e.tipo === 'convite' && [...c.membros.keys()].every((id) => e.aprovados.has(id)) && !e.convidadoAceitou) {
+    if (e.tipo === 'convite' && todosQueDecidemAprovaram(c, e) && !e.convidadoAceitou) {
       emitirPara(alvoId, 'casa.cabine.convite', { cabineId: c.id, membros: [...c.membros.values()].map((x) => x.nome) });
     }
     tentarEntrar(c, alvoId);
