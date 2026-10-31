@@ -2160,6 +2160,30 @@ async function isUserBlocked(options: { db: DbHandle }, data: { viewerId: string
   return !!row;
 }
 
+async function conversaLiberadaEntre(db: DbHandle, fromUserId: string, toUserId: string): Promise<boolean> {
+  const match = await queryOne(
+    db,
+    `SELECT 1 AS x
+       FROM likes a
+       JOIN likes b ON b.user_id = ? AND b.target_type = 'user' AND b.target_id = ?
+      WHERE a.user_id = ? AND a.target_type = 'user' AND a.target_id = ?
+      LIMIT 1`,
+    [toUserId, fromUserId, fromUserId, toUserId]
+  );
+  if (match) return true;
+  const recebida = await queryOne(
+    db,
+    `SELECT 1 AS x
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+      WHERE m.sender_id = ?
+        AND ((c.user_a_id = ? AND c.user_b_id = ?) OR (c.user_a_id = ? AND c.user_b_id = ?))
+      LIMIT 1`,
+    [toUserId, fromUserId, toUserId, toUserId, fromUserId]
+  );
+  return !!recebida;
+}
+
 async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: string; toUserId: string }) {
   if (data.fromUserId === data.toUserId) return true;
   // Block check — if either party has blocked the other, no messages allowed
@@ -2168,6 +2192,11 @@ async function canSendMessage(options: { db: DbHandle }, data: { fromUserId: str
   const row = (await queryOne(options.db, 'SELECT allow_messages, block_outside_prefs, looking_for_json FROM users WHERE id = ? LIMIT 1', [data.toUserId])) as any;
   const setting = row?.allow_messages ? String(row.allow_messages) : 'everyone';
   if (setting === 'nobody') return false;
+  // Curtida mútua, ou quem recebe já mandou mensagem pra quem envia: a conversa
+  // está liberada nos dois sentidos, mesmo com "Bloquear fora do meu interesse"
+  // ou "Apenas Amigos" (31/10/2026). Antes o casal puxava conversa com um perfil
+  // fora do próprio filtro e o outro não conseguia responder.
+  if (await conversaLiberadaEntre(options.db, data.fromUserId, data.toUserId)) return true;
   // Check block_outside_prefs: if enabled, sender's gender must be in recipient's looking_for list
   if (row?.block_outside_prefs) {
     const lookingFor: string[] = safeJsonParse(row.looking_for_json) ?? [];
@@ -2219,7 +2248,7 @@ async function motivoMensagemBloqueada(db: DbHandle, fromUserId: string, toUserI
     if (lookingFor.length > 0) {
       const sender = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [fromUserId])) as any;
       if (sender?.gender && !lookingFor.includes(String(sender.gender))) {
-        return `Este perfil escolheu receber mensagens só de: ${lookingFor.join(', ')}.`;
+        return `Este perfil escolheu receber mensagens só de: ${lookingFor.join(', ')}. Curta o perfil: se a curtida for retribuída, a conversa libera.`;
       }
     }
   }

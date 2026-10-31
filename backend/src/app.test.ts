@@ -1726,6 +1726,43 @@ describe('nosigilo backend', () => {
     expect(list.body.some((c: any) => c.id === conversationId && c.user?.id === idA)).toBe(true);
   });
 
+  it('bloquear fora do interesse cede para curtida mutua e para quem foi chamado', async () => {
+    const reg = async (name: string) => {
+      const r = await registerInvitedUser(ctx, sponsorToken, {
+        name, email: `${name.toLowerCase()}@example.com`, password: 'senha123', gender: 'Casal (Ele/Ela)',
+      });
+      await grantPremium(ctx, r.user.id as string);
+      return { token: r.token as string, id: r.user.id as string };
+    };
+    const seletivo = await reg('BloqSeletivo');
+    const chamado = await reg('BloqChamado');
+    const curtido = await reg('BloqCurtido');
+    const estranho = await reg('BloqEstranho');
+    await run(ctx.db, 'UPDATE users SET block_outside_prefs = 1, looking_for_json = ? WHERE id = ?', [JSON.stringify(['Mulher']), seletivo.id]);
+
+    const abrir = (de: { token: string }, para: string) =>
+      request(ctx.app).post('/api/conversations').set('Authorization', `Bearer ${de.token}`).send({ userId: para });
+    const enviar = (de: { token: string }, conversa: string, texto: string) =>
+      request(ctx.app).post(`/api/conversations/${conversa}/messages`).set('Authorization', `Bearer ${de.token}`).send({ content: texto });
+
+    // Fora do interesse e sem vínculo: continua bloqueado.
+    const negado = await abrir(estranho, seletivo.id).expect(403);
+    expect(negado.body.error).toBe('message_not_allowed');
+
+    // O seletivo puxou conversa: o outro pode responder.
+    const conv = await abrir(seletivo, chamado.id).expect(200);
+    await enviar(seletivo, conv.body.id, 'Oi!').expect(200);
+    await enviar(chamado, conv.body.id, 'Oi, tudo bem?').expect(200);
+
+    // Curtida mútua libera mesmo fora do interesse.
+    const agora = new Date().toISOString();
+    for (const [de, para] of [[seletivo.id, curtido.id], [curtido.id, seletivo.id]]) {
+      await run(ctx.db, "INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, 'user', ?, ?)", [`l-${de}-${para}`, de, para, agora]);
+    }
+    const convCurtido = await abrir(curtido, seletivo.id).expect(200);
+    await enviar(curtido, convCurtido.body.id, 'Deu match!').expect(200);
+  });
+
   it('search endpoint returns other active profiles for authenticated user', async () => {
     const viewerReg = await registerInvitedUser(ctx, sponsorToken, {
       name: 'BuscaViewer',
