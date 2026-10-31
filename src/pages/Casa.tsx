@@ -93,6 +93,30 @@ const TEMA_DA_SALA: Record<string, { card: string; botao: string; foco1: string;
 };
 const temaDaSala = (id: string) => TEMA_DA_SALA[id] ?? TEMA_DA_SALA.salao;
 
+// Ambiente de cada quarto (só CSS, nada para baixar): bar neon, veludo, abajur
+// vermelho, holofote âmbar e as paredes do glory. Escuro o bastante para ler.
+const CENA_DA_SALA: Record<string, string> = {
+  salao: 'radial-gradient(ellipse 120% 55% at 50% 0%, rgba(168,85,247,.30), transparent 60%), radial-gradient(circle at 12% 88%, rgba(236,72,153,.20), transparent 35%), radial-gradient(circle at 88% 72%, rgba(59,130,246,.16), transparent 30%), radial-gradient(circle at 70% 20%, rgba(255,255,255,.06) 0 3px, transparent 4px), radial-gradient(circle at 30% 35%, rgba(255,255,255,.05) 0 2px, transparent 3px), repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 2px, transparent 2px 64px), linear-gradient(180deg, #160a22, #07060a)',
+  casais: 'radial-gradient(ellipse 110% 50% at 50% 0%, rgba(244,63,94,.32), transparent 60%), radial-gradient(circle at 82% 92%, rgba(236,72,153,.22), transparent 40%), repeating-linear-gradient(90deg, rgba(0,0,0,.28) 0 16px, rgba(255,255,255,.025) 16px 34px), linear-gradient(180deg, #220712, #08040a)',
+  quarto: 'radial-gradient(circle at 18% 12%, rgba(239,68,68,.38), transparent 34%), radial-gradient(ellipse 95% 40% at 50% 100%, rgba(127,29,29,.50), transparent 70%), radial-gradient(circle at 85% 30%, rgba(251,113,133,.10), transparent 25%), linear-gradient(180deg, #170404, #050202)',
+  cuckold: 'conic-gradient(from 165deg at 50% -8%, transparent 0deg, rgba(245,158,11,.24) 15deg, transparent 30deg), radial-gradient(ellipse 85% 40% at 50% 100%, rgba(180,83,9,.30), transparent 70%), radial-gradient(circle at 10% 50%, rgba(220,38,38,.12), transparent 30%), linear-gradient(180deg, #150b02, #050302)',
+  glory: 'radial-gradient(circle at 28% 38%, rgba(220,38,38,.40) 0 20px, rgba(0,0,0,.9) 24px, transparent 70px), radial-gradient(circle at 74% 64%, rgba(220,38,38,.32) 0 16px, rgba(0,0,0,.9) 20px, transparent 60px), radial-gradient(circle at 60% 18%, rgba(220,38,38,.22) 0 12px, transparent 45px), repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 30px), linear-gradient(180deg, #0c0000, #000)',
+};
+const cenaDaSala = (id: string) => CENA_DA_SALA[id] ?? CENA_DA_SALA.salao;
+
+const TITULO_JOGO: Record<Jogo['tipo'], string> = {
+  enquete: '📊 Enquete', eu_nunca: '🍷 Eu nunca', quiz: '🎓 Quiz liberal', vd: '🎲 Verdade ou desafio', match: '💘 Match às cegas',
+  foto: '📸 Desafio da foto', duelo: '🔥 Duelo', relampago: '⚡ Desafio relâmpago',
+};
+// Respostas de um toque para quem ainda não falou nada (a timidez trava a 1ª mensagem).
+const QUEBRA_GELO = ['Boa noite 🔥', 'Primeira vez aqui 😳', 'Casal de onde? 👀', 'Quem tá on? 😈'];
+const CHAVE_TOUR = 'nosigilo:casa-tour-v1';
+const TOUR = [
+  { emoji: '🍸', titulo: 'Bem-vindo(a) à Casa', texto: 'É uma boate virtual: cada sala é um ambiente. Converse no chat, mande foto ou vídeo e reaja às mensagens. Toque na foto de alguém no topo para ver o que dá pra fazer.' },
+  { emoji: '🚪', titulo: 'Cabine', texto: 'Toque numa pessoa e escolha "Chamar pra cabine". Se ela aceitar, vocês vão para um cantinho só de vocês. A porta só abre se todos lá dentro quiserem plateia.' },
+  { emoji: '🟢', titulo: 'Pulseira da noite', texto: 'A cor diz o que você procura hoje: 🟢 aberto(a) a tudo, 🟡 só soft, 🟣 single é bem-vindo, 🔴 só olhando. Dá pra trocar a qualquer hora no topo.' },
+];
+
 const ROTULO_CAT: Record<Categoria, string> = { casal: 'Casal', mulher: 'Mulher', homem: 'Homem', outros: 'Perfil' };
 const COR_CAT: Record<Categoria, string> = {
   casal: 'ring-fuchsia-500', mulher: 'ring-rose-500', homem: 'ring-sky-500', outros: 'ring-amber-500',
@@ -136,10 +160,7 @@ function useSegundosAte(iso?: string) {
 
 function CartaoDoJogo({ jogo, podeFalar, onJogar, onCamera }: { jogo: Jogo; podeFalar: boolean; onJogar: (valor: unknown) => void; onCamera: () => void }) {
   const segundos = useSegundosAte(jogo.fimEm);
-  const titulo = {
-    enquete: '📊 Enquete', eu_nunca: '🍷 Eu nunca', quiz: '🎓 Quiz liberal', vd: '🎲 Verdade ou desafio', match: '💘 Match às cegas',
-    foto: '📸 Desafio da foto', duelo: '🔥 Duelo', relampago: '⚡ Desafio relâmpago',
-  }[jogo.tipo];
+  const titulo = TITULO_JOGO[jogo.tipo];
   const camera = (rotulo: string) => (
     <Button size="sm" className="w-full bg-rose-600 hover:bg-rose-500" disabled={!podeFalar} onClick={onCamera}>
       <Camera className="mr-1.5 h-4 w-4" />{rotulo}
@@ -324,6 +345,17 @@ export default function Casa() {
   const [feedbackAberto, setFeedbackAberto] = useState(false);
   // Brincadeira que a pessoa dispensou: o cartão do topo some (ela pode votar na mensagem da Lola).
   const [jogosDispensados, setJogosDispensados] = useState<string[]>([]);
+  // Card da brincadeira fica recolhido numa linha (abre ao tocar); quem é parte da vez já vê aberto.
+  const [jogoExpandido, setJogoExpandido] = useState<string | null>(null);
+  // Faixa de chegadas/pulseiras (sai do chat e some sozinha).
+  const [faixa, setFaixa] = useState<{ id: string; tipo: 'chegada' | 'pulseira'; nome: string; texto?: string; em: number }[]>([]);
+  useEffect(() => {
+    if (faixa.length === 0) return;
+    const t = setTimeout(() => setFaixa((l) => l.filter((x) => Date.now() - x.em < 8000)), 2000);
+    return () => clearTimeout(t);
+  }, [faixa]);
+  // Tour de 3 telas na primeira visita.
+  const [tourPasso, setTourPasso] = useState<number | null>(null);
   // Decisão pedida dentro da cabine: abrir a porta, convidar alguém ou aceitar quem pediu para entrar.
   type DecisaoCabine = { cabineId: string; tipo: 'porta' | 'convite' | 'pedido'; nome: string; alvoNome?: string; alvoPublico?: string };
   const [decisao, setDecisao] = useState<DecisaoCabine | null>(null);
@@ -334,6 +366,13 @@ export default function Casa() {
   const estadoRef = useRef<typeof estado>(null);
   const abrirPorIdRef = useRef<(id: string, nome: string) => void>(() => {});
   useEffect(() => { estadoRef.current = estado; }, [estado]);
+  // Primeira visita à Casa: tour de 3 telas antes da pulseira.
+  useEffect(() => {
+    if (!estado?.sala.id || !estado.eu.podeFalar) return;
+    let visto = true;
+    try { visto = localStorage.getItem(CHAVE_TOUR) === '1'; } catch { /* modo restrito: não mostra */ }
+    if (!visto) setTourPasso((t) => t ?? 0);
+  }, [estado?.sala.id, estado?.eu.podeFalar]);
   const [cabineAberta, setCabineAberta] = useState<{ id: string; modo: 'membro' | 'espiar' } | null>(null);
   const cabineAbertaRef = useRef(cabineAberta);
   cabineAbertaRef.current = cabineAberta;
@@ -570,9 +609,15 @@ export default function Casa() {
         action: <ToastAction altText="Chamar pra cabine" onClick={() => void convidarRef.current(d.de)}>Cabine 🚪</ToastAction>,
       });
     };
+    const aoFaixa = (d: { sala: string; tipo: 'chegada' | 'pulseira'; nome: string; texto?: string }) => {
+      if (estadoRef.current?.sala.id !== d.sala) return;
+      setFaixa((l) => [...l.slice(-15), { ...d, id: `${Date.now()}-${Math.random()}`, em: Date.now() }]);
+    };
+    on('casa.faixa', aoFaixa);
     on('casa.cabine.decidir', aoDecidir); on('casa.mensagem', aoMsg); on('casa.reacao', aoReacao); on('casa.presentes', aoPresentes); on('casa.jogo', aoJogo); on('casa.fechou', aoFechar);
     on('casa.convite', aoConvite); on('casa.convite.resposta', aoResposta); on('casa.cabine', aoCabine); on('casa.aviso', aoAvisoLola); on('casa.mensagem.removida', aoRemovida); on('casa.expulso', aoExpulso); on('casa.cabine.convite', aoConviteCabine); on('casa.cabine.pedido', aoPedidoCabine); on('casa.cabine.recusado', aoRecusadoCabine); on('casa.batida', aoBatida); on('casa.vaga', aoVaga); on('casa.cabine.esquentar', aoEsquentarCabine); on('casa.convite.sala', aoConviteSala); on('casa.revelacao', aoRevelacao); on('casa.olhar', aoOlhar); on('casa.olhares', aoCruzados); on('casa.drink', aoDrink); on('casa.brinde', aoBrinde); on('casa.proposta', aoProposta); on('casa.proposta.aceita', aoPropostaAceita); on('casa.proposta.fim', aoPropostaFim);
     return () => {
+      off('casa.faixa', aoFaixa);
       off('casa.cabine.decidir', aoDecidir); off('casa.mensagem', aoMsg); off('casa.reacao', aoReacao); off('casa.presentes', aoPresentes); off('casa.jogo', aoJogo); off('casa.fechou', aoFechar);
       off('casa.convite', aoConvite); off('casa.convite.resposta', aoResposta); off('casa.cabine', aoCabine); off('casa.aviso', aoAvisoLola); off('casa.mensagem.removida', aoRemovida); off('casa.expulso', aoExpulso); off('casa.cabine.convite', aoConviteCabine); off('casa.cabine.pedido', aoPedidoCabine); off('casa.cabine.recusado', aoRecusadoCabine); off('casa.batida', aoBatida); off('casa.vaga', aoVaga); off('casa.cabine.esquentar', aoEsquentarCabine); off('casa.convite.sala', aoConviteSala); off('casa.revelacao', aoRevelacao); off('casa.olhar', aoOlhar); off('casa.olhares', aoCruzados); off('casa.drink', aoDrink); off('casa.brinde', aoBrinde); off('casa.proposta', aoProposta); off('casa.proposta.aceita', aoPropostaAceita); off('casa.proposta.fim', aoPropostaFim);
     };
@@ -604,14 +649,14 @@ export default function Casa() {
     setEscolhendoPulseira(true);
   }, [estado?.sala.id, estado?.eu.podeFalar, estado?.eu.pulseira, pulseiraDispensada]);
 
-  const enviar = async () => {
-    const t = texto.trim();
+  const enviar = async (direto?: string) => {
+    const t = (direto ?? texto).trim();
     if (!t || !salaAtual) return;
-    setTexto('');
+    if (direto === undefined) setTexto('');
     const resp = respondendo;
     setRespondendo(null);
     try { await apiClient.post(`/casa/${salaAtual}/mensagem`, { texto: t, ...(resp ? { respostaA: resp.id } : {}) }); }
-    catch (e) { setTexto(t); setRespondendo(resp); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
+    catch (e) { if (direto === undefined) setTexto(t); setRespondendo(resp); toast({ title: erroDe(e, 'Mensagem não enviada.'), variant: 'destructive' }); }
   };
   // Tocar no nome ou na foto de quem escreveu abre o mesmo menu da lista de presentes.
   const abrirAutor = (autor: Msg['autor']) => {
@@ -955,6 +1000,8 @@ export default function Casa() {
         @keyframes nsFoco1 { 0%,100% { transform: translate(-30%, -10%); } 50% { transform: translate(40%, 30%); } }
         @keyframes nsFoco2 { 0%,100% { transform: translate(40%, 60%); } 50% { transform: translate(-20%, 10%); } }
       `}</style>
+      <div className="pointer-events-none absolute inset-0 -z-10" style={{ background: cenaDaSala(estado.sala.id) }} />
+      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.55)_100%)]" />
       <div className={cn('pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco1)} style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
       <div className={cn('pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco2)} style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
 
@@ -973,6 +1020,7 @@ export default function Casa() {
         {estado.sala_anonima && estado.eu.podeFalar && !estado.eu.revelado && (
           <button type="button" onClick={() => void revelar()} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" title="Revelar quem sou">🎭</button>
         )}
+        <RadioDaCasa compacto />
         <TokenBadge semLink />
         <button type="button" onClick={() => setFeedbackAberto(true)} className="rounded-full border border-white/20 px-2 py-1.5 text-xs" aria-label="Sugestões" title="Feedback e sugestões">💬</button>
         <button
@@ -1009,7 +1057,6 @@ export default function Casa() {
         )}
       </div>
 
-      <RadioDaCasa />
 
       {/* Quem está na sala: toque para ver o perfil ou chamar pra cabine. */}
       <div className="flex gap-3 overflow-x-auto border-b border-white/10 px-3 py-2.5 [scrollbar-width:none]">
@@ -1048,12 +1095,27 @@ export default function Casa() {
       {/* Desafio do momento: fica fixo no topo enquanto a conversa corre embaixo. */}
       {estado.jogo && !jogosDispensados.includes(estado.jogo.id)
         && !((estado.jogo.tipo === 'enquete' || estado.jogo.tipo === 'eu_nunca' || estado.jogo.tipo === 'quiz') && estado.jogo.meuVoto != null) && (
+        (estado.jogo.souAlvo || estado.jogo.souParte || jogoExpandido === estado.jogo.id) ? (
         <div className="relative">
           <CartaoDoJogo jogo={estado.jogo} podeFalar={estado.eu.podeFalar} onJogar={(v) => void jogar(v)} onCamera={() => abrirCamera(false)} />
-          <button type="button" aria-label="Dispensar"
-            onClick={() => { const id = estado.jogo?.id; if (id) setJogosDispensados((l) => [...l, id]); }}
-            className="absolute right-5 top-4 rounded-full bg-black/40 px-2 py-0.5 text-[11px] text-white/80 hover:bg-black/60">Dispensar ✕</button>
+          <div className="absolute right-5 top-4 flex gap-1">
+            {!estado.jogo.souAlvo && !estado.jogo.souParte && (
+              <button type="button" aria-label="Recolher" onClick={() => setJogoExpandido(null)}
+                className="rounded-full bg-black/40 px-2 py-0.5 text-[11px] text-white/80 hover:bg-black/60">Recolher ▴</button>
+            )}
+            <button type="button" aria-label="Dispensar"
+              onClick={() => { const id = estado.jogo?.id; if (id) setJogosDispensados((l) => [...l, id]); }}
+              className="rounded-full bg-black/40 px-2 py-0.5 text-[11px] text-white/80 hover:bg-black/60">✕</button>
+          </div>
         </div>
+        ) : (
+          <button type="button" onClick={() => setJogoExpandido(estado.jogo!.id)}
+            className="mx-3 my-1.5 flex items-center gap-2 rounded-xl border border-fuchsia-500/40 bg-fuchsia-950/70 px-3 py-2 text-left text-xs shadow">
+            <span className="shrink-0 font-semibold text-fuchsia-200">{TITULO_JOGO[estado.jogo.tipo]}</span>
+            <span className="min-w-0 flex-1 truncate text-white/80">{estado.jogo.texto ?? ''}</span>
+            <span className="shrink-0 rounded-full bg-fuchsia-600 px-2 py-0.5 font-bold">Abrir ▾</span>
+          </button>
+        )
       )}
 
       {meuDesafio && segundosMeuDesafio > 0 && (
@@ -1071,6 +1133,19 @@ export default function Casa() {
 
       {/* Com a faixa "Respondendo" aberta, sobra espaço embaixo para ela não cobrir a última mensagem. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
+      {(() => {
+        const nomes = [...new Set(faixa.filter((x) => x.tipo === 'chegada').map((x) => x.nome))];
+        const pulseira = faixa.filter((x) => x.tipo === 'pulseira').at(-1);
+        if (nomes.length === 0 && !pulseira) return null;
+        const chegada = nomes.length === 0 ? null
+          : `👋 ${nomes.length <= 2 ? nomes.join(' e ') : `${nomes[0]}, ${nomes[1]} e mais ${nomes.length - 2}`} ${nomes.length === 1 ? 'chegou' : 'chegaram'}`;
+        return (
+          <div className="pointer-events-none absolute inset-x-0 top-1.5 z-20 flex flex-col items-center gap-1 px-3">
+            {chegada && <span className="max-w-full truncate rounded-full bg-black/70 px-3 py-1 text-[11px] text-white/85 ring-1 ring-white/10 backdrop-blur">{chegada}</span>}
+            {pulseira?.texto && <span className="max-w-full truncate rounded-full bg-black/70 px-3 py-1 text-[11px] text-white/75 ring-1 ring-white/10 backdrop-blur">{pulseira.texto}</span>}
+          </div>
+        );
+      })()}
       <div ref={rolagem.listaRef} onScroll={rolagem.aoRolar} className={cn('relative min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3', respondendo && 'pb-16')}>
         {estado.mensagens.map((m) => (
           <Fragment key={m.id}>
@@ -1180,6 +1255,33 @@ export default function Casa() {
           <span className="tabular-nums">{Math.floor(segundosRevelacao / 60)}:{String(segundosRevelacao % 60).padStart(2, '0')}</span>
         </button>
       )}
+      {estado.eu.podeFalar && perguntaBrincar === estado.sala.id && !estado.eu.querBrincar && tourPasso === null && !escolhendoPulseira && (() => {
+        const eu = estado.presentes.find((x) => x.id === estado.eu.idPublico);
+        const voces = eu?.cat === 'casal';
+        return (
+          <div className="mx-3 mb-1 rounded-2xl rounded-bl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
+            <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
+            <p className="text-sm leading-snug">{eu?.nome ? `${eu.nome}, ` : ''}{voces ? 'vocês vieram' : 'você veio'} mais pra olhar ou pra brincar? 😈</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setPerguntaBrincar(null)} className="rounded-xl bg-black/25 px-3 py-1.5 text-xs font-semibold">👀 Só olhar</button>
+              <button type="button" onClick={() => {
+                const salaId = perguntaBrincar;
+                setPerguntaBrincar(null);
+                setEstado((e) => e ? { ...e, eu: { ...e.eu, querBrincar: true } } : e);
+                if (salaId) void apiClient.post(`/casa/${salaId}/brincar`, { quer: true }).catch(() => {});
+              }} className="rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-rose-700">🔥 Brincar</button>
+            </div>
+          </div>
+        );
+      })()}
+      {estado.eu.podeFalar && !texto && !respondendo && !estado.mensagens.some((m) => m.tipo === 'pessoa' && m.autor?.id === estado.eu.idPublico) && (
+        <div className="flex gap-1.5 overflow-x-auto px-3 pb-1.5 [scrollbar-width:none]">
+          {QUEBRA_GELO.map((t) => (
+            <button key={t} type="button" onClick={() => void enviar(t)}
+              className="shrink-0 rounded-full border border-fuchsia-400/50 bg-fuchsia-950/60 px-3 py-1.5 text-xs font-medium hover:bg-fuchsia-900/70">{t}</button>
+          ))}
+        </div>
+      )}
       {estado.eu.podeFalar ? (
         <form
           className="relative flex items-center gap-2 border-t border-white/10 px-3 py-2"
@@ -1287,7 +1389,7 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={escolhendoPulseira && !cabineAberta && !recebidoAgora} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
+      <Dialog open={escolhendoPulseira && tourPasso === null && !cabineAberta && !recebidoAgora} onOpenChange={(v) => { if (!v) { setEscolhendoPulseira(false); setPulseiraDispensada(true); } }}>
         <DialogContent className="z-[9995] max-w-sm">
           <DialogHeader><DialogTitle>Escolha sua pulseira da noite</DialogTitle></DialogHeader>
           <p className="-mt-2 text-xs text-muted-foreground">Como numa casa de verdade: todo mundo vê a sua cor e sabe o que você topa hoje. Dá para trocar quando quiser.</p>
@@ -1560,19 +1662,23 @@ export default function Casa() {
         </DialogContent>
       </Dialog>
       <PerfilNaCasa userId={perfilAberto} onFechar={() => setPerfilAberto(null)} />
-      <Dialog open={!!perguntaBrincar && !recebidoAgora && !escolhendoPulseira && !cabineAberta} onOpenChange={(v) => { if (!v) setPerguntaBrincar(null); }}>
+      <Dialog open={tourPasso !== null && !recebidoAgora && !cabineAberta} onOpenChange={(v) => { if (!v) { setTourPasso(null); try { localStorage.setItem(CHAVE_TOUR, '1'); } catch { /* ok */ } } }}>
         <DialogContent className="z-[9995] max-w-xs text-center">
-          <DialogHeader><DialogTitle>💋 A Lola quer saber…</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Você quer entrar nas brincadeiras quentes da noite? A Lola só sorteia quem topar. Dá para mudar a qualquer hora no botão "Quero brincar".</p>
-          <div className="grid gap-2">
-            <Button className="bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => {
-              const salaId = perguntaBrincar;
-              setPerguntaBrincar(null);
-              setEstado((e) => e ? { ...e, eu: { ...e.eu, querBrincar: true } } : e);
-              if (salaId) void apiClient.post(`/casa/${salaId}/brincar`, { quer: true }).catch(() => {});
-            }}>🔥 Quero brincar</Button>
-            <Button variant="outline" onClick={() => setPerguntaBrincar(null)}>Só curtir por enquanto</Button>
-          </div>
+          {tourPasso !== null && (
+            <>
+              <p className="text-5xl">{TOUR[tourPasso].emoji}</p>
+              <DialogHeader><DialogTitle className="text-center">{TOUR[tourPasso].titulo}</DialogTitle></DialogHeader>
+              <p className="text-sm text-muted-foreground">{TOUR[tourPasso].texto}</p>
+              <div className="flex justify-center gap-1.5">
+                {TOUR.map((_, i) => <span key={i} className={cn('h-1.5 w-6 rounded-full', i === tourPasso ? 'bg-rose-500' : 'bg-muted')} />)}
+              </div>
+              <Button className="bg-gradient-to-r from-rose-600 to-fuchsia-600" onClick={() => {
+                if (tourPasso < TOUR.length - 1) { setTourPasso(tourPasso + 1); return; }
+                setTourPasso(null);
+                try { localStorage.setItem(CHAVE_TOUR, '1'); } catch { /* ok */ }
+              }}>{tourPasso < TOUR.length - 1 ? 'Próximo' : 'Entendi, bora 🔥'}</Button>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <Dialog open={!!pessoaAberta} onOpenChange={(v) => { if (!v) { setPessoaAberta(null); setMostrandoBar(false); } }}>

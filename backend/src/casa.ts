@@ -44,13 +44,6 @@ const DRINKS: Record<string, { emoji: string; nome: string; tokens: number }> = 
   gin: { emoji: '🍸', nome: 'um gin tônica', tokens: 8 },
   champanhe: { emoji: '🍾', nome: 'um champanhe', tokens: 15 },
 };
-const CHEGADAS = [
-  '{nome} acabou de passar pela recepção 😈',
-  '{nome} chegou na pista 🔥',
-  'Olha quem chegou: {nome} 👀',
-  '{nome} entrou e já está olhando a sala toda 😏',
-  'Boa noite, {nome}! Pega um drink no bar e fica à vontade 🍸',
-];
 // Lola chamando alguém quieto pelo nome.
 const PROVOCA_QUIETO: Record<'casal' | 'mulher' | 'homem' | 'outros', string[]> = {
   casal: [
@@ -1598,6 +1591,7 @@ Sala: ${salaId}`).catch(() => {});
   };
 
   const acharPublico = (sala: Sala, idPublico: string) => [...sala.presentes.values()].find((x) => x.idPublico === idPublico);
+
   // Casal ou mulher chama um solteiro para outra sala: ele entra sem fila (vale 5 min, uma entrada).
   const convitesDeSala = new Map<string, { sala: SalaId; ate: number }>();
 
@@ -1796,12 +1790,15 @@ Sala: ${salaId}`).catch(() => {});
       }
       // Quem cai e volta (celular em segundo plano) não gera "chegou" de novo a cada minuto.
       const chaveChegada = `${sala.id}:${userId}`;
+      // Chegada não entra mais no chat (era 455 de ~1.150 linhas numa noite): vira
+      // uma faixa discreta que some sozinha. A fileira de fotos já mostra quem está.
       if (Date.now() - (ultimaChegada.get(chaveChegada) ?? 0) > 15 * 60_000) {
-        publicarMsg(sala, { tipo: 'sistema', texto: sortear(CHEGADAS).replace('{nome}', p.nome) });
+        emitirParaSala(sala, 'casa.faixa', { sala: sala.id, tipo: 'chegada', nome: p.nome });
       }
       ultimaChegada.set(chaveChegada, Date.now());
-      // Mulher sempre é anunciada (é quem mais atrai a sala); casal, no máximo 1 a cada 2 min.
-      const intervaloRecepcao = p.cat === 'mulher' ? 30_000 : 120_000;
+      // Recepção da Lola para mulher e casal: no máximo 1 a cada 5 min na sala
+      // (antes 30 s/2 min, e o chat virava lista de chegadas).
+      const intervaloRecepcao = 5 * 60_000;
       const jaRecebido = recebidosNaNoite.has(`${noite.chave}:${userId}`);
       if ((p.cat === 'casal' || p.cat === 'mulher') && !jaRecebido && falantes(sala).length >= 2 && Date.now() - (ultimaRecepcao.get(sala.id) ?? 0) > intervaloRecepcao) {
         recebidosNaNoite.add(`${noite.chave}:${userId}`);
@@ -2548,7 +2545,7 @@ Sala: ${salaId}`).catch(() => {});
     const chavePulseira = `${chaveDaNoite}:${sala.id}:${p.id}`;
     if (antes !== cor && pulseiraAnunciada.get(chavePulseira) !== cor) {
       pulseiraAnunciada.set(chavePulseira, cor);
-      publicarMsg(sala, { tipo: 'sistema', texto: `${p.nome} colocou a pulseira ${PULSEIRAS[cor]}` });
+      emitirParaSala(sala, 'casa.faixa', { sala: sala.id, tipo: 'pulseira', nome: p.nome, texto: `${p.nome} colocou a pulseira ${PULSEIRAS[cor]}` });
     }
     avisarPresentes(sala);
     res.json({ ok: true, pulseira: cor });

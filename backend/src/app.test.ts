@@ -3727,6 +3727,9 @@ describe('nosigilo backend', () => {
     // 1 casal na sala: até 2 homens (folga da sala vazia); o terceiro espera.
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[1].token)).expect(200);
+    // Chegada vira faixa que some sozinha: não entra mais no chat da sala.
+    const doSalao = (await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200)).body;
+    expect(doSalao.mensagens.some((m: any) => m.tipo === 'sistema' && /Homem Casa [01]/.test(m.texto))).toBe(false);
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[2].token)).expect(409);
     await request(ctx.app).post('/api/casa/casais/entrar').set(auth(homens[2].token)).expect(403);
     // No Cuckold o solteiro entra sem fila; de lá, o casal chama ele para o Salão e ele passa na frente.

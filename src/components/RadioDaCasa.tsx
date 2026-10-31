@@ -23,7 +23,8 @@ function gravar(chave: string, valor: string) {
   try { localStorage.setItem(chave, valor); } catch { /* modo restrito */ }
 }
 
-export default function RadioDaCasa() {
+/** compacto: só um ícone no topo da sala (toque liga/desliga), sem a faixa da música. */
+export default function RadioDaCasa({ compacto = false }: { compacto?: boolean } = {}) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const [tocando, setTocando] = useState<Tocando | null>(null);
   // Som ligado por padrão ao entrar na Casa; só fica mudo para quem silenciou antes.
@@ -100,6 +101,19 @@ export default function RadioDaCasa() {
 
   const somAtivo = ligado && !bloqueado;
   const IconeVolume = !somAtivo || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  if (compacto) return (
+    <>
+      <audio ref={audio} preload="auto" onEnded={() => void sintonizar()} />
+      {tocando && (
+        <button type="button" onClick={alternar}
+          title={somAtivo ? `Tocando: ${tocando.titulo}${tocando.artista ? ` · ${tocando.artista}` : ''} (toque para silenciar)` : 'Ligar a música'}
+          aria-label={somAtivo ? 'Silenciar a música' : 'Ligar a música'}
+          className={cn('rounded-full border px-2 py-1.5 text-xs', somAtivo ? 'border-white/20' : 'animate-pulse border-fuchsia-400 bg-fuchsia-600/30')}>
+          {somAtivo ? <Music2 className="h-3.5 w-3.5 text-fuchsia-300" /> : <VolumeX className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </>
+  );
   return (
     // O <audio> fica sempre montado (mesmo sem faixa): a primeira sintonia precisa dele.
     <div className={cn('flex items-center gap-2 border-b border-white/10 bg-black/40 px-3 py-1.5', !tocando && 'hidden')}>
