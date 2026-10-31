@@ -250,7 +250,7 @@ function duracaoDoAudio(arquivo: string): Promise<number> {
   });
 }
 
-const MAX_MENSAGENS = 120;
+const MAX_MENSAGENS = 300; // histórico em memória por sala/cabine (era 120)
 const PRECO_REVELACAO = 5;
 const PING_EXPIRA_MS = 75_000;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
@@ -392,7 +392,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       nivel: c.quente ? nivelDaCabine(c) : 0,
       calor: c.calor,
       nivelLiberado: nivelPeloCalor(c),
-      mensagens: c.mensagens.slice(-60),
+      mensagens: c.mensagens.slice(-150),
     };
   };
   const avisarCabine = (c: Cabine) => {
@@ -1685,7 +1685,7 @@ Sala: ${salaId}`).catch(() => {});
   const estadoPara = async (sala: Sala, userId: string, p: Presente | null) => ({
     midiasVistas: await midiasQueVi(sala, userId),
     sala: { id: sala.id, nome: sala.nome, emoji: sala.emoji, descricao: sala.descricao, nivel: sala.nivel },
-    mensagens: sala.mensagens.slice(-60),
+    mensagens: sala.mensagens.slice(-150),
     presentes: resumoPresentes(sala, userId).presentes,
     espiando: resumoPresentes(sala, userId).espiando,
     jogo: jogoPublico(sala.jogo, userId),

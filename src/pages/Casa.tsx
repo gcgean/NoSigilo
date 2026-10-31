@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Camera, Crown, Lock, Send, Users, X } from 'lucide-react';
@@ -25,6 +25,8 @@ import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 import TokenBadge from '@/components/TokenBadge';
 import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
+import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas } from '@/components/ChatDaCasaUi';
+import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 
 /**
  * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
@@ -444,7 +446,7 @@ export default function Casa() {
   // Tempo real.
   useEffect(() => {
     const aoMsg = (d: { sala: string; msg: Msg }) => {
-      setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-150), d.msg] } : e);
+      setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-299), d.msg] } : e);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
     };
     const aoReacao = (d: { sala: string; mensagemId: string; reacoes: Record<string, string[]> }) => setEstado((e) => e && e.sala.id === d.sala
@@ -581,7 +583,13 @@ export default function Casa() {
   salaRef.current = salaAtual;
   useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`).catch(() => {}); }, []);
 
-  useEffect(() => { fimDaLista.current?.scrollIntoView({ block: 'end' }); }, [estado?.mensagens.length, respondendo]);
+  // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
+  const rolagem = useRolagemDoChat({ chave: estado?.sala.id ?? null, mensagens: estado?.mensagens, meuId: estado?.eu.idPublico ?? user?.id ?? '' });
+  // A faixa "Respondendo" ocupa espaço embaixo: quem está no fim continua vendo a última.
+  useEffect(() => { if (respondendo && rolagem.noFim) rolagem.irParaFim(); }, [respondendo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const irParaCitada = (id: string) => {
+    if (!rolagem.irPara(id)) toast({ title: 'Essa mensagem já saiu do histórico da sala.' });
+  };
   // Recepção: quem entra escolhe a pulseira da noite (como na casa de verdade).
   // A pulseira vale a noite toda: trocando de sala, a mesma cor é recolocada sozinha.
   useEffect(() => {
@@ -1059,8 +1067,13 @@ export default function Casa() {
       )}
 
       {/* Com a faixa "Respondendo" aberta, sobra espaço embaixo para ela não cobrir a última mensagem. */}
-      <div className={cn('relative flex-1 space-y-2 overflow-y-auto px-3 py-3', respondendo && 'pb-16')}>
-        {estado.mensagens.map((m) => m.tipo === 'sistema' ? (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={rolagem.listaRef} onScroll={rolagem.aoRolar} className={cn('relative min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3', respondendo && 'pb-16')}>
+        {estado.mensagens.map((m) => (
+          <Fragment key={m.id}>
+          {rolagem.marcador === m.id && <LinhaNaoLidas />}
+          <ArrastaParaResponder data-msg-id={m.id} ativo={!!estado.eu.podeFalar && m.tipo !== 'sistema'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)}>
+          {m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
           <div key={m.id} className="flex items-start gap-2">
@@ -1107,9 +1120,7 @@ export default function Casa() {
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-amber-600 to-orange-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-100">💑 Léo & Bia · casal anfitrião (IA)</p>
             {m.resposta && (
-              <p className="mb-1 truncate rounded-lg border-l-2 border-white/60 bg-black/20 px-2 py-1 text-[11px] text-white/80">
-                <b>{m.resposta.nome}</b> · {m.resposta.trecho}
-              </p>
+              <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-white/60 bg-black/20 text-white/80" />
             )}
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
             <AcoesDaMsg m={m} />
@@ -1118,9 +1129,7 @@ export default function Casa() {
           <div key={m.id} className="max-w-[90%] rounded-2xl rounded-tl-sm bg-gradient-to-br from-fuchsia-700 to-rose-700 px-3 py-2 shadow">
             <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-fuchsia-100">💋 Lola · anfitriã IA</p>
             {m.resposta && (
-              <p className="mb-1 truncate rounded-lg border-l-2 border-white/60 bg-black/20 px-2 py-1 text-[11px] text-white/80">
-                <b>{m.resposta.nome}</b> · {m.resposta.trecho}
-              </p>
+              <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-white/60 bg-black/20 text-white/80" />
             )}
             <p className="whitespace-pre-line text-sm leading-snug">{m.texto}</p>
             {estado.eu.podeFalar && /foram pra cabine|com a porta aberta/.test(m.texto) && <AcoesDaCabineAnunciada texto={m.texto} />}
@@ -1137,16 +1146,23 @@ export default function Casa() {
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
               <button type="button" onClick={() => abrirAutor(m.autor)} className="text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">· {m.autor ? ROTULO_CAT[m.autor.cat] : ''}</span></button>
               {m.resposta && (
-                <div className="mb-1 rounded-lg border-l-2 border-fuchsia-400 bg-black/30 px-2 py-1 text-[11px] text-white/60">
-                  <b className="text-fuchsia-300">{m.resposta.nome}</b> · {m.resposta.trecho}
-                </div>
+                <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-fuchsia-400 bg-black/30 text-white/60" nomeClassName="text-fuchsia-300" />
               )}
               <p className="break-words text-sm">{m.texto}</p>
               <AcoesDaMsg m={m} />
             </div>
           </div>
+        )}
+          </ArrastaParaResponder>
+          </Fragment>
         ))}
         <div ref={fimDaLista} />
+      </div>
+      <BotoesDeNovas
+        noFim={rolagem.noFim} novas={rolagem.novas} mencao={rolagem.mencao}
+        onFim={() => rolagem.irParaFim(true)}
+        onMencao={() => { const id = rolagem.mencao; rolagem.setMencao(null); if (id) irParaCitada(id); }}
+      />
       </div>
 
 

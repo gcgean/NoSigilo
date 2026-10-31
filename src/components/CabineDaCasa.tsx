@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Camera, LogOut, Send, X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
@@ -12,6 +12,8 @@ import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
 import { tocarSomDaCasa } from '@/utils/somDaCasa';
+import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas } from '@/components/ChatDaCasaUi';
+import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 
 /**
  * Cabine d'A Casa (backend: rotas /api/casa/cabine/*).
@@ -162,7 +164,7 @@ export default function CabineDaCasa({
     const aoEstado = (d: { cabine: Cabine }) => { if (d.cabine.id === cabineId) setCab(d.cabine); };
     const aoMsg = (d: { cabineId: string; msg: Msg }) => {
       if (d.cabineId !== cabineId) return;
-      setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-150), d.msg] } : c);
+      setCab((c) => c ? { ...c, mensagens: [...c.mensagens.slice(-299), d.msg] } : c);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
       else if (d.msg.tipo === 'lola' && /liberei/.test(d.msg.texto)) void tocarSomDaCasa('nivel');
       else if (d.msg.tipo === 'lola' && /DADO/.test(d.msg.texto)) void tocarSomDaCasa('dado');
@@ -193,7 +195,11 @@ export default function CabineDaCasa({
     on('casa.cabine.estado', aoEstado); on('casa.cabine.mensagem', aoMsg); on('casa.cabine.fechou', aoFechou); on('casa.cabine.mensagem.removida', aoRemovida);
     return () => { off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu, meuIdPublico]);
-  useEffect(() => { fim.current?.scrollIntoView({ block: 'end' }); }, [cab?.mensagens.length]);
+  // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
+  const rolagem = useRolagemDoChat({ chave: `cab:${cabineId}`, mensagens: cab?.mensagens, meuId: meuIdPublico ?? '' });
+  const irParaCitada = (id: string) => {
+    if (!rolagem.irPara(id)) toast({ title: 'Essa mensagem já saiu do histórico da cabine.' });
+  };
   // Porta abrindo/fechando e gente entrando: som (não na primeira carga).
   const antes = useRef<{ aberta: boolean; membros: number } | null>(null);
   useEffect(() => {
@@ -446,8 +452,13 @@ export default function CabineDaCasa({
         </div>
       )}
 
-      <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
-        {cab.mensagens.map((m) => m.tipo === 'sistema' ? (
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={rolagem.listaRef} onScroll={rolagem.aoRolar} className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
+        {cab.mensagens.map((m) => (
+          <Fragment key={m.id}>
+          {rolagem.marcador === m.id && <LinhaNaoLidas />}
+          <ArrastaParaResponder data-msg-id={m.id} ativo={!!cab.souMembro && m.tipo !== 'sistema' && m.tipo !== 'acao'} destacada={rolagem.destacada === m.id} onResponder={() => setRespondendo(m)}>
+          {m.tipo === 'sistema' ? (
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'acao' ? (
           <p key={m.id} className="mx-auto w-fit max-w-[92%] rounded-full bg-gradient-to-r from-rose-700/70 to-red-800/70 px-3 py-1.5 text-center text-sm font-semibold italic shadow-[0_0_14px_rgba(225,29,72,0.45)]">{m.texto}</p>
@@ -462,9 +473,7 @@ export default function CabineDaCasa({
             <div className={cn('min-w-0 max-w-[85%] rounded-2xl px-3 py-1.5', m.autor?.id === meuIdPublico ? 'rounded-tr-sm bg-rose-700/60' : 'rounded-tl-sm bg-white/10')}>
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
               {m.resposta && (
-                <p className="mb-1 truncate rounded-lg border-l-2 border-rose-400 bg-black/30 px-2 py-1 text-[11px] text-white/70">
-                  <b className="text-rose-300">{m.resposta.nome}</b> · {m.resposta.trecho}
-                </p>
+                <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-rose-400 bg-black/30 text-white/70" nomeClassName="text-rose-300" />
               )}
               {m.tipo === 'midia' ? (() => {
                 const minha = m.autor?.id === meuIdPublico;
@@ -501,8 +510,17 @@ export default function CabineDaCasa({
               <Acoes m={m} />
             </div>
           </div>
+        )}
+          </ArrastaParaResponder>
+          </Fragment>
         ))}
         <div ref={fim} />
+      </div>
+      <BotoesDeNovas
+        noFim={rolagem.noFim} novas={rolagem.novas} mencao={rolagem.mencao}
+        onFim={() => rolagem.irParaFim(true)}
+        onMencao={() => { const id = rolagem.mencao; rolagem.setMencao(null); if (id) irParaCitada(id); }}
+      />
       </div>
 
       {cab.souMembro && acoesAbertas && (() => {
