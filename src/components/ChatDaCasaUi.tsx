@@ -62,7 +62,7 @@ export function ArrastaParaResponder({ ativo, onResponder, destacada, children, 
   return (
     <div
       {...resto}
-      className={cn('relative rounded-2xl transition-colors duration-700', destacada && 'bg-amber-300/25', className)}
+      className={cn('relative rounded-2xl transition-all duration-500', destacada && 'bg-amber-300/30 ring-2 ring-amber-400', className)}
       onTouchStart={ativo ? (e) => { const t = e.touches[0]; inicio.current = { x: t.clientX, y: t.clientY, horizontal: null }; } : undefined}
       onTouchMove={ativo ? (e) => {
         const i = inicio.current;

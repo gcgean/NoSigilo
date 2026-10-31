@@ -414,7 +414,8 @@ export default function Casa() {
       const { data } = await apiClient.post(`/casa/${salaId}/entrar`);
       setEstado(data);
       // Logo ao entrar, a Lola pergunta se a pessoa quer participar das brincadeiras.
-      const chavePergunta = `nosigilo:casa-brincar:${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}:${salaId}`;
+      // Uma vez por noite (antes era por sala, e a Lola perguntava de novo em cada quarto).
+      const chavePergunta = `nosigilo:casa-brincar:${new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)}`;
       let jaPerguntou = false;
       try { jaPerguntou = localStorage.getItem(chavePergunta) === '1'; localStorage.setItem(chavePergunta, '1'); } catch { /* modo restrito */ }
       if (!silencioso && !jaPerguntou && data?.eu?.podeFalar && !data?.eu?.querBrincar) setPerguntaBrincar(salaId);
