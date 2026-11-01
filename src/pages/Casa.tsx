@@ -27,6 +27,7 @@ import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
+import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 
 /**
  * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
@@ -59,7 +60,7 @@ type Jogo = {
   aNome?: string; bNome?: string; souParte?: boolean; jaRespondi?: boolean;
 };
 type Estado = {
-  sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string };
+  sala: { id: string; nome: string; emoji: string; descricao: string; nivel: string; fundo?: FotoDeFundo | null };
   mensagens: Msg[]; presentes: Pessoa[]; espiando: number; jogo: Jogo | null;
   eu: { podeFalar: boolean; querBrincar: boolean; espiando: boolean; pulseira: Pulseira | null; idPublico: string | null; revelado: boolean };
   sala_anonima?: boolean;
@@ -93,16 +94,6 @@ const TEMA_DA_SALA: Record<string, { card: string; botao: string; foco1: string;
 };
 const temaDaSala = (id: string) => TEMA_DA_SALA[id] ?? TEMA_DA_SALA.salao;
 
-// Ambiente de cada quarto (só CSS, nada para baixar): bar neon, veludo, abajur
-// vermelho, holofote âmbar e as paredes do glory. Escuro o bastante para ler.
-const CENA_DA_SALA: Record<string, string> = {
-  salao: 'radial-gradient(ellipse 120% 55% at 50% 0%, rgba(168,85,247,.30), transparent 60%), radial-gradient(circle at 12% 88%, rgba(236,72,153,.20), transparent 35%), radial-gradient(circle at 88% 72%, rgba(59,130,246,.16), transparent 30%), radial-gradient(circle at 70% 20%, rgba(255,255,255,.06) 0 3px, transparent 4px), radial-gradient(circle at 30% 35%, rgba(255,255,255,.05) 0 2px, transparent 3px), repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 2px, transparent 2px 64px), linear-gradient(180deg, #160a22, #07060a)',
-  casais: 'radial-gradient(ellipse 110% 50% at 50% 0%, rgba(244,63,94,.32), transparent 60%), radial-gradient(circle at 82% 92%, rgba(236,72,153,.22), transparent 40%), repeating-linear-gradient(90deg, rgba(0,0,0,.28) 0 16px, rgba(255,255,255,.025) 16px 34px), linear-gradient(180deg, #220712, #08040a)',
-  quarto: 'radial-gradient(circle at 18% 12%, rgba(239,68,68,.38), transparent 34%), radial-gradient(ellipse 95% 40% at 50% 100%, rgba(127,29,29,.50), transparent 70%), radial-gradient(circle at 85% 30%, rgba(251,113,133,.10), transparent 25%), linear-gradient(180deg, #170404, #050202)',
-  cuckold: 'conic-gradient(from 165deg at 50% -8%, transparent 0deg, rgba(245,158,11,.24) 15deg, transparent 30deg), radial-gradient(ellipse 85% 40% at 50% 100%, rgba(180,83,9,.30), transparent 70%), radial-gradient(circle at 10% 50%, rgba(220,38,38,.12), transparent 30%), linear-gradient(180deg, #150b02, #050302)',
-  glory: 'radial-gradient(circle at 28% 38%, rgba(220,38,38,.40) 0 20px, rgba(0,0,0,.9) 24px, transparent 70px), radial-gradient(circle at 74% 64%, rgba(220,38,38,.32) 0 16px, rgba(0,0,0,.9) 20px, transparent 60px), radial-gradient(circle at 60% 18%, rgba(220,38,38,.22) 0 12px, transparent 45px), repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, transparent 1px 30px), linear-gradient(180deg, #0c0000, #000)',
-};
-const cenaDaSala = (id: string) => CENA_DA_SALA[id] ?? CENA_DA_SALA.salao;
 
 const TITULO_JOGO: Record<Jogo['tipo'], string> = {
   enquete: '📊 Enquete', eu_nunca: '🍷 Eu nunca', quiz: '🎓 Quiz liberal', vd: '🎲 Verdade ou desafio', match: '💘 Match às cegas',
@@ -1001,8 +992,7 @@ export default function Casa() {
         @keyframes nsFoco1 { 0%,100% { transform: translate(-30%, -10%); } 50% { transform: translate(40%, 30%); } }
         @keyframes nsFoco2 { 0%,100% { transform: translate(40%, 60%); } 50% { transform: translate(-20%, 10%); } }
       `}</style>
-      <div className="pointer-events-none absolute inset-0 -z-10" style={{ background: cenaDaSala(estado.sala.id) }} />
-      <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.55)_100%)]" />
+      <CenaDaSala salaId={estado.sala.id} foto={estado.sala.fundo} />
       <div className={cn('pointer-events-none absolute -left-20 top-0 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco1)} style={{ animation: 'nsFoco1 14s ease-in-out infinite' }} />
       <div className={cn('pointer-events-none absolute -right-20 top-1/3 h-80 w-80 rounded-full blur-3xl', temaDaSala(estado.sala.id).foco2)} style={{ animation: 'nsFoco2 18s ease-in-out infinite' }} />
 

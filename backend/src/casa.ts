@@ -234,6 +234,19 @@ export type DependenciasDaCasa = {
 
 type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
 
+/**
+ * Foto de fundo de sala: regrava em JPEG de até 1600 px sem metadados (tira EXIF,
+ * localização do celular etc.). Devolve false se o ffmpeg não conseguir ler.
+ */
+function normalizarFoto(origem: string, destino: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const p = spawn('ffmpeg', ['-y', '-i', origem, '-map_metadata', '-1', '-frames:v', '1',
+      '-vf', "scale='min(1600,iw)':-2", '-q:v', '4', destino], { stdio: 'ignore' });
+    p.on('error', () => resolve(false));
+    p.on('close', (code) => resolve(code === 0 && existsSync(destino)));
+  });
+}
+
 /** Duração do áudio em segundos (ffprobe); 0 se não conseguir ler. */
 function duracaoDoAudio(arquivo: string): Promise<number> {
   return new Promise((resolve) => {
@@ -1702,7 +1715,7 @@ Sala: ${salaId}`).catch(() => {});
 
   const estadoPara = async (sala: Sala, userId: string, p: Presente | null) => ({
     midiasVistas: await midiasQueVi(sala, userId),
-    sala: { id: sala.id, nome: sala.nome, emoji: sala.emoji, descricao: sala.descricao, nivel: sala.nivel },
+    sala: { id: sala.id, nome: sala.nome, emoji: sala.emoji, descricao: sala.descricao, nivel: sala.nivel, fundo: await fundoPublico(sala.id) },
     mensagens: sala.mensagens.slice(-150),
     presentes: resumoPresentes(sala, userId).presentes,
     espiando: resumoPresentes(sala, userId).espiando,
@@ -2882,6 +2895,97 @@ Sala: ${salaId}`).catch(() => {});
     if (!f) { res.status(404).json({ error: 'not_found' }); return; }
     await salvarPlaylist(lista.filter((x) => x.id !== f.id));
     try { unlinkSync(path.join(deps.pastaMusicas, f.arquivo)); } catch { /* já não existia */ }
+    res.json({ ok: true });
+  });
+
+  // ─── Foto de fundo de cada sala (admin) ───────────────────────────────────
+  // A foto vira papel de parede: o app deixa em preto e branco, aplica a cor da
+  // sala por cima e escurece. Aqui só guardamos o arquivo e a intensidade.
+  type FundoDaSala = { arquivo: string; intensidade: number };
+  const pastaFundos = path.join(deps.pastaMusicas, '..', 'casa-fundos');
+  mkdirSync(pastaFundos, { recursive: true });
+  let fundosCache: { valor: Record<string, FundoDaSala>; lidoEm: number } = { valor: {}, lidoEm: 0 };
+  const lerFundos = async (): Promise<Record<string, FundoDaSala>> => {
+    if (Date.now() - fundosCache.lidoEm < 30_000) return fundosCache.valor;
+    const row = (await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_fundos' LIMIT 1", [])) as any;
+    let v: any = {};
+    try { v = JSON.parse(String(row?.value || '{}')) || {}; } catch { v = {}; }
+    fundosCache = { valor: v, lidoEm: Date.now() };
+    return v;
+  };
+  const salvarFundos = async (v: Record<string, FundoDaSala>) => {
+    await db.run("DELETE FROM system_settings WHERE key = 'casa_fundos'", []);
+    await db.run("INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_fundos', ?, ?)", [JSON.stringify(v), new Date().toISOString()]);
+    await db.persist();
+    fundosCache = { valor: v, lidoEm: Date.now() };
+  };
+  const intensidadeValida = (x: unknown) => Math.min(0.6, Math.max(0.1, Number(x) || 0.3));
+  async function fundoPublico(salaId: string) {
+    const f = (await lerFundos())[salaId];
+    return f ? { url: `/api/casa/fundo/${f.arquivo}`, intensidade: f.intensidade } : null;
+  }
+
+  app.get('/api/casa/fundo/:arquivo', (req, res) => {
+    const nome = path.basename(String(req.params.arquivo));
+    if (!/^[0-9a-f-]{36}\.jpg$/i.test(nome)) { res.status(404).end(); return; }
+    const caminho = path.join(pastaFundos, nome);
+    if (!existsSync(caminho)) { res.status(404).end(); return; }
+    // Nome novo a cada troca, então pode ficar em cache para sempre.
+    res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    res.sendFile(caminho);
+  });
+
+  const envioDeFundo = multer({
+    dest: pastaFundos,
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
+  });
+
+  app.get('/api/casa/admin/fundos', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const fundos: Record<string, { url: string; intensidade: number } | null> = {};
+    for (const id of salas.keys()) fundos[id] = await fundoPublico(id);
+    res.json({ salas: [...salas.values()].map((s) => ({ id: s.id, nome: s.nome, emoji: s.emoji })), fundos });
+  });
+
+  app.post('/api/casa/admin/fundos/:sala', deps.requireAuth, envioDeFundo.single('arquivo'), async (req, res) => {
+    const arquivo = (req as any).file as { path: string } | undefined;
+    const apagar = () => { if (arquivo) { try { unlinkSync(arquivo.path); } catch { /* ok */ } } };
+    if (!(await souAdmin(req))) { apagar(); res.status(403).json({ error: 'forbidden' }); return; }
+    const salaId = String(req.params.sala) as SalaId;
+    if (!salas.has(salaId)) { apagar(); res.status(404).json({ error: 'not_found' }); return; }
+    if (!arquivo) { res.status(400).json({ error: 'arquivo', message: 'Envie uma foto (JPG, PNG ou WEBP) de até 15 MB.' }); return; }
+    const nome = `${randomUUID()}.jpg`;
+    const ok = await normalizarFoto(arquivo.path, path.join(pastaFundos, nome));
+    apagar();
+    if (!ok) { res.status(400).json({ error: 'foto_invalida', message: 'Não consegui ler essa foto. Tente um JPG ou PNG.' }); return; }
+    const fundos = { ...(await lerFundos()) };
+    const antigo = fundos[salaId];
+    fundos[salaId] = { arquivo: nome, intensidade: antigo?.intensidade ?? intensidadeValida((req.body as any)?.intensidade) };
+    await salvarFundos(fundos);
+    if (antigo) { try { unlinkSync(path.join(pastaFundos, antigo.arquivo)); } catch { /* já não existia */ } }
+    res.json({ ok: true, fundo: await fundoPublico(salaId) });
+  });
+
+  app.post('/api/casa/admin/fundos/:sala/intensidade', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const fundos = { ...(await lerFundos()) };
+    const f = fundos[String(req.params.sala)];
+    if (!f) { res.status(404).json({ error: 'not_found' }); return; }
+    fundos[String(req.params.sala)] = { ...f, intensidade: intensidadeValida((req.body as any)?.intensidade) };
+    await salvarFundos(fundos);
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/casa/admin/fundos/:sala', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const fundos = { ...(await lerFundos()) };
+    const f = fundos[String(req.params.sala)];
+    if (f) {
+      delete fundos[String(req.params.sala)];
+      await salvarFundos(fundos);
+      try { unlinkSync(path.join(pastaFundos, f.arquivo)); } catch { /* já não existia */ }
+    }
     res.json({ ok: true });
   });
 

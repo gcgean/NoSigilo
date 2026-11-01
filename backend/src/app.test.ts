@@ -3412,6 +3412,30 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
 
+  it('fundo das salas da Casa: só admin configura e foto ilegível é recusada', async () => {
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Fundos', email: 'admin-fundos@example.com', password: 'senha123', gender: 'Mulher' });
+    const comum = await registerInvitedUser(ctx, sponsorToken, { name: 'Comum Fundos', email: 'comum-fundos@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    await ctx.db.persist();
+    const auth = { Authorization: `Bearer ${adm.token}` };
+
+    const lista = (await request(ctx.app).get('/api/casa/admin/fundos').set(auth).expect(200)).body;
+    expect(lista.salas.map((s: any) => s.id)).toContain('cuckold');
+    expect(lista.fundos.cuckold).toBeNull();
+
+    await request(ctx.app).post('/api/casa/admin/fundos/cuckold').set(auth)
+      .attach('arquivo', Buffer.from('nao e uma foto'), { filename: 'x.png', contentType: 'image/png' }).expect(400);
+    await request(ctx.app).post('/api/casa/admin/fundos/nao-existe').set(auth)
+      .attach('arquivo', Buffer.from('x'), { filename: 'x.png', contentType: 'image/png' }).expect(404);
+    await request(ctx.app).post('/api/casa/admin/fundos/cuckold/intensidade').set(auth).send({ intensidade: 0.4 }).expect(404);
+    await request(ctx.app).get('/api/casa/fundo/..%2F..%2Fetc%2Fpasswd').expect(404);
+
+    const outro = { Authorization: `Bearer ${comum.token}` };
+    await request(ctx.app).get('/api/casa/admin/fundos').set(outro).expect(403);
+    await request(ctx.app).delete('/api/casa/admin/fundos/cuckold').set(outro).expect(403);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
   it('suporte aceita print do usuário (com ou sem texto) e recusa mensagem vazia ou link externo', async () => {
     const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Print Suporte', email: 'print-suporte@example.com', password: 'senha123', gender: 'Mulher' });
     const auth = { Authorization: `Bearer ${u.token}` };

@@ -4,6 +4,7 @@ import apiClient from '@/utils/apiClient';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import PlaylistDaCasa from '@/components/PlaylistDaCasa';
+import FundosDaCasa from '@/components/FundosDaCasa';
 import HistoricoDaCasa from '@/components/HistoricoDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import NegocioDaCasa from '@/components/NegocioDaCasa';
@@ -199,6 +200,7 @@ export default function AdminCasaTab() {
       </Bloco>
 
       <Bloco titulo="🏆 Ranking"><RankingDaCasa /></Bloco>
+      <FundosDaCasa />
       <PlaylistDaCasa />
       <HistoricoDaCasa />
     </div>
