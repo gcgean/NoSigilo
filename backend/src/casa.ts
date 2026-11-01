@@ -1867,6 +1867,7 @@ Sala: ${salaId}`).catch(() => {});
     const podeFalar = await podeFalarNaCasa(userId, perfil?.cat);
     const prox = await proximaNoite();
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
+    const fundosDoMapa = new Map(await Promise.all([...salas.keys()].map(async (id) => [id, await fundoPublico(id)] as const)));
     res.json({
       aberta: !!noite,
       tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
@@ -1888,6 +1889,7 @@ Sala: ${salaId}`).catch(() => {});
         const souHomem = perfil?.cat === 'homem';
         return {
           id: s.id, nome: s.nome, emoji: s.emoji, descricao: s.descricao, nivel: s.nivel,
+          fundo: fundosDoMapa.get(s.id) ?? null,
           total: c.homem + c.mulher + c.casal + c.outros,
           espiando: s.espiando.size,
           contagem: c,

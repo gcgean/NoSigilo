@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 
 /**
  * Planta d'A Casa vista de cima: cada sala com as pessoas lá dentro (bolinhas
@@ -13,6 +14,8 @@ export type SalaDoMapa = {
   id: string; nome: string; emoji: string; total: number; espiando: number;
   pessoas?: Cat[]; cabines?: CabineDoMapa[];
   bloqueadaParaMim?: boolean; lotadaParaMim?: boolean; trancada?: boolean; faltamParaAbrir?: number;
+  /** Foto de fundo configurada no admin: aparece em miniatura no quarto do mapa. */
+  fundo?: FotoDeFundo | null;
 };
 
 const EMOJI: Record<Cat, string> = { casal: '💑', mulher: '👩', homem: '👨', outros: '🧑' };
@@ -58,13 +61,14 @@ export default function MapaDaCasa({ salas, onEntrar, onEspiar }: {
               tabIndex={0}
               onClick={() => { if (!travada) onEntrar(s.id); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !travada) onEntrar(s.id); }}
-              className={cn('relative cursor-pointer overflow-hidden rounded-2xl border-2 bg-gradient-to-br transition active:scale-[0.98]', tema.fundo, tema.borda, travada && 'cursor-not-allowed opacity-50')}
+              className={cn('relative isolate cursor-pointer overflow-hidden rounded-2xl border-2 bg-gradient-to-br transition active:scale-[0.98]', tema.fundo, tema.borda, travada && 'cursor-not-allowed opacity-50')}
               style={{
                 gridArea: tema.area,
                 boxShadow: calor > 0 ? `0 0 ${10 + calor * 30}px ${tema.brilho}${0.25 + calor * 0.5})` : undefined,
                 animation: calor > 0.6 ? 'nsPulso 2.4s ease-in-out infinite' : undefined,
               }}
             >
+              {s.fundo && <CenaDaSala salaId={s.id} foto={s.fundo} />}
               <div className="absolute left-2 top-1.5 z-10 flex items-center gap-1 text-[11px] font-bold text-white drop-shadow">
                 <span>{s.emoji}</span><span className="truncate">{s.nome}</span>
               </div>

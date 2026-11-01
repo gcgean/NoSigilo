@@ -3696,6 +3696,9 @@ describe('nosigilo backend', () => {
     const outro = { Authorization: `Bearer ${comum.token}` };
     await request(ctx.app).get('/api/casa/admin/fundos').set(outro).expect(403);
     await request(ctx.app).delete('/api/casa/admin/fundos/cuckold').set(outro).expect(403);
+    // O mapa da entrada leva o fundo de cada sala (null enquanto não houver foto).
+    const mapa = (await request(ctx.app).get('/api/casa').set(outro).expect(200)).body.salas as any[];
+    expect(mapa.find((s) => s.id === 'cuckold')).toHaveProperty('fundo', null);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
   });
 
