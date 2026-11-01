@@ -3524,6 +3524,8 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
     } finally {
       vi.useRealTimers();
+      // A noite fictícia de terça não pode ficar no histórico (outros testes leem a mais recente).
+      for (const t of ['casa_mensagens', 'casa_eventos', 'casa_pontos']) await run(ctx.db, `DELETE FROM ${t} WHERE noite LIKE ?`, [`%${terca.toISOString().slice(0, 10)}`]);
     }
   });
 
@@ -3550,6 +3552,75 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post('/api/casa/admin/temas').set(auth(adm.token)).send({ data: primeira.data, temaId: null }).expect(200);
     expect((await request(ctx.app).get('/api/casa/admin/temas').set(auth(adm.token)).expect(200)).body.noites[0]).toMatchObject({ escolhido: false, tema: { id: primeira.tema.id } });
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
+  it('cabines fechadas na entrada: só tipos de perfil, pedido discreto, sem pedidos e intervalo de 10 min', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const terca = new Date();
+    terca.setUTCDate(terca.getUTCDate() + ((9 - terca.getUTCDay()) % 7 || 7));
+    terca.setUTCHours(18, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: terca });
+    try {
+      const nova = async (nome: string, gender: string) => {
+        const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+        await grantPremium(ctx, String(u.user.id));
+        return u;
+      };
+      const admin = await nova('Admin Cabine Fechada', 'Mulher');
+      await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+      const casal = await nova('Casal Cabine Fechada', 'Casal (Ele/Ela)');
+      const mulher = await nova('Mulher Cabine Fechada', 'Mulher');
+      const fora = await nova('Fora Cabine Fechada', 'Mulher');
+      const outra = await nova('Outra Cabine Fechada', 'Mulher');
+      const bloqueada = await nova('Bloqueada Cabine Fechada', 'Mulher');
+      await run(ctx.db, 'INSERT INTO blocks (id, blocker_user_id, blocked_user_id, created_at) VALUES (?, ?, ?, ?)',
+        ['bloq-cabine-fechada', String(casal.user.id), String(bloqueada.user.id), new Date().toISOString()]);
+      await ctx.db.persist();
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(mulher.token)).expect(200);
+      const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(mulher.user.id) }).expect(200)).body;
+      const { cabineId } = (await request(ctx.app).post(`/api/casa/convite/${convite.id}/responder`).set(auth(mulher.token)).send({ aceitar: true }).expect(200)).body;
+
+      // Quem está fora (ainda na entrada) vê a cabine só com os tipos de perfil.
+      const lista = (await request(ctx.app).get('/api/casa').set(auth(fora.token)).expect(200)).body.cabinesFechadas;
+      expect(lista).toHaveLength(1);
+      expect(lista[0]).toMatchObject({ id: cabineId, sala: 'salao', pedi: false });
+      expect([...lista[0].tipos].sort()).toEqual(['casal', 'mulher']);
+      expect(JSON.stringify(lista)).not.toMatch(/Casal Cabine Fechada|Mulher Cabine Fechada/);
+      // Bloqueio e quem está dentro: não aparece.
+      expect((await request(ctx.app).get('/api/casa').set(auth(bloqueada.token)).expect(200)).body.cabinesFechadas).toHaveLength(0);
+      expect((await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body.cabinesFechadas).toHaveLength(0);
+
+      // Pedir sem estar em sala nenhuma: primeiro entra na sala.
+      expect((await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedir`).set(auth(fora.token)).expect(409)).body).toMatchObject({ error: 'entre_na_casa', sala: 'salao' });
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(fora.token)).expect(200);
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedir`).set(auth(fora.token)).expect(200);
+      expect((await request(ctx.app).get('/api/casa').set(auth(fora.token)).expect(200)).body.cabinesFechadas[0].pedi).toBe(true);
+      // O pedido não vira mensagem no chat da cabine.
+      const dentro = (await request(ctx.app).post(`/api/casa/cabine/${cabineId}/estado`).set(auth(casal.token)).expect(200)).body.cabine;
+      expect(dentro.mensagens.some((m: any) => /Fora Cabine Fechada/.test(String(m.texto)))).toBe(false);
+
+      // "Não aceitar pedidos": cancela o pedido, some da lista e ninguém pede.
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedidos`).set(auth(mulher.token)).send({ aceitar: false }).expect(200);
+      expect((await request(ctx.app).get('/api/casa').set(auth(outra.token)).expect(200)).body.cabinesFechadas).toHaveLength(0);
+      await request(ctx.app).post('/api/casa/salao/entrar').set(auth(outra.token)).expect(200);
+      expect((await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedir`).set(auth(outra.token)).expect(409)).body.error).toBe('sem_pedidos');
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedidos`).set(auth(outra.token)).send({ aceitar: true }).expect(403);
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedidos`).set(auth(casal.token)).send({ aceitar: true }).expect(200);
+      // Quem já pediu só pede de novo depois de 10 minutos.
+      expect((await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedir`).set(auth(fora.token)).expect(429)).body.error).toBe('devagar');
+      await request(ctx.app).post(`/api/casa/cabine/${cabineId}/pedir`).set(auth(outra.token)).expect(200);
+
+      for (const u of [casal, mulher]) await request(ctx.app).post(`/api/casa/cabine/${cabineId}/sair`).set(auth(u.token));
+      for (const u of [casal, mulher, fora, outra]) await request(ctx.app).post('/api/casa/salao/sair').set(auth(u.token));
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+      await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
+    } finally {
+      vi.useRealTimers();
+      // A noite fictícia de terça não pode ficar no histórico (outros testes leem a mais recente).
+      for (const t of ['casa_mensagens', 'casa_eventos', 'casa_pontos']) await run(ctx.db, `DELETE FROM ${t} WHERE noite LIKE ?`, [`%${terca.toISOString().slice(0, 10)}`]);
+    }
   });
 
   it('fundo das salas da Casa: só admin configura e foto ilegível é recusada', async () => {

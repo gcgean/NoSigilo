@@ -275,6 +275,8 @@ const FOGO_MAX_CONVITES = 300;
 // Suruba: o solteiro precisa de pontos na noite ou de curtidas de casais/mulheres.
 const SURUBA_MIN_PONTOS = 10;
 const SURUBA_MIN_CURTIDAS = 2;
+// Cabine fechada entra na lista da entrada se teve conversa nos últimos 10 min.
+const CABINE_CONVERSANDO_MS = 10 * 60_000;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
 const TZ = 'America/Sao_Paulo';
 
@@ -378,6 +380,10 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     calor: number; liberouTransa: boolean; ultimaAcao: Map<string, number>;
     /** Quem saiu da Casa (fechou o app) e desde quando (só o 📴 no topo, sem aviso da Lola). */
     ausentes: Map<string, { desde: number; avisado: boolean }>;
+    /** "Não aceitar pedidos": some da lista de cabines fechadas e ninguém pede para entrar. */
+    semPedidos: boolean;
+    /** Último pedido de cada pessoa (pedir de novo só depois de 10 min). */
+    pedidosEm: Map<string, number>;
     /** Última vez que cada membro usou a cabine (tela aberta avisa a cada 25 s, falar, agir). */
     vistoEm: Map<string, number>;
     /** Os dois que abriram a cabine: só eles aprovam quem entra (31/10/2026). */
@@ -406,6 +412,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       salaId: c.salaId,
       membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat, naCasa: presenteNaCabine(c, m.id) })),
       aberta: c.aberta,
+      semPedidos: c.semPedidos,
       votosPorta: c.porta.size,
       voteiPorta: c.porta.has(userId),
       espectadores: c.espectadores.size,
@@ -487,6 +494,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
       vistoEm: new Map([[a.id, Date.now()], [b.id, Date.now()]]),
       fundadores: new Set([a.id, b.id]),
+      semPedidos: false, pedidosEm: new Map(),
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
@@ -1506,7 +1514,12 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       if (c.quente && agora - c.ultimaProvocacao > 3 * 60_000 && agora - c.ultimaFala > 45_000) provocar(c, Math.random() < 0.3);
       let mudou = false;
       for (const [id, t] of c.espectadores) if (agora - t > PING_EXPIRA_MS) { c.espectadores.delete(id); mudou = true; }
-      for (const [id, e] of c.entradas) if (agora - e.criadoEm > 3 * 60_000) { c.entradas.delete(id); mudou = true; }
+      for (const [id, e] of c.entradas) {
+        if (agora - e.criadoEm <= 3 * 60_000) continue;
+        c.entradas.delete(id);
+        if (e.tipo === 'pedido') emitirPara(id, 'casa.cabine.recusado', { cabineId: c.id });
+        mudou = true;
+      }
       if (mudou) avisarCabine(c);
     }
     for (const pr of [...propostas.values()]) {
@@ -1807,6 +1820,8 @@ Sala: ${salaId}`).catch(() => {});
       horario: HORARIO_DA_CASA,
       reservado,
       contaCriadaEm: perfil?.criadoEm ?? null,
+      // Cabines fechadas com conversa rolando (só tipos de perfil), para pedir para entrar.
+      cabinesFechadas: noite && podeFalar ? await cabinesFechadasPara(userId, perfil?.cat) : [],
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: prox.inicio,
       souAdmin: !!perfil?.admin,
@@ -3564,11 +3579,19 @@ Sala: ${salaId}`).catch(() => {});
     const c = cabineDe(req);
     const userId = userDe(req);
     const sala = c ? salas.get(c.salaId) : null;
-    const p = sala?.presentes.get(userId);
-    if (!c || !p || c.membros.has(userId)) { res.status(404).json({ error: 'fora' }); return; }
+    // Pode pedir de qualquer sala (a lista de cabines fechadas fica na entrada da Casa).
+    const p = sala?.presentes.get(userId) ?? [...salas.values()].map((s) => s.presentes.get(userId)).find(Boolean);
+    if (!c || !sala || c.membros.has(userId)) { res.status(404).json({ error: 'fora' }); return; }
+    if (!p) { res.status(409).json({ error: 'entre_na_casa', sala: sala.id, message: 'Entre numa sala da Casa para pedir.' }); return; }
     for (const id of c.membros.keys()) if (await bloqueados(userId, id)) { res.status(404).json({ error: 'fora' }); return; }
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
+    if (c.semPedidos && !c.aberta) { res.status(409).json({ error: 'sem_pedidos', message: 'Essa cabine não está aceitando pedidos agora 😉' }); return; }
+    if (!c.entradas.has(userId) && Date.now() - (c.pedidosEm.get(userId) ?? 0) < 10 * 60_000) {
+      res.status(429).json({ error: 'devagar', message: 'Você já pediu pra essa cabine agora há pouco. Dá um tempinho 😉' });
+      return;
+    }
     if (!c.entradas.has(userId)) {
+      c.pedidosEm.set(userId, Date.now());
       c.entradas.set(userId, { tipo: 'pedido', pessoa: membroDe(p), aprovados: new Set(), convidadoAceitou: true, criadoEm: Date.now() });
       // Sem mensagem no chat: o pedido aparece só como foto junto da porta, no topo da cabine.
       for (const id of quemDecide(c)) {
@@ -3579,6 +3602,43 @@ Sala: ${salaId}`).catch(() => {});
     }
     res.json({ ok: true });
   });
+
+  // Quem está dentro liga ou desliga "Não aceitar pedidos" (a cabine some da lista de fechadas).
+  app.post('/api/casa/cabine/:id/pedidos', deps.requireAuth, async (req, res) => {
+    const c = cabineDe(req);
+    const userId = userDe(req);
+    if (!c || !c.membros.has(userId)) { res.status(403).json({ error: 'so_quem_esta_dentro' }); return; }
+    c.semPedidos = !(req.body as any)?.aceitar;
+    if (c.semPedidos) {
+      for (const [id, e] of c.entradas) {
+        if (e.tipo !== 'pedido') continue;
+        c.entradas.delete(id);
+        emitirPara(id, 'casa.cabine.recusado', { cabineId: c.id });
+      }
+    }
+    avisarCabine(c);
+    res.json({ ok: true, semPedidos: c.semPedidos });
+  });
+
+  // Cabines fechadas com conversa rolando, para quem está fora pedir para entrar.
+  // Só os tipos de perfil aparecem (nada de nome ou foto de quem está dentro).
+  const cabinesFechadasPara = async (userId: string, cat: Categoria | undefined) => {
+    const lista: Array<{ id: string; sala: string; salaNome: string; salaEmoji: string; tipos: string[]; desde: string; pedi: boolean }> = [];
+    for (const c of cabines.values()) {
+      if (c.aberta || c.semPedidos || c.membros.has(userId) || c.membros.size < 2 || c.membros.size >= MAX_NA_CABINE) continue;
+      if (Date.now() - c.ultimaFala > CABINE_CONVERSANDO_MS) continue;
+      const s = salas.get(c.salaId);
+      if (!s || guardada(s) || (s.semHomens && cat === 'homem')) continue;
+      let bloqueio = false;
+      for (const id of c.membros.keys()) if (await bloqueados(userId, id)) { bloqueio = true; break; }
+      if (bloqueio) continue;
+      lista.push({
+        id: c.id, sala: s.id, salaNome: s.nome, salaEmoji: s.emoji,
+        tipos: [...c.membros.values()].map((m) => m.cat), desde: new Date(c.criadaEm).toISOString(), pedi: c.entradas.has(userId),
+      });
+    }
+    return lista.sort((a, b) => b.tipos.length - a.tipos.length).slice(0, 12);
+  };
 
   // Quem está dentro convida alguém da sala: os outros de dentro aprovam e o convidado aceita.
   app.post('/api/casa/cabine/:id/convidar', deps.requireAuth, async (req, res) => {

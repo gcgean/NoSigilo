@@ -74,6 +74,8 @@ type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovado
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
   espiandoLista?: Pessoa[]; anonima?: boolean;
+  /** "Não aceitar pedidos": a cabine some da lista de fechadas da entrada. */
+  semPedidos?: boolean;
   /** Meu id nesta cabine; decido = sou um dos dois que abriram (aprovo entradas); precisam = quantos aprovam. */
   eu?: string | null; decido?: boolean; precisam?: number;
   souMembro: boolean; souEspectador: boolean; entradas: Entrada[]; pedi: boolean; mensagens: Msg[];
@@ -434,6 +436,13 @@ export default function CabineDaCasa({
               className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]', cab.voteiPorta ? 'border-amber-400 text-amber-200' : 'border-white/20')}>
               {cab.aberta ? '🔒 Fechar porta' : cab.voteiPorta ? `👀 Porta ✓ ${cab.votosPorta}/${cab.membros.length}` : `👀 Abrir porta ${cab.votosPorta}/${cab.membros.length}`}
             </button>
+            {!cab.aberta && (
+              <button type="button" title="Com a porta fechada, quem está na entrada da Casa vê que tem cabine rolando (sem nomes) e pode pedir para entrar."
+                onClick={() => void post('pedidos', { aceitar: !!cab.semPedidos })}
+                className={cn('shrink-0 rounded-full border px-2.5 py-1 text-[11px]', cab.semPedidos ? 'border-rose-400 text-rose-200' : 'border-white/20')}>
+                {cab.semPedidos ? '🔕 Sem pedidos' : '🙋 Aceitando pedidos'}
+              </button>
+            )}
             {/* Quem pediu para entrar: só a foto, junto da porta (toque para decidir). */}
             {cab.entradas.map((e) => (
               <button key={e.id} type="button" onClick={() => setEntradaAberta(entradaAberta === e.id ? null : e.id)}

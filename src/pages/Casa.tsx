@@ -29,6 +29,7 @@ import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesD
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import TemaDaProxima from '@/components/TemaDaProxima';
+import CabinesFechadas, { type CabineFechada } from '@/components/CabinesFechadas';
 
 /**
  * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
@@ -49,6 +50,7 @@ type Info = {
   aberta: boolean; tema: TemaDaNoite | null; proximoTema?: TemaDaNoite | null; horario: string;
   souAdmin: boolean; podeFalar: boolean; teste?: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
+  cabinesFechadas?: CabineFechada[];
 };
 type DrinkRecebido = { de: { id: string; nome: string; avatar: string | null; cat: Categoria }; drink: string; tokens: number; mensagem?: string };
 type Pessoa = { id: string; nome: string; avatar: string | null; cat: Categoria; querBrincar: boolean; rei?: boolean; pulseira?: Pulseira | null; cidade?: string | null };
@@ -446,6 +448,27 @@ export default function Casa() {
     if (info.aberta && info.salas.some((s) => s.id === sala)) void entrar(sala);
   }, [params, setParams, info, entrar]);
 
+  // Pedir para entrar numa cabine fechada (lista da entrada). Quem ainda não está em
+  // nenhuma sala entra antes na sala da cabine, sem alarde.
+  const [pedindoCabine, setPedindoCabine] = useState<string | null>(null);
+  const pedirCabineFechada = async (c: CabineFechada) => {
+    setPedindoCabine(c.id);
+    const pedir = () => apiClient.post(`/casa/cabine/${c.id}/pedir`);
+    try {
+      try { await pedir(); } catch (e) {
+        if ((e as any)?.response?.data?.error !== 'entre_na_casa') throw e;
+        await entrar(c.sala, true);
+        await pedir();
+      }
+      toast({ title: '🙋 Pedido enviado', description: 'Quem está dentro decide. Se toparem, você entra na hora.' });
+      setInfo((i) => i ? { ...i, cabinesFechadas: (i.cabinesFechadas ?? []).map((x) => (x.id === c.id ? { ...x, pedi: true } : x)) } : i);
+    } catch (e) {
+      toast({ title: erroDe(e, 'Não foi possível pedir agora.'), variant: 'destructive' });
+    } finally {
+      setPedindoCabine(null);
+    }
+  };
+
   const entrarNaFila = async (salaId: string) => {
     try {
       const { data } = await apiClient.post(`/casa/${salaId}/fila`, { entrar: true });
@@ -596,12 +619,19 @@ export default function Casa() {
     // O pedido de entrada agora chega como decisão (casa.cabine.decidir), com som e janela própria.
     const aoPedidoCabine = (_d: { cabineId: string; nome: string }) => {};
     const aoDecidir = (d: DecisaoCabine) => {
+      // Pedido de entrada: só vibra de leve e aparece a foto junto da porta da cabine,
+      // sem janela no meio da conversa de quem está dentro.
+      if (d.tipo === 'pedido') {
+        try { navigator.vibrate?.(30); } catch { /* sem vibração */ }
+        registrarAviso({ emoji: '🙋', texto: `${d.nome} quer entrar na sua cabine`, acao: () => setDecisao(d), rotuloAcao: 'Decidir' });
+        return;
+      }
       tocarAviso(true, 'bater');
       setDecisao(d);
       const texto = d.tipo === 'porta' ? `${d.nome} quer abrir a porta da cabine` : d.tipo === 'convite' ? `${d.nome} quer convidar ${d.alvoNome} pra cabine` : `${d.nome} quer entrar na sua cabine`;
       registrarAviso({ emoji: d.tipo === 'porta' ? '🚪' : '🙋', texto, acao: () => setDecisao(d), rotuloAcao: 'Decidir' });
     };
-    const aoRecusadoCabine = () => { void tocarSomDaCasa('nao'); toast({ title: 'Não rolou entrar na cabine desta vez 😉' }); };
+    const aoRecusadoCabine = () => { void tocarSomDaCasa('nao'); toast({ title: 'Não deu dessa vez 😉' }); };
     const aoBatida = (d: { de: { id: string; nome: string; avatar: string | null; cat: Categoria } }) => {
       tocarAviso(false, 'bater');
       registrarAviso({ emoji: '🕳️', texto: `${d.de.nome} bateu na parede`, acao: () => void convidarRef.current(d.de), rotuloAcao: 'Chamar pra cabine', de: d.de });
@@ -1884,6 +1914,8 @@ export default function Casa() {
             );
           })}
         </div>
+
+        {info?.aberta && <CabinesFechadas cabines={info.cabinesFechadas ?? []} pedindo={pedindoCabine} onPedir={(c) => void pedirCabineFechada(c)} />}
 
         {/* Como funciona: o vídeo-tour da Lola. */}
         <div>
