@@ -1585,24 +1585,27 @@ export default function Casa() {
       </Dialog>
 
       {vendo && (
-        <div className="fixed inset-0 z-[9996] flex items-center justify-center bg-black" onContextMenu={(e) => e.preventDefault()}>
-          <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-3 z-10 rounded-full bg-white/15 p-2" aria-label="Fechar">
+        <div className="fixed inset-0 z-[9996] flex flex-col bg-black" onContextMenu={(e) => e.preventDefault()}>
+          <button type="button" onClick={() => setVendo(null)} className="absolute right-3 top-[calc(0.75rem+env(safe-area-inset-top,0px))] z-10 rounded-full bg-white/15 p-2" aria-label="Fechar">
             <X className="h-5 w-5" />
           </button>
-          {vendo.mime?.startsWith('video/')
-            ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline controls={false} className="max-h-full max-w-full select-none" />
-            : <img src={resolveServerUrl(vendo.url)} alt="" draggable={false} className="max-h-full max-w-full select-none" />}
+          {/* A mídia ocupa o espaço que sobra; a barra fica embaixo, sem cobrir a foto. */}
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            {vendo.mime?.startsWith('video/')
+              ? <video src={resolveServerUrl(vendo.url)} autoPlay playsInline controls={false} className="max-h-full max-w-full select-none object-contain" />
+              : <img src={resolveServerUrl(vendo.url)} alt="" draggable={false} className="max-h-full max-w-full select-none object-contain" />}
+          </div>
           {/* Reagir e comentar enquanto vê: o comentário vai para a sala respondendo a mídia. */}
-          <div className="absolute bottom-0 left-0 right-0 space-y-2 bg-gradient-to-t from-black via-black/80 to-transparent px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-8">
+          <div className="shrink-0 space-y-2 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-2">
             {vendo.msg && estado?.eu.podeFalar && (
               <>
-                <div className="flex justify-center gap-1.5">
+                <div className="flex flex-wrap justify-center gap-1">
                   {REACOES.map((e) => {
                     const minha = (vendo.msg?.reacoes?.[e] ?? []).includes(meuId);
                     return (
                       <button key={e} type="button"
                         onClick={() => { const m = vendo.msg!; void reagir(m, e); toast({ title: `${e} enviado pra ${m.autor?.nome ?? 'a pessoa'}` }); }}
-                        className={cn('rounded-full px-2.5 py-1.5 text-xl transition hover:scale-110', minha ? 'bg-fuchsia-600/70' : 'bg-white/15')}>{e}</button>
+                        className={cn('rounded-full px-1.5 py-1 text-lg transition hover:scale-110 sm:px-2.5 sm:py-1.5 sm:text-xl', minha ? 'bg-fuchsia-600/70' : 'bg-white/15')}>{e}</button>
                     );
                   })}
                 </div>
