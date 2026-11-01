@@ -3795,7 +3795,10 @@ export default function Admin() {
 
             <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
               <Card className="p-4 glass sm:p-6">
-                <h3 className="mb-4 font-semibold">Usuários que mais acessam (frequência)</h3>
+                <h3 className="mb-4 font-semibold">
+                  Usuários que mais acessam (frequência)
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">· últimos {accessPeriod === 'all' ? '30' : accessPeriod} dias</span>
+                </h3>
                 <div className="space-y-2">
                   {visitAnalytics.topUsers.length === 0 ? (
                     <p className="text-sm text-muted-foreground">Sem usuários autenticados suficientes para gerar ranking.</p>

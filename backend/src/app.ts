@@ -411,6 +411,46 @@ function isAdministrativeEmail(email?: string | null) {
   return ADMIN_EMAILS.has(String(email || '').trim().toLowerCase());
 }
 
+// ─── Contagens de visitas sem varrer o detalhe inteiro ──────────────────────
+// site_visits guarda 90 dias de detalhe (~3,5 milhões de linhas). Total e
+// quebras por aparelho/origem saem do resumo diário (site_visits_daily, que
+// guarda tudo, inclusive o detalhe já descartado) para os dias fechados, mais o
+// detalhe só dos dias recentes, que o job de 6 em 6h ainda reagrega (index.ts).
+const DIAS_AINDA_ABERTOS = 3;
+const corteDoResumo = () => new Date(Date.now() - DIAS_AINDA_ABERTOS * 86_400_000).toISOString().slice(0, 10);
+
+export async function totalDeVisitas(db: DbHandle) {
+  const corte = corteDoResumo();
+  const [resumo, recentes] = (await Promise.all([
+    queryOne(db, `SELECT COALESCE(SUM(visitas), 0) AS c FROM site_visits_daily
+                   WHERE dia < ? AND origin_type = '' AND device_type = '' AND country = ''`, [corte]),
+    queryOne(db, 'SELECT COUNT(*) AS c FROM site_visits WHERE created_at >= ?', [corte]),
+  ])) as any[];
+  return { c: Number(resumo?.c || 0) + Number(recentes?.c || 0) };
+}
+
+/** Visitas por aparelho ou origem, da maior para a menor. Vazio vira `vazioVira` (null = descarta). */
+export async function visitasPor(db: DbHandle, coluna: 'device_type' | 'origin_type', vazioVira: string | null) {
+  const corte = corteDoResumo();
+  const [resumo, recentes] = (await Promise.all([
+    // A linha com as três dimensões vazias é o total do dia, não uma combinação.
+    queryAll(db, `SELECT ${coluna} AS k, SUM(visitas) AS c FROM site_visits_daily
+                   WHERE dia < ? AND NOT (origin_type = '' AND device_type = '' AND country = '')
+                   GROUP BY ${coluna}`, [corte]),
+    queryAll(db, `SELECT ${coluna} AS k, COUNT(*) AS c FROM site_visits WHERE created_at >= ? GROUP BY ${coluna}`, [corte]),
+  ])) as any[][];
+  const soma = new Map<string, number>();
+  for (const r of [...resumo, ...recentes]) {
+    let k = String(r.k ?? '').trim();
+    if (!k) {
+      if (vazioVira === null) continue;
+      k = vazioVira;
+    }
+    soma.set(k, (soma.get(k) || 0) + Number(r.c || 0));
+  }
+  return [...soma].map(([rotulo, c]) => ({ rotulo, c })).sort((a, b) => b.c - a.c);
+}
+
 async function getSystemSetting(db: DbHandle, key: string) {
   const row = (await queryOne(db, 'SELECT value FROM system_settings WHERE key = ? LIMIT 1', [key])) as any;
   return row?.value ?? null;
@@ -3642,6 +3682,7 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     await apagar(`DELETE FROM comments WHERE target_type = 'post' AND target_id IN (${posts})`, u);
     await apagar(`DELETE FROM likes WHERE target_type = 'post' AND target_id IN (${posts})`, u);
     await apagar(`DELETE FROM post_views WHERE post_id IN (${posts})`, u);
+    await apagar(`DELETE FROM post_view_counts WHERE post_id IN (${posts})`, u);
     await apagar('DELETE FROM posts WHERE user_id = ?', u);
     const stories = 'SELECT id FROM stories WHERE user_id = ?';
     await apagar(`DELETE FROM story_likes WHERE story_id IN (${stories})`, u);
@@ -7755,7 +7796,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const placeholders = postIds.map(() => '?').join(', ');
       const viewCounts = await queryAll(
         db,
-        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+        `SELECT post_id, c FROM post_view_counts WHERE post_id IN (${placeholders})`,
         postIds
       );
       for (const vr of viewCounts as any[]) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
@@ -9076,7 +9117,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const placeholders = postIds.map(() => '?').join(', ');
       const viewCounts = await queryAll(
         db,
-        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${placeholders}) GROUP BY post_id`,
+        `SELECT post_id, c FROM post_view_counts WHERE post_id IN (${placeholders})`,
         postIds
       ) as any[];
       for (const vr of viewCounts) viewsCountByPostId.set(String(vr.post_id), Number(vr.c || 0));
@@ -9586,8 +9627,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await run(db, 'INSERT INTO post_views (id, post_id, viewer_id, created_at) VALUES (?, ?, ?, ?)', [
       randomUUID(), postId, viewerId, nowIso(),
     ]);
+    // Contador à parte (migração 125): contar post_views a cada feed pesava demais.
+    await run(
+      db,
+      'INSERT INTO post_view_counts (post_id, c) VALUES (?, 1) ON CONFLICT (post_id) DO UPDATE SET c = post_view_counts.c + 1',
+      [postId]
+    );
     await persist();
-    const countRow = (await queryOne(db, 'SELECT COUNT(*) as c FROM post_views WHERE post_id = ?', [postId])) as any;
+    const countRow = (await queryOne(db, 'SELECT c FROM post_view_counts WHERE post_id = ?', [postId])) as any;
     res.json({ ok: true, viewsCount: Number(countRow?.c || 0) });
   });
 
@@ -12602,7 +12649,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const viewRows = (await queryAll(
         db,
-        `SELECT post_id, COUNT(*) as c FROM post_views WHERE post_id IN (${ph}) GROUP BY post_id`,
+        `SELECT post_id, c FROM post_view_counts WHERE post_id IN (${ph})`,
         postIds
       )) as any[];
       for (const r of viewRows) viewsByPost.set(String(r.post_id), Number(r.c || 0));
@@ -16686,7 +16733,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const [curtidas, comentarios, visualizacoes, minha] = await Promise.all([
       queryOne(db, "SELECT COUNT(*) AS c FROM likes WHERE target_type = 'post' AND target_id = ?", [pid]) as Promise<any>,
       queryOne(db, "SELECT COUNT(*) AS c FROM comments WHERE target_type = 'post' AND target_id = ?", [pid]) as Promise<any>,
-      queryOne(db, 'SELECT COUNT(*) AS c FROM post_views WHERE post_id = ?', [pid]) as Promise<any>,
+      queryOne(db, 'SELECT c FROM post_view_counts WHERE post_id = ?', [pid]) as Promise<any>,
       queryOne(db, "SELECT 1 AS x FROM likes WHERE target_type = 'post' AND target_id = ? AND user_id = ? LIMIT 1", [pid, viewerId]) as Promise<any>,
     ]);
 
@@ -21144,6 +21191,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // Sao numeros de painel, nao de tela de usuario: 5 minutos de atraso nao
   // muda nenhuma decisao, e o botao de recarregar continua existindo.
   const cacheVisitas = new Map<string, { emMs: number; dados: unknown }>();
+  // As ~17 consultas do relatório rodavam todas juntas e ocupavam 6 núcleos do
+  // banco por ~30 s: o app inteiro ficava lento enquanto o admin recalculava.
+  // Em fila, de 2 em 2, leva um pouco mais e não derruba o resto.
+  const emFila = async (tarefas: Array<() => Promise<unknown>>, deUmaVez = 2): Promise<any[]> => {
+    const saida: unknown[] = new Array(tarefas.length);
+    let proxima = 0;
+    await Promise.all(Array.from({ length: Math.min(deUmaVez, tarefas.length) }, async () => {
+      while (proxima < tarefas.length) {
+        const i = proxima++;
+        saida[i] = await tarefas[i]();
+      }
+    }));
+    return saida;
+  };
   const visitasEmCurso = new Map<string, Promise<unknown>>();
   // 15 min: o cálculo varre ~2 milhões de visitas; cada abertura nova ocupava
   // o banco por quase 1 minuto e deixava o site lento para todo mundo.
@@ -21317,25 +21378,25 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // Identificador de usuário único: prioriza user_id, depois ip_hash, senão a visita.
       const uniqueUserExpr = `COUNT(DISTINCT COALESCE(NULLIF(sv.user_id, ''), NULLIF(sv.ip_hash, ''), sv.id))`;
 
-      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, uniqueLastHourRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows, uniqueByDayRows] = await Promise.all([
-        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits'),
-        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
-        queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
-        queryOne(
+      const [totalRow, todayRow, last7DaysRow, uniqueTodayRow, uniqueLastHourRow, rows, dailyRows, regionRows, cityAccessRows, topUsersRows, topCitiesRows, totalUsersByCityRow, deviceRows, hourlyRows, newUsersByDayRows, cityGrowthRows, uniqueByDayRows] = await emFila([
+        () => totalDeVisitas(db),
+        () => queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [todayIso]),
+        () => queryOne(db, 'SELECT COUNT(*) as c FROM site_visits WHERE created_at >= ?', [sevenDaysAgoIso]),
+        () => queryOne(
           db,
           `SELECT COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) as c
            FROM site_visits
            WHERE created_at >= ?`,
           [todayIso]
         ),
-        queryOne(
+        () => queryOne(
           db,
           `SELECT COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) as c
            FROM site_visits
            WHERE created_at >= ?`,
           [oneHourAgoIso]
         ),
-        queryAll(
+        () => queryAll(
           db,
           `SELECT sv.*, u.name AS user_name, u.email AS user_email, u.city AS user_city, u.state AS user_state
            FROM site_visits sv
@@ -21344,7 +21405,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            LIMIT ?`,
           [limit]
         ),
-        queryAll(
+        () => queryAll(
           db,
           `SELECT SUBSTR(created_at, 1, 10) AS day, COUNT(*) AS c
            FROM site_visits
@@ -21354,7 +21415,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            LIMIT 30`,
           [thirtyDaysAgoIso]
         ),
-        queryAll(
+        () => queryAll(
           db,
           `SELECT
              COALESCE(NULLIF(u.state, ''), NULLIF(u.city, ''), NULLIF(sv.country, ''), 'Desconhecido') AS region_label,
@@ -21367,7 +21428,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            LIMIT 10`,
           accessParams
         ),
-        queryAll(
+        () => queryAll(
           db,
           `SELECT
              CASE
@@ -21385,7 +21446,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            LIMIT 20`,
           accessParams
         ),
-        queryAll(
+        () => queryAll(
           db,
           `SELECT
              sv.user_id,
@@ -21396,12 +21457,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              MAX(sv.created_at) AS last_access_at
            FROM site_visits sv
            JOIN users u ON u.id = sv.user_id
+           WHERE sv.created_at >= ?
            GROUP BY sv.user_id, u.name, u.email
            ORDER BY accesses DESC
-           LIMIT 10`
+           LIMIT 10`,
+          [accessFromIso || thirtyDaysAgoIso]
         ),
         // Top cidades por usuários — cidade+UF crus; normalização no JS
-        queryAll(
+        () => queryAll(
           db,
           `SELECT TRIM(COALESCE(u.city, '')) AS city,
                   UPPER(TRIM(COALESCE(u.state, ''))) AS uf,
@@ -21412,7 +21475,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
            GROUP BY TRIM(COALESCE(u.city, '')), UPPER(TRIM(COALESCE(u.state, '')))`,
           cityUsersFromIso ? [cityUsersFromIso] : []
         ),
-        queryOne(
+        () => queryOne(
           db,
           `SELECT COUNT(*) as c
            FROM users u
@@ -21420,17 +21483,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
              ${cityUsersFromIso ? 'AND u.created_at >= ?' : ''}`,
           cityUsersFromIso ? [cityUsersFromIso] : []
         ),
-        queryAll(
-          db,
-          `SELECT COALESCE(NULLIF(TRIM(device_type), ''), 'desktop') AS device_label, COUNT(*) AS c
-           FROM site_visits
-           GROUP BY device_label
-           ORDER BY c DESC`
-        ),
+        () => visitasPor(db, 'device_type', 'desktop').then((linhas) =>
+          linhas.map((l) => ({ device_label: l.rotulo, c: l.c }))),
         // Usuários únicos por (dia local, hora local) nos últimos 30 dias. Depois,
         // no JS, tiramos a média por hora (soma ÷ nº de dias) para saber quantos
         // únicos ficavam online em média a cada hora — o horário de pico.
-        queryAll(
+        () => queryAll(
           db,
           `SELECT ${localHourExpr} AS hour_num,
                   ${localDayExpr} AS day,
@@ -21441,7 +21499,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           [thirtyDaysAgoIso]
         ),
         // Novos cadastros por dia (últimos 30 dias)
-        queryAll(
+        () => queryAll(
           db,
           `SELECT SUBSTR(u.created_at, 1, 10) AS reg_day, COUNT(*) AS c
            FROM users u
@@ -21453,7 +21511,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // Crescimento de cidades: novos no período vs total da cidade.
         // Agrupado por cidade+UF crus; a normalização (unir "São Luís" e
         // "São Luís, MA") e o cálculo da taxa são feitos no JS abaixo.
-        queryAll(
+        () => queryAll(
           db,
           `SELECT TRIM(COALESCE(u.city, '')) AS city,
                   UPPER(TRIM(COALESCE(u.state, ''))) AS uf,
@@ -21466,7 +21524,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           [growthFromIso]
         ),
         // Usuários únicos que acessaram por dia (local), últimos 30 dias.
-        queryAll(
+        () => queryAll(
           db,
           `SELECT ${localDayExpr} AS day, ${uniqueUserExpr} AS c
            FROM site_visits sv
@@ -21488,7 +21546,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         console.log('[admin/analytics/visits] hourlyRows amostra', (hourlyRows as any[]).slice(0, 3));
       }
 
-      const history = rows.map((row: any) => ({
+      const history = (rows as any[]).map((row: any) => ({
         id: String(row.id),
         createdAt: String(row.created_at),
         pagePath: row.page_path ? String(row.page_path) : '/',
@@ -23215,7 +23273,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         // ── By state (completo — 27 UFs)
         queryAll(db, `SELECT UPPER(TRIM(u.state)) as state, COUNT(*) as c FROM users u WHERE u.state IS NOT NULL AND TRIM(u.state) != '' ${baseWhere} GROUP BY UPPER(TRIM(u.state)) ORDER BY c DESC LIMIT 60`, []),
         // ── By origin (utm_source / referrer)
-        queryAll(db, `SELECT origin_type, COUNT(*) as c FROM site_visits WHERE origin_type IS NOT NULL GROUP BY origin_type ORDER BY c DESC LIMIT 20`, []),
+        visitasPor(db, 'origin_type', null).then((linhas) =>
+          linhas.slice(0, 20).map((l) => ({ origin_type: l.rotulo, c: l.c }))),
         // ── Por pagina de cadastro: quantos vieram de cada pagina regional de
         // SEO. Diferente do byOrigin acima, que mede visita (site_visits) e nao
         // cadastro. NULL vira 'direto' — quem chegou pela home, link ou convite.

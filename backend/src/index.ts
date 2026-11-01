@@ -765,19 +765,25 @@ async function resumirEDescartarVisitas(db: DbHandle) {
   const agora = new Date().toISOString();
 
   // Reagrega os últimos 3 dias (o de hoje ainda muda) e qualquer dia antigo
-  // que ainda não tenha resumo.
-  const pendentes = (await db.queryAll(
-    `SELECT DISTINCT SUBSTR(sv.created_at, 1, 10) AS dia
-       FROM site_visits sv
-      WHERE SUBSTR(sv.created_at, 1, 10) >= ?
-         OR NOT EXISTS (SELECT 1 FROM site_visits_daily d WHERE d.dia = SUBSTR(sv.created_at, 1, 10))
-      ORDER BY dia`,
-    [diasAtras(2)]
-  )) as any[];
+  // que ainda não tenha resumo. Os dias saem do calendário, não de um
+  // DISTINCT SUBSTR(created_at) — que varria a tabela inteira a cada 6h.
+  const primeiraVisita = (await db.queryOne('SELECT MIN(created_at) AS m FROM site_visits')) as any;
+  const primeiroDia = String(primeiraVisita?.m || '').slice(0, 10);
+  const pendentes: string[] = [];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(primeiroDia)) {
+    const jaResumidos = new Set(((await db.queryAll(
+      'SELECT DISTINCT dia FROM site_visits_daily WHERE dia >= ?', [primeiroDia]
+    )) as any[]).map((r) => String(r.dia)));
+    const hoje = diasAtras(0);
+    for (let t = Date.parse(`${primeiroDia}T00:00:00Z`); ; t += 86_400_000) {
+      const dia = new Date(t).toISOString().slice(0, 10);
+      if (dia > hoje) break;
+      if (dia >= diasAtras(2) || !jaResumidos.has(dia)) pendentes.push(dia);
+    }
+  }
+  const diaSeguinte = (dia: string) => new Date(Date.parse(`${dia}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
-  for (const linha of pendentes) {
-    const dia = String(linha.dia || '');
-    if (!dia) continue;
+  for (const dia of pendentes) {
     // Uma passada por dia: o detalhado por dimensões e o total do dia.
     for (const porDimensao of [true, false]) {
       const grupos = porDimensao
@@ -789,9 +795,9 @@ async function resumirEDescartarVisitas(db: DbHandle) {
                 COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(ip_hash, ''), id)) AS unicos,
                 COUNT(DISTINCT NULLIF(user_id, '')) AS logados
            FROM site_visits
-          WHERE SUBSTR(created_at, 1, 10) = ?
+          WHERE created_at >= ? AND created_at < ?
           ${porDimensao ? `GROUP BY ${grupos}` : ''}`,
-        [dia]
+        [dia, diaSeguinte(dia)]
       )) as any[];
 
       for (const r of rows) {

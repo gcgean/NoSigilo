@@ -5,7 +5,7 @@ import { unlinkSync, existsSync, rmSync, mkdirSync, writeFileSync } from 'node:f
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
-import { createApp } from './app.js';
+import { createApp, totalDeVisitas, visitasPor } from './app.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -705,6 +705,33 @@ describe('nosigilo backend', () => {
       .set('Authorization', `Bearer ${regB.token}`)
       .expect(200);
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
+  });
+
+  it('conta visualizações pelo contador e soma o resumo diário no total de visitas', async () => {
+    const autor = await createBootstrapSponsor(ctx, { email: 'autor-views@example.com', name: 'Autor Views' });
+    const leitor = await createBootstrapSponsor(ctx, { email: 'leitor-views@example.com', name: 'Leitor Views' });
+    const post = (await request(ctx.app).post('/api/posts').set('Authorization', `Bearer ${autor.token}`)
+      .send({ content: 'Post contado' }).expect(200)).body;
+    const postId = String(post.id || post.post?.id);
+    await request(ctx.app).post(`/api/posts/${postId}/view`).set('Authorization', `Bearer ${leitor.token}`).expect(200);
+    const segunda = await request(ctx.app).post(`/api/posts/${postId}/view`).set('Authorization', `Bearer ${leitor.token}`).expect(200);
+    expect(segunda.body.viewsCount).toBe(2);
+    const aberto = await request(ctx.app).get(`/api/posts/${postId}`).set('Authorization', `Bearer ${leitor.token}`).expect(200);
+    expect(aberto.body.post.viewsCount).toBe(2);
+
+    // Dia antigo só no resumo (detalhe já descartado) + uma visita de agora no detalhe.
+    await run(ctx.db, 'DELETE FROM site_visits', []);
+    await run(ctx.db, 'DELETE FROM site_visits_daily', []);
+    const agora = new Date().toISOString();
+    for (const [o, d, c, v] of [['', '', '', 50], ['direct', 'mobile', 'BR', 40], ['direct', 'desktop', 'BR', 10]] as const) {
+      await run(ctx.db, `INSERT INTO site_visits_daily (dia, origin_type, device_type, country, visitas, unicos, logados, atualizado_em)
+                         VALUES ('2025-01-10', ?, ?, ?, ?, 1, 0, ?)`, [o, d, c, v, agora]);
+    }
+    await run(ctx.db, `INSERT INTO site_visits (id, created_at, page_path, origin_type, device_type) VALUES ('v-agora', ?, '/', 'direct', 'mobile')`, [agora]);
+    // (A rota /api/admin/analytics/visits só roda no Postgres; aqui, as contagens que ela usa.)
+    expect((await totalDeVisitas(ctx.db)).c).toBe(51);
+    expect(await visitasPor(ctx.db, 'device_type', 'desktop')).toEqual([{ rotulo: 'mobile', c: 41 }, { rotulo: 'desktop', c: 10 }]);
+    expect(await visitasPor(ctx.db, 'origin_type', null)).toEqual([{ rotulo: 'direct', c: 51 }]);
   });
 
   it('hides admin profiles from regular users across discovery routes', async () => {
