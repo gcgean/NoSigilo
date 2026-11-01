@@ -11,7 +11,8 @@
  */
 
 export type Nivel = 'quente' | 'muito_quente';
-export type Item = { t: string; n: Nivel };
+/** `c`: só sorteia para esses tipos de perfil (verdade/desafio/foto apontados para alguém). */
+export type Item = { t: string; n: Nivel; c?: Array<'casal' | 'mulher' | 'homem'> };
 export type Enquete = { t: string; o: string[]; n: Nivel };
 export type Quiz = { t: string; o: string[]; c: number };
 
@@ -400,3 +401,182 @@ export const PROVOCACOES_CABINE: Record<1 | 2 | 3, string[]> = {
 /** Dado do prazer: ação + parte do corpo. */
 export const DADO_ACOES = ['beijar', 'lamber', 'morder de leve', 'acariciar', 'apertar', 'soprar', 'tocar devagar', 'chupar'];
 export const DADO_PARTES = ['o pescoço', 'a boca', 'as coxas', 'os seios/peito', 'a barriga', 'a nuca', 'o bumbum', 'onde você quiser 😈'];
+
+// ─── Brincadeiras próprias de cada sala (31/10/2026) ──────────────────────────
+// Nas salas temáticas a Lola puxa daqui na maior parte das vezes (o resto vem do
+// banco geral). Salão Principal segue com o banco geral, subindo o tom à noite.
+// 'glory' é a Suruba (o id ficou para não quebrar o histórico).
+
+export type SalaTematica = 'casais' | 'cuckold' | 'glory';
+export type PacoteDaSala = {
+  euNunca: Item[];
+  perguntas: Item[];
+  verdades: Item[];
+  desafios: Item[];
+  enquetes: Enquete[];
+  relampago: Array<Item & { quem: 'todos' | 'casal' }>;
+  foto: Item[];
+};
+
+const so = (c: Item['c'], it: Item): Item => ({ ...it, c });
+
+export const BRINCADEIRAS_DA_SALA: Record<SalaTematica, PacoteDaSala> = {
+  // Casais: exibição, esposas se pegando, maridos desejando as esposas dos outros e troca na imaginação.
+  casais: {
+    euNunca: [
+      mq('Eu nunca transei vendo outro casal transar do lado.'),
+      mq('Eu nunca beijei a esposa de outro casal na frente do meu marido.'),
+      mq('Eu nunca vi minha esposa beijando outra mulher.'),
+      mq('Eu nunca fiz troca de casais no mesmo quarto.'),
+      mq('Eu nunca transei sabendo que outro casal estava assistindo.'),
+      mq('Eu nunca fantasiei com a esposa ou o marido de um casal amigo.'),
+      mq('Eu nunca troquei de par no meio da transa.'),
+      q('Eu nunca combinei com meu par um sinal secreto pra quando a gente gosta de outro casal.'),
+      q('Eu nunca fui a uma casa de swing só pra olhar.'),
+    ],
+    perguntas: [
+      mq('Casais: o que vocês fariam primeiro se outro casal desta sala estivesse no quarto com vocês agora? 🔥'),
+      mq('Esposas: qual marido desta sala vocês deixariam assistir vocês? 👀'),
+      mq('Maridos: o que mais excita vocês em ver a esposa beijando outra mulher?'),
+      mq('Exibir transando pra outro casal ou assistir outro casal transar: o que vocês preferem?'),
+      mq('Qual foi a troca mais gostosa que vocês já fizeram (ou que imaginam fazer)?'),
+      mq('Maridos: com que esposa desta sala vocês trocariam hoje, se a de vocês deixasse? 😈'),
+      q('Casais: quem toma a iniciativa numa troca, ele ou ela? 😏'),
+    ],
+    verdades: [
+      mq('{nome}, qual casal desta sala vocês chamariam pra trocar hoje, e por quê?'),
+      mq('{nome}, vocês já se imaginaram transando do lado de outro casal desta sala? Conta como seria.'),
+      mq('{nome}, o que vocês deixariam o outro casal fazer com vocês, na frente um do outro?'),
+      so(['casal'], q('{nome}, quem puxou o assunto da troca pela primeira vez: ele ou ela?')),
+      so(['mulher'], mq('{nome}, qual esposa desta sala você pegaria na frente do marido dela?')),
+    ],
+    desafios: [
+      mq('{nome}, descreva pra sala como seria a primeira troca de vocês com um casal daqui (sem citar nome, se preferir).'),
+      mq('{nome}, provoque a esposa de outro casal com o elogio mais safado que vier na cabeça (o marido dela vai ler 😈).'),
+      mq('{nome}, convide um casal desta sala pra cabine de vocês (vale recusar).'),
+      mq('{nome}, conte qual parte do corpo da esposa de outro casal você beijaria primeiro.'),
+      mq('{nome}, escreva o que faria se as esposas desta sala começassem a se pegar na sua frente.'),
+      so(['casal'], mq('{nome}, descrevam pra sala como vocês transariam sabendo que outro casal está assistindo.')),
+    ],
+    enquetes: [
+      { t: 'Numa troca, o que vocês curtem mais?', o: ['Mesmo quarto 🔥', 'Quartos separados', 'Só assistir', 'Só ser assistidos'], n: 'muito_quente' },
+      { t: 'Esposas se pegando na frente dos maridos:', o: ['Já rolou 🔥', 'Doidas pra rolar', 'Só na imaginação', 'Não é a nossa'], n: 'muito_quente' },
+      { t: 'Transar com outro casal assistindo:', o: ['Adoramos exibir', 'Preferimos assistir', 'Os dois 😈', 'Ainda falta coragem'], n: 'muito_quente' },
+      { t: 'A primeira troca de vocês foi (ou vai ser):', o: ['Com casal amigo', 'Com casal daqui do NoSigilo', 'Em casa de swing', 'Ainda vai rolar 😈'], n: 'quente' },
+    ],
+    relampago: [
+      { ...mq('Primeiro casal que mandar uma foto dos dois se pegando (sem rosto) ganha 10 tokens 🔥'), quem: 'casal' },
+      { ...mq('Primeira esposa que mostrar a lingerie de hoje pra sala (sem rosto) ganha 10 tokens 😈'), quem: 'casal' },
+      { ...mq('Primeiro marido que mandar a foto da mão dele na esposa, onde ela deixar, ganha 10 tokens'), quem: 'casal' },
+    ],
+    foto: [
+      so(['casal'], mq('{nome}, mostrem pra sala como vocês estão agora no sofá ou na cama (sem rosto)')),
+      so(['casal'], mq('{nome}, uma foto do seu par do jeito que você exibiria pra outro casal (com o ok dele ou dela)')),
+      so(['mulher'], mq('{nome}, uma foto provocando as esposas da sala (sem rosto) 😈')),
+    ],
+  },
+
+  // Cuckold: o marido exibe a esposa, os homens desejam e quem escolhe é sempre ela.
+  cuckold: {
+    euNunca: [
+      mq('Eu nunca vi minha esposa sendo desejada por outro homem na minha frente.'),
+      mq('Eu nunca mandei foto da minha esposa pra outro homem (com ela sabendo).'),
+      mq('Eu nunca assisti minha esposa com outro.'),
+      mq('Eu nunca escolhi o homem junto com meu marido.'),
+      mq('Eu nunca fiquei com uma esposa na frente do marido dela 😈'),
+      q('Eu nunca contei pro meu marido uma cantada que recebi só pra provocar ele.'),
+    ],
+    perguntas: [
+      mq('Maridos: o que mais excita vocês em ver ela sendo desejada? 😈'),
+      mq('Esposas: o que um homem precisa fazer pra ganhar vocês na frente do marido?'),
+      mq('Homens: qual o elogio mais safado que vocês fariam pra uma esposa daqui? Ela escolhe o melhor 👑'),
+      mq('Maridos: vocês preferem assistir de perto, de longe ou ouvir ela contar tudo depois?'),
+      mq('Casais: qual foi a vez que ele mais gostou de ver você desejada?'),
+      q('Esposas: de quem foi a ideia primeiro, de vocês ou do marido?'),
+    ],
+    verdades: [
+      so(['casal'], mq('{nome}, contem pra sala o que mais excita vocês quando ela é desejada por outros homens.')),
+      so(['casal'], mq('{nome}, qual homem desta sala ela escolheria agora? Deixa ela responder 😈')),
+      so(['casal'], mq('{nome}, até onde o marido gosta de ver: olhar, tocar ou tudo?')),
+      so(['homem'], mq('{nome}, o que você diria pro marido se a esposa dele te escolhesse?')),
+      so(['homem'], mq('{nome}, como você conquistaria uma esposa com o marido olhando?')),
+      so(['mulher'], mq('{nome}, o que te deixa com mais tesão: ser olhada ou ser escolhida?')),
+    ],
+    desafios: [
+      so(['casal'], mq('{nome}, marido: descreva a esposa pra sala do jeito que você quer que os homens imaginem ela.')),
+      so(['casal'], mq('{nome}, ela escolhe: qual homem desta sala ganha um elogio dela de volta? 👑')),
+      so(['casal'], mq('{nome}, marido: conte pra sala a fantasia que você tem de ver ela com outro.')),
+      so(['homem'], mq('{nome}, mande pra sala o elogio mais safado pra uma das esposas presentes. Quem decide se gostou é ela.')),
+      so(['homem'], mq('{nome}, peça licença ao marido de um casal daqui e elogie a esposa dele (com classe 😏).')),
+      so(['mulher'], mq('{nome}, escolha o homem desta sala que mais te provocou hoje e diga por quê.')),
+    ],
+    enquetes: [
+      { t: 'Marido cuckold: como ele gosta mais?', o: ['Assistindo de perto', 'Escondido olhando', 'Ouvindo ela contar', 'Participando junto'], n: 'muito_quente' },
+      { t: 'Quem escolhe o homem?', o: ['Ela, sempre 👑', 'Os dois juntos', 'O marido', 'Quem se garantir'], n: 'quente' },
+      { t: 'O que mais conquista uma esposa na frente do marido?', o: ['Elogio safado', 'Respeito pelo casal', 'Atitude', 'Uma boa foto 😏'], n: 'quente' },
+    ],
+    relampago: [
+      { ...mq('Primeiro marido que exibir a esposa numa foto agora (com o ok dela, sem rosto) ganha 10 tokens 😈'), quem: 'casal' },
+      { ...mq('Primeira esposa que mostrar pra sala o que vai usar pro próximo homem (sem rosto) ganha 10 tokens'), quem: 'casal' },
+    ],
+    foto: [
+      so(['casal'], mq('{nome}, o marido escolhe: uma foto dela pra sala inteira desejar (sem rosto, se preferir)')),
+      so(['casal'], mq('{nome}, uma foto da lingerie que ela usaria pro próximo homem 😈 (sem rosto)')),
+    ],
+  },
+
+  // Suruba: todo mundo se pega.
+  glory: {
+    euNunca: [
+      mq('Eu nunca participei de uma suruba.'),
+      mq('Eu nunca fiquei com mais de duas pessoas ao mesmo tempo.'),
+      mq('Eu nunca perdi a conta de quem estava me pegando.'),
+      mq('Eu nunca transei com um casal e mais uma mulher ao mesmo tempo.'),
+      mq('Eu nunca entrei num quarto escuro sem saber quem estava lá dentro.'),
+      q('Eu nunca beijei três pessoas diferentes na mesma noite.'),
+    ],
+    perguntas: [
+      mq('Suruba dos sonhos: quantas pessoas, e quem desta sala estaria lá? 🔥'),
+      mq('Numa suruba vocês preferem comandar, ser comandados ou só se deixar levar?'),
+      mq('Qual a primeira coisa que vocês fariam se a luz apagasse agora nesta sala?'),
+      mq('Combinado da suruba de vocês: vale tudo ou tem regra? Contem a regra mais safada.'),
+    ],
+    verdades: [
+      mq('{nome}, quem desta sala você puxaria primeiro pro meio da suruba?'),
+      mq('{nome}, conta a noite mais cheia de gente que você já viveu.'),
+      mq('{nome}, numa suruba você vai pro meio ou fica na beirada olhando? 😏'),
+    ],
+    desafios: [
+      mq('{nome}, escolha três pessoas desta sala e descreva a cena da suruba de vocês.'),
+      mq('{nome}, chame duas pessoas da sala pra uma cabine a três (vale recusar).'),
+      mq('{nome}, descreva pra sala o que faria se acordasse no meio desta suruba.'),
+    ],
+    enquetes: [
+      { t: 'Suruba ideal:', o: ['Só casais', 'Casais e mulheres', 'Mistura geral 🔥', 'Só na imaginação 😅'], n: 'muito_quente' },
+      { t: 'Na suruba você é:', o: ['Quem puxa todo mundo', 'Quem se deixa levar', 'Quem assiste', 'Quem vai de beijo em beijo'], n: 'muito_quente' },
+    ],
+    relampago: [
+      { ...mq('Primeiro a mostrar com que roupa (ou sem) chegou na suruba, sem rosto, ganha 10 tokens 🔥'), quem: 'todos' },
+      { ...mq('Primeiro casal que mandar uma foto chamando a sala pra cama ganha 10 tokens 😈'), quem: 'casal' },
+    ],
+    foto: [
+      mq('{nome}, foto da roupa (ou da falta dela) que você usaria nesta suruba (sem rosto)'),
+    ],
+  },
+};
+
+/** Como a Lola deve puxar cada sala (vai no pedido para a IA). */
+export const PERFIL_DA_SALA: Record<string, string> = {
+  salao: 'Salão Principal: a pista de todo mundo. Brincadeiras quentes de quebra-gelo que vão subindo o tom ao longo da noite e puxam o pessoal pra cabine e para as salas mais quentes.',
+  casais: 'Sala dos Casais (só casais e mulheres): provoque os casais a se exibirem transando para outros casais, as esposas a se pegarem, os maridos a desejarem as esposas dos outros e a troca de casais na imaginação.',
+  quarto: 'Quarto Escuro: para quem veio brincar de verdade, sem filtro e com respeito.',
+  cuckold: 'Quarto Cuckold: o marido gosta de exibir a esposa e ver outros homens desejando ela. Provoque o marido a exibir a esposa e os homens a desejá-la com elogios; quem escolhe é sempre ela.',
+  glory: 'Suruba: a sala onde todo mundo se pega. Fale de sexo em grupo, de quem puxa quem, dos combinados da suruba e de várias pessoas ao mesmo tempo.',
+};
+
+/** Salão chamando para as salas mais quentes quando elas estão animadas. */
+export const CHAMADAS_PARA_SALA: Record<SalaTematica, string[]> = {
+  casais: ['💑 A Sala dos Casais tá animada agora… casais e mulheres, quem vai? 😈', '💑 Tem casal se exibindo na Sala dos Casais. Bora espiar? 🔥'],
+  cuckold: ['😈 No Quarto Cuckold tem marido exibindo a esposa… homens, a vez é de vocês!', '😈 O Quarto Cuckold esquentou: quem escolhe é ela, quem se garante vai lá.'],
+  glory: ['🔥 A Suruba começou! Casais e mulheres entram direto, e os solteiros que mais animaram a noite também 😏'],
+};

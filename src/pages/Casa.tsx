@@ -25,7 +25,7 @@ import MapaDaCasa, { type CabineDoMapa } from '@/components/MapaDaCasa';
 import TokenBadge from '@/components/TokenBadge';
 import ComprarTokens from '@/components/ComprarTokens';
 import FeedbackDaCasa from '@/components/FeedbackDaCasa';
-import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas } from '@/components/ChatDaCasaUi';
+import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 
@@ -629,7 +629,10 @@ export default function Casa() {
   useEffect(() => () => { if (salaRef.current) void apiClient.post(`/casa/${salaRef.current}/sair`).catch(() => {}); }, []);
 
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
-  const rolagem = useRolagemDoChat({ chave: estado?.sala.id ?? null, mensagens: estado?.mensagens, meuId: estado?.eu.idPublico ?? user?.id ?? '' });
+  // @menções: quem está na sala (e meu nome aqui, que pode ser apelido).
+  const meuNomeNaSala = estado?.presentes.find((x) => x.id === estado.eu.idPublico)?.nome;
+  const nomesNaSala = (estado?.presentes ?? []).map((x) => x.nome);
+  const rolagem = useRolagemDoChat({ chave: estado?.sala.id ?? null, mensagens: estado?.mensagens, meuId: estado?.eu.idPublico ?? user?.id ?? '', meuNome: meuNomeNaSala });
   // A faixa "Respondendo" ocupa espaço embaixo: quem está no fim continua vendo a última.
   useEffect(() => { if (respondendo && rolagem.noFim) rolagem.irParaFim(); }, [respondendo]); // eslint-disable-line react-hooks/exhaustive-deps
   const irParaCitada = (id: string) => {
@@ -1233,7 +1236,7 @@ export default function Casa() {
               {m.resposta && (
                 <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-fuchsia-400 bg-black/30 text-white/60" nomeClassName="text-fuchsia-300" />
               )}
-              <p className="break-words text-sm">{m.texto}</p>
+              <p className="break-words text-sm"><TextoComMencoes texto={m.texto} nomes={nomesNaSala} meuNome={meuNomeNaSala} /></p>
               <AcoesDaMsg m={m} />
             </div>
           </div>
@@ -1357,11 +1360,13 @@ export default function Casa() {
           >
             {enviandoMidia !== null ? <span className="text-[10px] tabular-nums">{enviandoMidia < 99 ? `${enviandoMidia}%` : "⏳"}</span> : <Camera className="h-4 w-4" />}
           </button>
+          <SugestoesDeMencao texto={texto} onEscolher={setTexto} className={respondendo ? 'mb-9' : undefined}
+            pessoas={estado.presentes.filter((x) => x.id !== estado.eu.idPublico)} />
           <input
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             maxLength={280}
-            placeholder="Fale com a sala…"
+            placeholder="Fale com a sala… (@ para marcar alguém)"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none"
           />
           <button type="submit" disabled={!texto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar">
@@ -1731,7 +1736,7 @@ export default function Casa() {
                     {pessoaAberta.cat === 'homem' && !estado.sala_anonima && (() => {
                       const eu = estado.presentes.find((x) => x.id === estado.eu.idPublico);
                       if (eu?.cat !== 'casal' && eu?.cat !== 'mulher') return null;
-                      const destinos = (info?.salas ?? []).filter((s) => s.id !== estado.sala.id && s.id !== 'glory' && s.id !== 'casais' && !s.trancada);
+                      const destinos = (info?.salas ?? []).filter((s) => s.id !== estado.sala.id && s.id !== 'casais' && !s.trancada);
                       if (destinos.length === 0) return null;
                       return (
                         <div className="rounded-xl border border-amber-400/40 p-2">

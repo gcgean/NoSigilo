@@ -3469,6 +3469,64 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
   });
 
+  it('Suruba: casal e mulher entram direto; solteiro só com pontos, curtidas ou chamado', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    // Fora do horário da Casa (próxima terça, 15h de Brasília): a abertura forçada destrava a Suruba
+    // e o teste não depende de rodar numa sexta ou sábado à noite, com a Casa aberta de verdade.
+    const terca = new Date();
+    terca.setUTCDate(terca.getUTCDate() + ((9 - terca.getUTCDay()) % 7 || 7));
+    terca.setUTCHours(18, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: terca });
+    try {
+    const nova = async (nome: string, gender: string) => {
+      const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+      await grantPremium(ctx, String(u.user.id));
+      return u;
+    };
+    const admin = await nova('Admin Suruba', 'Mulher');
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+    const casal = await nova('Casal Suruba', 'Casal (Ele/Ela)');
+    const mulher = await nova('Mulher Suruba', 'Mulher');
+    const mulher2 = await nova('Mulher Suruba Dois', 'Mulher');
+    const semMerito = await nova('Solteiro Sem Merito', 'Homem');
+    const curtido = await nova('Solteiro Curtido', 'Homem');
+    const chamado = await nova('Solteiro Chamado', 'Homem');
+    await ctx.db.persist();
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+
+    const info = (await request(ctx.app).get('/api/casa').set(auth(semMerito.token)).expect(200)).body;
+    expect(info.salas.find((s: any) => s.id === 'glory')).toMatchObject({ nome: 'Suruba' });
+    expect(info.salas.some((s: any) => s.id === 'quarto')).toBe(false);
+
+    await request(ctx.app).post('/api/casa/glory/entrar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/glory/entrar').set(auth(mulher.token)).expect(200);
+    const barrado = await request(ctx.app).post('/api/casa/glory/entrar').set(auth(semMerito.token)).expect(403);
+    expect(barrado.body.error).toBe('suruba_merito');
+
+    // Duas curtidas de mulheres no perfil nas últimas 24 h liberam.
+    for (const quem of [mulher, mulher2]) {
+      await run(ctx.db, 'INSERT INTO likes (id, user_id, target_type, target_id, created_at) VALUES (?, ?, ?, ?, ?)',
+        [`curtida-suruba-${quem.user.id}`, String(quem.user.id), 'user', String(curtido.user.id), new Date().toISOString()]);
+    }
+    await request(ctx.app).post('/api/casa/glory/entrar').set(auth(curtido.token)).expect(200);
+
+    // Chamado por um casal no Salão: entra sem mérito.
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(chamado.token)).expect(200);
+    await request(ctx.app).post('/api/casa/salao/chamar-pra-sala').set(auth(casal.token)).send({ para: String(chamado.user.id), destino: 'glory' }).expect(200);
+    await request(ctx.app).post('/api/casa/glory/entrar').set(auth(chamado.token)).expect(200);
+
+    for (const u of [casal, mulher, curtido, chamado]) {
+      await request(ctx.app).post('/api/casa/glory/sair').set(auth(u.token));
+      await request(ctx.app).post('/api/casa/salao/sair').set(auth(u.token));
+    }
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('fundo das salas da Casa: só admin configura e foto ilegível é recusada', async () => {
     const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Fundos', email: 'admin-fundos@example.com', password: 'senha123', gender: 'Mulher' });
     const comum = await registerInvitedUser(ctx, sponsorToken, { name: 'Comum Fundos', email: 'comum-fundos@example.com', password: 'senha123', gender: 'Mulher' });
@@ -3952,12 +4010,11 @@ describe('nosigilo backend', () => {
     const ranking = (await request(ctx.app).get('/api/casa/ranking?periodo=noite&cat=todos').set(auth(casal.token)).expect(200)).body.ranking;
     expect(ranking.some((r: any) => r.id === String(homens[0].user.id))).toBe(true);
 
-    // Glory Hole: anônimo (id e nome escondidos) até a pessoa revelar.
-    const glory = (await request(ctx.app).post('/api/casa/glory/entrar').set(auth(casal.token)).expect(200)).body;
-    const euNaGlory = glory.presentes.find((x: any) => x.id === glory.eu.idPublico);
-    expect(euNaGlory.nome).toMatch(/^Anônimo/);
-    expect(glory.eu.idPublico).not.toBe(String(casal.user.id));
-    await request(ctx.app).post('/api/casa/glory/revelar').set(auth(casal.token)).expect(200);
+    // Suruba (no lugar do Glory Hole, 31/10/2026): ninguém fica anônimo.
+    const suruba = (await request(ctx.app).post('/api/casa/glory/entrar').set(auth(casal.token)).expect(200)).body;
+    expect(suruba.sala.nome).toBe('Suruba');
+    expect(suruba.eu.idPublico).toBe(String(casal.user.id));
+    expect(suruba.presentes.find((x: any) => x.id === suruba.eu.idPublico).nome).toBe('Casal Casa');
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(casal.token)).expect(200);
 
     // Página pública: sem login, só números.

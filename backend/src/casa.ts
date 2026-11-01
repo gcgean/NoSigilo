@@ -23,9 +23,9 @@ import type express from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import {
-  BOAS_VINDAS, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU,
+  BOAS_VINDAS, BRINCADEIRAS_DA_SALA, CHAMADAS_PARA_SALA, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU, PERFIL_DA_SALA,
   PERGUNTAS_QUENTES, PROVOCACOES_CABINE, DADO_ACOES, DADO_PARTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
-  type Item, type Nivel,
+  type Item, type Nivel, type PacoteDaSala, type SalaTematica,
 } from './casaBrincadeiras.js';
 
 type Categoria = 'homem' | 'mulher' | 'casal' | 'outros';
@@ -272,6 +272,9 @@ const FOGO_MIN_PESSOAS = 8;
 const FOGO_MIN_MENSAGENS = 40;
 const FOGO_INTERVALO_MS = 30 * 60_000;
 const FOGO_MAX_CONVITES = 300;
+// Suruba: o solteiro precisa de pontos na noite ou de curtidas de casais/mulheres.
+const SURUBA_MIN_PONTOS = 10;
+const SURUBA_MIN_CURTIDAS = 2;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
 const TZ = 'America/Sao_Paulo';
 
@@ -352,7 +355,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     ['casais', novaSala('casais', 'Sala dos Casais', '💑', 'Só casais e mulheres. Brincadeiras muito quentes.', 'muito_quente', true)],
     ['quarto', novaSala('quarto', 'Quarto Escuro', '🖤', 'Para quem veio brincar de verdade. Sem filtro (com respeito).', 'muito_quente', false)],
     ['cuckold', novaSala('cuckold', 'Quarto Cuckold', '😈', 'Casais exibem a esposa para os homens: o marido gosta de ver os outros desejando, e até transando com ela. Sempre aberto: solteiros entram à vontade, sem fila. Quem escolhe é ela, e o casal pode chamar o solteiro para as outras salas.', 'muito_quente', false, false, true)],
-    ['glory', novaSala('glory', 'Glory Hole', '🕳️', 'Anônimo: ninguém sabe quem está do outro lado. Fotos e vídeos de visualização única; revela quem quiser.', 'muito_quente', false, true)],
+    // Suruba no lugar do Glory Hole (31/10/2026). O id 'glory' ficou para não quebrar o histórico.
+    ['glory', novaSala('glory', 'Suruba', '🫦', 'Onde todo mundo se pega. Casais e mulheres entram direto; solteiro entra se animou a noite (pontos nas brincadeiras ou curtidas de casais e mulheres) ou se um casal ou uma mulher chamar.', 'muito_quente', false)],
   ]);
   const convites = new Map<string, { de: string; para: string; sala: SalaId; criadoEm: number }>();
   // Desafios sugeridos por um perfil para outro, valendo tokens (guardados até cumprir).
@@ -811,9 +815,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   // Com pouca gente, só Salão e Sala dos Casais (senão cada sala fica com 3 e parece vazia).
   // As outras destravam com 25 pessoas na Casa e ficam abertas até o fim da noite.
   // O Quarto Cuckold fica sempre aberto: é onde os solteiros entram sem fila.
-  // Quarto Escuro e Glory Hole estão guardados (SALAS_GUARDADAS) até a Casa crescer.
-  const SALAS_EXTRAS: SalaId[] = [];
-  const SALAS_GUARDADAS: SalaId[] = ['quarto', 'glory'];
+  // Quarto Escuro está guardado até a Casa crescer. A Suruba só destrava com a Casa cheia
+  // (suruba com três pessoas não engrena).
+  const SALAS_EXTRAS: SalaId[] = ['glory'];
+  const SALAS_GUARDADAS: SalaId[] = ['quarto'];
   const guardada = (sala: Sala) => SALAS_GUARDADAS.includes(sala.id);
   const MINIMO_PARA_DESTRAVAR = 25;
   const liberadas = new Set<string>();
@@ -883,9 +888,37 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   };
 
   // ─── Anfitriã: itens novos com a IA, banco como reserva ───────────────────
-  const itemDoBanco = (sala: Sala, lista: Item[], prefixo: string) => {
+  // O Salão Principal sobe o tom com a noite: depois das 23h30, às vezes puxa as muito quentes.
+  const permiteMuitoQuente = (sala: Sala) => {
+    if (sala.nivel === 'muito_quente') return true;
+    const brt = new Date(Date.now() - 3 * 3_600_000);
+    const minuto = brt.getUTCHours() * 60 + brt.getUTCMinutes();
+    return sala.id === 'salao' && (minuto >= 23 * 60 + 30 || minuto < 5 * 60) && Math.random() < 0.35;
+  };
+  /** Pacote de brincadeiras próprio da sala (Casais, Cuckold, Suruba). */
+  const pacoteDa = (sala: Sala): PacoteDaSala | undefined => BRINCADEIRAS_DA_SALA[sala.id as SalaTematica];
+  /** Nas salas temáticas, 70% das vezes a brincadeira vem do pacote da sala. */
+  const usarPacote = <T>(sala: Sala, tema: keyof PacoteDaSala, geral: T[], prefixo: string): { lista: T[]; prefixo: string } => {
+    const proprias = pacoteDa(sala)?.[tema] as T[] | undefined;
+    return proprias?.length && Math.random() < 0.7 ? { lista: proprias, prefixo: `${sala.id}-${tema}-` } : { lista: geral, prefixo };
+  };
+  const itemDoBanco = (sala: Sala, lista: Item[], prefixo: string, cat?: Categoria, tema?: keyof PacoteDaSala): string => {
+    if (tema) {
+      const proprias = pacoteDa(sala)?.[tema] as Item[] | undefined;
+      if (proprias?.length && Math.random() < 0.7) {
+        const t = sortearDoBanco(sala, proprias, `${sala.id}-${tema}-`, cat);
+        if (t) return t;
+      }
+    }
+    return sortearDoBanco(sala, lista, prefixo, cat) ?? sortear(lista.filter((it) => !it.c)).t;
+  };
+  const sortearDoBanco = (sala: Sala, lista: Item[], prefixo: string, cat?: Categoria): string | null => {
+    const muitoQuente = permiteMuitoQuente(sala);
     const pode = lista.map((it, i) => ({ it, chave: `${prefixo}${i}` }))
-      .filter(({ it }) => it.n === 'quente' || sala.nivel === 'muito_quente');
+      .filter(({ it }) => it.n === 'quente' || muitoQuente)
+      // Item apontado para um tipo de perfil (ex.: "marido, descreva a esposa") só sai para esse tipo.
+      .filter(({ it }) => !it.c || (!!cat && (it.c as string[]).includes(cat)));
+    if (pode.length === 0) return null;
     let livres = pode.filter(({ chave }) => !sala.usados.has(chave));
     if (livres.length === 0) {
       for (const { chave } of pode) sala.usados.delete(chave);
@@ -917,7 +950,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Você é a Lola, anfitriã IA de "A Casa", uma boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18 e na plataforma por vontade própria). Você anima a sala com brincadeiras ${sala.nivel === 'muito_quente' ? 'muito quentes, ousadas e explícitas no tema' : 'quentes e provocantes'} sobre sexo, fantasias, swing e desejo. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou pedir dados pessoais; não peça fotos íntimas na sala aberta. Português do Brasil, linguagem de quem curte o meio liberal. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
+              content: `Você é a Lola, anfitriã IA de "A Casa", uma boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18 e na plataforma por vontade própria). Você anima a sala com brincadeiras ${sala.nivel === 'muito_quente' ? 'muito quentes, ousadas e explícitas no tema' : 'quentes e provocantes'} sobre sexo, fantasias, swing e desejo. ${PERFIL_DA_SALA[sala.id] ?? ''} Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou pedir dados pessoais; não peça fotos íntimas na sala aberta. Português do Brasil, linguagem de quem curte o meio liberal. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `${pedido}\nExemplos do estilo (não repita):\n${amostra}` },
           ],
@@ -954,7 +987,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Você é a Lola, anfitriã IA de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Você está no ${sala.nome}. Responda a quem respondeu você: provocante, divertida, ${sala.nivel === 'muito_quente' ? 'bem safada' : 'sensual'}, puxando a pessoa e a sala para interagir. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro, links, contatos ou dados pessoais; não peça fotos íntimas na sala aberta; nunca diga que é humana. Chame a pessoa pelo nome. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
+              content: `Você é a Lola, anfitriã IA de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Você está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Responda a quem respondeu você: provocante, divertida, ${sala.nivel === 'muito_quente' ? 'bem safada' : 'sensual'}, puxando a pessoa e a sala para interagir. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro, links, contatos ou dados pessoais; não peça fotos íntimas na sala aberta; nunca diga que é humana. Chame a pessoa pelo nome. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `Você disse na sala: "${falaDaLola.slice(0, 200)}"\n${nome} respondeu: "${texto.slice(0, 200)}"` },
           ],
@@ -1002,7 +1035,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Vocês são Léo & Bia, o casal anfitrião VIRTUAL (uma IA) de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Vocês estão no ${sala.nome}. Falam como um casal liberal animado, simpático e ${sala.nivel === 'muito_quente' ? 'bem safado' : 'provocante'}, em geral no plural ("a gente"). Objetivo: fazer as PESSOAS da sala conversarem entre si: pergunta leve e safada, elogio, apresentar um ao outro, sugerir drink ou cabine. Nunca finjam ser pessoas reais (se perguntarem, vocês são a IA da Casa); nunca combinem encontro, nunca peçam contato nem fotos. Tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou links. Chame alguém pelo nome quando fizer sentido. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 170 caracteres, no máximo um emoji.`,
+              content: `Vocês são Léo & Bia, o casal anfitrião VIRTUAL (uma IA) de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Vocês estão no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Falam como um casal liberal animado, simpático e ${sala.nivel === 'muito_quente' ? 'bem safado' : 'provocante'}, em geral no plural ("a gente"). Objetivo: fazer as PESSOAS da sala conversarem entre si: pergunta leve e safada, elogio, apresentar um ao outro, sugerir drink ou cabine. Nunca finjam ser pessoas reais (se perguntarem, vocês são a IA da Casa); nunca combinem encontro, nunca peçam contato nem fotos. Tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou links. Chame alguém pelo nome quando fizer sentido. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 170 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `Quem está na sala: ${quem || 'pouca gente'}\nÚltimas mensagens:\n${conversa || '(silêncio)'}\n\n${pedido}` },
           ],
@@ -1091,10 +1124,24 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     [a, b, b, a],
   ));
 
+  // Salão chama a turma para a sala quente mais animada (no máximo a cada 20 min).
+  let ultimaChamadaDoSalao = 0;
+  const chamarParaSalaQuente = (salao: Sala) => {
+    if (Date.now() - ultimaChamadaDoSalao < 20 * 60_000 || Math.random() > 0.35) return;
+    const quentes = [...salas.values()]
+      .filter((s) => s.id in CHAMADAS_PARA_SALA && !guardada(s) && !(SALAS_EXTRAS.includes(s.id) && !liberadas.has(`${chaveDaNoite}:${s.id}`)))
+      .filter((s) => falantes(s).length >= 3)
+      .sort((a, b) => falantes(b).length - falantes(a).length);
+    if (!quentes[0]) return;
+    ultimaChamadaDoSalao = Date.now();
+    lola(salao, sortear(CHAMADAS_PARA_SALA[quentes[0].id as SalaTematica]));
+  };
+
   const iniciarJogo = async (sala: Sala, forcado?: string) => {
     if (sala.iniciando) return;
     sala.iniciando = true;
     try {
+      if (sala.id === 'salao' && !forcado) chamarParaSalaQuente(sala);
       const pessoas = brincantes(sala);
       const opcoes: Array<{ tipo: string; peso: number }> = [
         { tipo: 'eu_nunca', peso: 25 },
@@ -1116,11 +1163,13 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
 
       const agora = Date.now();
       if (tipo === 'eu_nunca') {
-        const texto = (Math.random() < 0.35 ? await itemDaIa(sala, 'eu_nunca', EU_NUNCA) : null) ?? itemDoBanco(sala, EU_NUNCA, 'en');
+        const texto = (Math.random() < 0.35 ? await itemDaIa(sala, 'eu_nunca', pacoteDa(sala)?.euNunca ?? EU_NUNCA) : null) ?? itemDoBanco(sala, EU_NUNCA, 'en', undefined, 'euNunca');
         sala.jogo = { id: randomUUID(), tipo: 'eu_nunca', texto, opcoes: ['🔥 Já fiz', '😇 Nunca fiz'], votos: new Map(), fimEm: agora + 90_000 };
         lola(sala, `🍷 EU NUNCA… ${texto.replace(/^eu nunca\s*/i, '')}\nToquem no botão: quem já fez assume 🔥`);
       } else if (tipo === 'enquete') {
-        const pode = ENQUETES.map((e, i) => ({ e, chave: `eq${i}` })).filter(({ e }) => e.n === 'quente' || sala.nivel === 'muito_quente');
+        const { lista: enquetes, prefixo: pre } = usarPacote(sala, 'enquetes', ENQUETES, 'eq');
+        const muitoQuente = permiteMuitoQuente(sala);
+        const pode = enquetes.map((e, i) => ({ e, chave: `${pre}${i}` })).filter(({ e }) => e.n === 'quente' || muitoQuente);
         let livres = pode.filter(({ chave }) => !sala.usados.has(chave));
         if (livres.length === 0) { pode.forEach(({ chave }) => sala.usados.delete(chave)); livres = pode; }
         const { e, chave } = sortear(livres);
@@ -1134,7 +1183,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         sala.jogo = { id: randomUUID(), tipo: 'quiz', texto: x.t, opcoes: x.o, correta: x.c, votos: new Map(), fimEm: agora + 60_000 };
         lola(sala, `🎓 QUIZ LIBERAL: ${x.t}\nQuem acertar primeiro ganha +3 tokens!`);
       } else if (tipo === 'pergunta') {
-        const texto = (Math.random() < 0.35 ? await itemDaIa(sala, 'pergunta', PERGUNTAS_QUENTES) : null) ?? itemDoBanco(sala, PERGUNTAS_QUENTES, 'pq');
+        const texto = (Math.random() < 0.35 ? await itemDaIa(sala, 'pergunta', pacoteDa(sala)?.perguntas ?? PERGUNTAS_QUENTES) : null) ?? itemDoBanco(sala, PERGUNTAS_QUENTES, 'pq', undefined, 'perguntas');
         lola(sala, `🔥 ${texto}`);
         sala.jogo = null;
         sala.proximoJogoEm = agora + INTERVALO_JOGO_MS();
@@ -1162,7 +1211,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         lola(sala, `💘 MATCH ÀS CEGAS: ${a.nome} e ${b.nome}, vocês combinam no que procuram! Topam ir pra cabine? Só abre se os dois aceitarem 🚪`);
       } else if (tipo === 'foto') {
         const alvo = sortear(pessoas);
-        const tema = itemDoBanco(sala, TEMAS_FOTO, 'fo').replace('{nome}', alvo.nome);
+        const tema = itemDoBanco(sala, TEMAS_FOTO, 'fo', alvo.cat, 'foto').replace('{nome}', alvo.nome);
         sala.jogo = { id: randomUUID(), tipo: 'foto', alvoId: alvo.id, alvoNome: alvo.nome, tema, fimEm: agora + 150_000 };
         lola(sala, `📸 DESAFIO DA FOTO! ${tema}\nVocê tem 2 minutos e meio. Cumpriu, ganha +5 tokens. Não quer? Toca em "Passo" 😉`);
       } else if (tipo === 'duelo') {
@@ -1179,8 +1228,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         sala.jogo = { id: randomUUID(), tipo: 'duelo', aId: a.id, aNome: a.nome, bId: b.id, bNome: b.nome, tema, fase: 'fotos', enviados: new Set(), votos: new Map(), fimEm: agora + 180_000 };
         lola(sala, `🔥 DUELO: ${a.nome} x ${b.nome}! Tema: ${tema} (sem rosto). Mandem a foto pela câmera em até 3 minutos. Depois a sala vota em quem foi mais quente, e quem ganhar vira Rei/Rainha da Noite 👑 + 10 tokens`);
       } else if (tipo === 'relampago') {
-        const pode = TEMAS_RELAMPAGO.map((t, i) => ({ t, chave: `re${i}` }))
-          .filter(({ t }) => t.n === 'quente' || sala.nivel === 'muito_quente')
+        const { lista: relampagos, prefixo: preRe } = usarPacote(sala, 'relampago', TEMAS_RELAMPAGO, 're');
+        const muitoQuenteRe = permiteMuitoQuente(sala);
+        const pode = relampagos.map((t, i) => ({ t, chave: `${preRe}${i}` }))
+          .filter(({ t }) => t.n === 'quente' || muitoQuenteRe)
           .filter(({ t }) => t.quem === 'todos' || falantes(sala).some((p) => p.cat === 'casal'));
         let livres = pode.filter(({ chave }) => !sala.usados.has(chave));
         if (livres.length === 0) { pode.forEach(({ chave }) => sala.usados.delete(chave)); livres = pode; }
@@ -1669,6 +1720,19 @@ Sala: ${salaId}`).catch(() => {});
 
   // Casal ou mulher chama um solteiro para outra sala: ele entra sem fila (vale 5 min, uma entrada).
   const convitesDeSala = new Map<string, { sala: SalaId; ate: number }>();
+  // Suruba: solteiro entra se animou a noite (pontos no ranking) ou se casais e mulheres
+  // curtiram o perfil dele nas últimas 24 h (contando pessoas diferentes).
+  const solteiroMereceSuruba = async (userId: string) => {
+    const pontos = (await db.queryOne('SELECT COALESCE(SUM(pontos), 0) AS n FROM casa_pontos WHERE noite = ? AND user_id = ?', [chaveDaNoite, userId])) as any;
+    if (Number(pontos?.n || 0) >= SURUBA_MIN_PONTOS) return true;
+    const curtidas = (await db.queryOne(
+      `SELECT COUNT(DISTINCT l.user_id) AS n FROM likes l JOIN users u ON u.id = l.user_id
+        WHERE l.target_type = 'user' AND l.target_id = ? AND l.created_at >= ?
+          AND (LOWER(u.gender) LIKE 'casal%' OR LOWER(u.gender) LIKE 'mulher%')`,
+      [userId, new Date(Date.now() - 24 * 3_600_000).toISOString()],
+    )) as any;
+    return Number(curtidas?.n || 0) >= SURUBA_MIN_CURTIDAS;
+  };
 
   // Mulher entra grátis com tudo liberado (é quem segura a sala); o resto precisa assinar.
   const podeFalarNaCasa = async (userId: string, cat: Categoria | undefined) => cat === 'mulher' || (await deps.temPremium(userId));
@@ -1808,6 +1872,14 @@ Sala: ${salaId}`).catch(() => {});
     if (sala.semHomens && perfil.cat === 'homem') {
       res.status(403).json({ error: 'so_casais', message: 'A Sala dos Casais é só para casais e mulheres. Que tal o Salão Principal?' });
       return;
+    }
+    if (sala.id === 'glory' && perfil.cat === 'homem' && !perfil.admin && !sala.presentes.has(userId)) {
+      const convite = convitesDeSala.get(userId);
+      const chamado = !!convite && convite.sala === sala.id && convite.ate > Date.now();
+      if (!chamado && !(await solteiroMereceSuruba(userId))) {
+        res.status(403).json({ error: 'suruba_merito', message: `A Suruba é para casais, mulheres e os solteiros que mais animaram a noite. Faça ${SURUBA_MIN_PONTOS} pontos nas brincadeiras, receba curtidas de ${SURUBA_MIN_CURTIDAS} casais ou mulheres hoje ou peça pra um casal te chamar 😈` });
+        return;
+      }
     }
     const podeFalar = await podeFalarNaCasa(userId, perfil.cat);
     ufDeQuemVe.set(userId, perfil.uf);
@@ -2241,9 +2313,9 @@ Sala: ${salaId}`).catch(() => {});
       if (escolha === 'passo') {
         lola(sala, `${p.nome} passou a vez 😏 Tudo bem, aqui ninguém é obrigado a nada.`);
       } else if (escolha === 'verdade') {
-        lola(sala, `🗣️ VERDADE: ${itemDoBanco(sala, VERDADES, 've').replace('{nome}', p.nome)}`);
+        lola(sala, `🗣️ VERDADE: ${itemDoBanco(sala, VERDADES, 've', p.cat, 'verdades').replace('{nome}', p.nome)}`);
       } else if (escolha === 'desafio') {
-        lola(sala, `😈 DESAFIO: ${itemDoBanco(sala, DESAFIOS, 'de').replace('{nome}', p.nome)}`);
+        lola(sala, `😈 DESAFIO: ${itemDoBanco(sala, DESAFIOS, 'de', p.cat, 'desafios').replace('{nome}', p.nome)}`);
       } else { res.status(400).json({ error: 'opcao' }); return; }
       await encerrarJogo(sala, 'fim');
     } else if (j.tipo === 'foto') {

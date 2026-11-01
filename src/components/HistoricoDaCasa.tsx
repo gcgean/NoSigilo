@@ -13,7 +13,7 @@ type Linha = {
   midia: { url: string; mime: string; vistas: number } | null;
 };
 
-const NOME_SALA: Record<string, string> = { salao: '🍸 Salão', casais: '💑 Casais', quarto: '🖤 Quarto Escuro', glory: '🕳️ Glory Hole' };
+const NOME_SALA: Record<string, string> = { salao: '🍸 Salão', casais: '💑 Casais', quarto: '🖤 Quarto Escuro', glory: '🫦 Suruba' };
 const nomeDaSala = (s: string) => NOME_SALA[s] ?? (s.startsWith('cab:') ? '🚪 Cabine' : s);
 const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
