@@ -3900,6 +3900,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   const responderNaContaOficial = async (userId: string, texto: string) => {
     if (pediuParaParar(texto)) {
       await run(db, 'UPDATE dicas_chat SET concluido_em = ? WHERE user_id = ? AND concluido_em IS NULL', [nowIso(), userId]);
+      // Também para os convites da Casa ("a sala está pegando fogo").
+      await run(db, 'DELETE FROM system_settings WHERE key = ?', [`casa_convite_off:${userId}`]);
+      await run(db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_convite_off:${userId}`, '1', nowIso()]);
       await enviarMensagemOficial(userId, RESPOSTA_PARAR);
       return;
     }
@@ -23382,6 +23385,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
+    onlineIds: () => (app.get('presence') as { onlineIds?: () => string[] } | undefined)?.onlineIds?.() ?? [],
+    convidarParaSala: async (userId, convite) => {
+      // Quem bloqueou a conta oficial não quer nada vindo dela.
+      const oficial = await garantirContaOficial();
+      if (await queryOne(db, 'SELECT 1 AS x FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?', [userId, oficial])) return false;
+      const link = `/casa?sala=${encodeURIComponent(convite.salaId)}`;
+      await enviarMensagemOficial(userId,
+        `💋 Lola, da Casa: 🔥 O ${convite.salaNome} está pegando fogo agora! Vem pra Casa: ${origemFrontend(env)}${link}\n\nNão quer esses convites? Responda PARAR.`);
+      await createNotification({ db, io: app.get('io') as SocketIOServer | undefined }, {
+        userId, type: 'casa.convite', title: `🔥 O ${convite.salaNome} está pegando fogo`,
+        description: 'Vem pra Casa! A sala está animada agora.', dataJson: { url: link, sala: convite.salaId },
+      });
+      return true;
+    },
     alertar: (texto) => notifyAdminsTelegram({ db, env }, texto, 'casa'),
     // Assinaturas pagas (extrato do Hub, 5 min em cache) ligadas ao usuário por cliente do Hub ou e-mail.
     assinaturasPagas: async () => {

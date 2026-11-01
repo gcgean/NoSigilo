@@ -122,7 +122,7 @@ Era isso! Aproveite muito o NoSigilo 🔥 Qualquer dúvida, toque no botão de a
 }
 
 // Respostas da conta oficial quando a pessoa escreve para ela.
-export const RESPOSTA_PARAR = 'Pronto, não mando mais dicas por aqui 😉 Se precisar de qualquer coisa, toque no botão de ajuda e fale com o Suporte.';
+export const RESPOSTA_PARAR = 'Pronto, não mando mais dicas nem convites da Casa por aqui 😉 Se precisar de qualquer coisa, toque no botão de ajuda e fale com o Suporte.';
 export const RESPOSTA_AUTOMATICA = 'Oi! 😊 Esta conversa é só para as dicas da equipe do NoSigilo e ninguém lê as respostas por aqui. Para falar com a gente, toque no botão de ajuda (o ponto de interrogação) e escreva no Suporte. Não quer mais dicas? Responda PARAR.';
 
 export function pediuParaParar(texto: string) {

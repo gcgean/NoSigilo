@@ -82,6 +82,8 @@ export function getNotificationHref(notification: any): string | null {
   if (type.startsWith('promoter.')) return '/promoter';
   if (type.startsWith('tokens.') || type === 'daily.streak.milestone') return '/tokens';
   if (type.startsWith('name_change.')) return '/settings';
+  // Convites d'A Casa trazem o link da sala (/casa?sala=...).
+  if (type.startsWith('casa.')) return typeof data?.url === 'string' && data.url.startsWith('/casa') ? data.url : '/casa';
 
   return null;
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import path from 'node:path';
 import { unlinkSync, existsSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -3410,6 +3410,63 @@ describe('nosigilo backend', () => {
     // Quem não é admin não acessa.
     await request(ctx.app).get('/api/admin/telegram-avisos').set('Authorization', `Bearer ${comum.token}`).expect(403);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
+  it('sala pegando fogo: Lola convida quem está online e fora da Casa, uma vez por noite', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const novaPessoa = async (nome: string, gender: string) => {
+      const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+      await grantPremium(ctx, String(u.user.id));
+      return u;
+    };
+    const admin = await novaPessoa('Admin Fogo', 'Mulher');
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+    const naSala: Awaited<ReturnType<typeof registerInvitedUser>>[] = [admin];
+    for (let i = 0; i < 7; i++) naSala.push(await novaPessoa(`Fogo Sala ${i}`, 'Mulher'));
+    const convidada = await novaPessoa('Fogo Convidada', 'Mulher');
+    const naoQuer = await novaPessoa('Fogo Nao Quer', 'Mulher');
+    await run(ctx.db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_convite_off:${naoQuer.user.id}`, '1', new Date().toISOString()]);
+    await ctx.db.persist();
+    const online = [convidada, naoQuer, ...naSala].map((u) => String(u.user.id));
+    const presencaAntes = ctx.app.get('presence');
+    ctx.app.set('presence', { isOnline: (id: string) => online.includes(id), countOnline: () => online.length, onlineIds: () => online });
+
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+    for (const u of naSala) await request(ctx.app).post('/api/casa/salao/entrar').set(auth(u.token)).expect(200);
+    // O chat tem trava de 1 mensagem a cada 1,2 s por pessoa: o relógio anda 2 s a cada rodada.
+    const agoraReal = Date.now.bind(Date);
+    let avanco = 0;
+    const relogio = vi.spyOn(Date, 'now').mockImplementation(() => agoraReal() + avanco);
+    try {
+      for (let rodada = 0; rodada < 5; rodada++) {
+        avanco += 2_000;
+        for (const u of naSala) await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(u.token)).send({ texto: `oi gente ${rodada}` }).expect(200);
+      }
+    } finally {
+      relogio.mockRestore();
+    }
+    const convites = async (id: unknown) => (await queryAll(ctx.db, "SELECT data_json FROM notifications WHERE user_id = ? AND type = 'casa.convite'", [String(id)])) as any[];
+    for (let i = 0; i < 50 && (await convites(convidada.user.id)).length === 0; i++) await new Promise((r) => setTimeout(r, 20));
+
+    const recebidos = await convites(convidada.user.id);
+    expect(recebidos).toHaveLength(1);
+    expect(JSON.parse(String(recebidos[0].data_json)).url).toBe('/casa?sala=salao');
+    const noChat = (await queryAll(ctx.db,
+      `SELECT m.content FROM messages m JOIN users u ON u.id = m.sender_id
+        WHERE u.conta_oficial = 1 AND m.conversation_id IN (SELECT id FROM conversations WHERE user_a_id = ? OR user_b_id = ?)`,
+      [String(convidada.user.id), String(convidada.user.id)])) as any[];
+    expect(noChat.some((m) => /pegando fogo/.test(String(m.content)) && /\/casa\?sala=salao/.test(String(m.content)))).toBe(true);
+    expect(noChat.some((m) => /\d+ pessoas/.test(String(m.content)))).toBe(false);
+    // Quem pediu para parar e quem já está na sala não recebem.
+    expect(await convites(naoQuer.user.id)).toHaveLength(0);
+    expect(await convites(naSala[1].user.id)).toHaveLength(0);
+    const eventos = (await queryAll(ctx.db, "SELECT user_id FROM casa_eventos WHERE tipo = 'convite_fogo'", [])) as any[];
+    expect(eventos.map((e) => String(e.user_id))).toEqual([String(convidada.user.id)]);
+
+    for (const u of naSala) await request(ctx.app).post('/api/casa/salao/sair').set(auth(u.token)).expect(200);
+    await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+    ctx.app.set('presence', presencaAntes);
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
   });
 
   it('fundo das salas da Casa: só admin configura e foto ilegível é recusada', async () => {

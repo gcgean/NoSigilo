@@ -635,6 +635,7 @@ async function main() {
       const n = onlineCounts.get(userId);
       return typeof n === 'number' && n > 0;
     },
+    onlineIds: () => [...onlineCounts.entries()].filter(([, n]) => n > 0).map(([id]) => id),
     countOnline: () => {
       let total = 0;
       for (const value of onlineCounts.values()) {

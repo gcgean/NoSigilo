@@ -230,6 +230,10 @@ export type DependenciasDaCasa = {
   alertar: (texto: string) => Promise<unknown>;
   /** Pasta onde ficam os áudios da rádio da Casa (no volume de storage, fora do repositório). */
   pastaMusicas: string;
+  /** Quem está com o site aberto agora (socket conectado). */
+  onlineIds?: () => string[];
+  /** Convite da Lola para uma sala animada: mensagem no chat da conta oficial e aviso no sino. */
+  convidarParaSala?: (userId: string, convite: { salaId: string; salaNome: string }) => Promise<boolean>;
 };
 
 type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
@@ -262,6 +266,12 @@ const MAX_MENSAGENS = 300; // histórico em memória por sala/cabine (era 120)
 const PRECO_REVELACAO = 5;
 const PING_EXPIRA_MS = 75_000;
 const LINK_PROIBIDO = /https?:\/\/|www\.|\.com\b|\.net\b|wa\.me|t\.me/i;
+// Sala "pegando fogo": nos últimos 10 min, 8+ pessoas diferentes e 40+ mensagens.
+const FOGO_JANELA_MS = 10 * 60_000;
+const FOGO_MIN_PESSOAS = 8;
+const FOGO_MIN_MENSAGENS = 40;
+const FOGO_INTERVALO_MS = 30 * 60_000;
+const FOGO_MAX_CONVITES = 300;
 const INTERVALO_JOGO_MS = () => (7 + Math.random() * 4) * 60_000;
 const TZ = 'America/Sao_Paulo';
 
@@ -654,7 +664,59 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     sala.mensagens.push(completa);
     if (sala.mensagens.length > MAX_MENSAGENS) sala.mensagens.splice(0, sala.mensagens.length - MAX_MENSAGENS);
     emitirParaSala(sala, 'casa.mensagem', { sala: sala.id, msg: completa });
+    if (completa.tipo === 'pessoa' || completa.tipo === 'midia') {
+      const autor = idRealDoAutor(sala, completa.autor?.id);
+      if (autor) registrarAtividade(sala, autor);
+    }
     return completa;
+  };
+
+  // ─── Convite "a sala está pegando fogo" ─────────────────────────────────────
+  // Quando uma sala engrena (muita gente diferente falando, com mulher ou casal
+  // no meio), a Lola convida quem está online no site e fora da Casa. Cada pessoa
+  // recebe no máximo um convite por noite; cada sala convida no máximo a cada 30 min.
+  const atividadeDaSala = new Map<SalaId, Array<{ em: number; autor: string; cat: string }>>();
+  const ultimoConviteDaSala = new Map<SalaId, number>();
+  const convidadosNaNoite = new Map<string, string>(); // userId -> chave da noite
+  const registrarAtividade = (sala: Sala, autor: string) => {
+    const agora = Date.now();
+    const lista = (atividadeDaSala.get(sala.id) ?? []).filter((a) => agora - a.em < FOGO_JANELA_MS);
+    lista.push({ em: agora, autor, cat: sala.presentes.get(autor)?.cat ?? 'outros' });
+    atividadeDaSala.set(sala.id, lista);
+    if (!chaveDaNoite || chaveDaNoite.startsWith('teste') || guardada(sala) || !deps.convidarParaSala) return;
+    if (lista.length < FOGO_MIN_MENSAGENS || new Set(lista.map((a) => a.autor)).size < FOGO_MIN_PESSOAS) return;
+    if (!lista.some((a) => a.cat === 'mulher' || a.cat === 'casal')) return;
+    if (agora - (ultimoConviteDaSala.get(sala.id) ?? 0) < FOGO_INTERVALO_MS) return;
+    ultimoConviteDaSala.set(sala.id, agora);
+    void convidarParaFogo(sala).catch((e) => console.error('[casa] convite fogo', e));
+  };
+  const estaEmAlgumLugarDaCasa = (userId: string) =>
+    [...salas.values()].some((s) => s.presentes.has(userId) || s.espiando.has(userId))
+    || [...cabines.values()].some((c) => c.membros.has(userId) || c.espectadores.has(userId));
+  const convidarParaFogo = async (sala: Sala) => {
+    const noite = chaveDaNoite;
+    const online = deps.onlineIds?.() ?? [];
+    if (!noite || online.length === 0) return 0;
+    const jaConvidados = new Set(((await db.queryAll(
+      "SELECT user_id FROM casa_eventos WHERE noite = ? AND tipo = 'convite_fogo'", [noite])) as any[]).map((r) => String(r.user_id)));
+    const naoQuerem = new Set(((await db.queryAll(
+      "SELECT key FROM system_settings WHERE key LIKE 'casa_convite_off:%'", [])) as any[]).map((r) => String(r.key).slice('casa_convite_off:'.length)));
+    // Homem só é convidado se puder entrar agora (senão cai na fila e o convite vira frustração).
+    const homemPodeEntrar = !sala.semHomens && contagem(sala).homem < limiteDeHomens(sala);
+    let enviados = 0;
+    for (const userId of online) {
+      if (enviados >= FOGO_MAX_CONVITES) break;
+      if (jaConvidados.has(userId) || naoQuerem.has(userId) || convidadosNaNoite.get(userId) === noite) continue;
+      if (estaEmAlgumLugarDaCasa(userId) || estaExpulso(userId)) continue;
+      const perfil = await carregarPerfil(userId);
+      if (!perfil || (perfil.cat === 'homem' && !homemPodeEntrar)) continue;
+      convidadosNaNoite.set(userId, noite);
+      if (!(await deps.convidarParaSala!(userId, { salaId: sala.id, salaNome: sala.nome }).catch(() => false))) continue;
+      registrarEvento(sala.id, 'convite_fogo', userId);
+      enviados += 1;
+    }
+    if (enviados > 0) console.log(`[casa] ${sala.nome} pegando fogo: ${enviados} convite(s)`);
+    return enviados;
   };
   const lola = (sala: Sala, texto: string) => publicarMsg(sala, { tipo: 'lola', texto });
 

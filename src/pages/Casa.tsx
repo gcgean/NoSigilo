@@ -435,6 +435,14 @@ export default function Casa() {
     setParams(params, { replace: true });
     if (!info.aberta && !info.reservado) void reservar(true);
   }, [params, setParams, info, reservar]);
+  // Convite da Lola ("a sala está pegando fogo"): o link /casa?sala=... já entra na sala.
+  useEffect(() => {
+    const sala = params.get('sala');
+    if (!sala || !info) return;
+    params.delete('sala');
+    setParams(params, { replace: true });
+    if (info.aberta && info.salas.some((s) => s.id === sala)) void entrar(sala);
+  }, [params, setParams, info, entrar]);
 
   const entrarNaFila = async (salaId: string) => {
     try {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Award, Bell, Check, ChevronRight, Gift, Lock, UserCheck, UserX, Heart, MessageCircle, Star,
-  BadgeDollarSign, Eye, AtSign, Play, CalendarDays, Radar, Coins, Sparkles,
+  BadgeDollarSign, Eye, AtSign, Play, CalendarDays, Radar, Coins, Sparkles, Flame,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -58,6 +58,7 @@ function grupoDe(iso: string): 'Hoje' | 'Ontem' | 'Últimos 7 dias' | 'Anteriore
 
 function iconeDo(type: string) {
   if (type === 'referral.reward') return Gift;
+  if (type.startsWith('casa.')) return Flame;
   if (type.startsWith('promoter.')) return BadgeDollarSign;
   if (type === 'feed.top_day' || type === 'feed.top_week') return Award;
   if (type.includes('visited') || type === 'radar.viewed') return Eye;
