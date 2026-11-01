@@ -82,6 +82,8 @@ export default function Match() {
   const [swipeDirection, setSwipeDirection] = useState<'left' | 'right' | null>(null);
   const [isHoveringPass, setIsHoveringPass] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [erroAoCarregar, setErroAoCarregar] = useState(false);
+  const [recarga, setRecarga] = useState(0);
   // Altura do card no celular medida na tela de verdade: o svh do Safari/Chrome do
   // iPhone às vezes vem bem menor que o espaço visível e sobrava um vão embaixo.
   // Mede o que sobra até o menu de baixo; só refaz em mudanças grandes (girar a
@@ -159,6 +161,7 @@ export default function Match() {
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
+    setErroAoCarregar(false);
     setProfiles([]);
     setCurrentIndex(0);
 
@@ -175,6 +178,8 @@ export default function Match() {
       })
       .catch(() => {
         if (cancelled) return;
+        // Falha não é "ninguém para mostrar": antes caía em "Nenhum perfil no momento".
+        setErroAoCarregar(true);
         setProfiles([]);
         setCurrentIndex(0);
       })
@@ -196,7 +201,7 @@ export default function Match() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [recarga]);
 
   useEffect(() => {
     const handler = (payload: any) => {
@@ -438,7 +443,7 @@ export default function Match() {
 
   return (
     <div className="mx-auto w-full max-w-[430px] min-w-0 overflow-x-hidden px-2 pb-24 sm:max-w-lg sm:px-0 md:pb-0 lg:max-w-[560px]">
-      <AvisoLocalizacao compacto />
+      <AvisoLocalizacao compacto aoAtivar={() => setRecarga((n) => n + 1)} />
       <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3 sm:mb-6">
         <div className="min-w-0 flex-1">
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-2xl">Match</h1>
@@ -533,7 +538,7 @@ export default function Match() {
             />
           </div>
         )}
-        {!isLoading && !currentProfile && hasSwipedAny && (
+        {!isLoading && !erroAoCarregar && !currentProfile && hasSwipedAny && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-5 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
               <Heart className="h-8 w-8 text-primary" />
@@ -564,7 +569,14 @@ export default function Match() {
             </p>
           </div>
         )}
-        {!isLoading && !currentProfile && !hasSwipedAny && (
+        {!isLoading && erroAoCarregar && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
+            <p className="text-lg font-semibold">Não conseguimos carregar os perfis</p>
+            <p className="text-sm text-muted-foreground">Confira sua conexão e tente de novo.</p>
+            <Button type="button" onClick={() => setRecarga((n) => n + 1)}>Tentar de novo</Button>
+          </div>
+        )}
+        {!isLoading && !erroAoCarregar && !currentProfile && !hasSwipedAny && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 rounded-[22px] sm:rounded-3xl bg-secondary/40 px-6 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <User className="h-8 w-8 text-muted-foreground" />

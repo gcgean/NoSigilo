@@ -33,8 +33,14 @@ export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAti
     if (!navigator.geolocation) { setBloqueado(true); return; }
     setOcupado(true);
     try {
-      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 }));
+      // O timeout do navegador só conta depois da permissão: com o pedido de
+      // permissão travado (comum no app instalado no Android) o botão girava
+      // para sempre. Este limite vale para tudo.
+      const pos = await Promise.race([
+        new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 })),
+        new Promise<never>((_, reject) => setTimeout(() => reject({ code: 3 }), 20000)),
+      ]);
       const r = await locationService.updateLocation(pos.coords.latitude, pos.coords.longitude);
       updateUser({ localizacaoGps: true, ...(r?.city ? { city: r.city } : {}), ...(r?.state ? { state: r.state } : {}) } as any);
       toast({ title: '📍 Localização ativada', description: 'Agora você vê a que distância cada pessoa está.' });
@@ -42,7 +48,11 @@ export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAti
     } catch (e: any) {
       // 1 = a pessoa (ou o navegador) negou: explica como liberar.
       if (Number(e?.code) === 1) setBloqueado(true);
-      else toast({ title: 'Não conseguimos pegar sua localização', description: 'Tente de novo em um lugar com sinal melhor.', variant: 'destructive' });
+      else toast({
+        title: 'Não conseguimos pegar sua localização',
+        description: 'Confira se a localização (GPS) do celular está ligada e tente de novo.',
+        variant: 'destructive',
+      });
     } finally {
       setOcupado(false);
     }
