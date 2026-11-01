@@ -3527,6 +3527,31 @@ describe('nosigilo backend', () => {
     }
   });
 
+  it('tema da noite: admin troca o tema de uma data e a Casa mostra o da próxima festa', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Temas', email: 'admin-temas@example.com', password: 'senha123', gender: 'Mulher' });
+    const comum = await registerInvitedUser(ctx, sponsorToken, { name: 'Comum Temas', email: 'comum-temas@example.com', password: 'senha123', gender: 'Mulher' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(adm.user.id)]);
+    await ctx.db.persist();
+    await request(ctx.app).get('/api/casa/admin/temas').set(auth(comum.token)).expect(403);
+    const cal = (await request(ctx.app).get('/api/casa/admin/temas').set(auth(adm.token)).expect(200)).body;
+    expect(cal.noites).toHaveLength(8);
+    expect(cal.temas.length).toBeGreaterThanOrEqual(8);
+    const primeira = cal.noites[0];
+    const outro = cal.temas.find((t: any) => t.id !== primeira.tema.id);
+    await request(ctx.app).post('/api/casa/admin/temas').set(auth(adm.token)).send({ data: primeira.data, temaId: 'nao-existe' }).expect(400);
+    await request(ctx.app).post('/api/casa/admin/temas').set(auth(adm.token)).send({ data: primeira.data, temaId: outro.id }).expect(200);
+    const depois = (await request(ctx.app).get('/api/casa/admin/temas').set(auth(adm.token)).expect(200)).body.noites[0];
+    expect(depois).toMatchObject({ data: primeira.data, escolhido: true, tema: { id: outro.id } });
+    // Com a Casa fechada, a página mostra o tema da próxima festa.
+    const info = (await request(ctx.app).get('/api/casa').set(auth(comum.token)).expect(200)).body;
+    if (!info.aberta) expect(info.proximoTema).toMatchObject({ nome: expect.any(String) });
+    // Voltar ao automático.
+    await request(ctx.app).post('/api/casa/admin/temas').set(auth(adm.token)).send({ data: primeira.data, temaId: null }).expect(200);
+    expect((await request(ctx.app).get('/api/casa/admin/temas').set(auth(adm.token)).expect(200)).body.noites[0]).toMatchObject({ escolhido: false, tema: { id: primeira.tema.id } });
+    await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
   it('fundo das salas da Casa: só admin configura e foto ilegível é recusada', async () => {
     const adm = await registerInvitedUser(ctx, sponsorToken, { name: 'Admin Fundos', email: 'admin-fundos@example.com', password: 'senha123', gender: 'Mulher' });
     const comum = await registerInvitedUser(ctx, sponsorToken, { name: 'Comum Fundos', email: 'comum-fundos@example.com', password: 'senha123', gender: 'Mulher' });

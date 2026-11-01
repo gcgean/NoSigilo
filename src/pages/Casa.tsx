@@ -28,6 +28,7 @@ import FeedbackDaCasa from '@/components/FeedbackDaCasa';
 import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
+import TemaDaProxima from '@/components/TemaDaProxima';
 
 /**
  * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
@@ -43,8 +44,9 @@ type SalaResumo = {
   trancada?: boolean; faltamParaAbrir?: number;
   pessoas?: Categoria[]; cabines?: CabineDoMapa[];
 };
+type TemaDaNoite = { id: string; nome: string; descricao: string; dress: string | null };
 type Info = {
-  aberta: boolean; tema: { nome: string; descricao: string } | null; horario: string;
+  aberta: boolean; tema: TemaDaNoite | null; proximoTema?: TemaDaNoite | null; horario: string;
   souAdmin: boolean; podeFalar: boolean; teste?: boolean; abertaAte: string | null; salas: SalaResumo[];
   reservado: boolean; reservas: number; proximaAbertura: string | null;
 };
@@ -1794,7 +1796,12 @@ export default function Casa() {
               <p className="mt-2 text-4xl font-black">🔥</p>
               <p className="text-sm text-white/70">{total > 0 ? 'várias pessoas lá dentro neste momento' : 'a festa está começando'}</p>
             </>
-          ) : <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />}
+          ) : (
+            <>
+              <ContagemRegressiva alvo={info?.proximaAbertura ?? null} />
+              {info?.proximoTema && <TemaDaProxima tema={info.proximoTema} />}
+            </>
+          )}
         </div>
 
         {info && !info.aberta && (

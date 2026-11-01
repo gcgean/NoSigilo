@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { guardarDestinoPosCadastro } from '@/utils/destinoPosCadastro';
 import { Button } from '@/components/ui/button';
 import BrandLogo from '@/components/BrandLogo';
+import TemaDaProxima from '@/components/TemaDaProxima';
 
 /**
  * Página pública d'A Casa (/acasa; /a-casa também funciona), para divulgar fora do site.
@@ -14,6 +15,7 @@ import BrandLogo from '@/components/BrandLogo';
 type Publico = {
   reservas: number;
   aberta: boolean; tema: { nome: string; descricao: string } | null; pessoas: number;
+  proximoTema?: { id: string; nome: string; descricao: string; dress: string | null } | null;
   proximaAbertura: string | null; salas: { nome: string; emoji: string; descricao: string; nivel: string }[];
 };
 
@@ -96,6 +98,7 @@ export default function ACasaPublica() {
               </div>
             </>
           ) : <p className="text-sm text-white/70">Sexta e sábado às 22h.</p>}
+          {!info?.aberta && info?.proximoTema && <TemaDaProxima tema={info.proximoTema} />}
         </div>
 
         <Button size="lg" className="h-14 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={quero}>

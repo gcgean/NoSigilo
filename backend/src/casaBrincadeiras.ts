@@ -247,11 +247,6 @@ export const FUGIU: string[] = [
   '{nome} ficou tímido(a)! Alguém anima essa pessoa no chat 🔥',
 ];
 
-export const TEMAS_DA_NOITE: Record<'sexta' | 'sabado', { nome: string; descricao: string }> = {
-  sexta: { nome: 'Sexta Liberal', descricao: 'Começo de fim de semana: provocar, conhecer e marcar o sábado 🍸' },
-  sabado: { nome: 'Noite Voyeur', descricao: 'Sábado de exibir e espiar: desafios de story e cabine liberada 👀' },
-};
-
 // ─── Desafios com foto e vídeo (câmera ao vivo, visualização única, SEM ROSTO) ──
 
 /** Desafio da foto: a Lola sorteia alguém e pede uma foto com o tema. */
@@ -580,3 +575,118 @@ export const CHAMADAS_PARA_SALA: Record<SalaTematica, string[]> = {
   cuckold: ['😈 No Quarto Cuckold tem marido exibindo a esposa… homens, a vez é de vocês!', '😈 O Quarto Cuckold esquentou: quem escolhe é ela, quem se garante vai lá.'],
   glory: ['🔥 A Suruba começou! Casais e mulheres entram direto, e os solteiros que mais animaram a noite também 😏'],
 };
+
+// ─── Tema de cada noite de festa (31/10/2026) ─────────────────────────────────
+// Um tema por noite, girando na ordem abaixo (sexta, sábado, sexta…), para a festa
+// não ser sempre a mesma. O admin pode trocar o tema de uma data no painel.
+// O tema soma com a sala: a Lola mistura as brincadeiras do tema com as da sala.
+
+export type TemaDeFesta = {
+  id: string;
+  nome: string;
+  descricao: string;
+  /** Dress code sugerido (aparece no aviso e puxa os desafios de foto). */
+  dress?: string;
+  /** Como a Lola deve puxar a noite (vai no pedido para a IA). */
+  perfil: string;
+  boasVindas: string[];
+  euNunca: Item[];
+  perguntas: Item[];
+  foto: Item[];
+};
+
+export const TEMAS_DE_FESTA: TemaDeFesta[] = [
+  {
+    id: 'troca',
+    nome: 'Noite da Troca',
+    descricao: 'Swing de verdade: casais trocando, na imaginação e na cabine 🔄',
+    perfil: 'Tema da noite: troca de casais. Puxe conversas e provocações sobre trocar de par, casais se conhecendo e combinando a troca.',
+    boasVindas: ['🔄 Hoje é Noite da Troca! Casais, olhem bem em volta: com quem vocês trocariam hoje? 😈', '🔄 Noite da Troca começou: quem chegou de par pode sair com outro (na imaginação… ou na cabine) 🔥'],
+    euNunca: [mq('Eu nunca troquei de par numa festa.'), mq('Eu nunca combinei uma troca pelo chat antes de conhecer o casal.'), q('Eu nunca fiquei com ciúme numa troca e gostei disso.')],
+    perguntas: [mq('Noite da Troca: qual o primeiro passo pra uma troca dar certo? Contem o segredo de vocês 🔄'), q('O que não pode faltar no combinado de uma troca?')],
+    foto: [so(['casal'], mq('{nome}, foto de vocês dois prontos pra trocar hoje (sem rosto) 🔄'))],
+  },
+  {
+    id: 'voyeur',
+    nome: 'Noite Voyeur',
+    descricao: 'Noite de exibir e espiar: cabines de porta aberta e desafios de foto 👀',
+    perfil: 'Tema da noite: voyeurismo e exibicionismo. Provoque quem gosta de se exibir e quem gosta de espiar; incentive cabines de porta aberta.',
+    boasVindas: ['👀 Hoje é Noite Voyeur: deixa a porta da cabine aberta que tem gente querendo espiar 😏', '👀 Noite Voyeur começou! Quem aqui gosta de olhar… e quem gosta de ser olhado?'],
+    euNunca: [mq('Eu nunca transei sabendo que alguém estava espiando.'), mq('Eu nunca deixei a cortina aberta de propósito.'), q('Eu nunca fiquei olhando um casal se pegar numa festa.')],
+    perguntas: [mq('Noite Voyeur: vocês preferem exibir ou espiar? Contem a melhor vez 👀'), mq('Onde foi o lugar mais arriscado em que vocês se exibiram?')],
+    foto: [mq('{nome}, uma foto de como você ficaria se soubesse que a sala inteira está olhando (sem rosto) 👀')],
+  },
+  {
+    id: 'lingerie',
+    nome: 'Noite da Lingerie',
+    descricao: 'Dress code: vermelho ou preto. Quem vier a caráter ganha destaque 🔴🖤',
+    dress: 'lingerie vermelha ou preta',
+    perfil: 'Tema da noite: lingerie, com dress code vermelho ou preto. Elogie, provoque e puxe desafios de foto com lingerie (sempre sem rosto).',
+    boasVindas: ['🔴 Hoje é Noite da Lingerie! Dress code: vermelho ou preto. Quem veio a caráter? 😈', '🖤 Noite da Lingerie começou: mostra (sem rosto) o que você escolheu pra hoje!'],
+    euNunca: [mq('Eu nunca usei lingerie só pra ser vista por outro casal.'), q('Eu nunca comprei uma lingerie pensando em alguém daqui.'), mq('Eu nunca tirei a lingerie de alguém com os dentes.')],
+    perguntas: [mq('Noite da Lingerie: renda, transparência ou couro? Qual deixa vocês loucos? 🔴'), q('Vermelho ou preto: qual é a cor do pecado pra vocês?')],
+    foto: [mq('{nome}, mostra a lingerie de hoje, vermelha ou preta (sem rosto) 🔴🖤'), so(['casal'], mq('{nome}, foto dele tirando a lingerie dela (sem rosto) 😈'))],
+  },
+  {
+    id: 'esposas',
+    nome: 'Noite das Esposas',
+    descricao: 'Hotwife e cuckold: o marido exibe e quem escolhe é ela 👑',
+    perfil: 'Tema da noite: hotwife e cuckold. Provoque os maridos a exibirem as esposas e os homens a desejarem; quem escolhe é sempre ela.',
+    boasVindas: ['👑 Hoje é Noite das Esposas: maridos, exibam com orgulho. Homens, caprichem no elogio. Quem escolhe é ela 😈', '👑 Noite das Esposas começou! Esposas, a noite é de vocês.'],
+    euNunca: [mq('Eu nunca fui exibida pelo meu marido pra outros homens.'), mq('Eu nunca escolhi um homem com meu marido do lado.'), q('Eu nunca contei pro meu marido que outro homem me olhou.')],
+    perguntas: [mq('Noite das Esposas: maridos, o que mais orgulha vocês nela? Esposas, o que mais excita em ser exibida? 👑'), mq('Homens: que elogio conquistaria uma esposa com o marido olhando?')],
+    foto: [so(['casal'], mq('{nome}, o marido escolhe uma foto dela pra exibir pra sala (sem rosto) 👑'))],
+  },
+  {
+    id: 'mascaras',
+    nome: 'Baile de Máscaras',
+    descricao: 'Mistério total: quem é quem? Revele só se quiser 🎭',
+    perfil: 'Tema da noite: baile de máscaras. Clima de mistério, segredos e fantasias anônimas; provoque as pessoas a revelarem desejos sem revelar quem são.',
+    boasVindas: ['🎭 Hoje é Baile de Máscaras: aqui ninguém sabe quem é quem… então pode confessar 😏', '🎭 O Baile de Máscaras começou! Qual segredo você conta hoje que não contaria de cara limpa?'],
+    euNunca: [mq('Eu nunca fiquei com alguém sem saber o nome.'), q('Eu nunca usei máscara ou venda na cama.'), mq('Eu nunca realizei uma fantasia que ninguém do meu círculo imagina.')],
+    perguntas: [mq('Baile de Máscaras: confessem uma fantasia que vocês nunca contaram pra ninguém 🎭'), q('Venda nos olhos: vocês preferem usar ou colocar em alguém?')],
+    foto: [mq('{nome}, foto com algo cobrindo o rosto (máscara, mão, lençol) e o resto à mostra 🎭')],
+  },
+  {
+    id: 'elas',
+    nome: 'Elas no Comando',
+    descricao: 'Hoje quem manda são elas: mulheres e esposas escolhem, convidam e decidem 💋',
+    perfil: 'Tema da noite: elas no comando. Dê protagonismo às mulheres e esposas: elas escolhem, convidam, julgam desafios e decidem quem ganha.',
+    boasVindas: ['💋 Hoje é Elas no Comando: mulheres e esposas escolhem, convidam e decidem. Homens, caprichem 😈', '💋 Elas no Comando começou! Meninas, quem vocês vão chamar pra cabine hoje?'],
+    euNunca: [mq('Eu nunca mandei na cama a noite inteira.'), q('Eu nunca chamei alguém pra sair primeiro.'), mq('Eu nunca escolhi o casal com quem a gente ia trocar.')],
+    perguntas: [mq('Elas no Comando: meninas, o que vocês mandariam um homem desta sala fazer agora? 💋'), q('Esposas: quem toma a iniciativa em casa, vocês ou eles?')],
+    foto: [so(['mulher', 'casal'], mq('{nome}, foto mostrando quem manda hoje (sem rosto) 💋'))],
+  },
+  {
+    id: 'novatos',
+    nome: 'Noite dos Novatos',
+    descricao: 'Primeira vez na Casa? Hoje é noite de quebrar o gelo sem pressão 🥂',
+    perfil: 'Tema da noite: novatos. Brincadeiras leves de quebra-gelo, acolha quem chegou agora e incentive os veteranos a receber bem.',
+    boasVindas: ['🥂 Hoje é Noite dos Novatos: chegou agora? Fica à vontade, aqui ninguém é obrigado a nada 😉', '🥂 Noite dos Novatos começou! Veteranos, recebam bem quem está chegando.'],
+    euNunca: [q('Eu nunca fui numa casa de swing.'), q('Eu nunca contei pra alguém que curto o meio liberal.'), q('Eu nunca demorei mais de um mês pra criar coragem de entrar aqui.')],
+    perguntas: [q('Noite dos Novatos: como foi a primeira vez de vocês no meio liberal? 🥂'), q('Qual conselho vocês dariam pra quem está chegando hoje?')],
+    foto: [q('{nome}, foto do seu drink de hoje pra brindar com os novatos 🥂')],
+  },
+  {
+    id: 'suruba',
+    nome: 'Noite da Suruba',
+    descricao: 'A Suruba abre mais cedo e a noite é de todo mundo se pegar 🫦',
+    perfil: 'Tema da noite: suruba. Puxe o clima de grupo, de várias pessoas ao mesmo tempo e de levar a turma pra Suruba.',
+    boasVindas: ['🫦 Hoje é Noite da Suruba: a sala da Suruba abre mais cedo. Quem vai primeiro? 😈', '🫦 Noite da Suruba começou! Hoje ninguém fica só olhando.'],
+    euNunca: [mq('Eu nunca fiquei com mais de três pessoas na mesma noite.'), mq('Eu nunca entrei numa suruba sem conhecer ninguém.'), q('Eu nunca fiquei com vontade de participar de uma e não tive coragem.')],
+    perguntas: [mq('Noite da Suruba: qual o tamanho ideal de uma suruba pra vocês? 🫦'), mq('Numa suruba, quem vocês puxariam primeiro desta sala?')],
+    foto: [mq('{nome}, foto chamando a sala pra Suruba (sem rosto) 🫦')],
+  },
+];
+
+/** Sexta 06/11/2026, a primeira noite da rotação. */
+const PRIMEIRA_NOITE_DOS_TEMAS = Date.UTC(2026, 10, 6);
+
+/** Tema automático de uma noite: gira sexta, sábado, sexta… pela lista acima. */
+export function temaAutomatico(data: string, dia: 'sexta' | 'sabado'): TemaDeFesta {
+  const sexta = Date.parse(`${data}T00:00:00Z`) - (dia === 'sabado' ? 86_400_000 : 0);
+  const semanas = Math.floor((sexta - PRIMEIRA_NOITE_DOS_TEMAS) / (7 * 86_400_000));
+  const i = semanas * 2 + (dia === 'sabado' ? 1 : 0);
+  const n = TEMAS_DE_FESTA.length;
+  return TEMAS_DE_FESTA[((i % n) + n) % n];
+}

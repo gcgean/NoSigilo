@@ -24,8 +24,8 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { DbHandle } from './db.js';
 import {
   BOAS_VINDAS, BRINCADEIRAS_DA_SALA, CHAMADAS_PARA_SALA, COMENTARIOS_RESULTADO, DESAFIOS, ENQUETES, EU_NUNCA, FUGIU, PERFIL_DA_SALA,
-  PERGUNTAS_QUENTES, PROVOCACOES_CABINE, DADO_ACOES, DADO_PARTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DA_NOITE, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
-  type Item, type Nivel, type PacoteDaSala, type SalaTematica,
+  PERGUNTAS_QUENTES, PROVOCACOES_CABINE, DADO_ACOES, DADO_PARTES, QUIZ, SUGESTOES_DE_DESAFIO, TEMAS_DE_FESTA, TEMAS_DUELO, TEMAS_FOTO, TEMAS_RELAMPAGO, VERDADES,
+  temaAutomatico, type Item, type Nivel, type PacoteDaSala, type SalaTematica, type TemaDeFesta,
 } from './casaBrincadeiras.js';
 
 type Categoria = 'homem' | 'mulher' | 'casal' | 'outros';
@@ -629,6 +629,24 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
 
   // Noite em curso (chave do histórico do admin). Atualizada no relógio e ao entrar.
   let chaveDaNoite = '';
+  // Tema da noite em curso (gira sozinho; o admin pode trocar o de uma data).
+  let temaAtual: TemaDeFesta | null = null;
+  const temasEscolhidos = new Map<string, { id: string | null; lidoEm: number }>();
+  const temaDaFesta = async (chave: string, dia: 'sexta' | 'sabado'): Promise<TemaDeFesta> => {
+    const data = chave.replace(/^(extra|teste)-/, '');
+    let escolhido = temasEscolhidos.get(data);
+    if (!escolhido || Date.now() - escolhido.lidoEm > 30_000) {
+      const row = (await db.queryOne('SELECT value FROM system_settings WHERE key = ? LIMIT 1', [`casa_tema:${data}`])) as any;
+      escolhido = { id: row?.value ? String(row.value) : null, lidoEm: Date.now() };
+      temasEscolhidos.set(data, escolhido);
+    }
+    return TEMAS_DE_FESTA.find((t) => t.id === escolhido!.id) ?? temaAutomatico(data, dia);
+  };
+  const temaPublico = (t: TemaDeFesta) => ({ id: t.id, nome: t.nome, descricao: t.descricao, dress: t.dress ?? null });
+  const diaDaData = (data: string): 'sexta' | 'sabado' => (new Date(`${data}T12:00:00Z`).getUTCDay() === 6 ? 'sabado' : 'sexta');
+  const atualizarTema = async (noite: { chave: string; tema: 'sexta' | 'sabado' } | null) => {
+    temaAtual = noite ? await temaDaFesta(noite.chave, noite.tema) : null;
+  };
   const registrarEvento = (salaId: SalaId | null, tipo: string, userId: string | null, outroId: string | null = null) => {
     if (!chaveDaNoite) return;
     void db.run('INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, outro_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -821,6 +839,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   const SALAS_GUARDADAS: SalaId[] = ['quarto'];
   const guardada = (sala: Sala) => SALAS_GUARDADAS.includes(sala.id);
   const MINIMO_PARA_DESTRAVAR = 25;
+  const minimoParaDestravar = () => (temaAtual?.id === 'suruba' ? 10 : MINIMO_PARA_DESTRAVAR);
   const liberadas = new Set<string>();
   const naCasaAgora = () => [...salas.values()].reduce((n, s) => n + s.presentes.size + s.espiando.size, 0);
   const trancada = (sala: Sala, noite: { chave: string; forcada: boolean } | null) =>
@@ -828,7 +847,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
   const destravarSeEncheu = (noite: { chave: string; forcada: boolean }) => {
     if (noite.forcada) return;
     const n = naCasaAgora();
-    if (n < MINIMO_PARA_DESTRAVAR) return;
+    if (n < minimoParaDestravar()) return;
     for (const id of SALAS_EXTRAS) {
       const chave = `${noite.chave}:${id}`;
       if (liberadas.has(chave)) continue;
@@ -903,6 +922,11 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     return proprias?.length && Math.random() < 0.7 ? { lista: proprias, prefixo: `${sala.id}-${tema}-` } : { lista: geral, prefixo };
   };
   const itemDoBanco = (sala: Sala, lista: Item[], prefixo: string, cat?: Categoria, tema?: keyof PacoteDaSala): string => {
+    // Tema da noite: de vez em quando a brincadeira vem dele (soma com a da sala).
+    if (temaAtual && (tema === 'euNunca' || tema === 'perguntas' || tema === 'foto') && Math.random() < 0.25) {
+      const t = sortearDoBanco(sala, temaAtual[tema], `tema-${temaAtual.id}-${tema}-`, cat);
+      if (t) return t;
+    }
     if (tema) {
       const proprias = pacoteDa(sala)?.[tema] as Item[] | undefined;
       if (proprias?.length && Math.random() < 0.7) {
@@ -950,7 +974,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Você é a Lola, anfitriã IA de "A Casa", uma boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18 e na plataforma por vontade própria). Você anima a sala com brincadeiras ${sala.nivel === 'muito_quente' ? 'muito quentes, ousadas e explícitas no tema' : 'quentes e provocantes'} sobre sexo, fantasias, swing e desejo. ${PERFIL_DA_SALA[sala.id] ?? ''} Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou pedir dados pessoais; não peça fotos íntimas na sala aberta. Português do Brasil, linguagem de quem curte o meio liberal. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
+              content: `Você é a Lola, anfitriã IA de "A Casa", uma boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18 e na plataforma por vontade própria). Você anima a sala com brincadeiras ${sala.nivel === 'muito_quente' ? 'muito quentes, ousadas e explícitas no tema' : 'quentes e provocantes'} sobre sexo, fantasias, swing e desejo. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''} Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou pedir dados pessoais; não peça fotos íntimas na sala aberta. Português do Brasil, linguagem de quem curte o meio liberal. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `${pedido}\nExemplos do estilo (não repita):\n${amostra}` },
           ],
@@ -987,7 +1011,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Você é a Lola, anfitriã IA de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Você está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Responda a quem respondeu você: provocante, divertida, ${sala.nivel === 'muito_quente' ? 'bem safada' : 'sensual'}, puxando a pessoa e a sala para interagir. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro, links, contatos ou dados pessoais; não peça fotos íntimas na sala aberta; nunca diga que é humana. Chame a pessoa pelo nome. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
+              content: `Você é a Lola, anfitriã IA de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Você está no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''} Responda a quem respondeu você: provocante, divertida, ${sala.nivel === 'muito_quente' ? 'bem safada' : 'sensual'}, puxando a pessoa e a sala para interagir. Regras: tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro, links, contatos ou dados pessoais; não peça fotos íntimas na sala aberta; nunca diga que é humana. Chame a pessoa pelo nome. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 160 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `Você disse na sala: "${falaDaLola.slice(0, 200)}"\n${nome} respondeu: "${texto.slice(0, 200)}"` },
           ],
@@ -1035,7 +1059,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
           messages: [
             {
               role: 'system',
-              content: `Vocês são Léo & Bia, o casal anfitrião VIRTUAL (uma IA) de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Vocês estão no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} Falam como um casal liberal animado, simpático e ${sala.nivel === 'muito_quente' ? 'bem safado' : 'provocante'}, em geral no plural ("a gente"). Objetivo: fazer as PESSOAS da sala conversarem entre si: pergunta leve e safada, elogio, apresentar um ao outro, sugerir drink ou cabine. Nunca finjam ser pessoas reais (se perguntarem, vocês são a IA da Casa); nunca combinem encontro, nunca peçam contato nem fotos. Tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou links. Chame alguém pelo nome quando fizer sentido. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 170 caracteres, no máximo um emoji.`,
+              content: `Vocês são Léo & Bia, o casal anfitrião VIRTUAL (uma IA) de "A Casa", boate virtual de uma rede social adulta e liberal brasileira (swing, casais, singles; todos maiores de 18). Vocês estão no ${sala.nome}. ${PERFIL_DA_SALA[sala.id] ?? ''} ${temaAtual?.perfil ?? ''} Falam como um casal liberal animado, simpático e ${sala.nivel === 'muito_quente' ? 'bem safado' : 'provocante'}, em geral no plural ("a gente"). Objetivo: fazer as PESSOAS da sala conversarem entre si: pergunta leve e safada, elogio, apresentar um ao outro, sugerir drink ou cabine. Nunca finjam ser pessoas reais (se perguntarem, vocês são a IA da Casa); nunca combinem encontro, nunca peçam contato nem fotos. Tudo consensual entre adultos; nada de menores, violência, drogas, dinheiro ou links. Chame alguém pelo nome quando fizer sentido. Português do Brasil. Responda SOMENTE com a frase, sem aspas, no máximo 170 caracteres, no máximo um emoji.`,
             },
             { role: 'user', content: `Quem está na sala: ${quem || 'pouca gente'}\nÚltimas mensagens:\n${conversa || '(silêncio)'}\n\n${pedido}` },
           ],
@@ -1343,6 +1367,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     const agora = Date.now();
     const noite = await noiteAtual();
     chaveDaNoite = noite?.chave ?? '';
+    await atualizarTema(noite).catch(() => {});
     if (noite) {
       let agoraNaCasa = 0;
       for (const sl of salas.values()) agoraNaCasa += sl.presentes.size + sl.espiando.size;
@@ -1422,10 +1447,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
         const ja = await db.queryOne('SELECT 1 AS x FROM system_settings WHERE key = ? LIMIT 1', [chave]);
         if (!ja) {
           await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [chave, 'enviando', new Date().toISOString()]);
-          void avisarAbertura(noite.tema).catch((err) => console.error('[casa] aviso de abertura falhou', err));
+          void avisarAbertura(noite.tema, noite.chave).catch((err) => console.error('[casa] aviso de abertura falhou', err));
           void (async () => {
             const n = await totalReservas(noite.chave);
-            await deps.alertar(`🔥 A Casa abriu (${TEMAS_DA_NOITE[noite.tema].nome}). A Lola assumiu. Reservas para hoje: ${n}. Vou te avisar de expulsões, denúncias e o resumo da noite.`);
+            await deps.alertar(`🔥 A Casa abriu (${(await temaDaFesta(noite.chave, noite.tema)).nome}). A Lola assumiu. Reservas para hoje: ${n}. Vou te avisar de expulsões, denúncias e o resumo da noite.`);
           })().catch(() => {});
         }
       }
@@ -1519,10 +1544,10 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     if (!noite) {
       const daqui15 = noiteDoHorario(new Date(Date.now() + 15 * 60_000));
       if (!daqui15 || !(await umaVez(`casa_lembrete15:${daqui15.chave}`))) return;
-      const t = TEMAS_DA_NOITE[daqui15.tema];
+      const t = await temaDaFesta(daqui15.chave, daqui15.tema);
       const ids = ((await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [daqui15.chave])) as any[]).map((r) => String(r.user_id));
       for (const id of ids) {
-        await deps.push(id, { title: '⏰ Faltam 15 minutos para A Casa!', body: `${t.nome} começa às ${HORA_DE_ABRIR[daqui15.tema]}h. Seu lugar está reservado: chega cedo pra pegar a sala cheia 😈`, url: '/casa', tag: 'casa-15min' }).catch(() => {});
+        await deps.push(id, { title: '⏰ Faltam 15 minutos para A Casa!', body: `${t.nome} começa às ${HORA_DE_ABRIR[daqui15.tema]}h.${t.dress ? ` Dress code: ${t.dress}.` : ''} Seu lugar está reservado: chega cedo pra pegar a sala cheia 😈`, url: '/casa', tag: 'casa-15min' }).catch(() => {});
         await new Promise((r) => setTimeout(r, 60));
       }
       return;
@@ -1546,8 +1571,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
   };
 
-  const avisarAbertura = async (tema: 'sexta' | 'sabado') => {
-    const t = TEMAS_DA_NOITE[tema];
+  const avisarAbertura = async (tema: 'sexta' | 'sabado', chave: string) => {
+    const t = await temaDaFesta(chave, tema);
     const reservados = (await db.queryAll('SELECT user_id FROM casa_reservas WHERE noite = ?', [chaveDaNoite])) as any[];
     const jaAvisados = new Set<string>();
     for (const r of reservados) {
@@ -1759,7 +1784,8 @@ Sala: ${salaId}`).catch(() => {});
     const prox = await proximaNoite();
     res.json({
       aberta: !!noite,
-      tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
+      tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
+      proximoTema: !noite && prox.chave ? temaPublico(await temaDaFesta(prox.chave, diaDaData(prox.chave))) : null,
       pessoas,
       reservas: prox.chave ? await totalReservas(prox.chave) : 0,
       proximaAbertura: proxima,
@@ -1776,7 +1802,8 @@ Sala: ${salaId}`).catch(() => {});
     const reservado = prox.chave ? !!(await db.queryOne('SELECT 1 AS x FROM casa_reservas WHERE user_id = ? AND noite = ?', [userId, prox.chave])) : false;
     res.json({
       aberta: !!noite,
-      tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
+      tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
+      proximoTema: !noite && prox.chave ? temaPublico(await temaDaFesta(prox.chave, diaDaData(prox.chave))) : null,
       horario: HORARIO_DA_CASA,
       reservado,
       contaCriadaEm: perfil?.criadoEm ?? null,
@@ -1797,7 +1824,7 @@ Sala: ${salaId}`).catch(() => {});
           contagem: c,
           bloqueadaParaMim: s.semHomens && souHomem,
           trancada: trancada(s, noite) && !perfil?.admin,
-          faltamParaAbrir: trancada(s, noite) ? Math.max(0, MINIMO_PARA_DESTRAVAR - naCasaAgora()) : 0,
+          faltamParaAbrir: trancada(s, noite) ? Math.max(0, minimoParaDestravar() - naCasaAgora()) : 0,
           lotadaParaMim: !s.semHomens && souHomem && podeFalar && c.homem >= limiteDeHomens(s) && s.convocado?.userId !== userId,
           posicaoNaFila: s.fila.indexOf(userId) >= 0 ? s.fila.indexOf(userId) + 1 : null,
           // Para o mapa da Casa: só o tipo de cada pessoa (sem nome) e as cabines da sala.
@@ -1857,6 +1884,7 @@ Sala: ${salaId}`).catch(() => {});
     const noite = await noitePara(userId);
     if (!noite) { res.status(403).json({ error: 'fechada', message: `A Casa abre ${HORARIO_DA_CASA.toLowerCase()}.` }); return; }
     chaveDaNoite = noite.chave;
+    if (!temaAtual) await atualizarTema(noite).catch(() => {});
     if (estaExpulso(userId)) { res.status(403).json({ error: 'expulso', message: 'Você foi retirado(a) da Casa nesta noite. Na próxima noite você pode voltar.' }); return; }
     const perfil = await carregarPerfil(userId);
     if (!perfil) { res.status(404).json({ error: 'not_found' }); return; }
@@ -1866,7 +1894,7 @@ Sala: ${salaId}`).catch(() => {});
     }
     if (trancada(sala, noite) && !perfil.admin && !sala.presentes.has(userId)) {
       const n = naCasaAgora();
-      res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa tiver ${MINIMO_PARA_DESTRAVAR} pessoas (agora ${n}). Chama mais gente! 😈` });
+      res.status(403).json({ error: 'trancada', message: `O ${sala.nome} abre quando a Casa tiver ${minimoParaDestravar()} pessoas (agora ${n}). Chama mais gente! 😈` });
       return;
     }
     if (sala.semHomens && perfil.cat === 'homem') {
@@ -1933,7 +1961,7 @@ Sala: ${salaId}`).catch(() => {});
     if (!jaEstava) {
       if ((falantes(sala).length === 1 || sala.mensagens.length === 0) && Date.now() - (ultimaSaudacao.get(sala.id) ?? 0) > 30 * 60_000) {
         ultimaSaudacao.set(sala.id, Date.now());
-        lola(sala, sortear(BOAS_VINDAS));
+        lola(sala, temaAtual && Math.random() < 0.6 ? sortear(temaAtual.boasVindas) : sortear(BOAS_VINDAS));
       }
       // Quem cai e volta (celular em segundo plano) não gera "chegou" de novo a cada minuto.
       const chaveChegada = `${sala.id}:${userId}`;
@@ -2507,7 +2535,7 @@ Sala: ${salaId}`).catch(() => {});
       forcada: !!noite?.forcada,
       teste: !!noite?.teste,
       convidadosTeste: noite?.teste ? (await modoTeste()).convidados : [],
-      tema: noite ? TEMAS_DA_NOITE[noite.tema] : null,
+      tema: noite ? temaPublico(await temaDaFesta(noite.chave, noite.tema)) : null,
       abertaAte: noite?.forcada ? new Date(await abertaAte()).toISOString() : null,
       proximaAbertura: prox.inicio,
       proximaNoite: prox.chave,
@@ -3029,6 +3057,34 @@ Sala: ${salaId}`).catch(() => {});
     if (!f) { res.status(404).json({ error: 'not_found' }); return; }
     await salvarPlaylist(lista.filter((x) => x.id !== f.id));
     try { unlinkSync(path.join(deps.pastaMusicas, f.arquivo)); } catch { /* já não existia */ }
+    res.json({ ok: true });
+  });
+
+  // ─── Tema de cada noite (admin) ───────────────────────────────────────────
+  // As próximas 8 noites com o tema de cada uma; o admin pode trocar ou voltar ao automático.
+  app.get('/api/casa/admin/temas', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const noites: Array<{ data: string; dia: 'sexta' | 'sabado'; tema: ReturnType<typeof temaPublico>; escolhido: boolean }> = [];
+    for (let d = 0; noites.length < 8 && d < 40; d++) {
+      const { dow, data } = agoraBrasilia(new Date(Date.now() - 3 * 3_600_000 + d * 86_400_000));
+      if (dow !== 5 && dow !== 6) continue;
+      const dia = dow === 6 ? 'sabado' : 'sexta';
+      const t = await temaDaFesta(data, dia);
+      noites.push({ data, dia, tema: temaPublico(t), escolhido: temasEscolhidos.get(data)?.id === t.id });
+    }
+    res.json({ temas: TEMAS_DE_FESTA.map(temaPublico), noites });
+  });
+
+  app.post('/api/casa/admin/temas', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const data = String((req.body as any)?.data || '');
+    const temaId = (req.body as any)?.temaId ? String((req.body as any).temaId) : null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data) || (temaId && !TEMAS_DE_FESTA.some((t) => t.id === temaId))) { res.status(400).json({ error: 'dados' }); return; }
+    await db.run('DELETE FROM system_settings WHERE key = ?', [`casa_tema:${data}`]);
+    if (temaId) await db.run('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_tema:${data}`, temaId, new Date().toISOString()]);
+    await db.persist();
+    temasEscolhidos.set(data, { id: temaId, lidoEm: Date.now() });
+    if (chaveDaNoite.replace(/^(extra|teste)-/, '') === data) await atualizarTema({ chave: chaveDaNoite, tema: diaDaData(data) });
     res.json({ ok: true });
   });
 
