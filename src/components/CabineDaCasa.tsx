@@ -12,7 +12,7 @@ import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
 import { tocarSomDaCasa } from '@/utils/somDaCasa';
-import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas } from '@/components/ChatDaCasaUi';
+import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
 
 /**
@@ -203,7 +203,10 @@ export default function CabineDaCasa({
     return () => { off('casa.cabine.esquentar', aoEsquentar); off('casa.cabine.reacao', aoReacao); off('casa.cabine.estado', aoEstado); off('casa.cabine.mensagem', aoMsg); off('casa.cabine.fechou', aoFechou); off('casa.cabine.mensagem.removida', aoRemovida); };
   }, [on, off, cabineId, toast, onSaiu, meuIdPublico]);
   // Rolagem estilo WhatsApp: só desce sozinho se a pessoa já está no fim.
-  const rolagem = useRolagemDoChat({ chave: `cab:${cabineId}`, mensagens: cab?.mensagens, meuId: meuIdPublico ?? '' });
+  // @menções: só quem está dentro da cabine.
+  const meuNomeNaCabine = cab?.membros?.find((x) => x.id === meuIdPublico)?.nome;
+  const nomesNaCabine = (cab?.membros ?? []).map((x) => x.nome);
+  const rolagem = useRolagemDoChat({ chave: `cab:${cabineId}`, mensagens: cab?.mensagens, meuId: meuIdPublico ?? '', meuNome: meuNomeNaCabine });
   const irParaCitada = (id: string) => {
     if (!rolagem.irPara(id)) toast({ title: 'Essa mensagem já saiu do histórico da cabine.' });
   };
@@ -538,7 +541,7 @@ export default function CabineDaCasa({
                     {m.midia?.tipo === 'video' ? '🎥' : '📸'} {minha ? 'Você enviou · visualização única' : vista ? 'Aberta' : 'Toque para ver (1 vez)'}
                   </button>
                 );
-              })() : <p className="break-words text-sm">{m.texto}</p>}
+              })() : <p className="break-words text-sm"><TextoComMencoes texto={m.texto} nomes={nomesNaCabine} meuNome={meuNomeNaCabine} /></p>}
               {m.tipo === 'midia' && m.legenda && <p className="mt-1 break-words text-sm">{m.legenda}</p>}
               <Acoes m={m} />
             </div>
@@ -702,7 +705,9 @@ export default function CabineDaCasa({
               <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta"><X className="h-4 w-4" /></button>
             </div>
           )}
-          <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Só quem está na cabine fala…"
+          <SugestoesDeMencao texto={texto} onEscolher={setTexto} className={respondendo && enviando === null ? 'mb-9' : undefined}
+            pessoas={(cab.membros ?? []).filter((x) => x.id !== meuIdPublico)} />
+          <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Só quem está na cabine fala… (@ marca)"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none" />
           <button type="submit" disabled={!texto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar">
             <Send className="h-4 w-4" />

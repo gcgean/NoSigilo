@@ -15,7 +15,7 @@ function Chat({ chave = 'sala', inicio = iniciais }: { chave?: string; inicio?: 
   const [resp, setResp] = useState('');
   const [aviso, setAviso] = useState('');
   api = { add: (...m) => setMsgs((l) => [...l, ...m]) };
-  const r = useRolagemDoChat({ chave, mensagens: msgs, meuId: 'eu' });
+  const r = useRolagemDoChat({ chave, mensagens: msgs, meuId: 'eu', meuNome: 'Pablo&Nina' });
   const ir = (id: string) => { if (!r.irPara(id)) setAviso('sumiu'); };
   return (
     <div>
@@ -87,14 +87,23 @@ describe('rolagem do chat d\'A Casa', () => {
     expect(topo).toBe(3000);
   });
 
-  it('resposta a mim mostra "@ te responderam" e leva até ela', async () => {
+  it('resposta a mim mostra "@ falaram com você" e leva até ela', async () => {
     render(<Chat />);
     await quadro();
     subir();
     act(() => api.add(msg('r1', 'outro', 'm3'))); // m3 é minha
-    fireEvent.click(screen.getByText('@ te responderam'));
+    fireEvent.click(screen.getByText('@ falaram com você'));
     expect(rolados).toContain('r1');
-    expect(screen.queryByText('@ te responderam')).toBeNull();
+    expect(screen.queryByText('@ falaram com você')).toBeNull();
+  });
+
+  it('@Nome no texto também mostra "@ falaram com você"', async () => {
+    render(<Chat />);
+    await quadro();
+    subir();
+    act(() => api.add({ id: 'n1', autor: { id: 'outro' }, texto: 'oi @pablo&nina, bora?' }));
+    fireEvent.click(screen.getByText('@ falaram com você'));
+    expect(rolados).toContain('n1');
   });
 
   it('tocar na citação vai até a original e ela pisca; citação sumida avisa', async () => {

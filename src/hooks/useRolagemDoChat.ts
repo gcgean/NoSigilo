@@ -4,13 +4,13 @@ import { useCallback, useLayoutEffect, useRef, useState } from 'react';
  * Rolagem do chat d'A Casa (salas e cabines) no jeito dos grupos do WhatsApp:
  * - só desce sozinho se a pessoa já está no fim (ou se a mensagem é dela);
  * - se ela subiu para ler, conta as novas e mostra o botão "⬇ N novas";
- * - resposta a uma mensagem dela vira "@ te responderam" (toque leva até ela);
+ * - resposta a uma mensagem dela, ou @Nome dela no texto, vira "@ falaram com você" (toque leva até ela);
  * - tocar na citação leva até a mensagem original e ela pisca;
  * - ao voltar para a sala/cabine, marca "Mensagens não lidas" onde parou.
  *
  * Cada mensagem renderizada precisa de `data-msg-id={m.id}` dentro da lista.
  */
-type MsgBase = { id: string; autor?: { id: string } | null; resposta?: { id: string } | null };
+type MsgBase = { id: string; autor?: { id: string } | null; resposta?: { id: string } | null; texto?: string };
 
 const PERTO_DO_FIM = 120; // px
 const chaveLida = (chave: string) => `nosigilo:casa-lida:${chave}`;
@@ -20,8 +20,10 @@ export function useRolagemDoChat<T extends MsgBase>(opts: {
   chave: string | null;
   mensagens: T[] | undefined;
   meuId: string;
+  /** Meu nome na sala/cabine: quem escrever @Nome me chama. */
+  meuNome?: string;
 }) {
-  const { chave, mensagens, meuId } = opts;
+  const { chave, mensagens, meuId, meuNome } = opts;
   const listaRef = useRef<HTMLDivElement | null>(null);
   const noFimRef = useRef(true);
   const [noFim, setNoFim] = useState(true);
@@ -132,9 +134,10 @@ export function useRolagemDoChat<T extends MsgBase>(opts: {
     if (deFora.length === 0) return;
     setNovas((n) => n + deFora.length);
     setMarcador((mk) => mk ?? deFora[0].id);
-    const resposta = deFora.find((m) => m.resposta && minhas.has(m.resposta.id));
+    const marcaMeu = meuNome ? `@${meuNome.toLowerCase()}` : null;
+    const resposta = deFora.find((m) => (m.resposta && minhas.has(m.resposta.id)) || (!!marcaMeu && !!m.texto && m.texto.toLowerCase().includes(marcaMeu)));
     if (resposta) setMencao((x) => x ?? resposta.id);
-  }, [chave, mensagens, meuId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chave, mensagens, meuId, meuNome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Depois de posicionar na primeira carga, confere se ficou no fim.
   const aoRolarDepois = () => requestAnimationFrame(() => aoRolar());

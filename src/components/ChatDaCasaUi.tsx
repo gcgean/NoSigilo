@@ -1,6 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolveServerUrl } from '@/utils/serverUrl';
 
 /** Botões flutuantes do chat d'A Casa: "@ te responderam" e "⬇ N novas" (ver useRolagemDoChat). */
 export function BotoesDeNovas({ noFim, novas, mencao, onFim, onMencao }: {
@@ -12,7 +13,7 @@ export function BotoesDeNovas({ noFim, novas, mencao, onFim, onMencao }: {
       {mencao && (
         <button type="button" onClick={onMencao}
           className="pointer-events-auto rounded-full bg-fuchsia-600 px-3 py-1.5 text-xs font-bold shadow-lg ring-1 ring-fuchsia-300/60">
-          @ te responderam
+          @ falaram com você
         </button>
       )}
       {!noFim && (
@@ -85,6 +86,68 @@ export function ArrastaParaResponder({ ativo, onResponder, destacada, children, 
       <div style={dx ? { transform: `translateX(${dx}px)` } : undefined} className={cn(!dx && 'transition-transform')}>
         {children}
       </div>
+    </div>
+  );
+}
+
+// ─── @menções (sala e cabine) ─────────────────────────────────────────────────
+// Os nomes têm espaço e símbolos ("Pablo&Nina", "Homem Casa 2"), então a marcação
+// é o nome exato depois do @, comparado com quem está na sala ou na cabine.
+
+const escapar = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** O texto marca essa pessoa (@Nome, sem diferenciar maiúscula). */
+export function mencionou(texto: string | undefined, nome: string | undefined) {
+  return !!texto && !!nome && texto.toLowerCase().includes(`@${nome.toLowerCase()}`);
+}
+
+/** Texto da mensagem com os @Nome de quem está aqui em destaque (o meu, mais forte). */
+export function TextoComMencoes({ texto, nomes, meuNome }: { texto: string; nomes: string[]; meuNome?: string }) {
+  const validos = [...new Set(nomes.filter((n) => n.trim().length > 0))].sort((a, b) => b.length - a.length);
+  if (validos.length === 0 || !texto.includes('@')) return <>{texto}</>;
+  const partes = texto.split(new RegExp(`(@(?:${validos.map(escapar).join('|')}))`, 'gi'));
+  return (
+    <>
+      {partes.map((parte, i) => (i % 2 === 1
+        ? <span key={i} className={cn('font-semibold text-sky-300', meuNome && parte.slice(1).toLowerCase() === meuNome.toLowerCase() && 'rounded bg-amber-400/25 px-0.5 text-amber-200')}>{parte}</span>
+        : <Fragment key={i}>{parte}</Fragment>))}
+    </>
+  );
+}
+
+/** Termo sendo digitado depois do último @ (ou null se não está marcando ninguém). */
+export function termoDaMencao(texto: string): { inicio: number; termo: string } | null {
+  const i = texto.lastIndexOf('@');
+  if (i < 0 || (i > 0 && !/\s/.test(texto[i - 1]))) return null;
+  const termo = texto.slice(i + 1);
+  if (termo.length > 30 || termo.includes('\n')) return null;
+  return { inicio: i, termo };
+}
+
+/** Lista de quem está aqui para marcar, logo acima da caixa de texto. */
+export function SugestoesDeMencao({ texto, pessoas, onEscolher, className }: {
+  texto: string;
+  pessoas: Array<{ id: string; nome: string; avatar?: string | null }>;
+  onEscolher: (novoTexto: string) => void;
+  className?: string;
+}) {
+  const m = termoDaMencao(texto);
+  if (!m) return null;
+  const termo = m.termo.toLowerCase();
+  const opcoes = pessoas
+    .filter((p) => p.nome.toLowerCase().startsWith(termo) && p.nome.toLowerCase() !== termo.trimEnd())
+    .slice(0, 6);
+  if (opcoes.length === 0) return null;
+  return (
+    <div className={cn('absolute bottom-full left-2 right-2 z-30 mb-1 flex flex-wrap gap-1.5 rounded-2xl bg-zinc-900/95 p-2 shadow-lg ring-1 ring-white/15', className)}>
+      {opcoes.map((p) => (
+        <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onEscolher(`${texto.slice(0, m.inicio)}@${p.nome} `)}
+          className="flex items-center gap-1.5 rounded-full bg-white/10 py-1 pl-1 pr-2.5 text-xs font-semibold active:bg-white/20">
+          {p.avatar ? <img src={resolveServerUrl(p.avatar)} alt="" className="h-5 w-5 rounded-full object-cover" /> : <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white/15 text-[10px]">{p.nome.slice(0, 1)}</span>}
+          @{p.nome}
+        </button>
+      ))}
     </div>
   );
 }
