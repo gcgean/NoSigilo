@@ -3469,6 +3469,58 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
   });
 
+  it('Lola: lembrete de reserva no chat e no sino e convite das mulheres na noite Elas no Comando', async () => {
+    const avisos = ctx.app.get('casaAvisos') as { lembrarReservas: (n: any) => Promise<void>; convidarParaOTema: () => Promise<number> };
+    const nova = async (nome: string, gender: string) => {
+      const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+      await run(ctx.db, 'UPDATE users SET last_seen_at = ? WHERE id = ?', ['2027-01-08T12:00:00.000Z', String(u.user.id)]);
+      return String(u.user.id);
+    };
+    const convites = async (id: string) => (await queryAll(ctx.db, "SELECT title FROM notifications WHERE user_id = ? AND type = 'casa.convite'", [id])) as any[];
+    const noChat = async (id: string) => ((await queryAll(ctx.db,
+      `SELECT m.content FROM messages m JOIN users u ON u.id = m.sender_id
+        WHERE u.conta_oficial = 1 AND m.conversation_id IN (SELECT id FROM conversations WHERE user_a_id = ? OR user_b_id = ?)`,
+      [id, id])) as any[]).map((m) => String(m.content));
+    const mulher = await nova('Elas Mulher', 'Mulher');
+    const casalElas = await nova('Elas Casal Delas', 'Casal (Ela/Ela)');
+    const homem = await nova('Elas Homem', 'Homem');
+    const parou = await nova('Elas Parou', 'Mulher');
+    const reservou = await nova('Elas Reservou', 'Mulher');
+    const veio = await nova('Elas Veio', 'Homem');
+    const chave = '2027-01-09'; // sábado
+    const agora = () => new Date().toISOString();
+    await run(ctx.db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_convite_off:${parou}`, '1', agora()]);
+    await run(ctx.db, 'INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)', [`casa_tema:${chave}`, 'elas', agora()]);
+    for (const id of [reservou, veio]) await run(ctx.db, 'INSERT INTO casa_reservas (user_id, noite, created_at) VALUES (?, ?, ?)', [id, chave, agora()]);
+    await run(ctx.db, "INSERT INTO casa_eventos (id, noite, sala, tipo, user_id, created_at) VALUES ('ev-elas-veio', ?, 'salao', 'entrou', ?, ?)", [chave, veio, agora()]);
+    await ctx.db.persist();
+    try {
+      // 19h30 de Brasília: 2h30 antes de abrir, a Lola convida as mulheres. Uma vez só.
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-01-09T22:30:00.000Z') });
+      expect(await avisos.convidarParaOTema()).toBeGreaterThanOrEqual(2);
+      expect(await avisos.convidarParaOTema()).toBe(0);
+      vi.useRealTimers();
+      expect((await convites(mulher))[0]?.title).toMatch(/Elas no Comando/);
+      expect((await noChat(mulher)).some((m) => /Elas no Comando/.test(m) && /de graça/.test(m) && /\/casa/.test(m))).toBe(true);
+      expect((await noChat(casalElas)).some((m) => /Elas no Comando/.test(m) && !/de graça/.test(m))).toBe(true);
+      for (const id of [homem, parou, reservou]) expect(await convites(id)).toHaveLength(0);
+
+      // 22h25: quem reservou e ainda não entrou recebe o recado no chat e no sino; quem veio, não.
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-01-10T01:25:00.000Z') });
+      await avisos.lembrarReservas({ chave, tema: 'sabado', forcada: false, teste: false });
+      vi.useRealTimers();
+      expect((await convites(reservou)).map((c) => String(c.title))).toEqual(["🔥 Seu lugar n'A Casa está guardado"]);
+      expect((await noChat(reservou)).some((m) => /Elas no Comando já começou/.test(m) && /PARAR/.test(m))).toBe(true);
+      expect(await convites(veio)).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+      await run(ctx.db, 'DELETE FROM casa_reservas WHERE noite = ?', [chave]);
+      await run(ctx.db, 'DELETE FROM casa_eventos WHERE noite = ?', [chave]);
+      await run(ctx.db, "DELETE FROM system_settings WHERE key LIKE ? OR key LIKE ? OR key = ?", [`%:${chave}`, `casa_convite_off:${parou}`, `casa_tema:${chave}`]);
+      await ctx.db.persist();
+    }
+  });
+
   it('Suruba: casal e mulher entram direto; solteiro só com pontos, curtidas ou chamado', async () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     // Fora do horário da Casa (próxima terça, 15h de Brasília): a abertura forçada destrava a Suruba

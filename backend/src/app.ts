@@ -23375,6 +23375,18 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   });
 
+  // Recado da Lola fora da Casa: chat da conta oficial + sino. Quem bloqueou a conta
+  // oficial não quer nada vindo dela.
+  const recadoDaLola = async (userId: string, r: { texto: string; titulo: string; descricao: string; url: string; sala?: string }) => {
+    const oficial = await garantirContaOficial();
+    if (await queryOne(db, 'SELECT 1 AS x FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?', [userId, oficial])) return false;
+    await enviarMensagemOficial(userId, `💋 Lola, da Casa: ${r.texto} ${origemFrontend(env)}${r.url}\n\nNão quer esses convites? Responda PARAR.`);
+    await createNotification({ db, io: app.get('io') as SocketIOServer | undefined }, {
+      userId, type: 'casa.convite', title: r.titulo, description: r.descricao, dataJson: { url: r.url, ...(r.sala ? { sala: r.sala } : {}) },
+    });
+    return true;
+  };
+
   // A Casa: boate virtual de sexta e sábado (casa.ts).
   registrarCasa(app, {
     db,
@@ -23386,19 +23398,12 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
     onlineIds: () => (app.get('presence') as { onlineIds?: () => string[] } | undefined)?.onlineIds?.() ?? [],
-    convidarParaSala: async (userId, convite) => {
-      // Quem bloqueou a conta oficial não quer nada vindo dela.
-      const oficial = await garantirContaOficial();
-      if (await queryOne(db, 'SELECT 1 AS x FROM blocks WHERE blocker_user_id = ? AND blocked_user_id = ?', [userId, oficial])) return false;
-      const link = `/casa?sala=${encodeURIComponent(convite.salaId)}`;
-      await enviarMensagemOficial(userId,
-        `💋 Lola, da Casa: 🔥 O ${convite.salaNome} está pegando fogo agora! Vem pra Casa: ${origemFrontend(env)}${link}\n\nNão quer esses convites? Responda PARAR.`);
-      await createNotification({ db, io: app.get('io') as SocketIOServer | undefined }, {
-        userId, type: 'casa.convite', title: `🔥 O ${convite.salaNome} está pegando fogo`,
-        description: 'Vem pra Casa! A sala está animada agora.', dataJson: { url: link, sala: convite.salaId },
-      });
-      return true;
-    },
+    convidarParaSala: (userId, convite) => recadoDaLola(userId, {
+      texto: `🔥 O ${convite.salaNome} está pegando fogo agora! Vem pra Casa:`,
+      titulo: `🔥 O ${convite.salaNome} está pegando fogo`, descricao: 'Vem pra Casa! A sala está animada agora.',
+      url: `/casa?sala=${encodeURIComponent(convite.salaId)}`, sala: convite.salaId,
+    }),
+    recadoDaLola: (userId, recado) => recadoDaLola(userId, recado),
     alertar: (texto) => notifyAdminsTelegram({ db, env }, texto, 'casa'),
     // Assinaturas pagas (extrato do Hub, 5 min em cache) ligadas ao usuário por cliente do Hub ou e-mail.
     assinaturasPagas: async () => {

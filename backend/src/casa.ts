@@ -234,6 +234,9 @@ export type DependenciasDaCasa = {
   onlineIds?: () => string[];
   /** Convite da Lola para uma sala animada: mensagem no chat da conta oficial e aviso no sino. */
   convidarParaSala?: (userId: string, convite: { salaId: string; salaNome: string }) => Promise<boolean>;
+  /** Recado da Lola fora da Casa (chat da conta oficial + sino). O texto termina pedindo para
+   *  vir; o link e o "Responda PARAR" são acrescentados. false se a pessoa bloqueou a conta oficial. */
+  recadoDaLola?: (userId: string, recado: { texto: string; titulo: string; descricao: string; url: string }) => Promise<boolean>;
 };
 
 type Faixa = { id: string; arquivo: string; titulo: string; artista: string; fonte: string; duracao: number; tipo?: 'musica' | 'vinheta' | 'abertura' | 'fechamento' };
@@ -723,14 +726,16 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const estaEmAlgumLugarDaCasa = (userId: string) =>
     [...salas.values()].some((s) => s.presentes.has(userId) || s.espiando.has(userId))
     || [...cabines.values()].some((c) => c.membros.has(userId) || c.espectadores.has(userId));
+  /** Quem respondeu PARAR à Lola: não recebe convite nem recado da Casa. */
+  const naoQueremConvite = async () => new Set(((await db.queryAll(
+    "SELECT key FROM system_settings WHERE key LIKE 'casa_convite_off:%'", [])) as any[]).map((r) => String(r.key).slice('casa_convite_off:'.length)));
   const convidarParaFogo = async (sala: Sala) => {
     const noite = chaveDaNoite;
     const online = deps.onlineIds?.() ?? [];
     if (!noite || online.length === 0) return 0;
     const jaConvidados = new Set(((await db.queryAll(
       "SELECT user_id FROM casa_eventos WHERE noite = ? AND tipo = 'convite_fogo'", [noite])) as any[]).map((r) => String(r.user_id)));
-    const naoQuerem = new Set(((await db.queryAll(
-      "SELECT key FROM system_settings WHERE key LIKE 'casa_convite_off:%'", [])) as any[]).map((r) => String(r.key).slice('casa_convite_off:'.length)));
+    const naoQuerem = await naoQueremConvite();
     // Homem só é convidado se puder entrar agora (senão cai na fila e o convite vira frustração).
     const homemPodeEntrar = !sala.semHomens && contagem(sala).homem < limiteDeHomens(sala);
     let enviados = 0;
@@ -1445,6 +1450,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     if (noite && !noite.teste) destravarSeEncheu(noite);
     if (noite) equilibrarSalas(agora);
     void lembrarReservas(noite).catch((err) => console.error('[casa] lembrete de reserva falhou', err));
+    void convidarParaOTema().catch((err) => console.error('[casa] convite do tema falhou', err));
 
     // Abriu a noite: aviso no celular de quem usou o site nos últimos 7 dias (uma vez por noite).
     if (noite && !noite.forcada && noite.chave !== noiteAnterior) {
@@ -1578,10 +1584,56 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     const corpo = pessoas >= 5
       ? `Já tem ${pessoas} pessoas${nCabines > 0 ? ` e ${nCabines} cabine(s) rolando` : ''} 🔥 Seu lugar está te esperando, entra!`
       : 'A Lola já está puxando as brincadeiras 🔥 Seu lugar está te esperando, entra!';
+    // A maioria de quem reserva não tem notificação no celular ligada (31/10: 34 de 190):
+    // o recado no chat e no sino alcança quem abrir o site.
+    const t = await temaDaFesta(noite.chave, noite.tema);
+    const naoQuerem = await naoQueremConvite();
     for (const r of faltam) {
-      await deps.push(String(r.user_id), { title: '🔥 A Casa está pegando fogo', body: corpo, url: '/casa', tag: 'casa-20min' }).catch(() => {});
+      const id = String(r.user_id);
+      await deps.push(id, { title: '🔥 A Casa está pegando fogo', body: corpo, url: '/casa', tag: 'casa-20min' }).catch(() => {});
+      if (deps.recadoDaLola && !naoQuerem.has(id)) {
+        await deps.recadoDaLola(id, {
+          texto: `A ${t.nome} já começou e seu lugar está guardado até 1h 🔥 Vem pra Casa:`,
+          titulo: '🔥 Seu lugar n\'A Casa está guardado', descricao: `A ${t.nome} já começou. Entra!`, url: '/casa',
+        }).catch(() => false);
+      }
       await new Promise((res) => setTimeout(res, 60));
     }
+  };
+
+  // Noite "Elas no Comando": 3h antes de abrir, a Lola convida as mulheres (e casais de
+  // mulheres) que usaram o site nos últimos 60 dias. Uma vez por noite; quem reservou já
+  // recebe os lembretes da reserva.
+  const convidarParaOTema = async () => {
+    const n = noiteDoHorario(new Date(Date.now() + 3 * 3600_000));
+    if (!n || noiteDoHorario() || !deps.recadoDaLola) return 0;
+    const t = await temaDaFesta(n.chave, n.tema);
+    if (t.id !== 'elas' || !(await umaVez(`casa_convite_tema:${n.chave}`))) return 0;
+    const desde = new Date(Date.now() - 60 * 86_400_000).toISOString();
+    const pessoas = (await db.queryAll(
+      `SELECT u.id, u.gender FROM users u
+        WHERE u.last_seen_at >= ? AND COALESCE(u.is_showcase,0) = 0 AND COALESCE(u.is_banned,0) = 0
+          AND COALESCE(u.is_deactivated,0) = 0 AND COALESCE(u.conta_oficial,0) = 0 AND u.deleted_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM casa_reservas r WHERE r.user_id = u.id AND r.noite = ?)`,
+      [desde, n.chave],
+    )) as any[];
+    const naoQuerem = await naoQueremConvite();
+    const hora = HORA_DE_ABRIR[n.tema];
+    let enviados = 0;
+    for (const p of pessoas) {
+      const id = String(p.id);
+      const genero = String(p.gender || '').trim().toLowerCase();
+      const mulher = categoria(p.gender) === 'mulher';
+      if ((!mulher && genero !== 'casal (ela/ela)') || naoQuerem.has(id)) continue;
+      const ok = await deps.recadoDaLola(id, {
+        texto: `Hoje é ${t.nome} 💋 Das ${hora}h à 1h quem manda são elas: vocês escolhem, convidam e decidem quem entra na cabine.${mulher ? ' E mulher entra de graça 😉' : ''} Vem comandar:`,
+        titulo: `💋 Hoje é ${t.nome} n'A Casa`, descricao: `Das ${hora}h à 1h quem manda são elas. Vem!`, url: '/casa',
+      }).catch(() => false);
+      if (ok) enviados += 1;
+      await new Promise((res) => setTimeout(res, 60));
+    }
+    console.log(`[casa] ${t.nome}: convite para ${enviados} mulher(es)`);
+    return enviados;
   };
 
   const avisarAbertura = async (tema: 'sexta' | 'sabado', chave: string) => {
@@ -1629,6 +1681,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
 
   const relogio = setInterval(() => { tick().catch((err) => console.error('[casa] tick', err)); }, 15_000);
   relogio.unref?.();
+  // Os testes chamam os avisos direto, sem esperar o relógio de 15 s.
+  app.set('casaAvisos', { lembrarReservas, convidarParaOTema });
 
   // ─── Rotas ────────────────────────────────────────────────────────────────
   const carregarPerfil = async (userId: string) => {
