@@ -32,7 +32,7 @@ import TemaDaProxima from '@/components/TemaDaProxima';
 import CabinesFechadas, { type CabineFechada } from '@/components/CabinesFechadas';
 
 /**
- * A Casa — boate virtual de sexta e sábado (22h), até 1h (backend: casa.ts).
+ * A Casa — boate virtual de sexta (22h–1h) e sábado (22h–2h) (backend: casa.ts).
  * Lobby com as salas; dentro da sala: chat ao vivo, quem está lá, brincadeiras
  * da Lola (anfitriã IA) e convite para a cabine (conversa a dois com aceite).
  */
@@ -1812,7 +1812,7 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo. Toda <b>sexta e sábado às 22h, até 1h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>

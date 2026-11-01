@@ -3521,6 +3521,17 @@ describe('nosigilo backend', () => {
     }
   });
 
+  it('horário da Casa: sexta fecha à 1h e sábado às 2h', async () => {
+    const aberta = async (iso: string) => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(iso) });
+      try { return (await request(ctx.app).get('/api/casa/publico').expect(200)).body.aberta; } finally { vi.useRealTimers(); }
+    };
+    expect(await aberta('2027-01-09T04:30:00.000Z')).toBe(false); // sábado 01h30: a noite de sexta já fechou
+    expect(await aberta('2027-01-10T03:30:00.000Z')).toBe(true); // domingo 00h30: sábado rolando
+    expect(await aberta('2027-01-10T04:30:00.000Z')).toBe(true); // domingo 01h30: sábado vai até 2h
+    expect(await aberta('2027-01-10T05:05:00.000Z')).toBe(false); // domingo 02h05: fechou
+  });
+
   it('Suruba: casal e mulher entram direto; solteiro só com pontos, curtidas ou chamado', async () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     // Fora do horário da Casa (próxima terça, 15h de Brasília): a abertura forçada destrava a Suruba

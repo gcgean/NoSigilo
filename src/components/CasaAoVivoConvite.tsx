@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { fechaHoje } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,7 @@ export default function CasaAoVivoConvite() {
           </p>
           <DialogTitle className="text-3xl font-black">A Casa está aberta 🔥</DialogTitle>
           <p className="text-sm text-white/85">
-            {info?.tema ? `${info.tema}: ` : ''}salas ao vivo com casais, mulheres e singles, a Lola puxando as brincadeiras e cabines a dois até 1h.
+            {info?.tema ? `${info.tema}: ` : ''}salas ao vivo com casais, mulheres e singles, a Lola puxando as brincadeiras e cabines a dois até {fechaHoje()}.
           </p>
           {info && info.pessoas > 0 && <p className="text-sm font-semibold text-rose-200">Várias pessoas lá dentro agora 👀</p>}
           <Button size="lg" className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={() => { setAberto(false); navigate('/casa'); }}>

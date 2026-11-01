@@ -71,7 +71,7 @@ export default function ACasaPublica() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo, feita para a nossa comunidade. Toda <b>sexta e sábado às 22h, até 1h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo, feita para a nossa comunidade. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>

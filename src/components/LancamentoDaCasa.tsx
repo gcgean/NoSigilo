@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
 import { Button } from '@/components/ui/button';
@@ -87,7 +88,7 @@ export default function LancamentoDaCasa() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-200">{lancamento ? (ehHoje ? 'É hoje! Inauguração às 21h' : 'Inauguração · sexta 23/10 · 21h') : ehHoje ? `É hoje · às ${horaHoje}` : `Próxima noite · ${quando}`}</p>
           <h2 className="text-3xl font-black">A Casa 🔥</h2>
           <p className="text-sm text-white/85">
-            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? `Hoje tem A Casa, das ${horaHoje} à 1h: a casa de swing virtual do NoSigilo. Vai participar?` : 'Toda sexta e sábado às 22h, até 1h, acontece A Casa: a casa de swing virtual do NoSigilo.'} Salas ao vivo com casais, mulheres e singles,
+            {lancamento ? (ehHoje ? 'A casa de swing virtual do NoSigilo abre HOJE, às 21h!' : 'A casa de swing virtual do NoSigilo abre nesta sexta!') : ehHoje ? `Hoje tem A Casa, das ${horaHoje} até ${fechaHoje()}: a casa de swing virtual do NoSigilo. Vai participar?` : `Toda ${HORARIO_DA_CASA_TEXTO} acontece A Casa: a casa de swing virtual do NoSigilo.`} Salas ao vivo com casais, mulheres e singles,
             pulseiras, bar, desafios quentes com a Lola, cabine a dois (de porta aberta, se quiserem 👀) e o Quarto Cuckold.
           </p>
           <ul className="space-y-1 text-left text-xs text-white/75">

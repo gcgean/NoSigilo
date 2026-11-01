@@ -72,7 +72,7 @@ export default function PlaylistDaCasa() {
       </div>
       <p className="text-xs text-muted-foreground">
         Use só músicas livres para uso comercial (ex.: Pixabay Music). Música com direito autoral tocada para o público exige ECAD.
-        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo. A ordem das músicas e das vinhetas é embaralhada a cada noite (sexta e sábado tocam sequências diferentes); a abertura toca às 22h e o fechamento termina à 1h.
+        Todo mundo na Casa ouve a mesma faixa ao mesmo tempo. A ordem das músicas e das vinhetas é embaralhada a cada noite (sexta e sábado tocam sequências diferentes); a abertura toca às 22h e o fechamento termina na hora de fechar (1h na sexta, 2h no sábado).
       </p>
 
       <div className="grid gap-2 rounded-xl border border-dashed p-3">
@@ -83,7 +83,7 @@ export default function PlaylistDaCasa() {
           <Button size="sm" variant={tipo === 'fechamento' ? 'default' : 'outline'} onClick={() => setTipo('fechamento')}>🌅 Fechamento (1h)</Button>
         </div>
         {tipo === 'abertura' && <p className="text-[11px] text-muted-foreground">Toca uma vez, assim que a Casa abre às 22h. Se houver mais de uma, vale a primeira da lista.</p>}
-        {tipo === 'fechamento' && <p className="text-[11px] text-muted-foreground">Toca no fim da noite, terminando exatamente à 1h.</p>}
+        {tipo === 'fechamento' && <p className="text-[11px] text-muted-foreground">Toca no fim da noite, terminando exatamente na hora de fechar (1h na sexta, 2h no sábado).</p>}
         {tipo === 'vinheta' && <p className="text-[11px] text-muted-foreground">Vinhetas tocam entre as músicas: uma a cada 2 músicas, revezando entre as que você subir.</p>}
         <input type="file" accept="audio/*,.mp3,.m4a,.aac,.ogg" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} className="text-xs" />
         <div className="grid gap-2 sm:grid-cols-2">

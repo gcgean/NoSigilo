@@ -1,5 +1,5 @@
 /**
- * "A Casa" — boate virtual de sexta e sábado, das 22h à 1h (horário de Brasília).
+ * "A Casa" — boate virtual de sexta (22h–1h) e sábado (22h–2h), horário de Brasília.
  *
  * Salas com chat ao vivo, quem está dentro, cabine privada (conversa a dois que
  * só abre com aceite) e uma anfitriã IA (Lola) que puxa brincadeiras quentes a
@@ -295,17 +295,22 @@ function agoraBrasilia(d = new Date()) {
 
 /** Abertura de cada noite (Brasília). Desde 25/10/2026 as duas às 22h: o sábado às 22h segurou mais gente até 1h. */
 const HORA_DE_ABRIR = { sexta: 22, sabado: 22 } as const;
-const HORARIO_DA_CASA = 'Sexta e sábado às 22h, até 1h';
+/** Fechamento (hora da madrugada seguinte). Desde 07/11/2026 o sábado vai até 2h, em teste:
+ *  nos sábados de 24 e 31/10 a Casa fechava à 1h ainda cheia (cabines no auge). */
+const HORA_DE_FECHAR = { sexta: 1, sabado: 2 } as const;
+const HORARIO_DA_CASA = 'Sexta às 22h, até 1h, e sábado às 22h, até 2h';
 const inicioDaNoite = (chave: string, tema: 'sexta' | 'sabado') => Date.parse(`${chave}T${HORA_DE_ABRIR[tema]}:00:00-03:00`);
+const fimDaNoite = (chave: string, tema: 'sexta' | 'sabado') => inicioDaNoite(chave, tema) + (24 - HORA_DE_ABRIR[tema] + HORA_DE_FECHAR[tema]) * 3_600_000;
 
-/** Noite em curso pelo horário fixo (sex e sáb, 22h–1h) ou null. */
+/** Noite em curso pelo horário fixo (sex 22h–1h, sáb 22h–2h) ou null. */
 function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
   const { dow, hora, data } = agoraBrasilia(d);
   if (dow === 5 && hora >= HORA_DE_ABRIR.sexta) return { chave: data, tema: 'sexta' };
   if (dow === 6 && hora >= HORA_DE_ABRIR.sabado) return { chave: data, tema: 'sabado' };
-  if ((dow === 6 || dow === 0) && hora < 1) {
-    const ontem = agoraBrasilia(new Date(d.getTime() - 3 * 3600_000));
-    return { chave: ontem.data, tema: dow === 6 ? 'sexta' : 'sabado' };
+  const madrugadaDe = dow === 6 ? 'sexta' : dow === 0 ? 'sabado' : null;
+  if (madrugadaDe && hora < HORA_DE_FECHAR[madrugadaDe]) {
+    const ontem = agoraBrasilia(new Date(d.getTime() - (hora + 1) * 3600_000));
+    return { chave: ontem.data, tema: madrugadaDe };
   }
   return null;
 }
@@ -1593,7 +1598,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       await deps.push(id, { title: '🔥 A Casa está pegando fogo', body: corpo, url: '/casa', tag: 'casa-20min' }).catch(() => {});
       if (deps.recadoDaLola && !naoQuerem.has(id)) {
         await deps.recadoDaLola(id, {
-          texto: `A ${t.nome} já começou e seu lugar está guardado até 1h 🔥 Vem pra Casa:`,
+          texto: `A ${t.nome} já começou e seu lugar está guardado até ${HORA_DE_FECHAR[noite.tema]}h 🔥 Vem pra Casa:`,
           titulo: '🔥 Seu lugar n\'A Casa está guardado', descricao: `A ${t.nome} já começou. Entra!`, url: '/casa',
         }).catch(() => false);
       }
@@ -1619,6 +1624,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     )) as any[];
     const naoQuerem = await naoQueremConvite();
     const hora = HORA_DE_ABRIR[n.tema];
+    const fecha = HORA_DE_FECHAR[n.tema];
     let enviados = 0;
     for (const p of pessoas) {
       const id = String(p.id);
@@ -1626,8 +1632,8 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       const mulher = categoria(p.gender) === 'mulher';
       if ((!mulher && genero !== 'casal (ela/ela)') || naoQuerem.has(id)) continue;
       const ok = await deps.recadoDaLola(id, {
-        texto: `Hoje é ${t.nome} 💋 Das ${hora}h à 1h quem manda são elas: vocês escolhem, convidam e decidem quem entra na cabine.${mulher ? ' E mulher entra de graça 😉' : ''} Vem comandar:`,
-        titulo: `💋 Hoje é ${t.nome} n'A Casa`, descricao: `Das ${hora}h à 1h quem manda são elas. Vem!`, url: '/casa',
+        texto: `Hoje é ${t.nome} 💋 Das ${hora}h até ${fecha}h quem manda são elas: vocês escolhem, convidam e decidem quem entra na cabine.${mulher ? ' E mulher entra de graça 😉' : ''} Vem comandar:`,
+        titulo: `💋 Hoje é ${t.nome} n'A Casa`, descricao: `Das ${hora}h até ${fecha}h quem manda são elas. Vem!`, url: '/casa',
       }).catch(() => false);
       if (ok) enviados += 1;
       await new Promise((res) => setTimeout(res, 60));
@@ -1645,7 +1651,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
       jaAvisados.add(id);
       await deps.push(id, {
         title: '🔥 Seu lugar n\'A Casa está esperando!',
-        body: `${t.nome} começou agora, até 1h. Você reservou: entra e chega antes da sala lotar 😈`,
+        body: `${t.nome} começou agora, até ${HORA_DE_FECHAR[tema]}h. Você reservou: entra e chega antes da sala lotar 😈`,
         url: '/casa',
         tag: 'casa-abriu',
       }).catch(() => {});
@@ -1654,7 +1660,7 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     }
     await avisarParaAtivos({
       title: `🔥 A Casa abriu: ${t.nome}!`,
-      body: 'Até 1h da manhã: salas ao vivo, brincadeiras quentes com a Lola e cabine a dois. Entra!',
+      body: `Até ${HORA_DE_FECHAR[tema]}h da manhã: salas ao vivo, brincadeiras quentes com a Lola e cabine a dois. Entra!`,
       url: '/casa',
       tag: 'casa-abriu',
     }, jaAvisados);
@@ -2989,7 +2995,7 @@ Sala: ${salaId}`).catch(() => {});
     // Vinhetas da Lola entram entre as músicas: uma a cada 2 músicas, revezando.
     // A sequência é a mesma para todo mundo na noite, então a sincronia continua.
     const todas = (await lerPlaylist()).filter((f) => f.duracao > 0);
-    // Abertura (22h) e fechamento (terminando à 1h) tocam só no horário certo.
+    // Abertura (22h) e fechamento (terminando à 1h na sexta, às 2h no sábado) tocam só no horário certo.
     const noiteAgora = await noiteAtual();
     const agoraMs = Date.now();
     const vinhetaNaHora = (f: Faixa, inicioMs: number) => res.json({
@@ -2998,7 +3004,7 @@ Sala: ${salaId}`).catch(() => {});
     });
     if (noiteAgora) {
       const inicioNoite = noiteAgora.forcada ? null : inicioDaNoite(noiteAgora.chave, noiteAgora.tema);
-      const fimNoite = noiteAgora.forcada ? await abertaAte() : (inicioNoite as number) + (noiteAgora.tema === 'sabado' ? 3 : 4) * 3_600_000;
+      const fimNoite = noiteAgora.forcada ? await abertaAte() : fimDaNoite(noiteAgora.chave, noiteAgora.tema);
       const abertura = todas.find((f) => f.tipo === 'abertura');
       const fechamento = todas.find((f) => f.tipo === 'fechamento');
       if (abertura && inicioNoite && agoraMs >= inicioNoite && agoraMs < inicioNoite + abertura.duracao * 1000) { vinhetaNaHora(abertura, inicioNoite); return; }
