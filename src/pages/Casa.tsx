@@ -1160,10 +1160,17 @@ export default function Casa() {
                     !estado.eu.podeFalar ? (
                       <p className="mt-0.5 rounded-2xl bg-white/5 px-3 py-2 text-sm text-white/50">🔒 Assine para ver</p>
                     ) : urlsLivres[m.id] ? (
-                      <button type="button" onClick={() => { setComentarioMidia(''); setVendo({ ...urlsLivres[m.id], msg: m }); }} className="mt-1 block overflow-hidden rounded-2xl">
-                        {urlsLivres[m.id].mime?.startsWith('video/')
-                          ? <video src={resolveServerUrl(urlsLivres[m.id].url)} muted playsInline preload="metadata" className="max-h-56 max-w-[220px] object-cover" />
-                          : <img src={resolveServerUrl(urlsLivres[m.id].url)} alt="" draggable={false} className="max-h-56 max-w-[220px] object-cover" />}
+                      <button type="button" onClick={() => { setComentarioMidia(''); setVendo({ ...urlsLivres[m.id], msg: m }); }} className="relative mt-1 block overflow-hidden rounded-2xl">
+                        {/* #t=0.1 faz o iPhone mostrar o primeiro quadro (sem isso o vídeo fica em branco);
+                            fundo e ▶ garantem que apareça algo mesmo se o aparelho não gerar a prévia. */}
+                        {urlsLivres[m.id].mime?.startsWith('video/') ? (
+                          <>
+                            <video src={`${resolveServerUrl(urlsLivres[m.id].url)}#t=0.1`} muted playsInline preload="metadata" className="block max-h-56 min-h-28 min-w-36 max-w-[220px] bg-black/50 object-cover" />
+                            <span className="absolute inset-0 flex items-center justify-center">
+                              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 pl-1 text-xl">▶</span>
+                            </span>
+                          </>
+                        ) : <img src={resolveServerUrl(urlsLivres[m.id].url)} alt="" draggable={false} className="max-h-56 max-w-[220px] object-cover" />}
                       </button>
                     ) : (
                       <button type="button" onClick={() => void carregarLivre(m)} className="mt-0.5 rounded-2xl bg-white/10 px-3 py-2 text-sm">{m.midia.tipo === 'video' ? '🎥' : '📸'} Ver</button>

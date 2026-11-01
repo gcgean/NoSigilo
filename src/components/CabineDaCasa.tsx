@@ -516,7 +516,7 @@ export default function CabineDaCasa({
                     className="relative mt-1 block overflow-hidden rounded-2xl" aria-label={livre.mime?.startsWith('video/') ? 'Ver vídeo' : 'Ver foto'}>
                     {livre.mime?.startsWith('video/') ? (
                       <>
-                        <video src={`${resolveServerUrl(livre.url)}#t=0.1`} muted playsInline preload="metadata" className="max-h-56 max-w-[220px] object-cover" />
+                        <video src={`${resolveServerUrl(livre.url)}#t=0.1`} muted playsInline preload="metadata" className="block max-h-56 min-h-28 min-w-36 max-w-[220px] bg-black/50 object-cover" />
                         <span className="absolute inset-0 flex items-center justify-center">
                           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 pl-1 text-xl">▶</span>
                         </span>
