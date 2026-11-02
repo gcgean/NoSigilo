@@ -1684,7 +1684,7 @@ export default function Casa() {
       )}
 
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} texto={efeito.texto} onFim={fimDoEfeito} />}
-      {!info?.teste && <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />}
+      {!info?.teste && !(user as any)?.isAdmin && <ProtecaoDaCasa nome={String((user as any)?.name || '')} id={String(user?.id || '')} />}
       <Dialog open={recebidoAgora === 'drink'} onOpenChange={(v) => { if (!v) setDrinkRecebido(null); }}>
         <DialogContent className="z-[9995] max-w-xs">
           {drinkRecebido && (

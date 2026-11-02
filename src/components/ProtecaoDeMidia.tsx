@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 /**
  * Tira o caminho fácil de salvar a mídia dos outros: menu do botão direito,
@@ -10,7 +11,10 @@ import { useEffect } from 'react';
  * funciona é a marca d'água gravada no arquivo.
  */
 export default function ProtecaoDeMidia() {
+  // Admin fica de fora: salva mídia e tira print para corrigir contas.
+  const ehAdmin = !!useAuth().user?.isAdmin;
   useEffect(() => {
+    if (ehAdmin) return;
     const ehMidia = (alvo: EventTarget | null) => {
       const el = alvo as HTMLElement | null;
       return !!el && (el.tagName === 'IMG' || el.tagName === 'VIDEO');
@@ -22,7 +26,7 @@ export default function ProtecaoDeMidia() {
       document.removeEventListener('contextmenu', bloquear);
       document.removeEventListener('dragstart', bloquear);
     };
-  }, []);
+  }, [ehAdmin]);
 
   return null;
 }

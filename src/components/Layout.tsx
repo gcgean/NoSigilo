@@ -1487,7 +1487,8 @@ export default function Layout() {
               <Outlet />
             </Suspense>
             <PhotoGateOverlay pathname={location.pathname} />
-            <ScreenGuard />
+            {/* Admin fica de fora: precisa de print e DevTools para corrigir contas. */}
+            {!user?.isAdmin && <ScreenGuard />}
             <RadarNightPrompt />
             <NotaDoApp />
             <SubscribeModal open={showSubscribeModal} onClose={() => setShowSubscribeModal(false)} />
