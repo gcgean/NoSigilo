@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { textoDistancia } from '@/utils/distancia';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink, MessageSquareQuote } from 'lucide-react';
+import { Lock, MapPin, Image as ImageIcon, Plus, Star, Flag, Heart, MessageCircle, Send, X, ChevronLeft, ChevronRight, Play, Video, Ban, ShieldOff, Maximize2, UserRound, BookOpen, Target, Flame, Gift, Zap, Link2, ExternalLink, MessageSquareQuote, Trash2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
+import { feedService, usersService, privatePhotosService, chatService, testimonialsService, interactionsService, locationService, experienceService, profileService, matchService, subscriptionsService } from '@/services/api';
 import ReportDialog from '@/components/ReportDialog';
 import GiftTokensModal from '@/components/GiftTokensModal';
 import { INTENTION_OPTIONS } from '@/pages/Search';
@@ -59,6 +59,45 @@ const FULLSCREEN_VIDEO_SWIPE_VERTICAL_DOMINANCE = 1.15;
 function resolveMediaUrl(url: string) {
   if (!url) return url;
   return resolveServerUrl(url);
+}
+
+/** Lixeira do admin sobre foto ou vídeo do perfil de outra pessoa. Dois toques:
+ *  o primeiro arma ("Confirmar"), o segundo remove. Sem window.confirm, que
+ *  navegador de app bloqueia em silêncio. */
+function BotaoRemoverAdmin({ onRemover }: { onRemover: () => Promise<void> }) {
+  const { toast } = useToast();
+  const [confirmando, setConfirmando] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Remover (admin)"
+      disabled={ocupado}
+      className={`absolute left-2 top-2 z-20 flex h-8 items-center gap-1 rounded-full px-2 text-xs font-semibold text-white ${confirmando ? 'bg-red-600' : 'bg-black/65 hover:bg-red-600'}`}
+      onClick={async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!confirmando) {
+          setConfirmando(true);
+          setTimeout(() => setConfirmando(false), 4000);
+          return;
+        }
+        setOcupado(true);
+        try {
+          await onRemover();
+          toast({ title: 'Conteúdo removido' });
+        } catch {
+          toast({ title: 'Não deu para remover', description: 'Tente de novo.', variant: 'destructive' });
+        } finally {
+          setOcupado(false);
+          setConfirmando(false);
+        }
+      }}
+    >
+      <Trash2 className="h-4 w-4" />
+      {confirmando ? 'Confirmar' : null}
+    </button>
+  );
 }
 
 function PhotoItem({
@@ -526,6 +565,8 @@ export default function UserProfile() {
   const [isLikingProfile, setIsLikingProfile] = useState(false);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
+  // Admin modera pelo próprio perfil: lixeira em fotos, vídeos e publicações.
+  const moderando = !!me?.isAdmin && !isSelf;
 
   // A aba nomeia o perfil aberto, em vez do título genérico da home.
   useDocumentTitle(profile?.name ? `${profile.name}` : 'Perfil');
@@ -1601,7 +1642,15 @@ export default function UserProfile() {
         <TabsContent value="public">
           <div className="grid grid-cols-3 lg:grid-cols-4 gap-3">
             {publicPhotos.map((photo, index) => (
-              <PhotoItem key={photo.id} photos={publicPhotos} initialIndex={index} currentUserId={me?.id} />
+              <div key={photo.id} className="relative">
+                <PhotoItem photos={publicPhotos} initialIndex={index} currentUserId={me?.id} />
+                {moderando && (
+                  <BotaoRemoverAdmin onRemover={async () => {
+                    await profileService.deleteMedia(String(photo.id));
+                    setPublicPhotos((atual) => atual.filter((p) => p.id !== photo.id));
+                  }} />
+                )}
+              </div>
             ))}
             {publicPhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos públicas.</div>}
           </div>
@@ -1626,6 +1675,8 @@ export default function UserProfile() {
                   viewerId={me?.id}
                   dataLabel={format(new Date(post.createdAt), "d 'de' MMM", { locale: ptBR })}
                   podeInteragir
+                  podeRemover={moderando}
+                  onRemovido={(id) => setUserPosts((atual) => atual.filter((p) => p.id !== id))}
                   onPrecisaAssinar={() => setPaywallOpen(true)}
                 />
               ))}
@@ -1639,7 +1690,15 @@ export default function UserProfile() {
               {isLoadingPrivate && <div className="col-span-3 text-sm text-muted-foreground">Carregando...</div>}
               {!isLoadingPrivate &&
                 privatePhotos.map((photo, index) => (
-                  <PhotoItem key={photo.id} photos={privatePhotos} initialIndex={index} currentUserId={me?.id} />
+                  <div key={photo.id} className="relative">
+                    <PhotoItem photos={privatePhotos} initialIndex={index} currentUserId={me?.id} />
+                    {moderando && (
+                      <BotaoRemoverAdmin onRemover={async () => {
+                        await profileService.deleteMedia(String(photo.id));
+                        setPrivatePhotos((atual) => atual.filter((p) => p.id !== photo.id));
+                      }} />
+                    )}
+                  </div>
                 ))}
               {!isLoadingPrivate && privatePhotos.length === 0 && <div className="col-span-3 text-sm text-muted-foreground">Sem fotos privadas.</div>}
             </div>
@@ -1676,6 +1735,13 @@ export default function UserProfile() {
                   className="relative aspect-[9/16] rounded-xl overflow-hidden bg-black cursor-pointer group"
                   onClick={() => setPlayingVideoId(playingVideoId === video.id ? null : video.id)}
                 >
+                  {moderando && (
+                    <BotaoRemoverAdmin onRemover={async () => {
+                      // O vídeo é uma publicação: sai a publicação inteira.
+                      await feedService.deletePost(video.postId);
+                      setUserVideos((atual) => atual.filter((v) => v.postId !== video.postId));
+                    }} />
+                  )}
                   <Button
                     type="button"
                     size="icon"

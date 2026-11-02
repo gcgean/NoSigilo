@@ -8769,8 +8769,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.delete('/api/stories/:id', requireAuth(env, db), async (req, res) => {
     const userId = req.auth!.userId;
     const storyId = req.params.id;
-    const story = (await queryOne(db, 'SELECT id FROM stories WHERE id = ? AND user_id = ?', [storyId, userId])) as any;
-    if (!story) { res.status(404).json({ error: 'not_found' }); return; }
+    const story = (await queryOne(db, 'SELECT id, user_id FROM stories WHERE id = ?', [storyId])) as any;
+    if (!story || (String(story.user_id) !== userId && !req.auth!.isAdmin)) { res.status(404).json({ error: 'not_found' }); return; }
     await run(db, 'DELETE FROM story_views WHERE story_id = ?', [storyId]);
     await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [storyId]);
     await run(db, 'DELETE FROM story_likes WHERE story_id = ?', [storyId]);
@@ -8784,7 +8784,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const viewerId = req.auth!.userId;
     const storyId = req.params.id;
     const story = (await queryOne(db, 'SELECT id, user_id, audience FROM stories WHERE id = ?', [storyId])) as any;
-    if (!story || story.user_id === viewerId) { res.json({ ok: true }); return; }
+    if (!story || story.user_id === viewerId || req.auth!.isAdmin) { res.json({ ok: true }); return; }
     if (await recusaDeStory(story, viewerId)) { res.status(403).json({ error: 'forbidden' }); return; }
     const existing = (await queryOne(db, 'SELECT id FROM story_views WHERE story_id = ? AND viewer_id = ?', [storyId, viewerId])) as any;
     if (!existing) {
@@ -9623,13 +9623,14 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(404).json({ error: 'not_found' });
       return;
     }
-    if (String(post.user_id) !== req.auth!.userId) {
+    // Admin também remove (moderação de conteúdo inapropriado pelo perfil).
+    if (String(post.user_id) !== req.auth!.userId && !req.auth!.isAdmin) {
       res.status(403).json({ error: 'forbidden' });
       return;
     }
     await run(db, "DELETE FROM likes WHERE target_type = 'post' AND target_id = ?", [postId]);
     await run(db, "DELETE FROM comments WHERE target_type = 'post' AND target_id = ?", [postId]);
-    await run(db, 'DELETE FROM posts WHERE id = ? AND user_id = ?', [postId, req.auth!.userId]);
+    await run(db, 'DELETE FROM posts WHERE id = ?', [postId]);
     await persist();
     res.json({ ok: true });
   });
@@ -16838,8 +16839,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/users/:targetUserId/visit', requireAuth(env, db), async (req, res) => {
     const io = req.app.get('io') as SocketIOServer | undefined;
     const targetUserId = String(req.params.targetUserId || '');
-    // Don't record self-visits
-    if (targetUserId === req.auth!.userId) {
+    // Não registra a própria visita nem a do admin (moderando, não visitando).
+    if (targetUserId === req.auth!.userId || req.auth!.isAdmin) {
       res.json({ ok: true });
       return;
     }

@@ -71,6 +71,7 @@ export default function Promoter() {
   const [senhaPix, setSenhaPix] = useState('');
   const [salvandoPix, setSalvandoPix] = useState(false);
   const [saindo, setSaindo] = useState(false);
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
   const [stats, setStats] = useState<PromoterStats | null>(null);
   const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
   useEffect(() => {
@@ -135,7 +136,8 @@ export default function Promoter() {
   useEffect(() => { void loadData(); }, []);
 
   const sairDoPrograma = async () => {
-    if (!window.confirm('Deixar de ser promotor? Você não ganha mais comissão de novas assinaturas e para de receber os e-mails do programa. O que já foi aprovado continua sendo pago.')) return;
+    // Dois toques em vez de window.confirm: navegador de app bloqueia a janela nativa em silêncio.
+    if (!confirmandoSaida) { setConfirmandoSaida(true); return; }
     setSaindo(true);
     try {
       await promoterService.leave();
@@ -922,7 +924,7 @@ export default function Promoter() {
         </p>
         <Button type="button" variant="destructive" disabled={saindo} onClick={() => void sairDoPrograma()}>
           {saindo ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
-          Deixar de ser promotor
+          {confirmandoSaida ? 'Toque de novo para confirmar' : 'Deixar de ser promotor'}
         </Button>
       </div>
     </>

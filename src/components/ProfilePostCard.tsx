@@ -57,6 +57,8 @@ type ProfilePostCardProps = {
   abrirComentarios?: boolean;
   /** Mostra "Editar" e "Excluir". Só para o dono — o backend confere de novo. */
   podeGerenciar?: boolean;
+  /** Só "Remover" (admin moderando o perfil de outra pessoa). */
+  podeRemover?: boolean;
   /** Chamado depois de excluir, para quem usa o cartão tirar ele da lista. */
   onRemovido?: (postId: string) => void;
   /** Já busca quem curtiu ao montar (página da publicação). Na lista do perfil, só ao tocar. */
@@ -71,6 +73,7 @@ export default function ProfilePostCard({
   onPrecisaAssinar,
   abrirComentarios = false,
   podeGerenciar = false,
+  podeRemover = false,
   onRemovido,
   carregarQuemCurtiu = false,
 }: ProfilePostCardProps) {
@@ -211,7 +214,7 @@ export default function ProfilePostCard({
     <article className="glass rounded-2xl p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">{dataLabel}</p>
-        {podeGerenciar && !editando && (
+        {(podeGerenciar || podeRemover) && !editando && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="-my-2 -mr-2 h-9 w-9 rounded-full" aria-label="Opções da publicação">
@@ -219,10 +222,12 @@ export default function ProfilePostCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => { setRascunhoTexto(texto); setEditando(true); }}>
-                <Pencil className="h-4 w-4" />
-                Editar texto
-              </DropdownMenuItem>
+              {podeGerenciar && (
+                <DropdownMenuItem onClick={() => { setRascunhoTexto(texto); setEditando(true); }}>
+                  <Pencil className="h-4 w-4" />
+                  Editar texto
+                </DropdownMenuItem>
+              )}
               {/* Confirmação desenhada na página, não window.confirm: navegador
                   de app (Instagram etc.) bloqueia a janela nativa em silêncio. */}
               <DropdownMenuItem
@@ -265,7 +270,7 @@ export default function ProfilePostCard({
           <AlertDialogHeader>
             <AlertDialogTitle>Remover esta publicação?</AlertDialogTitle>
             <AlertDialogDescription>
-              Ela sai do seu perfil e do feed, junto com curtidas e comentários. Não dá para desfazer.
+              Ela sai {podeGerenciar ? 'do seu perfil' : 'do perfil'} e do feed, junto com curtidas e comentários. Não dá para desfazer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

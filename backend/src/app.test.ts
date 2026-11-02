@@ -707,6 +707,23 @@ describe('nosigilo backend', () => {
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
   });
 
+  it('admin remove publicação alheia e não aparece como visitante', async () => {
+    const dono = await createBootstrapSponsor(ctx, { email: 'dono-mod@example.com', name: 'Dono Mod' });
+    const outro = await createBootstrapSponsor(ctx, { email: 'outro-mod@example.com', name: 'Outro Mod' });
+    const admin = await createBootstrapSponsor(ctx, { email: 'admin-mod@example.com', name: 'Admin Mod' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+    const post = (await request(ctx.app).post('/api/posts').set('Authorization', `Bearer ${dono.token}`)
+      .send({ content: 'Conteúdo a moderar' }).expect(200)).body;
+    const postId = String(post.id || post.post?.id);
+    await request(ctx.app).delete(`/api/posts/${postId}`).set('Authorization', `Bearer ${outro.token}`).expect(403);
+    await request(ctx.app).delete(`/api/posts/${postId}`).set('Authorization', `Bearer ${admin.token}`).expect(200);
+    expect(await queryOne(ctx.db, 'SELECT id FROM posts WHERE id = ?', [postId])).toBeFalsy();
+
+    await request(ctx.app).post(`/api/users/${dono.id}/visit`).set('Authorization', `Bearer ${admin.token}`).expect(200);
+    const visita = await queryOne(ctx.db, 'SELECT id FROM profile_visits WHERE visitor_user_id = ? AND visited_user_id = ?', [admin.id, dono.id]);
+    expect(visita).toBeFalsy();
+  });
+
   it('promotor pode deixar o programa e voltar depois', async () => {
     const p = await createBootstrapSponsor(ctx, { email: 'promotor-sai@example.com', name: 'Promotor Sai' });
     const h = { Authorization: `Bearer ${p.token}` };
