@@ -1014,6 +1014,10 @@ export const promoterService = {
     const response = await apiClient.put('/promoter/pix', { pixKey, senha });
     return response.data as { ok: boolean; pixKey: string };
   },
+  leave: async () => {
+    const response = await apiClient.post('/promoter/leave');
+    return response.data as { ok: boolean };
+  },
   getProfile: async (): Promise<{ promoter: PromoterProfile | null }> => {
     const response = await apiClient.get('/promoter/profile');
     return response.data;

@@ -707,6 +707,21 @@ describe('nosigilo backend', () => {
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
   });
 
+  it('promotor pode deixar o programa e voltar depois', async () => {
+    const p = await createBootstrapSponsor(ctx, { email: 'promotor-sai@example.com', name: 'Promotor Sai' });
+    const h = { Authorization: `Bearer ${p.token}` };
+    const dados = { fullName: 'Promotor Sai', pixKey: 'pix-sai@example.com', acceptTerms: true };
+    await request(ctx.app).post('/api/promoter/activate').set(h).send(dados).expect(200);
+    expect((await request(ctx.app).get('/api/promoter/profile').set(h).expect(200)).body.promoter.status).toBe('active');
+    await request(ctx.app).post('/api/promoter/leave').set(h).expect(200);
+    expect((await request(ctx.app).get('/api/promoter/profile').set(h).expect(200)).body.promoter).toBeNull();
+    const linha = (await queryOne(ctx.db, 'SELECT status FROM promoters WHERE user_id = ?', [p.id])) as any;
+    expect(linha.status).toBe('left');
+    await request(ctx.app).post('/api/promoter/leave').set(h).expect(404);
+    await request(ctx.app).post('/api/promoter/activate').set(h).send(dados).expect(200);
+    expect((await request(ctx.app).get('/api/promoter/profile').set(h).expect(200)).body.promoter.status).toBe('active');
+  });
+
   it('conta visualizações pelo contador e soma o resumo diário no total de visitas', async () => {
     const autor = await createBootstrapSponsor(ctx, { email: 'autor-views@example.com', name: 'Autor Views' });
     const leitor = await createBootstrapSponsor(ctx, { email: 'leitor-views@example.com', name: 'Leitor Views' });

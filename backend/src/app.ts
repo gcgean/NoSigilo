@@ -5383,8 +5383,24 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     res.json({ ok: true, created: true });
   });
 
+  // Sair do programa: status 'left'. Tudo do promotor confere status = 'active'
+  // (comissão de assinatura nova, vantagem no cadastro pelo link, e-mails de
+  // resumo/incentivo/regras), então isso basta para desligar. Comissão já
+  // aprovada continua sendo paga (o pagamento não olha o status). Para voltar,
+  // é só ativar de novo pelo formulário.
+  app.post('/api/promoter/leave', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const ativo = await queryOne(db, "SELECT id FROM promoters WHERE user_id = ? AND status = 'active' LIMIT 1", [userId]);
+    if (!ativo) { res.status(404).json({ error: 'not_a_promoter' }); return; }
+    await run(db, "UPDATE promoters SET status = 'left' WHERE user_id = ?", [userId]);
+    await persist();
+    const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
+    void notifyAdminsTelegram({ db, env }, `🚪 ${quem?.name || 'Promotor'} (${quem?.email || userId}) deixou de ser promotor.`, 'suporte').catch(() => {});
+    res.json({ ok: true });
+  });
+
   app.get('/api/promoter/profile', requireAuth(env, db), async (req, res) => {
-    const row = await queryOne(db, 'SELECT * FROM promoters WHERE user_id = ? LIMIT 1', [req.auth!.userId]);
+    const row = await queryOne(db, "SELECT * FROM promoters WHERE user_id = ? AND status <> 'left' LIMIT 1", [req.auth!.userId]);
     if (!row) { res.json({ promoter: null }); return; }
     const r = row as any;
     res.json({ promoter: { id: String(r.id), fullName: String(r.full_name), pixKey: String(r.pix_key), whatsapp: r.whatsapp ? String(r.whatsapp) : null, contactEmail: r.contact_email ? String(r.contact_email) : null, status: String(r.status), activatedAt: String(r.activated_at) } });
@@ -20195,7 +20211,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           entraram: totalEntraram,
           sairam: totalSairam,
           saldo: totalEntraram - totalSairam,
-          // Quantos saíram para cada 100 que entraram no período.
+          // Quantos sairam para cada 100 que entraram no período.
           taxaDeSaida: totalEntraram > 0 ? Math.round((totalSairam / totalEntraram) * 1000) / 10 : 0,
         },
       });
@@ -23141,6 +23157,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           params
         )) as any[];
       }
+      // Quem saiu do programa de promotor não recebe mais convite para ser promotor.
+      const sairam = new Set(((await queryAll(db, "SELECT user_id FROM promoters WHERE status = 'left'", [])) as any[]).map((r) => String(r.user_id)));
+      users = users.filter((u: any) => !sairam.has(String(u.id)));
 
       // Loop de envio (compartilhado). Para "todos" (sem userIds) roda em segundo
       // plano para não estourar o timeout do cliente; para selecionados (poucos)

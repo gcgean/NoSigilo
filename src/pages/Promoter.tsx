@@ -70,6 +70,7 @@ export default function Promoter() {
   const [novaChave, setNovaChave] = useState('');
   const [senhaPix, setSenhaPix] = useState('');
   const [salvandoPix, setSalvandoPix] = useState(false);
+  const [saindo, setSaindo] = useState(false);
   const [stats, setStats] = useState<PromoterStats | null>(null);
   const [posicaoRanking, setPosicaoRanking] = useState<{ posicao: number | null; total: number } | null>(null);
   useEffect(() => {
@@ -132,6 +133,20 @@ export default function Promoter() {
   };
 
   useEffect(() => { void loadData(); }, []);
+
+  const sairDoPrograma = async () => {
+    if (!window.confirm('Deixar de ser promotor? Você não ganha mais comissão de novas assinaturas e para de receber os e-mails do programa. O que já foi aprovado continua sendo pago.')) return;
+    setSaindo(true);
+    try {
+      await promoterService.leave();
+      toast({ title: 'Pronto, você saiu do programa de promotor' });
+      setPromoter(null);
+    } catch {
+      toast({ title: 'Não deu para sair agora', description: 'Tente de novo em instantes.', variant: 'destructive' });
+    } finally {
+      setSaindo(false);
+    }
+  };
 
   const handleActivate = async () => {
     if (!fullName.trim() || !pixKey.trim() || !acceptTerms) return;
@@ -896,6 +911,19 @@ export default function Promoter() {
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Sair do programa */}
+      <div className="glass rounded-2xl border border-red-500/30 p-5 space-y-2">
+        <h2 className="font-semibold text-red-600">Deixar de ser promotor</h2>
+        <p className="text-sm text-muted-foreground">
+          Você para de ganhar comissão de novas assinaturas e de receber os e-mails do programa.
+          O que já foi aprovado continua sendo pago. Se mudar de ideia, dá para voltar depois.
+        </p>
+        <Button type="button" variant="destructive" disabled={saindo} onClick={() => void sairDoPrograma()}>
+          {saindo ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+          Deixar de ser promotor
+        </Button>
       </div>
     </>
   );
