@@ -1171,7 +1171,7 @@ function campaignFaqSection(itens) {
 
 /** Monta o documento HTML completo: head (meta/JSON-LD/CSS) + body no layout
  *  da landing. `body` já vem pronto (header, seções, footer). */
-function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noindex, lang = 'pt-BR', ogLocale = 'pt_BR', geoRegion = null }) {
+function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noindex, lang = 'pt-BR', ogLocale = 'pt_BR', geoRegion = null, extraCss = '' }) {
   return `<!doctype html>
 <html lang="${lang}">
 <head>
@@ -1199,7 +1199,7 @@ function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noi
   <meta name="twitter:image" content="${REGIONAL}/icon.jpg" />
   <meta name="theme-color" content="#eb4778" />
   <script type="application/ld+json">${JSON.stringify(jsonld)}</script>
-  <style>${CAMPAIGN_CSS}</style>
+  <style>${CAMPAIGN_CSS}${extraCss}</style>
 </head>
 <body>
   <main class="cl">
@@ -1953,8 +1953,197 @@ function rodapePortugal() {
     </footer>`;
 }
 
+// Visual das páginas de Portugal (piloto do redesenho das regionais): escuro,
+// sensual e com várias chamadas para o cadastro. Gatilhos só verdadeiros —
+// curiosidade, exclusividade, sigilo, gratuidade e o número REAL da comunidade.
+// Nada de contador falso, "últimas vagas" ou depoimento inventado.
+const PT_CSS = `
+body{background:#0d0609;color:#f6ece9;}
+.pt a{color:inherit;}
+.pt h2 em{font-style:italic;color:#ff7aa0;}
+.pt-top{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.9rem clamp(1rem,4vw,3rem);background:rgba(13,6,9,.78);backdrop-filter:blur(10px);border-bottom:1px solid rgba(242,215,163,.12);}
+.pt-top .cl-brand{color:#fff;}
+.pt-top-acoes{display:flex;align-items:center;gap:1rem;}
+.pt-top-login{font-size:.85rem;color:#e9d3cf;text-decoration:none;}
+.pt-top-cta{padding:.55rem 1rem;border-radius:999px;background:linear-gradient(135deg,#ff4f7b,#c2185b);color:#fff;font-weight:800;font-size:.85rem;text-decoration:none;box-shadow:0 6px 20px rgba(255,79,123,.35);}
+.pt-hero{position:relative;min-height:min(88vh,760px);display:flex;align-items:flex-end;overflow:hidden;}
+.pt-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(1.05) contrast(1.05);}
+.pt-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,6,9,.15) 0%,rgba(13,6,9,.55) 45%,#0d0609 96%),radial-gradient(ellipse at 20% 80%,rgba(194,24,91,.35),transparent 60%);}
+.pt-hero-copy{position:relative;z-index:1;width:min(100% - 2.5rem,1100px);margin-inline:auto;padding-block:3rem clamp(2.5rem,6vw,4.5rem);}
+.pt-crumb{font-size:.78rem;color:#cdb6b2;margin-bottom:.8rem;}
+.pt-crumb a{color:#cdb6b2;}
+.pt-gancho{display:inline-block;margin-bottom:1rem;padding:.35rem .8rem;border:1px solid rgba(242,215,163,.45);border-radius:999px;color:#f2d7a3;font-size:.8rem;letter-spacing:.04em;}
+.pt h1{font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:clamp(2.3rem,6vw,4.2rem);line-height:1.02;letter-spacing:-.04em;max-width:15ch;text-wrap:balance;color:#fff;}
+.pt h1 em{font-style:italic;color:#ff7aa0;}
+.pt-intro{margin-top:1.1rem;max-width:36rem;color:#e9d3cf;font-size:1.05rem;line-height:1.65;}
+.pt-intro strong{color:#fff;}
+.pt-cta{display:inline-flex;align-items:center;gap:.8rem;margin-top:1.6rem;padding:1.05rem 1.6rem;border-radius:999px;background:linear-gradient(135deg,#ff4f7b,#c2185b);color:#fff;font-weight:800;font-size:1.08rem;text-decoration:none;box-shadow:0 0 0 0 rgba(255,79,123,.6),0 18px 40px rgba(194,24,91,.45);animation:ptPulso 2.4s infinite;}
+.pt-cta svg{width:1.2rem;height:1.2rem;}
+.pt-cta:hover{transform:translateY(-1px);filter:brightness(1.08);}
+@keyframes ptPulso{0%{box-shadow:0 0 0 0 rgba(255,79,123,.55),0 18px 40px rgba(194,24,91,.45);}70%{box-shadow:0 0 0 16px rgba(255,79,123,0),0 18px 40px rgba(194,24,91,.45);}100%{box-shadow:0 0 0 0 rgba(255,79,123,0),0 18px 40px rgba(194,24,91,.45);}}
+@media (prefers-reduced-motion:reduce){.pt-cta{animation:none;}}
+.pt-micro{margin-top:.8rem;font-size:.82rem;color:#cdb6b2;}
+.pt-prova{display:flex;align-items:center;gap:.6rem;margin-top:1.4rem;font-size:.9rem;color:#e9d3cf;}
+.pt-prova strong{color:#f2d7a3;}
+.pt-prova span{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:#3ddc84;box-shadow:0 0 10px #3ddc84;}
+.pt-sec{width:min(100% - 2.5rem,1100px);margin-inline:auto;padding-block:clamp(3rem,7vw,5.5rem);}
+.pt-sec h2{font-family:Georgia,serif;font-weight:400;font-size:clamp(1.9rem,4vw,2.8rem);line-height:1.1;letter-spacing:-.03em;color:#fff;}
+.pt-sec h2 em{font-style:italic;color:#ff7aa0;}
+.pt-sub{margin-top:.7rem;color:#cdb6b2;max-width:38rem;}
+.pt-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin-top:2rem;}
+.pt-card{position:relative;border-radius:1.1rem;overflow:hidden;aspect-ratio:3/4;background:#1d0d13;}
+.pt-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .6s ease;}
+.pt-card:hover img{transform:scale(1.05);}
+.pt-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 35%,rgba(13,6,9,.92));}
+.pt-card div{position:absolute;left:0;right:0;bottom:0;z-index:1;padding:1.1rem;}
+.pt-card h3{font-size:1.05rem;color:#fff;}
+.pt-card p{margin-top:.35rem;font-size:.85rem;color:#e0c9c5;line-height:1.45;}
+.pt-meio{text-align:center;margin-top:2.2rem;}
+.pt-faixa{position:relative;overflow:hidden;padding-block:clamp(3.5rem,8vw,6rem);text-align:center;background:radial-gradient(ellipse at 50% 0%,rgba(255,79,123,.28),transparent 60%),linear-gradient(180deg,#1a0a10,#2a0b17 50%,#1a0a10);}
+.pt-faixa blockquote{margin:0 auto;max-width:22ch;font-family:Georgia,serif;font-size:clamp(2rem,5vw,3.2rem);line-height:1.1;color:#fff;font-style:italic;}
+.pt-faixa p{margin:1rem auto 0;max-width:34rem;color:#e0c9c5;}
+.pt-passos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin-top:2rem;counter-reset:passo;}
+.pt-passo{padding:1.4rem;border:1px solid rgba(242,215,163,.18);border-radius:1rem;background:rgba(255,255,255,.03);}
+.pt-passo::before{counter-increment:passo;content:counter(passo);display:inline-flex;align-items:center;justify-content:center;width:2.2rem;height:2.2rem;border-radius:50%;background:linear-gradient(135deg,#ff4f7b,#c2185b);font-weight:800;color:#fff;margin-bottom:.8rem;}
+.pt-passo h3{color:#fff;font-size:1rem;}
+.pt-passo p{margin-top:.3rem;color:#cdb6b2;font-size:.9rem;}
+.pt-sigilo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(2rem,5vw,4rem);align-items:center;}
+.pt-sigilo figure{margin:0;border-radius:1.2rem;overflow:hidden;aspect-ratio:4/5;}
+.pt-sigilo figure img{width:100%;height:100%;object-fit:cover;filter:grayscale(.2);}
+.pt-sigilo ul{list-style:none;padding:0;margin:1.4rem 0 0;display:grid;gap:.9rem;}
+.pt-sigilo li{display:flex;gap:.8rem;align-items:flex-start;color:#e0c9c5;}
+.pt-sigilo li svg{width:1.3rem;height:1.3rem;color:#f2d7a3;flex:0 0 auto;margin-top:.15rem;}
+.pt-sigilo li strong{color:#fff;display:block;}
+.pt .cl-chips a{background:rgba(255,255,255,.05);border-color:rgba(242,215,163,.25);color:#f2d7a3;}
+.pt .cl-chips a:hover{background:rgba(255,79,123,.18);}
+.pt .cl-faq h2{color:#fff;}
+.pt .cl-faq-list,.pt .cl-faq-item{border-color:rgba(242,215,163,.18);}
+.pt .cl-faq-item summary{color:#fff;}
+.pt .cl-faq-item summary svg{background:rgba(255,79,123,.12);border-color:rgba(255,79,123,.35);color:#ff7aa0;}
+.pt .cl-faq-item p{color:#cdb6b2;}
+.pt-final{text-align:center;padding-block:clamp(4rem,9vw,6.5rem);background:radial-gradient(circle at 50% 100%,rgba(255,79,123,.35),transparent 55%),#14070c;}
+.pt-final h2{font-family:Georgia,serif;font-weight:400;font-size:clamp(2rem,5vw,3.2rem);color:#fff;max-width:20ch;margin:0 auto;line-height:1.1;}
+.pt-final p{margin:1rem auto 0;color:#e0c9c5;max-width:32rem;}
+.pt-final .pt-login{display:block;margin-top:1rem;color:#f2d7a3;font-size:.9rem;}
+.pt-fixo{display:none;}
+@media (max-width:860px){
+  .pt-cards{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .pt-passos,.pt-sigilo{grid-template-columns:minmax(0,1fr);}
+  .pt-sigilo figure{aspect-ratio:16/10;}
+  .pt-top-login{display:none;}
+  .pt-fixo{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;padding:.7rem 1rem calc(.7rem + env(safe-area-inset-bottom));background:rgba(13,6,9,.92);backdrop-filter:blur(10px);border-top:1px solid rgba(242,215,163,.15);}
+  .pt-fixo a{flex:1;text-align:center;padding:.95rem;border-radius:999px;background:linear-gradient(135deg,#ff4f7b,#c2185b);color:#fff;font-weight:800;text-decoration:none;}
+  .pt{padding-bottom:5rem;}
+}
+`;
+
 function documentoPortugal(opcoes) {
-  return campaignDocument({ ...opcoes, lang: 'pt-PT', ogLocale: 'pt_PT', geoRegion: 'PT' });
+  return campaignDocument({ ...opcoes, lang: 'pt-PT', ogLocale: 'pt_PT', geoRegion: 'PT', extraCss: PT_CSS });
+}
+
+/** Número real da comunidade (Brasil + Portugal), arredondado para baixo. */
+function provaComunidade() {
+  const n = STATS?.nacional ?? 0;
+  return n >= 1000 ? `<strong>Mais de ${fmt(arredondaParaBaixo(n))} perfis</strong> na comunidade NoSigilo, entre Brasil e Portugal` : '';
+}
+
+/** Corpo comum das páginas de Portugal; `c` = cidade ou null (página do país). */
+function corpoPortugal(c) {
+  const origem = ORIGEM_PT(c?.slug);
+  const cad = cadastroUrl(origem);
+  const lugar = c ? esc(c.name) : 'Portugal';
+  const emLugar = c ? esc(emCidade(c)) : 'em Portugal';
+  const cta = (texto) => `<a class="pt-cta" href="${cad}">${texto} ${icon('arrow')}</a>`;
+  const prova = provaComunidade();
+  const cidadesLinks = c ? PORTUGAL_CIDADES.filter((x) => x.slug !== c.slug) : PORTUGAL_CIDADES;
+
+  const intro = c
+    ? `Procurando <strong>swing ${emLugar}</strong> ou <strong>troca de casais ${esc(naRegiao(c))}</strong>? ${esc(c.frase)} Aqui casais liberais e singles se encontram longe dos olhares — para swing, ménage e encontros casuais.`
+    : 'Procurando <strong>swing em Lisboa</strong>, <strong>troca de casais no Porto</strong> ou um encontro liberal no Algarve? Aqui casais liberais e singles de Portugal se encontram longe dos olhares — para swing, ménage e encontros casuais.';
+
+  return `<div class="pt">
+    <header class="pt-top">
+      <a class="cl-brand" href="/">NoSigilo<em>.net</em></a>
+      <div class="pt-top-acoes">
+        <a class="pt-top-login" href="${loginUrl(origem)}">Já sou membro</a>
+        <a class="pt-top-cta" href="${cad}">Criar conta grátis</a>
+      </div>
+    </header>
+
+    <section class="pt-hero">
+      <img src="/landing/hero-masquerade-722.webp" alt="Casais mascarados num encontro liberal discreto" width="722" height="361" loading="eager" />
+      <div class="pt-hero-copy">
+        <p class="pt-crumb">${c ? `<a href="/swing/portugal/">Portugal</a> › ${lugar}` : '<a href="/swing/">Brasil</a> · Portugal'}</p>
+        <span class="pt-gancho">O lado liberal ${c ? (c.de ? esc(c.de) : `de ${lugar}`) : 'de Portugal'} que não aparece no Instagram</span>
+        <h1>Swing e Troca de Casais ${c?.em ? 'no' : 'em'} <em>${lugar}</em></h1>
+        <p class="pt-intro">${intro}</p>
+        ${cta('Quero entrar — é grátis')}
+        <p class="pt-micro">Conta gratuita · Perfil fora do Google · Só para maiores de 18</p>
+        ${prova ? `<p class="pt-prova"><span></span>${prova}</p>` : ''}
+      </div>
+    </section>
+
+    <section class="pt-sec">
+      <h2>O que te espera <em>lá dentro</em></h2>
+      <p class="pt-sub">Tudo pensado para quem quer viver o meio liberal sem se expor.</p>
+      <div class="pt-cards">
+        <div class="pt-card"><img src="/landing/real-gaze-trio-722.webp" alt="Três adultos trocando olhares num ambiente reservado" loading="lazy" /><div><h3>A Casa 🔥</h3><p>A boate virtual de sexta e sábado: salas ao vivo, brincadeiras quentes e cabine a dois.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-bw-kiss-722.webp" alt="Casal a beijar-se em preto e branco" loading="lazy" /><div><h3>Álbum privado</h3><p>As fotos mais íntimas só abrem para quem você liberar — e dá para tirar o acesso.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-sofa-trio-722.webp" alt="Três adultos num sofá, em clima descontraído" loading="lazy" /><div><h3>Quem está perto</h3><p>Distância em km ${emLugar === 'em Portugal' ? 'de cada perfil' : `de quem está ${emLugar}`}, e o Match para curtir em segredo.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-curls-722.webp" alt="Retrato sensual de mulher de cabelo cacheado" loading="lazy" /><div><h3>Conversa discreta</h3><p>Mensagens privadas e fotos de visualização única, que somem depois de vistas.</p></div></div>
+      </div>
+      <div class="pt-meio">${cta('Ver quem está ' + (c ? emLugar : 'em Portugal'))}</div>
+    </section>
+
+    <section class="pt-faixa">
+      <blockquote>Toda fantasia começa com uma conversa.</blockquote>
+      <p>Casais, mulheres e homens solteiros dizem logo o que procuram. Sem rodeios, sem julgamento, sem ninguém de fora saber.</p>
+      <div class="pt-meio">${cta('Começar a minha')}</div>
+    </section>
+
+    <section class="pt-sec">
+      <h2>Entrar é <em>simples</em></h2>
+      <div class="pt-passos">
+        <div class="pt-passo"><h3>Crie a conta grátis</h3><p>Diga se é casal, mulher ou homem solteiro, e o que procura.</p></div>
+        <div class="pt-passo"><h3>Mostre só o que quiser</h3><p>Fotos públicas para atrair; as íntimas ficam no álbum privado.</p></div>
+        <div class="pt-passo"><h3>Converse e combine</h3><p>Curta, converse e marque quando sentir que é a pessoa certa.</p></div>
+      </div>
+      <div class="pt-meio">${cta('Criar a minha conta')}</div>
+    </section>
+
+    <section class="pt-sec pt-sigilo">
+      <figure><img src="/landing/real-blur-duo-722.webp" alt="Casal desfocado, simbolizando discrição" loading="lazy" /></figure>
+      <div>
+        <h2>Ninguém <em>fica a saber</em></h2>
+        <p class="pt-sub">Num país pequeno, ser reconhecido é o maior receio de quem vive o meio liberal. Por isso o sigilo aqui não é promessa — é como tudo foi construído.</p>
+        <ul>
+          <li>${icon('eye')}<div><strong>Perfil fora do Google</strong>Só páginas informativas como esta aparecem nas pesquisas.</div></li>
+          <li>${icon('lock')}<div><strong>Fotos sob o seu controle</strong>Você decide quem vê as mais íntimas.</div></li>
+          <li>${icon('shield')}<div><strong>Visualização única</strong>O que é sensível pode sumir depois de visto.</div></li>
+        </ul>
+        ${cta('Entrar com discrição')}
+      </div>
+    </section>
+
+    <section class="pt-sec">
+      <h2>${c ? `Perto ${esc(deCidade(c))}` : 'Cidades em <em>Portugal</em>'}</h2>
+      ${c ? `<p class="pt-sub">Com a localização ligada, você vê a distância em km de cada perfil — ${esc(deCidade(c))} a ${esc(list(c.vizinhas))}.</p>` : '<p class="pt-sub">Página própria para quem procura perto de casa.</p>'}
+      <div class="cl-chips" style="margin-top:1.2rem">${cidadesLinks.map((x) => `<a href="/swing/portugal/${x.slug}/">Swing ${esc(emCidade(x))}</a>`).join('')}</div>
+    </section>
+
+    ${campaignFaqSection(faqPortugal(c))}
+
+    <section class="pt-final">
+      <h2>A sua próxima história pode começar hoje.</h2>
+      <p>Crie a conta grátis e descubra quem está ${emLugar} na mesma sintonia.</p>
+      <div class="pt-meio">${cta('Quero entrar — é grátis')}</div>
+      <a class="pt-login" href="${loginUrl(origem)}">Já tenho uma conta</a>
+    </section>
+
+    ${rodapePortugal()}
+
+    <div class="pt-fixo"><a href="${cad}">Criar conta grátis</a></div>
+  </div>`;
 }
 
 function paginaPortugal() {
@@ -1968,95 +2157,14 @@ function paginaPortugal() {
     'Swing, troca de casais e ménage em Portugal. Rede adulta discreta, com sigilo. Criar conta é grátis.',
   ]);
   const url = `${REGIONAL}/swing/portugal/`;
-  const faq = faqPortugal(null);
   const jsonld = [
     { '@context': 'https://schema.org', '@type': 'WebPage', name: title, description: desc, url, inLanguage: 'pt-PT',
       isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
       about: { '@type': 'Place', name: 'Portugal' }, areaServed: { '@type': 'Country', name: 'Portugal' } },
     breadcrumbLd([{ name: 'Início', path: '/' }, { name: 'Portugal', path: '/swing/portugal/' }]),
-    faqJsonLd(faq),
+    faqJsonLd(faqPortugal(null)),
   ];
-  const body = `${campaignHeader(ORIGEM_PT())}
-
-    <section class="cl-hero">
-      <div class="cl-hero-copy">
-        <p class="cl-crumb"><a href="/swing/">Brasil</a> · Portugal</p>
-        <h1>Swing e Troca de Casais em <em>Portugal</em></h1>
-        <p class="cl-intro">
-          Procurando <strong>swing em Lisboa</strong>, <strong>troca de casais no Porto</strong> ou um encontro liberal no Algarve?
-          O NoSigilo.net reúne casais liberais e singles de Portugal num só lugar, longe da exposição das redes sociais comuns —
-          para swing, ménage e encontros casuais, com total discrição.
-        </p>
-        <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT())}">Criar conta grátis ${icon('arrow')}</a>
-        <div class="cl-trust">
-          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
-          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
-          <span class="cl-trust-item">${icon('gift')}Conta gratuita</span>
-        </div>
-      </div>
-      <figure class="cl-hero-media">
-        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
-      </figure>
-    </section>
-
-    <section class="cl-section cl-region">
-      <h2>Cidades em Portugal</h2>
-      <p>Página própria para quem procura perto de casa.</p>
-      <div class="cl-chips">${PORTUGAL_CIDADES.map((c) => `<a href="/swing/portugal/${c.slug}/">Swing ${esc(emCidade(c))}</a>`).join('')}</div>
-    </section>
-
-    <section class="cl-section cl-alt">
-      <div class="cl-alt-copy">
-        <h2>Como <em>funciona</em></h2>
-        <p>Você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
-        <div class="cl-list">${listItemsHtml(comoFuncionaItems('Filtros por cidade e distância em km — de Lisboa e do Porto ao Algarve.'))}</div>
-      </div>
-      <figure class="cl-alt-media">
-        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
-      </figure>
-    </section>
-
-    <section class="cl-dark">
-      <div class="cl-section cl-alt">
-        <div class="cl-alt-copy">
-          <h2>Sigilo de <em>verdade</em></h2>
-          <p>Num país pequeno, ser reconhecido é a maior preocupação de quem vive o meio liberal. Por isso nenhum perfil chega ao Google: as páginas que aparecem nas pesquisas, como esta, são só informativas.</p>
-          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
-        </div>
-        <figure class="cl-alt-media">
-          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
-        </figure>
-      </div>
-    </section>
-
-    <section class="cl-section cl-alt">
-      <figure class="cl-alt-media">
-        <img src="/landing/hero-liberal-party.jpg" alt="Adultos conversando em um encontro social liberal" width="1024" height="768" loading="lazy" />
-      </figure>
-      <div class="cl-alt-copy">
-        <h2>Quem você <em>encontra</em></h2>
-        <p>Portugueses e brasileiros que moram em Portugal — cada perfil indica o que procura, e os filtros fazem o resto.</p>
-        <div class="cl-list">${listItemsHtml(audienciaItems('Procuram troca de casais ou uma terceira pessoa, em Lisboa, no Porto e em todo o país.'))}</div>
-      </div>
-    </section>
-
-    ${campaignFaqSection(faq)}
-
-    <section class="cl-final">
-      <div class="cl-final-inner">
-        <div>
-          <h2>O seu próximo encontro pode começar com um perfil.</h2>
-          <p>Crie a sua conta gratuitamente e descubra quem está em Portugal na mesma sintonia.</p>
-        </div>
-        <div class="cl-final-actions">
-          <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT())}">Entrar para a comunidade ${icon('arrow')}</a>
-          <a class="cl-final-login" href="${loginUrl(ORIGEM_PT())}">Já tenho uma conta</a>
-        </div>
-      </div>
-    </section>
-
-    ${rodapePortugal()}`;
-  return documentoPortugal({ title, desc, url, geoPlace: 'Portugal', jsonld, body });
+  return documentoPortugal({ title, desc, url, geoPlace: 'Portugal', jsonld, body: corpoPortugal(null) });
 }
 
 function paginaCidadePortugal(c) {
@@ -2071,8 +2179,6 @@ function paginaCidadePortugal(c) {
     `Swing, troca de casais e ménage ${emCidade(c)} e região. Rede adulta discreta, com sigilo. Criar conta é grátis.`,
   ]);
   const url = `${REGIONAL}/swing/portugal/${c.slug}/`;
-  const faq = faqPortugal(c);
-  const outras = PORTUGAL_CIDADES.filter((x) => x.slug !== c.slug);
   const jsonld = [
     { '@context': 'https://schema.org', '@type': 'WebPage', name: title, description: desc, url, inLanguage: 'pt-PT',
       isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
@@ -2082,81 +2188,9 @@ function paginaCidadePortugal(c) {
       { name: 'Portugal', path: '/swing/portugal/' },
       { name: c.name, path: `/swing/portugal/${c.slug}/` },
     ]),
-    faqJsonLd(faq),
+    faqJsonLd(faqPortugal(c)),
   ];
-  const body = `${campaignHeader(ORIGEM_PT(c.slug))}
-
-    <section class="cl-hero">
-      <div class="cl-hero-copy">
-        <p class="cl-crumb"><a href="/swing/portugal/">Portugal</a> › ${esc(c.name)}</p>
-        <h1>Swing e Troca de Casais ${c.em ? 'no' : 'em'} <em>${esc(c.name)}</em></h1>
-        <p class="cl-intro">
-          Procurando <strong>swing ${esc(emCidade(c))}</strong> ou <strong>troca de casais ${esc(naRegiao(c))}</strong>?
-          ${esc(c.frase)} No NoSigilo.net, casais liberais e singles se encontram com discrição — para swing, ménage e encontros casuais.
-        </p>
-        <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT(c.slug))}">Criar conta grátis ${icon('arrow')}</a>
-        <div class="cl-trust">
-          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
-          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
-          <span class="cl-trust-item">${icon('gift')}Conta gratuita</span>
-        </div>
-      </div>
-      <figure class="cl-hero-media">
-        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
-      </figure>
-    </section>
-
-    <section class="cl-section cl-region">
-      <h2>Perto ${esc(deCidade(c))}</h2>
-      <p>Com a localização ligada, você vê a distância em km de cada perfil — ${esc(deCidade(c))} a ${esc(list(c.vizinhas))}.</p>
-    </section>
-
-    <section class="cl-section cl-alt">
-      <div class="cl-alt-copy">
-        <h2>Como <em>funciona</em></h2>
-        <p>Você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
-        <div class="cl-list">${listItemsHtml(comoFuncionaItems(`Filtros por cidade e distância — ${esc(emCidade(c))} e em ${esc(todaRegiao(c))}.`))}</div>
-      </div>
-      <figure class="cl-alt-media">
-        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
-      </figure>
-    </section>
-
-    <section class="cl-dark">
-      <div class="cl-section cl-alt">
-        <div class="cl-alt-copy">
-          <h2>Sigilo de <em>verdade</em></h2>
-          <p>${esc(c.ao || `Em ${c.name}`)}, como em qualquer cidade, a preocupação é a mesma: ser reconhecido. Nenhum perfil chega ao Google — as páginas que aparecem nas pesquisas, como esta, são só informativas.</p>
-          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
-        </div>
-        <figure class="cl-alt-media">
-          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
-        </figure>
-      </div>
-    </section>
-
-    <section class="cl-section cl-region">
-      <h2>Outras cidades em Portugal</h2>
-      <div class="cl-chips">${outras.map((x) => `<a href="/swing/portugal/${x.slug}/">Swing ${esc(emCidade(x))}</a>`).join('')}</div>
-    </section>
-
-    ${campaignFaqSection(faq)}
-
-    <section class="cl-final">
-      <div class="cl-final-inner">
-        <div>
-          <h2>O seu próximo encontro pode começar com um perfil.</h2>
-          <p>Crie a sua conta gratuitamente e descubra quem está ${esc(emCidade(c))} na mesma sintonia.</p>
-        </div>
-        <div class="cl-final-actions">
-          <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT(c.slug))}">Entrar para a comunidade ${icon('arrow')}</a>
-          <a class="cl-final-login" href="${loginUrl(ORIGEM_PT(c.slug))}">Já tenho uma conta</a>
-        </div>
-      </div>
-    </section>
-
-    ${rodapePortugal()}`;
-  return documentoPortugal({ title, desc, url, geoPlace: `${c.name}, Portugal`, jsonld, body });
+  return documentoPortugal({ title, desc, url, geoPlace: `${c.name}, Portugal`, jsonld, body: corpoPortugal(c) });
 }
 
 // --- escreve os arquivos ---
