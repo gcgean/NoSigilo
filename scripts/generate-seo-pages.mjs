@@ -1355,7 +1355,7 @@ function statePage(st) {
 
     ${campaignFooter(st.slug)}`;
 
-  return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: st.name, jsonld, body });
+  return campaignDocument({ title, desc, url, geoUf: st.uf, geoPlace: st.name, jsonld, body: camadaBrasil(body, `swing/${st.slug}`, st.name), extraCss: BR_CSS });
 }
 
 /** O que esta cidade tem que as outras não têm: números do banco e vizinhança
@@ -1569,7 +1569,8 @@ function cityPage(city) {
 
   return campaignDocument({
     noindex: !indexavel,
-title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld, body });
+    title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld,
+    body: camadaBrasil(body, `swing/${st.slug}/${city.slug}`, city.name), extraCss: BR_CSS });
 }
 
 function hubPage() {
@@ -1743,7 +1744,7 @@ function hubPage() {
 
     ${campaignFooter(null)}`;
 
-  return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body });
+  return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body: camadaBrasil(body, 'swing', null), extraCss: BR_CSS });
 }
 
 // ---------------------------------------------------------------------------
@@ -2043,8 +2044,9 @@ function documentoPortugal(opcoes) {
 
 /** Número real da comunidade (Brasil + Portugal), arredondado para baixo. */
 function provaComunidade() {
-  const n = STATS?.nacional ?? 0;
-  return n >= 1000 ? `<strong>Mais de ${fmt(arredondaParaBaixo(n))} perfis</strong> na comunidade NoSigilo, entre Brasil e Portugal` : '';
+  // Sem número (pedido do dono): "muita gente" é verdade na comunidade toda,
+  // mas não em Portugal sozinho — por isso a frase fala de Brasil E Portugal.
+  return '<strong>Muita gente</strong> já está lá dentro — casais e singles do Brasil e de Portugal';
 }
 
 /** Corpo comum das páginas de Portugal; `c` = cidade ou null (página do país). */
@@ -2191,6 +2193,112 @@ function paginaCidadePortugal(c) {
     faqJsonLd(faqPortugal(c)),
   ];
   return documentoPortugal({ title, desc, url, geoPlace: `${c.name}, Portugal`, jsonld, body: corpoPortugal(c) });
+}
+
+
+// ---------------------------------------------------------------------------
+//  Camada "sensual" das páginas do Brasil (11/2026)
+// ---------------------------------------------------------------------------
+// O mesmo visual das páginas de Portugal, aplicado POR CIMA do conteúdo que o
+// Google já indexou: texto, números, links e FAQ das páginas do Brasil ficam
+// como estão. Entram o tema escuro, o topo em tela cheia, o gancho de
+// curiosidade, os cartões do que tem lá dentro, a faixa de desejo, mais
+// chamadas para o cadastro e a barra fixa no celular — em português do Brasil.
+const BR_CSS = PT_CSS + `
+.cl{color:#f6ece9;}
+.cl h1,.cl h2{color:#fff;}
+.cl h1 em,.cl h2 em{color:#ff7aa0;font-style:italic;}
+.cl-hero{position:relative;display:flex;align-items:flex-end;width:100%;max-width:none;min-height:min(88vh,760px);margin:0;padding:0;overflow:hidden;}
+.cl-hero-media{position:absolute;inset:0;aspect-ratio:auto;border-radius:0;box-shadow:none;}
+.cl-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(13,6,9,.25) 0%,rgba(13,6,9,.65) 45%,#0d0609 96%),radial-gradient(ellipse at 20% 80%,rgba(194,24,91,.35),transparent 60%);}
+.cl-hero-copy{position:relative;z-index:1;width:min(100% - 2.5rem,1100px);margin-inline:auto;padding-block:6rem clamp(2.5rem,6vw,4.5rem);}
+.cl-hero h1{font-size:clamp(2.3rem,6vw,4.2rem);line-height:1.02;max-width:16ch;}
+.cl-crumb,.cl-crumb a{color:#cdb6b2;}
+.cl-intro{color:#e9d3cf;max-width:38rem;}
+.cl-intro strong{color:#fff;}
+.cl-prova{background:rgba(255,255,255,.05);border-color:rgba(242,215,163,.25);border-left-color:#ff4f7b;color:#e9d3cf;}
+.cl-prova strong{color:#f2d7a3;}
+.cl-cta{width:auto;justify-content:center;border-radius:999px;padding:1.05rem 1.6rem;background:linear-gradient(135deg,#ff4f7b,#c2185b);font-size:1.05rem;box-shadow:0 18px 40px rgba(194,24,91,.45);animation:ptPulso 2.4s infinite;}
+.cl-cta:hover{background:linear-gradient(135deg,#ff4f7b,#c2185b);filter:brightness(1.08);}
+@media (prefers-reduced-motion:reduce){.cl-cta{animation:none;}}
+.cl-trust{border-color:rgba(242,215,163,.18);}
+.cl-trust-item{color:#e0c9c5;}
+.cl-trust-item svg{color:#f2d7a3;}
+.cl-alt-copy>p,.cl-list-item p,.cl-region p,.cl-etiquette,.cl-faq-item p{color:#cdb6b2;}
+.cl-list,.cl-list-item,.cl-faq-list,.cl-faq-item{border-color:rgba(242,215,163,.18);}
+.cl-list-item h3,.cl-faq-item summary{color:#fff;}
+.cl-list-item svg{color:#ff7aa0;}
+.cl-alt-media{border-radius:1.2rem;}
+.cl-dark{background:radial-gradient(ellipse at 80% 0%,rgba(255,79,123,.18),transparent 55%),#1a0a10;}
+.cl-region{border-color:rgba(242,215,163,.15) !important;}
+.cl-region h2{color:#fff;}
+.cl-region span{color:#f2d7a3 !important;}
+.cl-chips a{background:rgba(255,255,255,.05);border-color:rgba(242,215,163,.25);color:#f2d7a3;}
+.cl-chips a:hover{background:rgba(255,79,123,.18);}
+.cl-etiquette strong{color:#fff;}
+.cl-faq-item summary svg{background:rgba(255,79,123,.12);border-color:rgba(255,79,123,.35);color:#ff7aa0;}
+.cl-final{background:radial-gradient(circle at 50% 100%,rgba(255,79,123,.35),transparent 55%),#14070c;}
+.cl-dados-lista li::before{background:#ff4f7b;}
+@media (max-width:860px){
+  .cl-hero-media{order:0;aspect-ratio:auto;}
+  .cl{padding-bottom:5rem;}
+}
+`;
+
+/** Aplica a camada sensual no corpo de uma página do Brasil.
+ *  `lugar` = "Fortaleza", "Ceará" ou null (página /swing/). */
+function camadaBrasil(body, origem, lugar) {
+  const cad = cadastroUrl(origem);
+  const cta = (texto) => `<a class="pt-cta" href="${cad}">${texto} ${icon('arrow')}</a>`;
+  const emLugar = lugar ? `em ${esc(lugar)}` : 'perto de você';
+  const topo = `<header class="pt-top">
+      <a class="cl-brand" href="/">NoSigilo<em>.net</em></a>
+      <div class="pt-top-acoes">
+        <a class="pt-top-login" href="${loginUrl(origem)}">Já sou membro</a>
+        <a class="pt-top-cta" href="${cad}">Criar conta grátis</a>
+      </div>
+    </header>`;
+  const gancho = `<span class="pt-gancho">O lado liberal ${lugar ? `de ${esc(lugar)}` : 'do Brasil'} que não aparece no Instagram</span>`;
+  const dentro = `
+    <section class="pt-sec">
+      <h2>O que te espera <em>lá dentro</em></h2>
+      <p class="pt-sub">Tudo pensado para quem quer viver o meio liberal sem se expor.</p>
+      <div class="pt-cards">
+        <div class="pt-card"><img src="/landing/real-gaze-trio-722.webp" alt="Três adultos trocando olhares num ambiente reservado" loading="lazy" /><div><h3>A Casa 🔥</h3><p>A boate virtual de sexta e sábado: salas ao vivo, brincadeiras quentes e cabine a dois.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-bw-kiss-722.webp" alt="Casal se beijando em preto e branco" loading="lazy" /><div><h3>Álbum privado</h3><p>As fotos mais íntimas só abrem para quem você liberar — e dá para tirar o acesso.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-sofa-trio-722.webp" alt="Três adultos num sofá, em clima descontraído" loading="lazy" /><div><h3>Quem está perto</h3><p>Distância em km de quem está ${emLugar}, e o Match para curtir em segredo.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-curls-722.webp" alt="Retrato sensual de mulher de cabelo cacheado" loading="lazy" /><div><h3>Conversa discreta</h3><p>Mensagens privadas e fotos de visualização única, que somem depois de vistas.</p></div></div>
+      </div>
+      <div class="pt-meio">${cta(lugar ? `Ver quem está ${emLugar}` : 'Ver quem está perto')}</div>
+    </section>`;
+  const faixa = `
+    <section class="pt-faixa">
+      <blockquote>Toda fantasia começa com uma conversa.</blockquote>
+      <p>Casais, mulheres e homens solteiros dizem logo o que procuram. Sem rodeio, sem julgamento, sem ninguém de fora ficar sabendo.</p>
+      <div class="pt-meio">${cta('Começar a minha')}</div>
+    </section>
+`;
+  const depoisDoSigilo = `
+    <div class="pt-meio" style="padding-block:2.5rem 1rem">${cta('Entrar com discrição')}</div>`;
+  const fixo = `
+    <div class="pt-fixo"><a href="${cad}">Criar conta grátis</a></div>`;
+
+  let b = body;
+  const iniTopo = b.indexOf('<header class="cl-header">');
+  const fimTopo = b.indexOf('</header>', iniTopo) + '</header>'.length;
+  if (iniTopo >= 0) b = b.slice(0, iniTopo) + topo + b.slice(fimTopo);
+  b = b.replace('<h1>', `${gancho}\n        <h1>`);
+  const fimHero = b.indexOf('</section>', b.indexOf('<section class="cl-hero">')) + '</section>'.length;
+  b = b.slice(0, fimHero) + dentro + b.slice(fimHero);
+  const iniEscuro = b.indexOf('<section class="cl-dark">');
+  if (iniEscuro >= 0) {
+    b = b.slice(0, iniEscuro) + faixa + b.slice(iniEscuro);
+    const iniEscuro2 = b.indexOf('<section class="cl-dark">');
+    // a seção escura tem um <section> só, então o primeiro </section> depois dela a fecha
+    const fimEscuro = b.indexOf('</section>', iniEscuro2) + '</section>'.length;
+    b = b.slice(0, fimEscuro) + depoisDoSigilo + b.slice(fimEscuro);
+  }
+  return b + fixo;
 }
 
 // --- escreve os arquivos ---
