@@ -6,6 +6,7 @@ import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useSocket } from '@/contexts/SocketContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { horarioDaCasaEmLisboa } from '@/utils/horarioDaCasa';
 import { enablePushNotifications } from '@/utils/pushNotifications';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -1812,7 +1813,8 @@ export default function Casa() {
           <p className="mt-4 text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>: salas ao vivo com casais, mulheres e singles,
+            A casa de swing online do NoSigilo. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>
+            {user?.dePortugal ? <> (horário de Brasília; <b>{horarioDaCasaEmLisboa()}</b>)</> : null}: salas ao vivo com casais, mulheres e singles,
             brincadeiras quentes e cabine a dois.
           </p>
         </div>

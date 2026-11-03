@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { tokenService, type PacoteTokens } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 function normalizarQr(value?: string | null) {
   const raw = String(value || '').trim();
@@ -30,7 +31,9 @@ export default function ComprarTokens({ aoCreditar, novaAba = false }: { aoCredi
   const [pacotes, setPacotes] = useState<PacoteTokens[]>([]);
   const [disponivel, setDisponivel] = useState(false);
   const [escolhido, setEscolhido] = useState<string | null>(null);
-  const [metodo, setMetodo] = useState<'PIX' | 'CREDIT_CARD'>('PIX');
+  // Portugal só paga no cartão (Pix exige banco brasileiro).
+  const dePortugal = !!useAuth().user?.dePortugal;
+  const [metodo, setMetodo] = useState<'PIX' | 'CREDIT_CARD'>(dePortugal ? 'CREDIT_CARD' : 'PIX');
   const [gerando, setGerando] = useState(false);
   const [compra, setCompra] = useState<{ id: string; pix?: string; qr?: string | null } | null>(null);
   const [copiado, setCopiado] = useState(false);
@@ -152,7 +155,7 @@ export default function ComprarTokens({ aoCreditar, novaAba = false }: { aoCredi
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {([['PIX', 'Pix', QrCode], ['CREDIT_CARD', 'Cartão', CreditCard]] as const).map(([v, rotulo, Icone]) => (
+            {([['PIX', 'Pix', QrCode], ['CREDIT_CARD', 'Cartão', CreditCard]] as const).filter(([v]) => !dePortugal || v === 'CREDIT_CARD').map(([v, rotulo, Icone]) => (
               <button
                 key={v}
                 type="button"

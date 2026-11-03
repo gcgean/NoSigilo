@@ -451,6 +451,39 @@ export async function visitasPor(db: DbHandle, coluna: 'device_type' | 'origin_t
   return [...soma].map(([rotulo, c]) => ({ rotulo, c })).sort((a, b) => b.c - a.c);
 }
 
+// ─── Portugal: preço e pagamento ────────────────────────────────────────────
+// Quem é de Portugal (acesso vindo de Portugal OU UF "PT" no perfil) assina o
+// plano do Hub cujo nome tem "Portugal" (R$ 29,90) e só paga no cartão: Pix
+// exige banco brasileiro e boleto exige CPF. Todo o resto vê os planos de
+// sempre — o plano de Portugal nunca aparece para o Brasil. Quem já assinava
+// antes do lançamento (lista em system_settings 'portugal_preco_antigo')
+// continua no plano normal.
+export const ehPlanoPortugal = (plan: { name?: unknown; code?: unknown }) =>
+  /portugal/i.test(`${String(plan?.name ?? '')} ${String(plan?.code ?? '')}`);
+
+/** "O plano" do Brasil, para preço em avisos, relatórios e renovação por Pix. */
+function planoDoBrasil<T extends { isActive?: unknown; status?: unknown; name?: unknown; code?: unknown }>(plans: T[]): T | undefined {
+  const doBrasil = plans.filter((p) => !ehPlanoPortugal(p));
+  return doBrasil.find((p) => p.isActive !== false && String(p.status) === 'active') ?? doBrasil[0];
+}
+
+async function situacaoPortugal(db: DbHandle, req: express.Request, userId: string) {
+  const u = (await queryOne(db, 'SELECT state FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+  const dePortugal = String(getHeaderValue(req, 'cf-ipcountry') ?? '').toUpperCase() === 'PT'
+    || String(u?.state || '').trim().toUpperCase() === 'PT';
+  if (!dePortugal) return { dePortugal: false, precoPortugal: false };
+  const antigos = safeJsonParse(await getSystemSetting(db, 'portugal_preco_antigo'));
+  const antigo = Array.isArray(antigos) && antigos.map(String).includes(userId);
+  return { dePortugal: true, precoPortugal: !antigo };
+}
+
+// Real por euro, só para mostrar "≈ €" a quem é de Portugal (a cobrança é em real).
+const COTACAO_EURO_PADRAO = 6.2;
+async function cotacaoEuro(db: DbHandle) {
+  const v = Number(String(await getSystemSetting(db, 'cotacao_euro_brl') ?? '').replace(',', '.'));
+  return v > 1 ? v : COTACAO_EURO_PADRAO;
+}
+
 async function getSystemSetting(db: DbHandle, key: string) {
   const row = (await queryOne(db, 'SELECT value FROM system_settings WHERE key = ? LIMIT 1', [key])) as any;
   return row?.value ?? null;
@@ -3247,7 +3280,7 @@ async function precoDoPlanoCents(env: Env) {
     try {
       const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
       const plans = await Promise.race([listHubPlans(getHubConfig(env)), timeout]);
-      const ativo = plans.find((p) => p.isActive !== false && String(p.status) === 'active') ?? plans[0];
+      const ativo = planoDoBrasil(plans);
       if (ativo?.amount) cents = Number(ativo.amount);
     } catch { /* fica o padrão */ }
   }
@@ -5365,6 +5398,10 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
     const userId = req.auth!.userId;
+    if ((await situacaoPortugal(db, req, userId)).dePortugal) {
+      res.status(403).json({ error: 'indisponivel_portugal', message: 'O programa de promotores é só para o Brasil por enquanto (a comissão é paga por Pix).' });
+      return;
+    }
     const { fullName, pixKey, whatsapp, contactEmail } = parsed.data;
     const existing = await queryOne(db, 'SELECT id FROM promoters WHERE user_id = ? LIMIT 1', [userId]);
     if (existing) {
@@ -6405,7 +6442,8 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // rowToPublicUser porque isso revelaria a todos quais perfis sao vitrine.
     // O cliente usa a flag para nao cobrar cidade de perfil vitrine.
     const isShowcase = Number((row as any)?.is_showcase || 0) === 1;
-    res.json({ ...user, isPromoter: !!promoterRow, isShowcase });
+    const portugal = await situacaoPortugal(db, req, req.auth!.userId);
+    res.json({ ...user, isPromoter: !!promoterRow, isShowcase, dePortugal: portugal.dePortugal });
   });
 
   app.post('/api/auth/refresh', requireAuth(env, db), async (req, res) => {
@@ -10438,6 +10476,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const { produtoId, pacotes } = await configTokens();
     const pacote = pacotes.find((p) => p.id === parsed.data.pacote);
     if (!produtoId || !pacote || !shouldUseHubBilling(env)) { res.status(400).json({ error: 'indisponivel', message: 'Compra de tokens indisponível no momento.' }); return; }
+    if (parsed.data.metodo !== 'CREDIT_CARD' && (await situacaoPortugal(db, req, req.auth!.userId)).dePortugal) {
+      res.status(400).json({ error: 'so_cartao', message: 'Em Portugal o pagamento é só no cartão.' });
+      return;
+    }
     const user = (await queryOne(
       db,
       'SELECT id, email, name, billing_document, billing_legal_name, billing_person_type, hub_customer_id, city, state FROM users WHERE id = ? LIMIT 1',
@@ -16937,7 +16979,15 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             ? precoFuturoCents / 100
             : null,
         }));
-      res.json(plans);
+      const portugal = await situacaoPortugal(db, req, req.auth!.userId);
+      const temPlanoPortugal = plans.some(ehPlanoPortugal);
+      // Sem plano de Portugal criado no Hub, todo mundo segue no plano normal.
+      let visiveis = plans.filter((p) => (portugal.precoPortugal && temPlanoPortugal ? ehPlanoPortugal(p) : !ehPlanoPortugal(p)));
+      if (portugal.dePortugal) {
+        const cotacao = await cotacaoEuro(db);
+        visiveis = visiveis.map((p) => ({ ...p, euroAprox: Math.round(p.amount / cotacao) / 100 }));
+      }
+      res.json(visiveis);
     } catch (error) {
       console.error('Failed to load subscription plans:', error);
       res.status(500).json({ error: 'plans_unavailable' });
@@ -16985,8 +17035,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     }
   }
 
-  app.get('/api/subscriptions/payment-methods', requireAuth(env, db), async (_req, res) => {
-    res.json(await carregarMetodosDePagamento());
+  app.get('/api/subscriptions/payment-methods', requireAuth(env, db), async (req, res) => {
+    const metodos = await carregarMetodosDePagamento();
+    const portugal = await situacaoPortugal(db, req, req.auth!.userId);
+    res.json(portugal.dePortugal ? metodos.filter((m) => m.method === 'CREDIT_CARD') : metodos);
   });
 
   app.get('/api/subscriptions/discount', requireAuth(env, db), (_req, res) => {
@@ -17139,6 +17191,19 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const selectedPlan = plans.find((plan) => String(plan.id) === planId && plan.isActive !== false && String(plan.status) === 'active');
       if (!selectedPlan) {
         res.status(404).json({ error: 'plan_not_found' });
+        return;
+      }
+      const portugal = await situacaoPortugal(db, req, req.auth!.userId);
+      const existePlanoPortugal = plans.some((p) => ehPlanoPortugal(p) && p.isActive !== false && String(p.status) === 'active');
+      const planoErrado = ehPlanoPortugal(selectedPlan)
+        ? !portugal.precoPortugal
+        : portugal.precoPortugal && existePlanoPortugal;
+      if (planoErrado) {
+        res.status(400).json({ error: 'plano_da_regiao', message: 'Esse plano não está disponível para a sua região. Recarregue a página.' });
+        return;
+      }
+      if (portugal.dePortugal && (parsed.data.billingType || 'PIX') !== 'CREDIT_CARD') {
+        res.status(400).json({ error: 'so_cartao', message: 'Em Portugal o pagamento é só no cartão.' });
         return;
       }
 
@@ -19518,7 +19583,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
             setTimeout(() => reject(new Error('HubBilling timeout')), 5000)
           );
           const plans = await Promise.race([listHubPlans(hubConfig), timeout]);
-          const activePlan = plans.find((p) => p.isActive && p.status === 'active') ?? plans[0];
+          const activePlan = planoDoBrasil(plans);
           if (activePlan) {
             const licensedCount = Number(licensedRow?.c || 0);
             revenue = (activePlan.amount / 100) * licensedCount;
@@ -20928,7 +20993,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         try {
           const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
           const plans = await Promise.race([listHubPlans(getHubConfig(env)), timeout]);
-          const activePlan = plans.find((p) => p.isActive && p.status === 'active') ?? plans[0];
+          const activePlan = planoDoBrasil(plans);
           if (activePlan?.amount) priceCents = Number(activePlan.amount);
         } catch (e) {
           console.warn('[revenue-report] hub plans indisponível, usando fallback:', (e as Error).message);
@@ -22833,7 +22898,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     try {
       const hubConfig = getHubConfig(env);
       const plans = await listHubPlans(hubConfig);
-      const plano = plans.find((p) => p.isActive !== false && String(p.status) === 'active');
+      const plano = planoDoBrasil(plans.filter((p) => p.isActive !== false && String(p.status) === 'active'));
       if (!plano) { res.status(404).json({ error: 'plan_not_found' }); return; }
       const order = await createHubOrder(hubConfig, { customerId, planId: String(plano.id), contractedAmount: Number(plano.amount || 0) });
       const orderId = String(order.id || order.orderId || '');

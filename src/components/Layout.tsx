@@ -450,8 +450,9 @@ export default function Layout() {
   }, [clockNow, subscriptionsEnabled, trialEnds, licenseEnds, user]);
 
   const visibleExtraNavItems = useMemo(
-    () => extraNavItems.filter((item) => subscriptionsEnabled || item.path !== '/subscriptions'),
-    [subscriptionsEnabled]
+    // Portugal fica sem "Ganhe dinheiro": a comissão de promotor é paga por Pix.
+    () => extraNavItems.filter((item) => (subscriptionsEnabled || item.path !== '/subscriptions') && !(user?.dePortugal && item.path === '/ganhe')),
+    [subscriptionsEnabled, user?.dePortugal]
   );
 
   const firstAccessChecklist = useMemo(() => {
@@ -943,10 +944,12 @@ export default function Layout() {
                 </DropdownMenuItem>
                 {/* No mobile o "Ganhe $" da barra de baixo dá lugar à Casa durante a
                     contagem/noite; aqui o painel do promotor fica sempre acessível. */}
-                <DropdownMenuItem onClick={() => navigate(user?.isPromoter ? '/promoter' : '/ganhe')}>
-                  <BadgeDollarSign className="mr-2 h-4 w-4 text-amber-500" />
-                  Ganhe dinheiro 💰
-                </DropdownMenuItem>
+                {!user?.dePortugal && (
+                  <DropdownMenuItem onClick={() => navigate(user?.isPromoter ? '/promoter' : '/ganhe')}>
+                    <BadgeDollarSign className="mr-2 h-4 w-4 text-amber-500" />
+                    Ganhe dinheiro 💰
+                  </DropdownMenuItem>
+                )}
                 {subscriptionsEnabled ? (
                   <DropdownMenuItem onClick={() => navigate('/subscriptions')}>
                     <Crown className="mr-2 h-4 w-4 text-gold" />
@@ -1624,6 +1627,18 @@ export default function Layout() {
               <span className="relative text-base leading-none">🔥</span>
               <span className="max-w-full truncate text-xs leading-4">A Casa</span>
               <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 animate-pulse whitespace-nowrap rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-600 px-1.5 text-[9px] font-black text-white shadow">⏳ {contagemCasa}</span>
+            </NavLink>
+          ) : user?.dePortugal ? (
+            // Portugal: no lugar do "Ganhe $", A Casa.
+            <NavLink
+              to="/casa"
+              className={({ isActive }) => cn(
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+                isActive ? "text-fuchsia-400" : "text-fuchsia-500/80 hover:text-fuchsia-500"
+              )}
+            >
+              <span className="relative text-base leading-none">🔥</span>
+              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
             </NavLink>
           ) : (
           <NavLink

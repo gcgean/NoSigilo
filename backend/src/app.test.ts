@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
-import { createApp, totalDeVisitas, visitasPor } from './app.js';
+import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor } from './app.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -727,6 +727,41 @@ describe('nosigilo backend', () => {
     expect(v.status).toBe('recusada');
     // E pode pedir a verificação de novo.
     await request(ctx.app).post('/api/verificacao/codigo').set({ Authorization: `Bearer ${u.token}` }).expect(200);
+  });
+
+  it('Portugal: só cartão, sem promotor e com ≈ € — Brasil igual a antes', async () => {
+    const br = await createBootstrapSponsor(ctx, { email: 'brasil-pt@example.com', name: 'Do Brasil' });
+    const pt = await createBootstrapSponsor(ctx, { email: 'portugal-pt@example.com', name: 'De Portugal' });
+    const hBr = { Authorization: `Bearer ${br.token}` };
+    const hPt = { Authorization: `Bearer ${pt.token}`, 'cf-ipcountry': 'PT' };
+
+    expect((await request(ctx.app).get('/api/auth/me').set(hBr).expect(200)).body.dePortugal).toBe(false);
+    expect((await request(ctx.app).get('/api/auth/me').set(hPt).expect(200)).body.dePortugal).toBe(true);
+    // UF "PT" no perfil também conta, mesmo acessando de fora.
+    await run(ctx.db, "UPDATE users SET state = 'PT' WHERE id = ?", [br.id]);
+    expect((await request(ctx.app).get('/api/auth/me').set(hBr).expect(200)).body.dePortugal).toBe(true);
+    await run(ctx.db, 'UPDATE users SET state = NULL WHERE id = ?', [br.id]);
+
+    const metodosBr = (await request(ctx.app).get('/api/subscriptions/payment-methods').set(hBr).expect(200)).body;
+    const metodosPt = (await request(ctx.app).get('/api/subscriptions/payment-methods').set(hPt).expect(200)).body;
+    expect(metodosBr.map((m: any) => m.method).sort()).toEqual(['BOLETO', 'CREDIT_CARD', 'PIX']);
+    expect(metodosPt.map((m: any) => m.method)).toEqual(['CREDIT_CARD']);
+
+    const planosBr = (await request(ctx.app).get('/api/subscriptions/plans').set(hBr).expect(200)).body as any[];
+    const planosPt = (await request(ctx.app).get('/api/subscriptions/plans').set(hPt).expect(200)).body as any[];
+    expect(planosBr.every((p) => p.euroAprox === undefined)).toBe(true);
+    expect(planosPt.map((p) => p.id)).toEqual(planosBr.map((p) => p.id)); // sem plano de Portugal no Hub: o mesmo
+    expect(planosPt.filter((p) => p.amount > 0).every((p) => p.euroAprox > 0)).toBe(true);
+
+    const dados = { fullName: 'Promotor Portugal', pixKey: 'pix-pt@example.com', acceptTerms: true };
+    await request(ctx.app).post('/api/promoter/activate').set(hPt).send(dados).expect(403);
+    await request(ctx.app).post('/api/promoter/activate').set(hBr).send(dados).expect(200);
+  });
+
+  it('plano de Portugal nunca vira "o plano" do Brasil', () => {
+    expect(ehPlanoPortugal({ name: 'Mensal Portugal' })).toBe(true);
+    expect(ehPlanoPortugal({ name: 'Mensal' })).toBe(false);
+    expect(ehPlanoPortugal({ name: 'Mensal', code: 'premium_portugal' })).toBe(true);
   });
 
   it('cidades de Portugal entram com UF PT sem tirar o Brasil da frente', async () => {

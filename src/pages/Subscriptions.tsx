@@ -24,6 +24,8 @@ type Plan = {
   intervalCount?: number;
   description?: string | null;
   perks?: string[];
+  /** Só para quem é de Portugal: o valor em reais convertido, para referência. */
+  euroAprox?: number;
 };
 
 type CheckoutPayload = {
@@ -628,7 +630,7 @@ export default function Subscriptions() {
                   { value: 'CREDIT_CARD' as const, label: 'Cartão', icon: CreditCard },
                   { value: 'PIX' as const, label: 'PIX', icon: QrCode },
                   { value: 'BOLETO' as const, label: 'Boleto', icon: FileText },
-                ]).map(({ value, label, icon: Icon }) => {
+                ]).filter(({ value }) => !user?.dePortugal || value === 'CREDIT_CARD').map(({ value, label, icon: Icon }) => {
                   const sel = billingMethod === value;
                   return (
                     <button
@@ -696,6 +698,7 @@ export default function Subscriptions() {
                         <p className="text-2xl font-bold mt-1">
                           R$ {plan.price.toFixed(2).replace('.', ',')}
                           <span className="text-xs font-normal text-muted-foreground">/{plan.interval}</span>
+                          {plan.euroAprox ? <span className="block text-xs font-normal text-muted-foreground">≈ €{plan.euroAprox.toFixed(2).replace('.', ',')}</span> : null}
                         </p>
                         {sel && <div className="absolute top-3 right-3 h-2 w-2 rounded-full bg-primary" />}
                       </button>
@@ -714,6 +717,7 @@ export default function Subscriptions() {
                   <div className="text-right">
                     <p className="text-2xl font-bold">R$ {selectedPlan.price.toFixed(2).replace('.', ',')}</p>
                     <p className="text-xs text-muted-foreground">/{selectedPlan.interval}</p>
+                    {selectedPlan.euroAprox ? <span className="block text-xs font-normal text-muted-foreground">≈ €{selectedPlan.euroAprox.toFixed(2).replace('.', ',')}</span> : null}
                   </div>
                 </div>
               )}

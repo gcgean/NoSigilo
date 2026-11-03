@@ -18,6 +18,8 @@ type Plan = {
   interval: string;
   intervalCount?: number;
   description?: string | null;
+  /** Só para quem é de Portugal: o valor em reais convertido, para referência. */
+  euroAprox?: number;
 };
 
 type CheckoutPayload = {
@@ -453,6 +455,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
                             <p className="font-semibold text-xs">{plan.name}</p>
                             <p className="text-xl font-bold mt-0.5">
                               R$ {plan.price.toFixed(2).replace('.', ',')}
+                              {plan.euroAprox ? <span className="block text-xs font-normal text-muted-foreground">≈ €{plan.euroAprox.toFixed(2).replace('.', ',')}</span> : null}
                             </p>
                             <p className="text-[10px] text-muted-foreground">/{plan.interval}</p>
                           </button>
@@ -468,6 +471,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
                       <div className="text-right">
                         <p className="text-2xl font-bold">R$ {plans[0].price.toFixed(2).replace('.', ',')}</p>
                         <p className="text-xs text-muted-foreground">/{plans[0].interval}</p>
+                        {plans[0].euroAprox ? <span className="block text-xs font-normal text-muted-foreground">≈ €{plans[0].euroAprox.toFixed(2).replace('.', ',')}</span> : null}
                       </div>
                     </div>
                   )}
@@ -478,7 +482,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
                       { value: 'CREDIT_CARD' as const, label: 'Cartão', icon: CreditCard },
                       { value: 'PIX' as const, label: 'PIX', icon: QrCode },
                       { value: 'BOLETO' as const, label: 'Boleto', icon: FileText },
-                    ]).map(({ value, label, icon: Icon }) => {
+                    ]).filter(({ value }) => !user?.dePortugal || value === 'CREDIT_CARD').map(({ value, label, icon: Icon }) => {
                       const sel = billingMethod === value;
                       return (
                         <button

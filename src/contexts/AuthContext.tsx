@@ -79,6 +79,8 @@ export interface User {
   lat?: number | null;
   lon?: number | null;
   isPromoter?: boolean;
+  /** Acesso vindo de Portugal ou UF "PT": plano de Portugal, só cartão, sem programa de promotor. */
+  dePortugal?: boolean;
   /** Perfil vitrine/demo. Vem só do /api/auth/me (sobre si mesmo) — nunca é
    *  exposto sobre outros usuários, senão revelaria quais perfis são vitrine. */
   isShowcase?: boolean;

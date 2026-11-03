@@ -313,6 +313,18 @@ export default function Promoter() {
   }
 
   // ── Not a promoter yet: activation form ──────────────────────────────────
+  // Portugal: a comissão é paga por Pix, então o programa é só para o Brasil.
+  if (!promoter && user?.dePortugal) {
+    return (
+      <div className="glass rounded-2xl p-6 text-center space-y-2">
+        <h1 className="text-xl font-bold">Programa de promotores</h1>
+        <p className="text-sm text-muted-foreground">
+          Por enquanto o programa de promotores é só para quem está no Brasil, porque a comissão é paga por Pix.
+        </p>
+      </div>
+    );
+  }
+
   if (!promoter) {
     return (
       <>
