@@ -37,7 +37,8 @@ type AuthorGroup = {
   paraFavoritos: boolean;
   // Autor online agora ou visto há pouco (15 min): anel verde girando.
   online?: boolean;
-  // O story deste autor que some primeiro (para o selo ⏳).
+  // O story AINDA NÃO VISTO deste autor que some primeiro (para o selo ⏳):
+  // depois de ver, o selo sai — só faz sentido avisar do que falta ver.
   expiraEm?: string;
 };
 
@@ -87,7 +88,7 @@ export default function StoriesBar() {
           }
           if (s.audience === 'favorites') existing.paraFavoritos = true;
           if (a.onlineRecente) existing.online = true;
-          if (s.expiresAt && (!existing.expiraEm || s.expiresAt < existing.expiraEm)) existing.expiraEm = s.expiresAt;
+          if (!s.viewed && s.expiresAt && (!existing.expiraEm || s.expiresAt < existing.expiraEm)) existing.expiraEm = s.expiresAt;
         } else {
           byAuthor.set(a.id, {
             authorId: a.id,
@@ -101,7 +102,7 @@ export default function StoriesBar() {
             pinned: !!a.pinnedByMe,
             paraFavoritos: s.audience === 'favorites',
             online: !!a.onlineRecente,
-            expiraEm: s.expiresAt,
+            expiraEm: s.viewed ? undefined : s.expiresAt,
           });
         }
       }

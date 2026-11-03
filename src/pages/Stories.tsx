@@ -2193,8 +2193,8 @@ export default function Stories() {
                   <SeloFavoritos className="absolute left-8 top-7 h-4 w-4" />
                 )}
 
-                {/* Some em menos de 3h: ampulheta acima do nome. */}
-                {expiraEmBreve(story.expiresAt) && <SeloExpirando className="absolute bottom-7 left-2" />}
+                {/* Some em menos de 3h e ainda não foi visto: ampulheta acima do nome. */}
+                {!story.viewed && expiraEmBreve(story.expiresAt) && <SeloExpirando className="absolute bottom-7 left-2" />}
 
                 {/* Name */}
                 <p className="absolute bottom-2 left-2 right-2 text-[10px] font-semibold text-white truncate">
