@@ -134,9 +134,10 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
 
   return (
     <div className="flex-1 overflow-y-auto overscroll-y-contain p-3" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-      <p className="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+      <p className="mb-3 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2.5 text-[13px] leading-snug text-foreground/85">
         Perfis que entraram nos últimos 7 dias {cidade ? `em ${cidade} ou perto` : 'perto de você'} e combinam com o que você procura.
-        {' '}Quem chega e é bem recebido fica. {restantes > 0 ? `Você pode dar mais ${restantes} boas-vindas hoje.` : 'Suas boas-vindas de hoje acabaram — amanhã tem mais.'}
+        {' '}Quem chega e é bem recebido fica.{' '}
+        <strong className="font-semibold text-primary">{restantes > 0 ? `Você pode dar mais ${restantes} boas-vindas hoje.` : 'Suas boas-vindas de hoje acabaram — amanhã tem mais.'}</strong>
       </p>
 
       {erro ? (

@@ -1433,16 +1433,18 @@ export default function Chat() {
                 aria-selected={caixa === k}
                 onClick={() => setCaixa(k)}
                 className={cn(
-                  'flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors',
-                  caixa === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
+                  // A aba ativa em rosa e negrito: antes era fundo branco sobre
+                  // cinza claro, e no tema claro mal dava para ver qual estava aberta.
+                  'flex min-h-[38px] items-center justify-center gap-1.5 rounded-lg font-bold transition-colors',
+                  caixa === k ? 'bg-primary text-primary-foreground shadow-md' : 'text-foreground/70 hover:bg-background/60 hover:text-foreground'
                 )}
               >
                 {k === 'conversas' ? 'Conversas' : k === 'pedidos' ? 'Pedidos' : k === 'grupos' ? 'Grupos' : 'Na região'}
                 {k === 'pedidos' && pedidosCount > 0 && (
-                  <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{pedidosCount}</span>
+                  <span className={cn('rounded-full px-1.5 text-[11px] leading-5', caixa === k ? 'bg-white text-primary' : 'bg-primary text-white')}>{pedidosCount}</span>
                 )}
                 {k === 'grupos' && gruposComNovas > 0 && (
-                  <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{gruposComNovas}</span>
+                  <span className={cn('rounded-full px-1.5 text-[11px] leading-5', caixa === k ? 'bg-white text-primary' : 'bg-primary text-white')}>{gruposComNovas}</span>
                 )}
               </button>
             ))}
