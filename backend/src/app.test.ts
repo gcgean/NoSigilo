@@ -708,15 +708,25 @@ describe('nosigilo backend', () => {
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
   });
 
-  it('perfil verificado não pode pedir troca do tipo de perfil', async () => {
+  it('aprovar troca de tipo tira a verificação e o acesso livre', async () => {
     const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Verificada Tipo', email: 'verificada-tipo@example.com', password: 'senha123', gender: 'Mulher' });
-    const h = { Authorization: `Bearer ${u.token}` };
-    const pedido = { gender: 'Homem', reason: 'Quero trocar o tipo do meu perfil.' };
-    await run(ctx.db, 'UPDATE users SET is_verified = 1 WHERE id = ?', [String(u.user.id)]);
-    const r = await request(ctx.app).post('/api/profile/gender-change-request').set(h).send(pedido).expect(403);
-    expect(r.body.error).toBe('perfil_verificado');
-    await run(ctx.db, 'UPDATE users SET is_verified = 0 WHERE id = ?', [String(u.user.id)]);
-    await request(ctx.app).post('/api/profile/gender-change-request').set(h).send(pedido).expect(200);
+    const uid = String(u.user.id);
+    const admin = await createBootstrapSponsor(ctx, { email: 'admin-tipo@example.com', name: 'Admin Tipo' });
+    await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [admin.id]);
+    await run(ctx.db, "UPDATE users SET is_verified = 1, trial_ends_at = '2099-12-31T23:59:59.000Z' WHERE id = ?", [uid]);
+    await run(ctx.db, "INSERT INTO verificacoes_perfil (id, user_id, codigo, status, created_at) VALUES ('ver-tipo', ?, 'ABC123', 'aprovada', ?)", [uid, new Date().toISOString()]);
+    await request(ctx.app).post('/api/profile/gender-change-request').set({ Authorization: `Bearer ${u.token}` })
+      .send({ gender: 'Homem', reason: 'Quero trocar o tipo do meu perfil.' }).expect(200);
+    const pedido = (await queryOne(ctx.db, "SELECT id FROM gender_change_requests WHERE user_id = ? AND status = 'pending'", [uid])) as any;
+    await request(ctx.app).post(`/api/admin/gender-change-requests/${pedido.id}/approve`).set({ Authorization: `Bearer ${admin.token}` }).send({}).expect(200);
+    const depois = (await queryOne(ctx.db, 'SELECT gender, is_verified, trial_ends_at FROM users WHERE id = ?', [uid])) as any;
+    expect(depois.gender).toBe('Homem');
+    expect(Number(depois.is_verified)).toBe(0);
+    expect(String(depois.trial_ends_at)).not.toBe('2099-12-31T23:59:59.000Z');
+    const v = (await queryOne(ctx.db, "SELECT status, motivo FROM verificacoes_perfil WHERE id = 'ver-tipo'", [])) as any;
+    expect(v.status).toBe('recusada');
+    // E pode pedir a verificação de novo.
+    await request(ctx.app).post('/api/verificacao/codigo').set({ Authorization: `Bearer ${u.token}` }).expect(200);
   });
 
   it('cidades de Portugal entram com UF PT sem tirar o Brasil da frente', async () => {

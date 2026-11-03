@@ -1841,7 +1841,7 @@ export default function Chat() {
                     <MoreVertical className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" collisionPadding={8}>
+                <DropdownMenuContent align="end" collisionPadding={8} className="z-[70]">
                   <DropdownMenuItem onClick={() => navigate(getUserProfileHref(activeConversation?.user.id, user?.id, '/chat'))}>
                     <User className="w-4 h-4 mr-2" />
                     Ver Perfil
@@ -2502,13 +2502,15 @@ export default function Chat() {
                     )}
                   </Button>
 
+                  {/* z-[70] nas janelas do chat: no celular a conversa fica numa camada fixa z-60
+                      e o padrão (z-50) abria por trás — o 🎁 "não fazia nada". */}
                   <Popover open={presentesAbertos} onOpenChange={setPresentesAbertos}>
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-11 w-9 rounded-xl text-lg md:h-9 md:w-9" aria-label="Mandar presente">
                         🎁
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent side="top" align="center" sideOffset={8} collisionPadding={8} className="w-72 p-3">
+                    <PopoverContent side="top" align="center" sideOffset={8} collisionPadding={8} className="z-[70] w-72 p-3">
                       <p className="text-sm font-semibold">Mandar um presente</p>
                       <p className="mb-2 text-xs text-muted-foreground">Quebra o gelo: os tokens vão para a pessoa.</p>
                       <div className="grid grid-cols-1 gap-1.5">
@@ -2535,7 +2537,7 @@ export default function Chat() {
                       align="center"
                       sideOffset={8}
                       collisionPadding={8}
-                      className="flex max-h-[min(420px,50svh)] w-auto flex-col overflow-hidden border-none p-0"
+                      className="z-[70] flex max-h-[min(420px,50svh)] w-auto flex-col overflow-hidden border-none p-0"
                     >
                       {/* Safados — acesso rápido aos emojis picantes */}
                       <div className="shrink-0 border-b bg-background p-2">
@@ -2585,7 +2587,7 @@ export default function Chat() {
                           <Zap className={cn("w-5 h-5 transition-all", isViewOnceEnabled && "fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.8)]")} />
                         </Button>
                       </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[220px] text-center text-xs">
+                      <TooltipContent side="top" className="z-[70] max-w-[220px] text-center text-xs">
                         <p className="font-semibold">⚡ Visualização única</p>
                         <p className="mt-0.5 text-muted-foreground">
                           {isViewOnceEnabled

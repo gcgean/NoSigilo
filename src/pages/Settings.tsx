@@ -812,12 +812,12 @@ export default function Settings() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {!!user?.gender && user?.isVerified && (
-                      <p className="text-xs text-muted-foreground">
-                        Perfil verificado: o tipo de perfil não pode ser mudado. Fale com o suporte se precisar.
+                    {!!user?.gender && user?.isVerified && generoSituacao?.status !== 'pending' && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Seu perfil é verificado: se a troca de tipo for aprovada, ele perde a verificação e você precisa verificar de novo.
                       </p>
                     )}
-                    {!!user?.gender && !user?.isVerified && (
+                    {!!user?.gender && (
                       generoSituacao?.status === 'pending' ? (
                         <p className="text-xs text-amber-600">
                           Pedido em análise: mudar para <strong>"{generoSituacao.requestedGender}"</strong>. Você recebe a resposta nas notificações.

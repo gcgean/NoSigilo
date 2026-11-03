@@ -11161,12 +11161,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       return;
     }
     const me = (await queryOne(db, 'SELECT gender, is_verified FROM users WHERE id = ? LIMIT 1', [userId])) as any;
-    // Perfil verificado foi conferido COM esse tipo: trocar depois abriria a porta
-    // para verificar como mulher e virar outra coisa. Foto e o resto seguem livres.
-    if (Number(me?.is_verified || 0) === 1) {
-      res.status(403).json({ error: 'perfil_verificado', message: 'Perfil verificado não pode mudar o tipo de perfil. Fale com o suporte se precisar.' });
-      return;
-    }
     if (String(me?.gender || '') === parsed.data.gender) { res.status(400).json({ error: 'same_gender', message: 'Esse já é o seu tipo de perfil.' }); return; }
     const pendente = await queryOne(db, "SELECT id FROM gender_change_requests WHERE user_id = ? AND status = 'pending' LIMIT 1", [userId]);
     if (pendente) { res.status(409).json({ error: 'already_pending', message: 'Você já tem um pedido em análise.' }); return; }
@@ -11178,7 +11172,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     await persist();
     const quem = (await queryOne(db, 'SELECT name, email FROM users WHERE id = ?', [userId])) as any;
     void notifyAdminsTelegram({ db, env },
-      `⚧ <b>Pedido de troca de tipo de perfil</b>\n\n<b>${String(quem?.name || 'Usuário')}</b> ${String(quem?.email || '')}\n${String(me?.gender || '—')} → ${parsed.data.gender}\n\n"${parsed.data.reason.slice(0, 300)}"\n\nAnalise em Admin › Usuários.`,
+      `⚧ <b>Pedido de troca de tipo de perfil</b>\n\n<b>${String(quem?.name || 'Usuário')}</b> ${String(quem?.email || '')}\n${String(me?.gender || '—')} → ${parsed.data.gender}${Number(me?.is_verified || 0) === 1 ? '\n✔ Perfil VERIFICADO: se aprovar, perde a verificação e precisa verificar de novo.' : ''}\n\n"${parsed.data.reason.slice(0, 300)}"\n\nAnalise em Admin › Usuários.`,
       'moderacao'
     ).catch(() => {});
     res.json({ ok: true });
@@ -18819,7 +18813,23 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const nota = String(req.body?.note || '').trim().slice(0, 300) || null;
     const agora = nowIso();
     const novo = String(pedido.requested_gender);
+    let perdeuVerificacao = false;
     if (acao === 'approve') {
+      // A verificação foi conferida COM o tipo antigo: trocou o tipo, perde o selo
+      // e verifica de novo (aprovação do admin). Sem isso, dava para verificar
+      // como mulher e depois virar outra coisa mantendo o selo e o acesso livre.
+      const eraVerificado = (await queryOne(db, 'SELECT is_verified FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
+      if (Number(eraVerificado?.is_verified || 0) === 1) {
+        perdeuVerificacao = true;
+        await run(db, 'UPDATE users SET is_verified = 0 WHERE id = ?', [String(pedido.user_id)]);
+        // O último pedido aprovado vira "recusada" com o motivo: a tela de
+        // verificação já mostra o motivo e o botão "Tentar de novo".
+        await run(
+          db,
+          "UPDATE verificacoes_perfil SET status = 'recusada', motivo = ? WHERE user_id = ? AND status = 'aprovada'",
+          ['Você mudou o tipo de perfil. Verifique de novo para recuperar o selo.', String(pedido.user_id)]
+        );
+      }
       await run(db, 'UPDATE users SET gender = ? WHERE id = ?', [novo, String(pedido.user_id)]);
       const antes = (await queryOne(db, 'SELECT trial_ends_at FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
       const verificada = (await queryOne(db, 'SELECT is_verified FROM users WHERE id = ?', [String(pedido.user_id)])) as any;
@@ -18845,7 +18855,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         type: acao === 'approve' ? 'gender_change.approved' : 'gender_change.rejected',
         title: acao === 'approve' ? '✅ Tipo de perfil alterado' : 'Troca de tipo de perfil não aprovada',
         description: acao === 'approve'
-          ? `Seu perfil agora aparece como "${novo}".`
+          ? `Seu perfil agora aparece como "${novo}".${perdeuVerificacao ? ' Como o tipo mudou, a verificação saiu: verifique de novo para recuperar o selo.' : ''}`
           : `Seu pedido para mudar para "${novo}" foi recusado.${nota ? ` Motivo: ${nota}` : ''}`,
         dataJson: { url: '/settings' },
       });
