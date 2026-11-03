@@ -28,6 +28,7 @@ Tipos de perfil e período grátis ao se cadastrar (trialEndForGender)
 Premium
 - Assinatura mensal de R$ 9,90 por mês (não é cobrança por mensagem).
 - Pagamento: cartão (renova automaticamente todo mês e pode ser cancelado quando quiser na tela de assinatura), PIX ou boleto. PIX e cartão não pedem CPF; boleto pede.
+- Como pagar com cartão: escolher "Cartão" e tocar em "Assinar com cartão"; o app abre a página segura de pagamento (Stripe), onde se digitam número, validade e código do cartão. Se a página não abrir, tocar em "Digitar dados do cartão". Se nem assim abrir, fechar e abrir o app de novo (para pegar a versão nova) e tentar de novo; se continuar, passar para a equipe.
 - PIX e boleto são PACOTE AVULSO: liberam 30 dias e NÃO renovam sozinhos. Não existe nada para cancelar; no fim dos 30 dias o acesso simplesmente acaba, sem cobrança nova. Só o cartão renova (e só o cartão tem "cancelar renovação").
 - Cancelamento e devolução do dinheiro (estorno/reembolso):
   - Cartão: cancelar a renovação é na tela de assinatura (Configurações); o acesso já pago continua até o fim do mês.

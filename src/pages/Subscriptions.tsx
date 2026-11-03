@@ -123,7 +123,7 @@ export default function Subscriptions() {
   // precisar de checkout hospedado.
   const boletoDirectUrl = String(checkoutResult?.boletoUrl || '').trim();
   const useHostedCheckout = !hasPixCode && !qrImageSrc && !boletoDirectUrl && !!hostedCheckoutUrl;
-  const hostedCheckoutLabel = checkoutBillingType === 'BOLETO' ? 'Gerar boleto' : 'Pagar agora';
+  const hostedCheckoutLabel = checkoutBillingType === 'BOLETO' ? 'Gerar boleto' : checkoutBillingType === 'CREDIT_CARD' ? 'Digitar dados do cartão' : 'Pagar agora';
 
   // Load plans and status
   useEffect(() => {
@@ -289,6 +289,16 @@ export default function Subscriptions() {
         billingPersonType: 'PF',
       });
       if (result?.checkout) setCheckoutResult(result.checkout);
+      // Cartão: vai direto para a página segura do Stripe, na mesma aba (o
+      // Stripe devolve em /bem-vindo). Antes parava numa caixa com "Pagar
+      // agora" que abria outra aba — bloqueada no app instalado e no navegador
+      // do Instagram, a pessoa ficava sem onde digitar o cartão (suporte, 03/11/2026).
+      const urlDoCartao = billingMethod === 'CREDIT_CARD' ? String(result?.checkout?.checkoutUrl || '').trim() : '';
+      if (urlDoCartao) {
+        toast({ title: 'Abrindo a página segura do cartão…', description: 'Digite os dados do cartão lá para ativar a assinatura.' });
+        window.location.href = urlDoCartao;
+        return;
+      }
       const me = await authService.getMe();
       updateUser(me);
       const messages: Record<typeof billingMethod, string> = {
@@ -551,7 +561,7 @@ export default function Subscriptions() {
                         )}
                         {useHostedCheckout && (
                           <Button
-                            onClick={() => window.open(hostedCheckoutUrl, '_blank', 'noopener,noreferrer')}
+                            onClick={() => { window.location.href = hostedCheckoutUrl; }}
                             className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
                           >
                             <ExternalLink className="w-5 h-5" /> {hostedCheckoutLabel}

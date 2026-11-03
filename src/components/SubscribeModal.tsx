@@ -235,6 +235,16 @@ export default function SubscribeModal({ open, onClose }: Props) {
         pagePath: normalizePagePath(location.pathname),
       });
       if (result?.checkout) setCheckout(result.checkout);
+      // Cartão: vai direto para a página segura do Stripe, na mesma aba (o
+      // Stripe devolve em /bem-vindo). Antes parava numa caixa com "Pagar
+      // agora" que abria outra aba — bloqueada no app instalado e no navegador
+      // do Instagram, a pessoa ficava sem onde digitar o cartão (suporte, 03/11/2026).
+      const urlDoCartao = billingMethod === 'CREDIT_CARD' ? String(result?.checkout?.checkoutUrl || '').trim() : '';
+      if (urlDoCartao) {
+        toast({ title: 'Abrindo a página segura do cartão…', description: 'Digite os dados do cartão lá para ativar a assinatura.' });
+        window.location.href = urlDoCartao;
+        return;
+      }
       const me = await authService.getMe();
       updateUser(me);
       const messages: Record<typeof billingMethod, string> = {
@@ -361,10 +371,10 @@ export default function SubscribeModal({ open, onClose }: Props) {
                       <div className="grid gap-2">
                         {useHostedCheckout && (
                           <Button
-                            onClick={() => window.open(checkoutUrl, '_blank', 'noopener,noreferrer')}
+                            onClick={() => { window.location.href = checkoutUrl; }}
                             className="w-full gap-2 h-12 text-base font-bold bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:opacity-90 shadow-lg shadow-emerald-500/30"
                           >
-                            <QrCode className="w-5 h-5" /> {hostedCheckoutLabel}
+                            {checkoutBillingType === 'CREDIT_CARD' ? <CreditCard className="w-5 h-5" /> : <QrCode className="w-5 h-5" />} {checkoutBillingType === 'CREDIT_CARD' ? 'Digitar dados do cartão' : hostedCheckoutLabel}
                           </Button>
                         )}
                         {boletoDirectUrl && (
@@ -394,7 +404,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
 
                       <p className="text-xs text-muted-foreground text-center">
                         {checkoutBillingType === 'CREDIT_CARD'
-                          ? `Clique em "${hostedCheckoutLabel}" para cadastrar o cartão. A cobrança passa a ser automática todo mês.`
+                          ? 'Toque em "Digitar dados do cartão" para abrir a página segura do cartão. A cobrança passa a ser automática todo mês.'
                           : boletoDirectUrl
                             ? 'Clique em "Abrir boleto" para visualizar, imprimir ou copiar o código de barras.'
                             : useHostedCheckout
