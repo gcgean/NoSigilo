@@ -34,7 +34,7 @@ import { generatePromoterStoryImage } from '@/utils/promoterShareImage';
 
 const REFERRED_STATUS_META: Record<string, { label: string; color: string }> = {
   subscriber:  { label: 'Assinante',  color: 'bg-emerald-500/10 text-emerald-600 border-emerald-400/30' },
-  trial:       { label: 'Trial',      color: 'bg-blue-500/10 text-blue-600 border-blue-400/30' },
+  trial:       { label: 'Período grátis', color: 'bg-blue-500/10 text-blue-600 border-blue-400/30' },
   expired:     { label: 'Expirado',   color: 'bg-amber-500/10 text-amber-600 border-amber-400/30' },
   deactivated: { label: 'Desativado', color: 'bg-muted text-muted-foreground border-border' },
   banned:      { label: 'Banido',     color: 'bg-red-500/10 text-red-500 border-red-400/30' },
