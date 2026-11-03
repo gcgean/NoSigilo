@@ -11160,7 +11160,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'invalid_input', message: parsed.error.issues[0]?.message || 'Dados inválidos.' });
       return;
     }
-    const me = (await queryOne(db, 'SELECT gender FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    const me = (await queryOne(db, 'SELECT gender, is_verified FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    // Perfil verificado foi conferido COM esse tipo: trocar depois abriria a porta
+    // para verificar como mulher e virar outra coisa. Foto e o resto seguem livres.
+    if (Number(me?.is_verified || 0) === 1) {
+      res.status(403).json({ error: 'perfil_verificado', message: 'Perfil verificado não pode mudar o tipo de perfil. Fale com o suporte se precisar.' });
+      return;
+    }
     if (String(me?.gender || '') === parsed.data.gender) { res.status(400).json({ error: 'same_gender', message: 'Esse já é o seu tipo de perfil.' }); return; }
     const pendente = await queryOne(db, "SELECT id FROM gender_change_requests WHERE user_id = ? AND status = 'pending' LIMIT 1", [userId]);
     if (pendente) { res.status(409).json({ error: 'already_pending', message: 'Você já tem um pedido em análise.' }); return; }

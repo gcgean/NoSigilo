@@ -708,6 +708,17 @@ describe('nosigilo backend', () => {
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
   });
 
+  it('perfil verificado não pode pedir troca do tipo de perfil', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Verificada Tipo', email: 'verificada-tipo@example.com', password: 'senha123', gender: 'Mulher' });
+    const h = { Authorization: `Bearer ${u.token}` };
+    const pedido = { gender: 'Homem', reason: 'Quero trocar o tipo do meu perfil.' };
+    await run(ctx.db, 'UPDATE users SET is_verified = 1 WHERE id = ?', [String(u.user.id)]);
+    const r = await request(ctx.app).post('/api/profile/gender-change-request').set(h).send(pedido).expect(403);
+    expect(r.body.error).toBe('perfil_verificado');
+    await run(ctx.db, 'UPDATE users SET is_verified = 0 WHERE id = ?', [String(u.user.id)]);
+    await request(ctx.app).post('/api/profile/gender-change-request').set(h).send(pedido).expect(200);
+  });
+
   it('cidades de Portugal entram com UF PT sem tirar o Brasil da frente', async () => {
     await run(ctx.db, "DELETE FROM cities WHERE name_norm IN ('santarem', 'leiria-teste')", []);
     await run(ctx.db, "INSERT INTO cities (name, name_norm, state, lat, lon) VALUES ('Santarém', 'santarem', 'PA', -2.44, -54.70)", []);
