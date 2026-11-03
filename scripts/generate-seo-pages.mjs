@@ -2216,7 +2216,7 @@ const BR_CSS = PT_CSS + `
 .cl-crumb,.cl-crumb a{color:#cdb6b2;}
 .cl-intro{color:#e9d3cf;max-width:38rem;}
 .cl-intro strong{color:#fff;}
-.cl-prova{background:rgba(255,255,255,.05);border-color:rgba(242,215,163,.25);border-left-color:#ff4f7b;color:#e9d3cf;}
+.cl-prova{display:inline-block;background:rgba(255,255,255,.05);border-color:rgba(242,215,163,.25);border-left-color:#ff4f7b;color:#e9d3cf;}
 .cl-prova strong{color:#f2d7a3;}
 .cl-cta{width:auto;justify-content:center;border-radius:999px;padding:1.05rem 1.6rem;background:linear-gradient(135deg,#ff4f7b,#c2185b);font-size:1.05rem;box-shadow:0 18px 40px rgba(194,24,91,.45);animation:ptPulso 2.4s infinite;}
 .cl-cta:hover{background:linear-gradient(135deg,#ff4f7b,#c2185b);filter:brightness(1.08);}
