@@ -1438,6 +1438,39 @@ export default function Chat() {
               </button>
             ))}
           </div>
+          {/* Cartão "novos contatos" no topo das Conversas: antes os pedidos só
+              apareciam na aba "Pedidos", que muita gente nem abria. */}
+          {caixa === 'conversas' && pedidosCount > 0 && (() => {
+            const primeiros = conversations
+              .filter((c) => c.pedido)
+              .sort((a, b) => Number(!!b.pedidoDestaque) - Number(!!a.pedidoDestaque))
+              .slice(0, 3);
+            return (
+              <button
+                type="button"
+                onClick={() => setCaixa('pedidos')}
+                className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-primary/25 bg-gradient-to-r from-primary/15 via-fuchsia-500/10 to-transparent px-3 py-2.5 text-left transition-colors hover:from-primary/25"
+              >
+                <span className="flex shrink-0 -space-x-3">
+                  {primeiros.map((c) => (
+                    <span key={c.id} className="rounded-full ring-2 ring-background">
+                      <UserAvatar user={c.user} className="h-9 w-9" largura={120} />
+                    </span>
+                  ))}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    {pedidosCount === 1 ? 'Novo contato' : 'Novos contatos'}
+                    <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">
+                      {pedidosCount} {pedidosCount === 1 ? 'novo' : 'novos'}
+                    </span>
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">Veja quem quer falar com você</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            );
+          })()}
           {caixa === 'pedidos' && (
             <p className="mb-3 rounded-lg bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
               Aqui ficam mensagens de perfis que você ainda não conhece. Abra, e aceite o pedido para virar conversa — ou exclua. Quem mandou não fica sabendo se você excluiu.
