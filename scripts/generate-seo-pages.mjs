@@ -1171,9 +1171,9 @@ function campaignFaqSection(itens) {
 
 /** Monta o documento HTML completo: head (meta/JSON-LD/CSS) + body no layout
  *  da landing. `body` já vem pronto (header, seções, footer). */
-function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noindex }) {
+function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noindex, lang = 'pt-BR', ogLocale = 'pt_BR', geoRegion = null }) {
   return `<!doctype html>
-<html lang="pt-BR">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1182,12 +1182,12 @@ function campaignDocument({ title, desc, url, geoUf, geoPlace, jsonld, body, noi
   <meta name="robots" content="${noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large'}" />
   <meta name="rating" content="adult" />
   <meta name="rating" content="RTA-5042-1996-1400-1577-RTA" />
-  ${geoUf ? `<meta name="geo.region" content="BR-${geoUf}" />` : ''}
+  ${geoRegion ? `<meta name="geo.region" content="${geoRegion}" />` : geoUf ? `<meta name="geo.region" content="BR-${geoUf}" />` : ''}
   ${geoPlace ? `<meta name="geo.placename" content="${esc(geoPlace)}" />` : ''}
   <link rel="canonical" href="${url}" />
   <link rel="icon" type="image/jpeg" href="/icon.jpg" />
   <meta property="og:type" content="website" />
-  <meta property="og:locale" content="pt_BR" />
+  <meta property="og:locale" content="${ogLocale}" />
   <meta property="og:site_name" content="NoSigilo.net" />
   <meta property="og:url" content="${url}" />
   <meta property="og:title" content="${esc(title)}" />
@@ -1720,6 +1720,12 @@ function hubPage() {
       </div>
     </section>
 
+    <section class="cl-section cl-region">
+      <h2>Também em <em>Portugal</em></h2>
+      <p>Lisboa, Porto, Braga, Faro e outras cidades portuguesas.</p>
+      <div class="cl-chips"><a href="/swing/portugal/">Swing em Portugal</a></div>
+    </section>
+
     ${campaignFaqSection(faqHub())}
 
     <section class="cl-final">
@@ -1867,13 +1873,290 @@ function sitemap() {
   const cityUrls = SELECTED_CITIES
     .filter(cidadeIndexavel)
     .map((c) => ({ loc: `${REGIONAL}/swing/${c.state.slug}/${c.slug}/`, freq: 'monthly', pri: '0.7', chave: `/swing/${c.state.slug}/${c.slug}/` }));
-  const urls = [...base, ...stateUrls, ...cityUrls]
+  const portugalUrls = [
+    { loc: `${REGIONAL}/swing/portugal/`, freq: 'monthly', pri: '0.8', chave: '/swing/portugal/' },
+    ...PORTUGAL_CIDADES.map((c) => ({ loc: `${REGIONAL}/swing/portugal/${c.slug}/`, freq: 'monthly', pri: '0.7', chave: `/swing/portugal/${c.slug}/` })),
+  ];
+  const urls = [...base, ...stateUrls, ...cityUrls, ...portugalUrls]
     .map((u) => {
       const quando = u.chave ? (LASTMOD[u.chave]?.lastmod || TODAY) : dataFixa(new URL(u.loc).pathname);
       return `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${quando}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`;
     })
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
+
+// ---------------------------------------------------------------------------
+//  Portugal (11/2026)
+// ---------------------------------------------------------------------------
+// Seção própria, sem tocar nos modelos do Brasil: as páginas brasileiras já
+// indexadas continuam byte a byte iguais. Público inicial: brasileiros que
+// moram em Portugal e casais portugueses. Sem números de perfis — ainda são
+// poucos, e número pequeno na página afasta mais do que atrai.
+const PORTUGAL_CIDADES = [
+  { name: 'Lisboa', slug: 'lisboa', regiao: 'Grande Lisboa',
+    vizinhas: ['Amadora', 'Odivelas', 'Loures', 'Oeiras', 'Cascais', 'Sintra', 'Almada'],
+    frase: 'A capital concentra a maior parte do público liberal do país — de Alfama ao Parque das Nações, passando pela linha de Cascais e por Sintra.' },
+  { name: 'Porto', slug: 'porto', em: 'no Porto', de: 'do Porto', ao: 'No Porto', regiao: 'Área Metropolitana do Porto',
+    vizinhas: ['Vila Nova de Gaia', 'Matosinhos', 'Maia', 'Gondomar', 'Vila do Conde', 'Póvoa de Varzim'],
+    frase: 'No Norte, o Porto e a outra margem, em Gaia, reúnem casais e singles de toda a área metropolitana.' },
+  { name: 'Braga', slug: 'braga', regiao: 'Minho', naRegiao: 'no Minho', todaRegiao: 'todo o Minho',
+    vizinhas: ['Guimarães', 'Barcelos', 'Vila Nova de Famalicão', 'Viana do Castelo'],
+    frase: 'No Minho, Braga é o ponto de encontro de quem vive entre Guimarães, Barcelos e Famalicão.' },
+  { name: 'Coimbra', slug: 'coimbra', regiao: 'Região de Coimbra',
+    vizinhas: ['Figueira da Foz', 'Cantanhede', 'Condeixa-a-Nova', 'Lousã'],
+    frase: 'No Centro, Coimbra junta um público jovem e universitário com casais de toda a região, até a Figueira da Foz.' },
+  { name: 'Faro', slug: 'faro', regiao: 'Algarve', naRegiao: 'no Algarve', todaRegiao: 'todo o Algarve',
+    vizinhas: ['Loulé', 'Albufeira', 'Portimão', 'Olhão', 'Lagos', 'Tavira'],
+    frase: 'No Algarve, de Faro a Lagos, o público muda com a estação: residentes o ano inteiro e muita gente de fora no verão.' },
+  { name: 'Setúbal', slug: 'setubal', regiao: 'Península de Setúbal',
+    vizinhas: ['Almada', 'Seixal', 'Barreiro', 'Palmela', 'Sesimbra'],
+    frase: 'Na outra margem do Tejo, Setúbal, Almada e o Seixal ficam a poucos minutos de Lisboa.' },
+  { name: 'Aveiro', slug: 'aveiro', regiao: 'Região de Aveiro',
+    vizinhas: ['Ílhavo', 'Ovar', 'Águeda', 'Espinho'],
+    frase: 'Entre o Porto e Coimbra, Aveiro reúne casais da ria e do litoral, de Ílhavo a Espinho.' },
+  { name: 'Leiria', slug: 'leiria', regiao: 'Região de Leiria',
+    vizinhas: ['Marinha Grande', 'Pombal', 'Batalha', 'Caldas da Rainha'],
+    frase: 'No meio do caminho entre Lisboa e Coimbra, Leiria junta quem vive da Marinha Grande às Caldas da Rainha.' },
+];
+
+// "no Porto", não "em Porto".
+const emCidade = (c) => c.em || `em ${c.name}`;
+const deCidade = (c) => c.de || `de ${c.name}`;
+const naRegiao = (c) => c.naRegiao || `na ${c.regiao}`;
+const todaRegiao = (c) => c.todaRegiao || `toda a ${c.regiao}`;
+
+const ORIGEM_PT = (slug) => (slug ? `swing/portugal/${slug}` : 'swing/portugal');
+
+function faqPortugal(cidade) {
+  const onde = cidade ? emCidade(cidade) : 'em Portugal';
+  return [
+    { p: `Funciona para quem está ${onde}?`, r: `Sim. O NoSigilo.net é uma rede online: você cria o perfil, indica a cidade${cidade ? ` (${esc(cidade.name)} ou arredores, como ${esc(list(cidade.vizinhas.slice(0, 3)))})` : ''} e vê quem está perto, com a distância em km quando a localização está ligada.` },
+    { p: 'Quanto custa estando em Portugal?', r: 'Criar a conta é grátis. A assinatura, para quem está em Portugal, fica em cerca de 5 euros por mês e é paga no cartão de crédito ou débito internacional — o valor é cobrado em reais e o seu banco converte.' },
+    { p: 'O meu perfil aparece no Google?', r: 'Não. Nenhum perfil é indexado por buscadores; só páginas informativas como esta. As fotos íntimas ficam no álbum privado e só abrem para quem você liberar.' },
+    { p: 'Há brasileiros na comunidade em Portugal?', r: 'Sim — boa parte de quem usa o NoSigilo em Portugal é brasileira. A comunidade é a mesma do Brasil, então você também conversa com quem está do outro lado do Atlântico.' },
+    { p: 'É só para casais?', r: 'Não. Há casais liberais, mulheres e homens solteiros e a comunidade LGBT+, cada um indicando o que procura: troca de casais, ménage, swing ou encontros casuais.' },
+  ];
+}
+
+function rodapePortugal() {
+  return `<footer class="cl-footer">
+      <div style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">
+        <span class="cl-footer-brand">NoSigilo.net</span>
+        <div class="cl-footer-age">${icon('badge')}<span>Comunidade exclusiva para maiores de 18 anos.</span></div>
+      </div>
+      <div class="cl-footer-links">
+        <a href="/terms">Termos</a><a href="/privacy">Privacidade</a><a href="/guidelines">Diretrizes</a><a href="/swing/portugal/">Portugal</a><a href="/swing/">Brasil</a>
+      </div>
+      <div class="cl-footer-states">${PORTUGAL_CIDADES.map((c) => `<a href="/swing/portugal/${c.slug}/">${esc(c.name)}</a>`).join('')}</div>
+    </footer>`;
+}
+
+function documentoPortugal(opcoes) {
+  return campaignDocument({ ...opcoes, lang: 'pt-PT', ogLocale: 'pt_PT', geoRegion: 'PT' });
+}
+
+function paginaPortugal() {
+  const title = melhorTitle([
+    'Swing e Troca de Casais em Portugal · Lisboa, Porto | NoSigilo',
+    'Swing e Troca de Casais em Portugal · Lisboa e Porto',
+    'Swing e Troca de Casais em Portugal | NoSigilo',
+  ]);
+  const desc = melhorDesc([
+    'Swing, troca de casais e ménage em Lisboa, Porto, Braga, Faro e todo Portugal. Rede adulta discreta, com sigilo. Criar conta é grátis.',
+    'Swing, troca de casais e ménage em Portugal. Rede adulta discreta, com sigilo. Criar conta é grátis.',
+  ]);
+  const url = `${REGIONAL}/swing/portugal/`;
+  const faq = faqPortugal(null);
+  const jsonld = [
+    { '@context': 'https://schema.org', '@type': 'WebPage', name: title, description: desc, url, inLanguage: 'pt-PT',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      about: { '@type': 'Place', name: 'Portugal' }, areaServed: { '@type': 'Country', name: 'Portugal' } },
+    breadcrumbLd([{ name: 'Início', path: '/' }, { name: 'Portugal', path: '/swing/portugal/' }]),
+    faqJsonLd(faq),
+  ];
+  const body = `${campaignHeader(ORIGEM_PT())}
+
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/">Brasil</a> · Portugal</p>
+        <h1>Swing e Troca de Casais em <em>Portugal</em></h1>
+        <p class="cl-intro">
+          Procurando <strong>swing em Lisboa</strong>, <strong>troca de casais no Porto</strong> ou um encontro liberal no Algarve?
+          O NoSigilo.net reúne casais liberais e singles de Portugal num só lugar, longe da exposição das redes sociais comuns —
+          para swing, ménage e encontros casuais, com total discrição.
+        </p>
+        <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT())}">Criar conta grátis ${icon('arrow')}</a>
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
+          <span class="cl-trust-item">${icon('gift')}Conta gratuita</span>
+        </div>
+      </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
+
+    <section class="cl-section cl-region">
+      <h2>Cidades em Portugal</h2>
+      <p>Página própria para quem procura perto de casa.</p>
+      <div class="cl-chips">${PORTUGAL_CIDADES.map((c) => `<a href="/swing/portugal/${c.slug}/">Swing ${esc(emCidade(c))}</a>`).join('')}</div>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em></h2>
+        <p>Você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
+        <div class="cl-list">${listItemsHtml(comoFuncionaItems('Filtros por cidade e distância em km — de Lisboa e do Porto ao Algarve.'))}</div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
+
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Sigilo de <em>verdade</em></h2>
+          <p>Num país pequeno, ser reconhecido é a maior preocupação de quem vive o meio liberal. Por isso nenhum perfil chega ao Google: as páginas que aparecem nas pesquisas, como esta, são só informativas.</p>
+          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <figure class="cl-alt-media">
+        <img src="/landing/hero-liberal-party.jpg" alt="Adultos conversando em um encontro social liberal" width="1024" height="768" loading="lazy" />
+      </figure>
+      <div class="cl-alt-copy">
+        <h2>Quem você <em>encontra</em></h2>
+        <p>Portugueses e brasileiros que moram em Portugal — cada perfil indica o que procura, e os filtros fazem o resto.</p>
+        <div class="cl-list">${listItemsHtml(audienciaItems('Procuram troca de casais ou uma terceira pessoa, em Lisboa, no Porto e em todo o país.'))}</div>
+      </div>
+    </section>
+
+    ${campaignFaqSection(faq)}
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>O seu próximo encontro pode começar com um perfil.</h2>
+          <p>Crie a sua conta gratuitamente e descubra quem está em Portugal na mesma sintonia.</p>
+        </div>
+        <div class="cl-final-actions">
+          <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT())}">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-final-login" href="${loginUrl(ORIGEM_PT())}">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${rodapePortugal()}`;
+  return documentoPortugal({ title, desc, url, geoPlace: 'Portugal', jsonld, body });
+}
+
+function paginaCidadePortugal(c) {
+  const title = melhorTitle([
+    `Troca de Casais ${emCidade(c)} · Swing e Ménage | NoSigilo`,
+    `Troca de Casais ${emCidade(c)} · Swing e Ménage`,
+    `Troca de Casais e Swing ${emCidade(c)}, Portugal`,
+    `Troca de Casais e Swing ${emCidade(c)}`,
+  ]);
+  const desc = melhorDesc([
+    `Swing, troca de casais e ménage ${emCidade(c)} e ${list(c.vizinhas.slice(0, 3))}. Rede adulta discreta, com sigilo. Criar conta é grátis.`,
+    `Swing, troca de casais e ménage ${emCidade(c)} e região. Rede adulta discreta, com sigilo. Criar conta é grátis.`,
+  ]);
+  const url = `${REGIONAL}/swing/portugal/${c.slug}/`;
+  const faq = faqPortugal(c);
+  const outras = PORTUGAL_CIDADES.filter((x) => x.slug !== c.slug);
+  const jsonld = [
+    { '@context': 'https://schema.org', '@type': 'WebPage', name: title, description: desc, url, inLanguage: 'pt-PT',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      about: { '@type': 'Place', name: `${c.name}, Portugal` }, areaServed: { '@type': 'City', name: c.name } },
+    breadcrumbLd([
+      { name: 'Início', path: '/' },
+      { name: 'Portugal', path: '/swing/portugal/' },
+      { name: c.name, path: `/swing/portugal/${c.slug}/` },
+    ]),
+    faqJsonLd(faq),
+  ];
+  const body = `${campaignHeader(ORIGEM_PT(c.slug))}
+
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/portugal/">Portugal</a> › ${esc(c.name)}</p>
+        <h1>Swing e Troca de Casais ${c.em ? 'no' : 'em'} <em>${esc(c.name)}</em></h1>
+        <p class="cl-intro">
+          Procurando <strong>swing ${esc(emCidade(c))}</strong> ou <strong>troca de casais ${esc(naRegiao(c))}</strong>?
+          ${esc(c.frase)} No NoSigilo.net, casais liberais e singles se encontram com discrição — para swing, ménage e encontros casuais.
+        </p>
+        <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT(c.slug))}">Criar conta grátis ${icon('arrow')}</a>
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Privacidade em primeiro lugar</span>
+          <span class="cl-trust-item">${icon('gift')}Conta gratuita</span>
+        </div>
+      </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto em encontro liberal discreto" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
+
+    <section class="cl-section cl-region">
+      <h2>Perto ${esc(deCidade(c))}</h2>
+      <p>Com a localização ligada, você vê a distância em km de cada perfil — ${esc(deCidade(c))} a ${esc(list(c.vizinhas))}.</p>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em></h2>
+        <p>Você entra, monta o perfil no seu tempo e só revela o que quiser, para quem quiser.</p>
+        <div class="cl-list">${listItemsHtml(comoFuncionaItems(`Filtros por cidade e distância — ${esc(emCidade(c))} e em ${esc(todaRegiao(c))}.`))}</div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
+
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Sigilo de <em>verdade</em></h2>
+          <p>${esc(c.ao || `Em ${c.name}`)}, como em qualquer cidade, a preocupação é a mesma: ser reconhecido. Nenhum perfil chega ao Google — as páginas que aparecem nas pesquisas, como esta, são só informativas.</p>
+          <div class="cl-list">${listItemsHtml(PRIVACIDADE_ITEMS)}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
+
+    <section class="cl-section cl-region">
+      <h2>Outras cidades em Portugal</h2>
+      <div class="cl-chips">${outras.map((x) => `<a href="/swing/portugal/${x.slug}/">Swing ${esc(emCidade(x))}</a>`).join('')}</div>
+    </section>
+
+    ${campaignFaqSection(faq)}
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>O seu próximo encontro pode começar com um perfil.</h2>
+          <p>Crie a sua conta gratuitamente e descubra quem está ${esc(emCidade(c))} na mesma sintonia.</p>
+        </div>
+        <div class="cl-final-actions">
+          <a class="cl-cta" href="${cadastroUrl(ORIGEM_PT(c.slug))}">Entrar para a comunidade ${icon('arrow')}</a>
+          <a class="cl-final-login" href="${loginUrl(ORIGEM_PT(c.slug))}">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${rodapePortugal()}`;
+  return documentoPortugal({ title, desc, url, geoPlace: `${c.name}, Portugal`, jsonld, body });
 }
 
 // --- escreve os arquivos ---
@@ -1893,6 +2176,14 @@ for (const city of SELECTED_CITIES) {
   mkdirSync(dir, { recursive: true });
   publica(`/swing/${city.state.slug}/${city.slug}/`, resolve(dir, 'index.html'), cityPage(city));
   cityCount++;
+}
+
+mkdirSync(resolve(DIST, 'swing', 'portugal'), { recursive: true });
+publica('/swing/portugal/', resolve(DIST, 'swing', 'portugal', 'index.html'), paginaPortugal());
+for (const c of PORTUGAL_CIDADES) {
+  const dir = resolve(DIST, 'swing', 'portugal', c.slug);
+  mkdirSync(dir, { recursive: true });
+  publica(`/swing/portugal/${c.slug}/`, resolve(dir, 'index.html'), paginaCidadePortugal(c));
 }
 
 mkdirSync(resolve(DIST, 'swing'), { recursive: true });
