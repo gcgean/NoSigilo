@@ -30,6 +30,93 @@ function isChunkLoadError(error: Error) {
   return /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(msg);
 }
 
+// A versão nova está no ar quando o index.html atual aponta para um script que
+// o servidor já entrega. Durante o build o index.html ainda é o antigo e os
+// arquivos antigos já sumiram: aí o script dele dá 404.
+async function versaoNovaPronta() {
+  try {
+    const html = await (await fetch(`/?v=${Date.now()}`, { cache: 'no-store' })).text();
+    const script = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/)?.[1];
+    if (!script) return false;
+    const r = await fetch(script, { method: 'HEAD', cache: 'no-store' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+const CONFERIR_A_CADA_MS = 3000;
+const DESISTIR_APOS_MS = 3 * 60_000;
+
+/**
+ * "Estamos atualizando o NoSigilo": barra de progresso enquanto o deploy
+ * termina e recarga sozinha quando a versão nova fica pronta. O botão só
+ * aparece se passar de 3 minutos (algo além de um deploy normal).
+ */
+function TelaDeAtualizacao() {
+  const [progresso, setProgresso] = React.useState(4);
+  const [desistiu, setDesistiu] = React.useState(false);
+
+  React.useEffect(() => {
+    const inicio = Date.now();
+    let parar = false;
+    // Sobe rápido no começo e desacelera perto de 90%: um deploy leva de 30 s a 3 min.
+    const barra = window.setInterval(() => {
+      const t = (Date.now() - inicio) / 1000;
+      setProgresso((atual) => Math.max(atual, 90 * (1 - Math.exp(-t / 45))));
+    }, 250);
+    const conferir = async () => {
+      if (parar) return;
+      if (await versaoNovaPronta()) {
+        setProgresso(100);
+        try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
+        window.setTimeout(() => window.location.reload(), 400);
+        return;
+      }
+      if (Date.now() - inicio > DESISTIR_APOS_MS) { setDesistiu(true); return; }
+      window.setTimeout(() => void conferir(), CONFERIR_A_CADA_MS);
+    };
+    void conferir();
+    return () => { parar = true; window.clearInterval(barra); };
+  }, []);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, minHeight: '100vh', padding: 24, textAlign: 'center', background: '#1a1a1a', color: '#fff', fontFamily: 'system-ui, sans-serif' }}>
+      <style>{'@keyframes nsBrilho{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}'}</style>
+      <h2 style={{ fontSize: 20, margin: 0 }}>Estamos atualizando o NoSigilo</h2>
+      <p style={{ margin: 0, color: '#bbb', maxWidth: 420, lineHeight: 1.5 }}>
+        {desistiu
+          ? 'Está demorando mais que o normal. Toque no botão para tentar de novo.'
+          : 'Leva só alguns segundos. A página vai recarregar sozinha quando terminar.'}
+      </p>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progresso)}
+        style={{ position: 'relative', width: 'min(320px, 80vw)', height: 8, borderRadius: 999, background: '#333', overflow: 'hidden' }}
+      >
+        <div style={{ position: 'absolute', inset: 0, width: `${progresso}%`, background: 'linear-gradient(90deg, #e83e68, #ff7a59)', borderRadius: 999, transition: 'width 250ms linear', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, bottom: 0, width: '40%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)', animation: 'nsBrilho 1.2s ease-in-out infinite' }} />
+        </div>
+      </div>
+      <span style={{ fontSize: 13, color: '#888' }}>{Math.round(progresso)}%</span>
+      {desistiu && (
+        <button
+          type="button"
+          onClick={() => {
+            try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
+            window.location.reload();
+          }}
+          style={{ background: '#e83e68', color: '#fff', border: 0, borderRadius: 12, padding: '12px 28px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
+        >
+          Tentar de novo
+        </button>
+      )}
+    </div>
+  );
+}
+
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null; reloading: boolean }
@@ -61,36 +148,11 @@ class ErrorBoundary extends React.Component<
     window.setTimeout(() => window.location.reload(), delay);
   }
   render() {
-    if (this.state.reloading) {
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1a1a1a', color: '#fff', fontFamily: 'system-ui, sans-serif' }}>
-          Atualizando…
-        </div>
-      );
-    }
+    if (this.state.reloading) return <TelaDeAtualizacao />;
     if (this.state.error) {
       // Falha de chunk que sobreviveu às tentativas: quase sempre é um deploy
       // ainda em andamento. Mostra algo acionável em vez do stack trace.
-      if (isChunkLoadError(this.state.error)) {
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, minHeight: '100vh', padding: 24, textAlign: 'center', background: '#1a1a1a', color: '#fff', fontFamily: 'system-ui, sans-serif' }}>
-            <h2 style={{ fontSize: 20, margin: 0 }}>Estamos atualizando o NoSigilo</h2>
-            <p style={{ margin: 0, color: '#bbb', maxWidth: 420, lineHeight: 1.5 }}>
-              Isso leva alguns segundos. Toque no botão abaixo para carregar a versão nova.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* modo privado */ }
-                window.location.reload();
-              }}
-              style={{ background: '#e83e68', color: '#fff', border: 0, borderRadius: 12, padding: '12px 28px', fontSize: 15, fontWeight: 600, cursor: 'pointer' }}
-            >
-              Tentar de novo
-            </button>
-          </div>
-        );
-      }
+      if (isChunkLoadError(this.state.error)) return <TelaDeAtualizacao />;
       return (
         <div style={{ padding: 24, fontFamily: 'monospace', color: '#fff', background: '#1a1a1a', minHeight: '100vh' }}>
           <h2 style={{ color: '#f55', marginBottom: 16 }}>Erro ao carregar o app</h2>

@@ -448,6 +448,7 @@ export default function Admin() {
   const [filterCreatedFrom, setFilterCreatedFrom] = useState('');
   // '' = todas, 'regional' = veio de alguma pagina de SEO, 'direto' = home/link/convite
   const [filterOrigem, setFilterOrigem] = useState('');
+  const [filterVerificado, setFilterVerificado] = useState('');
   // Canal do primeiro contato (Instagram, Google...) + contagem de cada um.
   const [filterCanal, setFilterCanal] = useState('');
   const [contagemCanais, setContagemCanais] = useState<Array<{ canal: string; total: number; homens?: number; mulheres?: number; casais?: number; outros?: number }>>([]);
@@ -892,6 +893,7 @@ export default function Admin() {
       state: filterState || undefined,
       createdFrom: filterCreatedFrom || undefined,
       origem: filterOrigem || undefined,
+      verificado: filterVerificado || undefined,
       canal: filterCanal || undefined,
       createdTo: filterCreatedTo || undefined,
     });
@@ -996,7 +998,7 @@ export default function Admin() {
     }, 400);
     return () => { if (usersFilterDebounceRef.current) clearTimeout(usersFilterDebounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem, filterCanal]);
+  }, [searchQuery, filterCity, filterState, filterCreatedFrom, filterCreatedTo, filterOrigem, filterVerificado, filterCanal]);
 
   // Rolagem infinita: observa o sentinel no fim da lista e carrega a próxima
   // página quando ele entra na viewport.
@@ -1810,6 +1812,18 @@ export default function Admin() {
                   <option value="direto">Cadastro direto</option>
                 </select>
               </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Verificação</label>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={filterVerificado}
+                  onChange={(e) => setFilterVerificado(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  <option value="1">Só verificados</option>
+                  <option value="0">Não verificados</option>
+                </select>
+              </div>
             </div>
 
             {contagemCanais.length > 0 && (
@@ -1861,7 +1875,7 @@ export default function Admin() {
                       {showOnlyShowcase ? <> · {filteredUsers.length} na vitrine</> : null}
                     </>}
               </p>
-              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem || filterCanal) && (
+              {(filterCity || filterState || filterCreatedFrom || filterCreatedTo || searchQuery || filterOrigem || filterVerificado || filterCanal) && (
                 <button
                   type="button"
                   className="text-xs text-muted-foreground hover:text-foreground underline"
@@ -1872,6 +1886,7 @@ export default function Admin() {
                     setFilterCreatedFrom('');
                     setFilterCreatedTo('');
                     setFilterOrigem('');
+                    setFilterVerificado('');
                     setFilterCanal('');
                   }}
                 >

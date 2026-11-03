@@ -18462,6 +18462,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // De onde veio o cadastro: 'regional' (qualquer pagina de SEO), 'direto'
       // (home, link direto, convite) ou o caminho exato de uma pagina.
       const origemFilter = String(req.query.origem || '').trim();
+      // Filtro de verificação: '1' só verificados, '0' só não verificados.
+      const verificadoFilter = String(req.query.verificado || '').trim();
 
       const conditions: string[] = [];
       const whereParams: unknown[] = [];
@@ -18485,6 +18487,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         conditions.push('created_at <= ?');
         whereParams.push(`${createdTo}T23:59:59.999Z`);
       }
+      if (verificadoFilter === '1') conditions.push('is_verified = 1');
+      else if (verificadoFilter === '0') conditions.push('(is_verified = 0 OR is_verified IS NULL)');
       if (origemFilter === 'regional') {
         conditions.push('signup_source IS NOT NULL');
       } else if (origemFilter === 'direto') {
