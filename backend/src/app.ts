@@ -8191,6 +8191,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
        WHERE s.expires_at > ? AND s.user_id != ?
          AND (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+         -- "Não ver mais stories de Fulano" (story_ocultos).
+         AND NOT EXISTS (SELECT 1 FROM story_ocultos so WHERE so.owner_id = ? AND so.hidden_user_id = s.user_id)
          -- Story de favoritos: so passa se o viewer estiver na lista do autor.
          -- A lista e consultada agora, na leitura — tirar alguem dos favoritos
          -- tira o acesso aos stories restritos que ainda estao no ar.
@@ -8211,7 +8213,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
                 (CASE WHEN EXISTS (SELECT 1 FROM likes lk WHERE lk.user_id = ? AND lk.target_type = 'user' AND lk.target_id = s.user_id) THEN 0 ELSE 1 END) ASC,
                 ${storyRegionOrder}
                 s.created_at DESC`,
-      [userId, userId, now, userId, userId, now, userId]
+      [userId, userId, now, userId, userId, userId, now, userId]
     )) as any[];
 
     // Filtra pelo interesse do viewer: só mostra stories de autores cujo gênero
@@ -8894,6 +8896,55 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     );
     await persist();
     res.json({ pinned: true });
+  });
+
+  // ─── Stories ocultos ("Não ver mais stories de Fulano") ─────────────────────
+  // Esconde só os stories daquele perfil para quem pediu; o perfil não fica
+  // sabendo. Lista e "Mostrar de novo" em Configurações › Privacidade.
+  app.get('/api/stories-ocultos', requireAuth(env, db), async (req, res) => {
+    const rows = (await queryAll(
+      db,
+      `SELECT u.id, u.name, o.created_at,
+              (SELECT filename FROM media WHERE user_id = u.id AND is_main = 1 AND is_private = 0 ORDER BY created_at DESC LIMIT 1) AS avatar_filename
+         FROM story_ocultos o
+         JOIN users u ON u.id = o.hidden_user_id
+        WHERE o.owner_id = ?
+        ORDER BY o.created_at DESC`,
+      [req.auth!.userId]
+    )) as any[];
+    res.json({
+      perfis: rows.map((r) => ({
+        id: String(r.id),
+        name: String(r.name || ''),
+        avatar: r.avatar_filename ? `/uploads/${r.avatar_filename}` : null,
+        hiddenAt: String(r.created_at),
+      })),
+    });
+  });
+
+  app.post('/api/stories-ocultos', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({ userId: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success || parsed.data.userId === req.auth!.userId) {
+      res.status(400).json({ error: 'invalid_input' });
+      return;
+    }
+    await run(
+      db,
+      db.mode === 'pg'
+        ? 'INSERT INTO story_ocultos (owner_id, hidden_user_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING'
+        : 'INSERT OR IGNORE INTO story_ocultos (owner_id, hidden_user_id, created_at) VALUES (?, ?, ?)',
+      [req.auth!.userId, parsed.data.userId, nowIso()]
+    );
+    // Fixado e oculto ao mesmo tempo não faz sentido: ocultar desfixa.
+    await run(db, 'DELETE FROM story_pins WHERE user_id = ? AND pinned_user_id = ?', [req.auth!.userId, parsed.data.userId]);
+    await persist();
+    res.json({ ok: true });
+  });
+
+  app.delete('/api/stories-ocultos/:userId', requireAuth(env, db), async (req, res) => {
+    await run(db, 'DELETE FROM story_ocultos WHERE owner_id = ? AND hidden_user_id = ?', [req.auth!.userId, String(req.params.userId)]);
+    await persist();
+    res.json({ ok: true });
   });
 
   // DELETE /api/stories/:id — apagar próprio story
@@ -22120,7 +22171,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       // sem motivo nao da ao moderador nada para analisar.
       const schema = z
         .object({
-          targetType: z.enum(['user', 'post', 'photo', 'message']),
+          targetType: z.enum(['user', 'post', 'photo', 'message', 'story']),
           targetId: z.string().min(1),
           targetName: z.string().optional(),
           reason: z.enum(REPORT_REASON_CODES),
@@ -22166,10 +22217,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const status = String(req.query.status || '').trim() || 'pending';
       const rows = await queryAll(
         db,
-        `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email, p.user_id AS post_author_id
+        `SELECT r.*, u.name AS reporter_name, u.email AS reporter_email, p.user_id AS post_author_id,
+                st.user_id AS story_author_id, stm.filename AS story_filename, stm.mime_type AS story_mime
          FROM reports r
          LEFT JOIN users u ON u.id = r.reporter_user_id
          LEFT JOIN posts p ON r.target_type = 'post' AND p.id = r.target_id
+         LEFT JOIN stories st ON r.target_type = 'story' AND st.id = r.target_id
+         LEFT JOIN media stm ON stm.id = st.media_id
          WHERE r.status = ?
          ORDER BY COALESCE(r.ia_gravidade, 0) DESC, r.created_at DESC
          LIMIT 100`,
@@ -22184,7 +22238,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           targetId: String(r.target_id),
           targetName: r.target_name ? String(r.target_name) : null,
           // Perfil a abrir: o denunciado (user) ou o autor do post denunciado.
-          perfilId: r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : null,
+          perfilId: r.target_type === 'user' ? String(r.target_id) : r.post_author_id ? String(r.post_author_id) : r.story_author_id ? String(r.story_author_id) : null,
+          // Story denunciado: a mídia, para o admin ver mesmo depois de expirar
+          // (null se o story já foi apagado).
+          storyMedia: r.story_filename ? { url: `/uploads/${r.story_filename}`, mimeType: String(r.story_mime || '') } : null,
           reason: String(r.reason),
           details: r.details ? String(r.details) : null,
           status: String(r.status),
@@ -22324,6 +22381,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       else if (targetType === 'post') ownerId = (((await queryOne(db, 'SELECT user_id FROM posts WHERE id = ?', [targetId])) as any)?.user_id) ?? null;
       else if (targetType === 'photo') ownerId = (((await queryOne(db, 'SELECT user_id FROM media WHERE id = ?', [targetId])) as any)?.user_id) ?? null;
       else if (targetType === 'message') ownerId = (((await queryOne(db, 'SELECT sender_id FROM messages WHERE id = ?', [targetId])) as any)?.sender_id) ?? null;
+      else if (targetType === 'story') ownerId = (((await queryOne(db, 'SELECT user_id FROM stories WHERE id = ?', [targetId])) as any)?.user_id) ?? null;
       ownerId = ownerId ? String(ownerId) : null;
 
       const notify = async (userId: string | null, type: string, title: string, description: string) => {
@@ -22384,6 +22442,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
           await deleteStoredMedia(targetId);
         } else if (targetType === 'message') {
           await run(db, 'UPDATE messages SET deleted_for_all = 1, content = NULL, media_id = NULL WHERE id = ?', [targetId]);
+        } else if (targetType === 'story') {
+          await run(db, 'DELETE FROM story_views WHERE story_id = ?', [targetId]);
+          await run(db, 'DELETE FROM story_comments WHERE story_id = ?', [targetId]);
+          await run(db, 'DELETE FROM story_likes WHERE story_id = ?', [targetId]);
+          await run(db, 'DELETE FROM stories WHERE id = ?', [targetId]);
         }
         const removeMsg = note || 'Um conteúdo seu foi removido por violar as regras da comunidade.';
         await notify(ownerId, 'moderation.content_removed', 'Conteúdo removido', removeMsg);

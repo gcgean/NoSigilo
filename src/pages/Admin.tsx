@@ -158,6 +158,7 @@ type AdminReport = {
   targetId: string;
   targetName: string | null;
   perfilId?: string | null;
+  storyMedia?: { url: string; mimeType: string } | null;
   reason: string;
   details: string | null;
   status: string;
@@ -2100,7 +2101,7 @@ export default function Admin() {
                       <div className="space-y-1 flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <Badge variant="destructive" className="text-xs capitalize">
-                            {report.targetType === 'user' ? 'Perfil' : report.targetType}
+                            {report.targetType === 'user' ? 'Perfil' : report.targetType === 'story' ? 'Story' : report.targetType}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
                             {report.reason === 'fake' ? 'Perfil falso' :
@@ -2144,6 +2145,15 @@ export default function Admin() {
                           )}
                           {report.targetType === 'post' && report.targetId && (
                             <a href={`/feed?postId=${encodeURIComponent(report.targetId)}`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-muted-foreground hover:text-brand-pink hover:underline">ver o post</a>
+                          )}
+                          {report.targetType === 'story' && (
+                            report.storyMedia ? (
+                              <a href={resolveServerUrl(report.storyMedia.url)} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-muted-foreground hover:text-brand-pink hover:underline">
+                                ver o story ({report.storyMedia.mimeType.startsWith('video/') ? 'vídeo' : 'foto'})
+                              </a>
+                            ) : (
+                              <span className="ml-2 text-xs text-muted-foreground">(story já apagado)</span>
+                            )
                           )}
                         </p>
                         <p className="text-sm text-muted-foreground">

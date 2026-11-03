@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import TrocarEmail from '@/components/TrocarEmail';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import StoriesOcultosLista from '@/components/StoriesOcultosLista';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -1672,6 +1673,10 @@ export default function Settings() {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="glass rounded-xl p-4 sm:p-6">
+            <StoriesOcultosLista />
           </div>
 
           <div className="flex justify-end pt-2">

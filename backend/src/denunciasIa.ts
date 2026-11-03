@@ -127,6 +127,7 @@ export async function textoDoAlvo(
 ): Promise<string | null> {
   const tabelas: Record<string, string> = {
     post: 'SELECT content AS texto FROM posts WHERE id = ? LIMIT 1',
+    story: 'SELECT text AS texto FROM stories WHERE id = ? LIMIT 1',
     comment: 'SELECT content AS texto FROM comments WHERE id = ? LIMIT 1',
     experience: 'SELECT (title || \' \' || description) AS texto FROM experiences WHERE id = ? LIMIT 1',
     user: 'SELECT (COALESCE(name,\'\') || \' — \' || COALESCE(bio,\'\')) AS texto FROM users WHERE id = ? LIMIT 1',

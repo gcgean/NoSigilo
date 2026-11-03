@@ -1748,7 +1748,7 @@ export const eventsService = {
 // Admin Service
 export const reportsService = {
   submit: async (data: {
-    targetType: 'user' | 'post' | 'photo' | 'message';
+    targetType: 'user' | 'post' | 'photo' | 'message' | 'story';
     targetId: string;
     targetName?: string;
     reason: string;
@@ -2342,6 +2342,19 @@ export const storiesService = {
   togglePin: async (userId: string) => {
     const res = await apiClient.post('/story-pins', { userId });
     return res.data as { pinned: boolean };
+  },
+  // "Não ver mais stories de Fulano" — o perfil não fica sabendo.
+  ocultarAutor: async (userId: string) => {
+    const res = await apiClient.post('/stories-ocultos', { userId });
+    return res.data as { ok: boolean };
+  },
+  mostrarAutor: async (userId: string) => {
+    const res = await apiClient.delete(`/stories-ocultos/${encodeURIComponent(userId)}`);
+    return res.data as { ok: boolean };
+  },
+  listarOcultos: async () => {
+    const res = await apiClient.get('/stories-ocultos');
+    return res.data as { perfis: Array<{ id: string; name: string; avatar: string | null; hiddenAt: string }> };
   },
   remove: async (id: string) => {
     const res = await apiClient.delete(`/stories/${id}`);

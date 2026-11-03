@@ -6,11 +6,12 @@ import { createPortal } from 'react-dom';
 import {
   Camera, Eye, MessageCircle, Trash2, X, Send, Heart,
   Lock, Crown, Sparkles, ImageIcon, Volume2, VolumeX,
-  Star, Pin, Search, Check, Globe,
+  Star, Pin, Search, Check, Globe, MoreHorizontal, EyeOff, Flag,
 } from 'lucide-react';
+import DenunciaStoryPainel from '@/components/DenunciaStoryPainel';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { storiesService, profileService, tokenService, usosTokensService } from '@/services/api';
+import { storiesService, profileService, tokenService, usosTokensService, matchService } from '@/services/api';
 import SemTokensDialog from '@/components/SemTokensDialog';
 import ComprarTokens from '@/components/ComprarTokens';
 import type { StoryAudience, StoryFavoriteCandidate } from '@/services/api';
@@ -540,6 +541,7 @@ function StoryViewer({
   modoAmostra = false,
   onClose,
   onTogglePin,
+  onOcultarAutor,
 }: {
   stories: FeedStory[];
   startIndex: number;
@@ -548,6 +550,8 @@ function StoryViewer({
   modoAmostra?: boolean;
   onClose: () => void;
   onTogglePin: (autorId: string) => void | Promise<void>;
+  /** "Não ver mais stories de Fulano": a página tira o perfil da fila. */
+  onOcultarAutor: (autorId: string) => void;
 }) {
   const { toast } = useToast();
   const navigate  = useNavigate();
@@ -613,7 +617,15 @@ function StoryViewer({
     tokenService.me().then((t) => setSaldoTokens(Number(t?.points ?? 0))).catch(() => {});
   }, []);
   const abrirSemTokens = () => { setMostrarCompra(false); setSemTokens(true); };
-  const pausaEfetiva = paused || digitando || oculto || semTokens;
+  // Seguir sem sair do story: só aparece para quem você ainda não segue.
+  const [seguidosAqui, setSeguidosAqui] = useState<Set<string>>(() => new Set());
+  const [recemSeguido, setRecemSeguido] = useState<string | null>(null);
+  const [seguindoAgora, setSeguindoAgora] = useState(false);
+  // Menu ⋯ (não ver mais / não ver mais e denunciar) e o painel de denúncia.
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [denunciando, setDenunciando] = useState<{ storyId: string; autorId: string; autorNome: string; ultimo: boolean } | null>(null);
+  const [avisoViewer, setAvisoViewer] = useState('');
+  const pausaEfetiva = paused || digitando || oculto || semTokens || menuAberto || !!denunciando;
   const pausedRef = useRef(false);
   const heldRef = useRef(false);       // true quando foi "segurar" (não é toque)
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -683,6 +695,42 @@ function StoryViewer({
     if (nsi >= 0 && nsi < grupo.length) { setPos({ gi: pos.gi, si: nsi }); return; }
     irParaGrupo(delta > 0 ? 1 : -1);
   }, [pos.gi, pos.si, grupo.length, irParaGrupo]);
+
+  const seguirAutor = async () => {
+    const autor = story.author;
+    if (seguindoAgora) return;
+    setSeguindoAgora(true);
+    try {
+      const r = await matchService.like(autor.id);
+      setSeguidosAqui((s) => new Set(s).add(autor.id));
+      setRecemSeguido(autor.id);
+      window.setTimeout(() => setRecemSeguido((x) => (x === autor.id ? null : x)), 2000);
+      if (r?.mutual) toast({ title: '💞 É um match!', description: `Você e ${autor.name} se curtiram.` });
+    } catch {
+      toast({ title: 'Não foi possível seguir', description: 'Tente novamente.', variant: 'destructive' });
+    } finally {
+      setSeguindoAgora(false);
+    }
+  };
+
+  // Tira o perfil da fila na hora e segue para o próximo; o pedido vai para o
+  // servidor pela página (onOcultarAutor). Sem perfil restante, fecha.
+  const ocultarAutor = (denunciar: boolean) => {
+    const autor = story.author;
+    const storyId = story.id;
+    setMenuAberto(false);
+    const restam = grupos.filter((g) => g[0]?.author.id !== autor.id).length;
+    if (denunciar) setDenunciando({ storyId, autorId: autor.id, autorNome: autor.name, ultimo: restam === 0 });
+    if (restam === 0) {
+      if (!denunciar) { onOcultarAutor(autor.id); onClose(); }
+      return; // com denúncia, fecha depois do painel
+    }
+    setAvisoViewer(`Você não vai mais ver os stories de ${autor.name}.`);
+    window.setTimeout(() => setAvisoViewer(''), 2500);
+    setDirEntrada(1);
+    setPos({ gi: Math.min(pos.gi, restam - 1), si: 0 });
+    onOcultarAutor(autor.id);
+  };
 
   // Teclado (computador): setas navegam, espaço pausa, Esc fecha.
   useEffect(() => {
@@ -922,6 +970,18 @@ function StoryViewer({
             </button>
             {/* Chegou até aqui = o viewer está nos favoritos do autor. */}
             {story.audience === 'favorites' && <SeloFavoritos />}
+            {story.author.id !== myUserId && (recemSeguido === story.author.id ? (
+              <span className="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold text-white">Seguindo ✓</span>
+            ) : !story.author.likedByMe && !seguidosAqui.has(story.author.id) ? (
+              <button
+                type="button"
+                disabled={seguindoAgora}
+                onClick={() => void seguirAutor()}
+                className="shrink-0 rounded-full border border-white/70 px-2.5 py-0.5 text-[11px] font-semibold text-white transition-colors hover:bg-white/15 disabled:opacity-60"
+              >
+                Seguir
+              </button>
+            ) : null)}
           </div>
           <p className="text-xs text-white/60">
             {modoAmostra ? '🔥 Em alta agora · ' : ''}{story.author.pinnedByMe ? 'Fixado · ' : ''}{timeLeft(story.expiresAt)}
@@ -947,10 +1007,60 @@ function StoryViewer({
             {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
           </button>
         )}
+        {story.author.id !== myUserId && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuAberto((v) => !v)}
+              className="text-white/80 hover:text-white p-1"
+              aria-label="Mais opções"
+              aria-expanded={menuAberto}
+            >
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+            {menuAberto && (
+              <>
+                {/* Toque fora fecha o menu sem navegar o story. */}
+                <div
+                  className="fixed inset-0 z-[40]"
+                  onClick={(e) => { e.stopPropagation(); setMenuAberto(false); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                />
+                <div className="absolute right-0 top-9 z-[41] w-64 overflow-hidden rounded-2xl bg-background text-foreground shadow-2xl ring-1 ring-black/10">
+                  <button
+                    type="button"
+                    onClick={() => ocultarAutor(false)}
+                    className="flex w-full items-start gap-3 px-4 py-3 text-left text-sm hover:bg-secondary"
+                  >
+                    <EyeOff className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="block font-medium">Não ver mais stories de {story.author.name}</span>
+                      <span className="block text-xs text-muted-foreground">O perfil não fica sabendo</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => ocultarAutor(true)}
+                    className="flex w-full items-start gap-3 border-t px-4 py-3 text-left text-sm text-destructive hover:bg-destructive/5"
+                  >
+                    <Flag className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="block font-medium">Não ver mais e denunciar</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <button type="button" onClick={onClose} className="text-white/80 hover:text-white p-1">
           <X className="h-5 w-5" />
         </button>
       </div>
+      {avisoViewer && (
+        <div className="pointer-events-none absolute left-1/2 top-20 z-[30] -translate-x-1/2 rounded-full bg-black/75 px-4 py-2 text-center text-xs font-medium text-white shadow-lg">
+          {avisoViewer}
+        </div>
+      )}
 
       {/* Media */}
       <div
@@ -1149,6 +1259,25 @@ function StoryViewer({
         </div>
       )}
     </div>
+      {denunciando && (
+        <DenunciaStoryPainel
+          storyId={denunciando.storyId}
+          autorNome={denunciando.autorNome}
+          onFechar={(enviada) => {
+            const autorNome = denunciando.autorNome;
+            setDenunciando(null);
+            if (enviada) {
+              setAvisoViewer(`Denúncia enviada. Você não vai mais ver os stories de ${autorNome}.`);
+              window.setTimeout(() => setAvisoViewer(''), 2500);
+            }
+            // Era o último perfil da fila: oculta e fecha só agora.
+            if (denunciando.ultimo) {
+              onOcultarAutor(denunciando.autorId);
+              onClose();
+            }
+          }}
+        />
+      )}
       {semTokens && (
         // Fica por cima do story (que pausa) e não deixa o toque vazar para
         // os gestos de avançar/voltar.
@@ -1601,6 +1730,17 @@ export default function Stories() {
     } finally {
       setFavSalvando(false);
     }
+  };
+
+  // "Não ver mais stories de Fulano": sai da fila na hora (o viewer segue para
+  // o próximo perfil); se o servidor falhar, recarrega e avisa.
+  const ocultarAutor = (autorId: string) => {
+    setFeed((antes) => antes.filter((s) => s.author.id !== autorId));
+    setAmostra((a) => (a ? a.filter((s) => s.author.id !== autorId) : a));
+    storiesService.ocultarAutor(autorId).catch(() => {
+      void load();
+      toast({ title: 'Não deu para ocultar agora', description: 'Tente de novo.', variant: 'destructive' });
+    });
   };
 
   const alternaPin = async (autorId: string) => {
@@ -2306,6 +2446,7 @@ export default function Stories() {
           myUserId={user?.id || ''}
           onClose={() => { setViewerIdx(null); if (returnTo) navigate(returnTo); else void load(); }}
           onTogglePin={alternaPin}
+          onOcultarAutor={ocultarAutor}
         />
       )}
       {amostra && (
@@ -2323,6 +2464,7 @@ export default function Stories() {
             if (returnTo) navigate(returnTo);
           }}
           onTogglePin={alternaPin}
+          onOcultarAutor={ocultarAutor}
         />
       )}
 

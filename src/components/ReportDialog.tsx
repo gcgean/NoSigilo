@@ -22,7 +22,7 @@ interface ReportDialogProps {
   targetName?: string;
 }
 
-const reportReasons = [
+export const reportReasons = [
   { id: 'spam', label: 'Spam ou conteúdo enganoso' },
   { id: 'harassment', label: 'Assédio ou bullying' },
   { id: 'inappropriate', label: 'Conteúdo inapropriado' },
