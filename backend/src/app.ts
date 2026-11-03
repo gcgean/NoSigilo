@@ -26,6 +26,7 @@ import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
+import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, boasVindasRestantesHoje, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
 import {
@@ -117,6 +118,7 @@ export type PublicUser = {
   hubBanner?: string | null;
   notificationVisits?: boolean;
   notificationEmail?: boolean;
+  avisoNovosRegiao?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -2597,6 +2599,7 @@ function rowToPublicUser(
     hubBanner: row.hub_banner ?? null,
     notificationVisits: row.notification_visits == null ? true : !!row.notification_visits,
     notificationEmail: row.notify_email == null ? true : !!row.notify_email,
+    avisoNovosRegiao: row.aviso_novos_regiao == null ? true : !!row.aviso_novos_regiao,
     subscriptionsEnabled: options?.subscriptionsEnabled ?? true,
     ...(options?.showEmail
       ? {
@@ -3050,6 +3053,96 @@ async function runWeekendEngagementBlast(db: DbHandle, env: Env) {
 }
 
 // Verifica a cada 5 min; dispara uma vez quando entra na janela sex/sáb 20h (BRT).
+// ─── Agendador: "Gente nova na sua região" (todo dia 19h30, BRT) ─────────────
+// Substitui o antigo push noturno "novos na sua cidade" do index.ts, que ia
+// para todo mundo todo dia, contava perfil sem foto e abria o feed. Agora: só
+// quem entrou nos últimos 30 dias, no máximo 1 por dia e 4 por semana, dá para
+// desligar, e abre a aba "Na região" do Chat. Regras em novosNaRegiao.ts.
+let avisoNovosNaRegiaoRodando = false;
+let avisoNovosNaRegiaoUltimoDia = '';
+
+export async function runAvisoNovosNaRegiao(db: DbHandle, env: Env) {
+  if (avisoNovosNaRegiaoRodando) return;
+  avisoNovosNaRegiaoRodando = true;
+  try {
+    const agora = Date.now();
+    const DIA = 24 * 60 * 60 * 1000;
+    const perfis = await perfisNovosDesde(db, new Date(agora - DIA).toISOString());
+    if (perfis.length === 0) {
+      console.log('[novos-na-regiao] nenhum perfil novo com foto nas últimas 24h');
+      return;
+    }
+    const leitores = (await queryAll(
+      db,
+      `SELECT u.id, u.city, u.state, u.lat, u.lon, u.looking_for_json, u.aviso_novos_regiao
+         FROM users u
+        WHERE u.last_seen_at >= ?
+          AND u.deleted_at IS NULL
+          AND COALESCE(u.is_banned, 0) = 0
+          AND COALESCE(u.is_deactivated, 0) = 0
+          AND COALESCE(u.is_showcase, 0) = 0
+          AND EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_id = u.id)`,
+      [new Date(agora - 30 * DIA).toISOString()]
+    )) as any[];
+    const avisos = new Map<string, { c: number; ultimo: string }>();
+    for (const r of (await queryAll(
+      db,
+      'SELECT user_id, COUNT(*) AS c, MAX(enviado_em) AS ultimo FROM avisos_novos_regiao WHERE enviado_em >= ? GROUP BY user_id',
+      [new Date(agora - 7 * DIA).toISOString()]
+    )) as any[]) {
+      avisos.set(String(r.user_id), { c: Number(r.c || 0), ultimo: String(r.ultimo || '') });
+    }
+    const bloqueios = await bloqueiosEntre(db, perfis.map((p) => p.id));
+    const limiteHoje = new Date(agora - 20 * 60 * 60 * 1000).toISOString();
+    let enviados = 0;
+    for (const r of leitores) {
+      try {
+        if (Number(r.aviso_novos_regiao ?? 1) === 0) continue;
+        const a = avisos.get(String(r.id));
+        if (a && (a.c >= MAX_AVISOS_POR_SEMANA || a.ultimo >= limiteHoje)) continue;
+        const lista = novosParaLeitor(leitorDaLinha(r), perfis, bloqueios);
+        if (lista.length === 0) continue;
+        const n = await sendPushToUser(
+          { db, env },
+          {
+            userId: String(r.id),
+            payload: {
+              title: '🔥 Gente nova na sua região',
+              body: textoDoAviso(lista.length, r.city ?? null, lista.every((p) => p.mesmaCidade)),
+              url: '/chat?aba=regiao',
+              tag: 'novos-na-regiao',
+            },
+          }
+        );
+        if (n > 0) {
+          await run(db, 'INSERT INTO avisos_novos_regiao (user_id, enviado_em) VALUES (?, ?)', [String(r.id), nowIso()]);
+          enviados += 1;
+        }
+      } catch (err) {
+        console.error('[novos-na-regiao] erro para', r.id, err);
+      }
+    }
+    await db.persist();
+    console.log(`[novos-na-regiao] ${perfis.length} perfil(is) novo(s); aviso enviado a ${enviados} de ${leitores.length} pessoa(s)`);
+  } finally {
+    avisoNovosNaRegiaoRodando = false;
+  }
+}
+
+export function startNovosNaRegiaoScheduler(db: DbHandle, env: Env) {
+  const check = () => {
+    const brt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    const dia = brt.toISOString().slice(0, 10);
+    if (brt.getUTCHours() === 19 && brt.getUTCMinutes() >= 30 && avisoNovosNaRegiaoUltimoDia !== dia) {
+      avisoNovosNaRegiaoUltimoDia = dia;
+      runAvisoNovosNaRegiao(db, env).catch((err) => console.error('[novos-na-regiao] fatal', err));
+    }
+  };
+  setInterval(check, 5 * 60 * 1000);
+  check();
+  console.log('[novos-na-regiao] agendador ativo (todo dia 19h30 BRT)');
+}
+
 export function startWeekendEngagementScheduler(db: DbHandle, env: Env) {
   const check = () => {
     const now = new Date(Date.now() - 3 * 60 * 60 * 1000); // horário de Brasília (UTC-3)
@@ -10880,6 +10973,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         blockOutsidePrefs: z.boolean().optional().nullable(),
         notificationVisits: z.boolean().optional().nullable(),
         notificationEmail: z.boolean().optional().nullable(),
+        avisoNovosRegiao: z.boolean().optional().nullable(),
         billingDocument: z.string().max(30).optional().nullable(),
         billingLegalName: z.string().max(120).optional().nullable(),
         billingPersonType: z.enum(['PF', 'PJ']).optional().nullable(),
@@ -10963,6 +11057,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       blockOutsidePrefs: 'block_outside_prefs',
       notificationVisits: 'notification_visits',
       notificationEmail: 'notify_email',
+      avisoNovosRegiao: 'aviso_novos_regiao',
       billingDocument: 'billing_document',
       billingLegalName: 'billing_legal_name',
       billingPersonType: 'billing_person_type',
@@ -13907,6 +14002,52 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   });
 
   // Check if current user has liked a specific profile
+  // GET /api/regiao/novos — aba "Chegaram na sua região" do Chat: perfis que
+  // entraram nos últimos 7 dias na cidade (ou até 50 km), que combinam com o
+  // que a pessoa procura. Regras e limites em novosNaRegiao.ts.
+  app.get('/api/regiao/novos', requireAuth(env, db), async (req, res) => {
+    const userId = req.auth!.userId;
+    const eu = (await queryOne(db, 'SELECT id, city, state, lat, lon, looking_for_json FROM users WHERE id = ? LIMIT 1', [userId])) as any;
+    if (!eu) {
+      res.status(404).json({ error: 'not_found' });
+      return;
+    }
+    const leitor = leitorDaLinha(eu);
+    const perfis = await perfisNovosDesde(db, new Date(Date.now() - DIAS_NA_ABA * 24 * 60 * 60 * 1000).toISOString());
+    const lista = novosParaLeitor(leitor, perfis, await bloqueiosEntre(db, [userId])).slice(0, 60);
+    const ids = lista.map((p) => p.id);
+    const curtidos = new Set<string>();
+    const enviados = new Set<string>();
+    if (ids.length > 0) {
+      const ph = ids.map(() => '?').join(',');
+      for (const r of (await queryAll(db, `SELECT target_id FROM likes WHERE user_id = ? AND target_type = 'user' AND target_id IN (${ph})`, [userId, ...ids])) as any[]) {
+        curtidos.add(String(r.target_id));
+      }
+      for (const r of (await queryAll(db, `SELECT to_user_id FROM boas_vindas WHERE from_user_id = ? AND to_user_id IN (${ph})`, [userId, ...ids])) as any[]) {
+        enviados.add(String(r.to_user_id));
+      }
+    }
+    res.json({
+      cidade: eu.city ?? null,
+      boasVindasRestantesHoje: await boasVindasRestantesHoje(db, userId),
+      perfis: lista.map((p) => {
+        const temGps = leitor.lat != null && leitor.lon != null && p.lat != null && p.lon != null;
+        return {
+          id: p.id,
+          name: p.name,
+          gender: p.gender,
+          city: p.city,
+          state: p.state,
+          avatar: `/uploads/${p.avatarFilename}`,
+          createdAt: p.createdAt,
+          distanceKm: temGps ? roundDistanceKm(haversineKm({ lat: leitor.lat!, lon: leitor.lon! }, { lat: p.lat!, lon: p.lon! })) : p.mesmaCidade ? 0 : null,
+          curtido: curtidos.has(p.id),
+          boasVindasEnviada: enviados.has(p.id),
+        };
+      }),
+    });
+  });
+
   app.get('/api/match/like-status', requireAuth(env, db), async (req, res) => {
     const targetId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
     if (!targetId) {
@@ -15468,6 +15609,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       clientId: z.string().max(100).optional(),
       isViewOnce: z.boolean().optional(),
       replyToMessageId: z.string().max(100).optional(),
+      // Enviada pelo "Dar boas-vindas" da aba "Na região": passa pelos mesmos
+      // limites de lá (novosNaRegiao.ts) além das regras normais de mensagem.
+      boasVindas: z.boolean().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -15513,6 +15657,13 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'empty_message' });
       return;
     }
+    if (parsed.data.boasVindas) {
+      const motivo = await motivoSemBoasVindas(db, req.auth!.userId, otherId);
+      if (motivo) {
+        res.status(429).json({ error: 'boas_vindas_limite', message: motivo });
+        return;
+      }
+    }
 
     const id = randomUUID();
     const createdAt = nowIso();
@@ -15528,6 +15679,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       replyTo?.id ?? null,
     ]);
     await persist();
+    if (parsed.data.boasVindas) await registrarBoasVindas(db, req.auth!.userId, otherId);
     let mediaUrl = null;
     let mediaMimeType = null;
     if (mediaId) {

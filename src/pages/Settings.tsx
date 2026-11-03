@@ -207,6 +207,7 @@ export default function Settings() {
     messages: true,
     visits: user?.notificationVisits !== false,
     email: user?.notificationEmail !== false,
+    regiao: user?.avisoNovosRegiao !== false,
     push: true,
   });
 
@@ -242,8 +243,9 @@ export default function Settings() {
       ...prev,
       visits: user?.notificationVisits !== false,
       email: user?.notificationEmail !== false,
+      regiao: user?.avisoNovosRegiao !== false,
     }));
-  }, [user?.notificationVisits, user?.notificationEmail]);
+  }, [user?.notificationVisits, user?.notificationEmail, user?.avisoNovosRegiao]);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,14 +357,14 @@ export default function Settings() {
   const handleSaveNotifications = async () => {
     setIsLoading(true);
     try {
-      await profileService.updateProfile({ notificationVisits: notifications.visits, notificationEmail: notifications.email });
+      await profileService.updateProfile({ notificationVisits: notifications.visits, notificationEmail: notifications.email, avisoNovosRegiao: notifications.regiao });
       if (notifications.push) {
         await enablePushNotifications();
       } else {
         await disablePushNotifications();
       }
       const pushState = await getPushActivationState().catch(() => ({ enabled: false }));
-      updateUser({ notificationVisits: notifications.visits, notificationEmail: notifications.email });
+      updateUser({ notificationVisits: notifications.visits, notificationEmail: notifications.email, avisoNovosRegiao: notifications.regiao });
       setNotifications((prev) => ({ ...prev, push: !!pushState.enabled }));
       toast({
         title: 'Preferências de notificação atualizadas!',
@@ -1725,6 +1727,17 @@ export default function Settings() {
               <Switch
                 checked={notifications.visits}
                 onCheckedChange={(v) => setNotifications({ ...notifications, visits: v })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">Novos perfis na minha região</p>
+                <p className="text-sm text-muted-foreground">Um aviso à noite quando entrar gente nova perto de você que combina com o que você procura (no máximo 4 por semana)</p>
+              </div>
+              <Switch
+                checked={notifications.regiao}
+                onCheckedChange={(v) => setNotifications({ ...notifications, regiao: v })}
               />
             </div>
           </div>

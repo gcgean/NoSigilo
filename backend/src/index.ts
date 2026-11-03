@@ -3,7 +3,7 @@ import { Server as SocketIOServer } from 'socket.io';
 import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
 import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
-import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
+import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startNovosNaRegiaoScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
 import { seedBrazilianCities, seedPortugalCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
@@ -35,7 +35,6 @@ process.on('unhandledRejection', (reason) => {
 let lastDailyRunDate = '';     // "YYYY-MM-DD" — reengagement emails
 let lastWeeklyRunDate = '';    // "YYYY-MM-DD" — weekly summary emails
 let lastOnlinePushDate = '';   // "YYYY-MM-DD" — online push notification
-let lastNightlyPushDate = '';  // "YYYY-MM-DD" — nightly "novos na sua cidade" push (19h30)
 let lastSundayStoryPushDate = ''; // "YYYY-MM-DD" — domingo 11h: "como foi o seu sábado à noite?"
 let lastTopDayDate = '';       // "YYYY-MM-DD" — "você está no Top do Dia" notification
 let lastExpirePremiumDate = ''; // "YYYY-MM-DD" — limpa is_premium de licenças vencidas
@@ -340,59 +339,6 @@ async function runSundayStoryPush(db: DbHandle) {
   console.log(`[scheduler] Push de domingo ("como foi o sábado") enviado para ${sent} usuário(s)`);
 }
 
-async function runNightlyRitualPush(db: DbHandle) {
-  console.log('[scheduler] Sending nightly "novos na sua cidade" push (19h30)...');
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const startIso = startOfToday.toISOString();
-
-  // Usuários com push inscrito, ativos (não inativos demais não importa aqui:
-  // o objetivo é ancorar o ritual noturno em quem aceitou notificações).
-  const users = await db.queryAll(
-    `SELECT u.id, u.city, u.looking_for_json FROM users u
-     JOIN push_subscriptions ps ON ps.user_id = u.id
-     WHERE u.is_banned = 0 AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
-       AND u.city IS NOT NULL AND u.city != ''
-     GROUP BY u.id
-     LIMIT 500`
-  ) as any[];
-
-  let sent = 0;
-  for (const u of users) {
-    try {
-      // Conta novos perfis compatíveis que entraram HOJE na cidade do usuário
-      const genderClause = buildGenderMatchClause(u.looking_for_json, 'u2');
-      const newRow = await db.queryOne(
-        `SELECT COUNT(*) as c FROM users u2
-         WHERE u2.city = ? AND u2.id != ? AND u2.created_at >= ?
-           AND u2.is_banned = 0 AND (u2.is_deactivated = 0 OR u2.is_deactivated IS NULL) ${genderClause}`,
-        [u.city, u.id, startIso]
-      ) as any;
-      const newCount = Number(newRow?.c || 0);
-      if (newCount < 1) continue; // só envia quando há um número real e crível
-
-      const body = `${newCount} ${newCount > 1 ? 'novos perfis entraram' : 'novo perfil entrou'} na sua cidade hoje. Veja antes que somem. 🔥`;
-
-      const subs = await db.queryAll(
-        'SELECT endpoint, subscription_json FROM push_subscriptions WHERE user_id = ?',
-        [u.id]
-      ) as any[];
-      for (const sub of subs) {
-        const parsed = JSON.parse(String(sub.subscription_json || '{}'));
-        if (!parsed?.endpoint) continue;
-        const { default: webpush } = await import('web-push');
-        await webpush.sendNotification(parsed, JSON.stringify({
-          title: '🌙 Boa noite!',
-          body,
-          url: '/feed',
-          tag: 'nightly-new-in-city',
-        })).catch(() => {});
-      }
-      sent++;
-    } catch { /* ignore */ }
-  }
-  console.log(`[scheduler] Nightly push sent to ${sent} users`);
-}
 
 async function runTopDayNotifications(db: DbHandle) {
   console.log('[scheduler] Notifying Top do Dia authors...');
@@ -509,7 +455,6 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
     const hour = now.getHours();
-    const minute = now.getMinutes();
     const weekday = now.getDay(); // 0=Sun, 1=Mon
 
     // Daily reengagement emails — 8am (Fortaleza local time)
@@ -549,12 +494,8 @@ function startScheduler(db: DbHandle, presence?: { countOnline: () => number }) 
       runSundayStoryPush(db).catch(err => console.error('[scheduler/sunday-story] fatal', err));
     }
 
-    // Push noturno: "novos perfis na sua cidade entraram hoje" — ~19h30 (ritual)
-    // O check roda a cada 30 min; dispara uma vez entre 19h30 e 19h59.
-    if (hour === 19 && minute >= 30 && lastNightlyPushDate !== dateStr) {
-      lastNightlyPushDate = dateStr;
-      runNightlyRitualPush(db).catch(err => console.error('[scheduler/nightly] fatal', err));
-    }
+    // O push noturno "novos na sua cidade" (19h30) virou o aviso "Gente nova na
+    // sua região": startNovosNaRegiaoScheduler (app.ts), com teto por pessoa.
 
     // Semeia sinal de interesse (vitrine compatível visita/curte/DM) para usuários
     // novos (homem/mulher/casal) sem sinal — a cada tick (30 min), rede de segurança.
@@ -622,6 +563,7 @@ async function main() {
 
   const app = createApp({ db, env });
   startWeekendEngagementScheduler(db, env); // e-mail automático sex/sáb 20h (BRT)
+  startNovosNaRegiaoScheduler(db, env); // aviso "gente nova na sua região" 19h30 (BRT)
   startAdminDailySummaryScheduler(db, env); // resumo diário pro admin no Telegram, todo dia 8h (BRT)
   startRenewalReminderScheduler(db, env); // lembrete de renovação (e-mail + push) 3 dias antes e no dia, 10h (BRT)
   startVisitasRetention(db);

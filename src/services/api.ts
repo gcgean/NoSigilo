@@ -500,6 +500,27 @@ export const profileService = {
 };
 
 // Match Service
+// Aba "Na região" do Chat: perfis que entraram há pouco perto de quem olha.
+export type PerfilNovoNaRegiao = {
+  id: string;
+  name: string;
+  gender: string | null;
+  city: string | null;
+  state: string | null;
+  avatar: string;
+  createdAt: string;
+  distanceKm: number | null;
+  curtido: boolean;
+  boasVindasEnviada: boolean;
+};
+
+export const regiaoService = {
+  novos: async (): Promise<{ cidade: string | null; boasVindasRestantesHoje: number; perfis: PerfilNovoNaRegiao[] }> => {
+    const response = await apiClient.get('/regiao/novos');
+    return response.data;
+  },
+};
+
 export const matchService = {
   getCards: async (params?: { city?: string; ageRange?: string; genders?: string; radar?: string; search?: string }) => {
     if (USE_MOCKS) {
@@ -648,7 +669,7 @@ export const chatService = {
     return response.data;
   },
 
-  sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean; replyToMessageId?: string }) => {
+  sendMessage: async (conversationId: string, data: { content?: string; mediaId?: string; clientId?: string; isViewOnce?: boolean; replyToMessageId?: string; boasVindas?: boolean }) => {
     marcarEngajamento(); // curtir/comentar/conversar = hora certa de convidar a instalar
     const response = await apiClient.post(`/conversations/${conversationId}/messages`, data);
     return response.data;

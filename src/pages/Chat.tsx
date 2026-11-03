@@ -37,6 +37,7 @@ import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import VideoWithPreview from '@/components/VideoWithPreview';
 import MobileState from '@/components/MobileState';
+import NovosNaRegiao from '@/components/NovosNaRegiao';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 
@@ -275,7 +276,10 @@ export default function Chat() {
   const [search, setSearch] = useState('');
   const [conversationTab, setConversationTab] = useState<'all' | 'unread' | 'new'>('all');
   // Conversas x Pedidos de contato (mensagens de quem você ainda não aceitou).
-  const [caixa, setCaixa] = useState<'conversas' | 'pedidos' | 'grupos'>('conversas');
+  // "regiao" = perfis novos perto de você (o aviso das 19h30 abre com ?aba=regiao).
+  const [caixa, setCaixa] = useState<'conversas' | 'pedidos' | 'grupos' | 'regiao'>(
+    () => (new URLSearchParams(window.location.search).get('aba') === 'regiao' ? 'regiao' : 'conversas')
+  );
   // Grupos dos eventos em que confirmei presença, com as mensagens novas.
   const [grupos, setGrupos] = useState<GroupSummary[] | null>(null);
   useEffect(() => {
@@ -841,6 +845,11 @@ export default function Chat() {
     // uma entrada extra no histórico.
     navigate(`/chat/${encodeURIComponent(conversationId)}`, { replace: true });
   }, [location.state, location.search, navigate]);
+
+  // Tocou no aviso "Gente nova na sua região" com o Chat já aberto.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('aba') === 'regiao') setCaixa('regiao');
+  }, [location.search]);
 
   // Abre ou cria conversa diretamente quando ?userId= está na URL (ex: "Mandar msg" nos Stories)
   useEffect(() => {
@@ -1415,8 +1424,8 @@ export default function Chat() {
             )}
           </div>
           {/* Conversas x Pedidos de contato */}
-          <div className="mb-3 grid grid-cols-3 rounded-xl bg-muted p-1 text-sm" role="tablist">
-            {(['conversas', 'pedidos', 'grupos'] as const).map((k) => (
+          <div className="mb-3 grid grid-cols-4 rounded-xl bg-muted p-1 text-[13px]" role="tablist">
+            {(['conversas', 'pedidos', 'grupos', 'regiao'] as const).map((k) => (
               <button
                 key={k}
                 type="button"
@@ -1428,7 +1437,7 @@ export default function Chat() {
                   caixa === k ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
                 )}
               >
-                {k === 'conversas' ? 'Conversas' : k === 'pedidos' ? 'Pedidos' : 'Grupos'}
+                {k === 'conversas' ? 'Conversas' : k === 'pedidos' ? 'Pedidos' : k === 'grupos' ? 'Grupos' : 'Na região'}
                 {k === 'pedidos' && pedidosCount > 0 && (
                   <span className="rounded-full bg-primary px-1.5 text-[11px] leading-5 text-white">{pedidosCount}</span>
                 )}
@@ -1476,7 +1485,7 @@ export default function Chat() {
               Aqui ficam mensagens de perfis que você ainda não conhece. Abra, e aceite o pedido para virar conversa — ou exclua. Quem mandou não fica sabendo se você excluiu.
             </p>
           )}
-          {caixa !== 'grupos' && (<>
+          {caixa !== 'grupos' && caixa !== 'regiao' && (<>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -1542,7 +1551,18 @@ export default function Chat() {
           </>)}
         </div>
 
-        {caixa === 'grupos' ? (
+        {caixa === 'regiao' ? (
+          <NovosNaRegiao
+            viewerId={user?.id}
+            premiumAccess={premiumAccess}
+            onAbrirConversa={(id) => {
+              void loadConversations().finally(() => {
+                setCaixa('conversas');
+                navigate(`/chat/${encodeURIComponent(id)}`);
+              });
+            }}
+          />
+        ) : caixa === 'grupos' ? (
           <div className="flex-1 overflow-y-auto overscroll-y-contain p-2" style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             {grupos === null ? (
               <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary" /></div>

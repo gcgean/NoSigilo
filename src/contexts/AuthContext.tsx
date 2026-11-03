@@ -58,6 +58,7 @@ export interface User {
   hubBanner?: string | null;
   notificationVisits?: boolean;
   notificationEmail?: boolean;
+  avisoNovosRegiao?: boolean;
   billingDocument?: string | null;
   billingLegalName?: string | null;
   billingPersonType?: 'PF' | 'PJ' | null;
@@ -430,6 +431,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           'blockOutsidePrefs',
           'notificationVisits',
           'notificationEmail',
+          'avisoNovosRegiao',
           'billingDocument',
           'billingLegalName',
           'billingPersonType',
