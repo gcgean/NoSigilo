@@ -1607,3 +1607,78 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Chamadas no padrão das páginas regionais (11/2026) ───────────────────── */
+.landing-cta-pulso {
+  display: inline-flex;
+  align-items: center;
+  gap: .7rem;
+  margin-top: 1.4rem;
+  padding: 1rem 1.6rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #ff4f7b, #c2185b);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-decoration: none;
+  box-shadow: 0 18px 40px rgba(194, 24, 91, .45);
+  animation: landingPulso 2.4s infinite;
+}
+.landing-cta-pulso:hover { filter: brightness(1.08); }
+.landing-cta-pulso svg { width: 1.15rem; height: 1.15rem; }
+@keyframes landingPulso {
+  0% { box-shadow: 0 0 0 0 rgba(255, 79, 123, .55), 0 18px 40px rgba(194, 24, 91, .45); }
+  70% { box-shadow: 0 0 0 16px rgba(255, 79, 123, 0), 0 18px 40px rgba(194, 24, 91, .45); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 79, 123, 0), 0 18px 40px rgba(194, 24, 91, .45); }
+}
+.landing-cta-micro { margin-top: .7rem; font-size: .82rem; opacity: .75; }
+.landing-hero-copy .landing-hero-discover { margin-top: 1rem; }
+
+.landing-faixa {
+  padding: clamp(3.5rem, 8vw, 6rem) 1.25rem;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 79, 123, .28), transparent 60%), linear-gradient(180deg, #1a0a10, #2a0b17 50%, #1a0a10);
+  color: #f6ece9;
+}
+.landing-faixa blockquote {
+  margin: 0 auto;
+  max-width: 22ch;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  line-height: 1.1;
+  font-style: italic;
+  color: #fff;
+}
+.landing-faixa p { margin: 1rem auto 0; max-width: 34rem; color: #e0c9c5; }
+
+.landing-fixo { display: none; }
+@media (max-width: 760px) {
+  .landing-fixo {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    padding: .7rem 1rem calc(.7rem + env(safe-area-inset-bottom));
+    background: rgba(13, 6, 9, .92);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(242, 215, 163, .15);
+  }
+  .landing-fixo a {
+    flex: 1;
+    text-align: center;
+    padding: .95rem;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #ff4f7b, #c2185b);
+    color: #fff;
+    font-weight: 800;
+    text-decoration: none;
+  }
+  .landing-editorial { padding-bottom: 5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-cta-pulso { animation: none; }
+}
+
+.landing-quotes-prova { margin: .8rem 0 1.6rem; font-size: .95rem; color: #f2d7a3; letter-spacing: .01em; }

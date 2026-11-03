@@ -71,18 +71,21 @@ const PRIVACY_ITEMS = [
   },
 ];
 
+// Avaliações REAIS de nota 10 deixadas no app (app_ratings), só com o tipo de
+// perfil e o estado — nunca o nome. Texto como a pessoa escreveu, só com a
+// ortografia corrigida ("vide" → "vídeo"). Antes eram frases inventadas.
 const TESTIMONIALS = [
   {
-    text: 'Discreta, bonita e feita para quem entende o meio.',
-    profile: 'Casal • SP',
+    text: 'O aplicativo em si é muito bom, o sistema de vídeo é ótimo e ajuda a ter noção dos outros casais. Parabéns pela plataforma.',
+    profile: 'Casal • SP · nota 10',
   },
   {
-    text: 'Aqui eu escolho o quanto quero revelar. Isso muda tudo.',
-    profile: 'Mulher solteira • RJ',
+    text: 'Melhor app do momento.',
+    profile: 'Casal • SP · nota 10',
   },
   {
-    text: 'Finalmente um lugar com intenção, respeito e pessoas reais.',
-    profile: 'Homem solteiro • MG',
+    text: 'Plataforma sensacional.',
+    profile: 'Casal • CE · nota 10',
   },
 ];
 
@@ -297,6 +300,13 @@ export default function Landing() {
                 viver swing, troca de casais, ménage e exibicionismo com liberdade,
                 consentimento, discrição e sigilo.
               </p>
+              {/* Chamada principal (mesmo botão das páginas regionais): antes o
+                  topo só tinha o link "Conheça a experiência". */}
+              <Link className="landing-cta-pulso" to="/register">
+                Quero entrar — é grátis
+                <ArrowRight aria-hidden="true" />
+              </Link>
+              <p className="landing-cta-micro">Conta gratuita · Perfil fora do Google · Só para maiores de 18</p>
               <a className="landing-hero-discover" href="#experiencia">
                 Conheça a experiência
                 <ArrowRight aria-hidden="true" />
@@ -384,12 +394,10 @@ export default function Landing() {
               <span aria-hidden="true" />
               <p className="landing-desire-statement">Máscaras escondem rostos. A química revela intenções.</p>
               <p className="landing-desire-support">Casais e singles. Swing, ménage e exibicionismo no seu tempo.</p>
-              <Button asChild variant="link" className="landing-text-link">
-                <Link to="/register">
-                  Quero fazer parte
-                  <ArrowRight data-icon="inline-end" />
-                </Link>
-              </Button>
+              <Link className="landing-cta-pulso" to="/register">
+                Quero fazer parte
+                <ArrowRight aria-hidden="true" />
+              </Link>
             </div>
 
             <figure className="landing-desire-image landing-desire-portrait">
@@ -473,6 +481,15 @@ export default function Landing() {
           </div>
         </section>
 
+        <section className="landing-faixa">
+          <blockquote>Toda fantasia começa com uma conversa.</blockquote>
+          <p>Casais, mulheres e homens solteiros dizem logo o que procuram. Sem rodeio, sem julgamento, sem ninguém de fora ficar sabendo.</p>
+          <Link className="landing-cta-pulso" to="/register">
+            Começar a minha
+            <ArrowRight aria-hidden="true" />
+          </Link>
+        </section>
+
         <section id="privacidade" className="landing-privacy landing-section">
           <div className="landing-privacy-image" role="img" aria-label="Três adultos conversando em uma hidromassagem" />
           <div className="landing-privacy-fade" />
@@ -509,6 +526,9 @@ export default function Landing() {
               <Sparkles aria-hidden="true" />
               <h2>Há encontros que começam muito <em>antes do primeiro oi.</em></h2>
             </div>
+            {/* Número real (11/2026: 549 notas 10 em 779 avaliações), arredondado
+                para baixo para continuar verdadeiro com o tempo. */}
+            <p className="landing-quotes-prova">Mais de 500 notas 10 de quem já usa o NoSigilo.</p>
 
             <div className="landing-quotes">
               {TESTIMONIALS.map((testimonial) => (
@@ -607,6 +627,11 @@ export default function Landing() {
           </div>
         </section>
       </main>
+
+      {/* Barra fixa no celular: o cadastro sempre a um toque. */}
+      <div className="landing-fixo">
+        <Link to="/register">Criar conta grátis</Link>
+      </div>
 
       <footer className="landing-footer">
         <div className="landing-shell landing-footer-content">
