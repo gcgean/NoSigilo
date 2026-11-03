@@ -16791,7 +16791,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.get('/api/cities', async (req, res) => {
     const q = String(req.query.q || '');
     const limit = Number(req.query.limit || 20);
-    res.json(await searchCities(db, q, limit));
+    res.json(await searchCities(db, q, limit, getHeaderValue(req, 'cf-ipcountry') ?? ''));
   });
 
   app.get('/api/cities/nearest', async (req, res) => {

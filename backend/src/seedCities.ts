@@ -101,17 +101,27 @@ export async function seedPortugalCities(db: DbHandle) {
   }
 }
 
-export async function searchCities(db: DbHandle, q: string, limit: number) {
+/**
+ * `deQuem`: país de quem busca (cabeçalho do Cloudflare). 128 nomes existem
+ * nos dois países ("São Paulo" é também freguesia de Lisboa), então:
+ * - quem está em Portugal vê Portugal primeiro, depois o Brasil;
+ * - quem está fora só vê a cidade de Portugal se o nome não existir no Brasil
+ *   ("Leiria" aparece; "São Paulo, PT" não) — a busca do Brasil fica como era.
+ */
+export async function searchCities(db: DbHandle, q: string, limit: number, deQuem = '') {
   const query = normalizeText(q);
   if (!query) return [];
   const safeLimit = Math.min(50, Math.max(1, limit));
-  // Brasil primeiro, Portugal depois: quem busca "Santarém" no Brasil continua
-  // vendo a do Pará em cima. O nome exato vem antes, para "Porto" achar Porto.
+  const emPortugal = deQuem.toUpperCase() === UF_PORTUGAL;
+  const filtroPortugal = emPortugal
+    ? ''
+    : `AND (state <> '${UF_PORTUGAL}' OR NOT EXISTS (
+         SELECT 1 FROM cities b WHERE b.name_norm = cities.name_norm AND b.state <> '${UF_PORTUGAL}'))`;
   const rows = (await queryAll(
     db,
-    `SELECT name, state, lat, lon FROM cities WHERE name_norm LIKE ?
+    `SELECT name, state, lat, lon FROM cities WHERE name_norm LIKE ? ${filtroPortugal}
       ORDER BY CASE WHEN name_norm = ? THEN 0 ELSE 1 END,
-               CASE WHEN state = '${UF_PORTUGAL}' THEN 1 ELSE 0 END,
+               CASE WHEN state = '${UF_PORTUGAL}' THEN ${emPortugal ? 0 : 1} ELSE ${emPortugal ? 1 : 0} END,
                name_norm ASC
       LIMIT ?`,
     [`%${query}%`, query, safeLimit]

@@ -719,11 +719,15 @@ describe('nosigilo backend', () => {
 
     const lisboa = await searchCities(ctx.db, 'lisboa', 10);
     expect(lisboa[0]).toMatchObject({ name: 'Lisboa', state: 'PT' });
-    expect((await searchCities(ctx.db, 'braganca', 10)).some((c) => c.name === 'Bragança' && c.state === 'PT')).toBe(true);
-    // Nome que existe nos dois países: o do Brasil vem primeiro.
+    expect((await searchCities(ctx.db, 'braganca', 10, 'PT')).some((c) => c.name === 'Bragança' && c.state === 'PT')).toBe(true);
+    // Nome que existe nos dois países: fora de Portugal, só o do Brasil.
     const santarem = await searchCities(ctx.db, 'santarem', 10);
     expect(santarem[0].state).toBe('PA');
-    expect(santarem.some((c) => c.state === 'PT')).toBe(true);
+    expect(santarem.some((c) => c.name === 'Santarém' && c.state === 'PT')).toBe(false);
+    // Em Portugal: o de Portugal primeiro, o do Brasil depois.
+    const santaremPt = await searchCities(ctx.db, 'santarem', 10, 'PT');
+    expect(santaremPt[0]).toMatchObject({ name: 'Santarém', state: 'PT' });
+    expect(santaremPt.some((c) => c.state === 'PA')).toBe(true);
 
     expect(await nearestCity(ctx.db, 38.7223, -9.1393)).toMatchObject({ name: 'Lisboa', state: 'PT' });
     expect(await nearestCity(ctx.db, 38.7538, -9.2308)).toMatchObject({ name: 'Amadora', state: 'PT' });
