@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import SugestoesPerfis from '@/components/SugestoesPerfis';
 import StoriesNaoVistos from '@/components/StoriesNaoVistos';
 import { textoDistancia } from '@/utils/distancia';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 import { Image, Video, Send, Heart, MessageCircle, MoreHorizontal, X, Lock, Crown, Trash2, Star, Clapperboard, Clapperboard as ReelsIcon, ChevronLeft, ChevronRight, Camera, Loader2, Radio, TimerReset, Bell, BellOff, MapPin, ArrowRight, Users, Eye, Flag, Home, Check, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -214,6 +214,13 @@ const RADAR_HIGHLIGHTS_CACHE_TTL_MS = 45_000;
 // simples troca de aba descartar a posição de leitura; longo demais faz a
 // pessoa reencontrar o feed velho ao voltar.
 const FEED_RESUME_REFRESH_MS = 60_000;
+
+// O que o feed tinha carregado quando a pessoa saiu dele. Ao VOLTAR (botão
+// voltar), o feed reaparece igual, em vez de buscar uma leva nova a partir do
+// topo — reclamação de assinante: "quando sai de uma página volta pro início".
+// A posição da rolagem é devolvida pelo useRestaurarRolagem (Layout).
+const FOTO_DO_FEED_VALE_MS = 15 * 60_000;
+let fotoDoFeed: { posts: FeedPost[]; page: number; hasMore: boolean; insights: FeedInsights | null; em: number } | null = null;
 const NEARBY_OPTIONS = [10, 25, 50, 100, 200, 300] as const;
 type NearbyOption = typeof NEARBY_OPTIONS[number];
 const FEED_PROXIMITY_PREFERENCE_KEY = 'nosigilo:feed-proximity-v1';
@@ -319,10 +326,14 @@ export default function Feed() {
   const [temasVideo, setTemasVideo] = useState<string[]>([]);
   const [temaDoPost, setTemaDoPost] = useState<FeedPost | null>(null);
   const listaTemasVideo = useTemasVideo();
-  const [allPosts, setAllPosts] = useState<FeedPost[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const tipoDeNavegacao = useNavigationType();
+  const [voltandoAoFeed] = useState(
+    () => tipoDeNavegacao === 'POP' && !!fotoDoFeed && Date.now() - fotoDoFeed.em < FOTO_DO_FEED_VALE_MS
+  );
+  const [allPosts, setAllPosts] = useState<FeedPost[]>(() => (voltandoAoFeed ? fotoDoFeed!.posts : []));
+  const [isLoading, setIsLoading] = useState(!voltandoAoFeed);
+  const [page, setPage] = useState(() => (voltandoAoFeed ? fotoDoFeed!.page : 1));
+  const [hasMore, setHasMore] = useState(() => (voltandoAoFeed ? fotoDoFeed!.hasMore : true));
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null); // 0–100 durante upload; 100 = processando no servidor
@@ -334,7 +345,7 @@ export default function Feed() {
   const [activePicker, setActivePicker] = useState<'image' | 'video' | null>(null);
   const [attachments, setAttachments] = useState<Array<{ id: string; file: File; url: string }>>([]);
   const [fileAccept, setFileAccept] = useState<string>('image/*,video/*');
-  const [feedInsights, setFeedInsights] = useState<FeedInsights | null>(null);
+  const [feedInsights, setFeedInsights] = useState<FeedInsights | null>(() => (voltandoAoFeed ? fotoDoFeed!.insights : null));
   const [radarHighlights, setRadarHighlights] = useState<RadarHighlight[]>([]);
   const [feedSessionBaseline, setFeedSessionBaseline] = useState<Record<string, number>>(() => readFeedSessionAuthorCounts());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -813,8 +824,15 @@ export default function Feed() {
   };
 
   useEffect(() => {
+    if (voltandoAoFeed) return;
     void reload();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Guarda o feed principal (aba "Todos") para a volta.
+  useEffect(() => {
+    if (feedFilter !== 'all' || isLoading || allPosts.length === 0) return;
+    fotoDoFeed = { posts: allPosts, page, hasMore, insights: feedInsights, em: Date.now() };
+  }, [allPosts, page, hasMore, feedInsights, feedFilter, isLoading]);
 
   // Contos: a lista (~150 KB) só carrega quando a aba "Contos eróticos" é
   // aberta — antes vinha em toda abertura do feed, mesmo sem ninguém olhar.

@@ -1,5 +1,6 @@
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useRestaurarRolagem } from '@/hooks/useRestaurarRolagem';
 import CasaAbertaBanner from '@/components/CasaAbertaBanner';
 import { useCasaStatus } from '@/utils/useCasaAberta';
 import CasaAoVivoConvite from '@/components/CasaAoVivoConvite';
@@ -144,6 +145,7 @@ export default function Layout() {
   const { user, logout, updateUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
+  useRestaurarRolagem();
   // Durante a noite d'A Casa o atalho "Ganhe $" vira "Entrar na Casa".
   const { aberta: casaAberta, proxima: proximaCasa } = useCasaStatus();
   // Dia de Casa: nas 8 h antes de abrir, o "Ganhe $" vira contagem regressiva (traz reservas).
