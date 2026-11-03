@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { SeloExpirando, expiraEmBreve } from '@/components/SeloExpirando';
 import { FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { Plus, Crown, Pin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -14,6 +15,7 @@ type BarFeedStory = {
   id: string;
   viewed: boolean;
   createdAt: string;
+  expiresAt?: string;
   audience?: 'all' | 'favorites';
   author: { id: string; name: string; avatar: string | null; pinnedByMe?: boolean; onlineRecente?: boolean };
 };
@@ -35,6 +37,8 @@ type AuthorGroup = {
   paraFavoritos: boolean;
   // Autor online agora ou visto há pouco (15 min): anel verde girando.
   online?: boolean;
+  // O story deste autor que some primeiro (para o selo ⏳).
+  expiraEm?: string;
 };
 
 /**
@@ -83,6 +87,7 @@ export default function StoriesBar() {
           }
           if (s.audience === 'favorites') existing.paraFavoritos = true;
           if (a.onlineRecente) existing.online = true;
+          if (s.expiresAt && (!existing.expiraEm || s.expiresAt < existing.expiraEm)) existing.expiraEm = s.expiresAt;
         } else {
           byAuthor.set(a.id, {
             authorId: a.id,
@@ -96,6 +101,7 @@ export default function StoriesBar() {
             pinned: !!a.pinnedByMe,
             paraFavoritos: s.audience === 'favorites',
             online: !!a.onlineRecente,
+            expiraEm: s.expiresAt,
           });
         }
       }
@@ -233,6 +239,7 @@ export default function StoriesBar() {
                   {g.novos > 0 ? g.novos : g.total}
                 </span>
               )}
+              {expiraEmBreve(g.expiraEm) && <SeloExpirando className="absolute -bottom-0.5 -left-0.5" />}
               {!unlocked && (
                 <span className="absolute -left-0.5 -top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-amber-500" title="Premium">
                   <Crown className="h-2.5 w-2.5 text-white" />

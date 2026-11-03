@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { expiraEmBreve } from '@/components/SeloExpirando';
 import { useNavigate } from 'react-router-dom';
 import { Crown, Play } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -100,7 +101,9 @@ export default function StoriesNaoVistos() {
                 ) : null}
                 <div className="absolute inset-x-1.5 bottom-1.5">
                   <p className={cn('truncate text-xs font-semibold text-white', !liberado && 'text-yellow-300')}>{s.author.name}</p>
-                  {falta && <p className="text-[10px] text-white/80">⏳ {falta}</p>}
+                  {falta && (
+                    <p className={cn('text-[10px]', expiraEmBreve(s.expiresAt) ? 'font-bold text-red-300' : 'text-white/80')}>⏳ {falta}</p>
+                  )}
                 </div>
               </div>
             </button>

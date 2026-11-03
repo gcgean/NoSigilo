@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SeloExpirando, expiraEmBreve } from '@/components/SeloExpirando';
 import NomePerfil from '@/components/NomePerfil';
 import { ehFotoHeic, heicParaJpeg, FOTO_NAO_ABRE } from '@/utils/mediaCompression';
 import { createPortal } from 'react-dom';
@@ -2191,6 +2192,9 @@ export default function Stories() {
                 {story.audience === 'favorites' && (
                   <SeloFavoritos className="absolute left-8 top-7 h-4 w-4" />
                 )}
+
+                {/* Some em menos de 3h: ampulheta acima do nome. */}
+                {expiraEmBreve(story.expiresAt) && <SeloExpirando className="absolute bottom-7 left-2" />}
 
                 {/* Name */}
                 <p className="absolute bottom-2 left-2 right-2 text-[10px] font-semibold text-white truncate">
