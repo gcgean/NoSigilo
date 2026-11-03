@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   ArrowRight,
   BadgeDollarSign,
@@ -164,6 +165,19 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 
 export default function PromoterLanding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Portugal: a comissão é paga por Pix, então o programa é só para o Brasil.
+  if (user?.dePortugal) {
+    return (
+      <div className="max-w-3xl mx-auto w-full glass rounded-2xl p-6 text-center space-y-2">
+        <h1 className="text-xl font-bold">Programa de promotores</h1>
+        <p className="text-sm text-muted-foreground">
+          Por enquanto o programa de promotores é só para quem está no Brasil, porque a comissão é paga por Pix.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto w-full space-y-10 pb-16">
