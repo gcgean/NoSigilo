@@ -11,7 +11,7 @@ export const TAMANHO_MAXIMO_MOTIVO = 300;
 
 const PROMPT = `Você reescreve o motivo de recusa da verificação de perfil de uma rede social adulta brasileira (NoSigilo).
 
-Como funciona a verificação: a pessoa tira uma selfie mostrando o rosto e segurando um papel com um código escrito à mão; a equipe compara a selfie com as fotos do perfil.
+Como funciona a verificação: a pessoa tira uma foto segurando um papel com um código escrito à mão. O rosto NÃO é obrigatório (pode ser o corpo, de costas ou de máscara); a foto precisa mostrar o código legível e deixar claro o tipo do perfil — no casal, as duas pessoas; na mulher, que é uma mulher; no homem, que é um homem. A equipe compara a foto com as do perfil. Nunca peça para mostrar o rosto.
 
 Reescreva o rascunho do administrador seguindo estas regras:
 - Português do Brasil, tom gentil e direto, sem julgamento sobre corpo, aparência ou fotos íntimas.

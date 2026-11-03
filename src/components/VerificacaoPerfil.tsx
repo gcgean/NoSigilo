@@ -64,6 +64,16 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
 
   const mulher = !!sit.acessoVitalicio;
   const casal = String(sit.genero || '').toLowerCase().startsWith('casal');
+  // O que a foto precisa mostrar para confirmar o TIPO do perfil — o rosto não
+  // é obrigatório (decidido com o dono em 03/11/2026): basta o código e dar para
+  // ver que é casal, mulher ou homem.
+  const quemAparece = ({
+    'Casal (Ele/Ela)': 'vocês dois — um homem e uma mulher',
+    'Casal (Ele/Ele)': 'vocês dois — dois homens',
+    'Casal (Ela/Ela)': 'vocês duas — duas mulheres',
+    Mulher: 'que é uma mulher',
+    Homem: 'que é um homem',
+  } as Record<string, string>)[String(sit.genero || '')] ?? (sit.genero ? `que o perfil é de ${sit.genero}` : 'quem é você');
 
   if (sit.verificada) {
     return (
@@ -126,7 +136,11 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Escreva o código à mão num papel.</li>
-            <li>{casal ? 'Tirem uma selfie segurando o papel, de preferência os dois aparecendo.' : 'Tire uma selfie segurando o papel, com o rosto aparecendo.'}</li>
+            <li>
+              {casal ? 'Tirem uma foto segurando o papel' : 'Tire uma foto segurando o papel'}, com o código bem legível.{' '}
+              <strong className="text-foreground">Não precisa mostrar o rosto</strong> — pode ser só o corpo, de costas ou de máscara.
+            </li>
+            <li>Na foto precisa dar para ver <strong className="text-foreground">{quemAparece}</strong>: é isso que confirma o tipo do seu perfil.</li>
             <li>Envie aqui. Só a equipe vê essa foto: ela não aparece no perfil.</li>
           </ol>
           {[arquivo, galeria].map((ref, i) => (
@@ -157,7 +171,7 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
           ) : (
             <div className="space-y-2">
               <Button className="w-full gap-2 bg-gradient-primary" onClick={() => arquivo.current?.click()}>
-                <Camera className="h-4 w-4" /> Tirar a selfie com o código
+                <Camera className="h-4 w-4" /> Tirar a foto com o código
               </Button>
               <Button variant="outline" className="w-full gap-2" onClick={() => galeria.current?.click()}>
                 <ImageIcon className="h-4 w-4" /> Escolher a foto da galeria

@@ -10,9 +10,9 @@ import { verificacaoService, type PedidoVerificacao } from '@/services/api';
 // Motivos mais comuns, para preencher com um toque (dá para editar depois).
 const MOTIVOS_PRONTOS = [
   'O código não aparece na foto ou não dá para ler.',
-  'O rosto não aparece direito na selfie (foto escura, cortada ou de longe).',
+  'Na foto não dá para ver que o perfil é do tipo indicado (casal, mulher ou homem). Não precisa mostrar o rosto.',
   'A pessoa da selfie não aparece nas fotos do perfil.',
-  'Perfil de casal: as duas pessoas precisam aparecer na selfie com o código.',
+  'Perfil de casal: as duas pessoas precisam aparecer na foto com o código (o rosto não é obrigatório).',
   'O perfil não tem fotos suficientes para comparar com a selfie.',
 ];
 
@@ -95,7 +95,7 @@ export default function AdminVerificacoes() {
     <div className="glass mb-4 rounded-xl p-6">
       <h3 className="mb-1 flex items-center gap-2 font-semibold"><BadgeCheck className="h-5 w-5 fill-sky-500 text-white" /> Pedidos de verificação ({pedidos.length})</h3>
       <p className="mb-4 text-xs text-muted-foreground">
-        A selfie precisa mostrar o rosto e o papel com o código escrito à mão, e bater com as fotos do perfil. Aprovar dá o selo de verificada e acesso grátis para sempre.
+        A foto precisa mostrar o papel com o código escrito à mão e deixar claro o tipo do perfil (casal: os dois; mulher; homem), batendo com as fotos do perfil. O rosto não é obrigatório. Aprovar dá o selo de verificada e acesso grátis para sempre.
       </p>
       <div className="space-y-3">
         {pedidos.map((p) => (
