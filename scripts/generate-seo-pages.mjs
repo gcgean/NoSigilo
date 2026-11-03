@@ -451,6 +451,32 @@ const ENABLED_CITIES = {
 };
 // ============================================================
 
+// Cidades novas de 02/11/2026, saídas de `--candidatas` (15+ perfis visíveis e
+// ainda sem página). Fica num bloco à parte para a lista acima não ser
+// reescrita. "Jardim Paulista" (SP) ficou de fora: é bairro, não município.
+const NOVAS_CIDADES_2026_11 = {
+  'alagoas': [{ name: 'Arapiraca', slug: 'arapiraca' }],
+  'bahia': [{ name: 'Camaçari', slug: 'camacari' }, { name: 'Lauro de Freitas', slug: 'lauro-de-freitas' }, { name: 'Vitória da Conquista', slug: 'vitoria-da-conquista' }],
+  'ceara': [{ name: 'Itaitinga', slug: 'itaitinga' }],
+  'distrito-federal': [{ name: 'Planaltina', slug: 'planaltina' }],
+  'espirito-santo': [{ name: 'Cachoeiro de Itapemirim', slug: 'cachoeiro-de-itapemirim' }],
+  'goias': [{ name: 'Anápolis', slug: 'anapolis' }, { name: 'Trindade', slug: 'trindade' }, { name: 'Águas Lindas de Goiás', slug: 'aguas-lindas-de-goias' }],
+  'mato-grosso': [{ name: 'Sinop', slug: 'sinop' }, { name: 'Várzea Grande', slug: 'varzea-grande' }],
+  'minas-gerais': [{ name: 'Ibirité', slug: 'ibirite' }],
+  'para': [{ name: 'Santarém', slug: 'santarem' }],
+  'paraiba': [{ name: 'Patos', slug: 'patos' }],
+  'parana': [{ name: 'Ponta Grossa', slug: 'ponta-grossa' }, { name: 'São José dos Pinhais', slug: 'sao-jose-dos-pinhais' }],
+  'pernambuco': [{ name: 'Santa Cruz do Capibaribe', slug: 'santa-cruz-do-capibaribe' }, { name: 'Vitória de Santo Antão', slug: 'vitoria-de-santo-antao' }],
+  'rio-de-janeiro': [{ name: 'Belford Roxo', slug: 'belford-roxo' }, { name: 'Macaé', slug: 'macae' }, { name: 'Nilópolis', slug: 'nilopolis' }, { name: 'Petrópolis', slug: 'petropolis' }, { name: 'Rio das Ostras', slug: 'rio-das-ostras' }, { name: 'São João de Meriti', slug: 'sao-joao-de-meriti' }],
+  'rio-grande-do-norte': [{ name: 'Extremoz', slug: 'extremoz' }],
+  'rio-grande-do-sul': [{ name: 'Gravataí', slug: 'gravatai' }, { name: 'Santa Cruz do Sul', slug: 'santa-cruz-do-sul' }, { name: 'Santa Maria', slug: 'santa-maria' }],
+  'sao-paulo': [{ name: 'Americana', slug: 'americana' }, { name: 'Araraquara', slug: 'araraquara' }, { name: 'Araras', slug: 'araras' }, { name: 'Araçatuba', slug: 'aracatuba' }, { name: 'Barueri', slug: 'barueri' }, { name: 'Bauru', slug: 'bauru' }, { name: 'Carapicuíba', slug: 'carapicuiba' }, { name: 'Cotia', slug: 'cotia' }, { name: 'Embu das Artes', slug: 'embu-das-artes' }, { name: 'Guarujá', slug: 'guaruja' }, { name: 'Hortolândia', slug: 'hortolandia' }, { name: 'Indaiatuba', slug: 'indaiatuba' }, { name: 'Itapecerica da Serra', slug: 'itapecerica-da-serra' }, { name: 'Itaquaquecetuba', slug: 'itaquaquecetuba' }, { name: 'Jacareí', slug: 'jacarei' }, { name: 'Limeira', slug: 'limeira' }, { name: 'Mogi Guaçu', slug: 'mogi-guacu' }, { name: 'Salto', slug: 'salto' }, { name: 'Sumaré', slug: 'sumare' }, { name: 'Suzano', slug: 'suzano' }, { name: 'Taubaté', slug: 'taubate' }],
+};
+for (const [estado, cidades] of Object.entries(NOVAS_CIDADES_2026_11)) {
+  const ja = new Set((ENABLED_CITIES[estado] ||= []).map((c) => c.slug));
+  for (const c of cidades) if (!ja.has(c.slug)) ENABLED_CITIES[estado].push(c);
+}
+
 const ALL_STATES = STATES;
 const SELECTED_STATES = ENABLED_STATES === 'all'
   ? ALL_STATES
