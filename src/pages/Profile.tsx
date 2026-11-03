@@ -2244,6 +2244,8 @@ export default function Profile() {
           tipo={listaDeFollow}
           onClose={() => setListaDeFollow(null)}
           viewerId={user?.id}
+          podeDeixarDeSeguir
+          onDeixouDeSeguir={() => setStats((s) => ({ ...s, following: Math.max(0, Number(s.following || 0) - 1) }))}
         />
       ) : null}
     </div>

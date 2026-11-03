@@ -563,6 +563,8 @@ export default function UserProfile() {
   const [profileLiked, setProfileLiked] = useState(false);
   const [profileIsFriend, setProfileIsFriend] = useState(false);
   const [isLikingProfile, setIsLikingProfile] = useState(false);
+  // Deixar de seguir pede dois toques: o primeiro só arma a confirmação.
+  const [confirmandoDeixarDeSeguir, setConfirmandoDeixarDeSeguir] = useState(false);
 
   const isSelf = !!me?.id && !!userId && me.id === userId;
   // Admin modera pelo próprio perfil: lixeira em fotos, vídeos e publicações.
@@ -904,6 +906,29 @@ export default function UserProfile() {
       } else {
         toast({ title: 'Não foi possível curtir', description: 'Tente novamente.', variant: 'destructive' });
       }
+    } finally {
+      setIsLikingProfile(false);
+    }
+  };
+
+  // Curtir o perfil é o "seguir" do app; antes não havia como desfazer (o
+  // botão travava em "Curtido ✓"). Desfaz só a curtida: amizade e conversa
+  // que já existem continuam.
+  const handleDeixarDeSeguir = async () => {
+    if (!userId || isLikingProfile) return;
+    if (!confirmandoDeixarDeSeguir) {
+      setConfirmandoDeixarDeSeguir(true);
+      window.setTimeout(() => setConfirmandoDeixarDeSeguir(false), 4000);
+      return;
+    }
+    setConfirmandoDeixarDeSeguir(false);
+    setIsLikingProfile(true);
+    try {
+      await interactionsService.unlike('user', userId);
+      setProfileLiked(false);
+      toast({ title: 'Você deixou de seguir', description: `${profile?.name ?? 'Esse perfil'} não foi avisado(a).` });
+    } catch {
+      toast({ title: 'Não foi possível deixar de seguir', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setIsLikingProfile(false);
     }
@@ -1474,17 +1499,22 @@ export default function UserProfile() {
               <Button
                 variant={profileLiked ? 'default' : 'outline'}
                 size="sm"
-                disabled={isLikingProfile || profileLiked}
-                onClick={() => void handleLikeProfile()}
+                disabled={isLikingProfile}
+                onClick={() => void (profileLiked ? handleDeixarDeSeguir() : handleLikeProfile())}
+                title={profileLiked ? 'Toque para deixar de seguir' : undefined}
                 className={cn(
                   'gap-1.5 transition-all',
-                  profileLiked
+                  profileLiked && confirmandoDeixarDeSeguir
+                    ? 'bg-red-600 text-white border-red-600 hover:bg-red-600 hover:text-white'
+                    : profileLiked
                     ? 'bg-pink-500/20 text-pink-500 border-pink-400/40 hover:bg-pink-500/20 hover:text-pink-500'
                     : 'border-pink-400/40 text-pink-500 hover:bg-pink-500/10 hover:border-pink-400/60'
                 )}
               >
                 <Heart className={cn('w-3.5 h-3.5', profileLiked && 'fill-current')} />
-                {profileIsFriend
+                {profileLiked && confirmandoDeixarDeSeguir
+                  ? 'Toque de novo para deixar de seguir'
+                  : profileLiked && profileIsFriend
                   ? 'Amigos ✓'
                   : profileLiked
                   ? 'Curtido ✓'
