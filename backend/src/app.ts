@@ -18614,7 +18614,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       .filter(Boolean);
     const stateByNorm = new Map<string, { state: string | null; ambiguous: boolean }>();
     for (const norm of distinctNorms) {
-      const matches = (await queryAll(db, 'SELECT DISTINCT state FROM cities WHERE name_norm = ?', [norm])) as any[];
+      // Brasil primeiro; Portugal só se o nome não existir no Brasil. Assim
+      // "Santarém" sem UF continua resolvendo para PA, como antes de Portugal.
+      let matches = (await queryAll(db, "SELECT DISTINCT state FROM cities WHERE name_norm = ? AND state <> 'PT'", [norm])) as any[];
+      if (matches.length === 0) matches = (await queryAll(db, "SELECT DISTINCT state FROM cities WHERE name_norm = ? AND state = 'PT'", [norm])) as any[];
       if (matches.length === 1) stateByNorm.set(norm, { state: String(matches[0].state), ambiguous: false });
       else if (matches.length > 1) stateByNorm.set(norm, { state: null, ambiguous: true });
       else stateByNorm.set(norm, { state: null, ambiguous: false });

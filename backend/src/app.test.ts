@@ -5,6 +5,7 @@ import { unlinkSync, existsSync, rmSync, mkdirSync, writeFileSync } from 'node:f
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
+import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, totalDeVisitas, visitasPor } from './app.js';
 import type { DbHandle } from './db.js';
 
@@ -705,6 +706,29 @@ describe('nosigilo backend', () => {
       .set('Authorization', `Bearer ${regB.token}`)
       .expect(200);
     expect(msgsB.body.some((message: any) => String(message.content || '').includes('Vocês se curtiram mutuamente'))).toBe(true);
+  });
+
+  it('cidades de Portugal entram com UF PT sem tirar o Brasil da frente', async () => {
+    await run(ctx.db, "DELETE FROM cities WHERE name_norm IN ('santarem', 'leiria-teste')", []);
+    await run(ctx.db, "INSERT INTO cities (name, name_norm, state, lat, lon) VALUES ('Santarém', 'santarem', 'PA', -2.44, -54.70)", []);
+    await seedPortugalCities(ctx.db);
+    const total = Number(((await queryOne(ctx.db, "SELECT COUNT(*) AS c FROM cities WHERE state = 'PT'", [])) as any).c);
+    expect(total).toBeGreaterThan(1000);
+    await seedPortugalCities(ctx.db); // segunda vez não duplica
+    expect(Number(((await queryOne(ctx.db, "SELECT COUNT(*) AS c FROM cities WHERE state = 'PT'", [])) as any).c)).toBe(total);
+
+    const lisboa = await searchCities(ctx.db, 'lisboa', 10);
+    expect(lisboa[0]).toMatchObject({ name: 'Lisboa', state: 'PT' });
+    expect((await searchCities(ctx.db, 'braganca', 10)).some((c) => c.name === 'Bragança' && c.state === 'PT')).toBe(true);
+    // Nome que existe nos dois países: o do Brasil vem primeiro.
+    const santarem = await searchCities(ctx.db, 'santarem', 10);
+    expect(santarem[0].state).toBe('PA');
+    expect(santarem.some((c) => c.state === 'PT')).toBe(true);
+
+    expect(await nearestCity(ctx.db, 38.7223, -9.1393)).toMatchObject({ name: 'Lisboa', state: 'PT' });
+    expect(await nearestCity(ctx.db, 38.7538, -9.2308)).toMatchObject({ name: 'Amadora', state: 'PT' });
+    expect(await nearestCity(ctx.db, 39.7436, -8.8071)).toMatchObject({ name: 'Leiria', state: 'PT' });
+    expect(await nearestCity(ctx.db, -2.44, -54.70)).toMatchObject({ state: 'PA' });
   });
 
   it('admin remove publicação alheia e não aparece como visitante', async () => {
@@ -3596,7 +3620,9 @@ describe('nosigilo backend', () => {
     // Fora do horário da Casa (próxima terça, 15h de Brasília): a abertura forçada destrava a Suruba
     // e o teste não depende de rodar numa sexta ou sábado à noite, com a Casa aberta de verdade.
     const terca = new Date();
-    terca.setUTCDate(terca.getUTCDate() + ((9 - terca.getUTCDay()) % 7 || 7));
+    // Próximo dia útil fora de sex/sáb/dom, no máximo 4 dias à frente: a "próxima terça"
+    // chegava a 7 dias e 17 h e o login de teste (válido por 7 dias) expirava.
+    do terca.setUTCDate(terca.getUTCDate() + 1); while ([5, 6, 0].includes(terca.getUTCDay()));
     terca.setUTCHours(18, 0, 0, 0);
     vi.useFakeTimers({ toFake: ['Date'], now: terca });
     try {
@@ -3679,7 +3705,9 @@ describe('nosigilo backend', () => {
   it('cabines fechadas na entrada: só tipos de perfil, pedido discreto, sem pedidos e intervalo de 10 min', async () => {
     const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
     const terca = new Date();
-    terca.setUTCDate(terca.getUTCDate() + ((9 - terca.getUTCDay()) % 7 || 7));
+    // Próximo dia útil fora de sex/sáb/dom, no máximo 4 dias à frente: a "próxima terça"
+    // chegava a 7 dias e 17 h e o login de teste (válido por 7 dias) expirava.
+    do terca.setUTCDate(terca.getUTCDate() + 1); while ([5, 6, 0].includes(terca.getUTCDay()));
     terca.setUTCHours(18, 0, 0, 0);
     vi.useFakeTimers({ toFake: ['Date'], now: terca });
     try {

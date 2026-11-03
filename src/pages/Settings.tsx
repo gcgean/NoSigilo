@@ -905,6 +905,8 @@ export default function Settings() {
                         {['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map((uf) => (
                           <SelectItem key={uf} value={uf}>{uf}</SelectItem>
                         ))}
+                        {/* Portugal usa "PT" no lugar da UF (cidades de Portugal na mesma base). */}
+                        <SelectItem value="PT">PT (Portugal)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

@@ -4,7 +4,7 @@ import { env } from './env.js';
 import { initDb, type DbHandle } from './db.js';
 import { runShowcaseRotation, seedInterestForNewUsers, runShowcaseFeedLikes, runShowcaseStoryEngagement, backfillOrphanShowcaseDMs, runShowcaseProfileLikes } from './showcase.js';
 import { createApp, premiarTopDoDia, ensureAdministrativeAccess, seedDemo, startWeekendEngagementScheduler, startAdminDailySummaryScheduler, startRenewalReminderScheduler } from './app.js';
-import { seedBrazilianCities } from './seedCities.js';
+import { seedBrazilianCities, seedPortugalCities } from './seedCities.js';
 import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import { sendReengagementEmail, sendWeeklySummaryEmail } from './email.js';
@@ -614,6 +614,7 @@ async function main() {
   });
 
   await seedBrazilianCities(db);
+  await seedPortugalCities(db);
   if (env.SEED_DEMO) {
     await seedDemo(db, env);
   }

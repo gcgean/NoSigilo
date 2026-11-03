@@ -54,14 +54,68 @@ export async function seedBrazilianCities(db: DbHandle) {
   }
 }
 
+/** Portugal entra na mesma tabela, com "PT" no lugar da UF (Lisboa, PT). */
+export const UF_PORTUGAL = 'PT';
+
+// A biblioteca traz nomes em inglês e com sufixo ("Lisbon", "Bragança Municipality").
+const NOMES_EM_PORTUGUES: Record<string, string> = { Lisbon: 'Lisboa' };
+
+/**
+ * Cidades de Portugal (adicionado em 11/2026). Roda uma vez: se já houver
+ * alguma com UF "PT", não faz nada. Uma linha por nome — a biblioteca repete
+ * cidades em distritos errados (Lisboa aparece em "Guarda").
+ */
+export async function seedPortugalCities(db: DbHandle) {
+  const existing = (await queryOne(db, 'SELECT COUNT(1) as c FROM cities WHERE state = ?', [UF_PORTUGAL])) as any;
+  if (Number(existing?.c || 0) > 0) return;
+
+  const vistos = new Set<string>();
+  const linhas: Array<[string, string, string, number, number]> = [];
+  for (const c of (City.getCitiesOfCountry('PT') as any[]) || []) {
+    let name = String(c.name || '').trim().replace(/ Municipality$/, '');
+    name = NOMES_EM_PORTUGUES[name] ?? name;
+    const lat = Number(c.latitude);
+    const lon = Number(c.longitude);
+    const nameNorm = normalizeText(name);
+    if (!name || !nameNorm || Number.isNaN(lat) || Number.isNaN(lon) || vistos.has(nameNorm)) continue;
+    vistos.add(nameNorm);
+    linhas.push([name, nameNorm, UF_PORTUGAL, lat, lon]);
+  }
+  if (linhas.length === 0) return;
+
+  await run(db, 'BEGIN;');
+  try {
+    for (let i = 0; i < linhas.length; i += 500) {
+      const lote = linhas.slice(i, i + 500);
+      await run(
+        db,
+        `INSERT INTO cities (name, name_norm, state, lat, lon) VALUES ${lote.map(() => '(?, ?, ?, ?, ?)').join(', ')}`,
+        lote.flat()
+      );
+    }
+    await run(db, 'COMMIT;');
+    await db.persist();
+  } catch (e) {
+    await run(db, 'ROLLBACK;');
+    throw e;
+  }
+}
+
 export async function searchCities(db: DbHandle, q: string, limit: number) {
   const query = normalizeText(q);
   if (!query) return [];
   const safeLimit = Math.min(50, Math.max(1, limit));
-  const rows = (await queryAll(db, 'SELECT name, state, lat, lon FROM cities WHERE name_norm LIKE ? ORDER BY name_norm ASC LIMIT ?', [
-    `%${query}%`,
-    safeLimit,
-  ])) as any[];
+  // Brasil primeiro, Portugal depois: quem busca "Santarém" no Brasil continua
+  // vendo a do Pará em cima. O nome exato vem antes, para "Porto" achar Porto.
+  const rows = (await queryAll(
+    db,
+    `SELECT name, state, lat, lon FROM cities WHERE name_norm LIKE ?
+      ORDER BY CASE WHEN name_norm = ? THEN 0 ELSE 1 END,
+               CASE WHEN state = '${UF_PORTUGAL}' THEN 1 ELSE 0 END,
+               name_norm ASC
+      LIMIT ?`,
+    [`%${query}%`, query, safeLimit]
+  )) as any[];
   return rows.map((r) => ({ name: r.name, state: r.state, lat: Number(r.lat), lon: Number(r.lon) }));
 }
 
@@ -94,5 +148,32 @@ export async function nearestCity(db: DbHandle, lat: number, lon: number) {
       best = c;
     }
   }
+  // Portugal: a base traz freguesias (só Lisboa tem 52 — "Pena", "Anjos").
+  // Perto de uma cidade principal, o GPS dá a cidade, não o bairro.
+  if (best.state === UF_PORTUGAL) {
+    let principal: (typeof best) | null = null;
+    let principalD = RAIO_CIDADE_PRINCIPAL_PT_KM;
+    for (const c of candidates) {
+      if (c.state !== UF_PORTUGAL || !CIDADES_PRINCIPAIS_PT.has(c.name)) continue;
+      const d = haversineKm({ lat, lon }, c);
+      if (d <= principalD) {
+        principalD = d;
+        principal = c;
+      }
+    }
+    if (principal) return { ...principal, distanceKm: principalD };
+  }
   return { ...best, distanceKm: bestD };
 }
+
+const RAIO_CIDADE_PRINCIPAL_PT_KM = 12;
+const CIDADES_PRINCIPAIS_PT = new Set([
+  'Lisboa', 'Porto', 'Amadora', 'Almada', 'Odivelas', 'Loures', 'Oeiras', 'Cascais', 'Sintra', 'Seixal',
+  'Barreiro', 'Montijo', 'Moita', 'Vila Franca de Xira', 'Mafra', 'Setúbal', 'Palmela', 'Sesimbra',
+  'Matosinhos', 'Vila Nova de Gaia', 'Gondomar', 'Maia', 'Valongo', 'Vila do Conde', 'Póvoa de Varzim',
+  'Espinho', 'Santa Maria da Feira', 'Braga', 'Guimarães', 'Barcelos', 'Vila Nova de Famalicão',
+  'Viana do Castelo', 'Coimbra', 'Figueira da Foz', 'Aveiro', 'Ílhavo', 'Ovar', 'Viseu', 'Leiria',
+  'Marinha Grande', 'Caldas da Rainha', 'Torres Vedras', 'Santarém', 'Tomar', 'Abrantes', 'Castelo Branco',
+  'Covilhã', 'Guarda', 'Évora', 'Beja', 'Portalegre', 'Vila Real', 'Bragança', 'Faro', 'Loulé',
+  'Albufeira', 'Portimão', 'Lagos', 'Olhão', 'Tavira', 'Funchal', 'Ponta Delgada', 'Angra do Heroísmo',
+]);

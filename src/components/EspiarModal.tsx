@@ -72,6 +72,7 @@ export default function EspiarModal({ aberto, aoFechar }: { aberto: boolean; aoF
         >
           <option value="">Escolha seu estado</option>
           {UFS.map((u) => <option key={u} value={u}>{u}</option>)}
+          <option value="PT">Portugal</option>
         </select>
 
         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
