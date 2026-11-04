@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import NomePerfil from '@/components/NomePerfil';
 import { useNavigate } from 'react-router-dom';
-import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Shuffle, Check } from 'lucide-react';
+import { Clapperboard, SlidersHorizontal, Heart, Play, X, Search, Clock, MessageCircle, Flame, Eye, EyeOff, Sparkles, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -61,7 +61,9 @@ type VideoItem = {
 };
 
 const sortOptions: { value: SortOption; label: string; icon: React.ElementType }[] = [
-  { value: 'random',    label: 'Aleatório',      icon: Shuffle },
+  // "Para você": os vídeos que as pessoas mais assistem, curtem e comentam,
+  // ajustados ao gosto de quem vê (backend/src/videosParaVoce.ts).
+  { value: 'random',    label: 'Para você',      icon: Sparkles },
   { value: 'recent',    label: 'Recentes',       icon: Clock },
   { value: 'liked',     label: 'Mais curtidos',  icon: Flame },
   { value: 'commented', label: 'Mais comentados',icon: MessageCircle },
@@ -776,7 +778,7 @@ export default function SearchVideos() {
             title="Nenhum vídeo encontrado"
             description={
               sortFilter === 'random'
-                ? 'A ordem aleatória não trouxe vídeos agora — mas pode haver conteúdo em outras ordenações. Toque em "Recentes" ou ajuste os filtros.'
+                ? 'Não encontramos vídeos para você com esses filtros. Toque em "Recentes" ou ajuste os filtros.'
                 : 'Tente ajustar os filtros ou remover a cidade para ver mais resultados.'
             }
           />

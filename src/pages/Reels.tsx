@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { enviarSessao, enviarTodas, marcarFim, marcarSalto, registrarTempo } from '@/utils/tempoAssistido';
 import { Clapperboard, Heart, MessageCircle, Play, Volume2, VolumeX, ChevronDown, ChevronUp, Send, Maximize2, Minimize2, Lock, Crown, Search, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -454,6 +455,25 @@ export default function Reels() {
 
     return () => observer.disconnect();
   }, [markReelAsSeen, orderedReels, premiumAccess]);
+
+  // Tempo assistido (Para você): ao trocar de vídeo, manda o tempo do anterior;
+  // ao sair da tela ou fechar o app, manda tudo que estiver aberto.
+  const tocandoAntesRef = useRef<string | null>(null);
+  useEffect(() => {
+    const antes = tocandoAntesRef.current;
+    if (antes && antes !== playingId) enviarSessao(antes);
+    tocandoAntesRef.current = playingId;
+  }, [playingId]);
+  useEffect(() => {
+    const aoEsconder = () => { if (document.visibilityState === 'hidden') enviarTodas(); };
+    document.addEventListener('visibilitychange', aoEsconder);
+    window.addEventListener('pagehide', enviarTodas);
+    return () => {
+      document.removeEventListener('visibilitychange', aoEsconder);
+      window.removeEventListener('pagehide', enviarTodas);
+      enviarTodas();
+    };
+  }, []);
 
   const scrollTo = useCallback((idx: number, behavior: ScrollBehavior = 'smooth') => {
     const reel = orderedReels[idx];
@@ -1011,9 +1031,9 @@ export default function Reels() {
                   ? 'metadata'                             // vizinhos: só metadados
                   : 'none'                                 // distantes: nada (economiza memória/dados)
             }
-            onEnded={() => { setBuffering(reel.id, false); handleVideoEnded(idx); }}
+            onEnded={() => { setBuffering(reel.id, false); marcarFim(reel.id); handleVideoEnded(idx); }}
             onLoadStart={() => setBuffering(reel.id, true)}
-            onSeeking={() => setBuffering(reel.id, true)}
+            onSeeking={() => { setBuffering(reel.id, true); marcarSalto(reel.id); }}
             onWaiting={() => setBuffering(reel.id, true)}
             onStalled={() => setBuffering(reel.id, true)}
             onLoadedData={() => setBuffering(reel.id, false)}
@@ -1023,6 +1043,7 @@ export default function Reels() {
             onTimeUpdate={(e) => {
               const v = e.currentTarget;
               if (v.duration > 0) setProgressById((p) => ({ ...p, [reel.id]: v.currentTime / v.duration }));
+              registrarTempo(reel.id, reel.postId, v);
             }}
             onClick={() => handleVideoTap(reel.id)}
             controlsList="nodownload noremoteplayback"

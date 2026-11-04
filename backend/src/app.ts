@@ -26,6 +26,7 @@ import { nearestCity, searchCities, normalizeText } from './seedCities.js';
 import { runShowcaseRotation, seedInterestForNewUser } from './showcase.js';
 import { registrarCasa } from './casa.js';
 import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.js';
+import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
 import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, boasVindasRestantesHoje, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
 import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
@@ -9464,6 +9465,51 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     });
   });
 
+  // Colunas de post + autor que montarVideosDosPosts espera.
+  const COLUNAS_VIDEO_POST = `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json, p.video_temas,
+              u.id as author_id,
+              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
+              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
+              u.gender as author_gender, u.city as author_city, u.state as author_state,
+              u.lat as author_lat, u.lon as author_lon
+       FROM posts p
+       JOIN users u ON u.id = p.user_id`;
+  // Ordem do "Para você" por pessoa+filtros, para paginar sem repetir.
+  const ordensParaVoce = new Map<string, { em: number; ids: string[] }>();
+
+  // POST /api/videos/assistido — quanto tempo a pessoa ficou no vídeo (Reels).
+  // Soma as sessões: rever passa da duração, e isso conta como gostar mais.
+  app.post('/api/videos/assistido', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({
+      postId: z.string().min(1).max(80),
+      assistidoMs: z.number().int().min(0).max(30 * 60_000),
+      duracaoMs: z.number().int().min(0).max(4 * 3_600_000),
+      completou: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const userId = req.auth!.userId;
+    const { postId, duracaoMs, completou } = parsed.data;
+    const post = (await queryOne(db, 'SELECT user_id FROM posts WHERE id = ? LIMIT 1', [postId])) as any;
+    // O próprio autor assistindo não diz nada sobre o vídeo.
+    if (!post || String(post.user_id) === userId) { res.json({ ok: true }); return; }
+    // Uma sessão vale no máximo 3 voltas no vídeo (aba esquecida aberta não infla).
+    const assistidoMs = duracaoMs > 0 ? Math.min(parsed.data.assistidoMs, duracaoMs * 3) : parsed.data.assistidoMs;
+    await run(
+      db,
+      `INSERT INTO video_assistido (user_id, post_id, assistido_ms, duracao_ms, completou, vezes, atualizado_em)
+       VALUES (?, ?, ?, ?, ?, 1, ?)
+       ON CONFLICT (user_id, post_id) DO UPDATE SET
+         assistido_ms = video_assistido.assistido_ms + excluded.assistido_ms,
+         duracao_ms = CASE WHEN excluded.duracao_ms > 0 THEN excluded.duracao_ms ELSE video_assistido.duracao_ms END,
+         completou = video_assistido.completou + excluded.completou,
+         vezes = video_assistido.vezes + 1,
+         atualizado_em = excluded.atualizado_em`,
+      [userId, postId, assistidoMs, duracaoMs, completou ? 1 : 0, nowIso()]
+    );
+    await persist();
+    res.json({ ok: true });
+  });
+
   app.get('/api/videos/search', requireAuth(env, db), async (req, res) => {
     const myId = req.auth!.userId;
     const viewerRow = await queryOne(db, 'SELECT id, lat, lon, looking_for_json FROM users WHERE id = ? LIMIT 1', [myId]) as any;
@@ -9515,6 +9561,75 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
     params.push(limit + 1, offset);
 
+    // "Para você" (sort=random, a ordem padrão): ranking pelo tempo assistido,
+    // curtidas e gosto de quem vê — ver videosParaVoce.ts. A ordem inteira é
+    // montada na página 1 e guardada por 30 min, e as páginas seguintes são
+    // fatias dela: sem repetir vídeo e sem pular os melhores.
+    if (sortParam === 'random') {
+      const chave = JSON.stringify([myId, filterGender, filterCity, filterMaxKm, filterTema, showAllProfiles]);
+      let ordem = page > 1 ? ordensParaVoce.get(chave) : undefined;
+      if (!ordem || Date.now() - ordem.em > 30 * 60_000) {
+        const comVideo = await postsComVideo(db);
+        const candidatosRows = (await queryAll(
+          db,
+          `SELECT p.id AS post_id, p.created_at, p.video_temas, u.id AS author_id,
+                  u.gender AS author_gender, u.lat AS author_lat, u.lon AS author_lon
+             FROM posts p
+             JOIN users u ON u.id = p.user_id
+            WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
+              AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+              AND (p.processando IS NULL OR p.processando = 0)
+              AND p.media_ids_json IS NOT NULL
+              AND p.media_ids_json != '[]'
+              AND p.media_ids_json != 'null'
+              AND NOT EXISTS (
+                SELECT 1 FROM blocks b
+                WHERE (b.blocker_user_id = ? AND b.blocked_user_id = u.id)
+                   OR (b.blocker_user_id = u.id AND b.blocked_user_id = ?)
+              )
+              ${whereExtra}`,
+          params.slice(0, -2)
+        )) as any[];
+        const filtraInteresse = !filterGender && !showAllProfiles;
+        const candidatos: CandidatoVideo[] = [];
+        const infoPost = new Map<string, { autorId: string; temas: string[]; tipo?: string }>();
+        for (const r of candidatosRows) {
+          const postId = String(r.post_id);
+          if (!comVideo.has(postId)) continue;
+          if (filtraInteresse && !matchesLookingFor(myLookingFor, r.author_gender as any)) continue;
+          if (filterMaxKm != null) {
+            const aLat = typeof r.author_lat === 'number' ? r.author_lat : null;
+            const aLon = typeof r.author_lon === 'number' ? r.author_lon : null;
+            if (viewerLat === null || viewerLon === null || aLat === null || aLon === null) continue;
+            if (haversineKm({ lat: viewerLat, lon: viewerLon }, { lat: aLat, lon: aLon }) > filterMaxKm) continue;
+          }
+          const temas = r.video_temas ? String(r.video_temas).split(',').filter(Boolean) : [];
+          const c = { postId, autorId: String(r.author_id), criadoEm: String(r.created_at), temas, tipo: tipoDePerfil(r.author_gender) };
+          candidatos.push(c);
+          infoPost.set(postId, { autorId: c.autorId, temas, tipo: c.tipo });
+        }
+        const [estat, gosto] = await Promise.all([
+          estatisticasDosVideos(db, comVideo),
+          gostoDoLeitor(db, myId, infoPost),
+        ]);
+        ordem = { em: Date.now(), ids: ordenarParaLeitor(candidatos, estat, gosto) };
+        ordensParaVoce.set(chave, ordem);
+        if (ordensParaVoce.size > 2000) ordensParaVoce.delete(ordensParaVoce.keys().next().value as string);
+      }
+      const fatia = ordem.ids.slice((page - 1) * limit, page * limit);
+      const linhas = fatia.length
+        ? ((await queryAll(
+            db,
+            `${COLUNAS_VIDEO_POST} WHERE p.id IN (${fatia.map(() => '?').join(', ')})`,
+            fatia
+          )) as any[])
+        : [];
+      const porId = new Map(linhas.map((r) => [String(r.post_id), r]));
+      const videos = await montarVideosDosPosts(fatia.map((id) => porId.get(id)).filter(Boolean), { viewerLat, viewerLon });
+      res.json({ videos, hasMore: page * limit < ordem.ids.length });
+      return;
+    }
+
     // Use pre-aggregated JOINs instead of correlated subqueries in ORDER BY (huge perf gain)
     let orderByClause: string;
     let aggregateJoins = '';
@@ -9524,12 +9639,6 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     } else if (sortParam === 'commented') {
       aggregateJoins = `LEFT JOIN (SELECT target_id, COUNT(*) as agg_cnt FROM comments WHERE target_type = 'post' GROUP BY target_id) agg ON agg.target_id = p.id`;
       orderByClause = 'COALESCE(agg.agg_cnt, 0) DESC, p.created_at DESC';
-    } else if (sortParam === 'random') {
-      // Ordem aleatória: mistura vídeos novos, antigos, curtidos e não curtidos.
-      // random() existe no SQLite e no PostgreSQL. Como a ordem muda a cada consulta,
-      // a paginação por offset não se aplica — zeramos o offset e o cliente deduplica
-      // pelos ids já carregados, sacando novos vídeos aleatórios a cada página.
-      orderByClause = 'random()';
     } else {
       orderByClause = 'p.created_at DESC';
     }
@@ -9537,19 +9646,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     // params termina com (limit+1, offset); troca o limit+1 pelo scanLimit real da varredura
     const scanParams = [...params];
     scanParams[scanParams.length - 2] = scanLimit;
-    // Ordem aleatória amostra do conjunto todo a cada página (offset não faz sentido).
-    if (sortParam === 'random') scanParams[scanParams.length - 1] = 0;
 
     const rows = await queryAll(
       db,
-      `SELECT p.id as post_id, p.content, p.created_at, p.media_ids_json, p.video_temas,
-              u.id as author_id,
-              CASE WHEN u.is_admin = 1 THEN 'NoSigilo' ELSE u.name END as author_name,
-              CASE WHEN u.is_admin = 1 THEN NULL ELSE u.avatar END as author_avatar,
-              u.gender as author_gender, u.city as author_city, u.state as author_state,
-              u.lat as author_lat, u.lon as author_lon
-       FROM posts p
-       JOIN users u ON u.id = p.user_id
+      `${COLUNAS_VIDEO_POST}
        ${aggregateJoins}
        WHERE (u.is_banned = 0 OR u.is_banned IS NULL)
          AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)

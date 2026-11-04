@@ -16,7 +16,7 @@ export const DEFAULT_VIDEO_FILTERS: VideoFilters = {
   gender: 'prefs',
   city: '',
   distance: 'all',
-  sort: 'random', // ordem aleatória por padrão (mistura novos, antigos, curtidos…)
+  sort: 'random', // "Para você" por padrão (mais assistidos, curtidos e comentados)
   onlyUnseen: true, // "não vistos" marcado por padrão: mostra vídeos ainda não assistidos
   tema: '',
 };
