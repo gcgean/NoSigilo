@@ -527,8 +527,11 @@ export default function Match() {
           usa o menor viewport possível (com a barra visível) e fica estável.
           A altura desconta o que fica em volta (cabeçalho, botões, menu de
           baixo; medido no iPhone em 17/10/2026 ~270px, 300 deixa folga): com 58svh fixo, em celular baixo o card empurrava os
-          botões para fora da tela. */}
-      <div ref={cardRef} style={alturaCard ? { height: alturaCard } : undefined} className="relative h-[clamp(240px,calc(100svh-300px),520px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[600px]">
+          botões para fora da tela.
+          Do sm para cima (computador/tablet) a altura também respeita a tela:
+          com 600px fixos, num notebook de 768px os botões de curtir/passar
+          ficavam abaixo da dobra (teste de 04/11/2026). */}
+      <div ref={cardRef} style={alturaCard ? { height: alturaCard } : undefined} className="relative h-[clamp(240px,calc(100svh-300px),520px)] sm:h-auto sm:aspect-[3/4] sm:max-h-[max(360px,min(600px,calc(100svh-400px)))]">
         {isLoading && (
           <div className="absolute inset-0">
             <MobileState

@@ -1411,7 +1411,7 @@ export default function Chat() {
     >
       {/* Conversations List */}
       <div className={cn(
-        "w-full md:w-80 border-r flex flex-col",
+        "w-full md:w-80 lg:w-96 border-r flex flex-col",
         selectedChat && "hidden md:flex"
       )}>
         <div className="p-4 border-b">
