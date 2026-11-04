@@ -13866,12 +13866,16 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         r,
         posicao,
         faixa: Number(r.match_proximity_band ?? 0),
+        // Sem foto vai para trás mesmo online (igual ao ORDER BY): card sem
+        // foto como primeiro do Match afasta mais do que atrai.
+        semFoto: r.main_filename || String(r.avatar || '').trim() ? 0 : 1,
         atividade: estaOnline(String(r.id)) ? 0 : Number(r.match_activity_tier ?? 3),
       }))
       .sort((a, b) => {
         // Sem coordenadas o perfil vai para o fim no SQL (hasRealDistanceSql);
         // a faixa 999999 preserva isso aqui também.
         if (a.faixa !== b.faixa) return a.faixa - b.faixa;
+        if (a.semFoto !== b.semFoto) return a.semFoto - b.semFoto;
         if (a.atividade !== b.atividade) return a.atividade - b.atividade;
         return a.posicao - b.posicao;
       })
