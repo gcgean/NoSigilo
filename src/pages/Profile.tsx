@@ -39,6 +39,7 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import SeloVerificado from '@/components/SeloVerificado';
 import VerificacaoPerfil from '@/components/VerificacaoPerfil';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string; broken?: boolean };
 type NotificationItem = { id: string; type: string; title: string; description?: string | null; isRead: boolean; createdAt: string; data?: any };
@@ -1802,7 +1803,7 @@ export default function Profile() {
                       {t.author.name}
                     </button>
                     {formatProfileIdentityLine(t.author) ? (
-                      <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}</div>
+                      <div className="text-xs text-muted-foreground mb-2">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></div>
                     ) : null}
                     <div className="text-sm text-muted-foreground whitespace-pre-wrap">{t.content}</div>
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-3">
@@ -2081,7 +2082,7 @@ export default function Profile() {
                     {t.author.name}
                   </button>
                   {formatProfileIdentityLine(t.author) ? (
-                    <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</div>
+                    <div className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></div>
                   ) : null}
                   <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{t.content}</p>
                 </article>

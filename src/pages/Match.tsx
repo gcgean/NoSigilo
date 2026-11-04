@@ -27,6 +27,7 @@ import { calcProfileCompletion } from '@/utils/profileCompletion';
 import { useActivityTracker } from '@/contexts/ActivityTrackerContext';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 type MatchProfile = {
   id: string;
@@ -748,7 +749,7 @@ export default function Match() {
                       {age !== null ? `, ${age}` : ''}
                     </button>
                     {identityLine ? (
-                      <div className="mb-1 text-[0.95rem] font-normal text-white/75 sm:text-sm">{identityLine}</div>
+                      <div className="mb-1 text-[0.95rem] font-normal text-white/75 sm:text-sm">{identityLine}<BandeiraPortugal state={currentProfile?.state} /></div>
                     ) : null}
                     <div className="flex items-center gap-1.5 text-[0.95rem] sm:text-sm text-white/70 mb-3 font-normal">
                       <MapPin className="w-3.5 h-3.5 shrink-0" />

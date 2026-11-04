@@ -60,6 +60,7 @@ import {
 } from '@/components/comments/commentStyles';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ChipsTemasVideo, DialogoTemaVideo, MAX_TEMAS_VIDEO, useTemasVideo } from '@/components/TemasVideo';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 type FeedMedia = { id: string; url: string | null; mimeType?: string | null; isLocked?: boolean };
 type FeedContext = { reason: 'nearby' | 'affinity' | 'popular_local' | 'recent'; label: string };
@@ -2758,7 +2759,7 @@ export default function Feed() {
                         <div className="min-w-0">
                           <span className="truncate text-[0.98rem] font-semibold hover:underline sm:text-base">{experience.author.name}</span>
                           {getIdentityLine(experience.author) ? (
-                            <div className="truncate text-xs text-muted-foreground">{getIdentityLine(experience.author)}</div>
+                            <div className="truncate text-xs text-muted-foreground">{getIdentityLine(experience.author)}<BandeiraPortugal state={experience.author?.state} /></div>
                           ) : null}
                           <span className="text-[13px] text-muted-foreground sm:text-sm">{formatWhen(experience.createdAt)}</span>
                         </div>
@@ -2997,7 +2998,7 @@ export default function Feed() {
                                     </div>
                                   ) : null}
                                 </div>
-                                {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div> : null}
+                                {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}<BandeiraPortugal state={c.user?.state} /></div> : null}
                                 {editingCommentByExpId[experience.id] === c.id ? (
                                   <div className="mt-1 flex items-center gap-2">
                                     <Input
@@ -3162,7 +3163,7 @@ export default function Feed() {
                       })()}
                     </div>
                     {getIdentityLine(item.post.author) ? (
-                      <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.post.author)}</div>
+                      <div className="truncate text-xs text-muted-foreground">{getIdentityLine(item.post.author)}<BandeiraPortugal state={item.post.author?.state} /></div>
                     ) : null}
                   </div>
                 </Link>
@@ -3474,7 +3475,7 @@ export default function Feed() {
                                   )}
                                 </div>
                               </div>
-                              {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}</div> : null}
+                              {getIdentityLine(c.user) ? <div className="text-xs text-muted-foreground">{getIdentityLine(c.user)}<BandeiraPortugal state={c.user?.state} /></div> : null}
                               {editingCommentByPostId[item.post.id] === c.id ? (
                                 <div className="mt-1 flex items-center gap-2">
                                   <Input value={editCommentDraftById[c.id] || ''} onChange={(e) => setEditCommentDraftById((prev) => ({ ...prev, [c.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void saveEditedComment(item.post.id, c.id); }} className={COMMENT_INLINE_INPUT_CLASS} />
@@ -3841,7 +3842,7 @@ export default function Feed() {
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold">{r.user.name}</p>
                               {getIdentityLine(r.user) ? (
-                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
+                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}<BandeiraPortugal state={r.user?.state} /></p>
                               ) : null}
                             </div>
                           </Link>
@@ -3927,7 +3928,7 @@ export default function Feed() {
                             <div className="min-w-0">
                               <p className="truncate text-sm font-semibold">{r.user.name}</p>
                               {getIdentityLine(r.user) ? (
-                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}</p>
+                                <p className="truncate text-xs text-muted-foreground">{getIdentityLine(r.user)}<BandeiraPortugal state={r.user?.state} /></p>
                               ) : null}
                             </div>
                           </Link>

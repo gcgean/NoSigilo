@@ -49,6 +49,7 @@ import {
   COMMENT_SAVE_BUTTON_CLASS,
 } from '@/components/comments/commentStyles';
 import SeloVerificado from '@/components/SeloVerificado';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 type Photo = { id: string; url: string; isPrivate: boolean; isMain: boolean; createdAt?: string };
 type Testimonial = { id: string; content: string; status: string; createdAt: string; media?: Array<{ id: string; url: string; mimeType: string }>; author: { id: string; name: string; avatar?: string | null; gender?: string | null; city?: string | null; state?: string | null } };
@@ -1373,7 +1374,7 @@ export default function UserProfile() {
             <div className="flex flex-col gap-1 text-muted-foreground mb-4">
               <div className="flex items-center justify-center sm:justify-start gap-1">
                 <MapPin className="w-4 h-4" />
-                <span>{cityLine}</span>
+                <span>{cityLine}<BandeiraPortugal state={profile?.state} /></span>
               </div>
               {distanceLabel ? (
                 <div className="flex items-center justify-center sm:justify-start gap-1 text-xs font-medium text-brand-pink">
@@ -1942,7 +1943,7 @@ export default function UserProfile() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <NomePerfil id={t.author.id} nome={t.author.name} className="font-semibold text-sm" />
                             {formatProfileIdentityLine(t.author) ? (
-                              <span className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}</span>
+                              <span className="text-xs text-muted-foreground">{formatProfileIdentityLine(t.author)}<BandeiraPortugal state={t.author?.state} /></span>
                             ) : null}
                             <span className="text-xs text-muted-foreground ml-auto whitespace-nowrap">
                               {format(new Date(t.createdAt), "d 'de' MMM", { locale: ptBR })}

@@ -25,6 +25,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useProfileGate } from '@/contexts/ProfileGateContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -617,7 +618,7 @@ export default function SearchPage() {
             <div className="truncate text-xs text-white/80">{textoDistancia(profile.distanceKm, { cidade: profile.city, deVoce: true })}</div>
           ) : null}
           {formatProfileIdentityLine(profile) ? (
-            <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(profile)}</div>
+            <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(profile)}<BandeiraPortugal state={profile?.state} /></div>
           ) : (
             <div className="flex items-center gap-1 text-xs text-white/65">
               <MapPin className="h-3 w-3 shrink-0" />
@@ -937,6 +938,7 @@ export default function SearchPage() {
                     <p className="truncate text-sm font-medium">{s.name}</p>
                     <p className="truncate text-xs text-muted-foreground">
                       {[s.gender, [s.city, s.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}
+                      <BandeiraPortugal state={s.state} />
                     </p>
                   </div>
                 </button>

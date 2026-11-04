@@ -19,6 +19,7 @@ import { getUserProfileHref } from '@/utils/userProfileNavigation';
 import { useToast } from '@/hooks/use-toast';
 import { hasPremiumAccess } from '@/utils/premium';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 const genderOptions = [
   { value: 'Mulher', label: 'Mulher solteira' },
@@ -210,7 +211,7 @@ export default function FriendsPage() {
             {friend.name}{age ? `, ${age}` : ''}
           </h3>
           {formatProfileIdentityLine(friend) ? (
-            <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(friend)}</div>
+            <div className="truncate text-xs text-white/65">{formatProfileIdentityLine(friend)}<BandeiraPortugal state={friend?.state} /></div>
           ) : (
             <div className="flex items-center gap-1 text-xs text-white/65">
               <MapPin className="h-3 w-3 shrink-0" />

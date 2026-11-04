@@ -6,6 +6,7 @@ import { matchService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { textoDistancia } from '@/utils/distancia';
 import { useToast } from '@/hooks/use-toast';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 type Sugestao = {
   id: string;
@@ -89,6 +90,7 @@ export default function SugestoesPerfis() {
                   <p className="truncate text-[11px] text-muted-foreground">{s.gender || ''}</p>
                   <p className="truncate text-[11px] text-muted-foreground">
                     {textoDistancia(s.distanceKm, { cidade: s.city }) || [s.city, s.state].filter(Boolean).join(', ')}
+                    <BandeiraPortugal state={s.state} />
                   </p>
                 </div>
               </button>

@@ -12,6 +12,7 @@ import { interactionsService, usersService } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { formatProfileIdentityLine } from '@/utils/profileIdentity';
 import { getUserProfileHref } from '@/utils/userProfileNavigation';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 /**
  * Lista de seguidores / seguindo de um perfil.
@@ -146,7 +147,7 @@ export default function FollowListDialog({ userId, tipo, onClose, viewerId, pode
                       <span className="block truncate text-sm font-medium">{u.name}</span>
                       {formatProfileIdentityLine(u) ? (
                         <span className="block truncate text-xs text-muted-foreground">
-                          {formatProfileIdentityLine(u)}
+                          {formatProfileIdentityLine(u)}<BandeiraPortugal state={u?.state} />
                         </span>
                       ) : null}
                     </span>

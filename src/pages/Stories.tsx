@@ -26,6 +26,7 @@ import { STORY_BACKGROUNDS, backgroundCss } from '@/lib/storyBackgrounds';
 import ReferralPaywallModal from '@/components/ReferralPaywallModal';
 import BackToTop from '@/components/BackToTop';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 const HOT_HEART = '❤️‍🔥'; // Coração Quente (reação especial que consome 1 token)
 
@@ -499,6 +500,7 @@ function FavoritesPicker({
                     {(c.city || c.state) && (
                       <p className="truncate text-[11px] text-muted-foreground">
                         {[c.city, c.state].filter(Boolean).join(' · ')}
+                        <BandeiraPortugal state={c.state} />
                       </p>
                     )}
                   </div>

@@ -3,6 +3,7 @@ import { MapPin, X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import BandeiraPortugal from '@/components/BandeiraPortugal';
 
 /**
  * Perfil da pessoa por cima d'A Casa: fotos, bio e o que procura, sem sair da
@@ -65,6 +66,7 @@ export default function PerfilNaCasa({ userId, onFechar }: { userId: string | nu
                   <p className="mt-0.5 flex items-center gap-1 text-xs text-white/70">
                     <MapPin className="h-3 w-3" />
                     {[perfil.city, perfil.state].filter(Boolean).join(' - ')}
+                    <BandeiraPortugal state={perfil.state} />
                     {perfil.distanceKm != null ? ` · ${perfil.distanceKm < 2 ? 'menos de 2' : perfil.distanceKm} km` : ''}
                   </p>
                 )}
