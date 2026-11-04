@@ -1344,7 +1344,7 @@ export default function Layout() {
                     className={cn('min-w-0 flex-1 text-sm font-medium', accessCountdown?.ultimasHoras ? 'text-destructive' : 'text-gold-text')}
                     title={accessCountdown?.title}
                   >
-                    <span className="sm:hidden">⏳ Assinatura acaba em <span className="font-bold">{accessCountdown?.curta || accessCountdown?.contagem}</span></span>
+                    <span className="block truncate sm:hidden">⏳ Assinatura acaba em <span className="font-bold">{String(accessCountdown?.curta || accessCountdown?.contagem || '').replace(/^(\d+d \d+h) \d+m$/, '$1')}</span></span>
                     <span className="hidden sm:inline">⏳ Faltam <span className="font-bold">{accessCountdown?.contagem}</span> para acabar sua assinatura</span>
                   </NavLink>
                   <NavLink
