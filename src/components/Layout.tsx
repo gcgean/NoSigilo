@@ -1570,12 +1570,12 @@ export default function Layout() {
                     }
                   }}
                   className={cn(
-                    "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+                    "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 transition-colors",
                     isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                   )}
                 >
                   <item.icon className={cn("h-4.5 w-4.5", isActive && "animate-scale-in")} />
-                  <span className="max-w-full truncate text-xs leading-4">{item.label}</span>
+                  <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">{item.label}</span>
                   {item.path === '/match' && hasUnreadMatch && (
                     <span className="absolute right-4 top-1.5 h-2 w-2 rounded-full bg-destructive animate-pulse" />
                   )}
@@ -1591,12 +1591,12 @@ export default function Layout() {
           <NavLink
             to="/videos"
             className={({ isActive }) => cn(
-              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 transition-colors",
               isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Clapperboard className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-xs leading-4">Vídeos</span>
+            <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">Vídeos</span>
           </NavLink>
           {/* Atalho para promotor/convites — no desktop fica na sidebar; no mobile
               precisa de uma entrada fixa. Vai ao painel se já for promotor, senão
@@ -1605,7 +1605,7 @@ export default function Layout() {
             <NavLink
               to="/casa"
               className={({ isActive }) => cn(
-                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 font-bold transition-colors",
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 font-bold transition-colors",
                 isActive ? "text-rose-400" : "text-rose-500"
               )}
             >
@@ -1613,19 +1613,19 @@ export default function Layout() {
                 <span className="absolute inset-0 animate-ping rounded-full bg-rose-500/40" />
                 <span className="relative text-base leading-none">🔥</span>
               </span>
-              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
+              <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">A Casa</span>
               <span className="absolute -top-1 right-1 rounded-full bg-rose-600 px-1 text-[8px] font-bold uppercase text-white">ao vivo</span>
             </NavLink>
           ) : contagemCasa ? (
             <NavLink
               to="/casa"
               className={({ isActive }) => cn(
-                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 font-bold transition-colors",
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 font-bold transition-colors",
                 isActive ? "text-fuchsia-400" : "text-fuchsia-500"
               )}
             >
               <span className="relative text-base leading-none">🔥</span>
-              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
+              <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">A Casa</span>
               <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 animate-pulse whitespace-nowrap rounded-full bg-gradient-to-r from-fuchsia-600 to-rose-600 px-1.5 text-[9px] font-black text-white shadow">⏳ {contagemCasa}</span>
             </NavLink>
           ) : user?.dePortugal ? (
@@ -1633,25 +1633,25 @@ export default function Layout() {
             <NavLink
               to="/casa"
               className={({ isActive }) => cn(
-                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+                "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 transition-colors",
                 isActive ? "text-fuchsia-400" : "text-fuchsia-500/80 hover:text-fuchsia-500"
               )}
             >
               <span className="relative text-base leading-none">🔥</span>
-              <span className="max-w-full truncate text-xs leading-4">A Casa</span>
+              <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">A Casa</span>
             </NavLink>
           ) : (
           <NavLink
             to={user?.isPromoter ? '/promoter' : '/ganhe'}
             className={cn(
-              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors",
+              "relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-1.5 min-[400px]:px-2 transition-colors",
               (location.pathname === '/promoter' || location.pathname === '/ganhe' || location.pathname === '/invites')
                 ? "text-amber-500"
                 : "text-amber-500/80 hover:text-amber-500"
             )}
           >
             <BadgeDollarSign className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-xs leading-4">Ganhe $</span>
+            <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">Ganhe $</span>
           </NavLink>
           )}
         </div>
