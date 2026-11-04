@@ -115,6 +115,30 @@ export default function AdminNotas() {
             </p>
           </Card>
 
+          {dados.detratores > 0 && (
+            <Card className="p-4 space-y-2">
+              <h4 className="font-semibold">Por que deram nota baixa (0 a 6)</h4>
+              <p className="text-[11px] text-muted-foreground">
+                {dados.baixasComMotivo} de {dados.detratores} notas baixas com motivo. Quem deu nota baixa sem explicar recebe, uma vez, a pergunta do motivo ao abrir o app.
+              </p>
+              {dados.motivosDasBaixas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Ainda nenhum motivo marcado no período.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {dados.motivosDasBaixas.map((m) => (
+                    <div key={m.id} className="flex items-center gap-2 text-sm">
+                      <span className="w-56 shrink-0 truncate">{m.rotulo}</span>
+                      <div className="h-2.5 flex-1 rounded-full bg-muted">
+                        <div className="h-2.5 rounded-full bg-destructive/70" style={{ width: `${(m.total / dados.motivosDasBaixas[0].total) * 100}%` }} />
+                      </div>
+                      <span className="w-8 text-right text-xs font-semibold">{m.total}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          )}
+
           <ComentariosDasNotas dias={dias} />
         </>
       )}
@@ -152,7 +176,7 @@ function ComentariosDasNotas({ dias }: { dias: number }) {
   return (
     <Card className="p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h4 className="font-semibold">O que escreveram {dados ? <span className="text-sm font-normal text-muted-foreground">· {dados.total} comentário(s)</span> : null}</h4>
+        <h4 className="font-semibold">O que disseram {dados ? <span className="text-sm font-normal text-muted-foreground">· {dados.total} resposta(s) com motivo ou comentário</span> : null}</h4>
         <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); setBuscaAplicada(busca.trim()); }}>
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar no texto…" className="h-8 w-44 rounded-full border bg-background px-3 text-xs" />
           <button type="submit" className="flex h-8 w-8 items-center justify-center rounded-full border" aria-label="Buscar"><Search className="h-3.5 w-3.5" /></button>
@@ -182,7 +206,14 @@ function ComentariosDasNotas({ dias }: { dias: number }) {
                   <span className="ml-2">{new Date(r.em).toLocaleDateString('pt-BR')}</span>
                 </span>
               </div>
-              <p className="mt-1 text-sm italic text-muted-foreground">“{r.sugestao}”</p>
+              {r.motivos.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {r.motivos.map((m) => (
+                    <span key={m.id} className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">{m.rotulo}</span>
+                  ))}
+                </div>
+              )}
+              {r.sugestao && <p className="mt-1 text-sm italic text-muted-foreground">“{r.sugestao}”</p>}
             </div>
           ))}
         </div>

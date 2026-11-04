@@ -1244,13 +1244,19 @@ export const capaService = {
   },
 };
 
+export type MotivoNota = { id: string; rotulo: string };
 export const notaDoAppService = {
-  pendente: async (): Promise<{ perguntar: boolean }> => {
+  pendente: async (): Promise<{ perguntar: boolean; perguntarMotivo?: { id: string; nota: number }; motivos?: MotivoNota[] }> => {
     const response = await apiClient.get('/app-rating/pendente');
     return response.data;
   },
-  enviar: async (nota: number, sugestao?: string) => {
-    const response = await apiClient.post('/app-rating', { nota, sugestao });
+  enviar: async (nota: number, sugestao?: string, motivos?: string[]) => {
+    const response = await apiClient.post('/app-rating', { nota, sugestao, motivos });
+    return response.data;
+  },
+  /** Motivo da nota baixa dada antes sem explicação. Vazio = "agora não" (não pergunta mais). */
+  motivo: async (id: string, motivos: string[], sugestao?: string) => {
+    const response = await apiClient.post(`/app-rating/${encodeURIComponent(id)}/motivo`, { motivos, sugestao });
     return response.data;
   },
 };
@@ -1264,13 +1270,15 @@ export type RelatorioNotas = {
   neutros: number;
   detratores: number;
   distribuicao: Array<{ nota: number; total: number }>;
+  motivosDasBaixas: Array<MotivoNota & { total: number }>;
+  baixasComMotivo: number;
   respostas: Array<{
     nota: number; sugestao: string | null; em: string; nome: string | null;
     local: string | null; tipo: string | null; assinante: boolean;
   }>;
 };
 
-export type ComentarioNota = { nota: number; sugestao: string; em: string; nome: string | null; local: string | null; tipo: string | null; assinante: boolean };
+export type ComentarioNota = { nota: number; sugestao: string | null; motivos: MotivoNota[]; em: string; nome: string | null; local: string | null; tipo: string | null; assinante: boolean };
 export const adminNotasService = {
   relatorio: async (dias: number): Promise<RelatorioNotas> => {
     const response = await apiClient.get('/admin/analytics/notas', { params: { dias } });

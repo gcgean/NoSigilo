@@ -20383,6 +20383,34 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   // está gostando antes de as pessoas sumirem.
   const DIAS_ENTRE_PERGUNTAS = 90;
   const DIAS_MINIMOS_DE_CONTA = 7;
+  // Motivos de 1 toque para nota baixa (0 a 6). Só 16 de 100 notas baixas
+  // vinham com texto (nov/2026): escrever dá trabalho, tocar não. A lista mora
+  // aqui e vai para o app na resposta de /pendente, para não divergir.
+  const MOTIVOS_NOTA: Array<{ id: string; rotulo: string }> = [
+    { id: 'poucos_perto', rotulo: 'Pouca gente perto de mim' },
+    { id: 'sem_resposta', rotulo: 'Ninguém me responde' },
+    { id: 'preco', rotulo: 'Preço / ter que pagar' },
+    { id: 'perfis_falsos', rotulo: 'Perfis falsos ou golpes' },
+    { id: 'muitos_homens', rotulo: 'Muitos homens, poucas mulheres e casais' },
+    { id: 'erro', rotulo: 'App lento ou com erro' },
+    { id: 'dificil', rotulo: 'Difícil de usar' },
+    { id: 'outro', rotulo: 'Outro motivo' },
+  ];
+  const ROTULO_MOTIVO = new Map(MOTIVOS_NOTA.map((m) => [m.id, m.rotulo]));
+  const motivosValidos = (lista?: string[]) =>
+    [...new Set((lista ?? []).filter((m) => ROTULO_MOTIVO.has(m)))].slice(0, 4);
+  const lerMotivos = (csv: unknown) =>
+    String(csv || '').split(',').filter((m) => ROTULO_MOTIVO.has(m)).map((id) => ({ id, rotulo: ROTULO_MOTIVO.get(id)! }));
+  const avisarNotaBaixa = async (userId: string, nota: number, motivos: string[], sugestao?: string | null, depois = false) => {
+    const quem = (await queryOne(db, 'SELECT name, is_premium FROM users WHERE id = ?', [userId])) as any;
+    void notifyAdminsTelegram(
+      { db, env },
+      `⚠️ ${depois ? 'Motivo da nota' : 'Nota'} ${nota}/10 de ${quem?.name || 'usuário'}${Number(quem?.is_premium || 0) === 1 ? ' (assinante)' : ''}` +
+      (motivos.length ? `\nMotivo: ${motivos.map((m) => ROTULO_MOTIVO.get(m)).join(', ')}` : '') +
+      (sugestao ? `\n"${String(sugestao).slice(0, 300)}"` : ''),
+      'notas'
+    ).catch(() => undefined);
+  };
 
   app.get('/api/app-rating/pendente', requireAuth(env, db), async (req, res) => {
     try {
@@ -20395,16 +20423,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         return;
       }
       const ultima = (await queryOne(
-        db, 'SELECT created_at FROM app_ratings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId]
+        db, 'SELECT id, nota, sugestao, motivos, motivo_pedido_em, created_at FROM app_ratings WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', [userId]
       )) as any;
       if (ultima?.created_at) {
         const quando = new Date(String(ultima.created_at)).getTime();
         if (Date.now() - quando < DIAS_ENTRE_PERGUNTAS * 24 * 60 * 60 * 1000) {
-          res.json({ perguntar: false });
+          // Deu nota baixa sem dizer por quê: pergunta o motivo uma vez só.
+          const semMotivo = Number(ultima.nota) <= 6 && !String(ultima.sugestao || '').trim() && !ultima.motivos && !ultima.motivo_pedido_em;
+          res.json(semMotivo
+            ? { perguntar: false, perguntarMotivo: { id: String(ultima.id), nota: Number(ultima.nota) }, motivos: MOTIVOS_NOTA }
+            : { perguntar: false });
           return;
         }
       }
-      res.json({ perguntar: true });
+      res.json({ perguntar: true, motivos: MOTIVOS_NOTA });
     } catch {
       res.json({ perguntar: false });
     }
@@ -20415,29 +20447,48 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const parsed = z.object({
         nota: z.number().int().min(0).max(10),
         sugestao: z.string().max(1000).optional(),
+        motivos: z.array(z.string().max(40)).max(8).optional(),
       }).safeParse(req.body);
       if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+      const motivos = parsed.data.nota <= 6 ? motivosValidos(parsed.data.motivos) : [];
       await run(
         db,
-        'INSERT INTO app_ratings (id, user_id, nota, sugestao, created_at) VALUES (?, ?, ?, ?, ?)',
-        [randomUUID(), req.auth!.userId, parsed.data.nota, parsed.data.sugestao?.trim() || null, nowIso()]
+        'INSERT INTO app_ratings (id, user_id, nota, sugestao, motivos, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [randomUUID(), req.auth!.userId, parsed.data.nota, parsed.data.sugestao?.trim() || null, motivos.join(',') || null, nowIso()]
       );
       await persist();
       // Nota baixa de quem paga é o alerta mais caro de ignorar.
-      if (parsed.data.nota <= 6) {
-        const quem = (await queryOne(db, 'SELECT name, is_premium FROM users WHERE id = ?', [req.auth!.userId])) as any;
-        void notifyAdminsTelegram(
-          { db, env },
-          `⚠️ Nota ${parsed.data.nota}/10 de ${quem?.name || 'usuário'}${Number(quem?.is_premium || 0) === 1 ? ' (assinante)' : ''}` +
-          (parsed.data.sugestao ? `\n"${String(parsed.data.sugestao).slice(0, 300)}"` : ''),
-          'notas'
-        ).catch(() => undefined);
-      }
+      if (parsed.data.nota <= 6) await avisarNotaBaixa(req.auth!.userId, parsed.data.nota, motivos, parsed.data.sugestao);
       res.json({ ok: true });
     } catch (error) {
       console.error('[app-rating]', error);
       res.status(500).json({ error: 'nota_indisponivel' });
     }
+  });
+
+  // Motivo da nota baixa, perguntado depois (uma vez só). Sem motivo e sem
+  // texto = "agora não": marca como perguntado e não pergunta mais.
+  app.post('/api/app-rating/:id/motivo', requireAuth(env, db), async (req, res) => {
+    const parsed = z.object({
+      motivos: z.array(z.string().max(40)).max(8).optional(),
+      sugestao: z.string().max(1000).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: 'invalid_input' }); return; }
+    const nota = (await queryOne(
+      db, 'SELECT id, nota, motivo_pedido_em FROM app_ratings WHERE id = ? AND user_id = ?', [String(req.params.id), req.auth!.userId]
+    )) as any;
+    if (!nota) { res.status(404).json({ error: 'not_found' }); return; }
+    if (nota.motivo_pedido_em) { res.json({ ok: true }); return; }
+    const motivos = motivosValidos(parsed.data.motivos);
+    const sugestao = parsed.data.sugestao?.trim() || null;
+    await run(
+      db,
+      'UPDATE app_ratings SET motivos = ?, sugestao = COALESCE(?, sugestao), motivo_pedido_em = ? WHERE id = ?',
+      [motivos.join(',') || null, sugestao, nowIso(), String(nota.id)]
+    );
+    await persist();
+    if (motivos.length || sugestao) await avisarNotaBaixa(req.auth!.userId, Number(nota.nota), motivos, sugestao, true);
+    res.json({ ok: true });
   });
 
   // Histórico completo do que escreveram na nota do app, paginado e filtrável por faixa de nota.
@@ -20449,7 +20500,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const busca = String(req.query.busca || '').trim().slice(0, 80);
       const porPagina = 30;
       const pagina = Math.max(1, Math.floor(Number(req.query.pagina || 1)));
-      const filtros: string[] = ["r.sugestao IS NOT NULL", "TRIM(r.sugestao) <> ''"];
+      const filtros: string[] = ["((r.sugestao IS NOT NULL AND TRIM(r.sugestao) <> '') OR r.motivos IS NOT NULL)"];
       const params: unknown[] = [];
       if (dias > 0) { filtros.push('r.created_at >= ?'); params.push(new Date(Date.now() - dias * 86_400_000).toISOString()); }
       if (faixa === 'insatisfeitos') filtros.push('r.nota <= 6');
@@ -20460,7 +20511,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       const total = Number(((await queryOne(db, `SELECT COUNT(*) AS c FROM app_ratings r WHERE ${where}`, params)) as any)?.c || 0);
       const linhas = (await queryAll(
         db,
-        `SELECT r.nota, r.sugestao, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
+        `SELECT r.nota, r.sugestao, r.motivos, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
            FROM app_ratings r LEFT JOIN users u ON u.id = r.user_id
           WHERE ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
         [...params, porPagina, (pagina - 1) * porPagina]
@@ -20469,7 +20520,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         total, pagina, porPagina, paginas: Math.max(1, Math.ceil(total / porPagina)),
         itens: linhas.map((l) => ({
           nota: Number(l.nota),
-          sugestao: String(l.sugestao),
+          sugestao: l.sugestao ? String(l.sugestao) : null,
+          motivos: lerMotivos(l.motivos),
           em: l.created_at,
           nome: l.name ?? null,
           local: [l.city, l.state].filter(Boolean).join('/') || null,
@@ -20491,11 +20543,20 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
 
       const linhas = (await queryAll(
         db,
-        `SELECT r.nota, r.sugestao, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
+        `SELECT r.nota, r.sugestao, r.motivos, r.created_at, u.name, u.city, u.state, u.gender, u.is_premium
            FROM app_ratings r LEFT JOIN users u ON u.id = r.user_id
           WHERE r.created_at >= ? ORDER BY r.created_at DESC`,
         [desde]
       )) as any[];
+      // Por que deram nota baixa: contagem dos motivos de 1 toque (0 a 6).
+      const baixas = linhas.filter((l) => Number(l.nota) <= 6);
+      const contagem = new Map<string, number>();
+      for (const l of baixas) for (const m of lerMotivos(l.motivos)) contagem.set(m.id, (contagem.get(m.id) || 0) + 1);
+      const motivosDasBaixas = MOTIVOS_NOTA
+        .map((m) => ({ ...m, total: contagem.get(m.id) || 0 }))
+        .filter((m) => m.total > 0)
+        .sort((a, b) => b.total - a.total);
+      const baixasComMotivo = baixas.filter((l) => l.motivos || String(l.sugestao || '').trim()).length;
 
       const notas = linhas.map((l) => Number(l.nota));
       const total = notas.length;
@@ -20514,6 +20575,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         neutros,
         detratores,
         distribuicao: Array.from({ length: 11 }, (_, n) => ({ nota: n, total: notas.filter((x) => x === n).length })),
+        motivosDasBaixas,
+        baixasComMotivo,
         respostas: linhas.slice(0, 60).map((l) => ({
           nota: Number(l.nota),
           sugestao: l.sugestao ?? null,
