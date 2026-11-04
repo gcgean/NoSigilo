@@ -126,6 +126,23 @@ describe('novosNaRegiao — rotas', () => {
     await request(app).post(`/api/conversations/${conv.id}/messages`).set('Authorization', `Bearer ${eu.token}`).send({ content: 'oi de novo' }).expect(200);
   });
 
+  it('boas-vindas de quem não é do tipo liberado pelo perfil vira pedido de mensagem', async () => {
+    const homem = await criar('HomemBV', { gender: 'Homem', criadoHaDias: 60, lookingFor: ['Casal (Ele/Ela)'] });
+    const casal = await criar('CasalBV', { gender: 'Casal (Ele/Ela)' });
+    const mulher = await criar('MulherBV', { gender: 'Mulher', criadoHaDias: 60, lookingFor: ['Casal (Ele/Ela)'] });
+    const casal2 = await criar('CasalBV2', { gender: 'Casal (Ele/Ela)' });
+
+    const c1 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${homem.token}`).send({ userId: casal.id }).expect(200);
+    expect(c1.body.pedido).toBe(true);
+    await request(app).post(`/api/conversations/${c1.body.id}/messages`).set('Authorization', `Bearer ${homem.token}`)
+      .send({ content: 'Sejam bem-vindos!', boasVindas: true }).expect(200);
+    expect(await queryOne(db, 'SELECT pedido_para FROM conversations WHERE id = ?', [c1.body.id])).toMatchObject({ pedido_para: casal.id });
+
+    // Mulher é tipo liberado por padrão para casais: vai direto.
+    const c2 = await request(app).post('/api/conversations').set('Authorization', `Bearer ${mulher.token}`).send({ userId: casal2.id }).expect(200);
+    expect(c2.body.pedido).toBe(false);
+  });
+
   it('perfil que não é mais novo recusa boas-vindas; preferência de aviso pode ser desligada', async () => {
     const eu = await criar('Leitor2', { gender: 'Homem', criadoHaDias: 60 });
     const antiga = await criar('Antiga2', { gender: 'Mulher', criadoHaDias: 20 });

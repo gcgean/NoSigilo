@@ -96,7 +96,11 @@ export default function NovosNaRegiao({ viewerId, premiumAccess, onAbrirConversa
       marcar(p.id, { boasVindasEnviada: true });
       setRestantes((n) => Math.max(0, n - 1));
       setEscrevendoPara(null);
-      toast({ title: 'Boas-vindas enviada 👋', description: `${p.name} vai receber sua mensagem.` });
+      // Mesma regra de qualquer conversa nova: se o perfil só recebe direto de
+      // certos tipos (Configurações › pedidos de mensagem), vai como pedido.
+      toast(conv.pedido
+        ? { title: 'Boas-vindas enviada como pedido 👋', description: `${p.name} vê nos Pedidos de mensagem e decide se aceita.` }
+        : { title: 'Boas-vindas enviada 👋', description: `${p.name} vai receber sua mensagem.` });
       onAbrirConversa(String(conv.id));
     } catch (err: any) {
       const codigo = err?.response?.data?.error;
