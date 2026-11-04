@@ -1512,6 +1512,7 @@ function cityPage(city) {
 
 
     ${blocoDadosCidade(city)}
+    ${blocoCasaCidade(city)}
     <section class="cl-section cl-alt">
       <div class="cl-alt-copy">
         <h2>Como <em>funciona</em></h2>
@@ -1572,7 +1573,7 @@ function cityPage(city) {
         <a href="/swing/${st.slug}/">Troca de casais em ${esc(st.name)}</a>
         ${SELECTED_CITIES.filter((c) => c.state.slug === st.slug && c.slug !== city.slug).map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Troca de casais em ${esc(c.name)}</a>`).join('')}
         ${vizinhas.map((c) => `<a href="/swing/${c.state.slug}/${c.slug}/">Swing em ${esc(c.name)}</a>`).join('')}
-        <a href="/acasa">A Casa: boate liberal online</a>
+        <a href="${CASA_PATH}">Casa de swing online</a>
       </div>
     </section>
 
@@ -1596,7 +1597,7 @@ function cityPage(city) {
   return campaignDocument({
     noindex: !indexavel,
     title, desc, url, geoUf: st.uf, geoPlace: city.name, jsonld,
-    body: camadaBrasil(body, `swing/${st.slug}/${city.slug}`, city.name), extraCss: BR_CSS });
+    body: camadaBrasil(body, `swing/${st.slug}/${city.slug}`, city.name), extraCss: BR_CSS + CASA_CSS });
 }
 
 function hubPage() {
@@ -1895,6 +1896,7 @@ function sitemap() {
     { loc: `${REGIONAL}/swing/`, freq: 'weekly', pri: '0.9' },
     // A Casa: título/descrição/canonical próprios aplicados pelo app (seoDaRota.ts).
     { loc: `${SITE}/acasa`, freq: 'weekly', pri: '0.8' },
+    { loc: `${REGIONAL}${CASA_PATH}`, freq: 'monthly', pri: '0.8', chave: CASA_PATH },
   ];
   const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8', chave: `/swing/${s.slug}/` }));
   const cityUrls = SELECTED_CITIES
@@ -2327,6 +2329,231 @@ function camadaBrasil(body, origem, lugar) {
   return b + fixo;
 }
 
+// ---------------------------------------------------------------------------
+//  A Casa: bloco nas páginas de cidade + página "casa de swing online" (11/2026)
+// ---------------------------------------------------------------------------
+// Quem procura "casa de swing em <cidade do interior>" muitas vezes não tem
+// casa perto, ou tem e não quer ser reconhecido na porta. As páginas de cidade
+// já recebem essa busca; o bloco oferece A Casa ali mesmo. A página própria
+// existe porque /acasa é tela do app (React), que o Google lê mal.
+//
+// A página mora em /swing/casa-de-swing-online/ de propósito: assim a origem
+// "swing/casa-de-swing-online" passa no mesmo formato que o app e o backend já
+// validam, e os cadastros dela aparecem no card de desempenho do admin sem
+// nenhuma mudança fora deste script.
+//
+// Os fatos (horário, salas, regras, preço) vêm de backend/src/casa.ts e do
+// manual do suporte (supportAiConhecimento.ts). Mudou lá, mude aqui.
+const CASA_SLUG = 'casa-de-swing-online';
+const CASA_PATH = `/swing/${CASA_SLUG}/`;
+const CASA_ORIGEM = `swing/${CASA_SLUG}`;
+const casaUrl = (origem) => `/acasa?origem=${origem}`;
+
+const CASA_CSS = `
+.casa-bloco{width:min(100% - 2.5rem,1100px);margin:clamp(2rem,5vw,3.5rem) auto;padding:clamp(1.4rem,4vw,2.2rem);border-radius:1.2rem;background:radial-gradient(ellipse at 90% 0%,rgba(217,70,239,.28),transparent 60%),linear-gradient(135deg,#2a0a1c,#14070c);border:1px solid rgba(255,122,160,.35);box-shadow:0 20px 50px rgba(194,24,91,.25);}
+.casa-bloco .casa-etiqueta{display:inline-block;font-size:.7rem;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:#f0abfc;}
+.casa-bloco h2{margin-top:.4rem;font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.1;}
+.casa-bloco p{margin-top:.8rem;color:#e9d3cf;max-width:44rem;}
+.casa-bloco ul{margin:1rem 0 0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:.5rem;}
+.casa-bloco li{padding:.35rem .8rem;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(242,215,163,.22);font-size:.82rem;color:#f2d7a3;}
+.casa-acoes{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.4rem;}
+.casa-acoes .cl-cta{margin-top:1.3rem;}
+.casa-mais{margin-top:1.3rem;color:#f2d7a3;font-weight:700;font-size:.92rem;}
+.casa-salas{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:.9rem;margin-top:1.4rem;}
+.casa-sala{padding:1.1rem 1.2rem;border-radius:1rem;background:rgba(255,255,255,.04);border:1px solid rgba(242,215,163,.18);}
+.casa-sala h3{font-size:1rem;color:#fff;}
+.casa-sala p{margin-top:.35rem;color:#cdb6b2;font-size:.88rem;line-height:1.5;}
+.casa-pulseiras{margin-top:1.2rem;display:grid;gap:.6rem;}
+.casa-pulseiras div{display:flex;gap:.8rem;align-items:baseline;color:#cdb6b2;font-size:.92rem;}
+.casa-pulseiras b{color:#fff;min-width:6.5rem;}
+`;
+
+/** Bloco d'A Casa na página da cidade. */
+function blocoCasaCidade(city) {
+  const st = city.state;
+  return `<section class="casa-bloco" id="a-casa">
+      <span class="casa-etiqueta">Casa de swing online · só para maiores de 18</span>
+      <h2>Não tem casa de swing perto de <em>${esc(city.name)}</em>?</h2>
+      <p>
+        Conheça <strong>A Casa</strong>, a casa de swing online do NoSigilo. Você entra de ${esc(city.name)} mesmo,
+        sem fila na porta e sem ninguém te reconhecer: salas ao vivo com casais, mulheres e singles,
+        brincadeiras puxadas pela anfitriã e cabine reservada a dois.
+      </p>
+      <ul>
+        <li>Sexta e sábado a partir das 22h</li>
+        <li>Mulher entra grátis</li>
+        <li>Discrição total</li>
+      </ul>
+      <div class="casa-acoes">
+        <a class="cl-cta" href="${casaUrl(`swing/${st.slug}/${city.slug}`)}">Reservar meu lugar ${icon('arrow')}</a>
+        <a class="casa-mais" href="${CASA_PATH}">Como funciona A Casa →</a>
+      </div>
+    </section>`;
+}
+
+const CASA_SALAS = [
+  { nome: '🍸 Salão Principal', desc: 'A pista de todo mundo: conhecer, provocar e chamar alguém para a cabine.' },
+  { nome: '💑 Sala dos Casais', desc: 'Só casais e mulheres, com as brincadeiras mais quentes da noite.' },
+  { nome: '😈 Quarto Cuckold', desc: 'Para casais que gostam de exibir a esposa. Quem escolhe é ela; solteiros entram sem fila.' },
+  { nome: '🫦 Suruba', desc: 'Onde todo mundo se pega. Casais e mulheres entram direto; o solteiro entra se animou a noite ou se for chamado.' },
+];
+
+const CASA_PULSEIRAS = [
+  ['🟢 Verde', 'aberto a tudo.'],
+  ['🟡 Amarela', 'só soft: beijos e carícias, sem sexo com outros.'],
+  ['🟣 Roxa', 'single bem-vindo.'],
+  ['🔴 Vermelha', 'só olhando. Nunca é sorteado nas brincadeiras.'],
+];
+
+function faqCasa() {
+  return [
+    { p: 'O que é uma casa de swing online?',
+      r: 'É uma casa de swing que acontece pela internet. A Casa do NoSigilo tem salas ao vivo com casais, mulheres e homens solteiros, uma anfitriã que puxa as brincadeiras, um bar para pagar drinks e cabines reservadas para conversar a dois ou em grupo. Tudo pelo celular ou computador, sem sair de casa.' },
+    { p: 'Quando A Casa abre?',
+      r: 'Toda sexta, das 22h à 1h, e todo sábado, das 22h às 2h (horário de Brasília). Quem reserva o lugar recebe um aviso no celular quando abre.' },
+    { p: 'Moro no interior e não tem casa de swing na minha cidade. Posso entrar?',
+      r: 'Pode. A Casa é online: dá para entrar de qualquer cidade do Brasil. É justamente para quem tem vontade de conhecer o meio liberal e não tem uma casa por perto, ou não quer ser visto entrando numa.' },
+    { p: 'Quanto custa?',
+      r: 'Mulheres entram grátis, com tudo liberado. Sem assinar, qualquer pessoa entra espiando: lê a conversa, mas não fala. Para conversar, brincar, mandar foto e ir para a cabine é preciso ser Premium (R$ 9,90 por mês) ou estar no período grátis do cadastro (casais têm 15 dias).' },
+    { p: 'Alguém vai saber que eu entrei?',
+      r: 'Seu e-mail e sua localização exata nunca aparecem, e os perfis do NoSigilo não aparecem no Google. Print e gravação de tela são proibidos na Casa: a tela leva uma marca d’água com a identificação de quem está vendo, e quem vazar conteúdo é banido. Fotos e vídeos enviados lá dentro são de visualização única.' },
+    { p: 'Homem solteiro pode entrar?',
+      r: 'Pode. Para a noite ficar boa para todos, homens ocupam no máximo metade de cada sala; quando lota, dá para entrar na fila ou ser chamado por um casal ou uma mulher, e aí entra sem fila. No Quarto Cuckold os solteiros entram à vontade.' },
+    { p: 'Somos um casal iniciante. Como começamos?',
+      r: 'Escolham a pulseira vermelha (só olhando) ou a amarela (só soft) e fiquem à vontade para observar. Nas brincadeiras, só é sorteado quem marca "Quero brincar", e "Passo" sempre vale. A cabine só abre se todos de dentro quiserem.' },
+  ];
+}
+
+function casaPage() {
+  const url = `${REGIONAL}${CASA_PATH}`;
+  const title = 'Casa de Swing Online: A Casa, a boate liberal virtual | NoSigilo';
+  const desc = 'Casa de swing online e virtual: salas ao vivo com casais, mulheres e singles, toda sexta e sábado a partir das 22h. Mulher entra grátis. Entre de qualquer cidade, com discrição.';
+  const faq = faqCasa();
+  const jsonld = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: title,
+      description: desc,
+      url,
+      inLanguage: 'pt-BR',
+      isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+    },
+    breadcrumbLd([
+      { name: 'Início', path: '/' },
+      { name: 'Swing por estado', path: '/swing/' },
+      { name: 'Casa de swing online', path: CASA_PATH },
+    ]),
+    faqJsonLd(faq),
+  ];
+  const reservar = (texto) => `<a class="cl-cta" href="${casaUrl(CASA_ORIGEM)}">${texto} ${icon('arrow')}</a>`;
+
+  const body = `${campaignHeader(CASA_ORIGEM)}
+
+    <section class="cl-hero">
+      <div class="cl-hero-copy">
+        <p class="cl-crumb"><a href="/swing/">Swing por estado</a> › Casa de swing online</p>
+        <h1>Casa de swing <em>online</em>: conheça A Casa</h1>
+        <p class="cl-intro">
+          Tem vontade de conhecer uma <strong>casa de swing</strong>, mas não tem nenhuma perto, ou tem receio de ser
+          reconhecido na porta? <strong>A Casa</strong> é a <strong>casa de swing virtual</strong> do NoSigilo: toda sexta e
+          sábado, a partir das 22h, casais, mulheres e singles se encontram em salas ao vivo, com brincadeiras,
+          bar e cabine reservada. Você entra de qualquer cidade, pelo celular, e só mostra o que quiser.
+        </p>
+        <p class="cl-prova"><strong>Sexta 22h–1h · Sábado 22h–2h</strong>&nbsp;(horário de Brasília) · mulher entra grátis</p>
+        ${reservar('Reservar meu lugar')}
+        <div class="cl-trust">
+          <span class="cl-trust-item">${icon('users')}Casais, mulheres e singles</span>
+          <span class="cl-trust-item">${icon('lock')}Discrição total</span>
+          <span class="cl-trust-item">${icon('badge')}Só maiores de 18</span>
+        </div>
+      </div>
+      <figure class="cl-hero-media">
+        <img src="/landing/hero-masquerade-722.webp" alt="Casal adulto mascarado numa festa liberal" width="722" height="361" loading="eager" />
+      </figure>
+    </section>
+
+    <section class="cl-section cl-region">
+      <h2>As salas da Casa</h2>
+      <p>Cada sala tem seu clima. Você circula entre elas durante a noite.</p>
+      <div class="casa-salas">
+        ${CASA_SALAS.map((s) => `<div class="casa-sala"><h3>${esc(s.nome)}</h3><p>${esc(s.desc)}</p></div>`).join('\n        ')}
+      </div>
+    </section>
+
+    <section class="cl-section cl-alt">
+      <div class="cl-alt-copy">
+        <h2>Como <em>funciona</em> a noite</h2>
+        <p>A Casa foi pensada para quem nunca foi a uma casa de swing e também para quem já é do meio.</p>
+        <div class="cl-list">
+          ${listItemsHtml([
+            { ic: 'badge', title: 'Escolha sua pulseira', desc: 'Ela diz para todo mundo até onde você quer ir naquela noite. Dá para trocar quando quiser.' },
+            { ic: 'users', title: 'Brincadeiras com a anfitriã', desc: 'A Lola, anfitriã da Casa, puxa eu nunca, verdade ou desafio, quiz, match às cegas e o Show da Meia-Noite. Só é sorteado quem marca "Quero brincar".' },
+            { ic: 'gift', title: 'Bar e olhares', desc: 'Pague um drink para alguém, mande um olhar discreto e, quando os olhares se cruzam, a Casa sugere a cabine.' },
+            { ic: 'lock', title: 'Cabine reservada', desc: 'A dois ou em grupo. A porta só abre se todos de dentro quiserem, e qualquer um para a brincadeira na hora.' },
+          ])}
+        </div>
+      </div>
+      <figure class="cl-alt-media">
+        <img src="/landing/gaze-couple-722.webp" alt="Casal adulto trocando olhares com discrição" width="722" height="481" loading="lazy" />
+      </figure>
+    </section>
+
+    <section class="cl-section cl-region">
+      <h2>As pulseiras</h2>
+      <p>Como numa casa de swing de verdade, a pulseira avisa seus limites sem você precisar explicar.</p>
+      <div class="casa-pulseiras">
+        ${CASA_PULSEIRAS.map(([cor, txt]) => `<div><b>${cor}</b><span>${esc(txt)}</span></div>`).join('\n        ')}
+      </div>
+    </section>
+
+    <section class="cl-dark">
+      <div class="cl-section cl-alt">
+        <div class="cl-alt-copy">
+          <h2>Regras da <em>Casa</em></h2>
+          <p>São elas que deixam a noite boa para todo mundo. A anfitriã modera e pode tirar alguém da noite, e qualquer pessoa pode ser denunciada tocando na foto dela na sala.</p>
+          <div class="cl-list">${listItemsHtml([
+            { ic: 'badge', title: 'Só maiores de 18 anos', desc: 'Sem exceção.' },
+            { ic: 'shield', title: 'Consentimento sempre', desc: '"Não", silêncio ou "Passo" encerram o assunto.' },
+            { ic: 'eye', title: 'Nada de print', desc: 'Print e gravação de tela são proibidos; a tela tem marca d’água com a identificação de quem vê.' },
+            { ic: 'lock', title: 'Sem dinheiro e sem contato de fora', desc: 'Nada de Pix, cobrança ou telefone na sala, e nada de foto de outras pessoas.' },
+          ])}</div>
+        </div>
+        <figure class="cl-alt-media">
+          <img src="/landing/privacy-editorial-722.webp" alt="Retrato em ambiente reservado, simbolizando privacidade" width="722" height="481" loading="lazy" />
+        </figure>
+      </div>
+    </section>
+
+    ${campaignFaqSection(faq)}
+
+    <section class="cl-section cl-region">
+      <h2>Swing perto de você</h2>
+      <p>Além da Casa, o NoSigilo reúne o meio liberal de todo o Brasil para conversar e marcar encontros na sua região.</p>
+      <div class="cl-chips">
+        <a href="/swing/">Swing por estado</a>
+        ${SELECTED_STATES.map((s) => `<a href="/swing/${s.slug}/">Swing em ${esc(s.name)}</a>`).join('')}
+      </div>
+    </section>
+
+    <section class="cl-final">
+      <div class="cl-final-inner">
+        <div>
+          <h2>Toda sexta e sábado, às 22h.</h2>
+          <p>Reserve seu lugar e receba o aviso no celular quando a Casa abrir.</p>
+        </div>
+        <div class="cl-final-actions">
+          ${reservar('Reservar meu lugar')}
+          <a class="cl-final-login" href="${loginUrl(CASA_ORIGEM)}">Já tenho uma conta</a>
+        </div>
+      </div>
+    </section>
+
+    ${campaignFooter(null)}`;
+
+  return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body, extraCss: BR_CSS + CASA_CSS });
+}
+
 // --- escreve os arquivos ---
 const inedito = Object.keys(LASTMOD).length === 0;
 
@@ -2356,6 +2583,9 @@ for (const c of PORTUGAL_CIDADES) {
 
 mkdirSync(resolve(DIST, 'swing'), { recursive: true });
 publica('/swing/', resolve(DIST, 'swing', 'index.html'), hubPage());
+
+mkdirSync(resolve(DIST, 'swing', CASA_SLUG), { recursive: true });
+publica(CASA_PATH, resolve(DIST, 'swing', CASA_SLUG, 'index.html'), casaPage());
 
 // O sitemap le o LASTMOD ja preenchido pelas chamadas acima, entao vem depois.
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');
