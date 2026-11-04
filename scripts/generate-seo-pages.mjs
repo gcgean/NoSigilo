@@ -2641,6 +2641,28 @@ publica(CASA_PATH, resolve(DIST, 'swing', CASA_SLUG, 'index.html'), casaPage());
 mkdirSync(resolve(DIST, 'swing', 'portugal', CASA_SLUG), { recursive: true });
 publica(CASA_PT_PATH, resolve(DIST, 'swing', 'portugal', CASA_SLUG, 'index.html'), casaPage(true));
 
+// Telas do app que nao sao para a busca. O app ja poe noindex pelo JavaScript
+// (seoDaRota.ts), mas o Google indexava o HTML cru antes de renderizar:
+// /login?origem=swing/ceara/eusebio chegou a 1.027 impressoes no lugar da
+// pagina de Eusebio (Search Console, nov/2026). Uma copia do index.html com
+// noindex em dist/<rota>/index.html vale sem JavaScript: o try_files do nginx
+// ($uri/) a serve para /login e /login?origem=..., e o React assume a rota
+// normalmente. Sem vite build antes (dist sem index.html), nao faz nada.
+const APP_INDEX = resolve(DIST, 'index.html');
+if (existsSync(APP_INDEX)) {
+  const html = readFileSync(APP_INDEX, 'utf8');
+  const ROBOTS = /<meta name="robots" content="[^"]*" \/>/;
+  if (ROBOTS.test(html)) {
+    const semIndice = html.replace(ROBOTS, '<meta name="robots" content="noindex, follow" />');
+    for (const rota of ['login', 'register', 'subscriptions', 'terms', 'privacy']) {
+      mkdirSync(resolve(DIST, rota), { recursive: true });
+      writeFileSync(resolve(DIST, rota, 'index.html'), semIndice, 'utf8');
+    }
+  } else {
+    console.warn('[seo] index.html sem <meta name="robots"> no formato esperado: telas do app ficaram sem noindex no HTML');
+  }
+}
+
 // O sitemap le o LASTMOD ja preenchido pelas chamadas acima, entao vem depois.
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');
 const gravou = gravaLastmodNoBanco(LASTMOD);
