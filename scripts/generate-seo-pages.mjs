@@ -928,6 +928,13 @@ function faqCidade(city, st) {
       r: `Sim. Além de swing e troca de casais, muita gente de ${esc(city.name)} usa o NoSigilo para encontro casual entre adultos: você filtra por cidade, conversa no chat privado e combina só quando os dois lados quiserem, sem nada aparecer nas suas redes sociais.`,
     },
     {
+      // Search Console (nov/2026): "casa de swing em <cidade>" aparece nas
+      // posições 38 a 71 sem a página ter o termo. Resposta honesta: não
+      // listamos casas físicas; oferecemos A Casa, que é online.
+      p: `Tem casa de swing em ${city.name}?`,
+      r: `O NoSigilo não lista casas de swing físicas. Para quem quer conhecer o clima de uma casa de swing sem sair de ${esc(city.name)}, existe <a href="${CASA_PATH}">A Casa</a>, a casa de swing online do NoSigilo: toda sexta e sábado a partir das 22h, com salas ao vivo de casais, mulheres e singles, e mulher entra grátis. E para encontros presenciais, os filtros mostram casais e singles de ${esc(city.name)} e região.`,
+    },
+    {
       p: 'Preciso ser um casal para entrar?',
       r: 'Não. O NoSigilo é aberto a casais, mulheres solteiras e homens solteiros do meio liberal. Os filtros permitem que cada perfil encontre exatamente o tipo de conexão que procura.',
     },
@@ -1707,6 +1714,12 @@ function hubPage() {
       ${cidadesPorEstado}
     </section>
 
+    <section class="cl-section cl-region" style="border-top:1px solid #ead7d3;">
+      <h2>Não tem casa de swing perto?</h2>
+      <p>A Casa é a casa de swing online do NoSigilo: sexta e sábado a partir das 22h, de qualquer cidade.</p>
+      <div class="cl-chips"><a href="${CASA_PATH}">Casa de swing online: conheça A Casa</a></div>
+    </section>
+
     <section class="cl-section cl-alt">
       <div class="cl-alt-copy">
         <h2>Como <em>funciona</em></h2>
@@ -1897,6 +1910,7 @@ function sitemap() {
     // A Casa: título/descrição/canonical próprios aplicados pelo app (seoDaRota.ts).
     { loc: `${SITE}/acasa`, freq: 'weekly', pri: '0.8' },
     { loc: `${REGIONAL}${CASA_PATH}`, freq: 'monthly', pri: '0.8', chave: CASA_PATH },
+    { loc: `${REGIONAL}${CASA_PT_PATH}`, freq: 'monthly', pri: '0.7', chave: CASA_PT_PATH },
   ];
   const stateUrls = SELECTED_STATES.map((s) => ({ loc: `${REGIONAL}/swing/${s.slug}/`, freq: 'monthly', pri: '0.8', chave: `/swing/${s.slug}/` }));
   const cityUrls = SELECTED_CITIES
@@ -2117,7 +2131,7 @@ function corpoPortugal(c) {
       <h2>O que te espera <em>lá dentro</em></h2>
       <p class="pt-sub">Tudo pensado para quem quer viver o meio liberal sem se expor.</p>
       <div class="pt-cards">
-        <div class="pt-card"><img src="/landing/real-gaze-trio-722.webp" alt="Três adultos trocando olhares num ambiente reservado" loading="lazy" /><div><h3>A Casa 🔥</h3><p>A boate virtual de sexta e sábado: salas ao vivo, brincadeiras quentes e cabine a dois.</p></div></div>
+        <div class="pt-card"><img src="/landing/real-gaze-trio-722.webp" alt="Três adultos trocando olhares num ambiente reservado" loading="lazy" /><div><h3><a href="${CASA_PT_PATH}">A Casa 🔥</a></h3><p>A casa de swing online de sexta e sábado: salas ao vivo, brincadeiras quentes e cabine a dois. <a href="${CASA_PT_PATH}">Como funciona</a></p></div></div>
         <div class="pt-card"><img src="/landing/real-bw-kiss-722.webp" alt="Casal a beijar-se em preto e branco" loading="lazy" /><div><h3>Álbum privado</h3><p>As fotos mais íntimas só abrem para quem você liberar — e dá para tirar o acesso.</p></div></div>
         <div class="pt-card"><img src="/landing/real-sofa-trio-722.webp" alt="Três adultos num sofá, em clima descontraído" loading="lazy" /><div><h3>Quem está perto</h3><p>Distância em km ${emLugar === 'em Portugal' ? 'de cada perfil' : `de quem está ${emLugar}`}, e o Match para curtir em segredo.</p></div></div>
         <div class="pt-card"><img src="/landing/real-curls-722.webp" alt="Retrato sensual de mulher de cabelo cacheado" loading="lazy" /><div><h3>Conversa discreta</h3><p>Mensagens privadas e fotos de visualização única, que somem depois de vistas.</p></div></div>
@@ -2348,6 +2362,10 @@ const CASA_SLUG = 'casa-de-swing-online';
 const CASA_PATH = `/swing/${CASA_SLUG}/`;
 const CASA_ORIGEM = `swing/${CASA_SLUG}`;
 const casaUrl = (origem) => `/acasa?origem=${origem}`;
+// Portugal: mesma Casa (horário de Brasília). Em Portugal continental são +3h
+// no inverno (WET) e +4h no verão (WEST) — por isso as duas horas no texto.
+const CASA_PT_PATH = `/swing/portugal/${CASA_SLUG}/`;
+const CASA_PT_ORIGEM = `swing/portugal/${CASA_SLUG}`;
 
 const CASA_CSS = `
 .casa-bloco{width:min(100% - 2.5rem,1100px);margin:clamp(2rem,5vw,3.5rem) auto;padding:clamp(1.4rem,4vw,2.2rem);border-radius:1.2rem;background:radial-gradient(ellipse at 90% 0%,rgba(217,70,239,.28),transparent 60%),linear-gradient(135deg,#2a0a1c,#14070c);border:1px solid rgba(255,122,160,.35);box-shadow:0 20px 50px rgba(194,24,91,.25);}
@@ -2405,7 +2423,21 @@ const CASA_PULSEIRAS = [
   ['🔴 Vermelha', 'só olhando. Nunca é sorteado nas brincadeiras.'],
 ];
 
-function faqCasa() {
+function faqCasa(pt = false) {
+  if (pt) return [
+    { p: 'O que é uma casa de swing online?',
+      r: 'É uma casa de swing que acontece pela internet. A Casa do NoSigilo tem salas ao vivo com casais, mulheres e homens solteiros, uma anfitriã que puxa as brincadeiras, um bar para pagar drinks e cabines reservadas para conversar a dois ou em grupo. Tudo pelo telemóvel ou computador, sem sair de casa.' },
+    { p: 'Quando A Casa abre, na hora de Portugal?',
+      r: 'A Casa segue o horário de Brasília: sexta das 22h à 1h e sábado das 22h às 2h. Em Portugal continental isso dá, no inverno, das 1h às 4h da madrugada de sábado e das 1h às 5h de domingo; no horário de verão, uma hora a mais (das 2h às 5h e das 2h às 6h). Quem reserva o lugar recebe um aviso no telemóvel quando abre.' },
+    { p: 'Moro em Portugal. Posso entrar?',
+      r: 'Pode. A Casa é online e a comunidade é a mesma do Brasil, então você conversa com casais e singles de Portugal e do outro lado do Atlântico. É uma boa opção para quem não quer ser visto a entrar numa casa de swing, num país onde todo mundo se conhece.' },
+    { p: 'Quanto custa?',
+      r: 'Mulheres entram grátis, com tudo liberado. Sem assinar, qualquer pessoa entra a espreitar: lê a conversa, mas não fala. Para conversar, brincar, mandar foto e ir para a cabine é preciso ser Premium, que para quem está em Portugal fica em cerca de 5 euros por mês, pago no cartão internacional (o valor é cobrado em reais e o seu banco converte). Casais têm 15 dias grátis no cadastro.' },
+    { p: 'Alguém vai saber que eu entrei?',
+      r: 'O seu e-mail e a sua localização exata nunca aparecem, e os perfis do NoSigilo não aparecem no Google. Print e gravação de ecrã são proibidos na Casa: o ecrã leva uma marca d’água com a identificação de quem está a ver, e quem vazar conteúdo é banido. Fotos e vídeos enviados lá dentro são de visualização única.' },
+    { p: 'Homem solteiro pode entrar?',
+      r: 'Pode. Para a noite ficar boa para todos, homens ocupam no máximo metade de cada sala; quando lota, dá para entrar na fila ou ser chamado por um casal ou uma mulher, e aí entra sem fila. No Quarto Cuckold os solteiros entram à vontade.' },
+  ];
   return [
     { p: 'O que é uma casa de swing online?',
       r: 'É uma casa de swing que acontece pela internet. A Casa do NoSigilo tem salas ao vivo com casais, mulheres e homens solteiros, uma anfitriã que puxa as brincadeiras, um bar para pagar drinks e cabines reservadas para conversar a dois ou em grupo. Tudo pelo celular ou computador, sem sair de casa.' },
@@ -2424,11 +2456,17 @@ function faqCasa() {
   ];
 }
 
-function casaPage() {
-  const url = `${REGIONAL}${CASA_PATH}`;
-  const title = 'Casa de Swing Online: A Casa, a boate liberal virtual | NoSigilo';
-  const desc = 'Casa de swing online e virtual: salas ao vivo com casais, mulheres e singles, toda sexta e sábado a partir das 22h. Mulher entra grátis. Entre de qualquer cidade, com discrição.';
-  const faq = faqCasa();
+function casaPage(pt = false) {
+  const path = pt ? CASA_PT_PATH : CASA_PATH;
+  const origem = pt ? CASA_PT_ORIGEM : CASA_ORIGEM;
+  const url = `${REGIONAL}${path}`;
+  const title = pt
+    ? 'Casa de Swing Online em Portugal: A Casa, a boate liberal virtual | NoSigilo'
+    : 'Casa de Swing Online: A Casa, a boate liberal virtual | NoSigilo';
+  const desc = pt
+    ? 'Casa de swing online para quem está em Portugal: salas ao vivo com casais, mulheres e singles de Portugal e do Brasil, sexta e sábado. Mulher entra grátis. Com discrição total.'
+    : 'Casa de swing online e virtual: salas ao vivo com casais, mulheres e singles, toda sexta e sábado a partir das 22h. Mulher entra grátis. Entre de qualquer cidade, com discrição.';
+  const faq = faqCasa(pt);
   const jsonld = [
     {
       '@context': 'https://schema.org',
@@ -2438,29 +2476,42 @@ function casaPage() {
       url,
       inLanguage: 'pt-BR',
       isPartOf: { '@type': 'WebSite', name: 'NoSigilo.net', url: SITE },
+      ...(pt ? { inLanguage: 'pt-PT', areaServed: { '@type': 'Country', name: 'Portugal' } } : {}),
     },
-    breadcrumbLd([
-      { name: 'Início', path: '/' },
-      { name: 'Swing por estado', path: '/swing/' },
-      { name: 'Casa de swing online', path: CASA_PATH },
-    ]),
+    breadcrumbLd(pt
+      ? [{ name: 'Início', path: '/' }, { name: 'Portugal', path: '/swing/portugal/' }, { name: 'Casa de swing online', path }]
+      : [{ name: 'Início', path: '/' }, { name: 'Swing por estado', path: '/swing/' }, { name: 'Casa de swing online', path }]),
     faqJsonLd(faq),
   ];
-  const reservar = (texto) => `<a class="cl-cta" href="${casaUrl(CASA_ORIGEM)}">${texto} ${icon('arrow')}</a>`;
+  const reservar = (texto) => `<a class="cl-cta" href="${casaUrl(origem)}">${texto} ${icon('arrow')}</a>`;
+  const crumb = pt ? '<a href="/swing/portugal/">Portugal</a> › Casa de swing online' : '<a href="/swing/">Swing por estado</a> › Casa de swing online';
+  const intro = pt
+    ? `Tem vontade de conhecer uma <strong>casa de swing</strong>, mas não quer ser visto a entrar numa, num país onde
+          todo mundo se conhece? <strong>A Casa</strong> é a <strong>casa de swing virtual</strong> do NoSigilo: toda sexta e
+          sábado à noite, casais, mulheres e singles de Portugal e do Brasil se encontram em salas ao vivo, com brincadeiras,
+          bar e cabine reservada. Você entra de casa, pelo telemóvel, e só mostra o que quiser.`
+    : `Tem vontade de conhecer uma <strong>casa de swing</strong>, mas não tem nenhuma perto, ou tem receio de ser
+          reconhecido na porta? <strong>A Casa</strong> é a <strong>casa de swing virtual</strong> do NoSigilo: toda sexta e
+          sábado, a partir das 22h, casais, mulheres e singles se encontram em salas ao vivo, com brincadeiras,
+          bar e cabine reservada. Você entra de qualquer cidade, pelo celular, e só mostra o que quiser.`;
+  const horario = pt
+    ? '<strong>Sexta e sábado à noite</strong>&nbsp;· em Portugal, a partir da 1h da madrugada (2h no horário de verão) · mulher entra grátis'
+    : '<strong>Sexta 22h–1h · Sábado 22h–2h</strong>&nbsp;(horário de Brasília) · mulher entra grátis';
+  const pertoChips = pt
+    ? `<a href="/swing/portugal/">Swing em Portugal</a>${PORTUGAL_CIDADES.map((c) => `<a href="/swing/portugal/${c.slug}/">Swing ${esc(emCidade(c))}</a>`).join('')}`
+    : `<a href="/swing/">Swing por estado</a>
+        ${SELECTED_STATES.map((s) => `<a href="/swing/${s.slug}/">Swing em ${esc(s.name)}</a>`).join('')}`;
 
-  const body = `${campaignHeader(CASA_ORIGEM)}
+  const body = `${campaignHeader(origem)}
 
     <section class="cl-hero">
       <div class="cl-hero-copy">
-        <p class="cl-crumb"><a href="/swing/">Swing por estado</a> › Casa de swing online</p>
-        <h1>Casa de swing <em>online</em>: conheça A Casa</h1>
+        <p class="cl-crumb">${crumb}</p>
+        <h1>Casa de swing <em>online</em>${pt ? ' em Portugal' : ''}: conheça A Casa</h1>
         <p class="cl-intro">
-          Tem vontade de conhecer uma <strong>casa de swing</strong>, mas não tem nenhuma perto, ou tem receio de ser
-          reconhecido na porta? <strong>A Casa</strong> é a <strong>casa de swing virtual</strong> do NoSigilo: toda sexta e
-          sábado, a partir das 22h, casais, mulheres e singles se encontram em salas ao vivo, com brincadeiras,
-          bar e cabine reservada. Você entra de qualquer cidade, pelo celular, e só mostra o que quiser.
+          ${intro}
         </p>
-        <p class="cl-prova"><strong>Sexta 22h–1h · Sábado 22h–2h</strong>&nbsp;(horário de Brasília) · mulher entra grátis</p>
+        <p class="cl-prova">${horario}</p>
         ${reservar('Reservar meu lugar')}
         <div class="cl-trust">
           <span class="cl-trust-item">${icon('users')}Casais, mulheres e singles</span>
@@ -2529,29 +2580,30 @@ function casaPage() {
 
     <section class="cl-section cl-region">
       <h2>Swing perto de você</h2>
-      <p>Além da Casa, o NoSigilo reúne o meio liberal de todo o Brasil para conversar e marcar encontros na sua região.</p>
+      <p>Além da Casa, o NoSigilo reúne o meio liberal ${pt ? 'de Portugal e do Brasil' : 'de todo o Brasil'} para conversar e marcar encontros na sua região.</p>
       <div class="cl-chips">
-        <a href="/swing/">Swing por estado</a>
-        ${SELECTED_STATES.map((s) => `<a href="/swing/${s.slug}/">Swing em ${esc(s.name)}</a>`).join('')}
+        ${pertoChips}
       </div>
     </section>
 
     <section class="cl-final">
       <div class="cl-final-inner">
         <div>
-          <h2>Toda sexta e sábado, às 22h.</h2>
-          <p>Reserve seu lugar e receba o aviso no celular quando a Casa abrir.</p>
+          <h2>${pt ? 'Toda sexta e sábado à noite.' : 'Toda sexta e sábado, às 22h.'}</h2>
+          <p>Reserve seu lugar e receba o aviso no ${pt ? 'telemóvel' : 'celular'} quando a Casa abrir.</p>
         </div>
         <div class="cl-final-actions">
           ${reservar('Reservar meu lugar')}
-          <a class="cl-final-login" href="${loginUrl(CASA_ORIGEM)}">Já tenho uma conta</a>
+          <a class="cl-final-login" href="${loginUrl(origem)}">Já tenho uma conta</a>
         </div>
       </div>
     </section>
 
-    ${campaignFooter(null)}`;
+    ${pt ? rodapePortugal() : campaignFooter(null)}`;
 
-  return campaignDocument({ title, desc, url, geoUf: '', geoPlace: '', jsonld, body, extraCss: BR_CSS + CASA_CSS });
+  return campaignDocument(pt
+    ? { title, desc, url, geoPlace: 'Portugal', jsonld, body, lang: 'pt-PT', ogLocale: 'pt_PT', geoRegion: 'PT', extraCss: BR_CSS + CASA_CSS }
+    : { title, desc, url, geoUf: '', geoPlace: '', jsonld, body, extraCss: BR_CSS + CASA_CSS });
 }
 
 // --- escreve os arquivos ---
@@ -2586,6 +2638,8 @@ publica('/swing/', resolve(DIST, 'swing', 'index.html'), hubPage());
 
 mkdirSync(resolve(DIST, 'swing', CASA_SLUG), { recursive: true });
 publica(CASA_PATH, resolve(DIST, 'swing', CASA_SLUG, 'index.html'), casaPage());
+mkdirSync(resolve(DIST, 'swing', 'portugal', CASA_SLUG), { recursive: true });
+publica(CASA_PT_PATH, resolve(DIST, 'swing', 'portugal', CASA_SLUG, 'index.html'), casaPage(true));
 
 // O sitemap le o LASTMOD ja preenchido pelas chamadas acima, entao vem depois.
 writeFileSync(resolve(DIST, 'sitemap.xml'), sitemap(), 'utf8');

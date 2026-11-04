@@ -593,6 +593,9 @@ export default function Landing() {
             <p className="landing-cidades-todas">
               <a href="/swing/">Ver todos os estados e cidades</a>
             </p>
+            <p className="landing-cidades-todas">
+              Não tem casa de swing perto? <a href="/swing/casa-de-swing-online/">Conheça A Casa, a casa de swing online</a>
+            </p>
           </div>
         </section>
 
