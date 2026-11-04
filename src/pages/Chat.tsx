@@ -1497,58 +1497,54 @@ export default function Chat() {
               className="pl-9"
             />
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={conversationTab === 'all' ? 'default' : 'outline'}
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => setConversationTab('all')}
-            >
-              Todas
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={conversationTab === 'unread' ? 'default' : 'outline'}
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => setConversationTab('unread')}
-            >
-              Não lidas
-              <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", conversationTab === 'unread' ? "bg-primary-foreground/20" : "bg-muted")}>
-                {unreadTabCount}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={conversationTab === 'new' ? 'default' : 'outline'}
-              className="h-8 rounded-full px-3 text-xs"
-              onClick={() => setConversationTab('new')}
-            >
-              Novas
-              <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", conversationTab === 'new' ? "bg-primary-foreground/20" : "bg-muted")}>
-                {newTabCount}
-              </span>
-            </Button>
-          </div>
-          <div className="mt-3 flex items-center">
-            <Button
-              type="button"
-              size="sm"
-              variant={showOnlyHighlighted ? 'default' : 'outline'}
-              className={cn(
-                "h-8 rounded-full px-3 text-xs",
-                showOnlyHighlighted ? "bg-primary text-primary-foreground" : ""
-              )}
-              onClick={() => setShowOnlyHighlighted((prev) => !prev)}
-            >
-              <Pin className="mr-1.5 h-3.5 w-3.5" />
-              Somente destacadas
-              <span className={cn("ml-2 rounded-full px-1.5 py-0.5 text-[10px]", showOnlyHighlighted ? "bg-primary-foreground/20" : "bg-muted")}>
-                {conversations.filter((c) => c.isHighlighted).length}
-              </span>
-            </Button>
+          {/* Filtros numa linha só (rola para o lado se não couber), para sobrar
+              espaço para as conversas no celular. Contador só quando há algo. */}
+          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            {([
+              { id: 'all', rotulo: 'Todas', total: 0 },
+              { id: 'unread', rotulo: 'Não lidas', total: unreadTabCount },
+              { id: 'new', rotulo: 'Novas', total: newTabCount },
+            ] as const).map((f) => {
+              const ativo = conversationTab === f.id;
+              return (
+                <Button
+                  key={f.id}
+                  type="button"
+                  size="sm"
+                  variant={ativo ? 'default' : 'outline'}
+                  className="h-7 shrink-0 rounded-full px-3 text-xs"
+                  onClick={() => setConversationTab(f.id)}
+                >
+                  {f.rotulo}
+                  {f.total > 0 && (
+                    <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", ativo ? "bg-primary-foreground/20" : "bg-muted")}>
+                      {f.total}
+                    </span>
+                  )}
+                </Button>
+              );
+            })}
+            {(() => {
+              const destacadas = conversations.filter((c) => c.isHighlighted).length;
+              return (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showOnlyHighlighted ? 'default' : 'outline'}
+                  className="h-7 shrink-0 rounded-full px-3 text-xs"
+                  onClick={() => setShowOnlyHighlighted((prev) => !prev)}
+                  aria-pressed={showOnlyHighlighted}
+                >
+                  <Pin className="mr-1 h-3.5 w-3.5" />
+                  Destacadas
+                  {destacadas > 0 && (
+                    <span className={cn("ml-1.5 rounded-full px-1.5 py-0.5 text-[10px]", showOnlyHighlighted ? "bg-primary-foreground/20" : "bg-muted")}>
+                      {destacadas}
+                    </span>
+                  )}
+                </Button>
+              );
+            })()}
           </div>
           </>)}
         </div>
