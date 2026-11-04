@@ -2085,7 +2085,7 @@ export default function Stories() {
             <button
               type="button"
               onClick={() => setFavOpen(true)}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+              className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
             >
               <SeloFavoritos className="h-4 w-4" />
               Favoritos{favCount > 0 ? ` ${favCount}` : ''}
@@ -2094,23 +2094,23 @@ export default function Stories() {
           {myStories.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()}
-                className="flex items-center gap-1 text-xs text-brand-pink hover:text-brand-pink/80 font-medium disabled:opacity-40">
+                className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-brand-pink hover:text-brand-pink/80 font-medium disabled:opacity-40">
                 <Camera className="h-3.5 w-3.5" /> Câmera
               </button>
               <button type="button" disabled={uploading} onClick={() => galleryRef.current?.click()}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                 <ImageIcon className="h-3.5 w-3.5" /> Galeria
               </button>
               <button type="button" disabled={uploading} onClick={() => videoRef.current?.click()}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                 <Camera className="h-3.5 w-3.5" /> Vídeo
               </button>
               <button type="button" disabled={uploading} onClick={() => setTextOpen(true)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
+                className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40">
                 <span className="text-[13px] leading-none font-bold">Aa</span> Texto
               </button>
               <button type="button" onClick={() => setFavOpen(true)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                className="-my-2 flex min-h-[40px] items-center gap-1 px-1 text-xs text-muted-foreground hover:text-foreground"
                 title="Escolher quem vê seus stories de favoritos">
                 <SeloFavoritos className="h-4 w-4" />
                 {favCount > 0 ? favCount : ''}
@@ -2162,7 +2162,7 @@ export default function Stories() {
                   <button
                     type="button"
                     onClick={() => { setStatsStoryId(s.id); setStatsOpen(true); }}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
                     title="Estatísticas"
                   >
                     <Eye className="h-3 w-3" />
@@ -2171,7 +2171,7 @@ export default function Stories() {
                     type="button"
                     disabled={deleting === s.id}
                     onClick={() => void handleDelete(s.id)}
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500/80 disabled:opacity-40"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white hover:bg-red-500/80 disabled:opacity-40"
                     title="Apagar"
                   >
                     {deleting === s.id
@@ -2184,29 +2184,31 @@ export default function Stories() {
           </div>
         ) : (
           /* Criar story */
-          <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-fuchsia-500/10 to-violet-600/15 p-6 text-center space-y-4 shadow-[0_8px_32px_rgba(168,85,247,0.18)]">
-            <div className="flex justify-center">
+          /* Celular: compacto (título + 4 botões numa linha), para os stories
+             dos outros aparecerem sem rolar. Do sm para cima, o quadro grande. */
+          <div className="relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/15 via-fuchsia-500/10 to-violet-600/15 p-3 text-center space-y-3 shadow-[0_8px_32px_rgba(168,85,247,0.18)] sm:p-6 sm:space-y-4">
+            <div className="hidden justify-center sm:flex">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-violet-600 shadow-lg">
                 <Sparkles className="h-8 w-8 text-white" />
               </div>
             </div>
             <div>
-              <p className="text-lg font-bold">Poste um momento quente 🔥</p>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-base font-bold sm:text-lg">Poste um momento quente 🔥</p>
+              <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
                 Foto, vídeo de até 60s ou só texto · fica 24h no ar · aparece para quem combina com você
               </p>
             </div>
-            <div className="flex justify-center gap-3 flex-wrap">
-              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => fileRef.current?.click()}>
+            <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-3">
+              <Button size="sm" variant="outline" className="h-11 flex-col gap-0.5 px-1 text-xs sm:h-9 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm" disabled={uploading} onClick={() => fileRef.current?.click()}>
                 <Camera className="h-4 w-4" /> Câmera
               </Button>
-              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => galleryRef.current?.click()}>
+              <Button size="sm" variant="outline" className="h-11 flex-col gap-0.5 px-1 text-xs sm:h-9 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm" disabled={uploading} onClick={() => galleryRef.current?.click()}>
                 <ImageIcon className="h-4 w-4" /> Galeria
               </Button>
-              <Button size="sm" variant="outline" className="gap-2" disabled={uploading} onClick={() => videoRef.current?.click()}>
+              <Button size="sm" variant="outline" className="h-11 flex-col gap-0.5 px-1 text-xs sm:h-9 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm" disabled={uploading} onClick={() => videoRef.current?.click()}>
                 <Camera className="h-4 w-4" /> Vídeo
               </Button>
-              <Button size="sm" className="gap-2 bg-gradient-to-r from-primary to-violet-600" disabled={uploading} onClick={() => setTextOpen(true)}>
+              <Button size="sm" className="h-11 flex-col gap-0.5 bg-gradient-to-r from-primary to-violet-600 px-1 text-xs sm:h-9 sm:flex-row sm:gap-2 sm:px-3 sm:text-sm" disabled={uploading} onClick={() => setTextOpen(true)}>
                 {uploading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <span className="font-bold">Aa</span>}
                 {uploading ? 'Enviando...' : 'Texto'}
               </Button>

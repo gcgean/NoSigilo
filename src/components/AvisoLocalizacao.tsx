@@ -58,7 +58,7 @@ export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAti
     }
   };
 
-  // Versão de uma linha (Match): a tela não tem espaço sobrando.
+  // Versão de uma linha (Match; Busca no celular): a tela não tem espaço sobrando.
   if (compacto && !bloqueado) {
     return (
       <div className="mb-2 flex items-center gap-2 rounded-xl border border-sky-400/40 bg-sky-500/10 px-3 py-2 text-left">
@@ -67,7 +67,7 @@ export default function AvisoLocalizacao({ aoAtivar, compacto = false }: { aoAti
         <Button type="button" size="sm" disabled={ocupado} onClick={() => void ativar()} className="h-8 shrink-0 bg-sky-600 px-3 text-white hover:bg-sky-700">
           {ocupado ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Ativar'}
         </Button>
-        <button type="button" onClick={fechar} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary" aria-label="Fechar">
+        <button type="button" onClick={fechar} className="-my-1 -mr-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-secondary" aria-label="Fechar">
           <X className="h-4 w-4" />
         </button>
       </div>

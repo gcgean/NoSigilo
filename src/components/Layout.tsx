@@ -369,6 +369,8 @@ export default function Layout() {
           label: naSemanaFinal && curta ? `⏳ ${curta}` : `Assinante: ${formatRemainingTime(licenseEnds, clockNow)}`,
           // Contagem regressiva cheia, só usada na última semana.
           contagem: formatDetailedRemainingTime(licenseEnds, clockNow),
+          // Versão curta (5d 15h) para o aviso caber numa linha no celular.
+          curta,
           naSemanaFinal,
           ultimasHoras: diff > 0 && diff <= 24 * 60 * 60 * 1000,
         };
@@ -1329,8 +1331,10 @@ export default function Layout() {
                     mensagem que evita cancelamento era a menos legível do
                     app. Agora 14px em --gold-text (mais escuro no tema
                     claro) e com um botão de renovar ao lado. */}
+                {/* No celular, uma linha só (texto curto); a frase inteira fica do sm para cima.
+                    Renovar e fechar com 36 px de altura, fáceis de tocar. */}
                 <div className={cn(
-                  'flex max-w-full items-center gap-2 rounded-full border py-1.5 pl-3 pr-1.5',
+                  'flex max-w-full items-center gap-1.5 rounded-full border py-1 pl-3 pr-1 sm:gap-2',
                   accessCountdown?.ultimasHoras
                     ? 'border-destructive/40 bg-destructive/15'
                     : 'border-gold/30 bg-gold/15'
@@ -1340,16 +1344,17 @@ export default function Layout() {
                     className={cn('min-w-0 flex-1 text-sm font-medium', accessCountdown?.ultimasHoras ? 'text-destructive' : 'text-gold-text')}
                     title={accessCountdown?.title}
                   >
-                    ⏳ Faltam <span className="font-bold">{accessCountdown?.contagem}</span> para acabar sua assinatura
+                    <span className="sm:hidden">⏳ Assinatura acaba em <span className="font-bold">{accessCountdown?.curta || accessCountdown?.contagem}</span></span>
+                    <span className="hidden sm:inline">⏳ Faltam <span className="font-bold">{accessCountdown?.contagem}</span> para acabar sua assinatura</span>
                   </NavLink>
                   <NavLink
                     to="/subscriptions"
                     className={cn(
-                      'shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-90',
+                      'flex h-9 shrink-0 items-center rounded-full px-3 text-xs font-semibold transition-opacity hover:opacity-90',
                       accessCountdown?.ultimasHoras ? 'bg-destructive text-white' : 'bg-gold text-black/80'
                     )}
                   >
-                    Renovar agora
+                    Renovar<span className="hidden min-[400px]:inline">&nbsp;agora</span>
                   </NavLink>
                   <button
                     type="button"
@@ -1358,7 +1363,7 @@ export default function Layout() {
                       setContagemFechadaHoje(true);
                       try { localStorage.setItem('nosigilo:contagem-fechada', new Date().toDateString()); } catch { /* sem storage: fecha só agora */ }
                     }}
-                    className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full', accessCountdown?.ultimasHoras ? 'text-destructive hover:bg-destructive/10' : 'text-gold-text hover:bg-gold/20')}
+                    className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', accessCountdown?.ultimasHoras ? 'text-destructive hover:bg-destructive/10' : 'text-gold-text hover:bg-gold/20')}
                   >
                     <X className="h-4 w-4" />
                   </button>

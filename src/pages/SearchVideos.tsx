@@ -636,7 +636,7 @@ export default function SearchVideos() {
               <button
                 type="button"
                 onClick={() => { setOnlyUnseen(false); setColecao(null); }}
-                className="font-semibold text-emerald-500 underline underline-offset-2 hover:text-emerald-600"
+                className="-my-2.5 inline-flex min-h-[40px] items-center font-semibold text-emerald-500 underline underline-offset-2 hover:text-emerald-600"
               >
                 Ver todos os vídeos
               </button>

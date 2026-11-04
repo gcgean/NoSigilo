@@ -1033,7 +1033,9 @@ export default function SearchPage() {
         </div>
       )}
 
-      <AvisoLocalizacao aoAtivar={() => void fetchFirstPage()} />
+      {/* Celular: uma linha (o quadro grande empurrava os perfis para baixo). */}
+      <div className="sm:hidden"><AvisoLocalizacao compacto aoAtivar={() => void fetchFirstPage()} /></div>
+      <div className="hidden sm:block"><AvisoLocalizacao aoAtivar={() => void fetchFirstPage()} /></div>
 
       {/* Filters Panel */}
       {showFilters && (

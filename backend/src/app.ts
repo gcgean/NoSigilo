@@ -13800,6 +13800,10 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       ORDER BY
         ${hasRealDistanceSql}
         ${distanceBandSql}
+        -- Sem foto vai para o fim da faixa: card sem foto é a pior primeira
+        -- impressão do Match (teste no celular, nov/2026). u.avatar é coluna,
+        -- não subconsulta, então não pesa na ordenação.
+        CASE WHEN u.avatar IS NULL OR TRIM(u.avatar) = '' THEN 1 ELSE 0 END ASC,
         ${activityTierExpr} ASC,
         ${boostPrioritySql}
         ${distanceOrderSql}

@@ -651,12 +651,14 @@ export default function Feed() {
 
   // "Sugestões para você" (perfis do Match) entra depois do 4º item do feed principal.
   const feedItensComSugestoes = useMemo(() => {
-    const itens: Array<(typeof feedDisplayItems)[number] | { type: 'sugestoes'; id: string } | { type: 'stories'; id: string }> = [...feedDisplayItems];
+    const itens: Array<(typeof feedDisplayItems)[number] | { type: 'sugestoes'; id: string } | { type: 'stories'; id: string } | { type: 'pulso'; id: string }> = [...feedDisplayItems];
     // Stories não vistos entram depois do 10º (antes das sugestões, para o índice não andar).
     if (feedFilter === 'all' && itens.length > 10) itens.splice(10, 0, { type: 'stories', id: 'feed-stories-nao-vistos' });
     if (feedFilter === 'all' && itens.length > 4) itens.splice(4, 0, { type: 'sugestoes', id: 'feed-sugestoes-perfis' });
+    // Pulso da rede (só celular) depois do 2º post, e não acima do primeiro.
+    if (feedFilter === 'all' && nearbyRadius === null && !cityOnly && itens.length > 2) itens.splice(2, 0, { type: 'pulso', id: 'feed-pulso' });
     return itens;
-  }, [feedDisplayItems, feedFilter]);
+  }, [feedDisplayItems, feedFilter, nearbyRadius, cityOnly]);
 
   // Visualizações: um único IntersectionObserver observa todos os cards de post
   // e dispara 1 view sempre que o post fica >=50% visível — sem dedup, cada
@@ -2244,10 +2246,18 @@ export default function Feed() {
       <Card className="mb-4 glass border-2 border-primary/40 p-3 shadow-[0_0_18px_rgba(236,72,153,0.18)] sm:mb-6 sm:p-4">
         {/* Incentivo a postar: quem posta aparece primeiro para quem está perto
             (mulher e casal ainda ganham tokens por foto, story e post). */}
-        <p className="mb-2 text-xs font-medium text-brand-pink">
-          {/^(mulher|casal)/i.test(String(user?.gender || ''))
-            ? '🔥 Poste uma foto ou vídeo: você aparece para quem está perto e ganha até +10 tokens'
-            : '🔥 Poste uma foto ou vídeo: quem posta aparece para quem está perto de você'}
+        <p className="mb-2 truncate text-xs font-medium text-brand-pink sm:whitespace-normal">
+          {/* Celular: uma linha só, para o primeiro post subir na tela. */}
+          <span className="sm:hidden">
+            {/^(mulher|casal)/i.test(String(user?.gender || ''))
+              ? '🔥 Poste e apareça para quem está perto (+10 tokens)'
+              : '🔥 Poste e apareça para quem está perto'}
+          </span>
+          <span className="hidden sm:inline">
+            {/^(mulher|casal)/i.test(String(user?.gender || ''))
+              ? '🔥 Poste uma foto ou vídeo: você aparece para quem está perto e ganha até +10 tokens'
+              : '🔥 Poste uma foto ou vídeo: quem posta aparece para quem está perto de você'}
+          </span>
         </p>
         <div className="flex min-w-0 gap-3 sm:gap-4">
           <div className="relative shrink-0">
@@ -2668,27 +2678,9 @@ export default function Feed() {
             ) : null}
             {/* Missões do dia saíram do feed (17/10/2026): poluíam o topo no celular. */}
           </Card>
-          {/* Social Pulse — variable reward curiosity gap card (mobile only; moves to sidebar on desktop) */}
-          {feedFilter === 'all' && nearbyRadius === null && !cityOnly ? (
-            <div className="md:hidden">
-              <SocialPulseCard enabled={!!user?.id} />
-            </div>
-          ) : null}
-
-          {/* Faixa "Pessoas da sua região" saiu: os chips (Minha região, 10 km...) já mostram o filtro. */}
-          {feedFilter === 'all' && nearbyRadius === null && !cityOnly && feedInsightsSummary ? (
-            <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass md:hidden">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">Mais chance de encontrar algo agora</p>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{feedInsightsSummary}</p>
-                </div>
-                <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink">
-                  Ao vivo
-                </Badge>
-              </div>
-            </Card>
-          ) : null}
+          {/* Pulso da rede e "Mais chance de encontrar algo agora" (só celular)
+              entram depois do 2º post (item 'pulso' em feedItensComSugestoes):
+              no topo empurravam o primeiro post para fora da tela. */}
           {/* Radares ativos no celular: já aparecem no topo ("Perto de você"); o card repetido no meio do feed saiu. */}
           {feedFilter === 'experiences' ? (
             <>
@@ -3085,6 +3077,23 @@ export default function Feed() {
               <SugestoesPerfis key={item.id} />
             ) : item.type === 'stories' ? (
               <StoriesNaoVistos key={item.id} />
+            ) : item.type === 'pulso' ? (
+              <div key={item.id} className="space-y-4 md:hidden">
+                <SocialPulseCard enabled={!!user?.id} />
+                {feedInsightsSummary ? (
+                  <Card className="overflow-hidden border-primary/10 bg-gradient-to-r from-primary/6 via-background to-pink-500/5 p-4 glass">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-foreground">Mais chance de encontrar algo agora</p>
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">{feedInsightsSummary}</p>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0 border border-primary/15 bg-white/70 text-brand-pink">
+                        Ao vivo
+                      </Badge>
+                    </div>
+                  </Card>
+                ) : null}
+              </div>
             ) : item.type === 'section' ? (
               <div key={item.id} className="flex items-center gap-3 px-1 py-2 select-none">
                 <div className="h-px flex-1 bg-gradient-to-r from-transparent via-primary/30 to-transparent" />

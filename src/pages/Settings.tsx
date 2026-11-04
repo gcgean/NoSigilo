@@ -165,6 +165,9 @@ export default function Settings() {
     availabilityStatus: ((user as any)?.availabilityStatus || '') as '' | 'now' | 'week' | 'month' | 'online_only' | 'not_looking',
     meetingTagline: ((user as any)?.meetingTagline || '') as string,
   });
+  // Para o botão Salvar só grudar na tela quando há algo para salvar.
+  const [perfilAoAbrir] = useState(() => JSON.stringify(profile));
+  const perfilAlterado = JSON.stringify(profile) !== perfilAoAbrir;
 
   const FETICHE_OPTIONS = [
     'Sexo anal', 'Dotado', 'Cuckold', 'Voyerismo', 'Orgia', 'Gang Bang',
@@ -1534,9 +1537,14 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Botão Salvar fixo (some na aba Mídia, que salva automaticamente) */}
+          {/* Botão Salvar (some na aba Mídia, que salva automaticamente). Fica
+              grudado na tela, acima da barra de baixo, só quando há mudança sem
+              salvar; sem mudança, fica no fim da página e não cobre o conteúdo. */}
           {profileSubTab !== 'midia' && (
-            <div className="sticky bottom-16 z-30 -mx-1 mt-2 rounded-xl border border-border/60 bg-background/95 p-2 backdrop-blur md:bottom-4">
+            <div className={cn(
+              '-mx-1 mt-2 rounded-xl border border-border/60 bg-background/95 p-2',
+              perfilAlterado && 'sticky bottom-[calc(4.75rem+env(safe-area-inset-bottom,0px))] z-30 backdrop-blur md:bottom-4'
+            )}>
               <Button
                 onClick={handleSaveProfile}
                 className="w-full gap-2 bg-gradient-primary hover:opacity-90"
