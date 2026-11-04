@@ -1651,7 +1651,7 @@ export default function Layout() {
             )}
           >
             <BadgeDollarSign className="h-4.5 w-4.5" />
-            <span className="max-w-full truncate text-[10.5px] leading-4 min-[400px]:text-xs">Ganhe $</span>
+            <span className="max-w-full truncate text-[10.5px] leading-4 tracking-tight min-[400px]:text-xs min-[400px]:tracking-normal">Ganhe $</span>
           </NavLink>
           )}
         </div>
