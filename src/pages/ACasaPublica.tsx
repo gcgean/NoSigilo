@@ -36,14 +36,6 @@ const SALAS_PUBLICAS: Record<string, string> = {
   'Suruba': 'A sala mais liberada da noite. Casais e mulheres entram direto; o solteiro entra se animou a noite ou se for chamado.',
 };
 
-// O preço de quem está em Portugal é outro (ver situacaoPortugal no backend).
-function precoPremium() {
-  try {
-    if (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Lisbon') return 'cerca de 5 euros por mês';
-  } catch { /* segue o preço do Brasil */ }
-  return 'R$ 9,90 por mês';
-}
-
 const EXEMPLOS = [
   '🍷 Eu nunca… fiz troca de casais completa.',
   '🎲 Verdade: qual fantasia ninguém desta sala imagina?',
@@ -152,7 +144,7 @@ export default function ACasaPublica() {
           </div>
           <div className="rounded-2xl bg-white/5 p-4">
             <p className="font-semibold">💬 Para participar</p>
-            <p className="text-sm text-white/70">Conversar, brincar e ir para a cabine faz parte do Premium ({precoPremium()}) ou do período grátis do cadastro (casais têm 15 dias).</p>
+            <p className="text-sm text-white/70">Conversar, brincar e ir para a cabine faz parte do Premium ou do período grátis do cadastro (casais têm 15 dias).</p>
           </div>
         </div>
 
