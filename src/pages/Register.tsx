@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { lePrimeiroToque } from '@/utils/primeiroToque';
-import { consumirDestinoPosCadastro } from '@/utils/destinoPosCadastro';
+import { consumirDestinoPosCadastro, vaiParaACasa } from '@/utils/destinoPosCadastro';
+import apiClient from '@/utils/apiClient';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
@@ -148,6 +149,22 @@ export default function Register() {
   const initialProfile = allOptions.some((option) => option.value === profileParam)
     ? profileParam
     : '';
+
+  // Quem veio pela página d'A Casa continua vendo para onde está indo: sem isso
+  // o cadastro só falava de match e perfis perto, e a pessoa perdia o contexto.
+  const [cadastroDaCasa] = useState(vaiParaACasa);
+  const [faixaDaCasa, setFaixaDaCasa] = useState('🔥 Falta pouco para entrar na Casa');
+  useEffect(() => {
+    if (!cadastroDaCasa) return;
+    apiClient.get('/casa/publico').then(({ data }) => {
+      if (data?.aberta) { setFaixaDaCasa('🔥 A Casa está aberta agora: falta pouco para entrar'); return; }
+      if (!data?.proximaAbertura) return;
+      const quando = new Date(data.proximaAbertura);
+      const dia = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' }).format(quando).replace('-feira', '');
+      const hora = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(quando));
+      setFaixaDaCasa(`🔥 Falta pouco: ${data.proximoTema?.nome ? `${data.proximoTema.nome}, ` : 'A Casa abre '}${dia} às ${hora}h`);
+    }).catch(() => { /* fica a frase genérica */ });
+  }, [cadastroDaCasa]);
 
   // Lido uma única vez, antes do primeiro render, para o wizard já nascer no
   // passo certo (sem piscar o Passo 1).
@@ -676,7 +693,7 @@ export default function Register() {
           <div className="mb-5 flex items-center gap-2.5 overflow-hidden rounded-xl border border-primary/15 bg-primary/8 px-3.5 py-2.5">
             <span className="shrink-0 animate-pulse text-xs text-primary">●</span>
             <span className="truncate text-sm text-muted-foreground">
-              {`${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
+              {cadastroDaCasa ? faixaDaCasa : `${SOCIAL_PROOFS[proofIndex].icon} ${SOCIAL_PROOFS[proofIndex].text}`}
             </span>
           </div>
 

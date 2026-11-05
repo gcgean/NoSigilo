@@ -16,6 +16,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => mocks.navigate,
+  useLocation: () => ({ pathname: '/feed' }),
 }));
 
 describe('FirstAccessTutorial', () => {

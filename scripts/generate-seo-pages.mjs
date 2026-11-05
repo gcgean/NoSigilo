@@ -2413,7 +2413,7 @@ const CASA_SALAS = [
   { nome: '🍸 Salão Principal', desc: 'A pista de todo mundo: conhecer, provocar e chamar alguém para a cabine.' },
   { nome: '💑 Sala dos Casais', desc: 'Só casais e mulheres, com as brincadeiras mais quentes da noite.' },
   { nome: '😈 Quarto Cuckold', desc: 'Para casais que gostam de exibir a esposa. Quem escolhe é ela; solteiros entram sem fila.' },
-  { nome: '🫦 Suruba', desc: 'Onde todo mundo se pega. Casais e mulheres entram direto; o solteiro entra se animou a noite ou se for chamado.' },
+  { nome: '🫦 Suruba', desc: 'A sala mais liberada da noite. Casais e mulheres entram direto; o solteiro entra se animou a noite ou se for chamado.' },
 ];
 
 const CASA_PULSEIRAS = [

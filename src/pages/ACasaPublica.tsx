@@ -26,6 +26,24 @@ function contagem(alvo: string | null, agora: number) {
   return { d, h, m, seg };
 }
 
+// Página pública: descrição leve das salas (o texto quente fica lá dentro, e
+// link com texto explícito é o que rede social bloqueia). Vem pelo nome; sala
+// nova sem entrada aqui mostra só o nome, para nada explícito vazar sem querer.
+const SALAS_PUBLICAS: Record<string, string> = {
+  'Salão Principal': 'A pista de todo mundo: conhecer, provocar e chamar alguém para a cabine.',
+  'Sala dos Casais': 'Só casais e mulheres, com as brincadeiras mais quentes da noite.',
+  'Quarto Cuckold': 'Para casais que gostam de exibir a esposa. Quem escolhe é ela; solteiros entram sem fila.',
+  'Suruba': 'A sala mais liberada da noite. Casais e mulheres entram direto; o solteiro entra se animou a noite ou se for chamado.',
+};
+
+// O preço de quem está em Portugal é outro (ver situacaoPortugal no backend).
+function precoPremium() {
+  try {
+    if (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Europe/Lisbon') return 'cerca de 5 euros por mês';
+  } catch { /* segue o preço do Brasil */ }
+  return 'R$ 9,90 por mês';
+}
+
 const EXEMPLOS = [
   '🍷 Eu nunca… fiz troca de casais completa.',
   '🎲 Verdade: qual fantasia ninguém desta sala imagina?',
@@ -56,11 +74,15 @@ export default function ACasaPublica() {
   }, [isAuthenticated, params, navigate]);
 
   const quero = () => {
-    if (isAuthenticated) { navigate(info && !info.aberta ? '/casa?reservar=1' : '/casa'); return; }
-    guardarDestinoPosCadastro('/casa');
+    // Com A Casa fechada, entrar aqui já é reservar: quem cria a conta chega com
+    // o lugar garantido, sem precisar tocar em "reservar" de novo.
+    const destino = info && !info.aberta ? '/casa?reservar=1' : '/casa';
+    if (isAuthenticated) { navigate(destino); return; }
+    guardarDestinoPosCadastro(destino);
     navigate(convite ? `/register?invite=${encodeURIComponent(convite)}` : '/register');
   };
   const c = contagem(info?.proximaAbertura ?? null, agora);
+  const rotuloBotao = info?.aberta ? 'Entrar na Casa' : '🎟️ Reservar meu lugar';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-fuchsia-950 to-zinc-950 px-4 py-8 text-white">
@@ -71,8 +93,9 @@ export default function ACasaPublica() {
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-fuchsia-300">Boate virtual · só para maiores de 18</p>
           <h1 className="mt-2 text-5xl font-black">A Casa 🔥</h1>
           <p className="mt-3 text-base text-white/85">
-            A casa de swing online do NoSigilo, feita para a nossa comunidade. Toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>: salas ao vivo com casais, mulheres e singles,
-            brincadeiras quentes e cabine a dois.
+            Tem vontade de conhecer uma casa de swing, mas não tem nenhuma perto ou tem receio de ser reconhecido na porta?
+            <b> A Casa</b> é a casa de swing online do NoSigilo: toda <b>sexta às 22h, até 1h, e sábado às 22h, até 2h</b>, com salas ao vivo de casais, mulheres e singles,
+            brincadeiras quentes e cabine a dois. Você entra de qualquer cidade.
           </p>
         </div>
 
@@ -102,10 +125,12 @@ export default function ACasaPublica() {
         </div>
 
         <Button size="lg" className="h-14 w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 text-lg font-bold" onClick={quero}>
-          {isAuthenticated ? (info && !info.aberta ? '🎟️ Reservar meu lugar' : 'Entrar na Casa') : 'Quero entrar na Casa'}
+          {rotuloBotao}
         </Button>
         {!info?.aberta && (info?.reservas ?? 0) > 0 && (
-          <p className="text-center text-sm text-fuchsia-200">🎟️ {info?.reservas} pessoa(s) já reservaram lugar para a próxima noite</p>
+          <p className="text-center text-sm text-fuchsia-200">
+            🎟️ {info?.reservas === 1 ? '1 pessoa já reservou' : `${info?.reservas} pessoas já reservaram`} lugar para a próxima noite
+          </p>
         )}
         {!isAuthenticated && (
           <p className="text-center text-sm text-white/70">
@@ -113,18 +138,23 @@ export default function ACasaPublica() {
           </p>
         )}
 
-        {/* Vídeo de apresentação narrado pela Lola (arquivos em storage/casa-apresentacao). */}
-        <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-3xl border border-fuchsia-500/40 shadow-[0_0_60px_rgba(236,72,153,0.35)]">
-          <video
-            src="/api/casa/apresentacao/video.mp4"
-            poster="/api/casa/apresentacao/capa.jpg"
-            controls
-            playsInline
-            preload="metadata"
-            className="block aspect-[9/16] w-full bg-black object-cover"
-          />
+        {/* O vídeo de apresentação saiu em 05/11/2026: dizia "21h à 1h" e mostrava
+            o Quarto Escuro, que está fechado. Volta quando for regravado (os arquivos
+            continuam em storage/casa-apresentacao). */}
+        <div className="grid gap-2">
+          <div className="rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4">
+            <p className="font-semibold text-emerald-200">👩 Mulher entra grátis</p>
+            <p className="text-sm text-white/70">Com tudo liberado: conversar, brincar e ir para a cabine.</p>
+          </div>
+          <div className="rounded-2xl bg-white/5 p-4">
+            <p className="font-semibold">👀 Quer só espiar?</p>
+            <p className="text-sm text-white/70">Qualquer pessoa pode entrar e acompanhar as salas sem pagar nada.</p>
+          </div>
+          <div className="rounded-2xl bg-white/5 p-4">
+            <p className="font-semibold">💬 Para participar</p>
+            <p className="text-sm text-white/70">Conversar, brincar e ir para a cabine faz parte do Premium ({precoPremium()}) ou do período grátis do cadastro (casais têm 15 dias).</p>
+          </div>
         </div>
-        <p className="-mt-3 text-center text-xs text-white/60">▶️ Aperte o play: a Lola te mostra como funciona (1 min)</p>
 
         <div className="space-y-3">
           {(info?.salas ?? []).map((s) => (
@@ -132,7 +162,7 @@ export default function ACasaPublica() {
               <span className="text-3xl">{s.emoji}</span>
               <div>
                 <p className="font-semibold">{s.nome} {s.nivel === 'muito_quente' && <span className="ml-1 rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-300">MUITO QUENTE</span>}</p>
-                <p className="text-sm text-white/70">{s.descricao}</p>
+                {SALAS_PUBLICAS[s.nome] && <p className="text-sm text-white/70">{SALAS_PUBLICAS[s.nome]}</p>}
               </div>
             </div>
           ))}
@@ -156,7 +186,7 @@ export default function ACasaPublica() {
         </ul>
 
         <Button size="lg" variant="outline" className="h-12 w-full border-white/30 bg-transparent text-white hover:bg-white/10" onClick={quero}>
-          {isAuthenticated ? 'Entrar na Casa' : 'Criar conta e entrar'}
+          {rotuloBotao}
         </Button>
         <p className="text-center text-[11px] text-white/50">Somente maiores de 18 anos. Consentimento sempre.</p>
       </div>

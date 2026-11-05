@@ -11,6 +11,7 @@ import { enablePushNotifications } from '@/utils/pushNotifications';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { consumirBoasVindasDaCasa } from '@/utils/destinoPosCadastro';
 import { cn } from '@/lib/utils';
 import BrandLogo from '@/components/BrandLogo';
 import { ToastAction } from '@/components/ui/toast';
@@ -322,6 +323,7 @@ export default function Casa() {
   const [vendo, setVendo] = useState<{ url: string; mime: string | null; msg?: Msg } | null>(null);
   const [comentarioMidia, setComentarioMidia] = useState('');
   const [params, setParams] = useSearchParams();
+  const [boasVindasCasa, setBoasVindasCasa] = useState(consumirBoasVindasDaCasa);
   const { user } = useAuth();
   const cameraRef = useRef<HTMLInputElement>(null);
   const [revelarAte, setRevelarAte] = useState<number>(0);
@@ -1836,6 +1838,24 @@ export default function Casa() {
           )}
         </div>
 
+        {/* Acabou de se cadastrar com A Casa fechada: não fica olhando uma porta fechada. */}
+        <Dialog open={boasVindasCasa && !!info && !info.aberta} onOpenChange={(aberto) => { if (!aberto) setBoasVindasCasa(false); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{info?.reservado ? '🎟️ Seu lugar está reservado!' : '🔥 Bem-vindo(a) à Casa!'}</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              A Casa abre toda sexta e sábado, às 22h, e a gente avisa quando abrir. <b className="text-foreground">Enquanto ela não abre, aproveite a comunidade liberal à vontade:</b> veja quem está perto, as postagens e os stories.
+            </p>
+            <div className="grid gap-2">
+              <Button className="w-full bg-gradient-to-r from-rose-600 to-fuchsia-600 font-bold" onClick={() => { setBoasVindasCasa(false); navigate('/feed'); }}>
+                Explorar a comunidade
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={() => setBoasVindasCasa(false)}>Ficar aqui</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {info && !info.aberta && (
           <div className="space-y-3 text-center">
             {info.reservado ? (
@@ -1848,7 +1868,7 @@ export default function Casa() {
                 🎟️ Reservar meu lugar
               </Button>
             )}
-            {info.reservas > 0 && <p className="text-sm text-fuchsia-200">🎟️ {info.reservas} pessoa(s) já reservaram lugar para a próxima noite</p>}
+            {info.reservas > 0 && <p className="text-sm text-fuchsia-200">🎟️ {info.reservas === 1 ? '1 pessoa já reservou' : `${info.reservas} pessoas já reservaram`} lugar para a próxima noite</p>}
           </div>
         )}
         {info?.aberta && info.salas?.length > 0 && (

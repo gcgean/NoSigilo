@@ -1810,6 +1810,8 @@ export default function Admin() {
                 >
                   <option value="">Qualquer origem</option>
                   <option value="regional">Páginas de cidade/estado</option>
+                  <option value="/swing/casa-de-swing-online/">Página Casa de swing online</option>
+                  <option value="/swing/portugal/casa-de-swing-online/">Página Casa de swing online (Portugal)</option>
                   <option value="direto">Cadastro direto</option>
                 </select>
               </div>

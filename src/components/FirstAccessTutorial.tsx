@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -146,11 +146,15 @@ const FEATURE_RAIL = [
 export default function FirstAccessTutorial() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  // Dentro d'A Casa o tutorial não abre: cobria a mensagem de quem acabou de
+  // reservar e a noite ao vivo. Fica para a próxima tela que a pessoa abrir.
+  const naCasa = pathname.startsWith('/casa');
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || naCasa) return;
     const key = `nosigilo:welcome-tutorial-date:${user.id}`;
     try {
       if (localStorage.getItem(key)) return;
@@ -160,7 +164,7 @@ export default function FirstAccessTutorial() {
     }
     setStepIndex(0);
     setOpen(true);
-  }, [user?.id]);
+  }, [user?.id, naCasa]);
 
   useEffect(() => {
     const handler = () => {

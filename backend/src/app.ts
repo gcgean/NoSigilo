@@ -2144,6 +2144,9 @@ function limpaPrimeiroToque(valor: unknown): PrimeiroToque | null {
 /** Canal em português, para o admin. UTM vence (é intenção explícita do link),
  *  depois o navegador de dentro do app, depois o site que mandou a pessoa. */
 function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): string {
+  // Página "casa de swing online" (casanosigilo.net leva para ela): vale mais do
+  // que "veio pela /acasa", senão ela some misturada com quem abriu a /acasa direto.
+  if (signupSource?.includes('casa-de-swing-online')) return 'Página Casa de swing online';
   // Chegou pela página pública d'A Casa (/a-casa marca utm_campaign=a-casa):
   // conta como A Casa, com o canal de onde veio entre parênteses.
   if (o?.utmCampaign === 'a-casa') {
