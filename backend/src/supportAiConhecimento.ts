@@ -15,6 +15,13 @@
 
 export const MANUAL_DO_SISTEMA = `MANUAL DO NOSIGILO (use para responder; não invente além disto)
 
+Instalar o app no celular
+- O NoSigilo NÃO está na Play Store nem na App Store: nunca mande procurar em loja nem diga que está disponível lá. Ele é instalado pelo navegador, não existe link de download nem arquivo para baixar.
+- Android: abrir nosigilo.net no Google Chrome, tocar nos três pontinhos ⋮ (no canto direito da tela, em cima ou embaixo, depende do celular), rolar o menu e tocar em "Instalar e criar atalho" (em alguns celulares: "Instalar app" ou "Adicionar à tela inicial") e confirmar em "Instalar". O ícone aparece na tela inicial.
+- iPhone: abrir nosigilo.net no Safari, tocar em Compartilhar (quadrado com seta para cima), rolar e tocar em "Adicionar à Tela de Início", deixar "Abrir como App" ligado se aparecer e tocar em "Adicionar".
+- Dentro do navegador do Instagram não instala: primeiro abrir o site no Chrome (Android) ou no Safari (iPhone).
+- Na primeira entrada pelo app instalado, a pessoa ganha 20 tokens, uma vez só.
+
 Público e regras da comunidade
 - Só maiores de 18 anos. Qualquer conteúdo envolvendo menores é proibido e é caso grave.
 - Toda interação precisa ser consensual e respeitosa. "Não", silêncio ou bloqueio encerram a tentativa de contato.

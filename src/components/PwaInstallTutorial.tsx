@@ -46,9 +46,9 @@ const guides = {
     name: 'Android', browser: 'Chrome',
     steps: [
       { title: 'Abra no Chrome', detail: 'Acesse nosigilo.net no Google Chrome. Se estiver dentro de outro aplicativo, abra a página no Chrome.', icon: Smartphone, visual: 'Chrome  ·  nosigilo.net' },
-      { title: 'Toque nos três pontos', detail: 'O menu ⋮ fica perto do canto superior direito do Chrome.', icon: Ellipsis, visual: 'nosigilo.net      ⋮' },
-      { title: 'Escolha a opção de instalar', detail: 'Toque em “Instalar app” ou “Adicionar à tela inicial”. O nome pode variar entre aparelhos.', icon: Download, visual: '↓  Instalar app' },
-      { title: 'Confirme a instalação', detail: 'Toque em “Instalar” ou “Adicionar”. Depois procure o ícone do NoSigilo.net na tela inicial.', icon: Check, visual: 'NoSigilo.net    Instalar' },
+      { title: 'Toque nos três pontos', detail: 'O menu ⋮ fica no canto direito do Chrome: em cima ou embaixo da tela, depende do seu celular.', icon: Ellipsis, visual: 'nosigilo.net      ⋮' },
+      { title: 'Escolha a opção de instalar', detail: 'Role o menu e toque em “Instalar e criar atalho”. Em alguns celulares, o nome é “Instalar app” ou “Adicionar à tela inicial”.', icon: Download, visual: '↓  Instalar e criar atalho' },
+      { title: 'Confirme a instalação', detail: 'Na janela que abrir, toque em “Instalar”. Depois procure o ícone do NoSigilo.net na tela inicial.', icon: Check, visual: 'NoSigilo.net    Instalar' },
     ],
   },
   windows: {
