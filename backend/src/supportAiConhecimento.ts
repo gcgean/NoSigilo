@@ -46,6 +46,7 @@ Premium
 - PIX costuma confirmar em poucos minutos.
 - Precisa de Premium (ou período grátis/dias ganhos ativos): iniciar conversas e mandar mensagens no chat, reagir e abrir mídias de mensagens, curtir e passar perfis no Match, ver quem visitou o perfil, ver quem curtiu suas fotos, ver quem viu seus stories e quem fixou você, usar o Radar, criar eventos e confirmar presença, mandar mensagens em grupos.
 - Dias grátis ganhos (tokens, convites) valem mesmo depois que a assinatura paga vence.
+- Bônus de assinatura: cada pagamento (o primeiro depois do teste grátis ou uma renovação, no Pix ou no cartão) dá 30 tokens, creditados quando o pagamento é confirmado. O primeiro pagamento no cartão dá mais 50, uma vez só.
 
 A Casa (boate virtual de swing do NoSigilo; menu da foto do perfil › "A Casa 🔥", ou nosigilo.net/acasa)
 - Abre sexta e sábado às 22h, até 1h (horário de Brasília). Mulheres entram grátis, com tudo liberado. Salas abertas: Salão Principal, Sala dos Casais (só casais e mulheres) e Quarto Cuckold. Quarto Escuro e Glory Hole estão fechados por enquanto. O Quarto Cuckold fica sempre aberto e os homens solteiros entram nele sem fila; nas outras salas os homens seguem a fila (no máximo metade da sala), mas um casal ou uma mulher pode chamar o solteiro para outra sala e ele entra sem fila. Inauguração: sexta, 23/10/2026, às 21h. Quem reserva o lugar ("Reservar meu lugar") recebe aviso no celular quando abre.

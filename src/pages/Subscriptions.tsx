@@ -44,6 +44,8 @@ type CheckoutPayload = {
 
 // Bônus do primeiro pagamento no cartão (TOKEN_RULES.pagou_cartao no servidor).
 const TOKENS_CARTAO = 50;
+// Bônus de cada pagamento, inclusive renovação (TOKEN_RULES.assinatura_paga no servidor).
+const TOKENS_ASSINATURA = 30;
 
 function normalizePixQrCode(value?: string | null) {
   const raw = String(value || '').trim();
@@ -669,6 +671,9 @@ export default function Subscriptions() {
                   <Repeat className="w-3.5 h-3.5" /> Cartão salvo com cobrança automática mensal — cancele quando quiser.
                 </p>
               )}
+              <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-medium">
+                🎁 Ganhe <strong>{TOKENS_ASSINATURA} tokens</strong> a cada pagamento: agora e em toda renovação.
+              </p>
               {billingMethod === 'CREDIT_CARD' ? (
                 <p className="rounded-xl border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-300">
                   🎁 Pagando no cartão você ganha <strong>{TOKENS_CARTAO} tokens</strong> no primeiro pagamento — e nunca mais precisa lembrar de renovar.

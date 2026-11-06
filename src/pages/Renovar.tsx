@@ -11,6 +11,7 @@ type Info = {
   precoCents: number;
   podePix: boolean;
   tokensCartao: number;
+  tokensRenovar?: number;
 };
 
 type Checkout = {
@@ -197,6 +198,11 @@ export default function Renovar() {
               )}
             </div>
 
+            {!!info.tokensRenovar && (
+              <p className="rounded-2xl border border-rose-400/30 bg-rose-500/10 p-3 text-center text-sm font-medium">
+                🎁 Renovando você ganha <strong>{info.tokensRenovar} tokens</strong>
+              </p>
+            )}
             <Link
               to="/subscriptions"
               className="flex items-center gap-3 rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm"

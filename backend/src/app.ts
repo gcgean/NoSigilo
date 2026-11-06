@@ -29,7 +29,7 @@ import { iniciarGravacaoDeDesempenho, medirTempoDeResposta } from './desempenho.
 import { estatisticasDosVideos, gostoDoLeitor, ordenarParaLeitor, postsComVideo, tipoDePerfil, type CandidatoVideo } from './videosParaVoce.js';
 import { DIAS_NA_ABA, MAX_AVISOS_POR_SEMANA, bloqueiosEntre, boasVindasRestantesHoje, leitorDaLinha, motivoSemBoasVindas, novosParaLeitor, perfisNovosDesde, registrarBoasVindas, textoDoAviso } from './novosNaRegiao.js';
 import { sendPasswordResetCodeEmail, sendReengagementEmail, sendPromoterCampaignEmail, sendPromoterIncentiveEmail, sendPromoterRulesNoticeEmail, sendPromoterMonthlySummaryEmail, sendPromoterPaymentReceiptEmail, sendAdminAlertEmail, sendWinbackEmail, sendModerationEmail, sendWeekendEngagementEmail, sendSupportReplyEmail, sendTwoFactorCodeEmail, sendNewDeviceLoginEmail, sendEmbaixadorOficialEmail, sendCasaAbriuEmail } from './email.js';
-import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, montarLembreteRenovacao, montarVoltaRenovacao } from './emailRenovacao.js';
+import { sendLembreteRenovacaoEmail, sendVoltaRenovacaoEmail, sendFimDoTesteEmail, montarLembreteRenovacao, montarVoltaRenovacao, montarFimDoTeste } from './emailRenovacao.js';
 import {
   cancelHubSubscription,
   createHubCheckout,
@@ -610,6 +610,8 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   pagou_cartao: { points: 50, dailyCap: 1 },
   // Voltou pela campanha de volta e renovou em até 30 dias.
   volta_renovou: { points: 50, dailyCap: 1 },
+  // Cada pagamento de assinatura (1º depois do teste ou renovação). Vale somado aos bônus acima.
+  assinatura_paga: { points: 30, dailyCap: 1 },
   // A Casa: entrar na noite (1x por noite) e acertar o quiz da Lola.
   casa_entrada: { points: 5, dailyCap: 1 },
   // Promoção: casal que entra na Casa antes da meia-noite (NOITES_CASAL_CEDO em casa.ts).
@@ -687,11 +689,11 @@ const PRESENTES_CHAT: Record<string, { emoji: string; nome: string; tokens: numb
 // Credita pontos por uma ação. Best-effort: nunca lança (não derruba a ação principal).
 // Aplica dedup por alvo (refId) e teto diário; ao cruzar 100 pontos, converte
 // automaticamente em +1 dia grátis (desconta 100 e registra a baixa no ledger).
-async function awardTokens(db: DbHandle, userId: string, actionType: string, refId?: string | null, io?: SocketIOServer) {
+async function awardTokens(db: DbHandle, userId: string, actionType: string, refId?: string | null, io?: SocketIOServer): Promise<boolean> {
   try {
-    if (!userId) return;
+    if (!userId) return false;
     const rule = TOKEN_RULES[actionType];
-    if (!rule) return;
+    if (!rule) return false;
     const now = nowIso();
     const todayPrefix = now.slice(0, 10); // YYYY-MM-DD (UTC), consistente com o resto
 
@@ -702,7 +704,7 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
         'SELECT 1 AS x FROM token_transactions WHERE user_id = ? AND action_type = ? AND ref_id = ? LIMIT 1',
         [userId, actionType, refId]
       )) as any;
-      if (dup) return;
+      if (dup) return false;
     }
 
     // Teto diário por tipo de ação
@@ -711,7 +713,7 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
       "SELECT COUNT(*) AS c FROM token_transactions WHERE user_id = ? AND action_type = ? AND points > 0 AND created_at >= ?",
       [userId, actionType, todayPrefix]
     )) as any;
-    if (Number(cntRow?.c || 0) >= rule.dailyCap) return;
+    if (Number(cntRow?.c || 0) >= rule.dailyCap) return false;
 
     // Credita pontos (saldo + acumulado histórico)
     await run(
@@ -762,8 +764,10 @@ async function awardTokens(db: DbHandle, userId: string, actionType: string, ref
       action: actionType,
       freeDaysGranted,
     });
+    return true;
   } catch (err) {
     console.error('[awardTokens]', err);
+    return false;
   }
 }
 
@@ -1142,6 +1146,29 @@ async function registrarPagamentoRenovacao(db: DbHandle, userId: string, io?: So
   }
 }
 
+// Bônus de cada pagamento de assinatura, com aviso no app e push. Uma vez por
+// período pago: a referência é a data em que a licença nova termina.
+async function creditarBonusAssinatura(db: DbHandle, userId: string, licencaAte: string, ctx?: { io?: SocketIOServer; env?: Env }) {
+  try {
+    const creditou = await awardTokens(db, userId, 'assinatura_paga', `assinatura-${licencaAte.slice(0, 10)}`, ctx?.io);
+    if (!creditou) return;
+    const pontos = TOKEN_RULES.assinatura_paga.points;
+    const titulo = `🎁 +${pontos} tokens pela sua assinatura!`;
+    const texto = `Obrigado por assinar. Os tokens já estão na sua conta, e a cada renovação você ganha mais ${pontos}.`;
+    await run(
+      db,
+      `INSERT INTO notifications (id, user_id, type, title, description, is_read, created_at) VALUES (?, ?, 'tokens.bonus_assinatura', ?, ?, 0, ?)`,
+      [randomUUID(), userId, titulo, texto, nowIso()]
+    );
+    await db.persist();
+    if (ctx?.env) {
+      await sendPushToUser({ db, env: ctx.env }, { userId, payload: { title: titulo, body: texto, url: '/tokens', tag: 'bonus-assinatura' } });
+    }
+  } catch (err) {
+    console.error('[renovacao] bonus da assinatura falhou:', err);
+  }
+}
+
 export async function syncHubAccessForUser(
   db: DbHandle,
   userId: string,
@@ -1197,6 +1224,10 @@ export async function syncHubAccessForUser(
   }
   if (pagouAgora) {
     await registrarPagamentoRenovacao(db, userId, ctx?.io);
+    // Ajuste pequeno de data no Hub não é pagamento: um período pago soma semanas.
+    if (fimDepois - fimAntes >= 7 * 86_400_000) {
+      await creditarBonusAssinatura(db, userId, String(result.licenseEndAt), ctx);
+    }
   }
 }
 
@@ -3487,7 +3518,7 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
           const r = await sendLembreteRenovacaoEmail(opcoesEmail, {
             to: String(u.email), nome: String(u.name || ''), tipo, venceEmLabel, linkRenovar: link,
             pixelUrl: pixelAbertura(env, lembreteId), precoLabel: precoLabel(preco),
-            tokensCartao: TOKEN_RULES.pagou_cartao.points, novidades,
+            tokensCartao: TOKEN_RULES.pagou_cartao.points, tokensRenovar: TOKEN_RULES.assinatura_paga.points, novidades,
           });
           status = r.skipped ? 'skipped' : 'sent';
           if (!r.skipped) enviados++;
@@ -3504,7 +3535,7 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
           userId,
           payload: {
             title: tipo === 'd0' ? 'Seu Premium vence hoje ⏳' : `Seu Premium vence em 3 dias (${venceEmLabel})`,
-            body: 'Toque para renovar com Pix em 1 minuto.',
+            body: `Renove com Pix em 1 minuto e ganhe +${TOKEN_RULES.assinatura_paga.points} tokens.`,
             url: link.replace(frontend, ''),
             tag: `renovar-${tipo}`,
           },
@@ -3514,6 +3545,60 @@ export async function runLembretesRenovacao(db: DbHandle, env: Env, opcoes: { re
       await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ?, push_enviado = CASE WHEN ? = 1 THEN 1 ELSE push_enviado END WHERE id = ?', [status, erro, push > 0 ? 1 : 0, lembreteId]);
       await pausaResend();
     }
+  }
+  // Fim do teste grátis: um aviso nos 3 dias finais. Mulher fica de fora: ao verificar
+  // o perfil o acesso dela é sem prazo, então "assine" seria a mensagem errada.
+  const ha14Dias = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const emTeste = (await queryAll(
+    db,
+    `SELECT u.id, u.name, u.email, u.gender, u.trial_ends_at, ${optOut} AS aceita_email
+     FROM users u
+     WHERE u.trial_ends_at >= ? AND u.trial_ends_at < ?
+       AND COALESCE(u.hub_access_status, '') <> 'licensed'
+       AND (u.is_banned = 0 OR u.is_banned IS NULL)
+       AND (u.is_deactivated = 0 OR u.is_deactivated IS NULL)
+       AND u.deleted_at IS NULL
+       -- Quem ganha dias com tokens vê o prazo mudar: não repete o aviso a cada dia.
+       AND NOT EXISTS (SELECT 1 FROM lembretes_renovacao l WHERE l.user_id = u.id AND l.tipo = 't3' AND l.status <> 'error' AND l.enviado_em >= ?)`,
+    [nowIso(), inicioDoDiaBrt(3), ha14Dias]
+  )) as any[];
+  for (const u of emTeste) {
+    if (ehMulher(u.gender)) continue;
+    const userId = String(u.id);
+    const lembreteId = await reservarLembrete(db, userId, 't3', String(u.trial_ends_at).slice(0, 10));
+    if (!lembreteId) continue;
+    const acabaEmLabel = new Date(new Date(String(u.trial_ends_at)).getTime() - 3 * 3600_000).toISOString().slice(5, 10).split('-').reverse().join('/');
+    let status = 'skipped';
+    let erro: string | null = null;
+    try {
+      if (u.email && u.aceita_email !== false && Number(u.aceita_email) !== 0) {
+        const r = await sendFimDoTesteEmail(opcoesEmail, {
+          to: String(u.email), nome: String(u.name || ''), acabaEmLabel, linkAssinar: `${frontend}/subscriptions`,
+          pixelUrl: pixelAbertura(env, lembreteId), precoLabel: precoLabel(preco), tokensAssinatura: TOKEN_RULES.assinatura_paga.points,
+        });
+        status = r.skipped ? 'skipped' : 'sent';
+        if (!r.skipped) enviados++;
+      }
+    } catch (e) {
+      status = 'error';
+      erro = (e as Error).message.slice(0, 500);
+    }
+    let push = 0;
+    const jaTevePush = Number(((await queryOne(db, 'SELECT push_enviado FROM lembretes_renovacao WHERE id = ?', [lembreteId])) as any)?.push_enviado || 0) === 1;
+    if (!jaTevePush) try {
+      push = await sendPushToUser({ db, env }, {
+        userId,
+        payload: {
+          title: `Seu teste grátis acaba em ${acabaEmLabel} ⏳`,
+          body: `Assine agora e ganhe +${TOKEN_RULES.assinatura_paga.points} tokens.`,
+          url: '/subscriptions',
+          tag: 'fim-do-teste',
+        },
+      });
+      if (push > 0) pushes++;
+    } catch { /* push é bônus */ }
+    await run(db, 'UPDATE lembretes_renovacao SET status = ?, erro = ?, push_enviado = CASE WHEN ? = 1 THEN 1 ELSE push_enviado END WHERE id = ?', [status, erro, push > 0 ? 1 : 0, lembreteId]);
+    await pausaResend();
   }
   await db.persist();
   console.log(`[renovacao] lembretes: ${enviados} e-mail(s), ${pushes} push(es)`);
@@ -23296,6 +23381,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       precoCents: await precoDoPlanoCents(env),
       podePix: !!u.hub_customer_id,
       tokensCartao: TOKEN_RULES.pagou_cartao.points,
+      tokensRenovar: TOKEN_RULES.assinatura_paga.points,
     });
   });
 
@@ -23361,9 +23447,11 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     const preco = precoLabel(await precoDoPlanoCents(env));
     const link = linkRenovar(env, String(u.id));
     const nov = await novidadesDesde(db, String(u.id), new Date(Date.now() - 7 * 86_400_000).toISOString());
-    const r = tipo === 'volta1' || tipo === 'volta2'
+    const r = tipo === 't3'
+      ? montarFimDoTeste(opcoes, { to: String(u.email), nome: String(u.name || ''), acabaEmLabel: '02/10', linkAssinar: `${origemFrontend(env)}/subscriptions`, precoLabel: preco, tokensAssinatura: TOKEN_RULES.assinatura_paga.points })
+      : tipo === 'volta1' || tipo === 'volta2'
       ? montarVoltaRenovacao(opcoes, { to: String(u.email), nome: String(u.name || ''), etapa: tipo === 'volta1' ? 1 : 2, linkRenovar: link, precoLabel: preco, tokensVolta: TOKEN_RULES.volta_renovou.points, tokensCartao: TOKEN_RULES.pagou_cartao.points, ...nov })
-      : montarLembreteRenovacao(opcoes, { to: String(u.email), nome: String(u.name || ''), tipo: tipo === 'd0' ? 'd0' : 'd3', venceEmLabel: '02/10', linkRenovar: link, precoLabel: preco, tokensCartao: TOKEN_RULES.pagou_cartao.points, novidades: nov });
+      : montarLembreteRenovacao(opcoes, { to: String(u.email), nome: String(u.name || ''), tipo: tipo === 'd0' ? 'd0' : 'd3', venceEmLabel: '02/10', linkRenovar: link, precoLabel: preco, tokensCartao: TOKEN_RULES.pagou_cartao.points, tokensRenovar: TOKEN_RULES.assinatura_paga.points, novidades: nov });
     res.json(r);
   });
 
@@ -23986,7 +24074,7 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     requireAuth: requireAuth(env, db),
     getIo: () => app.get('io') as SocketIOServer | undefined,
     temPremium: (userId) => userHasPremiumAccess(db, userId, env.BILLING_TEST_EMAILS),
-    premiar: (userId, acao, refId) => awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined),
+    premiar: async (userId, acao, refId) => { await awardTokens(db, userId, acao, refId, app.get('io') as SocketIOServer | undefined); },
     push: (userId, payload) => sendPushToUser({ db, env }, { userId, payload }),
     pastaMusicas: path.join(storageRootDir, 'casa-musicas'),
     onlineIds: () => (app.get('presence') as { onlineIds?: () => string[] } | undefined)?.onlineIds?.() ?? [],

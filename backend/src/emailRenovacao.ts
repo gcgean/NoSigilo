@@ -75,6 +75,14 @@ function blocoCartao(tokens: number) {
       </div>`;
 }
 
+function blocoPresente(tokens: number, legenda: string) {
+  return `
+      <div style="background:linear-gradient(135deg,#e83e68 0%,#b5179e 100%);border-radius:16px;padding:18px;text-align:center;margin:18px 0 4px;">
+        <p style="color:#fff;font-size:24px;font-weight:900;margin:0 0 4px;">🎁 +${tokens} TOKENS</p>
+        <p style="color:rgba(255,255,255,0.9);font-size:13px;margin:0;">${legenda}</p>
+      </div>`;
+}
+
 function itemLista(html: string) {
   return `<div style="padding:11px 14px;border-radius:10px;background:#fff1f5;margin-bottom:8px;font-size:15px;color:#2b1720;">💜 ${html}</div>`;
 }
@@ -101,6 +109,7 @@ export type LembreteRenovacaoPayload = {
   pixelUrl?: string;
   precoLabel: string; // "9,90"
   tokensCartao: number;
+  tokensRenovar: number;
   novidades?: { curtidas: number; visitas: number; mensagens: number };
 };
 
@@ -109,8 +118,8 @@ export function montarLembreteRenovacao(options: RenovacaoEmailOptions, p: Lembr
   const nome = escapeHtml(p.nome.split(' ')[0] || p.nome);
   const hoje = p.tipo === 'd0';
   const subject = hoje
-    ? `${nome}, seu Premium vence hoje ⏳`
-    : `${nome}, seu Premium vence em 3 dias (${p.venceEmLabel})`;
+    ? `${nome}, seu Premium vence hoje: renove e ganhe ${p.tokensRenovar} tokens 🎁`
+    : `${nome}, seu Premium vence em 3 dias: renove e ganhe ${p.tokensRenovar} tokens 🎁`;
   const n = p.novidades;
   const linhas: string[] = [];
   if (n?.curtidas) linhas.push(`<strong>${n.curtidas}</strong> ${n.curtidas === 1 ? 'curtida nova' : 'curtidas novas'} nos últimos 7 dias`);
@@ -124,6 +133,7 @@ export function montarLembreteRenovacao(options: RenovacaoEmailOptions, p: Lembr
           : `Seu Premium vence em <strong style="color:#e83e68;">3 dias, no dia ${escapeHtml(p.venceEmLabel)}</strong>. Renove agora e não perca nada do que está rolando.`}
       </p>
       ${linhas.map(itemLista).join('')}
+      ${blocoPresente(p.tokensRenovar, 'Creditados na sua conta assim que o pagamento for confirmado.')}
       ${botaoRenovar(p.linkRenovar, `Renovar com Pix — R$ ${escapeHtml(p.precoLabel)}`)}
       ${blocoCartao(p.tokensCartao)}`;
   return { subject, html: molde(siteUrl, corpo, p.pixelUrl) };
@@ -133,6 +143,42 @@ export async function sendLembreteRenovacaoEmail(options: RenovacaoEmailOptions,
   if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
   const { subject, html } = montarLembreteRenovacao(options, p);
   await enviarResend(options, p.to, subject, html, 'lembrete_renovacao');
+  return { skipped: false as const };
+}
+
+export type FimDoTestePayload = {
+  to: string;
+  nome: string;
+  acabaEmLabel: string; // "02/10"
+  linkAssinar: string;
+  pixelUrl?: string;
+  precoLabel: string;
+  tokensAssinatura: number;
+};
+
+export function montarFimDoTeste(options: RenovacaoEmailOptions, p: FimDoTestePayload) {
+  const siteUrl = (options.siteUrl || 'https://nosigilo.net').replace(/\/$/, '');
+  const nome = escapeHtml(p.nome.split(' ')[0] || p.nome);
+  const subject = `${nome}, seu teste grátis acaba em ${p.acabaEmLabel}: assine e ganhe ${p.tokensAssinatura} tokens 🎁`;
+  const corpo = `
+      <p style="font-size:22px;font-weight:700;color:#2b1720;margin:0 0 8px;">Oi, ${nome} 💜</p>
+      <p style="font-size:15px;color:#6b4b57;line-height:1.6;margin:0 0 18px;">
+        Seu teste grátis acaba em <strong style="color:#e83e68;">${escapeHtml(p.acabaEmLabel)}</strong>.
+        Depois disso, puxar conversa, ver quem visitou seu perfil e usar os filtros ficam só para assinantes.
+      </p>
+      ${blocoPresente(p.tokensAssinatura, `Creditados assim que o pagamento for confirmado, e mais ${p.tokensAssinatura} a cada renovação.`)}
+      <div style="text-align:center;margin:26px 0 10px;">
+        <a href="${p.linkAssinar}" style="display:inline-block;background:#e83e68;color:white;font-size:18px;font-weight:800;padding:17px 36px;border-radius:14px;text-decoration:none;box-shadow:0 6px 20px rgba(232,62,104,0.4);">
+          Assinar por R$ ${escapeHtml(p.precoLabel)}
+        </a>
+      </div>`;
+  return { subject, html: molde(siteUrl, corpo, p.pixelUrl).replace('por ter uma assinatura no nosigilo.net', 'por ter uma conta no nosigilo.net') };
+}
+
+export async function sendFimDoTesteEmail(options: RenovacaoEmailOptions, p: FimDoTestePayload) {
+  if (!options.apiKey || !options.fromEmail) return { skipped: true as const };
+  const { subject, html } = montarFimDoTeste(options, p);
+  await enviarResend(options, p.to, subject, html, 'fim_do_teste');
   return { skipped: false as const };
 }
 

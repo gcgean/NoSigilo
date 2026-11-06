@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
-import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor } from './app.js';
+import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao } from './app.js';
 import { escolherFotoDaCabine } from './casa.js';
 import type { DbHandle } from './db.js';
 
@@ -3859,6 +3859,70 @@ describe('nosigilo backend', () => {
     const mapa = (await request(ctx.app).get('/api/casa').set(outro).expect(200)).body.salas as any[];
     expect(mapa.find((s) => s.id === 'cuckold')).toHaveProperty('fundo', null);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
+  it('bônus de assinatura: 30 tokens por período pago, com aviso, e sem repetir no mesmo período', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, { name: 'Bonus Assinatura', email: 'bonus-assinatura@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)' });
+    const id = String(u.user.id);
+    const saldo = async () => Number(((await queryOne(ctx.db, 'SELECT token_points_total AS p FROM users WHERE id = ?', [id])) as any).p || 0);
+    const bonus = async () => ((await queryAll(ctx.db, "SELECT ref_id FROM token_transactions WHERE user_id = ? AND action_type = 'assinatura_paga'", [id])) as any[]).length;
+    const avisos = async () => ((await queryAll(ctx.db, "SELECT id FROM notifications WHERE user_id = ? AND type = 'tokens.bonus_assinatura'", [id])) as any[]).length;
+    const sync = (fim: string | null, status = 'licensed') => syncHubAccessForUser(ctx.db, id, { accessStatus: status, licenseEndAt: fim, customerId: 'c', productId: 'p' } as any);
+    const dias = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
+
+    const inicial = await saldo();
+    // Sem licença paga (ainda no teste): nada.
+    await sync(null, 'no_license');
+    expect(await bonus()).toBe(0);
+    // Assinou saindo do teste.
+    const primeiro = dias(30);
+    await sync(primeiro);
+    expect(await bonus()).toBe(1);
+    expect(await saldo()).toBe(inicial + 30);
+    expect(await avisos()).toBe(1);
+    // A sincronização repete a toda hora com a mesma data: nada novo.
+    await sync(primeiro);
+    expect(await bonus()).toBe(1);
+    // Ajuste pequeno de data no Hub não é pagamento.
+    await sync(new Date(new Date(primeiro).getTime() + 3600_000).toISOString());
+    expect(await bonus()).toBe(1);
+    // Renovou: bônus novo (outro dia, por causa do limite de 1 por dia).
+    const hoje = new Date();
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date(hoje.getTime() + 2 * 86_400_000) });
+    try {
+      await sync(dias(58));
+      expect(await bonus()).toBe(2);
+      expect(await saldo()).toBe(inicial + 60);
+      expect(await avisos()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aviso de fim do teste: vai para casal perto do fim, nunca para mulher, pagante ou sem prazo', async () => {
+    const nova = async (nome: string, gender: string, fimEmDias: number, licenca = false) => {
+      const c = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender });
+      await run(ctx.db, 'UPDATE users SET trial_ends_at = ?, hub_access_status = ? WHERE id = ?',
+        [new Date(Date.now() + fimEmDias * 86_400_000).toISOString(), licenca ? 'licensed' : null, String(c.user.id)]);
+      return String(c.user.id);
+    };
+    const casal = await nova('Casal Fim Teste', 'Casal (Ele/Ela)', 1);
+    const mulher = await nova('Mulher Fim Teste', 'Mulher', 1);
+    const pagante = await nova('Pagante Fim Teste', 'Casal (Ele/Ela)', 1, true);
+    const longe = await nova('Longe Fim Teste', 'Casal (Ele/Ela)', 10);
+    const semPrazo = await nova('Sem Prazo Fim Teste', 'Casal (Ele/Ela)', 30000);
+    await runLembretesRenovacao(ctx.db, { FRONTEND_ORIGIN: 'http://localhost:3000', JWT_SECRET: 'test-secret', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', APP_NAME: 'NoSigilo Test' } as any);
+    const avisados = async () => ((await queryAll(ctx.db, "SELECT user_id FROM lembretes_renovacao WHERE tipo = 't3'")) as any[]).map((l) => String(l.user_id));
+    const lista = await avisados();
+    expect(lista).toContain(casal);
+    for (const fora of [mulher, pagante, longe, semPrazo]) expect(lista).not.toContain(fora);
+    // Segunda rodada não repete.
+    await runLembretesRenovacao(ctx.db, { FRONTEND_ORIGIN: 'http://localhost:3000', JWT_SECRET: 'test-secret', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', APP_NAME: 'NoSigilo Test' } as any);
+    expect((await avisados()).filter((x) => x === casal)).toHaveLength(1);
+    // Mudou o prazo (ganhou dias): continua sem novo aviso por 14 dias.
+    await run(ctx.db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [new Date(Date.now() + 2 * 86_400_000).toISOString(), casal]);
+    await runLembretesRenovacao(ctx.db, { FRONTEND_ORIGIN: 'http://localhost:3000', JWT_SECRET: 'test-secret', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', APP_NAME: 'NoSigilo Test' } as any);
+    expect((await avisados()).filter((x) => x === casal)).toHaveLength(1);
   });
 
   it('sorteio do fundo da cabine: prefere a foto menos usada e não quebra sem fotos', () => {
