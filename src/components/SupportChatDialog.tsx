@@ -1,3 +1,4 @@
+import { separarLinks } from '@/utils/linksDoSuporte';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { X, Send, Loader2, LifeBuoy, ImagePlus } from 'lucide-react';
 import { profileService, supportService, type SupportMessage } from '@/services/api';
@@ -199,7 +200,13 @@ export default function SupportChatDialog({ open, onClose, initialMessage }: Pro
                       <img src={resolveServerUrl(m.imageUrl)} alt={fromSupport ? 'Imagem do suporte' : 'Print enviado'} className="max-h-72 rounded-lg" />
                     </a>
                   )}
-                  {m.message && <p className="whitespace-pre-wrap break-words">{m.message}</p>}
+                  {m.message && (
+                    <p className="whitespace-pre-wrap break-words">
+                      {separarLinks(m.message).map((parte, i) => parte.href
+                        ? <a key={i} href={parte.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2">{parte.texto}</a>
+                        : <span key={i}>{parte.texto}</span>)}
+                    </p>
+                  )}
                 </div>
               </div>
             );

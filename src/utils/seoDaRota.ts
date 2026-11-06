@@ -5,7 +5,7 @@
  * - /login?origem=...: canonical para /login (eram duplicatas).
  * - /acasa: título e descrição para "casa liberal online / boate liberal virtual".
  */
-const NAO_INDEXAR = [/^\/login/, /^\/register/, /^\/subscriptions/, /^\/terms/, /^\/privacy/, /^\/invite\//];
+const NAO_INDEXAR = [/^\/login/, /^\/register/, /^\/subscriptions/, /^\/terms/, /^\/privacy/, /^\/invite\//, /^\/instalar/];
 
 function meta(nome: string, valor: string) {
   let el = document.head.querySelector<HTMLMetaElement>(`meta[name="${nome}"]`);

@@ -32,6 +32,16 @@ function passoSairDoApp(device: Device) {
   };
 }
 
+// Vídeos curtos de como instalar, também usados na página pública /instalar.
+export type Celular = 'ios' | 'android';
+export const videosDeInstalacao: Record<Celular, { src: string; capa: string }> = {
+  ios: { src: '/tutoriais/instalar-iphone.mp4', capa: '/tutoriais/instalar-iphone.jpg' },
+  android: { src: '/tutoriais/instalar-android.mp4', capa: '/tutoriais/instalar-android.jpg' },
+};
+export function detectarCelular(): Celular {
+  return detectDevice() === 'ios' ? 'ios' : 'android';
+}
+
 const guides = {
   ios: {
     name: 'iPhone / iPad', browser: 'Safari',
@@ -61,6 +71,7 @@ const guides = {
     ],
   },
 } as const;
+export const guiasDeInstalacao = guides;
 
 interface Props {
   open: boolean;
@@ -99,7 +110,7 @@ export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Pr
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Instale o NoSigilo.net</DialogTitle>
-          <DialogDescription>Veja onde tocar, passo a passo. A instalação é feita pelo navegador.</DialogDescription>
+          <DialogDescription>Assista ao vídeo ou siga os passos. A instalação é feita pelo navegador.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap gap-2" aria-label="Escolha seu dispositivo">
           {(['ios', 'android', 'windows'] as const).map((item) => (
@@ -110,6 +121,10 @@ export default function PwaInstallTutorial({ open, onOpenChange, onInstall }: Pr
           ))}
         </div>
         <p className="text-xs text-muted-foreground">Tutorial para {guide.name} · {guide.browser}</p>
+        {device !== 'windows' ? (
+          <video key={device} src={videosDeInstalacao[device].src} poster={videosDeInstalacao[device].capa} controls playsInline preload="none"
+            className="mx-auto aspect-[9/16] max-h-[55svh] rounded-xl border border-border bg-black" />
+        ) : null}
         <div className="rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:p-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary">Passo {step + 1} de {passos.length}</p>
           <div className="mt-3 flex min-h-40 items-center justify-center rounded-xl border border-border bg-background p-4" role="img" aria-label={`Ilustração: ${current.visual}`}>

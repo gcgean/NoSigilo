@@ -35,6 +35,8 @@ self.addEventListener('fetch', (event) => {
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/uploads') ||
     url.pathname.startsWith('/private-uploads') ||
+    // Vídeo vem em pedaços (Range): passando pelo service worker, o iPhone pode não tocar.
+    url.pathname.startsWith('/tutoriais/') ||
     // Checagem de versão nova: sempre da rede e nunca no cache (cada checagem
     // tem um ?t= diferente, e guardar todas enchia o cache do aparelho).
     url.pathname === '/version.json'
