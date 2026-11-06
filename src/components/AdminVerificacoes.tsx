@@ -10,6 +10,7 @@ import { verificacaoService, type PedidoVerificacao } from '@/services/api';
 // Motivos mais comuns, para preencher com um toque (dá para editar depois).
 const MOTIVOS_PRONTOS = [
   'O código não aparece na foto ou não dá para ler.',
+  'O número no papel é diferente do código pedido. O código muda a cada tentativa.',
   'Na foto não dá para ver que o perfil é do tipo indicado (casal, mulher ou homem). Não precisa mostrar o rosto.',
   'A pessoa da selfie não aparece nas fotos do perfil.',
   'Perfil de casal: as duas pessoas precisam aparecer na foto com o código (o rosto não é obrigatório).',
@@ -26,7 +27,8 @@ const seloDoTipo = (genero: string | null) => {
 };
 // Recusas de um toque (o motivo vai para a notificação da pessoa).
 const RECUSA_CASAL = 'Perfil de casal: as duas pessoas precisam aparecer juntas na selfie segurando o código. Mande uma nova foto com vocês dois.';
-const RECUSA_SEM_CODIGO = 'O papel com o código não aparece (ou não dá para ler) na selfie. Tire de novo segurando o papel com o código bem visível.';
+const RECUSA_ILEGIVEL = 'O papel com o código não aparece ou não dá para ler na foto. Tente de novo com letra grande, caneta escura e boa luz, com o papel inteiro na foto.';
+const RECUSA_CODIGO_DIFERENTE = 'O número no papel é diferente do código pedido. O código muda a cada tentativa: escreva num papel novo o número que aparecer agora na tela.';
 
 const dataHora = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
@@ -71,7 +73,14 @@ export default function AdminVerificacoes() {
     }
   };
 
-  const carregar = () => verificacaoService.listarPendentes().then((d) => setPedidos(d.pedidos)).catch(() => {});
+  // Recusadas com a selfie ainda guardada: é aqui que se revê uma contestação.
+  const [recusadas, setRecusadas] = useState<PedidoVerificacao[]>([]);
+  const [diasGuardada, setDiasGuardada] = useState(7);
+  const [verRecusadas, setVerRecusadas] = useState(false);
+  const carregar = () => {
+    verificacaoService.listarRecusadas().then((d) => { setRecusadas(d.pedidos); setDiasGuardada(d.diasGuardada); }).catch(() => {});
+    return verificacaoService.listarPendentes().then((d) => setPedidos(d.pedidos)).catch(() => {});
+  };
   useEffect(() => { void carregar(); }, []);
 
   const decidir = async (p: PedidoVerificacao, acao: 'aprovar' | 'recusar', motivoPronto?: string) => {
@@ -89,7 +98,7 @@ export default function AdminVerificacoes() {
     }
   };
 
-  if (pedidos.length === 0) return null;
+  if (pedidos.length === 0 && recusadas.length === 0) return null;
 
   return (
     <div className="glass mb-4 rounded-xl p-6">
@@ -155,8 +164,12 @@ export default function AdminVerificacoes() {
                 </Button>
               )}
               <Button size="sm" variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-300" disabled={ocupado === p.id}
-                onClick={() => { if (window.confirm(`Recusar ${p.nome}: sem o código na selfie?`)) void decidir(p, 'recusar', RECUSA_SEM_CODIGO); }}>
-                📝 Recusar: sem o código
+                onClick={() => { if (window.confirm(`Recusar ${p.nome}: o código não aparece ou não dá para ler?`)) void decidir(p, 'recusar', RECUSA_ILEGIVEL); }}>
+                📝 Recusar: sem código ou ilegível
+              </Button>
+              <Button size="sm" variant="outline" className="border-amber-500/60 text-amber-700 dark:text-amber-300" disabled={ocupado === p.id}
+                onClick={() => { if (window.confirm(`Recusar ${p.nome}: o número no papel não é ${p.codigo}?`)) void decidir(p, 'recusar', RECUSA_CODIGO_DIFERENTE); }}>
+                🔢 Recusar: código diferente
               </Button>
             </div>
             {recusando === p.id && (
@@ -183,6 +196,39 @@ export default function AdminVerificacoes() {
           </div>
         ))}
       </div>
+      {recusadas.length > 0 && (
+        <div className="mt-4 border-t pt-3">
+          <button type="button" onClick={() => setVerRecusadas((v) => !v)} className="text-sm font-semibold hover:text-primary">
+            {verRecusadas ? '▾' : '▸'} Recusadas para rever ({recusadas.length})
+          </button>
+          <p className="text-xs text-muted-foreground">A selfie recusada fica guardada por {diasGuardada} dias e depois é apagada. Use quando a pessoa contestar a recusa.</p>
+          {verRecusadas && (
+            <div className="mt-2 space-y-2">
+              {recusadas.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-start gap-3 rounded-xl border p-3">
+                  {p.selfie && (
+                    <button type="button" onClick={() => ampliar(p, p.selfie!)} title="Ampliar e comparar com o perfil">
+                      <img src={resolveServerUrl(p.selfie)} alt="Selfie" className="h-24 w-20 rounded-lg object-cover" />
+                    </button>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">
+                      <button type="button" onClick={() => setPerfilAberto(p.userId)} className="hover:text-primary hover:underline">{p.nome}</button>
+                      <span className={`ml-2 rounded-full px-2.5 py-0.5 align-middle text-xs font-bold ${seloDoTipo(p.genero).cor}`}>{seloDoTipo(p.genero).texto}</span>
+                    </p>
+                    <p className="mt-1 font-mono text-sm font-bold text-primary">Código pedido: {p.codigo}</p>
+                    <p className="text-xs text-muted-foreground">Recusada em {dataHora(p.recusadaEm ?? null)}: {p.motivo || 'sem motivo informado'}</p>
+                  </div>
+                  <Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={ocupado === p.id}
+                    onClick={() => { if (window.confirm(`Aprovar a verificação de ${p.nome}? A recusa será desfeita e a selfie apagada.`)) void decidir(p, 'aprovar'); }}>
+                    {ocupado === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Aprovar mesmo assim'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {ampliada && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/90 p-4" onClick={() => setAmpliada(null)}>
           {/* Tocar na foto também volta ao normal. */}

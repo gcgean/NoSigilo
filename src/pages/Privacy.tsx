@@ -3,7 +3,7 @@ import { ArrowLeft, Shield } from 'lucide-react';
 
 // Versão gravada junto com o aceite de cada pessoa (users.termos_versao).
 // Mudou o texto de forma relevante? Atualize a data aqui.
-export const VERSAO_POLITICA = '2026-10-12';
+export const VERSAO_POLITICA = '2026-11-06';
 
 // Quem responde pelos dados e como falar com o encarregado (LGPD, art. 41).
 // Preencha a razão social/CNPJ e um e-mail que receba mensagens quando houver.
@@ -22,7 +22,7 @@ export function PrivacyBody() {
         '[&>p]:my-2 [&>ul]:my-2 [&>ul]:list-disc [&>ul]:space-y-1.5 [&>ul]:pl-5 [&_strong]:text-foreground'
       }
     >
-      <p className="text-muted-foreground">Última atualização: 12 de outubro de 2026</p>
+      <p className="text-muted-foreground">Última atualização: 6 de novembro de 2026</p>
 
       <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm leading-relaxed">
         <p className="mb-2 font-semibold text-foreground">Resumo rápido</p>
@@ -101,7 +101,7 @@ export function PrivacyBody() {
       <h2>7. Por quanto tempo guardamos</h2>
       <ul>
         <li><strong>Conta e conteúdo:</strong> enquanto sua conta existir. Ao excluir a conta, apagamos de vez perfil, fotos, vídeos, posts, stories, mensagens enviadas, comentários, curtidas e localização.</li>
-        <li><strong>Selfie de verificação:</strong> apagada logo depois da análise, aprovada ou não.</li>
+        <li><strong>Selfie de verificação:</strong> aprovada, é apagada logo depois da análise; recusada, fica guardada por até 7 dias para que a equipe possa rever a decisão se você contestar, e depois é apagada. Só a equipe tem acesso.</li>
         <li><strong>Stories:</strong> ficam visíveis por 24 horas.</li>
         <li><strong>Estatísticas de visitas:</strong> o detalhe é apagado em 90 dias; depois ficam só números totais.</li>
         <li><strong>Pagamentos e comissões:</strong> pelo prazo exigido pela legislação fiscal, mesmo após a exclusão da conta.</li>

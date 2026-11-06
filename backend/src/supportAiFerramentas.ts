@@ -75,6 +75,11 @@ async function minhaConta(db: DbHandle, userId: string) {
   )) as any;
   if (!u) return { erro: 'conta não encontrada' };
 
+  const pedidoVerificacao = (await queryOne(
+    db,
+    'SELECT status, motivo, media_id FROM verificacoes_perfil WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+    [userId]
+  )) as any;
   const pagoAtivo = Number(u.is_premium || 0) === 1 && (!u.hub_license_end_at || vigente(u.hub_license_end_at));
   const gratisAtivo = vigente(u.trial_ends_at);
   return {
@@ -82,6 +87,9 @@ async function minhaConta(db: DbHandle, userId: string) {
     cidade: [u.city, u.state].filter(Boolean).join('/') || 'não informada',
     conta_criada_em: data(u.created_at),
     verificado: !!Number(u.is_verified || 0),
+    verificacao_ultimo_pedido: pedidoVerificacao ? String(pedidoVerificacao.status) : null,
+    verificacao_motivo_da_recusa: pedidoVerificacao?.status === 'recusada' && pedidoVerificacao.motivo ? String(pedidoVerificacao.motivo) : null,
+    verificacao_foto_recusada_ainda_guardada: pedidoVerificacao?.status === 'recusada' && !!pedidoVerificacao.media_id,
     perfil_desativado: !!Number(u.is_deactivated || 0),
     conta_suspensa: !!Number(u.is_banned || 0),
     cadastro_aguardando_aprovacao: String(u.invite_status || '') === 'pending',

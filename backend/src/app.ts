@@ -2179,6 +2179,10 @@ function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): st
   return 'Direto';
 }
 
+// Por quantos dias a selfie de verificação RECUSADA fica guardada para revisão.
+// Mudou aqui? Mude também a Política de Privacidade e o aviso em VerificacaoPerfil.
+const DIAS_SELFIE_RECUSADA = 7;
+
 function sanitizeSignupSource(value: unknown): string | null {
   const v = String(value ?? '').trim().replace(/^\/+|\/+$/g, '');
   if (!/^swing(\/[a-z0-9-]+){0,2}$/.test(v)) return null;
@@ -4086,10 +4090,15 @@ export function createApp(options: { db: DbHandle; env: Env }) {
   // Contas excluídas que ainda têm dados (as anteriores a esta rotina, ou alguma
   // em que a limpeza falhou no meio): processa poucas por vez para não pesar no banco.
   const limparContasExcluidasPendentes = async () => {
+    // Selfie aprovada não fica guardada; a recusada fica DIAS_SELFIE_RECUSADA dias,
+    // para a equipe poder rever quando a pessoa contesta (Política de Privacidade).
     const selfiesAnalisadas = (await queryAll(
       db,
-      "SELECT id, media_id FROM verificacoes_perfil WHERE status IN ('aprovada', 'recusada') AND media_id IS NOT NULL LIMIT 50",
-      []
+      `SELECT id, media_id FROM verificacoes_perfil
+        WHERE media_id IS NOT NULL
+          AND (status = 'aprovada' OR (status = 'recusada' AND reviewed_at < ?))
+        LIMIT 50`,
+      [new Date(Date.now() - DIAS_SELFIE_RECUSADA * 86_400_000).toISOString()]
     )) as any[];
     for (const v of selfiesAnalisadas) {
       await deleteStoredMedia(String(v.media_id));
@@ -11533,8 +11542,9 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
       res.status(400).json({ error: 'foto_invalida', message: 'Envie uma foto sua.' });
       return;
     }
-    // LGPD: a selfie de verificação é privada (só o admin vê, por link que expira)
-    // e é apagada assim que o pedido é analisado. "chat" a mantém fora das galerias.
+    // LGPD: a selfie de verificação é privada (só o admin vê, por link que expira).
+    // Aprovada, é apagada na hora; recusada, em até DIAS_SELFIE_RECUSADA dias.
+    // "chat" a mantém fora das galerias.
     await run(db, "UPDATE media SET is_private = 1, source = 'chat' WHERE id = ?", [mediaId]);
     ensureMediaFileInExpectedDir(String(midia.filename || ''), true);
     await run(db, "UPDATE verificacoes_perfil SET media_id = ?, status = 'em_analise', enviado_em = ? WHERE id = ?", [mediaId, nowIso(), String(v.id)]);
@@ -11547,16 +11557,17 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
     res.json({ ok: true });
   });
 
-  app.get('/api/admin/verificacoes', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+  // Em análise (fila) ou recusadas com a selfie ainda guardada (revisão de contestação).
+  const montarPedidosDeVerificacao = async (filtro: string, ordem: string) => {
     const rows = (await queryAll(
       db,
-      `SELECT v.id, v.user_id, v.codigo, v.enviado_em, m.id AS selfie_id, m.filename AS selfie, m.is_private AS selfie_privada,
+      `SELECT v.id, v.user_id, v.codigo, v.enviado_em, v.motivo, v.reviewed_at, m.id AS selfie_id, m.filename AS selfie, m.is_private AS selfie_privada,
               u.name, u.email, u.gender, u.created_at AS conta_desde, u.avatar
          FROM verificacoes_perfil v
          JOIN users u ON u.id = v.user_id
          LEFT JOIN media m ON m.id = v.media_id
-        WHERE v.status = 'em_analise'
-        ORDER BY v.enviado_em ASC`
+        WHERE ${filtro}
+        ORDER BY ${ordem}`
     )) as any[];
     const lista = [];
     for (const r of rows) {
@@ -11584,6 +11595,8 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         contaDesde: r.conta_desde ? String(r.conta_desde) : null,
         codigo: String(r.codigo),
         enviadoEm: r.enviado_em ? String(r.enviado_em) : null,
+        motivo: r.motivo ? String(r.motivo) : null,
+        recusadaEm: r.reviewed_at ? String(r.reviewed_at) : null,
         selfie: !r.selfie
           ? null
           : Number(r.selfie_privada) === 1
@@ -11592,7 +11605,22 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
         fotosDoPerfil: fotos.map((f) => `/uploads/${String(f.filename)}`),
       });
     }
-    res.json({ pedidos: lista });
+    return lista;
+  };
+
+  app.get('/api/admin/verificacoes', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({ pedidos: await montarPedidosDeVerificacao("v.status = 'em_analise'", 'v.enviado_em ASC') });
+  });
+
+  // Recusadas com a selfie ainda guardada, de quem não se verificou depois.
+  app.get('/api/admin/verificacoes/recusadas', requireAuth(env, db), requireAdmin(), async (_req, res) => {
+    res.json({
+      pedidos: await montarPedidosDeVerificacao(
+        "v.status = 'recusada' AND v.media_id IS NOT NULL AND (u.is_verified = 0 OR u.is_verified IS NULL)",
+        'v.reviewed_at DESC'
+      ),
+      diasGuardada: DIAS_SELFIE_RECUSADA,
+    });
   });
 
   // Reescreve com a IA o motivo de recusa que o admin rascunhou (não grava nada).
@@ -11609,22 +11637,28 @@ app.get('/api/feed', requireAuth(env, db), async (req, res) => {
   app.post('/api/admin/verificacoes/:id/:acao', requireAuth(env, db), requireAdmin(), async (req, res) => {
     const acao = String(req.params.acao);
     if (acao !== 'aprovar' && acao !== 'recusar') { res.status(404).json({ error: 'not_found' }); return; }
-    const v = (await queryOne(db, "SELECT id, user_id, media_id FROM verificacoes_perfil WHERE id = ? AND status = 'em_analise'", [req.params.id])) as any;
+    // Recusada também pode ser aprovada: é a revisão de quando a pessoa contesta.
+    const v = (await queryOne(
+      db,
+      `SELECT id, user_id, media_id FROM verificacoes_perfil WHERE id = ? AND ${acao === 'aprovar' ? "status IN ('em_analise', 'recusada')" : "status = 'em_analise'"}`,
+      [req.params.id]
+    )) as any;
     if (!v) { res.status(404).json({ error: 'not_found', message: 'Esse pedido já foi analisado.' }); return; }
     const agora = nowIso();
     const motivo = String(req.body?.motivo || '').trim().slice(0, 300) || null;
     const userId = String(v.user_id);
     const u2 = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
     if (acao === 'aprovar') {
-      await run(db, "UPDATE verificacoes_perfil SET status = 'aprovada', reviewed_at = ?, reviewed_by = ? WHERE id = ?", [agora, req.auth!.userId, String(v.id)]);
+      await run(db, "UPDATE verificacoes_perfil SET status = 'aprovada', motivo = NULL, reviewed_at = ?, reviewed_by = ? WHERE id = ?", [agora, req.auth!.userId, String(v.id)]);
       const u = (await queryOne(db, 'SELECT gender FROM users WHERE id = ?', [userId])) as any;
       await run(db, 'UPDATE users SET is_verified = 1 WHERE id = ?', [userId]);
       if (ehMulher(u?.gender)) await run(db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [ACESSO_SEM_PRAZO_ATE, userId]);
     } else {
       await run(db, "UPDATE verificacoes_perfil SET status = 'recusada', motivo = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?", [motivo, agora, req.auth!.userId, String(v.id)]);
     }
-    // LGPD: a selfie só servia para esta análise — sai do disco e do banco.
-    if (v.media_id) {
+    // LGPD: aprovada, a selfie já cumpriu o papel — sai do disco e do banco. A
+    // recusada fica para revisão e a rotina de limpeza apaga depois do prazo.
+    if (acao === 'aprovar' && v.media_id) {
       await deleteStoredMedia(String(v.media_id));
       await run(db, 'UPDATE verificacoes_perfil SET media_id = NULL WHERE id = ?', [String(v.id)]);
     }

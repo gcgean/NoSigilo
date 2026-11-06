@@ -44,7 +44,7 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
     if (!foto) return;
     setOcupado(true);
     try {
-      // Privada: só o admin vê, e ela é apagada depois da análise.
+      // Privada: só o admin vê. Aprovada é apagada na hora; recusada, em até 7 dias.
       const { id } = await profileService.uploadMedia(foto.file, { source: 'chat', isPrivate: true });
       await verificacaoService.enviar(id);
       toast({ title: 'Foto enviada ✅', description: 'A equipe vai analisar e você recebe a resposta nas notificações.' });
@@ -133,6 +133,7 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
           <div className="rounded-xl bg-background/80 p-3 text-center">
             <p className="text-xs text-muted-foreground">Escreva este código num papel</p>
             <p className="font-mono text-4xl font-extrabold tracking-[0.3em] text-primary">{codigo}</p>
+            <p className="mt-1 text-xs font-medium text-foreground">Este código é novo a cada tentativa: não use o papel de uma tentativa anterior.</p>
           </div>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Escreva o código à mão num papel.</li>
@@ -141,7 +142,7 @@ export default function VerificacaoPerfil({ onMudou }: { onMudou?: () => void })
               <strong className="text-foreground">Não precisa mostrar o rosto</strong> — pode ser só o corpo, de costas ou de máscara.
             </li>
             <li>Na foto precisa dar para ver <strong className="text-foreground">{quemAparece}</strong>: é isso que confirma o tipo do seu perfil.</li>
-            <li>Envie aqui. Só a equipe vê essa foto: ela não aparece no perfil.</li>
+            <li>Envie aqui. Só a equipe vê essa foto: ela não aparece no perfil. Aprovada, é apagada na hora; recusada, fica guardada por até 7 dias para revisão e depois é apagada.</li>
           </ol>
           {[arquivo, galeria].map((ref, i) => (
             <input

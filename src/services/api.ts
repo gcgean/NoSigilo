@@ -1399,6 +1399,8 @@ export type PedidoVerificacao = {
   contaDesde: string | null;
   codigo: string;
   enviadoEm: string | null;
+  motivo?: string | null;
+  recusadaEm?: string | null;
   selfie: string | null;
   fotosDoPerfil: string[];
   fotosPrivadas?: string[];
@@ -1408,6 +1410,7 @@ export const verificacaoService = {
   gerarCodigo: async (): Promise<{ codigo: string }> => (await apiClient.post('/verificacao/codigo')).data,
   enviar: async (mediaId: string) => (await apiClient.post('/verificacao/enviar', { mediaId })).data as { ok: boolean },
   listarPendentes: async (): Promise<{ pedidos: PedidoVerificacao[] }> => (await apiClient.get('/admin/verificacoes')).data,
+  listarRecusadas: async (): Promise<{ pedidos: PedidoVerificacao[]; diasGuardada: number }> => (await apiClient.get('/admin/verificacoes/recusadas')).data,
   melhorarMotivo: async (rascunho: string, genero?: string | null): Promise<{ texto: string }> =>
     (await apiClient.post('/admin/verificacoes/melhorar-motivo', { rascunho, genero })).data,
   decidir: async (id: string, acao: 'aprovar' | 'recusar', motivo?: string) =>
