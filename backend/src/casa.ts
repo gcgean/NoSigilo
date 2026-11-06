@@ -359,6 +359,18 @@ function procuraAceita(p: Presente, outro: Presente) {
   return p.procura.length === 0 || p.procura.includes(outro.genero);
 }
 
+/**
+ * Fundo de cabine nova: sorteia entre as fotos menos usadas nas cabines abertas,
+ * para cada grupo cair numa foto diferente enquanto houver foto sobrando.
+ */
+export function escolherFotoDaCabine(fotos: string[], emUso: string[], aleatorio: () => number = Math.random): string | null {
+  if (fotos.length === 0) return null;
+  const vezes = (foto: string) => emUso.filter((x) => x === foto).length;
+  const menor = Math.min(...fotos.map(vezes));
+  const candidatas = fotos.filter((foto) => vezes(foto) === menor);
+  return candidatas[Math.floor(aleatorio() * candidatas.length)] ?? candidatas[0];
+}
+
 export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
   const { db } = deps;
 
@@ -406,6 +418,8 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
     fundadores: Set<string>;
     /** Último nível que a Lola anunciou (0 esquentando, 1 preliminares, 2 transa). */
     nivelAnunciado: number;
+    /** Foto de fundo sorteada ao abrir (null = fundo padrão da cabine). */
+    fundo: { arquivo: string; intensidade: number } | null;
   };
   const cabines = new Map<string, Cabine>();
   // Quem aprova entradas: os fundadores que ainda estão dentro (se os dois saíram, todos de dentro).
@@ -426,6 +440,7 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       decido: decidem.includes(userId),
       precisam: decidem.length,
       salaId: c.salaId,
+      fundo: c.fundo ? { url: `/api/casa/fundo/${c.fundo.arquivo}`, intensidade: c.fundo.intensidade } : null,
       membros: [...c.membros.values()].map((m) => ({ id: m.idPublico, nome: m.nome, avatar: m.avatar, cat: m.cat, naCasa: presenteNaCabine(c, m.id) })),
       aberta: c.aberta,
       semPedidos: c.semPedidos,
@@ -510,13 +525,15 @@ export function registrarCasa(app: express.Express, deps: DependenciasDaCasa) {
       calor: 0, liberouTransa: false, ultimaAcao: new Map(), ausentes: new Map(), nivelAnunciado: 0,
       vistoEm: new Map([[a.id, Date.now()], [b.id, Date.now()]]),
       fundadores: new Set([a.id, b.id]),
-      semPedidos: false, pedidosEm: new Map(),
+      semPedidos: false, pedidosEm: new Map(), fundo: null,
     };
     cabines.set(c.id, c);
     msgCabine(c, { tipo: 'lola', texto: `🚪 Cabine de ${a.nome} e ${b.nome}. A porta está fechada: só vocês veem. Se todos quiserem plateia, abram a porta 👀` });
     registrarEvento(sala.id, 'cabine', a.id, b.id);
     emitirPara(a.id, 'casa.cabine', { cabineId: c.id, com: b.nome });
     emitirPara(b.id, 'casa.cabine', { cabineId: c.id, com: a.nome });
+    // Em segundo plano: se falhar, a cabine abre igual, com o fundo padrão.
+    void sortearFundoDaCabine(c);
     return c;
   };
   // Na Casa = presente em alguma sala (o ping do app chega a cada 25 s).
@@ -3271,6 +3288,89 @@ Sala: ${salaId}`).catch(() => {});
       try { unlinkSync(path.join(pastaFundos, f.arquivo)); } catch { /* já não existia */ }
     }
     res.json({ ok: true });
+  });
+
+  // ─── Fotos de fundo das cabines (admin) ───────────────────────────────────
+  // Uma galeria só: cada cabine sorteia uma foto ao abrir e fica com ela até fechar.
+  const MAX_FOTOS_DE_CABINE = 50;
+  const lerFundosDasCabines = async () => {
+    const row = (await db.queryOne("SELECT value FROM system_settings WHERE key = 'casa_fundos_cabines' LIMIT 1", [])) as any;
+    let v: any = {};
+    try { v = JSON.parse(String(row?.value || '{}')) || {}; } catch { v = {}; }
+    return {
+      fotos: (Array.isArray(v.fotos) ? v.fotos : []).filter((f: unknown): f is string => typeof f === 'string'),
+      intensidade: intensidadeValida(v.intensidade ?? 0.35),
+    };
+  };
+  const salvarFundosDasCabines = async (v: { fotos: string[]; intensidade: number }) => {
+    await db.run("DELETE FROM system_settings WHERE key = 'casa_fundos_cabines'", []);
+    await db.run("INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_fundos_cabines', ?, ?)", [JSON.stringify(v), new Date().toISOString()]);
+    await db.persist();
+  };
+  const fundosDasCabinesPublico = (v: { fotos: string[]; intensidade: number }) => ({
+    fotos: v.fotos.map((arquivo) => ({ arquivo, url: `/api/casa/fundo/${arquivo}` })),
+    intensidade: v.intensidade,
+    limite: MAX_FOTOS_DE_CABINE,
+  });
+  async function sortearFundoDaCabine(c: Cabine) {
+    try {
+      const { fotos, intensidade } = await lerFundosDasCabines();
+      const emUso = [...cabines.values()].filter((o) => o !== c && o.fundo).map((o) => o.fundo!.arquivo);
+      const arquivo = escolherFotoDaCabine(fotos, emUso);
+      if (!arquivo || !cabines.has(c.id)) return;
+      c.fundo = { arquivo, intensidade };
+      avisarCabine(c);
+    } catch (e) {
+      console.error('[casa] fundo da cabine:', e);
+    }
+  }
+
+  app.get('/api/casa/admin/fundos-cabines', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    res.json(fundosDasCabinesPublico(await lerFundosDasCabines()));
+  });
+
+  app.post('/api/casa/admin/fundos-cabines', deps.requireAuth, envioDeFundo.single('arquivo'), async (req, res) => {
+    const arquivo = (req as any).file as { path: string } | undefined;
+    const apagar = () => { if (arquivo) { try { unlinkSync(arquivo.path); } catch { /* ok */ } } };
+    if (!(await souAdmin(req))) { apagar(); res.status(403).json({ error: 'forbidden' }); return; }
+    if (!arquivo) { res.status(400).json({ error: 'arquivo', message: 'Envie uma foto (JPG, PNG ou WEBP) de até 15 MB.' }); return; }
+    if ((await lerFundosDasCabines()).fotos.length >= MAX_FOTOS_DE_CABINE) {
+      apagar();
+      res.status(400).json({ error: 'limite', message: `A galeria aceita até ${MAX_FOTOS_DE_CABINE} fotos. Remova alguma para enviar outra.` });
+      return;
+    }
+    const nome = `${randomUUID()}.jpg`;
+    const ok = await normalizarFoto(arquivo.path, path.join(pastaFundos, nome));
+    apagar();
+    if (!ok) { res.status(400).json({ error: 'foto_invalida', message: 'Não consegui ler essa foto. Tente um JPG ou PNG.' }); return; }
+    // Lê de novo depois do ffmpeg, que demora: não perde o que mudou nesse meio-tempo.
+    const atual = await lerFundosDasCabines();
+    const novo = { ...atual, fotos: [...atual.fotos, nome] };
+    await salvarFundosDasCabines(novo);
+    res.json(fundosDasCabinesPublico(novo));
+  });
+
+  app.post('/api/casa/admin/fundos-cabines/intensidade', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const novo = { ...(await lerFundosDasCabines()), intensidade: intensidadeValida((req.body as any)?.intensidade) };
+    await salvarFundosDasCabines(novo);
+    res.json(fundosDasCabinesPublico(novo));
+  });
+
+  app.delete('/api/casa/admin/fundos-cabines/:arquivo', deps.requireAuth, async (req, res) => {
+    if (!(await souAdmin(req))) { res.status(403).json({ error: 'forbidden' }); return; }
+    const nome = String(req.params.arquivo);
+    const atual = await lerFundosDasCabines();
+    if (!atual.fotos.includes(nome)) { res.status(404).json({ error: 'not_found' }); return; }
+    const novo = { ...atual, fotos: atual.fotos.filter((f: string) => f !== nome) };
+    await salvarFundosDasCabines(novo);
+    // Cabine aberta com essa foto volta ao fundo padrão (o arquivo vai deixar de existir).
+    for (const c of cabines.values()) {
+      if (c.fundo?.arquivo === nome) { c.fundo = null; avisarCabine(c); }
+    }
+    try { unlinkSync(path.join(pastaFundos, nome)); } catch { /* já não existia */ }
+    res.json(fundosDasCabinesPublico(novo));
   });
 
   app.post('/api/casa/convite/:id/responder', deps.requireAuth, async (req, res) => {

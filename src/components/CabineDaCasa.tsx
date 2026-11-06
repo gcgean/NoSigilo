@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils';
 import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import CameraAoVivo, { MAX_VIDEO_SEG } from '@/components/CameraAoVivo';
 import BotaoSomDaCasa from '@/components/BotaoSomDaCasa';
+import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 import { tocarSomDaCasa } from '@/utils/somDaCasa';
 import { ArrastaParaResponder, BotoesDeNovas, Citacao, LinhaNaoLidas, SugestoesDeMencao, TextoComMencoes } from '@/components/ChatDaCasaUi';
 import { useRolagemDoChat } from '@/hooks/useRolagemDoChat';
@@ -73,6 +74,8 @@ const TITULO_CENA: Record<string, string> = { 'casal-casal': 'Troca de casais', 
 type Entrada = Pessoa & { tipo: 'pedido' | 'convite'; aprovei: boolean; aprovados: number; convidadoAceitou: boolean };
 type Cabine = {
   id: string; membros: Pessoa[]; aberta: boolean; votosPorta: number; voteiPorta: boolean; espectadores: number;
+  /** Foto sorteada ao abrir a cabine (a galeria fica no admin). */
+  fundo?: FotoDeFundo | null;
   espiandoLista?: Pessoa[]; anonima?: boolean;
   /** "Não aceitar pedidos": a cabine some da lista de fechadas da entrada. */
   semPedidos?: boolean;
@@ -364,6 +367,7 @@ export default function CabineDaCasa({
   return (
     <div className="fixed inset-0 z-[9993] flex flex-col bg-gradient-to-b from-[#2a0010] via-[#160008] to-black text-white"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {cab.fundo && <CenaDaSala salaId="quarto" foto={cab.fundo} />}
       {/* Luz vermelha de cabine: deixa claro que aqui não é a sala. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-[radial-gradient(ellipse_at_top,rgba(225,29,72,0.35),transparent_70%)]" />
       {efeito && <EfeitoDaCasa key={efeito.id} efeito={efeito.efeito} onFim={fimDoEfeito} />}

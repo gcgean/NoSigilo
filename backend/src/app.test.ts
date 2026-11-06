@@ -7,6 +7,7 @@ import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor } from './app.js';
+import { escolherFotoDaCabine } from './casa.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -3858,6 +3859,88 @@ describe('nosigilo backend', () => {
     const mapa = (await request(ctx.app).get('/api/casa').set(outro).expect(200)).body.salas as any[];
     expect(mapa.find((s) => s.id === 'cuckold')).toHaveProperty('fundo', null);
     await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(adm.user.id)]);
+  });
+
+  it('sorteio do fundo da cabine: prefere a foto menos usada e não quebra sem fotos', () => {
+    expect(escolherFotoDaCabine([], [])).toBeNull();
+    expect(escolherFotoDaCabine(['a', 'b', 'c'], ['a', 'b'])).toBe('c');
+    // Todas em uso: volta a sortear só entre as menos usadas.
+    expect(escolherFotoDaCabine(['a', 'b'], ['a', 'a', 'b'])).toBe('b');
+    expect(escolherFotoDaCabine(['a', 'b'], [], () => 0)).toBe('a');
+    expect(escolherFotoDaCabine(['a', 'b'], [], () => 0.99)).toBe('b');
+  });
+
+  it('galeria de fundos das cabines: só admin mexe, cabines abertas juntas não repetem e remover volta ao padrão', async () => {
+    const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+    const terca = new Date();
+    do terca.setUTCDate(terca.getUTCDate() + 1); while ([5, 6, 0].includes(terca.getUTCDay()));
+    terca.setUTCHours(18, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ['Date'], now: terca });
+    const foto1 = '11111111-1111-4111-8111-111111111111.jpg';
+    const foto2 = '22222222-2222-4222-8222-222222222222.jpg';
+    try {
+      const nova = async (nome: string) => {
+        const u = await registerInvitedUser(ctx, sponsorToken, { name: nome, email: `${nome.toLowerCase().replace(/\s+/g, '-')}@example.com`, password: 'senha123', gender: 'Mulher' });
+        await grantPremium(ctx, String(u.user.id));
+        return u;
+      };
+      const admin = await nova('Admin Galeria Cabine');
+      await run(ctx.db, 'UPDATE users SET is_admin = 1 WHERE id = ?', [String(admin.user.id)]);
+      const [a, b, c, d] = await Promise.all(['Ana Galeria', 'Bia Galeria', 'Cris Galeria', 'Duda Galeria'].map(nova));
+      await ctx.db.persist();
+
+      await request(ctx.app).get('/api/casa/admin/fundos-cabines').set(auth(a.token)).expect(403);
+      await request(ctx.app).post('/api/casa/admin/fundos-cabines/intensidade').set(auth(a.token)).send({ intensidade: 0.5 }).expect(403);
+      expect((await request(ctx.app).get('/api/casa/admin/fundos-cabines').set(auth(admin.token)).expect(200)).body.fotos).toEqual([]);
+      await request(ctx.app).post('/api/casa/admin/fundos-cabines').set(auth(admin.token))
+        .attach('arquivo', Buffer.from('nao e uma foto'), { filename: 'x.png', contentType: 'image/png' }).expect(400);
+
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 60 }).expect(200);
+      for (const u of [a, b, c, d]) await request(ctx.app).post('/api/casa/salao/entrar').set(auth(u.token)).expect(200);
+      const abrir = async (de: typeof a, para: typeof a) => {
+        const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(de.token)).send({ para: String(para.user.id) }).expect(200)).body;
+        return (await request(ctx.app).post(`/api/casa/convite/${convite.id}/responder`).set(auth(para.token)).send({ aceitar: true }).expect(200)).body.cabineId as string;
+      };
+      const estado = async (cabineId: string, u: typeof a) => (await request(ctx.app).post(`/api/casa/cabine/${cabineId}/estado`).set(auth(u.token)).expect(200)).body.cabine;
+
+      // Sem fotos: cabine com o fundo padrão.
+      const semFoto = await abrir(a, b);
+      await new Promise((r) => setTimeout(r, 50));
+      expect((await estado(semFoto, a)).fundo).toBeNull();
+      for (const u of [a, b]) await request(ctx.app).post(`/api/casa/cabine/${semFoto}/sair`).set(auth(u.token));
+
+      await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_fundos_cabines'");
+      await run(ctx.db, "INSERT INTO system_settings (key, value, updated_at) VALUES ('casa_fundos_cabines', ?, ?)", [JSON.stringify({ fotos: [foto1, foto2], intensidade: 0.4 }), new Date().toISOString()]);
+      await ctx.db.persist();
+      expect((await request(ctx.app).get('/api/casa/admin/fundos-cabines').set(auth(admin.token)).expect(200)).body.fotos.map((f: any) => f.url))
+        .toEqual([`/api/casa/fundo/${foto1}`, `/api/casa/fundo/${foto2}`]);
+
+      const cab1 = await abrir(b, a); // Bia convida: a Ana acabou de convidar (há intervalo entre convites).
+      await vi.waitFor(async () => expect((await estado(cab1, a)).fundo).not.toBeNull());
+      const cab2 = await abrir(c, d);
+      await vi.waitFor(async () => expect((await estado(cab2, c)).fundo).not.toBeNull());
+      const fundo1 = (await estado(cab1, a)).fundo;
+      const fundo2 = (await estado(cab2, c)).fundo;
+      expect(fundo1.intensidade).toBe(0.4);
+      expect(fundo1.url).not.toBe(fundo2.url);
+
+      const nomeDe1 = String(fundo1.url).split('/').pop();
+      await request(ctx.app).delete(`/api/casa/admin/fundos-cabines/${nomeDe1}`).set(auth(a.token)).expect(403);
+      await request(ctx.app).delete('/api/casa/admin/fundos-cabines/nao-existe.jpg').set(auth(admin.token)).expect(404);
+      const depois = (await request(ctx.app).delete(`/api/casa/admin/fundos-cabines/${nomeDe1}`).set(auth(admin.token)).expect(200)).body;
+      expect(depois.fotos).toHaveLength(1);
+      expect((await estado(cab1, a)).fundo).toBeNull();
+      expect((await estado(cab2, c)).fundo).toEqual(fundo2);
+
+      for (const [cab, us] of [[cab1, [a, b]], [cab2, [c, d]]] as const) for (const u of us) await request(ctx.app).post(`/api/casa/cabine/${cab}/sair`).set(auth(u.token));
+      for (const u of [a, b, c, d]) await request(ctx.app).post('/api/casa/salao/sair').set(auth(u.token));
+      await request(ctx.app).post('/api/casa/abrir-agora').set(auth(admin.token)).send({ minutos: 0 }).expect(200);
+      await run(ctx.db, 'UPDATE users SET is_admin = 0 WHERE id = ?', [String(admin.user.id)]);
+    } finally {
+      vi.useRealTimers();
+      await run(ctx.db, "DELETE FROM system_settings WHERE key = 'casa_fundos_cabines'");
+      for (const t of ['casa_mensagens', 'casa_eventos', 'casa_pontos']) await run(ctx.db, `DELETE FROM ${t} WHERE noite LIKE ?`, [`%${terca.toISOString().slice(0, 10)}`]);
+    }
   });
 
   it('suporte aceita print do usuário (com ou sem texto) e recusa mensagem vazia ou link externo', async () => {
