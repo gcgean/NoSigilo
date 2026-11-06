@@ -37,8 +37,8 @@ const guides = {
     name: 'iPhone / iPad', browser: 'Safari',
     steps: [
       { title: 'Abra no Safari', detail: 'Se estiver no navegador de outro aplicativo, abra nosigilo.net no Safari.', icon: Smartphone, visual: 'Safari  ·  nosigilo.net' },
-      { title: 'Toque em Compartilhar', detail: 'Procure o ícone de quadrado com seta para cima. Ele pode estar na parte de baixo ou de cima da tela.', icon: Share2, visual: 'Compartilhar  ↑' },
-      { title: 'Escolha “Adicionar à Tela de Início”', detail: 'Role o menu para baixo até encontrar essa opção. Se ela não aparecer, toque em “Editar Ações”.', icon: House, visual: '＋  Adicionar à Tela de Início' },
+      { title: 'Toque em Compartilhar', detail: 'Se aparecerem três pontinhos ⋯ ao lado do endereço, toque neles e depois em Compartilhar. Se não, toque no ícone de quadrado com seta para cima, embaixo ou em cima da tela.', icon: Share2, visual: '⋯  →  Compartilhar  ↑' },
+      { title: 'Escolha “Adicionar à Tela de Início”', detail: 'Role o menu para baixo até encontrar essa opção. Se ela não aparecer, toque em “Ver mais”.', icon: House, visual: '＋  Adicionar à Tela de Início' },
       { title: 'Confirme em “Adicionar”', detail: 'Se aparecer “Abrir como App”, deixe ativado. Depois toque em “Adicionar”. O ícone ficará na tela inicial.', icon: Check, visual: 'NoSigilo.net    Adicionar' },
     ],
   },
