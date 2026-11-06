@@ -612,6 +612,8 @@ const TOKEN_RULES: Record<string, { points: number; dailyCap: number }> = {
   volta_renovou: { points: 50, dailyCap: 1 },
   // A Casa: entrar na noite (1x por noite) e acertar o quiz da Lola.
   casa_entrada: { points: 5, dailyCap: 1 },
+  // Promoção: casal que entra na Casa antes da meia-noite (NOITES_CASAL_CEDO em casa.ts).
+  casa_casal_cedo: { points: 20, dailyCap: 1 },
   casa_quiz: { points: 3, dailyCap: 5 },
   casa_desafio: { points: 5, dailyCap: 10 },
   casa_duelo: { points: 10, dailyCap: 3 },

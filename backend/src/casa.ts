@@ -214,7 +214,7 @@ export type DependenciasDaCasa = {
   requireAuth: express.RequestHandler;
   getIo: () => SocketIOServer | undefined;
   temPremium: (userId: string) => Promise<boolean>;
-  premiar: (userId: string, acao: 'casa_entrada' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
+  premiar: (userId: string, acao: 'casa_entrada' | 'casa_casal_cedo' | 'casa_quiz' | 'casa_desafio' | 'casa_duelo' | 'casa_relampago', refId: string) => Promise<void>;
   /** Passa tokens de uma pessoa para outra (revelação paga). false = saldo insuficiente. */
   transferirTokens: (de: string, para: string, valor: number, refId: string) => Promise<boolean>;
   /** Tira tokens de alguém (desafio sugerido: fica guardado até cumprir). false = saldo insuficiente. */
@@ -303,6 +303,14 @@ const inicioDaNoite = (chave: string, tema: 'sexta' | 'sabado') => Date.parse(`$
 const fimDaNoite = (chave: string, tema: 'sexta' | 'sabado') => inicioDaNoite(chave, tema) + (24 - HORA_DE_ABRIR[tema] + HORA_DE_FECHAR[tema]) * 3_600_000;
 
 /** Noite em curso pelo horário fixo (sex 22h–1h, sáb 22h–2h) ou null. */
+// Promoção para trazer casais cedo: quem é casal e entra numa sala antes da
+// meia-noite ganha TOKENS_CASAL_CEDO, uma vez por noite. Vale só nas noites daqui.
+const NOITES_CASAL_CEDO = new Set(['2026-11-06']);
+const TOKENS_CASAL_CEDO = 20; // igual a casa_casal_cedo em TOKEN_RULES (app.ts)
+export function ganhaBonusCasalCedo(cat: string | undefined, chaveDaNoite: string, agora = new Date()) {
+  return cat === 'casal' && NOITES_CASAL_CEDO.has(chaveDaNoite) && agoraBrasilia(agora).data === chaveDaNoite;
+}
+
 function noiteDoHorario(d = new Date()): { chave: string; tema: 'sexta' | 'sabado' } | null {
   const { dow, hora, data } = agoraBrasilia(d);
   if (dow === 5 && hora >= HORA_DE_ABRIR.sexta) return { chave: data, tema: 'sexta' };
@@ -1954,6 +1962,7 @@ Sala: ${salaId}`).catch(() => {});
     sala_anonima: sala.anonima,
   });
 
+  const ultimoAvisoCasalCedo = new Map<string, number>();
   app.post('/api/casa/:sala/entrar', deps.requireAuth, async (req, res) => {
     const sala = salaDe(req);
     if (!sala) { res.status(404).json({ error: 'not_found' }); return; }
@@ -2060,6 +2069,14 @@ Sala: ${salaId}`).catch(() => {});
       registrarEvento(sala.id, 'entrou', userId);
       avisarPresentes(sala);
       void deps.premiar(userId, 'casa_entrada', `casa-${noite.chave}`).catch(() => {});
+      if (ganhaBonusCasalCedo(p.cat, noite.chave)) {
+        void deps.premiar(userId, 'casa_casal_cedo', `casa-cedo-${noite.chave}`).catch(() => {});
+        // Sem nome de propósito (há sala anônima); no máximo 1 vez a cada 20 min por sala.
+        if (Date.now() - (ultimoAvisoCasalCedo.get(sala.id) ?? 0) > 20 * 60_000) {
+          ultimoAvisoCasalCedo.set(sala.id, Date.now());
+          lola(sala, `🎁 Hoje, casal que entra antes da meia-noite ganha +${TOKENS_CASAL_CEDO} tokens! Chama o casal que você conhece 😈`);
+        }
+      }
     }
     res.json(await estadoPara(sala, userId, p));
   });
@@ -2701,7 +2718,7 @@ Sala: ${salaId}`).catch(() => {});
           drinks: conta(ehDrink), drinksTokens: -soma(ehDrink),
           revelacoes: conta(ehRevelacao), revelacoesTokens: -soma(ehRevelacao),
           desafiosCumpridos: conta((t) => t.action_type === 'casa_desafio_recebido'), desafiosTokens: soma((t) => t.action_type === 'casa_desafio_recebido'),
-          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
+          premiosDaCasa: soma((t) => ['casa_entrada', 'casa_casal_cedo', 'casa_quiz', 'casa_desafio', 'casa_duelo', 'casa_relampago'].includes(t.action_type)),
         },
       });
     }
