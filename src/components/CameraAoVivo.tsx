@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// Câmera da cabine: foto ou vídeo DE AGORA (nada da galeria), vídeo até 60s.
+// Câmera da cabine: foto ou vídeo de agora, vídeo até 60s (a galeria tem botão próprio na cabine).
 // Sem câmera no navegador (permissão negada, navegador antigo), cai no
 // seletor nativo do aparelho via onSemCamera.
 export const MAX_VIDEO_SEG = 60;

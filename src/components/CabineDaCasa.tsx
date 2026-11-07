@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Camera, LogOut, Send, X } from 'lucide-react';
+import { ArrowLeft, Camera, ImagePlus, LogOut, Send, X } from 'lucide-react';
 import apiClient from '@/utils/apiClient';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useSocket } from '@/contexts/SocketContext';
@@ -153,6 +153,7 @@ export default function CabineDaCasa({
   const [efeito, setEfeito] = useState<{ id: string; efeito: string; texto?: string } | null>(null);
   const fimDoEfeito = useCallback(() => setEfeito(null), []);
   const camera = useRef<HTMLInputElement>(null);
+  const galeria = useRef<HTMLInputElement>(null);
   const fim = useRef<HTMLDivElement>(null);
 
   const carregar = useCallback(async () => {
@@ -301,6 +302,7 @@ export default function CabineDaCasa({
     if (ehVideo && (await duracaoDoVideo(arquivo)) > MAX_VIDEO_SEG + 1) {
       toast({ title: 'Vídeo longo demais', description: `Na cabine o vídeo vai até ${MAX_VIDEO_SEG} segundos.`, variant: 'destructive' });
       if (camera.current) camera.current.value = '';
+      if (galeria.current) galeria.current.value = '';
       return;
     }
     setTipoEnviando(ehVideo ? 'video' : 'foto');
@@ -316,6 +318,7 @@ export default function CabineDaCasa({
     } finally {
       setEnviando(null);
       if (camera.current) camera.current.value = '';
+      if (galeria.current) galeria.current.value = '';
     }
   };
   const carregarLivre = async (m: Msg) => {
@@ -688,6 +691,11 @@ export default function CabineDaCasa({
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50" aria-label="Foto ou vídeo de agora">
             {enviando !== null ? <span className="text-[10px] tabular-nums">{enviando < 99 ? `${enviando}%` : '⏳'}</span> : <Camera className="h-4 w-4" />}
           </button>
+          <input ref={galeria} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => void enviarMidia(e.target.files?.[0])} />
+          <button type="button" onClick={() => galeria.current?.click()} disabled={enviando !== null}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50" aria-label="Foto ou vídeo da galeria" title="Da galeria">
+            <ImagePlus className="h-4 w-4" />
+          </button>
           {enviando !== null && (
             <div className="absolute bottom-full left-3 right-3 z-10 mb-2 rounded-2xl bg-zinc-900/95 p-3 shadow-xl ring-1 ring-rose-500/40">
               <p className="mb-1.5 flex items-center justify-between text-xs text-white/80">
@@ -725,7 +733,7 @@ export default function CabineDaCasa({
           )}
           <SugestoesDeMencao texto={texto} onEscolher={setTexto} className={respondendo && enviando === null ? 'mb-9' : undefined}
             pessoas={(cab.membros ?? []).filter((x) => x.id !== meuIdPublico)} />
-          <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Só quem está na cabine fala… (@ marca)"
+          <input value={texto} onChange={(e) => setTexto(e.target.value)} maxLength={280} placeholder="Escreva… (@ marca)"
             className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-[16px] text-white placeholder:text-white/40 outline-none" />
           <button type="submit" disabled={!texto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-600 disabled:opacity-40" aria-label="Enviar">
             <Send className="h-4 w-4" />

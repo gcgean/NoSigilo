@@ -223,7 +223,7 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar, fechadas = [],
         @keyframes nsAnda0 { 0%, 100% { transform: translate(0, 0); } 30% { transform: translate(34px, 8px); } 65% { transform: translate(12px, -14px); } }
         @keyframes nsAnda1 { 0%, 100% { transform: translate(0, 0); } 35% { transform: translate(-26px, 12px); } 70% { transform: translate(18px, 16px); } }
         @keyframes nsAnda2 { 0%, 100% { transform: translate(0, 0); } 40% { transform: translate(20px, -10px); } 75% { transform: translate(-22px, -6px); } }
-        @media (prefers-reduced-motion: reduce) { [data-cabine], [data-sala] > div { animation: none !important; } }
+        @media (prefers-reduced-motion: reduce) { [data-cabine] { animation: none !important; } }
       `}</style>
       <div
         ref={palco}
