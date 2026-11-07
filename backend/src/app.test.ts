@@ -7,7 +7,7 @@ import { createHmac } from 'node:crypto';
 import { initDb, queryAll, queryOne, run } from './db.js';
 import { nearestCity, searchCities, seedPortugalCities } from './seedCities.js';
 import { createApp, ehPlanoPortugal, totalDeVisitas, visitasPor, syncHubAccessForUser, runLembretesRenovacao } from './app.js';
-import { escolherFotoDaCabine } from './casa.js';
+import { escolherFotoDaCabine, quemFoiMarcado } from './casa.js';
 import type { DbHandle } from './db.js';
 
 // Segredo do webhook do hub no ambiente de teste. Fica aqui em cima porque o
@@ -3923,6 +3923,15 @@ describe('nosigilo backend', () => {
     await run(ctx.db, 'UPDATE users SET trial_ends_at = ? WHERE id = ?', [new Date(Date.now() + 2 * 86_400_000).toISOString(), casal]);
     await runLembretesRenovacao(ctx.db, { FRONTEND_ORIGIN: 'http://localhost:3000', JWT_SECRET: 'test-secret', RESEND_API_KEY: '', RESEND_FROM_EMAIL: '', APP_NAME: 'NoSigilo Test' } as any);
     expect((await avisados()).filter((x) => x === casal)).toHaveLength(1);
+  });
+
+  it('marcação com @ na sala: acha nome com espaço e símbolo, sem pegar nome parecido', () => {
+    const pessoas = [{ nome: 'Ana' }, { nome: 'Anabela' }, { nome: 'Pablo&Nina' }, { nome: 'Homem Casa 2' }];
+    const nomes = (t: string) => quemFoiMarcado(t, pessoas).map((p) => p.nome);
+    expect(nomes('oi @ana, tudo bem?')).toEqual(['Ana']);
+    expect(nomes('@Anabela oi')).toEqual(['Anabela']);
+    expect(nomes('@PABLO&NINA e @Homem Casa 2')).toEqual(['Pablo&Nina', 'Homem Casa 2']);
+    expect(nomes('Ana sem arroba')).toEqual([]);
   });
 
   it('sorteio do fundo da cabine: prefere a foto menos usada e não quebra sem fotos', () => {

@@ -359,6 +359,20 @@ function procuraAceita(p: Presente, outro: Presente) {
   return p.procura.length === 0 || p.procura.includes(outro.genero);
 }
 
+/** Quem está nesta lista e foi marcado com @Nome. "@Ana" não marca a Anabela. */
+export function quemFoiMarcado<T extends { nome: string }>(texto: string, pessoas: T[]): T[] {
+  if (!texto.includes('@')) return [];
+  const minusculo = texto.toLowerCase();
+  return pessoas.filter((p) => {
+    const marca = `@${p.nome.trim().toLowerCase()}`;
+    if (marca.length < 2) return false;
+    for (let i = minusculo.indexOf(marca); i >= 0; i = minusculo.indexOf(marca, i + 1)) {
+      if (!/[\p{L}\p{N}_]/u.test(minusculo.charAt(i + marca.length))) return true;
+    }
+    return false;
+  });
+}
+
 /**
  * Fundo de cabine nova: sorteia entre as fotos menos usadas nas cabines abertas,
  * para cada grupo cair numa foto diferente enquanto houver foto sobrando.
@@ -2355,6 +2369,24 @@ Sala: ${salaId}`).catch(() => {});
     res.json({ ok: true, querBrincar: p.querBrincar });
   });
 
+  // Push para quem foi marcado com @ (o app aberto já avisa na tela). Sem o texto da
+  // mensagem, porque aparece na tela bloqueada, e no máximo 1 por minuto de cada pessoa.
+  const ultimaMarcacao = new Map<string, number>();
+  const avisarMarcados = async (sala: Sala, autor: Presente, texto: string) => {
+    try {
+      const alvos = quemFoiMarcado(texto, [...sala.presentes.values()].filter((x) => x.id !== autor.id)).slice(0, 5);
+      for (const alvo of alvos) {
+        const chave = `${autor.id}:${alvo.id}`;
+        if (Date.now() - (ultimaMarcacao.get(chave) ?? 0) < 60_000) continue;
+        if (await bloqueados(autor.id, alvo.id)) continue;
+        ultimaMarcacao.set(chave, Date.now());
+        await deps.push(alvo.id, { title: `💬 ${autor.nome} marcou você na Casa`, body: 'Toque para responder.', url: `/casa?sala=${sala.id}`, tag: `casa-marcou-${sala.id}` });
+      }
+    } catch (e) {
+      console.error('[casa] push de marcação:', e);
+    }
+  };
+
   app.post('/api/casa/:sala/mensagem', deps.requireAuth, async (req, res) => {
     const sala = salaDe(req);
     const p = sala?.presentes.get(userDe(req));
@@ -2377,6 +2409,7 @@ Sala: ${salaId}`).catch(() => {});
       : undefined;
     const publicada = publicarMsg(sala, { tipo: 'pessoa', autor: { id: p.idPublico, nome: p.nome, avatar: p.avatar, cat: p.cat }, texto, ...(resposta ? { resposta } : {}) });
     moderarDepois(p.id, p.nome, texto, sala.nome, () => removerMsgDaSala(sala, publicada.id), contextoDe(sala.mensagens, publicada.id));
+    void avisarMarcados(sala, p, texto);
     if (respondida?.tipo === 'lola') void responderComoLola(sala, p, texto, respondida.texto, publicada.id);
     if (respondida?.tipo === 'anfitriao') void responderComoAnfitrioes(sala, p, texto, publicada.id);
     res.json({ ok: true });
