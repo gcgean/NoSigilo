@@ -20,6 +20,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { textoComAtalhos } from '@/utils/textoDoChat';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { formatStatCount } from '@/utils/statCount';
 import { format } from 'date-fns';
@@ -223,29 +224,6 @@ function isMutualMatchSystemMessage(message: Message) {
 
 function formatDistanceLabel(distanceKm?: number | null, cidade?: string | null) {
   return textoDistancia(distanceKm, { cidade, deVoce: true }) ?? '';
-}
-
-// Dicas da conta oficial trazem atalhos no formato [[Texto|/rota]]: viram botões
-// que abrem a função. Só rotas internas desta lista, para ninguém usar isso
-// para mandar link para fora.
-const ROTAS_DE_ATALHO = new Set(['/profile', '/match', '/search', '/stories', '/feed', '/radar', '/events', '/settings', '/tokens', '/subscriptions']);
-function textoComAtalhos(texto: string, navigate: (rota: string) => void) {
-  if (!texto.includes('[[')) return texto;
-  const partes = texto.split(/(\[\[[^\]|]{1,40}\|\/[a-z/-]{1,30}\]\])/g);
-  return partes.map((parte, i) => {
-    const m = /^\[\[([^\]|]+)\|(\/[a-z/-]+)\]\]$/.exec(parte);
-    if (!m || !ROTAS_DE_ATALHO.has(m[2])) return parte;
-    return (
-      <button
-        key={i}
-        type="button"
-        onClick={() => navigate(m[2])}
-        className="mx-0.5 my-1 inline-flex items-center rounded-full bg-brand-pink px-3 py-1 text-sm font-semibold text-white active:scale-95"
-      >
-        {m[1]}
-      </button>
-    );
-  });
 }
 
 export default function Chat() {
