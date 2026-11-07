@@ -682,7 +682,7 @@ export default function CabineDaCasa({
         <form className="relative flex items-center gap-2 border-t border-rose-500/30 px-3 py-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
           <button type="button" onClick={() => { setAcoesAbertas((v) => !v); setFogoPiscando(false); }}
             className={cn('flex h-10 shrink-0 items-center justify-center rounded-full px-3 text-sm font-bold', acoesAbertas ? 'bg-rose-600' : 'bg-gradient-to-r from-rose-700 to-red-700', fogoPiscando && !acoesAbertas && 'animate-pulse ring-2 ring-amber-300')}
-            aria-label="Ações na cabine">🔥</button>
+            aria-label={acoesAbertas ? 'Fechar as ações' : 'Abrir as ações na cabine'}>{acoesAbertas ? <X className="h-5 w-5" /> : '🔥'}</button>
           <input ref={camera} type="file" accept="image/*,video/*" capture="user" className="hidden" onChange={(e) => void enviarMidia(e.target.files?.[0])} />
           <button type="button" onClick={() => setCameraAberta(true)} disabled={enviando !== null}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 disabled:opacity-50" aria-label="Foto ou vídeo de agora">

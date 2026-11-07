@@ -122,13 +122,16 @@ const COR_CAT: Record<Categoria, string> = {
 
 const erroDe = (e: unknown, padrao: string) => (e as any)?.response?.data?.message || padrao;
 
-function Avatar({ p, tamanho = 'h-10 w-10' }: { p: { nome: string; avatar: string | null; cat: Categoria }; tamanho?: string }) {
+function Avatar({ p, tamanho = 'h-10 w-10', comStory = false }: { p: { nome: string; avatar: string | null; cat: Categoria }; tamanho?: string; comStory?: boolean }) {
   // Mulher em destaque: moldura dourada brilhando e um 💋 no canto (é quem mais atrai a sala).
   const destaque = p.cat === 'mulher';
   return (
     <div className={cn('relative shrink-0', tamanho)}>
-      <div className={cn('h-full w-full overflow-hidden rounded-full ring-2 ring-offset-2 ring-offset-background',
-        destaque ? 'ring-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.75)]' : COR_CAT[p.cat])}>
+      {/* Story que eu ainda não vi: anel colorido em volta, como na barra de stories. */}
+      {comStory && <span data-story-novo className="absolute -inset-1 rounded-full bg-gradient-to-tr from-amber-400 via-rose-500 to-fuchsia-500" />}
+      <div className={cn('relative h-full w-full overflow-hidden rounded-full',
+        comStory ? 'ring-2 ring-zinc-950' : 'ring-2 ring-offset-2 ring-offset-background',
+        !comStory && (destaque ? 'ring-amber-300 shadow-[0_0_14px_rgba(251,191,36,0.75)]' : COR_CAT[p.cat]))}>
         {p.avatar
           ? <img src={resolveServerUrl(p.avatar)} alt={p.nome} className="h-full w-full object-cover" />
           : <div className="flex h-full w-full items-center justify-center bg-secondary text-xs font-bold">{p.nome.charAt(0)}</div>}
@@ -958,6 +961,20 @@ export default function Casa() {
     const t = setInterval(buscar, 15_000);
     return () => clearInterval(t);
   }, [salaAtual, cabineAberta]);
+  // Quem da sala tem story que eu ainda não vi (a sala anônima não mostra quem é quem).
+  const [comStoryNovo, setComStoryNovo] = useState<Set<string>>(new Set());
+  const salaAnonima = !!estado?.sala_anonima;
+  useEffect(() => {
+    if (!salaAtual || salaAnonima) { setComStoryNovo(new Set()); return; }
+    const buscar = () => apiClient.get('/stories').then((r) => {
+      const stories = (r.data?.stories ?? []) as { viewed?: boolean; author?: { id?: string } }[];
+      setComStoryNovo(new Set(stories.filter((s) => !s.viewed && s.author?.id).map((s) => String(s.author!.id))));
+    }).catch(() => {});
+    void buscar();
+    const t = setInterval(buscar, 120_000);
+    return () => clearInterval(t);
+  }, [salaAtual, salaAnonima]);
+
   // Minhas cabines, de qualquer sala: seguem comigo pela Casa até eu fechar ou sair.
   const tirarCabine = useCallback((id: string) => {
     setMinhasCabines((l) => l.filter((x) => x !== id));
@@ -1090,6 +1107,12 @@ export default function Casa() {
 
   // Reações safadas + responder, embaixo de cada mensagem.
   const meuId = estado?.eu.idPublico ?? user?.id ?? '';
+  // "· Casal · Fortaleza": a cidade só vem de quem é do mesmo estado e ainda está na sala.
+  const detalheDoAutor = (autor?: { id: string; cat: Categoria }) => {
+    if (!autor) return '';
+    const cidade = estado?.presentes.find((x) => x.id === autor.id)?.cidade;
+    return `· ${ROTULO_CAT[autor.cat]}${cidade ? ` · ${cidade}` : ''}`;
+  };
   const AcoesDaMsg = ({ m }: { m: Msg }) => {
     const reacoes = Object.entries(m.reacoes ?? {}).filter(([, ids]) => ids.length > 0);
     return (
@@ -1204,12 +1227,14 @@ export default function Casa() {
         {estado.presentes.map((p) => (
           <button key={p.id} type="button" onClick={() => setPessoaAberta(p)} className="flex w-14 shrink-0 flex-col items-center gap-1">
             <div className="relative">
-              <Avatar p={p} tamanho="h-11 w-11" />
+              <Avatar p={p} tamanho="h-11 w-11" comStory={comStoryNovo.has(p.id)} />
               {p.querBrincar && <span className="absolute -bottom-1 -right-1 text-xs">🔥</span>}
               {p.rei && <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm">👑</span>}
               {p.pulseira && <span className={cn('absolute -bottom-0.5 -left-0.5 h-3 w-3 rounded-full ring-2 ring-zinc-950', corDaPulseira(p.pulseira)?.classe)} />}
             </div>
             <span className="w-full truncate text-center text-[10px] text-white/80">{p.nome}</span>
+            <span className="-mt-1 w-full truncate text-center text-[9px] text-white/60">{ROTULO_CAT[p.cat]}</span>
+            {/* O servidor só manda a cidade de quem é do mesmo estado que eu. */}
             {p.cidade && <span className="-mt-1 w-full truncate text-center text-[9px] text-white/50">{p.cidade}</span>}
           </button>
         ))}
@@ -1296,9 +1321,9 @@ export default function Casa() {
           <p key={m.id} className="text-center text-[11px] text-white/45">{m.texto}</p>
         ) : m.tipo === 'midia' ? (
           <div key={m.id} className="flex items-start gap-2">
-            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" /></button>}
+            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" comStory={comStoryNovo.has(m.autor.id)} /></button>}
             <div className="min-w-0">
-              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome}</button>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="block text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span></button>
               {(() => {
                 const minha = m.autor?.id === (estado.eu.idPublico ?? user?.id);
                 const vista = estado.midiasVistas.includes(m.id);
@@ -1369,9 +1394,9 @@ export default function Casa() {
           </div>
         ) : (
           <div key={m.id} className="flex items-start gap-2">
-            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" /></button>}
+            {m.autor && <button type="button" onClick={() => abrirAutor(m.autor)} aria-label={`Abrir ${m.autor.nome}`}><Avatar p={m.autor} tamanho="h-7 w-7" comStory={comStoryNovo.has(m.autor.id)} /></button>}
             <div className="min-w-0 max-w-[85%] rounded-2xl rounded-tl-sm bg-white/10 px-3 py-1.5">
-              <button type="button" onClick={() => abrirAutor(m.autor)} className="text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">· {m.autor ? ROTULO_CAT[m.autor.cat] : ''}</span></button>
+              <button type="button" onClick={() => abrirAutor(m.autor)} className="text-left text-[11px] font-semibold text-white/70 hover:text-fuchsia-300 hover:underline">{m.autor?.nome} <span className="font-normal text-white/40">{detalheDoAutor(m.autor)}</span></button>
               {m.resposta && (
                 <Citacao nome={m.resposta.nome} trecho={m.resposta.trecho} onIr={() => irParaCitada(m.resposta!.id)} className="border-fuchsia-400 bg-black/30 text-white/60" nomeClassName="text-fuchsia-300" />
               )}
@@ -1925,7 +1950,7 @@ export default function Casa() {
                 {estado.sala_anonima ? (
                   estado.eu.podeFalar && <Button variant="outline" onClick={() => void bater(pessoaAberta)}>🕳️ Bater na parede (anônimo)</Button>
                 ) : (
-                  <Button variant="outline" onClick={() => { setPerfilAberto(pessoaAberta.id); setPessoaAberta(null); }}>Ver perfil</Button>
+                  <Button variant="outline" onClick={() => { setPerfilAberto(pessoaAberta.id); setPessoaAberta(null); }}>{comStoryNovo.has(pessoaAberta.id) ? 'Ver perfil e stories' : 'Ver perfil'}</Button>
                 )}
               </div>
               )}

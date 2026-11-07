@@ -1,3 +1,4 @@
+import { lazy, Suspense, useState } from 'react';
 import { cn } from '@/lib/utils';
 import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
 
@@ -34,11 +35,45 @@ const posicao = (salaId: string, i: number) => {
   return { x: 8 + (h % 84), y: 30 + ((h >>> 8) % 45), atraso: (h % 40) / 10 };
 };
 
-export default function MapaDaCasa({ salas, onEntrar, onEspiar }: {
+const MapaDaCasa3D = lazy(() => import('@/components/MapaDaCasa3D'));
+const CHAVE_MODO = 'nosigilo:casa-mapa';
+const aceita3D = () => { try { return !!window.CSS?.supports?.('transform-style', 'preserve-3d'); } catch { return false; } };
+const modoGuardado = () => { try { return localStorage.getItem(CHAVE_MODO); } catch { return null; } };
+
+type PropsDoMapa = {
   salas: SalaDoMapa[];
   onEntrar: (salaId: string) => void;
   onEspiar: (salaId: string, cabineId: string) => void;
-}) {
+};
+
+/** 3D por padrão; a planta continua disponível em um toque (e é o que abre em aparelho sem 3D). */
+export default function MapaDaCasa(props: PropsDoMapa) {
+  const pode3D = aceita3D();
+  const [em3D, setEm3D] = useState(() => pode3D && modoGuardado() !== 'planta');
+  const trocar = () => {
+    const novo = !em3D;
+    setEm3D(novo);
+    try { localStorage.setItem(CHAVE_MODO, novo ? '3d' : 'planta'); } catch { /* modo restrito */ }
+  };
+  const planta = <PlantaDaCasa {...props} />;
+  return (
+    <div>
+      {pode3D && (
+        <div className="mb-2 flex justify-end">
+          <button type="button" onClick={trocar} className="rounded-full border border-white/20 px-3 py-1 text-[11px] text-white/80">{em3D ? '🗺️ Ver planta' : '🏠 Ver em 3D'}</button>
+        </div>
+      )}
+      {em3D ? (
+        <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
+          <p className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-200">🏠 A Casa · toque para entrar</p>
+          <Suspense fallback={planta}><MapaDaCasa3D {...props} /></Suspense>
+        </div>
+      ) : planta}
+    </div>
+  );
+}
+
+function PlantaDaCasa({ salas, onEntrar, onEspiar }: PropsDoMapa) {
   const maior = Math.max(1, ...salas.map((s) => s.total + (s.cabines ?? []).reduce((n, c) => n + c.pessoas, 0)));
   return (
     <div className="rounded-3xl border border-white/10 bg-zinc-950/80 p-3">
