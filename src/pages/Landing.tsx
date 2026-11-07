@@ -96,6 +96,12 @@ const LANDING_PROFILE_TYPES = [
   { value: 'other', label: 'Outros', icon: Sparkles },
 ] as const;
 
+const PERFIS_DO_TOPO = [
+  { evento: 'inicio_casal', perfil: 'Casal (Ele/Ela)', rotulo: 'Somos um casal', emoji: '👫' },
+  { evento: 'inicio_mulher', perfil: 'Mulher', rotulo: 'Sou mulher', emoji: '👩' },
+  { evento: 'inicio_homem', perfil: 'Homem', rotulo: 'Sou homem', emoji: '👨' },
+];
+
 export default function Landing() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
@@ -116,6 +122,22 @@ export default function Landing() {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPanelRef = useRef<HTMLElement>(null);
   const heroRef = useRef<HTMLElement>(null);
+  // Até onde quem não tem conta rola a página: mostra onde as pessoas desistem.
+  useEffect(() => {
+    if (isAuthenticated) return;
+    marcarPassoCadastro('inicio_abriu');
+    const faltam = [25, 50, 75, 100];
+    const aoRolar = () => {
+      const altura = document.documentElement.scrollHeight - window.innerHeight;
+      if (altura <= 0) return;
+      const pct = (window.scrollY / altura) * 100;
+      while (faltam.length && pct >= faltam[0] - 1) marcarPassoCadastro(`inicio_rolou_${faltam.shift()}`);
+      if (!faltam.length) window.removeEventListener('scroll', aoRolar);
+    };
+    window.addEventListener('scroll', aoRolar, { passive: true });
+    return () => window.removeEventListener('scroll', aoRolar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fechar sempre devolve o foco ao botão, senão quem navega por teclado ou
   // leitor de tela fica perdido no topo do documento.
@@ -302,10 +324,15 @@ export default function Landing() {
               </p>
               {/* Chamada principal (mesmo botão das páginas regionais): antes o
                   topo só tinha o link "Conheça a experiência". */}
-              <Link className="landing-cta-pulso" to="/register">
-                Quero entrar — é grátis
-                <ArrowRight aria-hidden="true" />
-              </Link>
+              <p className="landing-perfis-titulo">Quem vai entrar? É grátis.</p>
+              <div className="landing-perfis">
+                {PERFIS_DO_TOPO.map((p) => (
+                  <Link key={p.perfil} className="landing-cta-pulso" to={`/register?profile=${encodeURIComponent(p.perfil)}`} onClick={() => marcarPassoCadastro(p.evento)}>
+                    <span aria-hidden="true">{p.emoji}</span> {p.rotulo}
+                  </Link>
+                ))}
+              </div>
+              <Link className="landing-perfis-outros" to="/register" onClick={() => marcarPassoCadastro('inicio_outro')}>Outros perfis</Link>
               <p className="landing-cta-micro">Conta gratuita · Perfil fora do Google · Só para maiores de 18</p>
               <a className="landing-hero-discover" href="#experiencia">
                 Conheça a experiência
@@ -631,10 +658,13 @@ export default function Landing() {
         </section>
       </main>
 
-      {/* Barra fixa no celular: o cadastro sempre a um toque. */}
-      <div className="landing-fixo">
-        <Link to="/register">Criar conta grátis</Link>
-      </div>
+      {/* Barra fixa no celular: o cadastro sempre a um toque. Só depois do topo,
+          onde os botões de perfil já estão e ela cobriria o último. */}
+      {headerSolid && (
+        <div className="landing-fixo">
+          <Link to="/register">Criar conta grátis</Link>
+        </div>
+      )}
 
       <footer className="landing-footer">
         <div className="landing-shell landing-footer-content">

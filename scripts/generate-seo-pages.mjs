@@ -2654,7 +2654,7 @@ if (existsSync(APP_INDEX)) {
   const ROBOTS = /<meta name="robots" content="[^"]*" \/>/;
   if (ROBOTS.test(html)) {
     const semIndice = html.replace(ROBOTS, '<meta name="robots" content="noindex, follow" />');
-    for (const rota of ['login', 'register', 'subscriptions', 'terms', 'privacy', 'instalar']) {
+    for (const rota of ['login', 'register', 'subscriptions', 'terms', 'privacy', 'instalar', 'vem']) {
       mkdirSync(resolve(DIST, rota), { recursive: true });
       writeFileSync(resolve(DIST, rota, 'index.html'), semIndice, 'utf8');
     }

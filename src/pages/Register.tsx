@@ -8,7 +8,7 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, MapPin, Locate, Check, Users } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, Check, Users } from 'lucide-react';
 import GoogleSignInButton from '@/components/GoogleSignInButton';
 import { useToast } from '@/hooks/use-toast';
 import { leOrigem, limpaOrigem } from '@/utils/origemCadastro';
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
 import { onboardingService, authService, marcarPassoCadastro } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
-import { CitySearch } from '@/components/CitySearch';
+import { apelidoSugerido, sugestaoDeEmail } from '@/utils/ajudaCadastro';
 import BrandLogo from '@/components/BrandLogo';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
@@ -120,7 +120,6 @@ type RascunhoCadastro = {
   city: string;
   state: string;
   acceptTerms: boolean;
-  cityConfirmed: boolean;
 };
 
 function lerRascunho(): Partial<RascunhoCadastro> | null {
@@ -183,7 +182,6 @@ export default function Register() {
   // Nome em uso: variações livres para escolher com um toque.
   const [sugestoesNome, setSugestoesNome] = useState<string[]>([]);
   const [loadingLabel, setLoadingLabel] = useState('Criando sua conta...');
-  const [gpsLoading, setGpsLoading] = useState(false);
   const [proofIndex, setProofIndex] = useState(0);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
@@ -199,23 +197,20 @@ export default function Register() {
     state: rascunho?.state ?? '',
     acceptTerms: rascunho?.acceptTerms ?? false,
   });
-  // A cidade só é "confirmada" (caixa travada) quando vem do GPS ou de uma seleção
-  // da lista. Enquanto o usuário digita manualmente, o campo permanece editável.
-  const [cityConfirmed, setCityConfirmed] = useState(rascunho?.cityConfirmed ?? false);
   // Orientação: opcional (alimenta o filtro da Busca; ajuda a comunidade LGBT a se achar).
   const [orientacao, setOrientacao] = useState('');
 
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  // O campo de cidade é o CitySearch, que não expõe input via ref. A entrada
-  // existe só para o mapa de erros ficar completo; o foco vira no-op (o `?.`
-  // em refDoCampo cobre o null) e a mensagem de erro aparece normalmente.
-  const cityInputRef = useRef<HTMLInputElement>(null);
+  // Apelido que o site preencheu (some assim que a pessoa mexe no campo).
+  const nomeAutomatico = useRef(false);
+  const [perfilJaEscolhido, setPerfilJaEscolhido] = useState(() => !!initialProfile && !rascunho?.gender);
+  const [mostrarNomeSugerido, setMostrarNomeSugerido] = useState(false);
 
   // Erro por campo, mostrado embaixo do próprio campo. Antes a única resposta
   // a um formulário inválido era um toast no topo da tela.
-  type CampoErro = 'gender' | 'name' | 'email' | 'password' | 'city';
+  type CampoErro = 'gender' | 'name' | 'email' | 'password';
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<CampoErro, string>>>({});
 
   const refDoCampo: Record<CampoErro, React.RefObject<HTMLInputElement>> = {
@@ -223,7 +218,6 @@ export default function Register() {
     name: nameInputRef,
     email: emailInputRef,
     password: passwordInputRef,
-    city: cityInputRef,
   };
 
   const { register } = useAuth();
@@ -243,12 +237,11 @@ export default function Register() {
         city: formData.city,
         state: formData.state,
         acceptTerms: formData.acceptTerms,
-        cityConfirmed,
       } satisfies RascunhoCadastro));
     } catch {
       // Sem sessionStorage o cadastro continua funcionando, só não guarda nada.
     }
-  }, [currentStep, formData.name, formData.email, formData.gender, formData.city, formData.state, formData.acceptTerms, cityConfirmed]);
+  }, [currentStep, formData.name, formData.email, formData.gender, formData.city, formData.state, formData.acceptTerms]);
 
   const isCouple = formData.gender.toLowerCase().includes('casal');
 
@@ -355,6 +348,22 @@ export default function Register() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [formData.name]);
 
+  // Escolheu o perfil e ainda não tem nome: já vem um apelido pronto. Pensar em um era
+  // onde mais gente travava no passo 1. Se estiver em uso, troca sozinho por outro.
+  useEffect(() => {
+    if (!formData.gender) return;
+    if (formData.name.trim() && !nomeAutomatico.current) return;
+    nomeAutomatico.current = true;
+    setMostrarNomeSugerido(true);
+    setFormData((atual) => ({ ...atual, name: apelidoSugerido(atual.gender) }));
+    marcarPassoCadastro('nome_sugerido');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.gender]);
+  useEffect(() => {
+    if (!nomeAutomatico.current || (nameStatus !== 'taken' && nameStatus !== 'blacklisted')) return;
+    setFormData((atual) => ({ ...atual, name: apelidoSugerido(atual.gender) }));
+  }, [nameStatus]);
+
   // ── Load suggestions when reaching step 3 ────────────────────────────────
   useEffect(() => {
     if (currentStep !== 3 || !formData.gender) return;
@@ -378,67 +387,6 @@ export default function Register() {
     return () => { cancelled = true; };
   }, [currentStep, formData.gender, formData.city, formData.state]);
 
-  // ── GPS ───────────────────────────────────────────────────────────────────
-  const handleGpsLocation = () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: 'GPS não disponível',
-        description: 'Seu navegador não suporta geolocalização.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const { latitude, longitude } = pos.coords;
-          const resp = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&accept-language=pt-BR`
-          );
-          const geo = await resp.json();
-          const city =
-            geo?.address?.city ||
-            geo?.address?.town ||
-            geo?.address?.village ||
-            '';
-          const state =
-            geo?.address?.state_code ||
-            geo?.address?.ISO3166_2_lvl4?.replace('BR-', '') ||
-            '';
-          if (city) { updateField('city', city); setCityConfirmed(true); }
-          if (state) updateField('state', state.slice(0, 2).toUpperCase());
-          if (city)
-            toast({
-              title: '📍 Localização obtida!',
-              description: `${city}${state ? `, ${state}` : ''}`,
-            });
-          else
-            toast({
-              title: 'Cidade não identificada',
-              description: 'Digite manualmente abaixo.',
-            });
-        } catch {
-          toast({
-            title: 'Erro ao obter localização',
-            description: 'Tente digitar manualmente.',
-            variant: 'destructive',
-          });
-        } finally {
-          setGpsLoading(false);
-        }
-      },
-      () => {
-        setGpsLoading(false);
-        toast({
-          title: 'Permissão negada',
-          description: 'Ative o GPS ou digite sua cidade.',
-          variant: 'destructive',
-        });
-      }
-    );
-  };
-
   // Guardado só para destacar o que falta (o botão continua clicável de
   // propósito: botão apagado no celular não diz o que fazer, e a pessoa
   // desiste. Ao clicar, handleNext aponta o campo que falta).
@@ -449,18 +397,13 @@ export default function Register() {
         nameStatus !== 'taken' &&
         nameStatus !== 'blacklisted'
       : currentStep === 2
-        // A cidade virou obrigatória: sem ela o feed regional, o radar e a
-        // busca por perto não funcionam, e o perfil fica invisível para quem
-        // está na mesma cidade. Mesmo mínimo do backend (sanitizeCityValue).
-        ? EMAIL_RE.test(formData.email.trim()) &&
-          formData.password.length >= 6 &&
-          formData.city.trim().length >= 3
+        // A cidade é pedida logo depois da conta criada (CityRequiredModal).
+        ? EMAIL_RE.test(formData.email.trim()) && formData.password.length >= 6
         : true;
 
   // ── Card select — auto-focus name after picking ───────────────────────────
   const handleSelectGender = (value: string) => {
     updateField('gender', value);
-    setTimeout(() => nameInputRef.current?.focus(), 180);
   };
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -513,10 +456,6 @@ export default function Register() {
       }
       if (!formData.password || formData.password.length < 6) {
         marcarErro('password', 'Senha muito curta', 'Use pelo menos 6 caracteres.');
-        return;
-      }
-      if (formData.city.trim().length < 3) {
-        marcarErro('city', 'Informe sua cidade', 'É ela que mostra perfis perto de você e faz você aparecer para quem está na sua região.');
         return;
       }
       try {
@@ -770,6 +709,14 @@ export default function Register() {
                   </>
                 ) : null}
 
+                {/* Já escolheu no botão da página anterior: não pergunta de novo. */}
+                {perfilJaEscolhido ? (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
+                    <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
+                    <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
+                  </div>
+                ) : (
+                <>
                 {/* Primary cards */}
                 <div className="grid grid-cols-3 gap-2.5">
                   {primaryOptions.map((opt) => {
@@ -839,6 +786,9 @@ export default function Register() {
                   </div>
                 )}
 
+                </>
+                )}
+
                 {fieldErrors.gender ? (
                   <p id="erro-gender" role="alert" className="px-1 text-xs font-medium text-destructive">
                     {fieldErrors.gender}
@@ -855,7 +805,8 @@ export default function Register() {
                     ref={nameInputRef}
                     placeholder={isCouple ? 'Apelido do casal (ex: Casal SP)' : 'Seu apelido ou nome'}
                     value={formData.name}
-                    onChange={(e) => updateField('name', e.target.value)}
+                    onChange={(e) => { nomeAutomatico.current = false; setMostrarNomeSugerido(false); updateField('name', e.target.value); }}
+                    onFocus={(e) => { if (nomeAutomatico.current) e.target.select(); }}
                     className={cn(
                       'h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm',
                       nameStatus === 'available' && 'border-emerald-500 focus-visible:ring-emerald-500/40',
@@ -871,6 +822,9 @@ export default function Register() {
                       {fieldErrors.name}
                     </p>
                   ) : null}
+                  {mostrarNomeSugerido && (
+                    <p className="px-1 text-xs text-muted-foreground">Sugerimos esse apelido para você. Pode trocar se quiser.</p>
+                  )}
                   {nameStatus === 'checking' && (
                     <p className="px-1 text-xs text-muted-foreground">Verificando disponibilidade…</p>
                   )}
@@ -888,7 +842,7 @@ export default function Register() {
                             <button
                               key={sug}
                               type="button"
-                              onClick={() => { updateField('name', sug); marcarPassoCadastro('nome_sugestao_usada'); }}
+                              onClick={() => { nomeAutomatico.current = false; setMostrarNomeSugerido(false); updateField('name', sug); marcarPassoCadastro('nome_sugestao_usada'); }}
                               className="min-h-[40px] rounded-full border border-primary/40 bg-primary/10 px-4 text-sm font-medium text-foreground transition-colors hover:bg-primary/20 active:scale-95"
                             >
                               {sug}
@@ -966,6 +920,15 @@ export default function Register() {
                       {fieldErrors.email}
                     </p>
                   ) : null}
+                  {sugestaoDeEmail(formData.email) && (
+                    <button
+                      type="button"
+                      onClick={() => { updateField('email', sugestaoDeEmail(formData.email)); marcarPassoCadastro('email_corrigido'); }}
+                      className="min-h-10 w-full rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-left text-sm"
+                    >
+                      Você quis dizer <strong>{sugestaoDeEmail(formData.email)}</strong>? Toque para corrigir.
+                    </button>
+                  )}
                 </div>
 
                 {/* Password */}
@@ -1008,61 +971,6 @@ export default function Register() {
                       Sua conta é só sua — nenhuma informação é compartilhada sem permissão.
                     </p>
                   )}
-                </div>
-
-                {/* City — GPS first */}
-                <div className="space-y-3">
-                  <Label>
-                    {isCouple ? 'Onde vocês estão?' : 'Onde você está?'}
-                    <span className="ml-1 text-xs font-normal text-destructive">*</span>
-                  </Label>
-
-                  {formData.city && cityConfirmed ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 animate-fade-in">
-                      <MapPin className="h-4 w-4 shrink-0 text-emerald-400" />
-                      <span className="text-sm text-muted-foreground">
-                        <strong className="text-foreground/80">{formData.city}</strong>
-                        {formData.state ? `, ${formData.state}` : ''}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => { updateField('city', ''); updateField('state', ''); setCityConfirmed(false); }}
-                        className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Alterar
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {/* Digitar a cidade vem primeiro: quem nega a permissão de
-                          GPS (a maioria, no celular) caía num caminho secundário
-                          e escondido. O GPS virou o atalho, não o plano A. */}
-                      <CitySearch
-                        value={formData.city}
-                        onChange={(val) => { updateField('city', val); setCityConfirmed(false); }}
-                        onSelect={(city, state) => {
-                          updateField('city', city);
-                          updateField('state', state);
-                          setCityConfirmed(true);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleGpsLocation}
-                        disabled={gpsLoading}
-                        className="flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
-                      >
-                        {gpsLoading ? <Locate className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
-                        {gpsLoading ? 'Obtendo localização...' : 'ou usar minha localização atual'}
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="px-1 text-xs text-muted-foreground/70">
-                    Obrigatório. É a cidade que mostra perfis perto de você — e que
-                    faz você aparecer para quem está na sua região. Só cidade e
-                    estado ficam visíveis no perfil; endereço, nunca.
-                  </p>
                 </div>
 
                 <div className="space-y-2">

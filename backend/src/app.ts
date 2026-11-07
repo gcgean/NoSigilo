@@ -7079,6 +7079,12 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     'erro_name_vazio', 'erro_name_em_uso', 'erro_name_bloqueado', 'nome_sugestao_usada',
     // Teste A/B do botão Espiar: A = página inicial sem o botão, B = com.
     'ab_espiar_a', 'ab_espiar_b', 'espiar_abriu', 'espiar_parede',
+    // Página inicial sem conta: quem abriu, até onde rolou e qual perfil escolheu no topo.
+    'inicio_abriu', 'inicio_rolou_25', 'inicio_rolou_50', 'inicio_rolou_75', 'inicio_rolou_100',
+    'inicio_casal', 'inicio_mulher', 'inicio_homem', 'inicio_outro',
+    // Página do link do Instagram (/vem).
+    'ig_abriu', 'ig_casal', 'ig_mulher', 'ig_homem',
+    'nome_sugerido', 'email_corrigido',
   ] as const;
 
   // Primeira abertura pelo app instalado: marca o usuário e paga 20 tokens,

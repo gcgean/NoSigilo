@@ -34,6 +34,7 @@ import Landing from "./pages/Landing";
 const CampaignLanding = lazy(() => import("./pages/CampaignLanding"));
 const Login = lazy(() => import("./pages/Login"));
 const Instalar = lazy(() => import("./pages/Instalar"));
+const Vem = lazy(() => import("./pages/Vem"));
 const Register = lazy(() => import("./pages/Register"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -117,6 +118,7 @@ const App = () => (
                     <Route path="/acasa" element={<ACasaPublica />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/instalar" element={<Instalar />} />
+                    <Route path="/vem" element={<Vem />} />
                     {/* Botão "Renovar com Pix" dos e-mails: sem login, link assinado. */}
                     <Route path="/renovar" element={<Renovar />} />
                     <Route path="/forgot-password" element={<ForgotPassword />} />
