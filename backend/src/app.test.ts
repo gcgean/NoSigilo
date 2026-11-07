@@ -4427,6 +4427,7 @@ describe('nosigilo backend', () => {
       await grantPremium(ctx, String(h.user.id));
       homens.push(h);
     }
+    const mirone = await registerInvitedUser(ctx, sponsorToken, { name: 'Homem Sem Assinatura', email: 'homem-casa-mirone@example.com', password: 'senha123', gender: 'Homem' });
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(homens[0].token)).send({ minutos: 60 }).expect(403);
     await request(ctx.app).post('/api/casa/abrir-agora').set(auth(casal.token)).send({ minutos: 60 }).expect(200);
     const info = (await request(ctx.app).get('/api/casa').set(auth(casal.token)).expect(200)).body;
@@ -4463,6 +4464,12 @@ describe('nosigilo backend', () => {
       expect(barrada.message).toMatch(/contato não é permitido/);
     }
     await request(ctx.app).post('/api/casa/salao/entrar').set(auth(homens[0].token)).expect(200);
+    // Marcar alguém da sala com @Nome não é contato; um @ de fora continua barrado.
+    await new Promise((r) => setTimeout(r, 1300));
+    await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: `@${casal.user.name} boa noite, tudo bem?` }).expect(200);
+    await new Promise((r) => setTimeout(r, 1300));
+    const deFora = (await request(ctx.app).post('/api/casa/salao/mensagem').set(auth(homens[0].token)).send({ texto: `@${casal.user.name} segue lá @casalquente` }).expect(400)).body;
+    expect(deFora.message).toMatch(/contato não é permitido/);
 
     const convite = (await request(ctx.app).post('/api/casa/salao/convidar').set(auth(casal.token)).send({ para: String(homens[0].user.id) }).expect(200)).body;
     // Cabine da Casa: porta fecha por padrão; abre só quando os dois querem; quem espia pede para entrar.
@@ -4475,6 +4482,11 @@ describe('nosigilo backend', () => {
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/provocacao`).set(auth(casal.token)).send({}).expect(409);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/esquentar`).set(auth(casal.token)).send({ quer: true }).expect(200)).body.quente).toBe(false);
     expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/esquentar`).set(auth(homens[0].token)).send({ quer: true }).expect(200)).body.quente).toBe(true);
+    // Quem só olha a sala (sem assinatura) ouve que precisa assinar, não que a cabine fechou.
+    await request(ctx.app).post('/api/casa/salao/entrar').set(auth(mirone.token)).expect(200);
+    const semAssinatura = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(mirone.token)).expect(403)).body;
+    expect(semAssinatura.error).toBe('premium_required');
+    expect((await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/pedir`).set(auth(mirone.token)).expect(403)).body.error).toBe('premium_required');
     const espiando = (await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/espiar`).set(auth(homens[1].token)).expect(200)).body.cabine;
     expect(espiando.souEspectador).toBe(true);
     await request(ctx.app).post(`/api/casa/cabine/${cab.cabineId}/mensagem`).set(auth(homens[1].token)).send({ texto: 'oi' }).expect(403);

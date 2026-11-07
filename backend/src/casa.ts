@@ -2016,9 +2016,23 @@ Atenção: julgue a MENSAGEM usando a conversa anterior como contexto. Números 
     void deps.alertar(`🚫 A Casa: ${nome} (${email}) foi retirado(a) da noite.\nMotivo: ${motivo}\nSala: ${salaId}${texto ? `\nMensagem: "${texto.slice(0, 200)}"` : ''}`).catch(() => {});
   };
 
+  /** "@Nome" de quem está na Casa é marcação, não contato: sai do texto antes da checagem. */
+  const semMarcacoes = (texto: string) => {
+    if (!texto.includes('@')) return texto;
+    const nomes = new Set<string>();
+    for (const s of salas.values()) for (const p of s.presentes.values()) nomes.add(p.nome.trim());
+    for (const c of cabines.values()) for (const m of c.membros.values()) nomes.add(m.nome.trim());
+    let t = texto;
+    for (const n of [...nomes].filter(Boolean).sort((a, b) => b.length - a.length)) {
+      t = t.replace(new RegExp(`@${n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}_])`, 'giu'), ' ');
+    }
+    return t;
+  };
+
   /** Bloqueio na hora (Pix/contato). Devolve a mensagem para a pessoa ou null se pode publicar. */
   const bloqueioRapido = async (userId: string, nome: string, texto: string, salaId: string): Promise<string | null> => {
-    const achou = BLOQUEIO_RAPIDO.find((b) => b.re.test(texto));
+    const checar = semMarcacoes(texto);
+    const achou = BLOQUEIO_RAPIDO.find((b) => b.re.test(checar));
     if (!achou) return null;
     // Contato: só bloqueia a mensagem e avisa (sem contar aviso nem expulsar).
     if (achou.cat === 'contato') return `💋 Lola: ${achou.aviso}`;
@@ -3718,6 +3732,8 @@ Sala: ${salaId}`).catch(() => {});
     const userId = userDe(req);
     const sala = c ? salas.get(c.salaId) : null;
     const p = sala?.presentes.get(userId);
+    // Quem está na sala só olhando (sem assinatura) ouve o motivo certo, não "a cabine fechou".
+    if (c && !p && sala?.espiando.has(userId)) { res.status(403).json({ error: 'premium_required', message: 'Assine para espiar as cabines.' }); return; }
     if (!c || !p) { res.status(404).json({ error: 'fora', message: 'Essa cabine fechou.' }); return; }
     if (!p.podeFalar) { res.status(403).json({ error: 'premium_required', message: 'Assine para espiar as cabines.' }); return; }
     if (!c.aberta && !c.membros.has(userId)) { res.status(403).json({ error: 'porta_fechada', message: 'A porta fechou 🔒' }); return; }
@@ -4050,6 +4066,7 @@ Sala: ${salaId}`).catch(() => {});
     // Pode pedir de qualquer sala (a lista de cabines fechadas fica na entrada da Casa).
     const p = sala?.presentes.get(userId) ?? [...salas.values()].map((s) => s.presentes.get(userId)).find(Boolean);
     if (!c || !sala || c.membros.has(userId)) { res.status(404).json({ error: 'fora' }); return; }
+    if (!p && [...salas.values()].some((s) => s.espiando.has(userId))) { res.status(403).json({ error: 'premium_required', message: 'Assine para entrar nas cabines.' }); return; }
     if (!p) { res.status(409).json({ error: 'entre_na_casa', sala: sala.id, message: 'Entre numa sala da Casa para pedir.' }); return; }
     for (const id of c.membros.keys()) if (await bloqueados(userId, id)) { res.status(404).json({ error: 'fora' }); return; }
     if (c.membros.size >= MAX_NA_CABINE) { res.status(409).json({ error: 'lotada', message: 'A cabine está cheia.' }); return; }
