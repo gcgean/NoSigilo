@@ -22,15 +22,43 @@ describe('mapa 3D d\'A Casa', () => {
     expect(container.querySelector('[data-cabine]')).toBeNull();
   });
 
-  it('porta aberta espia sem entrar na sala; porta fechada não faz nada', () => {
+  it('porta aberta: tocar mostra o painel e o botão espia, sem entrar na sala', () => {
     const onEntrar = vi.fn();
     const onEspiar = vi.fn();
-    const { container } = render(<MapaDaCasa3D salas={[sala([cabine('aberta', true), cabine('fechada')])]} onEntrar={onEntrar} onEspiar={onEspiar} />);
+    const { container } = render(<MapaDaCasa3D salas={[sala([{ ...cabine('aberta', true), tipos: ['casal', 'homem'] }])]} onEntrar={onEntrar} onEspiar={onEspiar} />);
     fireEvent.click(container.querySelector('[data-cabine="aberta"]')!);
+    expect(onEspiar).not.toHaveBeenCalled();
+    expect(screen.getByText(/casal \+ .*homem/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Espiar' }));
     expect(onEspiar).toHaveBeenCalledWith('salao', 'aberta');
-    fireEvent.click(container.querySelector('[data-cabine="fechada"]')!);
-    expect(onEspiar).toHaveBeenCalledTimes(1);
     expect(onEntrar).not.toHaveBeenCalled();
+  });
+
+  it('porta fechada: pede para entrar; sem receber pedidos, avisa; e o painel some se a cabine fechar', () => {
+    const onPedir = vi.fn();
+    const props = { onEntrar: vi.fn(), onEspiar: vi.fn(), onPedir };
+    const fechadas = [{ id: 'recebe', tipos: ['mulher'], pedi: false }];
+    const salas = [sala([cabine('recebe'), cabine('sem-pedidos')])];
+    const { container, rerender } = render(<MapaDaCasa3D salas={salas} fechadas={fechadas} {...props} />);
+    fireEvent.click(container.querySelector('[data-cabine="recebe"]')!);
+    fireEvent.click(screen.getByRole('button', { name: /Pedir para entrar/ }));
+    expect(onPedir).toHaveBeenCalledWith('recebe');
+    rerender(<MapaDaCasa3D salas={salas} fechadas={[{ ...fechadas[0], pedi: true }]} {...props} />);
+    expect((screen.getByRole('button', { name: 'Pedido enviado' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(container.querySelector('[data-cabine="sem-pedidos"]')!);
+    expect(screen.getByText(/não está recebendo pedidos/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Pedir para entrar/ })).toBeNull();
+    rerender(<MapaDaCasa3D salas={[sala([cabine('recebe')])]} fechadas={fechadas} {...props} />);
+    expect(screen.queryByText(/não está recebendo pedidos/)).toBeNull();
+  });
+
+  it('mostra a foto e o destaque de quem está na sala e, sem foto, a bolinha do perfil', () => {
+    const presentes = [{ id: 'a', nome: 'Ana', avatar: '/uploads/a.jpg', cat: 'mulher' as const, destaque: true }, { id: 'b', nome: 'Bia', avatar: null, cat: 'mulher' as const }];
+    const { container, rerender } = render(<MapaDaCasa3D salas={[sala([], { presentes })]} onEntrar={vi.fn()} onEspiar={vi.fn()} />);
+    expect(container.querySelectorAll('img')).toHaveLength(1);
+    expect(screen.getByText('🔥')).toBeTruthy();
+    rerender(<MapaDaCasa3D salas={[sala([], { presentes: undefined })]} onEntrar={vi.fn()} onEspiar={vi.fn()} />);
+    expect(container.querySelectorAll('img')).toHaveLength(0);
   });
 
   it('tocar na sala entra, sala trancada não, e arrastar para girar não entra', () => {

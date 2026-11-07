@@ -2040,6 +2040,9 @@ export default function Casa() {
               await entrar(salaId);
               setCabineAberta({ id: cabineId, modo: 'espiar' });
             }}
+            fechadas={info.cabinesFechadas ?? []}
+            pedindo={pedindoCabine}
+            onPedir={(id) => { const c = (info.cabinesFechadas ?? []).find((x) => x.id === id); if (c) void pedirCabineFechada(c); }}
           />
         )}
         {info?.aberta && <p className="text-center text-sm font-semibold text-fuchsia-200">Ou escolha pela lista 👇</p>}

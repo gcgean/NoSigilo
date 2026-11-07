@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import type { CabineDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
+import { resolveServerUrl } from '@/utils/serverUrl';
+import { quemEstaDentro } from '@/components/CabinesFechadas';
+import type { CabineDoMapa, CabineFechadaDoMapa, PessoaDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
 
 /**
  * A Casa em 3D (só CSS, nada para baixar). As cabines vêm do servidor: quando uma
  * abre, o quartinho sobe do chão na sala; quando fecha, some na atualização seguinte.
+ * Tocar numa cabine mostra quem está lá (por tipo de perfil) e o que dá para fazer.
  * Arrastar para os lados gira a casa; arrastar na vertical continua rolando a página.
  */
 // Planta em pé, para ocupar a tela do celular. As paredes altas ficam só no fundo e à
@@ -24,8 +27,10 @@ const PLANTA: Record<string, Planta> = {
 };
 const COR_DO_PERFIL = { casal: '#f472b6', mulher: '#fb7185', homem: '#60a5fa', outros: '#a78bfa' } as const;
 export const VAGAS_DE_CABINE = 6;
-const CABINE_W = 34;
-const CABINE_D = 30;
+const CABINE_W = 42;
+const CABINE_D = 36;
+const INCLINACAO = 38;
+const MAX_NA_SALA = 9;
 
 const hash = (t: string) => { let h = 0; for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 
@@ -76,36 +81,68 @@ function Moveis({ p }: { p: Planta }) {
   );
 }
 
-function Cabine3D({ c, x, y, cor, onEspiar }: { c: CabineDoMapa; x: number; y: number; cor: string; onEspiar: (id: string) => void }) {
-  const titulo = c.aberta ? `Cabine de porta aberta com ${c.pessoas} pessoa(s): toque para espiar` : `Cabine de porta fechada com ${c.pessoas} pessoa(s)`;
+function Pessoa3D({ p, salaId, indice, w, d, angulo }: { p: { cat: PessoaDoMapa['cat']; avatar?: string | null; nome?: string; destaque?: boolean }; salaId: string; indice: number; w: number; d: number; angulo: number }) {
+  const semente = hash(salaId) % 100;
+  const h = (indice + 1) * 7 + semente;
+  const anda = `nsAnda${indice % 3}`;
+  // Sequência áurea: cada pessoa cai longe das outras e não troca de lugar entre atualizações.
+  const px = (indice * 0.618 + semente / 100) % 1;
+  const py = (indice * 0.754 + semente / 37) % 1;
+  // Foto que não carrega não pode sumir com a pessoa do mapa: fica a bolinha do perfil.
+  const [fotoFalhou, setFotoFalhou] = useState(false);
+  return (
+    <div
+      className="pointer-events-none absolute [transform-style:preserve-3d]"
+      style={{ left: 12 + px * Math.max(20, w - 66), top: 40 + py * Math.max(10, d - 84), animation: `${anda} ${9 + (h % 6)}s ease-in-out ${(h % 40) / 10}s infinite` }}
+    >
+      {/* De pé, sempre virada para quem olha, mesmo girando a casa. */}
+      <div className="absolute [transform-style:preserve-3d]" style={{ transform: `translateZ(4px) rotateZ(${-angulo}deg) rotateX(${-INCLINACAO}deg)`, transformOrigin: 'bottom' }}>
+        {p.avatar && !fotoFalhou ? (
+          <img src={resolveServerUrl(p.avatar)} alt="" loading="lazy" draggable={false} onError={() => setFotoFalhou(true)}
+            className={cn('h-7 w-7 max-w-none rounded-full object-cover', p.destaque ? 'ring-2 ring-amber-300' : 'ring-1 ring-white/90')}
+            style={{ outline: `2px solid ${COR_DO_PERFIL[p.cat]}`, outlineOffset: 1 }} />
+        ) : (
+          <span className="block h-3.5 w-3.5 rounded-full border border-white/90" style={{ background: COR_DO_PERFIL[p.cat] }} />
+        )}
+        {p.destaque && <span className="absolute -right-2 -top-2 text-sm leading-none">🔥</span>}
+      </div>
+    </div>
+  );
+}
+
+function Cabine3D({ c, x, y, cor, marcada, onTocar }: { c: CabineDoMapa; x: number; y: number; cor: string; marcada: boolean; onTocar: (id: string) => void }) {
+  const titulo = c.aberta ? `Cabine de porta aberta com ${c.pessoas} pessoa(s)` : `Cabine de porta fechada com ${c.pessoas} pessoa(s)`;
+  const nivel = c.nivel ?? 0;
   return (
     <button
       type="button"
       data-cabine={c.id}
       aria-label={titulo}
       title={titulo}
-      onClick={(e) => { e.stopPropagation(); if (c.aberta) onEspiar(c.id); }}
-      className={cn('absolute [transform-style:preserve-3d]', c.aberta ? 'cursor-pointer' : 'cursor-default')}
-      style={{ left: x, top: y, width: CABINE_W, height: CABINE_D, animation: 'nsCabineSobe .55s ease-out both' }}
+      onClick={(e) => { e.stopPropagation(); onTocar(c.id); }}
+      className="absolute cursor-pointer [transform-style:preserve-3d]"
+      style={{ left: x, top: y, width: CABINE_W, height: CABINE_D, animation: nivel > 0 ? 'nsCabineSobe .55s ease-out, nsCabineTreme 1.4s ease-in-out .6s infinite' : 'nsCabineSobe .55s ease-out both' }}
     >
       <Caixa
         x={0} y={0} w={CABINE_W} d={CABINE_D} h={26}
-        topo={c.aberta ? '#92400e' : '#1a0d14'} frente={c.aberta ? '#d97706' : cor} lado={c.aberta ? '#78350f' : '#1a0a12'}
+        topo={marcada ? '#fde68a' : c.aberta ? '#92400e' : nivel > 0 ? '#7f1d1d' : '#1a0d14'} frente={c.aberta ? '#d97706' : cor} lado={c.aberta ? '#78350f' : '#1a0a12'}
       >
-        <span className="text-[13px] font-bold leading-none text-white">{c.aberta ? '👀' : '🔒'}{c.pessoas}</span>
+        <span className={cn('text-[13px] font-bold leading-none', marcada ? 'text-black' : 'text-white')}>{nivel > 0 ? '🔥'.repeat(nivel) : c.aberta ? '👀' : '🔒'}{c.pessoas}</span>
       </Caixa>
     </button>
   );
 }
 
-function Sala3D({ s, calor, onEntrar, onEspiar }: { s: SalaDoMapa; calor: number; onEntrar: (id: string) => void; onEspiar: (salaId: string, cabineId: string) => void }) {
+function Sala3D({ s, calor, angulo, escolhida, onEntrar, onTocarCabine }: { s: SalaDoMapa; calor: number; angulo: number; escolhida: string | null; onEntrar: (id: string) => void; onTocarCabine: (id: string) => void }) {
   const p = PLANTA[s.id];
   if (!p) return null;
   const travada = !!(s.bloqueadaParaMim || s.trancada);
   const { ocupadas, fora } = vagasDasCabines(s.cabines ?? []);
-  const pessoas = (s.pessoas ?? []).slice(0, 14);
+  // Com foto quando o servidor manda; senão, a bolinha da cor do perfil.
+  const lista: { cat: PessoaDoMapa['cat']; avatar?: string | null; nome?: string; destaque?: boolean }[] = s.presentes ?? (s.pessoas ?? []).map((cat) => ({ cat }));
+  const pessoas = lista.slice(0, MAX_NA_SALA);
   // Vagas das cabines: no lado direito da sala, em duas fileiras.
-  const vaga = (i: number) => ({ x: p.w - (CABINE_W + 5) * (Math.floor(i / 2) + 1), y: 6 + (i % 2) * (CABINE_D + 5) });
+  const vaga = (i: number) => ({ x: p.w - (CABINE_W + 4) * (Math.floor(i / 2) + 1), y: 5 + (i % 2) * (CABINE_D + 4) });
   const paredeFundo = p.y <= 10 ? PAREDE_ALTA : PAREDE_BAIXA;
   const paredeLado = p.x <= 10 ? PAREDE_ALTA : PAREDE_BAIXA;
   return (
@@ -128,30 +165,25 @@ function Sala3D({ s, calor, onEntrar, onEspiar }: { s: SalaDoMapa; calor: number
       <div className="absolute left-0 top-0 w-full" style={{ height: paredeFundo, background: p.paredeA, border: `1px solid ${p.cor}`, transformOrigin: 'top', transform: 'rotateX(90deg)' }} />
       <div className="absolute left-0 top-0 h-full" style={{ width: paredeLado, background: p.paredeB, border: `1px solid ${p.cor}`, transformOrigin: 'left', transform: 'rotateY(-90deg)' }} />
       <Moveis p={p} />
-      {pessoas.map((cat, i) => {
-        const h = hash(`${s.id}:${i}`);
-        return (
-          <span
-            key={i}
-            className="absolute h-3.5 w-3.5 rounded-full border border-white/90"
-            style={{ left: 10 + (h % Math.max(20, p.w - 40)), top: 74 + ((h >>> 8) % Math.max(10, p.d - 104)), background: COR_DO_PERFIL[cat], transform: 'translateZ(8px)' }}
-          />
-        );
-      })}
+      {pessoas.map((pessoa, i) => <Pessoa3D key={i} p={pessoa} salaId={s.id} indice={i} w={p.w} d={p.d} angulo={angulo} />)}
       {[...ocupadas.entries()].map(([i, c]) => {
         const { x, y } = vaga(i);
-        return <Cabine3D key={c.id} c={c} x={x} y={y} cor={p.cor} onEspiar={(id) => onEspiar(s.id, id)} />;
+        return <Cabine3D key={c.id} c={c} x={x} y={y} cor={p.cor} marcada={escolhida === c.id} onTocar={onTocarCabine} />;
       })}
       {fora.length > 0 && <span className="absolute right-2.5 top-1 rounded-full bg-black/60 px-2 text-[12px] text-white" style={{ transform: 'translateZ(30px)' }}>+{fora.length} cabines</span>}
     </div>
   );
 }
 
-export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
+export default function MapaDaCasa3D({ salas, onEntrar, onEspiar, fechadas = [], pedindo = null, onPedir }: {
   salas: SalaDoMapa[];
   onEntrar: (salaId: string) => void;
   onEspiar: (salaId: string, cabineId: string) => void;
+  fechadas?: CabineFechadaDoMapa[];
+  pedindo?: string | null;
+  onPedir?: (cabineId: string) => void;
 }) {
+  const [escolhida, setEscolhida] = useState<string | null>(null);
   const palco = useRef<HTMLDivElement>(null);
   // De frente: no celular, inclinada para o lado a casa encolhia e ficava torta.
   const [angulo, setAngulo] = useState(0);
@@ -174,6 +206,12 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
   const total = (s: SalaDoMapa) => s.total + (s.cabines ?? []).reduce((n, c) => n + c.pessoas, 0);
   const maior = Math.max(1, ...salas.map(total));
   const cabinesAtivas = salas.reduce((n, s) => n + (s.cabines ?? []).length, 0);
+  // A cabine escolhida pode fechar enquanto o painel está aberto: aí o painel some junto.
+  const salaDaEscolhida = escolhida ? salas.find((s) => (s.cabines ?? []).some((c) => c.id === escolhida)) : null;
+  const cabine = salaDaEscolhida?.cabines?.find((c) => c.id === escolhida) ?? null;
+  const fechada = cabine && !cabine.aberta ? fechadas.find((f) => f.id === cabine.id) : null;
+  const quemDentro = cabine ? quemEstaDentro(cabine.aberta ? cabine.tipos : fechada?.tipos ?? []) : '';
+  const CLIMA = ['conversando', 'nas preliminares 🔥', 'pegando fogo 🔥🔥'];
   // Altura do palco acompanha a largura, para a casa caber inteira no celular.
   const altura = Math.round(ALTURA * 0.78 * escala + 56);
 
@@ -181,7 +219,11 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
     <div>
       <style>{`
         @keyframes nsCabineSobe { from { transform: translateZ(-40px) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
-        @media (prefers-reduced-motion: reduce) { [data-cabine] { animation: none !important; } }
+        @keyframes nsCabineTreme { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1.2px); } 75% { transform: translateX(1.2px); } }
+        @keyframes nsAnda0 { 0%, 100% { transform: translate(0, 0); } 30% { transform: translate(34px, 8px); } 65% { transform: translate(12px, -14px); } }
+        @keyframes nsAnda1 { 0%, 100% { transform: translate(0, 0); } 35% { transform: translate(-26px, 12px); } 70% { transform: translate(18px, 16px); } }
+        @keyframes nsAnda2 { 0%, 100% { transform: translate(0, 0); } 40% { transform: translate(20px, -10px); } 75% { transform: translate(-22px, -6px); } }
+        @media (prefers-reduced-motion: reduce) { [data-cabine], [data-sala] > div { animation: none !important; } }
       `}</style>
       <div
         ref={palco}
@@ -203,16 +245,35 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
       >
         <div
           className="absolute left-1/2 top-1/2 [transform-style:preserve-3d]"
-          style={{ width: LARGURA, height: ALTURA, marginLeft: -LARGURA / 2, marginTop: -ALTURA / 2, transform: `scale(${escala}) rotateX(38deg) rotateZ(${angulo}deg)` }}
+          style={{ width: LARGURA, height: ALTURA, marginLeft: -LARGURA / 2, marginTop: -ALTURA / 2, transform: `scale(${escala}) rotateX(${INCLINACAO}deg) rotateZ(${angulo}deg)` }}
         >
-          {salas.map((s) => <Sala3D key={s.id} s={s} calor={total(s) / maior} onEntrar={onEntrar} onEspiar={onEspiar} />)}
+          {salas.map((s) => <Sala3D key={s.id} s={s} calor={total(s) / maior} angulo={angulo} escolhida={escolhida} onEntrar={onEntrar} onTocarCabine={setEscolhida} />)}
         </div>
       </div>
+      {cabine && salaDaEscolhida && (
+        <div className="mt-2 flex items-center gap-3 rounded-2xl border border-white/15 bg-white/5 p-3 text-white">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{cabine.aberta ? '👀 Porta aberta' : '🔒 Porta fechada'} · {salaDaEscolhida.nome}</p>
+            <p className="text-xs text-white/70">
+              {quemDentro || `${cabine.pessoas} pessoa(s)`} · {CLIMA[cabine.nivel ?? 0] ?? CLIMA[0]}{cabine.espiando > 0 ? ` · ${cabine.espiando} espiando` : ''}
+            </p>
+            {!cabine.aberta && !fechada && <p className="mt-0.5 text-xs text-white/55">Essa cabine não está recebendo pedidos agora.</p>}
+          </div>
+          {cabine.aberta ? (
+            <button type="button" onClick={() => onEspiar(salaDaEscolhida.id, cabine.id)} className="shrink-0 rounded-full bg-amber-500 px-3 py-2 text-xs font-bold text-black">Espiar</button>
+          ) : fechada && onPedir ? (
+            <button type="button" disabled={fechada.pedi || pedindo === fechada.id} onClick={() => onPedir(fechada.id)} className="shrink-0 rounded-full bg-rose-600 px-3 py-2 text-xs font-bold disabled:opacity-60">
+              {fechada.pedi ? 'Pedido enviado' : pedindo === fechada.id ? 'Enviando…' : '🙋 Pedir para entrar'}
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setEscolhida(null)} className="shrink-0 rounded-full p-1 text-white/60" aria-label="Fechar">✕</button>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-white/60">
         <button type="button" onClick={() => girar(-45)} className="rounded-full border border-white/20 px-2.5 py-1" aria-label="Girar para a esquerda">↺</button>
         <span className="text-center">
           {cabinesAtivas > 0 ? `${cabinesAtivas} ${cabinesAtivas === 1 ? 'cabine montada' : 'cabines montadas'} agora · ` : ''}
-          👀 porta aberta, toque para espiar · 🔒 fechada
+          toque numa cabine para ver e pedir para entrar
         </span>
         <button type="button" onClick={() => girar(45)} className="rounded-full border border-white/20 px-2.5 py-1" aria-label="Girar para a direita">↻</button>
       </div>

@@ -10,10 +10,14 @@ import CenaDaSala, { type FotoDeFundo } from '@/components/CenaDaSala';
  * aberta já vai espiar.
  */
 type Cat = 'casal' | 'mulher' | 'homem' | 'outros';
-export type CabineDoMapa = { id: string; aberta: boolean; pessoas: number; espiando: number; tipos: Cat[] };
+/** nivel: 0 conversando, 1 preliminares, 2 pegando fogo (sem dizer quem está dentro). */
+export type CabineDoMapa = { id: string; aberta: boolean; pessoas: number; espiando: number; tipos: Cat[]; nivel?: number };
+/** Quem está na sala, com foto (só para quem pode falar na Casa). destaque = o mais ativo agora. */
+export type PessoaDoMapa = { id: string; nome: string; avatar: string | null; cat: Cat; destaque?: boolean };
+export type CabineFechadaDoMapa = { id: string; tipos: string[]; pedi: boolean };
 export type SalaDoMapa = {
   id: string; nome: string; emoji: string; total: number; espiando: number;
-  pessoas?: Cat[]; cabines?: CabineDoMapa[];
+  pessoas?: Cat[]; cabines?: CabineDoMapa[]; presentes?: PessoaDoMapa[];
   bloqueadaParaMim?: boolean; lotadaParaMim?: boolean; trancada?: boolean; faltamParaAbrir?: number;
   /** Foto de fundo configurada no admin: aparece em miniatura no quarto do mapa. */
   fundo?: FotoDeFundo | null;
@@ -44,6 +48,10 @@ type PropsDoMapa = {
   salas: SalaDoMapa[];
   onEntrar: (salaId: string) => void;
   onEspiar: (salaId: string, cabineId: string) => void;
+  /** Cabines de porta fechada em que dá para pedir para entrar. */
+  fechadas?: CabineFechadaDoMapa[];
+  pedindo?: string | null;
+  onPedir?: (cabineId: string) => void;
 };
 
 /** 3D por padrão; a planta continua disponível em um toque (e é o que abre em aparelho sem 3D). */
