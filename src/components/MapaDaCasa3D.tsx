@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { resolveServerUrl } from '@/utils/serverUrl';
 import type { CabineDoMapa, SalaDoMapa } from '@/components/MapaDaCasa';
 
 /**
@@ -19,7 +18,7 @@ type Planta = { x: number; y: number; w: number; d: number; cor: string; chao: s
 const PLANTA: Record<string, Planta> = {
   salao: { x: 10, y: 10, w: 340, d: 170, cor: '#d946ef', chao: '#2a1140', paredeA: '#3a1a58', paredeB: '#301449', pessoa: '#e9d5ff', movel: 'bar' },
   casais: { x: 10, y: 190, w: 165, d: 130, cor: '#f43f5e', chao: '#3a0d1c', paredeA: '#4e1226', paredeB: '#430f20', pessoa: '#fecdd3', movel: 'sofa' },
-  quarto: { x: 185, y: 190, w: 165, d: 130, cor: '#dc2626', chao: '#1c0707', paredeA: '#2a0a0a', paredeB: '#220808', pessoa: '#fecaca', movel: 'cama' },
+  quarto: { x: 185, y: 190, w: 165, d: 130, cor: '#dc2626', chao: '#2e0c0c', paredeA: '#3a0f0f', paredeB: '#300c0c', pessoa: '#fecaca', movel: 'cama' },
   glory: { x: 10, y: 330, w: 150, d: 150, cor: '#ef4444', chao: '#26060a', paredeA: '#3a0a0f', paredeB: '#30080c', pessoa: '#fecaca', movel: 'parede' },
   cuckold: { x: 170, y: 330, w: 180, d: 150, cor: '#f59e0b', chao: '#2b1704', paredeA: '#3d2006', paredeB: '#331b05', pessoa: '#fde68a', movel: 'palco' },
 };
@@ -121,8 +120,7 @@ function Sala3D({ s, calor, onEntrar, onEspiar }: { s: SalaDoMapa; calor: number
       style={{ left: p.x, top: p.y, width: p.w, height: p.d }}
     >
       <div className="absolute inset-0 overflow-hidden" style={{ background: p.chao, border: `2px solid ${p.cor}`, boxShadow: calor > 0 ? `0 0 ${8 + calor * 26}px ${p.cor}` : undefined, opacity: travada ? 0.5 : 1 }}>
-        {s.fundo && <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url("${resolveServerUrl(s.fundo.url)}")`, opacity: s.fundo.intensidade, filter: 'grayscale(1) blur(1px)' }} />}
-        <span className="absolute bottom-1 left-2 right-9 truncate text-[13px] font-bold text-white">{s.nome}</span>
+        <span className="absolute bottom-1 left-2 right-9 truncate text-[14px] font-bold text-white">{s.nome}</span>
         <span className="absolute bottom-1 right-1.5 rounded-full bg-black/55 px-1.5 text-[13px] text-white">
           {s.trancada ? `🔒 faltam ${s.faltamParaAbrir ?? 0}` : `${s.total}${s.espiando > 0 ? ` · 👀${s.espiando}` : ''}`}
         </span>
@@ -135,7 +133,7 @@ function Sala3D({ s, calor, onEntrar, onEspiar }: { s: SalaDoMapa; calor: number
         return (
           <span
             key={i}
-            className="absolute h-3 w-3 rounded-full border border-white/90"
+            className="absolute h-3.5 w-3.5 rounded-full border border-white/90"
             style={{ left: 10 + (h % Math.max(20, p.w - 40)), top: 74 + ((h >>> 8) % Math.max(10, p.d - 104)), background: COR_DO_PERFIL[cat], transform: 'translateZ(8px)' }}
           />
         );
@@ -155,7 +153,8 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
   onEspiar: (salaId: string, cabineId: string) => void;
 }) {
   const palco = useRef<HTMLDivElement>(null);
-  const [angulo, setAngulo] = useState(-14);
+  // De frente: no celular, inclinada para o lado a casa encolhia e ficava torta.
+  const [angulo, setAngulo] = useState(0);
   const [escala, setEscala] = useState(0.8);
   const arrasto = useRef<{ x: number; angulo: number } | null>(null);
   const moveu = useRef(false);
@@ -163,7 +162,7 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
   useEffect(() => {
     const el = palco.current;
     if (!el) return;
-    const medir = () => setEscala(Math.min(1.15, (el.clientWidth || 340) / 490));
+    const medir = () => setEscala(Math.min(1.25, (el.clientWidth || 340) / 372));
     medir();
     if (typeof ResizeObserver === 'undefined') return;
     const obs = new ResizeObserver(medir);
@@ -176,7 +175,7 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
   const maior = Math.max(1, ...salas.map(total));
   const cabinesAtivas = salas.reduce((n, s) => n + (s.cabines ?? []).length, 0);
   // Altura do palco acompanha a largura, para a casa caber inteira no celular.
-  const altura = Math.round(ALTURA * 0.82 * escala + 44);
+  const altura = Math.round(ALTURA * 0.78 * escala + 56);
 
   return (
     <div>
@@ -187,7 +186,7 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
       <div
         ref={palco}
         className="relative overflow-hidden rounded-2xl bg-[#0b0610] select-none"
-        style={{ height: altura, perspective: 1300, touchAction: 'pan-y' }}
+        style={{ height: altura, perspective: 1700, touchAction: 'pan-y' }}
         onPointerDown={(e) => { arrasto.current = { x: e.clientX, angulo }; moveu.current = false; }}
         onPointerMove={(e) => {
           const a = arrasto.current;
@@ -204,7 +203,7 @@ export default function MapaDaCasa3D({ salas, onEntrar, onEspiar }: {
       >
         <div
           className="absolute left-1/2 top-1/2 [transform-style:preserve-3d]"
-          style={{ width: LARGURA, height: ALTURA, marginLeft: -LARGURA / 2, marginTop: -ALTURA / 2, transform: `scale(${escala}) rotateX(46deg) rotateZ(${angulo}deg)` }}
+          style={{ width: LARGURA, height: ALTURA, marginLeft: -LARGURA / 2, marginTop: -ALTURA / 2, transform: `scale(${escala}) rotateX(38deg) rotateZ(${angulo}deg)` }}
         >
           {salas.map((s) => <Sala3D key={s.id} s={s} calor={total(s) / maior} onEntrar={onEntrar} onEspiar={onEspiar} />)}
         </div>
