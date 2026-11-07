@@ -31,8 +31,11 @@ function appDoNavegador(ua: string): string | undefined {
 
 export function capturaPrimeiroToque(): void {
   try {
+    // A página do link do Instagram vale mesmo para quem já tinha outra origem: é o
+    // teste dela que queremos medir (canal "Instagram (página /vem)" no admin).
+    const paginaDoInstagram = /^\/vem(\/|$)/.test(window.location.pathname);
     const guardado = localStorage.getItem(CHAVE);
-    if (guardado) {
+    if (guardado && !paginaDoInstagram) {
       const antigo = JSON.parse(guardado) as PrimeiroToque;
       if (antigo?.em && Date.now() - new Date(antigo.em).getTime() < VALIDADE_MS) return;
     }
@@ -44,10 +47,10 @@ export function capturaPrimeiroToque(): void {
     } catch { /* referrer inválido: segue sem */ }
     const toque: PrimeiroToque = {
       ref,
-      utmSource: busca.get('utm_source') || undefined,
+      utmSource: busca.get('utm_source') || (paginaDoInstagram ? 'instagram' : undefined),
       utmMedium: busca.get('utm_medium') || undefined,
       // Página pública d'A Casa conta como campanha própria (canal "A Casa" no admin).
-      utmCampaign: busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : undefined),
+      utmCampaign: paginaDoInstagram ? 'instagram-vem' : busca.get('utm_campaign') || (/^\/a-?casa/.test(window.location.pathname) ? 'a-casa' : undefined),
       app: appDoNavegador(navigator.userAgent || ''),
       em: new Date().toISOString(),
     };

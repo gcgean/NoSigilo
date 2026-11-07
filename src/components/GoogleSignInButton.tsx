@@ -13,6 +13,8 @@ interface GoogleSignInButtonProps {
   className?: string;
   // Texto de aceite (cadastro). Com ele, o clique também registra a versão aceita.
   aceite?: React.ReactNode;
+  // O aceite aparece em outro lugar da tela: o clique registra a versão do mesmo jeito.
+  registrarAceite?: boolean;
   // O caminho principal da tela: botão branco, grande, que chama mais atenção que o resto.
   destaque?: boolean;
 }
@@ -25,6 +27,7 @@ export default function GoogleSignInButton({
   state,
   className = '',
   aceite,
+  registrarAceite = false,
   destaque = false,
 }: GoogleSignInButtonProps) {
   const handleClick = () => {
@@ -40,7 +43,7 @@ export default function GoogleSignInButton({
     // pelo caminho mais rapido da tela contava como "cadastro direto".
     const origem = leOrigem();
     if (origem) params.set('origem', origem);
-    if (aceite) params.set('termos', VERSAO_POLITICA);
+    if (aceite || registrarAceite) params.set('termos', VERSAO_POLITICA);
     // De onde a pessoa veio na 1ª visita (o cadastro pelo Google sai do app).
     const toque = lePrimeiroToque();
     if (toque) params.set('pt', JSON.stringify(toque).slice(0, 400));

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import { lePrimeiroToque } from '@/utils/primeiroToque';
 import { consumirDestinoPosCadastro, vaiParaACasa } from '@/utils/destinoPosCadastro';
@@ -708,8 +709,9 @@ export default function Register() {
                       name={formData.name}
                       city={formData.city}
                       state={formData.state}
-                      aceite={<AceiteGoogle abrir={setLegalDoc} />}
+                      registrarAceite
                     />
+                    <p className="text-center text-[11px] text-muted-foreground">Ao continuar, você tem 18+ e aceita os termos no fim da página.</p>
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
                       <span className="text-xs text-muted-foreground">ou continue com e-mail</span>
@@ -888,8 +890,9 @@ export default function Register() {
                   name={formData.name}
                   city={formData.city}
                   state={formData.state}
-                  aceite={<AceiteGoogle abrir={setLegalDoc} />}
+                  registrarAceite
                 />
+                <p className="text-center text-[11px] text-muted-foreground">Ao continuar, você tem 18+ e aceita os termos no fim da página.</p>
 
                 <div className="flex items-center gap-3">
                   <div className="h-px flex-1 bg-border" />
@@ -1170,30 +1173,38 @@ export default function Register() {
             )}
 
             {/* ── Navigation buttons ──────────────────────────────────── */}
-            <div className="mt-6 flex gap-3">
-              {currentStep > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleBack}
-                  className="h-12 flex-1 rounded-xl sm:h-10 sm:rounded-md"
-                  disabled={isLoading}
-                >
+            {currentStep > 2 ? (
+              <div className="mt-6 flex gap-3">
+                <Button type="button" variant="outline" onClick={handleBack} className="h-12 flex-1 rounded-xl sm:h-10 sm:rounded-md" disabled={isLoading}>
                   Voltar
                 </Button>
-              )}
-              {currentStep < 3 && (
-                <Button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={isLoading}
-                  className="h-12 flex-1 rounded-xl bg-gradient-primary hover:opacity-90 gap-2 sm:h-10 sm:rounded-md"
-                >
-                  {isLoading ? 'Verificando...' : passoAtualValido ? 'Próximo' : 'Continuar'}
-                  {!isLoading && <ArrowRight className="h-4 w-4" />}
-                </Button>
-              )}
-            </div>
+              </div>
+            ) : createPortal(
+              // Preso ao pé da tela: no navegador do Instagram a barra de baixo cortava o botão.
+              <div
+                data-botoes-do-cadastro
+                className="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-border bg-background/95 px-4 pt-3"
+                style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <div className="flex w-full max-w-lg gap-3">
+                  {currentStep > 1 && (
+                    <Button type="button" variant="outline" onClick={handleBack} className="h-12 flex-1 rounded-xl" disabled={isLoading}>
+                      Voltar
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={isLoading}
+                    className="h-12 flex-1 gap-2 rounded-xl bg-gradient-primary hover:opacity-90"
+                  >
+                    {isLoading ? 'Verificando...' : passoAtualValido ? 'Próximo' : 'Continuar'}
+                    {!isLoading && <ArrowRight className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>,
+              document.body,
+            )}
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
@@ -1202,6 +1213,13 @@ export default function Register() {
               Entrar
             </Link>
           </p>
+          {currentStep < 3 && (
+            <div className="mt-4 border-t border-border/60 pt-4">
+              <AceiteGoogle abrir={setLegalDoc} />
+            </div>
+          )}
+          {/* Espaço para o fim da página não ficar atrás do botão preso ao pé da tela. */}
+          {currentStep < 3 && <div className="h-20" aria-hidden="true" />}
         </div>
       </div>
 
@@ -1211,7 +1229,8 @@ export default function Register() {
 }
 
 // Quem cria a conta pelo Google pula a caixinha do último passo: o aceite vem
-// aqui, junto do botão, com o mesmo texto (e o destaque dos dados sensíveis).
+// no fim da página, com o mesmo texto (e o destaque dos dados sensíveis), e o
+// botão avisa em uma linha que ele existe.
 function AceiteGoogle({ abrir }: { abrir: (doc: LegalDoc) => void }) {
   const link = (doc: LegalDoc, texto: string) => (
     <button type="button" className="text-primary hover:underline" onClick={() => abrir(doc)}>

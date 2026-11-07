@@ -3947,6 +3947,17 @@ describe('nosigilo backend', () => {
     expect(ordenarParaResponder(autor, lista, () => true, agora, (id) => (id === 'cidade' ? agora - 60_000 : 0), () => 0).map((p) => p.id)).toEqual(['ce', 'sp']);
   });
 
+  it('cadastro pela página do Instagram fica com o canal próprio e entra nas campanhas de Instagram', async () => {
+    const u = await registerInvitedUser(ctx, sponsorToken, {
+      name: 'Veio Do Vem', email: 'veio-do-vem@example.com', password: 'senha123', gender: 'Casal (Ele/Ela)',
+      primeiroToque: { utmSource: 'instagram', utmCampaign: 'instagram-vem', app: 'instagram' },
+    } as any);
+    const linha = (await queryOne(ctx.db, 'SELECT origem_canal FROM users WHERE id = ?', [String(u.user.id)])) as any;
+    expect(linha.origem_canal).toBe('Instagram (página /vem)');
+    const noCanal = (await queryOne(ctx.db, "SELECT COUNT(*) AS c FROM users WHERE id = ? AND origem_canal LIKE 'Instagram%'", [String(u.user.id)])) as any;
+    expect(Number(noCanal.c)).toBe(1);
+  });
+
   it('mapa: mais ativos primeiro, destaque só com movimento e bloqueado não aparece', () => {
     const agora = Date.now();
     const p = (id: string) => ({ id, idPublico: id, nome: id, avatar: null, cat: 'casal' });

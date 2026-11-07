@@ -2182,6 +2182,9 @@ function canalDaOrigem(o: PrimeiroToque | null, signupSource: string | null): st
   // Página "casa de swing online" (casanosigilo.net leva para ela): vale mais do
   // que "veio pela /acasa", senão ela some misturada com quem abriu a /acasa direto.
   if (signupSource?.includes('casa-de-swing-online')) return 'Página Casa de swing online';
+  // Página do link do Instagram. Começa com "Instagram" de propósito: campanha de
+  // anúncio com canal "Instagram" soma estes cadastros (origem_canal LIKE 'Instagram%').
+  if (o?.utmCampaign === 'instagram-vem') return 'Instagram (página /vem)';
   // Chegou pela página pública d'A Casa (/a-casa marca utm_campaign=a-casa):
   // conta como A Casa, com o canal de onde veio entre parênteses.
   if (o?.utmCampaign === 'a-casa') {
