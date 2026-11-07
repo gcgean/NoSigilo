@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { contaComoNovaNaCabine, enviarComNovaTentativa } from './salaDaCasa';
+import { avisoDeMencao, contaComoNovaNaCabine, enviarComNovaTentativa } from './salaDaCasa';
 
 const recusa = (status: number, error?: string) => Object.assign(new Error('recusa'), { response: { status, data: { error } } });
 
@@ -27,6 +27,24 @@ describe('envio de mensagem na sala', () => {
       await expect(enviarComNovaTentativa(postar, vi.fn())).rejects.toBe(erro);
       expect(postar).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe('aviso quando me marcam na sala', () => {
+  const eu = { id: 'eu', nome: 'Pablo&Nina' };
+  const outro = { id: 'outro' };
+
+  it('avisa quem foi marcado com @, sem diferenciar maiúscula', () => {
+    expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: 'oi @pablo&nina tudo bem?' }, eu)).toBe('marcou');
+  });
+  it('avisa quem recebeu uma resposta', () => {
+    expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: 'oi', resposta: { nome: 'Pablo&Nina' } }, eu)).toBe('respondeu');
+  });
+  it('não avisa a própria mensagem, a Lola, nem mensagem para outra pessoa', () => {
+    expect(avisoDeMencao({ tipo: 'pessoa', autor: eu, texto: '@Pablo&Nina' }, eu)).toBeNull();
+    expect(avisoDeMencao({ tipo: 'lola', texto: '@Pablo&Nina' }, eu)).toBeNull();
+    expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: '@Maria oi', resposta: { nome: 'Maria' } }, eu)).toBeNull();
+    expect(avisoDeMencao({ tipo: 'pessoa', autor: outro, texto: '@Pablo&Nina' }, null)).toBeNull();
   });
 });
 

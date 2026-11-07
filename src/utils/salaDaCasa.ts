@@ -1,4 +1,5 @@
 // Regras do chat da sala e das cabines d'A Casa, separadas da tela para ter teste.
+import { mencionou } from '@/components/ChatDaCasaUi';
 
 /**
  * Publica a mensagem e resolve sozinho as duas recusas passageiras do servidor:
@@ -24,6 +25,16 @@ export async function enviarComNovaTentativa<T>(
     }
     throw e;
   }
+}
+
+/** Alguém me marcou com @ ou respondeu uma mensagem minha? Devolve o que aconteceu, para o aviso. */
+export function avisoDeMencao(
+  msg: { tipo?: string; texto?: string; autor?: { id?: string } | null; resposta?: { nome?: string } | null },
+  eu: { id?: string | null; nome?: string | null } | null | undefined,
+): 'marcou' | 'respondeu' | null {
+  if (!eu?.nome || msg.tipo !== 'pessoa' || !msg.autor || msg.autor.id === eu.id) return null;
+  if (mencionou(msg.texto, eu.nome)) return 'marcou';
+  return msg.resposta?.nome === eu.nome ? 'respondeu' : null;
 }
 
 /** Mensagem que acende a bolinha do ícone das cabines: de outra pessoa, e não aviso do sistema ou da Lola. */

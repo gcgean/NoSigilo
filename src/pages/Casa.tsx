@@ -18,7 +18,7 @@ import { ToastAction } from '@/components/ui/toast';
 import RadioDaCasa from '@/components/RadioDaCasa';
 import RankingDaCasa from '@/components/RankingDaCasa';
 import CabineDaCasa from '@/components/CabineDaCasa';
-import { contaComoNovaNaCabine, enviarComNovaTentativa } from '@/utils/salaDaCasa';
+import { avisoDeMencao, contaComoNovaNaCabine, enviarComNovaTentativa } from '@/utils/salaDaCasa';
 import EfeitoDaCasa, { temEfeito } from '@/components/EfeitoDaCasa';
 import { profileService } from '@/services/api';
 import PerfilNaCasa from '@/components/PerfilNaCasa';
@@ -363,6 +363,7 @@ export default function Casa() {
     setNaoLidas((x) => x + 1);
   };
   const estadoRef = useRef<typeof estado>(null);
+  const irParaCitadaRef = useRef<(id: string) => void>(() => {});
   const abrirPorIdRef = useRef<(id: string, nome: string) => void>(() => {});
   useEffect(() => { estadoRef.current = estado; }, [estado]);
   // Primeira visita à Casa: tour de 3 telas antes da pulseira.
@@ -521,6 +522,18 @@ export default function Casa() {
     const aoMsg = (d: { sala: string; msg: Msg }) => {
       setEstado((e) => e && e.sala.id === d.sala ? { ...e, mensagens: [...e.mensagens.slice(-299), d.msg] } : e);
       if (temEfeito(d.msg.efeito)) setEfeito({ id: d.msg.id, efeito: d.msg.efeito!, texto: d.msg.texto });
+      // Me marcaram com @ ou responderam: som, aviso na tela (até dentro da cabine) e no sino.
+      const agora = estadoRef.current;
+      const eu = agora?.sala.id === d.sala ? agora.presentes.find((x) => x.id === agora.eu.idPublico) : null;
+      const aviso = avisoDeMencao(d.msg, eu);
+      if (aviso) {
+        const quem = d.msg.autor?.nome ?? 'Alguém';
+        const texto = aviso === 'marcou' ? `${quem} marcou você` : `${quem} respondeu você`;
+        const ir = () => { setCabineAberta(null); irParaCitadaRef.current(d.msg.id); };
+        tocarAviso(false, 'chegou');
+        registrarAviso({ emoji: '💬', texto: `${texto}: ${d.msg.texto.slice(0, 60)}`, acao: ir, rotuloAcao: 'Ver' });
+        toast({ title: `💬 ${texto}`, description: d.msg.texto.slice(0, 80), action: <ToastAction altText="Ver a mensagem" onClick={ir}>Ver</ToastAction> });
+      }
     };
     const aoReacao = (d: { sala: string; mensagemId: string; reacoes: Record<string, string[]> }) => setEstado((e) => e && e.sala.id === d.sala
       ? { ...e, mensagens: e.mensagens.map((m) => m.id === d.mensagemId ? { ...m, reacoes: d.reacoes } : m) } : e);
@@ -676,6 +689,7 @@ export default function Casa() {
   const rolagem = useRolagemDoChat({ chave: estado?.sala.id ?? null, mensagens: estado?.mensagens, meuId: estado?.eu.idPublico ?? user?.id ?? '', meuNome: meuNomeNaSala });
   // A faixa "Respondendo" ocupa espaço embaixo: quem está no fim continua vendo a última.
   useEffect(() => { if (respondendo && rolagem.noFim) rolagem.irParaFim(); }, [respondendo]); // eslint-disable-line react-hooks/exhaustive-deps
+  irParaCitadaRef.current = (id: string) => irParaCitada(id);
   const irParaCitada = (id: string) => {
     if (!rolagem.irPara(id)) toast({ title: 'Essa mensagem já saiu do histórico da sala.' });
   };
