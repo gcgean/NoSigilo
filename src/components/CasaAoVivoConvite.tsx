@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { fechaHoje } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
@@ -15,11 +17,14 @@ const CHAVE = 'nosigilo:casa-ao-vivo-convite';
 export default function CasaAoVivoConvite() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { user } = useAuth();
+  const esperandoPrimeirosPassos = usePrimeirosPassosAtivos(user?.id);
   const [aberto, setAberto] = useState(false);
   const [info, setInfo] = useState<{ tema: string | null; pessoas: number } | null>(null);
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
+    if (esperandoPrimeirosPassos) return; // não abre por cima da tela de quem acabou de se cadastrar
     // A noite vai das 22h à 1h: a "data da noite" é a de 3h atrás.
     const noite = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10);
     try { if (localStorage.getItem(CHAVE) === noite) return; } catch { /* sem storage: segue */ }
@@ -35,7 +40,7 @@ export default function CasaAoVivoConvite() {
     return () => clearTimeout(t);
     // Só no primeiro carregamento da noite.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [esperandoPrimeirosPassos]);
 
   return (
     <Dialog open={aberto} onOpenChange={setAberto}>

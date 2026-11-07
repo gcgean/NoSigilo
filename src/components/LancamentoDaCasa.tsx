@@ -1,4 +1,4 @@
-import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
+import { usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
@@ -38,6 +38,7 @@ export default function LancamentoDaCasa() {
   const { pathname } = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const esperandoPrimeirosPassos = usePrimeirosPassosAtivos(user?.id);
   const [aberto, setAberto] = useState(false);
   const [reservas, setReservas] = useState(0);
   const [lancamento, setLancamento] = useState(true);
@@ -48,7 +49,7 @@ export default function LancamentoDaCasa() {
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
-    if (outrasJanelasEsperam(user?.id)) return;
+    if (esperandoPrimeirosPassos) return; // quem acabou de se cadastrar vê logo depois da tela inicial
     const emCampanha = Date.now() < FIM_DA_CAMPANHA;
     const { dia: hoje, semana } = hojeEmBrasilia();
     if (semana === 'Sun') return;
@@ -71,7 +72,7 @@ export default function LancamentoDaCasa() {
     return () => clearTimeout(t);
     // Só na primeira tela do dia.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [esperandoPrimeirosPassos]);
 
   const reservar = async () => {
     setAberto(false);
