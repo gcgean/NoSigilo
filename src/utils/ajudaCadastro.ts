@@ -1,4 +1,4 @@
-// Ajudas do cadastro: menos digitação e menos e-mail errado no celular.
+// Ajuda do cadastro: menos e-mail errado no celular.
 
 const DOMINIOS = ['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'yahoo.com.br', 'icloud.com', 'live.com', 'uol.com.br', 'bol.com.br', 'terra.com.br'];
 
@@ -30,20 +30,4 @@ export function sugestaoDeEmail(email: string): string | null {
     if (d < menor) { menor = d; melhor = certo; }
   }
   return melhor ? `${limpo.slice(0, arroba)}@${melhor}` : null;
-}
-
-const PALAVRAS: Record<'casal' | 'mulher' | 'homem' | 'outro', string[]> = {
-  casal: ['CasalDiscreto', 'CasalLiberal', 'CasalCurioso', 'CasalSigilo'],
-  mulher: ['Misteriosa', 'Curiosa', 'Discreta', 'Liberal'],
-  homem: ['Discreto', 'Curioso', 'Mascarado', 'Sigilo'],
-  outro: ['Liberal', 'Sigilo', 'Curiose', 'Mascarade'],
-};
-
-/** Apelido pronto para a pessoa não travar pensando em um (ela pode trocar). */
-export function apelidoSugerido(perfil: string, aleatorio: () => number = Math.random): string {
-  const p = perfil.toLowerCase();
-  const grupo = p.startsWith('casal') ? 'casal' : p.startsWith('mulher') ? 'mulher' : p.startsWith('homem') ? 'homem' : 'outro';
-  const lista = PALAVRAS[grupo];
-  const palavra = lista[Math.floor(aleatorio() * lista.length) % lista.length];
-  return `${palavra}${100 + Math.floor(aleatorio() * 9900)}`;
 }

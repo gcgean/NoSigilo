@@ -20,7 +20,7 @@ import { cn } from '@/lib/utils';
 import { onboardingService, authService, marcarPassoCadastro } from '@/services/api';
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
-import { apelidoSugerido, sugestaoDeEmail } from '@/utils/ajudaCadastro';
+import { sugestaoDeEmail } from '@/utils/ajudaCadastro';
 import { marcarNovoCadastro } from '@/utils/primeiroAcesso';
 import BrandLogo from '@/components/BrandLogo';
 
@@ -205,10 +205,7 @@ export default function Register() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  // Apelido que o site preencheu (some assim que a pessoa mexe no campo).
-  const nomeAutomatico = useRef(false);
   const [perfilJaEscolhido, setPerfilJaEscolhido] = useState(() => !!initialProfile && !rascunho?.gender);
-  const [mostrarNomeSugerido, setMostrarNomeSugerido] = useState(false);
 
   // Erro por campo, mostrado embaixo do próprio campo. Antes a única resposta
   // a um formulário inválido era um toast no topo da tela.
@@ -350,22 +347,6 @@ export default function Register() {
     return () => { cancelled = true; clearTimeout(t); };
   }, [formData.name]);
 
-  // Escolheu o perfil e ainda não tem nome: já vem um apelido pronto. Pensar em um era
-  // onde mais gente travava no passo 1. Se estiver em uso, troca sozinho por outro.
-  useEffect(() => {
-    if (!formData.gender) return;
-    if (formData.name.trim() && !nomeAutomatico.current) return;
-    nomeAutomatico.current = true;
-    setMostrarNomeSugerido(true);
-    setFormData((atual) => ({ ...atual, name: apelidoSugerido(atual.gender) }));
-    marcarPassoCadastro('nome_sugerido');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.gender]);
-  useEffect(() => {
-    if (!nomeAutomatico.current || (nameStatus !== 'taken' && nameStatus !== 'blacklisted')) return;
-    setFormData((atual) => ({ ...atual, name: apelidoSugerido(atual.gender) }));
-  }, [nameStatus]);
-
   // ── Load suggestions when reaching step 3 ────────────────────────────────
   useEffect(() => {
     if (currentStep !== 3 || !formData.gender) return;
@@ -406,6 +387,7 @@ export default function Register() {
   // ── Card select — auto-focus name after picking ───────────────────────────
   const handleSelectGender = (value: string) => {
     updateField('gender', value);
+    setTimeout(() => nameInputRef.current?.focus(), 180);
   };
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -691,36 +673,14 @@ export default function Register() {
                   </ul>
                 )}
 
-                {/* Caminho de um toque, no primeiro passo: no celular digitar
-                    e-mail e inventar senha é o maior atrito do cadastro.
-                    O Google só pede o tipo de perfil antes de seguir. */}
-                {formData.gender ? (
-                  <>
-                    {perfilJaEscolhido && (
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
-                        <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
-                        <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
-                      </div>
-                    )}
-                    <GoogleSignInButton
-                      destaque
-                      label="Entrar com Google em 1 toque"
-                      gender={formData.gender}
-                      name={formData.name}
-                      city={formData.city}
-                      state={formData.state}
-                      registrarAceite
-                    />
-                    <p className="text-center text-[11px] text-muted-foreground">Ao continuar, você tem 18+ e aceita os termos no fim da página.</p>
-                    <div className="flex items-center gap-3">
-                      <div className="h-px flex-1 bg-border" />
-                      <span className="text-xs text-muted-foreground">ou continue com e-mail</span>
-                      <div className="h-px flex-1 bg-border" />
-                    </div>
-                  </>
-                ) : null}
-
                 {/* Já escolheu no botão da página anterior: não pergunta de novo. */}
+                {perfilJaEscolhido && (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
+                    <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
+                    <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
+                  </div>
+                )}
+
                 {!perfilJaEscolhido && (
                 <>
                 {/* Primary cards */}
@@ -811,8 +771,7 @@ export default function Register() {
                     ref={nameInputRef}
                     placeholder={isCouple ? 'Apelido do casal (ex: Casal SP)' : 'Seu apelido ou nome'}
                     value={formData.name}
-                    onChange={(e) => { nomeAutomatico.current = false; setMostrarNomeSugerido(false); updateField('name', e.target.value); }}
-                    onFocus={(e) => { if (nomeAutomatico.current) e.target.select(); }}
+                    onChange={(e) => updateField('name', e.target.value)}
                     className={cn(
                       'h-12 rounded-xl text-base sm:h-10 sm:rounded-md sm:text-sm',
                       nameStatus === 'available' && 'border-emerald-500 focus-visible:ring-emerald-500/40',
@@ -828,9 +787,6 @@ export default function Register() {
                       {fieldErrors.name}
                     </p>
                   ) : null}
-                  {mostrarNomeSugerido && (
-                    <p className="px-1 text-xs text-muted-foreground">Sugerimos esse apelido para você. Pode trocar se quiser.</p>
-                  )}
                   {nameStatus === 'checking' && (
                     <p className="px-1 text-xs text-muted-foreground">Verificando disponibilidade…</p>
                   )}
@@ -848,7 +804,7 @@ export default function Register() {
                             <button
                               key={sug}
                               type="button"
-                              onClick={() => { nomeAutomatico.current = false; setMostrarNomeSugerido(false); updateField('name', sug); marcarPassoCadastro('nome_sugestao_usada'); }}
+                              onClick={() => { updateField('name', sug); marcarPassoCadastro('nome_sugestao_usada'); }}
                               className="min-h-[40px] rounded-full border border-primary/40 bg-primary/10 px-4 text-sm font-medium text-foreground transition-colors hover:bg-primary/20 active:scale-95"
                             >
                               {sug}
@@ -1213,7 +1169,7 @@ export default function Register() {
               Entrar
             </Link>
           </p>
-          {currentStep < 3 && (
+          {currentStep === 2 && (
             <div className="mt-4 border-t border-border/60 pt-4">
               <AceiteGoogle abrir={setLegalDoc} />
             </div>

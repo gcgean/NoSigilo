@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apelidoSugerido, sugestaoDeEmail } from './ajudaCadastro';
+import { sugestaoDeEmail } from './ajudaCadastro';
 
 describe('correção do e-mail', () => {
   it('corrige os erros comuns de digitação', () => {
@@ -13,15 +13,5 @@ describe('correção do e-mail', () => {
     for (const email of ['ana@gmail.com', 'ana@yahoo.com.br', 'ana', 'ana@', '@gmail.com', 'ana@minhaempresa.com.br', 'ana@nosigilo.net']) {
       expect(sugestaoDeEmail(email)).toBeNull();
     }
-  });
-});
-
-describe('apelido sugerido', () => {
-  it('combina com o perfil e não tem espaço', () => {
-    expect(apelidoSugerido('Casal (Ele/Ela)', () => 0)).toBe('CasalDiscreto100');
-    expect(apelidoSugerido('Mulher', () => 0)).toBe('Misteriosa100');
-    expect(apelidoSugerido('Homem', () => 0)).toBe('Discreto100');
-    expect(apelidoSugerido('Travesti', () => 0)).toBe('Liberal100');
-    expect(apelidoSugerido('Homem', () => 0.999)).toMatch(/^[A-Za-z]+\d{3,4}$/);
   });
 });
