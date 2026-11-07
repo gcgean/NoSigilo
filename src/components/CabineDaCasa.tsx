@@ -517,7 +517,12 @@ export default function CabineDaCasa({
           </div>
         ) : (
           <div key={m.id} className={cn('flex items-start gap-2', m.autor?.id === meuIdPublico && 'flex-row-reverse')}>
-            {m.autor && <Foto p={m.autor} tamanho="h-7 w-7" />}
+            {m.autor && (
+              <button type="button" disabled={!!cab.anonima || !onVerPerfil || m.autor.id === meuIdPublico}
+                onClick={() => onVerPerfil?.(m.autor!.id)} aria-label={`Ver perfil de ${m.autor.nome}`} className="shrink-0 rounded-full">
+                <Foto p={m.autor} tamanho="h-7 w-7" />
+              </button>
+            )}
             <div className={cn('min-w-0 max-w-[85%] rounded-2xl px-3 py-1.5', m.autor?.id === meuIdPublico ? 'rounded-tr-sm bg-rose-700/60' : 'rounded-tl-sm bg-white/10')}>
               <p className="text-[11px] font-semibold text-white/70">{m.autor?.nome}</p>
               {m.resposta && (

@@ -17,6 +17,7 @@ type Perfil = {
   distanceKm: number | null; publicPhotosCount: number; isOnline?: boolean;
 };
 type Foto = { id: string; url: string };
+type Story = { id: string; mediaUrl: string | null; mimeType?: string | null; text?: string | null; createdAt: string; author?: { id?: string } };
 
 const idade = (d: string | null) => {
   if (!d) return null;
@@ -33,15 +34,25 @@ export default function PerfilNaCasa({ userId, onFechar }: { userId: string | nu
   const [fotos, setFotos] = useState<Foto[]>([]);
   const [erro, setErro] = useState(false);
   const [aberta, setAberta] = useState<string | null>(null);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [storyAberto, setStoryAberto] = useState<number | null>(null);
 
   useEffect(() => {
     if (!userId) return;
-    setPerfil(null); setFotos([]); setErro(false); setAberta(null);
+    setPerfil(null); setFotos([]); setErro(false); setAberta(null); setStories([]); setStoryAberto(null);
     apiClient.get(`/users/${userId}`).then((r) => setPerfil(r.data)).catch(() => setErro(true));
     apiClient.get(`/users/${userId}/photos`, { params: { visibility: 'public' } })
       .then((r) => setFotos(Array.isArray(r.data) ? r.data.slice(0, 12) : []))
       .catch(() => {});
+    apiClient.get('/stories')
+      .then((r) => setStories(((r.data?.stories ?? []) as Story[]).filter((s) => s.author?.id === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt))))
+      .catch(() => {});
   }, [userId]);
+
+  const storyAtual = storyAberto !== null ? stories[storyAberto] : null;
+  useEffect(() => {
+    if (storyAtual?.mediaUrl || storyAtual?.text) void apiClient.post(`/stories/${storyAtual.id}/view`, {}).catch(() => {});
+  }, [storyAtual?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const idades = perfil ? [idade(perfil.birthDate), idade(perfil.partnerBirthDate)].filter((x): x is number => x != null) : [];
   const etiquetas = perfil ? [...(perfil.lookingFor ?? []).map((x) => `Procura: ${x}`), ...(perfil.intentions ?? []), ...(perfil.fetiches ?? [])].slice(0, 12) : [];
@@ -55,10 +66,13 @@ export default function PerfilNaCasa({ userId, onFechar }: { userId: string | nu
         {perfil && (
           <div>
             <div className="flex items-center gap-4 bg-gradient-to-br from-fuchsia-900/60 to-rose-900/50 p-5">
-              <img
-                src={perfil.avatar ? resolveServerUrl(perfil.avatar) : '/icon-192.png'}
-                alt="" className="h-20 w-20 shrink-0 rounded-full object-cover ring-2 ring-fuchsia-400"
-              />
+              <button type="button" disabled={stories.length === 0} onClick={() => setStoryAberto(0)} aria-label={stories.length ? `Ver stories de ${perfil.name}` : undefined}
+                className={stories.length ? 'shrink-0 rounded-full bg-gradient-to-tr from-amber-400 via-rose-500 to-fuchsia-500 p-1' : 'shrink-0 rounded-full'}>
+                <img
+                  src={perfil.avatar ? resolveServerUrl(perfil.avatar) : '/icon-192.png'}
+                  alt="" className="h-20 w-20 rounded-full object-cover ring-2 ring-fuchsia-400"
+                />
+              </button>
               <div className="min-w-0">
                 <p className="truncate text-lg font-bold">{perfil.name}{idades.length ? `, ${idades.join(' e ')}` : ''}</p>
                 <p className="text-xs text-white/70">{perfil.gender}</p>
@@ -69,6 +83,11 @@ export default function PerfilNaCasa({ userId, onFechar }: { userId: string | nu
                     <BandeiraPortugal state={perfil.state} />
                     {perfil.distanceKm != null ? ` · ${perfil.distanceKm < 2 ? 'menos de 2' : perfil.distanceKm} km` : ''}
                   </p>
+                )}
+                {stories.length > 0 && (
+                  <button type="button" onClick={() => setStoryAberto(0)} className="mt-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold hover:bg-white/25">
+                    ▶ Ver stories ({stories.length})
+                  </button>
                 )}
               </div>
             </div>
@@ -96,6 +115,29 @@ export default function PerfilNaCasa({ userId, onFechar }: { userId: string | nu
                 Abrir o perfil completo (sai da Casa)
               </a>
             </div>
+          </div>
+        )}
+
+        {storyAtual && storyAberto !== null && (
+          <div className="fixed inset-0 z-[9997] flex flex-col bg-black">
+            <div className="flex gap-1 p-2" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+              {stories.map((s, i) => <span key={s.id} className={`h-1 flex-1 rounded-full ${i <= storyAberto ? 'bg-white' : 'bg-white/30'}`} />)}
+            </div>
+            <button type="button" onClick={() => setStoryAberto(null)} className="absolute right-3 top-[calc(env(safe-area-inset-top,0px)+1.25rem)] z-10 rounded-full bg-white/15 p-2" aria-label="Fechar stories"><X className="h-5 w-5" /></button>
+            {/* Toque na tela: o próximo story; depois do último, volta ao perfil. */}
+            <button type="button" aria-label="Próximo story" onClick={() => setStoryAberto(storyAberto + 1 < stories.length ? storyAberto + 1 : null)}
+              className="relative flex min-h-0 flex-1 items-center justify-center">
+              {storyAtual.mediaUrl ? (
+                storyAtual.mimeType?.startsWith('video/')
+                  ? <video key={storyAtual.id} src={resolveServerUrl(storyAtual.mediaUrl)} autoPlay playsInline controls={false} className="max-h-full max-w-full object-contain" />
+                  : <img src={resolveServerUrl(storyAtual.mediaUrl)} alt="" draggable={false} className="max-h-full max-w-full select-none object-contain" />
+              ) : !storyAtual.text ? (
+                <span className="px-8 text-center text-sm text-white/70">🔒 Assine para ver os stories</span>
+              ) : null}
+              {storyAtual.text && (
+                <span className={storyAtual.mediaUrl ? 'absolute inset-x-4 bottom-8 rounded-xl bg-black/55 p-3 text-center text-base font-semibold' : 'px-8 text-center text-2xl font-bold'}>{storyAtual.text}</span>
+              )}
+            </button>
           </div>
         )}
 
