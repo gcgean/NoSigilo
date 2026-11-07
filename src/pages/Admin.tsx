@@ -1803,16 +1803,34 @@ export default function Admin() {
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Veio de</label>
+                {/* Um filtro só: canal de chegada (os mesmos dos cartões abaixo) ou página do site. */}
                 <select
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={filterOrigem}
-                  onChange={(e) => setFilterOrigem(e.target.value)}
+                  value={filterCanal ? `canal:${filterCanal}` : filterOrigem ? `pagina:${filterOrigem}` : ''}
+                  onChange={(e) => {
+                    const [tipo, ...resto] = e.target.value.split(':');
+                    const valor = resto.join(':');
+                    setFilterCanal(tipo === 'canal' ? valor : '');
+                    setFilterOrigem(tipo === 'pagina' ? valor : '');
+                  }}
                 >
                   <option value="">Qualquer origem</option>
-                  <option value="regional">Páginas de cidade/estado</option>
-                  <option value="/swing/casa-de-swing-online/">Página Casa de swing online</option>
-                  <option value="/swing/portugal/casa-de-swing-online/">Página Casa de swing online (Portugal)</option>
-                  <option value="direto">Cadastro direto</option>
+                  <optgroup label="Canal de chegada">
+                    {contagemCanais.map((c) => (
+                      <option key={c.canal || '__sem__'} value={`canal:${c.canal || '__sem__'}`}>
+                        {c.canal || 'Sem registro'} ({c.total.toLocaleString('pt-BR')})
+                      </option>
+                    ))}
+                    {filterCanal && !contagemCanais.some((c) => (c.canal || '__sem__') === filterCanal) && (
+                      <option value={`canal:${filterCanal}`}>{filterCanal === '__sem__' ? 'Sem registro' : filterCanal} (0)</option>
+                    )}
+                  </optgroup>
+                  <optgroup label="Página do site">
+                    <option value="pagina:regional">Páginas de cidade/estado</option>
+                    <option value="pagina:/swing/casa-de-swing-online/">Página Casa de swing online</option>
+                    <option value="pagina:/swing/portugal/casa-de-swing-online/">Página Casa de swing online (Portugal)</option>
+                    <option value="pagina:direto">Cadastro direto</option>
+                  </optgroup>
                 </select>
               </div>
               <div className="space-y-1">
@@ -1839,7 +1857,7 @@ export default function Admin() {
                     const reais = (cents: number) => (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                     type Tipos = { homens?: number; mulheres?: number; casais?: number; outros?: number };
                     const chip = (chave: string, valor: string, rotulo: string, total: number, receita?: { receitaCents: number; pagantes: number }, tipos?: Tipos) => (
-                      <button key={chave} type="button" onClick={() => setFilterCanal(valor)}
+                      <button key={chave} type="button" onClick={() => { setFilterCanal(valor); setFilterOrigem(''); }}
                         title={receita ? `${receita.pagantes} pagante(s) · ${reais(receita.receitaCents)} em pagamentos` : 'Nenhum pagamento'}
                         className={`flex flex-col items-start rounded-xl border px-3 py-1 text-left text-xs leading-tight transition-colors ${filterCanal === valor ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:border-primary/50'}`}>
                         <span>{rotulo} <strong>{total.toLocaleString('pt-BR')}</strong></span>
