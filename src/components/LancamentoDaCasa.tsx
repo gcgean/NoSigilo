@@ -1,4 +1,4 @@
-import { usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
+import { conviteDaCasaPodeAbrir, usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
@@ -61,6 +61,7 @@ export default function LancamentoDaCasa() {
         const { data } = await apiClient.get('/casa');
         const naFila = (data?.salas ?? []).some((s: any) => s.posicaoNaFila);
         if (data?.reservado || naFila || data?.aberta) return;
+        if (!conviteDaCasaPodeAbrir()) return;
         setLancamento(emCampanha);
         setEhHoje(semana === 'Fri' || semana === 'Sat');
         if (!emCampanha) setQuando(diaDaNoite(data?.proximaAbertura ?? null));

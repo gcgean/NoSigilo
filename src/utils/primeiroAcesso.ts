@@ -50,6 +50,16 @@ export function usePrimeirosPassosAtivos(userId: string | null | undefined) {
   );
 }
 
+/**
+ * O convite da Casa não abre em cima de uma compra: nem na página de planos, nem com
+ * outra janela aberta (o bloqueio de assinatura, por exemplo). Sem abrir, fica para a
+ * próxima vez que a pessoa carregar o app.
+ */
+export function conviteDaCasaPodeAbrir() {
+  if (/^\/(subscriptions|plans|renovar)(\/|$)/.test(window.location.pathname)) return false;
+  return !document.querySelector('[role="dialog"]');
+}
+
 /** Enquanto for o dia do cadastro (ou os passos estiverem pendentes), as outras janelas esperam. */
 export function outrasJanelasEsperam(userId: string | null | undefined) {
   if (!userId) return false;

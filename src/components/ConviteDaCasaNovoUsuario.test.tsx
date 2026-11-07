@@ -21,6 +21,7 @@ describe('convite da Casa para quem acabou de se cadastrar', () => {
     vi.clearAllMocks();
     localStorage.clear();
     marcarNovoCadastro('novo');
+    window.history.replaceState({}, '', '/feed');
   });
   afterEach(() => vi.useRealTimers());
 
@@ -35,6 +36,30 @@ describe('convite da Casa para quem acabou de se cadastrar', () => {
     await passar(5_000);
     expect(apiClient.get).toHaveBeenCalledWith('/casa');
     expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('não abre na página de planos e volta a tentar na próxima abertura do app', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { salas: [], reservado: false, aberta: false, proximaAbertura: null, reservas: 0 } });
+    concluirPrimeirosPassos('novo');
+    window.history.replaceState({}, '', '/subscriptions');
+    const primeira = abrir(<LancamentoDaCasa />);
+    await passar(5_000);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    primeira.unmount();
+
+    window.history.replaceState({}, '', '/feed');
+    abrir(<LancamentoDaCasa />);
+    await passar(5_000);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('não abre por cima de outra janela, como o bloqueio de assinatura', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({ data: { aberta: true, tema: null, pessoas: 12 } });
+    concluirPrimeirosPassos('novo');
+    render(<div role="dialog">bloqueio de assinatura</div>);
+    abrir(<CasaAoVivoConvite />);
+    await passar(3_000);
+    expect(screen.queryByText(/A Casa está aberta/)).toBeNull();
   });
 
   it('com a Casa aberta, o convite ao vivo também espera e abre em seguida', async () => {

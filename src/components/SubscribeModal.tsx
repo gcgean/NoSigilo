@@ -286,7 +286,7 @@ export default function SubscribeModal({ open, onClose }: Props) {
 
   return (
     <>
-    <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 

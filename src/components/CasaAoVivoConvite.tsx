@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
+import { conviteDaCasaPodeAbrir, usePrimeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { fechaHoje } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
 import apiClient from '@/utils/apiClient';
@@ -31,7 +31,7 @@ export default function CasaAoVivoConvite() {
     const t = setTimeout(async () => {
       try {
         const { data } = await apiClient.get('/casa/publico');
-        if (!data?.aberta) return;
+        if (!data?.aberta || !conviteDaCasaPodeAbrir()) return;
         setInfo({ tema: data?.tema?.nome ?? null, pessoas: Number(data?.pessoas || 0) });
         setAberto(true);
         try { localStorage.setItem(CHAVE, noite); } catch { /* ok */ }
