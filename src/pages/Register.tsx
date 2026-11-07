@@ -175,9 +175,6 @@ export default function Register() {
     return passo >= 1 && passo <= 3 ? passo : 1;
   });
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
-  const [showOthers, setShowOthers] = useState(
-    () => otherOptions.some((option) => option.value === (rascunho?.gender || initialProfile))
-  );
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [nameStatus, setNameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'blacklisted'>('idle');
@@ -205,7 +202,6 @@ export default function Register() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
-  const [perfilJaEscolhido, setPerfilJaEscolhido] = useState(() => !!initialProfile && !rascunho?.gender);
 
   // Erro por campo, mostrado embaixo do próprio campo. Antes a única resposta
   // a um formulário inválido era um toast no topo da tela.
@@ -662,27 +658,6 @@ export default function Register() {
                   </p>
                 </div>
 
-                {!formData.gender && (
-                  <ul className="space-y-1.5 rounded-xl border border-border/60 bg-secondary/30 px-3.5 py-3">
-                    {BENEFICIOS.map((b) => (
-                      <li key={b.text} className="flex items-start gap-2 text-sm leading-snug">
-                        <span aria-hidden="true">{b.icon}</span>
-                        <span>{b.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {/* Já escolheu no botão da página anterior: não pergunta de novo. */}
-                {perfilJaEscolhido && (
-                  <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
-                    <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
-                    <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
-                  </div>
-                )}
-
-                {!perfilJaEscolhido && (
-                <>
                 {/* Primary cards */}
                 <div className="grid grid-cols-3 gap-2.5">
                   {primaryOptions.map((opt) => {
@@ -693,7 +668,7 @@ export default function Register() {
                         type="button"
                         onClick={() => handleSelectGender(opt.value)}
                         className={cn(
-                          'relative flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-4 text-center transition-all active:scale-95',
+                          'relative flex flex-col items-center gap-2 rounded-xl border-2 px-2 py-3 text-center transition-all active:scale-95',
                           selected
                             ? 'border-primary bg-primary/10 shadow-glow'
                             : 'border-border hover:border-primary/40 hover:bg-secondary/50'
@@ -712,48 +687,34 @@ export default function Register() {
                   })}
                 </div>
 
-                {/* Other options — collapsible */}
-                {!showOthers && !otherOptions.some((o) => o.value === formData.gender) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowOthers(true)}
-                    className="w-full rounded-xl border border-dashed border-border py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
-                  >
-                    Outros perfis (trans, casal homoafetivo, CD…)
-                  </button>
-                )}
-
-                {(showOthers || otherOptions.some((o) => o.value === formData.gender)) && (
-                  <div className="grid grid-cols-3 gap-2 animate-fade-in sm:grid-cols-5">
-                    {otherOptions.map((opt) => {
-                      const selected = formData.gender === opt.value;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => handleSelectGender(opt.value)}
-                          className={cn(
-                            'relative flex flex-col items-center gap-1.5 rounded-xl border-2 px-1 py-3 text-center text-xs transition-all active:scale-95',
-                            selected
-                              ? 'border-primary bg-primary/10 shadow-glow'
-                              : 'border-border hover:border-primary/40 hover:bg-secondary/50'
-                          )}
-                        >
-                          {selected && (
-                            <span className="absolute right-1.5 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary">
-                              <Check className="h-2 w-2 text-primary-foreground" />
-                            </span>
-                          )}
-                          <span className="text-2xl leading-none">{opt.emoji}</span>
-                          <span className="font-medium leading-tight">{opt.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                </>
-                )}
+                {/* Demais perfis: sempre visíveis. A última linha (2 cards) fica centralizada no celular. */}
+                <div className="grid grid-cols-6 gap-2 sm:grid-cols-5">
+                  {otherOptions.map((opt, i) => {
+                    const selected = formData.gender === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => handleSelectGender(opt.value)}
+                        className={cn(
+                          'relative col-span-2 flex flex-col items-center gap-1.5 rounded-xl border-2 px-1 py-2 text-center text-xs transition-all active:scale-95 sm:col-span-1',
+                          i === 3 && 'col-start-2 sm:col-start-auto',
+                          selected
+                            ? 'border-primary bg-primary/10 shadow-glow'
+                            : 'border-border hover:border-primary/40 hover:bg-secondary/50'
+                        )}
+                      >
+                        {selected && (
+                          <span className="absolute right-1.5 top-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary">
+                            <Check className="h-2 w-2 text-primary-foreground" />
+                          </span>
+                        )}
+                        <span className="text-2xl leading-none">{opt.emoji}</span>
+                        <span className="font-medium leading-tight">{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {fieldErrors.gender ? (
                   <p id="erro-gender" role="alert" className="px-1 text-xs font-medium text-destructive">
@@ -823,6 +784,17 @@ export default function Register() {
                     </p>
                   )}
                 </div>
+
+                {!formData.gender && (
+                  <ul className="space-y-1.5 rounded-xl border border-border/60 bg-secondary/30 px-3.5 py-3">
+                    {BENEFICIOS.map((b) => (
+                      <li key={b.text} className="flex items-start gap-2 text-sm leading-snug">
+                        <span aria-hidden="true">{b.icon}</span>
+                        <span>{b.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
 
