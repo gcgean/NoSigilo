@@ -1,3 +1,4 @@
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -154,7 +155,7 @@ export default function FirstAccessTutorial() {
   const [stepIndex, setStepIndex] = useState(0);
 
   useEffect(() => {
-    if (!user?.id || naCasa) return;
+    if (!user?.id || naCasa || outrasJanelasEsperam(user.id)) return;
     const key = `nosigilo:welcome-tutorial-date:${user.id}`;
     try {
       if (localStorage.getItem(key)) return;

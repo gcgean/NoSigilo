@@ -1,3 +1,4 @@
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SugestoesPerfis from '@/components/SugestoesPerfis';
 import StoriesNaoVistos from '@/components/StoriesNaoVistos';
@@ -1000,6 +1001,7 @@ export default function Feed() {
       return;
     }
     // Show once per session — after the user dismisses, don't reopen until browser restarts
+    if (outrasJanelasEsperam(user.id)) return;
     const sessionKey = `nosigilo:photo-prompt-dismissed:${user.id}`;
     if (sessionStorage.getItem(sessionKey)) {
       setShowProfilePhotoGate(false);

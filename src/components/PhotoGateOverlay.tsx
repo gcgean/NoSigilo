@@ -1,3 +1,4 @@
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { useRef, useState, useEffect } from 'react';
 import { Camera, ImagePlus, Eye, Heart, Zap, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +32,7 @@ export default function PhotoGateOverlay({ pathname }: { pathname: string }) {
   // Don't show overlay on exempt routes, if user already has a photo, admin, or skipped
   const isExempt = EXEMPT_PATHS.some((p) => pathname.startsWith(p));
   if (!user || user.avatar || user.isAdmin || isExempt || skipped) return null;
+  if (outrasJanelasEsperam(user.id)) return null;
 
   const handleSkip = () => {
     try { localStorage.setItem(PHOTO_SKIP_KEY, user.id); } catch {}

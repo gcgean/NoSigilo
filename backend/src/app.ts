@@ -7085,6 +7085,9 @@ export function createApp(options: { db: DbHandle; env: Env }) {
     // Página do link do Instagram (/vem).
     'ig_abriu', 'ig_casal', 'ig_mulher', 'ig_homem',
     'nome_sugerido', 'email_corrigido',
+    // Tela de primeiros passos, logo depois da conta criada.
+    'pp_abriu', 'pp_cidade', 'pp_curte', 'pp_foto', 'pp_pulou_foto', 'pp_fim',
+    'google_clicou',
   ] as const;
 
   // Primeira abertura pelo app instalado: marca o usuário e paga 20 tokens,

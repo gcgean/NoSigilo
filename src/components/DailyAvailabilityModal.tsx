@@ -1,3 +1,4 @@
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Zap, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +23,7 @@ function todayStr() {
 
 function shouldShow(user: any): boolean {
   if (!user || !user.avatar || user.isAdmin) return false;
+  if (outrasJanelasEsperam(user.id)) return false;
   // Quem já tem um status válido não é perguntado de novo. O backend zera
   // `availabilityStatus` quando o prazo do status vence, então a pergunta
   // volta sozinha na expiração em vez de a cada visita ao feed.

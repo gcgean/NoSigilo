@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { profileService } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
 
 const STORAGE_KEY = 'nosigilo:onboarding-done';
 
@@ -169,6 +170,8 @@ export default function OnboardingModal() {
     try {
       if (localStorage.getItem(STORAGE_KEY) === user.id) return;
     } catch {}
+    // No dia do cadastro só os primeiros passos: idade e fetiches ficam para a volta.
+    if (outrasJanelasEsperam(user.id)) return;
     if (needsOnboarding(user)) setVisible(true);
   }, [user?.id]);
 

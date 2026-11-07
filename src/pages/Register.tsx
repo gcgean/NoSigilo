@@ -20,6 +20,7 @@ import { onboardingService, authService, marcarPassoCadastro } from '@/services/
 import { resolveServerUrl } from '@/utils/serverUrl';
 import { useAgeGate } from '@/contexts/AgeGateContext';
 import { apelidoSugerido, sugestaoDeEmail } from '@/utils/ajudaCadastro';
+import { marcarNovoCadastro } from '@/utils/primeiroAcesso';
 import BrandLogo from '@/components/BrandLogo';
 
 // ─── Options ─────────────────────────────────────────────────────────────────
@@ -563,6 +564,7 @@ export default function Register() {
 
       sessionStorage.setItem('nosigilo_login_email', formData.email);
       if (createdUser?.user?.id) {
+        marcarNovoCadastro(createdUser.user.id);
         localStorage.setItem(
           `nosigilo:first-access-flow:${createdUser.user.id}`,
           JSON.stringify({
@@ -693,8 +695,15 @@ export default function Register() {
                     O Google só pede o tipo de perfil antes de seguir. */}
                 {formData.gender ? (
                   <>
+                    {perfilJaEscolhido && (
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
+                        <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
+                        <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
+                      </div>
+                    )}
                     <GoogleSignInButton
-                      label="Criar conta com Google (1 toque)"
+                      destaque
+                      label="Entrar com Google em 1 toque"
                       gender={formData.gender}
                       name={formData.name}
                       city={formData.city}
@@ -703,19 +712,14 @@ export default function Register() {
                     />
                     <div className="flex items-center gap-3">
                       <div className="h-px flex-1 bg-border" />
-                      <span className="text-xs text-muted-foreground">ou escolha um apelido</span>
+                      <span className="text-xs text-muted-foreground">ou continue com e-mail</span>
                       <div className="h-px flex-1 bg-border" />
                     </div>
                   </>
                 ) : null}
 
                 {/* Já escolheu no botão da página anterior: não pergunta de novo. */}
-                {perfilJaEscolhido ? (
-                  <div className="flex items-center justify-between gap-2 rounded-xl border border-primary/40 bg-primary/10 px-3.5 py-2.5 text-sm">
-                    <span className="font-semibold">{allOptions.find((o) => o.value === formData.gender)?.label ?? formData.gender} ✓</span>
-                    <button type="button" onClick={() => setPerfilJaEscolhido(false)} className="min-h-8 text-xs text-muted-foreground underline underline-offset-2">Trocar</button>
-                  </div>
-                ) : (
+                {!perfilJaEscolhido && (
                 <>
                 {/* Primary cards */}
                 <div className="grid grid-cols-3 gap-2.5">
@@ -878,7 +882,8 @@ export default function Register() {
 
                 {/* Google Sign-In — fastest path */}
                 <GoogleSignInButton
-                  label="Cadastrar com Google"
+                  destaque
+                  label="Entrar com Google em 1 toque"
                   gender={formData.gender}
                   name={formData.name}
                   city={formData.city}

@@ -1,3 +1,4 @@
+import { primeirosPassosAtivos } from '@/utils/primeiroAcesso';
 import { useState, useEffect } from 'react';
 import { MapPin, Users, Radar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -66,6 +67,8 @@ export default function CityRequiredModal() {
 
   if (!user) return null;
   if (cidadeValida(user.city)) return null;
+  // Quem acabou de se cadastrar informa a cidade na tela de primeiros passos.
+  if (primeirosPassosAtivos(user.id)) return null;
   if (showcaseResolvido !== false) return null; // vitrine, ou ainda resolvendo
 
   const salvar = async () => {

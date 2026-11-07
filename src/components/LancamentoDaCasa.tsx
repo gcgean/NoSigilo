@@ -1,3 +1,5 @@
+import { outrasJanelasEsperam } from '@/utils/primeiroAcesso';
+import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { fechaHoje, HORARIO_DA_CASA_TEXTO } from '@/utils/horarioDaCasa';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -35,6 +37,7 @@ export default function LancamentoDaCasa() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [aberto, setAberto] = useState(false);
   const [reservas, setReservas] = useState(0);
   const [lancamento, setLancamento] = useState(true);
@@ -45,6 +48,7 @@ export default function LancamentoDaCasa() {
 
   useEffect(() => {
     if (pathname.startsWith('/casa') || pathname.startsWith('/admin')) return;
+    if (outrasJanelasEsperam(user?.id)) return;
     const emCampanha = Date.now() < FIM_DA_CAMPANHA;
     const { dia: hoje, semana } = hojeEmBrasilia();
     if (semana === 'Sun') return;

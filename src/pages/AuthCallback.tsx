@@ -1,3 +1,4 @@
+import { marcarNovoCadastro } from '@/utils/primeiroAcesso';
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import BrandLogo from '@/components/BrandLogo';
@@ -49,6 +50,7 @@ export default function AuthCallback() {
 
         // Mark first-access flow for new Google users (no photo yet)
         if (isNew && user.id) {
+          marcarNovoCadastro(user.id);
           localStorage.setItem(
             `nosigilo:first-access-flow:${user.id}`,
             JSON.stringify({ needsPhoto: true, needsPost: true, startedAt: new Date().toISOString() })

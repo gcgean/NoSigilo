@@ -47,6 +47,7 @@ import RadarNightPrompt from '@/components/RadarNightPrompt';
 import NotaDoApp from '@/components/NotaDoApp';
 import OnboardingModal from '@/components/OnboardingModal';
 import CityRequiredModal from '@/components/CityRequiredModal';
+import PrimeirosPassos from '@/components/PrimeirosPassos';
 import DailyAvailabilityModal from '@/components/DailyAvailabilityModal';
 import WeekendAdventureModal from '@/components/WeekendAdventureModal';
 import SubscribeModal from '@/components/SubscribeModal';
@@ -1538,6 +1539,7 @@ export default function Layout() {
       <DailyAvailabilityModal />
       <OnboardingModal />
       <CityRequiredModal />
+      <PrimeirosPassos />
       <nav data-menu-baixo data-compacto={menuCompacto ? '' : undefined} className={cn(
         // fixed (e não sticky): o sticky depende da altura do container bater
         // com a área visível, e no iOS essa altura muda sozinha conforme a barra

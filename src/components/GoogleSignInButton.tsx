@@ -2,6 +2,7 @@ import type React from 'react';
 import { lePrimeiroToque } from '@/utils/primeiroToque';
 import { leOrigem } from '@/utils/origemCadastro';
 import { VERSAO_POLITICA } from '@/pages/Privacy';
+import { marcarPassoCadastro } from '@/services/api';
 
 interface GoogleSignInButtonProps {
   label?: string;
@@ -12,6 +13,8 @@ interface GoogleSignInButtonProps {
   className?: string;
   // Texto de aceite (cadastro). Com ele, o clique também registra a versão aceita.
   aceite?: React.ReactNode;
+  // O caminho principal da tela: botão branco, grande, que chama mais atenção que o resto.
+  destaque?: boolean;
 }
 
 export default function GoogleSignInButton({
@@ -22,8 +25,10 @@ export default function GoogleSignInButton({
   state,
   className = '',
   aceite,
+  destaque = false,
 }: GoogleSignInButtonProps) {
   const handleClick = () => {
+    if (destaque) marcarPassoCadastro('google_clicou');
     const params = new URLSearchParams();
     if (gender) params.set('gender', gender);
     if (name)   params.set('name', name);
@@ -47,7 +52,9 @@ export default function GoogleSignInButton({
     <button
       type="button"
       onClick={handleClick}
-      className={`flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium transition-all hover:bg-secondary/60 hover:border-primary/30 active:scale-[0.98] ${className}`}
+      className={destaque
+        ? `flex min-h-14 w-full items-center justify-center gap-3 rounded-xl bg-white px-4 py-3 text-base font-bold text-zinc-900 shadow-[0_0_24px_rgba(255,255,255,0.25)] ring-2 ring-primary/70 transition-all hover:bg-zinc-100 active:scale-[0.98] ${className}`
+        : `flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-sm font-medium transition-all hover:bg-secondary/60 hover:border-primary/30 active:scale-[0.98] ${className}`}
     >
       {/* Google G logo */}
       <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
